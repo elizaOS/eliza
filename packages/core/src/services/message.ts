@@ -39,6 +39,7 @@ import {
 	InferenceTurnTimer,
 	markInference,
 	nextInferenceTurnId,
+	recordInferenceSpan,
 	runWithInferenceTiming,
 	timeInferenceSpan,
 } from "../inference-timing";
@@ -57,7 +58,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { actionGateFailure, canActionRun } from "../runtime/action-gate";
+import { canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -88,6 +89,17 @@ import {
 	getMessageHistoryCompactionHook,
 	type MessageHistoryCompactionTelemetry,
 } from "../runtime/conversation-compaction-hook";
+import {
+	type DirectActionRoutingRule,
+	getDirectActionRoutingRules,
+} from "../runtime/direct-action-routing";
+import {
+	bindEffectDelivery,
+	effectDeliveryBindingIsValid,
+	effectDeliveryBindingProvesApplication,
+	getEffectDeliveryBinding,
+	stripEffectDeliveryBinding,
+} from "../runtime/effect-delivery";
 import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
@@ -124,6 +136,7 @@ import {
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
+	FAILED_TOOL_FALLBACK_MESSAGE,
 	type PlannerLoopParams,
 	type PlannerLoopResult,
 	type PlannerRuntime,
@@ -176,10 +189,16 @@ import {
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	ownerExclusiveDisclosureWasUsed,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+	trustedDeliveryAudienceIsBoundToRuntime,
+} from "../security/trusted-delivery-audience";
+import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
-	runWithSuppressedModelStream,
 	type StreamingContext,
 } from "../streaming-context";
 import {
@@ -199,6 +218,11 @@ import type {
 } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
+import {
+	mergeEffectReceipts,
+	resolveAppliedUserFacingEffectReceipts,
+	resolveUserFacingEffectReceipts,
+} from "../types/effects";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
@@ -379,7 +403,7 @@ function buildDirectChannelResponseFieldSelection(
 			includeFieldNames.add(field.name);
 		}
 	}
-	return { includeFieldNames };
+	return { includeFieldNames, compact: true };
 }
 
 function mergeAbortSignals(
@@ -1658,6 +1682,31 @@ export function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+/**
+ * True when a text already delivered through an action callback covers the
+ * (normalized) planned reply — either verbatim or as a strict superset ending
+ * at a non-word boundary, so a short prefix never swallows an unrelated longer
+ * line ("created" must not match "created issue …"). Shared by the planner
+ * echo suppression and the reply-egress claim gate so both agree on what
+ * "the user already saw this" means.
+ */
+function deliveredTextsCoverReply(
+	deliveredVisibleTexts: ReadonlySet<string>,
+	normalizedReply: string,
+): boolean {
+	if (normalizedReply.length === 0) return false;
+	for (const delivered of deliveredVisibleTexts) {
+		if (
+			delivered === normalizedReply ||
+			(delivered.startsWith(normalizedReply) &&
+				/[^a-z0-9]/i.test(delivered.charAt(normalizedReply.length)))
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
 const MEDIA_CONTENT_URL_RE =
 	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
@@ -1762,6 +1811,9 @@ function createV5ReplyStrategyResult(args: {
 	thought: string;
 	mode?: StrategyMode;
 	attachments?: Media[];
+	transcriptVisibility?: "internal";
+	/** Applied receipt IDs grounding this exact text at the final send boundary. */
+	effectReceiptIds?: readonly string[];
 	/**
 	 * Provenance for the humanness voice gate (#14873): `true` when `text` is
 	 * the model's own composed reply (Stage-1 `replyText`, the Stage-1 ack), so
@@ -1774,7 +1826,7 @@ function createV5ReplyStrategyResult(args: {
 	 */
 	agentVoiced?: boolean;
 }): StrategyResult {
-	const responseContent: Content = {
+	let responseContent: Content = {
 		thought: args.thought,
 		actions: ["REPLY"],
 		text: restorePiiInUserReplyText(args.text),
@@ -1782,7 +1834,21 @@ function createV5ReplyStrategyResult(args: {
 		responseId: args.responseId,
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
+		...(args.transcriptVisibility
+			? { transcriptVisibility: args.transcriptVisibility }
+			: {}),
+		...(args.effectReceiptIds?.length
+			? { effectReceiptIds: [...args.effectReceiptIds] }
+			: {}),
 	};
+	if (args.effectReceiptIds?.length && responseContent.text) {
+		responseContent = bindEffectDelivery(
+			responseContent,
+			responseContent.text,
+			args.effectReceiptIds,
+			true,
+		);
+	}
 
 	return {
 		responseContent,
@@ -1799,6 +1865,47 @@ function createV5ReplyStrategyResult(args: {
 		state: args.state,
 		mode: args.mode ?? "simple",
 	};
+}
+
+/**
+ * Bind an internal transcript marker only to the exact action diagnostic that
+ * became the selected reply. A distinct evaluator or sub-planner summary stays
+ * visible even when it follows an internal tool result.
+ */
+export function resolveActionResultTranscriptVisibility(
+	text: string,
+	actionResults: readonly ActionResult[] | undefined,
+): "internal" | undefined {
+	const canonicalize = (value: string) =>
+		value
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.join("\n")
+			.trim();
+	const selected = canonicalize(text);
+	if (!selected) return undefined;
+	return actionResults?.some((result) => {
+		if (result.transcriptVisibility !== "internal") return false;
+		const candidates = typeof result.text === "string" ? [result.text] : [];
+		const subSteps =
+			result.data &&
+			typeof result.data === "object" &&
+			Array.isArray(result.data.subSteps)
+				? result.data.subSteps
+				: [];
+		const terminalSubStep = subSteps.at(-1);
+		if (
+			terminalSubStep &&
+			typeof terminalSubStep === "object" &&
+			"internalTranscriptText" in terminalSubStep &&
+			typeof terminalSubStep.internalTranscriptText === "string"
+		) {
+			candidates.push(terminalSubStep.internalTranscriptText);
+		}
+		return candidates.some((candidate) => canonicalize(candidate) === selected);
+	})
+		? "internal"
+		: undefined;
 }
 
 function asProviderRecord(value: unknown):
@@ -2868,7 +2975,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there." +
+			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
 			// Only the chat-recall context renders the agent's own prior turns;
 			// the tool-planner context deliberately omits them (stale-answer
 			// hazard), so this grounding sentence would be false there.
@@ -3024,90 +3131,237 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-// Completed-side-effect detection is split by grammatical certainty so that
-// only ASSERTIONS of finished work fire; consent-seeking offers, questions,
-// and conditionals must pass through untouched (a rewritten offer forces an
-// unwanted planner run — the user asked a question and got an action).
-//
-// Perfective first-person claims ("I've set…", "I have scheduled…", "I just
-// added…") carry an explicit completion auxiliary, so they read as reports in
-// any sentence shape — including tag questions ("I've set it — anything
-// else?"). Only a leading subordinator ("Once I've set…") turns one into a
-// plan instead of a report. Adjacency keeps denials out: "I have not set"
-// never matches.
-const PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi(?:['’]ve|\s+have|\s+just)\s+(?:(?:just|already|now)\s+)?(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
-// Bare simple-past claims ("I set a reminder for 9am."). "set" is the one
-// verb here whose past tense equals its base form, so offers ("Should I
-// set…?", "Before I set…") collide with reports on the raw pattern — this
-// branch is additionally gated on the word preceding "I" and on the
-// containing sentence not being a question.
-const BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN =
-	/\bi\s+(?:set|scheduled|created|added|saved|booked|logged|arranged)\b/gi;
-// State-of-the-world completion claims that need no first-person subject
-// ("that's all set", "your reminders are set", "Done —"). The bare "done —"
-// branch is anchored to the start of the (trimmed) reply or of a sentence, so
-// congratulations like "Well done — that's every task cleared." are not
-// misread as completion claims.
-const STATE_SIDE_EFFECT_CLAIM_PATTERN =
-	/\b(?:(?:it['’]s|it is|you['’]re|that['’]s)\s+all\s+set\b|remind(?:er)?s?\s+(?:are|is)\s+(?:set|scheduled|in\s+place)\b)|(?:^|[.!?]\s+)done\s*[—–-]/i;
-// A modal, interrogative auxiliary, or subordinator immediately before the
-// matched "I" makes the clause an offer/question/condition ("Should I
-// set…?", "Shall I set…?", "When I set…", "Once I've set…"), not a report of
-// finished work.
-const NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN =
-	/\b(?:should|shall|can|could|may|might|would|will|do|does|did|must|if|unless|once|when|whenever|while|before|after|until|whether)\s+$/i;
-// The claim must be ABOUT a schedulable/saved thing, not e.g. "I've set aside
-// some thoughts". Vocabulary mirrors the scheduled-item nouns the LifeOps
-// surfaces own.
-const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
-	/\b(?:remind(?:er)?s?|alarms?|schedul(?:e|ed|ing)|scheduled\s+(?:task|item)s?|tasks?|appointments?|calendar|routines?|habits?|goals?|todos?|to[- ]dos?|check[- ]?ins?|follow[- ]?ups?)\b/i;
+// Shared with the planner-path REPLY guard and the planned-reply egress
+// guard; the detectors live in a leaf module so the action can import them
+// without pulling in this service.
+import {
+	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
+} from "./message/side-effect-claims.ts";
 
-// True when the sentence containing the match (scanning forward from the
-// match) terminates in "?" — the shape of a consent-seeking offer or a
-// clarifying question ("I set reminders in the morning usually — should I?").
-function sideEffectClaimSentenceIsQuestion(
-	text: string,
-	fromIndex: number,
-): boolean {
-	for (let i = fromIndex; i < text.length; i += 1) {
-		const ch = text[i];
-		if (ch === "?") return true;
-		if (ch === "." || ch === "!" || ch === "\n") return false;
-	}
-	return false;
+export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
+
+export interface EligibleDirectActionRoute {
+	rule: DirectActionRoutingRule;
+	action: Action;
 }
 
 /**
- * True when a Stage-1 reply ASSERTS that a scheduling/save side effect already
- * happened. On the simple path no tool has run, so any such assertion is
- * fabricated — the "not loaded must never read as zero" doctrine applied to
- * writes: "no tool ran" must never read as "done" (#16935; observed live: a
- * bill-reminder ask answered "Done — I've set two reminders" with zero tool
- * calls, plus invented "session-only" caveats). Consent-seeking offers,
- * questions, and conditionals ("Want me to set…?", "Should I set…?", "I could
- * set…") are NOT claims and must return false — rewriting them to "On it."
- * turns a question the user asked into an action they did not consent to.
+ * Resolve plugin-owned direct routes against the real execution surface for
+ * this actor and turn. Context adjacency is deliberately insufficient:
+ * CHOOSE_OPTION declares `tasks`, for example, but it neither owns tracked
+ * work nor carries a read capability. Name + required tags + the shared action
+ * gate + connector policy + validate() must all agree before core forces a
+ * simple response into planning.
  */
-export function replyClaimsCompletedSideEffect(reply: string): boolean {
-	const text = reply.trim();
-	if (!text) return false;
-	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
-	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
-	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
-		if (
-			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(text.slice(0, match.index))
-		) {
-			return true;
+export async function resolveEligibleDirectActionRoutes(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	userRoles?: readonly RoleGateRole[];
+}): Promise<EligibleDirectActionRoute[]> {
+	const messageText = getUserMessageText(args.message)?.trim() ?? "";
+	if (!messageText) return [];
+	const actionsByName = new Map(
+		(args.runtime.actions ?? []).map((action) => [
+			normalizeActionIdentifier(action.name),
+			action,
+		]),
+	);
+	const found: EligibleDirectActionRoute[] = [];
+	const seen = new Set<string>();
+	for (const rule of getDirectActionRoutingRules(args.runtime)) {
+		if (!rule.matches(messageText)) continue;
+		const requiredTags = new Set(
+			rule.requiredActionTags.map((tag) => tag.trim().toLowerCase()),
+		);
+		for (const actionName of rule.actionNames) {
+			const action = actionsByName.get(normalizeActionIdentifier(actionName));
+			if (!action) continue;
+			const actionTags = new Set(
+				(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
+			);
+			if (![...requiredTags].every((tag) => actionTags.has(tag))) continue;
+			const key = normalizeActionIdentifier(action.name);
+			if (
+				seen.has(key) ||
+				!canActionRun(action, {
+					message: args.message,
+					activeContexts: mergeAgentContexts(rule.contexts, action.contexts),
+					userRoles: args.userRoles,
+				})
+			) {
+				continue;
+			}
+			try {
+				const accountPolicy = await evaluateConnectorAccountPolicies(
+					args.runtime,
+					action,
+					{ message: args.message },
+				);
+				if (
+					!accountPolicy.allowed ||
+					!(await action.validate(args.runtime, args.message, args.state))
+				) {
+					continue;
+				}
+			} catch (error) {
+				// error-policy:J4 explicit user-facing degrade — a route whose
+				// availability check fails stays unavailable for this turn; the
+				// unchanged Stage-1 answer remains the visible fallback.
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						route: rule.id,
+						action: action.name,
+						error,
+					},
+					"Skipping direct action route whose availability check failed",
+				);
+				continue;
+			}
+			seen.add(key);
+			found.push({ rule, action });
 		}
 	}
-	for (const match of text.matchAll(BARE_PAST_SIDE_EFFECT_CLAIM_PATTERN)) {
-		const prefix = text.slice(0, match.index);
-		if (NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(prefix)) continue;
-		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
-		return true;
+	return found;
+}
+
+export type PlannedReplyClaimKind =
+	| "completed_side_effect"
+	| "empty_tracked_state";
+
+function appliedEffectReceiptIdsForReply(
+	reply: string,
+	results: readonly ActionResult[],
+): readonly string[] {
+	const normalizedReply = reply.trim();
+	if (!normalizedReply) return [];
+	const allTurnReceipts = mergeEffectReceipts(
+		...results.map((result) => result.effectReceipts),
+	);
+	for (const result of results) {
+		if (result.userFacingText?.trim() !== normalizedReply) continue;
+		const receipts = resolveAppliedUserFacingEffectReceipts(
+			result,
+			allTurnReceipts,
+		);
+		if (receipts) {
+			return receipts.map((receipt) => receipt.receiptId);
+		}
 	}
-	return false;
+	return [];
+}
+
+/**
+ * An action result grounds only the capability it actually proves.
+ * Empty tracked-work claims require a `resource:tracked-work` read action.
+ * Completion claims require exact action-owned text bound to an active applied
+ * receipt from this turn; bare success, previews, no-ops, failures, and
+ * rolled-back effects cannot ground them.
+ */
+export function plannedReplyHasClaimGroundingReceipt(args: {
+	kind: PlannedReplyClaimKind;
+	reply: string;
+	results: readonly ActionResult[];
+	actions: readonly Action[];
+}): boolean {
+	const actionsByName = new Map(
+		args.actions.map((action) => [
+			normalizeActionIdentifier(action.name),
+			action,
+		]),
+	);
+	return args.results.some((result) => {
+		const canonicalUserFacingText = result.userFacingText?.trim();
+		if (
+			result.verifiedUserFacing !== true ||
+			!canonicalUserFacingText ||
+			canonicalUserFacingText !== args.reply.trim()
+		) {
+			return false;
+		}
+		if (args.kind === "completed_side_effect") {
+			return (
+				appliedEffectReceiptIdsForReply(args.reply, args.results).length > 0
+			);
+		}
+		if (result.success !== true) return false;
+		const actionName =
+			typeof result.data?.actionName === "string" ? result.data.actionName : "";
+		const action = actionsByName.get(normalizeActionIdentifier(actionName));
+		if (!action) return false;
+		const tags = new Set(
+			(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
+		);
+		if (args.kind === "empty_tracked_state") {
+			return tags.has("resource:tracked-work") && tags.has("capability:read");
+		}
+		return false;
+	});
+}
+
+/** Egress decision for a planner-composed final reply (see below). */
+export type PlannedReplyEgressDecision =
+	| { verdict: "allow" }
+	| {
+			verdict: "reject";
+			kind: PlannedReplyClaimKind;
+			fallbackReply: string;
+	  };
+
+const UNVERIFIED_EFFECT_REPLY =
+	"I couldn't verify that the requested change was completed, so I won't claim it was. Want me to try again?";
+
+/**
+ * Final planned replies may assert only state proven by a matching action
+ * receipt from this trajectory. Rejection degrades to an honest statement at
+ * this boundary; it never starts a second planner trajectory, which would lose
+ * the first trajectory's results and could replay a partially-applied effect.
+ */
+export function evaluatePlannedReplyEgress(args: {
+	reply: string;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[];
+}): PlannedReplyEgressDecision {
+	const reply = args.reply.trim();
+	if (!reply) return { verdict: "allow" };
+	if (replyClaimsCompletedSideEffect(reply)) {
+		if (
+			plannedReplyHasClaimGroundingReceipt({
+				kind: "completed_side_effect",
+				reply,
+				results: args.actionResults,
+				actions: args.actions,
+			})
+		) {
+			return { verdict: "allow" };
+		}
+		return {
+			verdict: "reject",
+			kind: "completed_side_effect",
+			fallbackReply: UNVERIFIED_EFFECT_REPLY,
+		};
+	}
+	if (replyClaimsEmptyTrackedWorkState(reply)) {
+		if (
+			plannedReplyHasClaimGroundingReceipt({
+				kind: "empty_tracked_state",
+				reply,
+				results: args.actionResults,
+				actions: args.actions,
+			})
+		) {
+			return { verdict: "allow" };
+		}
+		return {
+			verdict: "reject",
+			kind: "empty_tracked_state",
+			fallbackReply:
+				"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
+		};
+	}
+	return { verdict: "allow" };
 }
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
@@ -3184,6 +3438,54 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				clearReply: true,
 				debug: ["transcription mode active — reply suppressed, turn recorded"],
 			}),
+		},
+		{
+			name: "core.direct_registered_capability_request",
+			description:
+				"Promotes a plugin-declared current-turn intent only when a matching, capability-tagged action is executable for this actor.",
+			priority: 15,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				if (isSubAgentCompletionArtifact(message)) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const text = getUserMessageText(message)?.trim() ?? "";
+				return (
+					text.length > 0 &&
+					getDirectActionRoutingRules(runtime).some((rule) =>
+						rule.matches(text),
+					)
+				);
+			},
+			evaluate: async ({ message, state, runtime, userRoles }) => {
+				const routes = await resolveEligibleDirectActionRoutes({
+					runtime,
+					message,
+					state,
+					userRoles,
+				});
+				if (routes.length === 0) return undefined;
+				const candidateActions = uniqueActionNames(
+					routes.map(({ action }) => action.name),
+				);
+				const contexts = mergeAgentContexts(
+					...routes.map(({ rule }) => rule.contexts),
+				);
+				return {
+					requiresTool: true,
+					addContexts: contexts,
+					addCandidateActions: candidateActions,
+					// A deterministic read route must not emit Stage-1's speculative
+					// answer or a progress bubble before the real action responds.
+					clearReply: true,
+					debug: [
+						`current request matched executable direct route(s): ${routes.map(({ rule }) => rule.id).join(", ")} -> ${candidateActions.join(", ")}`,
+					],
+				};
+			},
 		},
 		{
 			name: "core.simple_registered_action_request",
@@ -3271,7 +3573,10 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					typeof messageHandler.plan.reply === "string"
 						? messageHandler.plan.reply
 						: "";
-				return replyClaimsCompletedSideEffect(reply);
+				return (
+					messageHandler.plan.replyEffectStatus === "applied" ||
+					replyClaimsCompletedSideEffect(reply)
+				);
 			},
 			evaluate: ({ messageHandler, runtime }) => {
 				const reply =
@@ -3294,6 +3599,42 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					reply: "On it.",
 					debug: [
 						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
+					],
+				};
+			},
+		},
+		{
+			name: "core.simple_empty_tracked_state_claim",
+			description:
+				"Replaces an empty tracked-work claim with an honest unavailable state when a declared recap route has no executable reader.",
+			priority: 30,
+			shouldRun: ({ message, messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				if (!replyClaimsEmptyTrackedWorkState(reply)) return false;
+				const text = getUserMessageText(message)?.trim();
+				return (
+					Boolean(text) &&
+					getDirectActionRoutingRules(runtime).some((rule) =>
+						rule.matches(text ?? ""),
+					)
+				);
+			},
+			evaluate: () => {
+				return {
+					requiresTool: false,
+					reply:
+						"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
+					debug: [
+						"blocked an empty tracked-work assertion because the declared read route was unavailable",
 					],
 				};
 			},
@@ -4092,6 +4433,11 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw = stripJsonStructuralJunkReply(
 		typeof result.replyText === "string" ? result.replyText : "",
 	);
+	const replyEffectStatus =
+		result.replyEffectStatus === "applied" ||
+		result.replyEffectStatus === "non_applied"
+			? result.replyEffectStatus
+			: "none";
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -4352,6 +4698,7 @@ export function messageHandlerFromFieldResult(
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
+		replyEffectStatus,
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
@@ -6065,6 +6412,7 @@ interface SubPlannerSubStep {
 	action: string;
 	success: boolean;
 	summary?: string;
+	internalTranscriptText?: string;
 	error?: string;
 }
 
@@ -6099,6 +6447,10 @@ function collectSubPlannerSubSteps(
 			action: step.toolCall.name,
 			success: result.success,
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
+			...(result.transcriptVisibility === "internal" &&
+			typeof result.text === "string"
+				? { internalTranscriptText: result.text }
+				: {}),
 			...(errorText ? { error: truncateSubStepText(errorText) } : {}),
 		});
 	}
@@ -6130,10 +6482,18 @@ export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
 	const evaluator = subResult.evaluator;
-	const lastStep =
-		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
+	const allSteps = [
+		...(subResult.trajectory.archivedSteps ?? []),
+		...subResult.trajectory.steps,
+	];
+	const lastStep = allSteps[allSteps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
+	const internalTerminalPayload =
+		lastStep?.result?.transcriptVisibility === "internal" &&
+		typeof lastStep.result.text === "string" &&
+		typeof userFacingText === "string" &&
+		lastStep.result.text.trim() === userFacingText.trim();
 
 	// Aggregate every executed sub-step, not just the terminal one, so the
 	// parent planner's next turn can see which operations already succeeded and
@@ -6147,7 +6507,23 @@ export function subPlannerResultToPlannerToolResult(
 	const completedSubActions = subSteps
 		.filter((step) => step.success)
 		.map((step) => step.action);
-	const terminalData = lastStep?.result?.data;
+	const terminalResult = lastStep?.result;
+	const terminalData = terminalResult?.data;
+	const effectReceipts = mergeEffectReceipts(
+		...allSteps.map((step) => step.result?.effectReceipts),
+	);
+	const terminalUserFacingEffectReceiptIds =
+		typeof terminalResult?.userFacingText === "string" &&
+		typeof userFacingText === "string" &&
+		terminalResult.userFacingText.trim() === userFacingText.trim()
+			? terminalResult.userFacingEffectReceiptIds
+			: undefined;
+	const terminalVerifiedUserFacing =
+		!internalTerminalPayload &&
+		terminalResult?.verifiedUserFacing === true &&
+		Array.isArray(terminalUserFacingEffectReceiptIds) &&
+		terminalUserFacingEffectReceiptIds.length > 0 &&
+		resolveUserFacingEffectReceipts(terminalResult, effectReceipts) !== null;
 	const data =
 		terminalData || subSteps.length > 0
 			? {
@@ -6167,7 +6543,15 @@ export function subPlannerResultToPlannerToolResult(
 		// sees the completed steps. Falls back to the user-facing text when the
 		// sub-planner executed no discrete steps.
 		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
-		userFacingText,
+		transcriptVisibility: lastStep?.result?.transcriptVisibility,
+		...(internalTerminalPayload ? {} : { userFacingText }),
+		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
+		...(terminalUserFacingEffectReceiptIds
+			? {
+					userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
+				}
+			: {}),
+		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
 		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
@@ -6320,11 +6704,23 @@ function collectPreviousActionResults(
 			results.push({
 				success: step.result.success,
 				...(step.result.text !== undefined ? { text: step.result.text } : {}),
+				...(step.result.transcriptVisibility !== undefined
+					? { transcriptVisibility: step.result.transcriptVisibility }
+					: {}),
 				...(step.result.userFacingText !== undefined
 					? { userFacingText: step.result.userFacingText }
 					: {}),
 				...(step.result.verifiedUserFacing !== undefined
 					? { verifiedUserFacing: step.result.verifiedUserFacing }
+					: {}),
+				...(step.result.effectReceipts !== undefined
+					? { effectReceipts: step.result.effectReceipts }
+					: {}),
+				...(step.result.userFacingEffectReceiptIds !== undefined
+					? {
+							userFacingEffectReceiptIds:
+								step.result.userFacingEffectReceiptIds,
+						}
 					: {}),
 				data: { actionName },
 				...(step.result.turnComplete !== undefined
@@ -6367,15 +6763,26 @@ function collectPreviousActionResults(
 		results.push({
 			success: step.result.success,
 			...(step.result.text !== undefined ? { text: step.result.text } : {}),
+			...(step.result.transcriptVisibility !== undefined
+				? { transcriptVisibility: step.result.transcriptVisibility }
+				: {}),
 			...(step.result.userFacingText !== undefined
 				? { userFacingText: step.result.userFacingText }
 				: {}),
 			...(step.result.verifiedUserFacing !== undefined
 				? { verifiedUserFacing: step.result.verifiedUserFacing }
 				: {}),
+			...(step.result.effectReceipts !== undefined
+				? { effectReceipts: step.result.effectReceipts }
+				: {}),
+			...(step.result.userFacingEffectReceiptIds !== undefined
+				? {
+						userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
+					}
+				: {}),
 			data: {
-				actionName,
 				...actionData,
+				actionName,
 			},
 			...(values ? { values } : {}),
 			...(error !== undefined ? { error } : {}),
@@ -6435,95 +6842,80 @@ export async function runShortcutGate(args: {
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
 
-	// #12087 Item 3: enforce the target action's DECLARED gate (roleGate +
-	// contextGate + private-action + ACTION_ROLE_POLICY) via the same chokepoint
-	// the planned-tool-call executor uses, BEFORE validate()/handler(). Previously
-	// the shortcut path invoked the handler directly, so a shortcut lacking
-	// `requiresElevated` that targeted an OWNER-gated action (e.g. SECRETS) let any
-	// USER execute it — the registry's coarse auth/elevated flags were the only
-	// protection. Shortcuts execute before planner context selection, so seed the
-	// same general context that command actions use while preserving role gates.
-	const gateFailure = actionGateFailure(action, {
-		message: args.message,
-		userRoles: [args.senderRole],
-		activeContexts: ["general"],
-	});
-	if (gateFailure) {
-		args.runtime.logger?.debug?.(
-			{ src: "shortcut-gate", action: action.name, reason: gateFailure },
-			"shortcut target action failed the role/context gate; falling through to pipeline",
-		);
-		return null;
-	}
-
-	let valid = false;
-	try {
-		valid = await action.validate(args.runtime, args.message, args.state);
-	} catch (err) {
-		args.runtime.logger?.warn?.(
-			{
-				src: "shortcut-gate",
-				shortcut: match.shortcut.id,
-				action: action.name,
-				err,
-			},
-			"shortcut action validate() threw; falling through to pipeline",
-		);
-		return null;
-	}
-	if (!valid) return null;
-
 	let captured: string | undefined;
-	let shortcutActionResult: ActionResult | undefined;
-	try {
-		// The shortcut action runs its handler here, outside the planned-tool-call
-		// executor. Detach the visible token stream so an action's *internal*
-		// `runtime.useModel` calls (e.g. the compactor's ledger extraction) do not
-		// masquerade as the reply (#16230); the designed reply reaches the client
-		// through `captured` below, not the raw model stream.
-		shortcutActionResult = await runWithSuppressedModelStream(() =>
-			action.handler(
-				args.runtime,
-				args.message,
-				args.state,
-				{ ...target.parameters, ...match.parameters, mode: "simple" },
-				async (content) => {
-					if (typeof content?.text === "string" && content.text) {
-						captured = content.text;
-					}
-					return [];
+	// Shortcuts enter the same executor as planner-selected tools so component
+	// gates, argument validation, callback buffering, audience revalidation, and
+	// action events remain one non-bypassable contract.
+	const shortcutActionResult = await executePlannedToolCall(
+		args.runtime,
+		{
+			message: args.message,
+			state: args.state,
+			userRoles: [args.senderRole],
+			activeContexts: ["general"],
+			callback: async (content) => {
+				if (typeof content?.text === "string" && content.text) {
+					captured = content.text;
+				}
+				return [];
+			},
+		},
+		{
+			name: action.name,
+			params: { ...target.parameters, ...match.parameters },
+		},
+		{ actions: [action] },
+	);
+	if (captured === undefined) {
+		const executionError = shortcutActionResult.data?.error;
+		if (executionError !== undefined) {
+			// A shortcut failure does not enter the planner transcript, so its
+			// underlying exception needs a separate observable boundary.
+			args.runtime.logger.warn(
+				{
+					src: "shortcut-gate",
+					shortcut: match.shortcut.id,
+					action: action.name,
+					err: executionError,
 				},
-			),
-		);
-	} catch (err) {
-		args.runtime.logger?.warn?.(
-			{ src: "shortcut-gate", shortcut: match.shortcut.id, err },
-			"shortcut action failed; falling through to pipeline",
-		);
+				"Shortcut action failed before producing a reply",
+			);
+		}
 		return null;
 	}
-	if (captured === undefined) return null;
 	let actionResult: ActionResult | undefined;
-	if (shortcutActionResult) {
-		if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
-			actionResult = projectActionResultForClipboard(
-				action,
-				shortcutActionResult,
-				action.name,
-			);
-		} else {
-			actionResult = {
-				...shortcutActionResult,
-				data: {
-					...shortcutActionResult.data,
-					actionName: action.name,
-				},
-			};
-		}
+	if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
+		actionResult = projectActionResultForClipboard(
+			action,
+			shortcutActionResult,
+			action.name,
+		);
+	} else {
+		actionResult = {
+			...shortcutActionResult,
+			data: {
+				...shortcutActionResult.data,
+				actionName: action.name,
+			},
+		};
 	}
 	const resultState = actionResult
 		? withActionResultsForPrompt(args.state, [actionResult])
 		: args.state;
+	const shortcutActionResults = actionResult ? [actionResult] : [];
+	const shortcutReplyDecision = evaluatePlannedReplyEgress({
+		reply: captured,
+		actionResults: shortcutActionResults,
+		actions: args.runtime.actions,
+	});
+	const shortcutReply =
+		shortcutReplyDecision.verdict === "allow"
+			? captured
+			: shortcutReplyDecision.fallbackReply;
+	const shortcutReplyReceiptIds = appliedEffectReceiptIdsForReply(
+		shortcutReply,
+		shortcutActionResults,
+	);
 
 	// #8792: report the interaction so the proactive-comment decider can react.
 	void emitInteractionEvent(args.runtime, match, args.message);
@@ -6536,7 +6928,7 @@ export async function runShortcutGate(args: {
 			thought,
 			plan: {
 				contexts: [SIMPLE_CONTEXT_ID],
-				reply: captured,
+				reply: shortcutReply,
 				simple: true,
 				requiresTool: false,
 			},
@@ -6547,8 +6939,11 @@ export async function runShortcutGate(args: {
 				message: args.message,
 				state: resultState,
 				responseId: args.responseId,
-				text: captured,
+				text: shortcutReply,
 				thought,
+				...(shortcutReplyReceiptIds.length > 0
+					? { effectReceiptIds: shortcutReplyReceiptIds }
+					: {}),
 			}),
 			...(actionResult ? { actionResults: [actionResult] } : {}),
 		},
@@ -6617,6 +7012,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		availableContexts,
 		extraProviderExclusions: stage1ProviderExclusionsForMessage(args.message),
 	});
+	const stage1PreprocessStartedAt = performance.now();
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
 	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
@@ -6661,6 +7057,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		result: FactsAndRelationshipsRunResult | null;
 		error?: unknown;
 	} | null> = Promise.resolve(null);
+	let settledFactsOutcome: Awaited<typeof factsTask> | undefined;
+	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
@@ -6860,9 +7258,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
-			// / `contexts` route the moment they are known and `replyText` flows to
-			// TTS the instant that field opens. Cloud adapters ignore the flag and
-			// return the result whole.
+			// / `contexts` route the moment they are known. User-visible `replyText`
+			// remains buffered until routing and effect validation complete. Cloud
+			// adapters ignore the flag and return the result whole.
 			streamStructured: true,
 			responseSkeleton: responseGrammar.responseSkeleton,
 			grammar: responseGrammar.grammar,
@@ -6882,6 +7280,10 @@ export async function runV5MessageRuntimeStage1(args: {
 		// number of times before falling back to the planner.
 		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
 		let stage1RetryCount = 0;
+		recordInferenceSpan(
+			"message:stage1:preprocess",
+			performance.now() - stage1PreprocessStartedAt,
+		);
 		let rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			stage1ModelParams,
@@ -7051,7 +7453,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
 		if (recorder && trajectoryId) {
-			await recordMessageHandlerStage({
+			messageHandlerStageTask = recordMessageHandlerStage({
 				recorder,
 				trajectoryId,
 				messages: messageHandlerInput.messages,
@@ -7071,11 +7473,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (messageHandler.processMessage === "RESPOND") {
-			const injectionGate = await runShouldRespondInjectionGate({
-				runtime: args.runtime,
-				message: args.message,
-				resolveSenderRole: () => senderRole,
-			});
+			const injectionGate = await timeInferenceSpan(
+				"evaluators:injection-risk-gate",
+				() =>
+					runShouldRespondInjectionGate({
+						runtime: args.runtime,
+						message: args.message,
+						resolveSenderRole: () => senderRole,
+					}),
+			);
 			if (injectionGate.blocked) {
 				args.runtime.logger.warn(
 					{
@@ -7098,8 +7504,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
 		// Stage 2 path runs (simple reply or planner). This stage is purely a
 		// side-effect: it dedups + persists user-stated facts/relationships
-		// without blocking the user reply. We DO await it in the `finally`
-		// block before `endTrajectory`, so the trajectory record is complete.
+		// without blocking the user reply. A result that settles before terminal
+		// trajectory persistence is recorded there; slower extraction remains a
+		// tracked data task but cannot leave the completed turn marked running.
 		if (
 			messageHandler.extract &&
 			((messageHandler.extract.facts?.length ?? 0) > 0 ||
@@ -7118,7 +7525,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					endedAt: Date.now(),
 					result: null,
 					error,
-				}));
+				}))
+				.then((outcome) => {
+					settledFactsOutcome = outcome;
+					return outcome;
+				});
 		}
 
 		// Persist `addressedTo` as relationship edges from the speaker to each
@@ -7219,6 +7630,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						state: args.state,
 						messageHandler,
 						availableContexts,
+						userRoles: [senderRole],
 						evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 					}),
 				);
@@ -7322,6 +7734,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
 				replyIsModelVoice = false;
 			}
+			const directReplyEgressDecision = evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: args.runtime.actions,
+			});
+			if (directReplyEgressDecision.verdict === "reject") {
+				reply = directReplyEgressDecision.fallbackReply;
+				replyIsModelVoice = false;
+			}
 			return {
 				kind: "direct_reply",
 				messageHandler,
@@ -7337,9 +7758,23 @@ export async function runV5MessageRuntimeStage1(args: {
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		const earlyReplyText =
+		let earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
+		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
+			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+				reply: earlyReplyText,
+				actionResults: [],
+				actions: args.runtime.actions,
+			});
+			if (earlyReplyEgressDecision.verdict === "reject") {
+				// Planning is still in progress, so an ungrounded completion claim
+				// becomes an honest acknowledgement. Keep this exact delivered text
+				// in the later dedupe bookkeeping so a subsequently proven final
+				// confirmation is not mistaken for an already-sent reply.
+				earlyReplyText = "On it.";
+			}
+		}
 		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
@@ -7665,12 +8100,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
 
-		let plannerResult: PlannerLoopResult;
-		try {
-			plannerResult = await timeInferenceSpan("message:planner", () =>
+		const invokePlannerLoop = (
+			loopContext: typeof plannerContextAfterEarlyReply,
+		) =>
+			timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
 					runtime: plannerRuntime,
-					context: plannerContextAfterEarlyReply,
+					context: loopContext,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -7721,7 +8157,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								executeV5PlannedToolCall({
 									runtime: args.runtime,
 									toolCall,
-									plannerContext: plannerContextAfterEarlyReply,
+									plannerContext: loopContext,
 									executorCtx: buildV5ExecutorContext({
 										message: args.message,
 										state: plannerState,
@@ -7757,6 +8193,10 @@ export async function runV5MessageRuntimeStage1(args: {
 						),
 				}),
 			);
+
+		let plannerResult: PlannerLoopResult;
+		try {
+			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
 			const fallbackResult = await runDeterministicPlannerFallback({
 				runtime: args.runtime,
@@ -7809,6 +8249,47 @@ export async function runV5MessageRuntimeStage1(args: {
 			} else {
 				plannerResult = fallbackResult;
 			}
+		}
+
+		// The planner's terminal prose may ship without executing REPLY. Validate
+		// state assertions against capability-specific results from this same
+		// trajectory; rejection fails closed here and never starts a fresh loop
+		// that could discard results or replay a partial side effect.
+		const egressActionResults = collectPreviousActionResults(
+			plannerResult.trajectory,
+			exposedPlannerActions,
+		);
+		const plannedReplyEgressDecision = evaluatePlannedReplyEgress({
+			reply: String(plannerResult.finalMessage ?? ""),
+			actionResults: egressActionResults,
+			actions: args.runtime.actions,
+		});
+		// A reply an action callback already delivered this turn (verbatim or as
+		// a strict superset) is a planner echo: the suppression below drops it, so
+		// it never egresses. Bouncing it here instead would follow the visible,
+		// action-owned confirmation with a contradicting "couldn't verify" bubble.
+		const plannedReplyAlreadyDelivered = deliveredTextsCoverReply(
+			deliveredVisibleTexts,
+			normalizeVisibleTextForDuplicateCheck(
+				String(plannerResult.finalMessage ?? ""),
+			),
+		);
+		if (
+			plannedReplyEgressDecision.verdict === "reject" &&
+			!plannedReplyAlreadyDelivered
+		) {
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					agentId: args.runtime.agentId,
+					kind: plannedReplyEgressDecision.kind,
+				},
+				"[message] replaced a planned reply whose state claim lacked a matching action receipt",
+			);
+			plannerResult = {
+				...plannerResult,
+				finalMessage: plannedReplyEgressDecision.fallbackReply,
+			};
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
@@ -7876,7 +8357,19 @@ export async function runV5MessageRuntimeStage1(args: {
 				? stageOneAck ||
 					(ranNonSilentAction ? "on it, working on that now." : "")
 				: preservedAnswerFallback;
-		const effectiveReplyText = plannedText || ackFallback;
+		let effectiveReplyText = plannedText || ackFallback;
+		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
+			reply: effectiveReplyText,
+			actionResults,
+			actions: args.runtime.actions,
+		});
+		if (finalReplyEgressDecision.verdict === "reject") {
+			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
+		}
+		const effectiveReplyReceiptIds = appliedEffectReceiptIdsForReply(
+			effectiveReplyText,
+			actionResults,
+		);
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
 			normalizeVisibleTextForDuplicateCheck(effectiveReplyText) ===
@@ -7891,18 +8384,31 @@ export async function runV5MessageRuntimeStage1(args: {
 		// longer line ("created" must not match "created issue …").
 		const normalizedPlannedReply =
 			normalizeVisibleTextForDuplicateCheck(effectiveReplyText);
-		const plannedTextRepeatsActionReply =
-			normalizedPlannedReply.length > 0 &&
-			[...deliveredVisibleTexts].some(
-				(delivered) =>
-					delivered === normalizedPlannedReply ||
-					(delivered.startsWith(normalizedPlannedReply) &&
-						/[^a-z0-9]/i.test(delivered.charAt(normalizedPlannedReply.length))),
-			);
+		const plannedTextRepeatsActionReply = deliveredTextsCoverReply(
+			deliveredVisibleTexts,
+			normalizedPlannedReply,
+		);
+		// The planner's generic failed-tool fallback exists so a failed turn is
+		// never silent. When the failed action's own callback already delivered
+		// its user-facing explanation (a confirmation preview, a "cloud-only"
+		// boundary notice), appending "I tried … but it failed" contradicts what
+		// the user just read — drop the fallback and let the tool's words stand.
+		const plannedTextIsRedundantFailureFallback =
+			effectiveReplyText === FAILED_TOOL_FALLBACK_MESSAGE &&
+			actionResults.some((result) => {
+				if (result.success !== false) return false;
+				return [result.userFacingText, result.text].some((ownedText) => {
+					const normalized = normalizeVisibleTextForDuplicateCheck(
+						String(ownedText ?? ""),
+					);
+					return normalized.length > 0 && deliveredVisibleTexts.has(normalized);
+				});
+			});
 		const shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
-			!plannedTextRepeatsActionReply;
+			!plannedTextRepeatsActionReply &&
+			!plannedTextIsRedundantFailureFallback;
 		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous
 		// model provenance here (`messageHandler.plan.reply` is the Stage-1
 		// model's own field). The planner's `finalMessage` is deliberately NOT
@@ -7916,6 +8422,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText &&
 			stageOneAck.length > 0 &&
 			effectiveReplyText === stageOneAck;
+		const transcriptVisibility = resolveActionResultTranscriptVisibility(
+			plannedTextRaw || effectiveReplyText,
+			actionResults,
+		);
 
 		return {
 			kind: "planned_reply",
@@ -7931,6 +8441,10 @@ export async function runV5MessageRuntimeStage1(args: {
 								plannerResult.trajectory.steps.at(-1)?.thought ??
 								messageHandler.thought,
 							agentVoiced: effectiveReplyIsModelVoice,
+							...(effectiveReplyReceiptIds.length > 0
+								? { effectReceiptIds: effectiveReplyReceiptIds }
+								: {}),
+							...(transcriptVisibility ? { transcriptVisibility } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}
@@ -7946,49 +8460,46 @@ export async function runV5MessageRuntimeStage1(args: {
 		endStatus = "errored";
 		throw err;
 	} finally {
-		// Finalize the trajectory: record the FACTS_AND_RELATIONSHIPS side-effect
-		// stage, then end the trajectory.
-		//
-		// CRITICAL (latency): factsTask is the FACTS_AND_RELATIONSHIPS stage — a
-		// heavy background TEXT_LARGE call that is launched in parallel precisely
-		// so it does NOT block the user reply (see the launch comment above). The
-		// facts/relationships are persisted *inside* runFactsAndRelationshipsStage
-		// independently of this await, so the only thing awaiting it here buys is
-		// the trajectory record's facts-stage entry. Awaiting it in `finally`
-		// gated EVERY reply on the slow facts model — dedicated cloud agents took
-		// 30s+ per turn for a reply that was already ready in ~3s. So run the
-		// finalize in the background by default and let the turn return as soon as
-		// the reply is decided. Await it only when deterministic trajectory
-		// ordering is required (e.g. the scenario-runner) via ELIZA_AWAIT_FACTS_STAGE.
-		// finalizeTrajectoryRecording is the lifecycle guard: it bounds the wait
-		// on the facts stage and writes the terminal status no matter what, so a
-		// hung facts model call can never leave the trajectory stuck `running`.
-		const finalizeTrajectory = async () => {
+		// Trajectory persistence is diagnostic work. Preserve stage ordering in
+		// its own task without adding filesystem latency to the user-visible turn.
+		const finalizeTrajectory = async (waitForFacts: boolean) => {
 			if (!recorder || !trajectoryId) return;
+			await messageHandlerStageTask;
+			const factsOutcome = waitForFacts ? await factsTask : settledFactsOutcome;
+			if (factsOutcome) {
+				await recordFactsAndRelationshipsStage({
+					recorder,
+					trajectoryId,
+					outcome: factsOutcome,
+					logger: args.runtime.logger,
+				});
+			}
 			await finalizeTrajectoryRecording({
 				recorder,
 				trajectoryId,
 				status: endStatus,
-				beforeEnd: async () => {
-					const factsOutcome = await factsTask;
-					if (factsOutcome) {
-						await recordFactsAndRelationshipsStage({
-							recorder,
-							trajectoryId,
-							outcome: factsOutcome,
-							logger: args.runtime.logger,
-						});
-					}
-				},
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
 			});
 		};
 		if (process.env.ELIZA_AWAIT_FACTS_STAGE === "true") {
-			await finalizeTrajectory();
-		} else {
-			void finalizeTrajectory();
+			await finalizeTrajectory(true);
+		} else if (recorder && trajectoryId) {
+			detachPostDeliverySideEffect(
+				args.runtime,
+				"trajectory-finalization",
+				() => finalizeTrajectory(false),
+			);
+			if (settledFactsOutcome === undefined) {
+				detachPostDeliverySideEffect(
+					args.runtime,
+					"facts-and-relationships",
+					async () => {
+						await factsTask;
+					},
+				);
+			}
 		}
 	}
 }
@@ -9017,6 +9528,109 @@ export function stripReplyWhenActionOwnsTurn(
 	return filtered.length > 0 ? filtered : ["REPLY"];
 }
 
+function enforceEffectGroundedVisibleContent(
+	runtime: Pick<IAgentRuntime, "logger">,
+	response: Content,
+	actionName?: string,
+): Content {
+	const hasEffectDeliveryBinding =
+		getEffectDeliveryBinding(response) !== undefined;
+	if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
+		response = stripEffectDeliveryBinding(response);
+	}
+	const effectDeliveryBindingInvalid =
+		hasEffectDeliveryBinding && !effectDeliveryBindingIsValid(response);
+	if (
+		effectDeliveryBindingInvalid ||
+		(typeof response.text === "string" &&
+			replyClaimsCompletedSideEffect(response.text) &&
+			!effectDeliveryBindingProvesApplication(response))
+	) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				actionName: resolveCallbackActionName(response, actionName),
+			},
+			"Replaced visible completion text that lacked validated effect receipt bindings",
+		);
+		return {
+			...stripEffectDeliveryBinding(response),
+			text: UNVERIFIED_EFFECT_REPLY,
+			agentVoiced: false,
+		};
+	}
+	return response;
+}
+
+/**
+ * Revalidate a turn that consumed owner-private data immediately before any
+ * visible or durable egress. The replacement is constructed from constants so
+ * no text, attachment, or structured payload from the private result survives.
+ */
+export async function enforceTrustedDeliveryAudienceAtEgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	response: Content,
+): Promise<Content> {
+	if (!ownerExclusiveDisclosureWasUsed(message)) return response;
+	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+	if (disclosure.allowed) return response;
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			messageId: message.id,
+			roomId: message.roomId,
+			reason: disclosure.reason,
+		},
+		"Suppressed owner-private response after delivery audience changed",
+	);
+	return {
+		text: PRIVACY_DENIED_TEXT,
+		actions: ["PRIVACY_DENIED"],
+		data: {
+			privacyDenied: true,
+			privacyReason: disclosure.reason,
+		},
+	};
+}
+
+/**
+ * Apply the final audience check to the complete message-service result shape.
+ * Actions mode can accumulate several response memories, so a denied turn must
+ * replace every one rather than sanitizing only the top-level chat content.
+ */
+export async function enforceTrustedDeliveryAudienceOnResult(
+	runtime: IAgentRuntime,
+	message: Memory,
+	responseContent: Content | null,
+	responseMessages: Memory[],
+): Promise<{
+	responseContent: Content | null;
+	responseMessages: Memory[];
+}> {
+	if (!ownerExclusiveDisclosureWasUsed(message)) {
+		return { responseContent, responseMessages };
+	}
+	const finalContent = await enforceTrustedDeliveryAudienceAtEgress(
+		runtime,
+		message,
+		responseContent ?? {},
+	);
+	if (
+		!isRecord(finalContent.data) ||
+		finalContent.data.privacyDenied !== true
+	) {
+		return { responseContent, responseMessages };
+	}
+	return {
+		responseContent: finalContent,
+		responseMessages: responseMessages.map((responseMemory) => ({
+			...responseMemory,
+			content: { ...finalContent },
+		})),
+	};
+}
+
 export function wrapSingleTurnVisibleCallback(
 	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
@@ -9029,6 +9643,19 @@ export function wrapSingleTurnVisibleCallback(
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
 	const deliver = async (response: Content, actionName?: string) => {
+		const fullMessage = message as Memory;
+		response = await enforceTrustedDeliveryAudienceAtEgress(
+			fullRuntime,
+			fullMessage,
+			response,
+		);
+		if (isRecord(response.data) && response.data.privacyDenied === true) {
+			actionName = "PRIVACY_DENIED";
+		}
+		if (response.transcriptVisibility === "internal") {
+			return [];
+		}
+		let rawUnsanitizedText: string | undefined;
 		// Shared post-model, pre-channel sanitization (#15888): every visible
 		// delivery — action callbacks, early replies, simple replies, terminal
 		// content — funnels through this wrap, so stripping leaked machine
@@ -9039,16 +9666,23 @@ export function wrapSingleTurnVisibleCallback(
 				// Record the raw form too: planner-echo suppression compares the
 				// planner's unsanitized finalMessage against this set, and must
 				// still recognize a delivery whose wire text was sanitized.
-				if (response.text.trim()) {
-					recordDeliveredVisibleText?.(response.text);
-				}
+				rawUnsanitizedText = response.text.trim() ? response.text : undefined;
 				response = { ...response, text: sanitized };
 			}
+		}
+		response = enforceEffectGroundedVisibleContent(
+			fullRuntime,
+			response,
+			actionName,
+		);
+		const delivered = await callback(response, actionName);
+		if (rawUnsanitizedText) {
+			recordDeliveredVisibleText?.(rawUnsanitizedText);
 		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
 		}
-		return callback(response, actionName);
+		return delivered;
 	};
 	// The character-voice rewrite spends a TEXT_SMALL call per action callback and
 	// restyles the delivered text. Deterministic harnesses (the scenario runner)
@@ -9060,6 +9694,9 @@ export function wrapSingleTurnVisibleCallback(
 		response: Content,
 		actionName?: string,
 	): Promise<Content> => {
+		if (response.transcriptVisibility === "internal") {
+			return response;
+		}
 		if (!shouldRewriteActionCallback(response, actionName)) {
 			return response;
 		}
@@ -9169,6 +9806,9 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	if (getEffectDeliveryBinding(response)) {
+		return false;
+	}
 	if (!response.text.trim() && !response.attachments?.length) return false;
 	// Media actions already produced a file attachment; deliver it directly instead
 	// of spending another model call rewriting placeholder text.
@@ -9414,6 +10054,83 @@ async function _composeContinuationDecisionState(
  */
 export class DefaultMessageService implements IMessageService {
 	/**
+	 * Rooms (keyed `${agentId}:${roomId}`) holding a reply that has been handed
+	 * to the delivery callback but whose response-memory row is not yet stored
+	 * (the simple-path deliver-then-persist window). A follow-up turn triggered
+	 * by that delivery must not compose its prompt until the reply row exists,
+	 * or RECENT_MESSAGES silently omits the reply the user is answering —
+	 * `processMessage` awaits these barriers before any composition. Barriers
+	 * always settle (resolve, never reject) whether the persist succeeds or
+	 * fails; a persist failure propagates in the owning turn, never to the
+	 * waiting turn. Same-room turns otherwise still run concurrently — turn
+	 * preemption (`turnControllers.abortTurn` fired from a later message's
+	 * Stage-1 field evaluators) depends on that, so this is deliberately a
+	 * narrow persistence barrier, not per-room handler serialization.
+	 */
+	private readonly pendingReplyPersists = new Map<string, Set<Promise<void>>>();
+
+	private pendingReplyPersistKey(runtime: IAgentRuntime, roomId: UUID): string {
+		return `${runtime.agentId}:${roomId}`;
+	}
+
+	/**
+	 * Register a delivered-reply persistence barrier. Must be called BEFORE the
+	 * delivery callback fires: the instant the reply reaches the client a
+	 * follow-up can arrive, and its compose must find this barrier already
+	 * pending. Returns the release fn; call it once the persist settles
+	 * (success or failure). Constraint for callback authors: a delivery
+	 * callback must never await a same-room `handleMessage` to completion —
+	 * that turn waits on a barrier this turn only releases after the callback
+	 * returns. Fire-and-forget from a callback is fine.
+	 */
+	private registerPendingReplyPersist(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): () => void {
+		const key = this.pendingReplyPersistKey(runtime, roomId);
+		let release: (() => void) | undefined;
+		const barrier = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let barriers = this.pendingReplyPersists.get(key);
+		if (!barriers) {
+			barriers = new Set();
+			this.pendingReplyPersists.set(key, barriers);
+		}
+		barriers.add(barrier);
+		return () => {
+			release?.();
+			const set = this.pendingReplyPersists.get(key);
+			if (set) {
+				set.delete(barrier);
+				if (set.size === 0) {
+					this.pendingReplyPersists.delete(key);
+				}
+			}
+		};
+	}
+
+	/**
+	 * Wait until every reply already handed to a delivery callback for this
+	 * room has finished persisting. Snapshot semantics: only barriers pending
+	 * at call time are awaited — exactly the causal set for a follow-up
+	 * reacting to a delivered reply. Rooms with no pending barrier (the
+	 * overwhelmingly common case) return without awaiting anything.
+	 */
+	private async awaitDeliveredReplyPersistence(
+		runtime: IAgentRuntime,
+		roomId: UUID,
+	): Promise<void> {
+		const barriers = this.pendingReplyPersists.get(
+			this.pendingReplyPersistKey(runtime, roomId),
+		);
+		if (!barriers || barriers.size === 0) return;
+		await timeInferenceSpan("message:compose:reply-persist-barrier", () =>
+			Promise.all([...barriers]),
+		);
+	}
+
+	/**
 	 * Main message handling entry point
 	 */
 	async handleMessage(
@@ -9449,6 +10166,26 @@ export class DefaultMessageService implements IMessageService {
 				skipEvaluation: true,
 				reason: "analysis-mode-token",
 			};
+		}
+
+		// Central delivery-audience attestation: every connector funnels inbound
+		// turns through this seam, so attesting from canonical room state here
+		// gives Telegram/iMessage/WhatsApp-style ingress the same evidence the
+		// Discord connector mints itself. An attestation remains authoritative
+		// only inside the runtime that minted it; a Memory crossing runtime
+		// boundaries is re-attested from the active runtime's canonical state.
+		if (!trustedDeliveryAudienceIsBoundToRuntime(message, runtime)) {
+			try {
+				await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+			} catch (error) {
+				// error-policy:J4 attestation failure leaves the turn unattested, so
+				// every owner-private surface fails closed while ordinary chat
+				// continues; the lookup failure surfaces via RECENT_ERRORS.
+				runtime.reportError("MessageService.deliveryAudience", error, {
+					roomId: message.roomId,
+					messageId: message.id,
+				});
+			}
 		}
 
 		const source =
@@ -9546,7 +10283,6 @@ export class DefaultMessageService implements IMessageService {
 					: undefined;
 		}
 
-		const senderRole = await resolveStage1SenderRole(runtime, message);
 		const trajectoryContextBase = {
 			// Minted above (before MESSAGE_RECEIVED) so file, DB, and spawn paths
 			// share it for the whole turn (#13775).
@@ -9554,7 +10290,7 @@ export class DefaultMessageService implements IMessageService {
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
 			messageId: message.id,
-			userRole: senderRole,
+			turnMemo: new Map<string, Promise<unknown>>(),
 		};
 
 		return runWithTrajectoryContext<MessageProcessingResult>(
@@ -9568,6 +10304,13 @@ export class DefaultMessageService implements IMessageService {
 					}
 				: trajectoryContextBase,
 			async (): Promise<MessageProcessingResult> => {
+				const senderRole = await timeInferenceSpan(
+					"message:ingress:sender-role",
+					() => resolveStage1SenderRole(runtime, message),
+				);
+				const trajectoryContext = getTrajectoryContext();
+				if (trajectoryContext) trajectoryContext.userRole = senderRole;
+
 				// Determine shouldRespondModel from options or runtime settings
 				const shouldRespondModelSetting = runtime.getSetting(
 					"SHOULD_RESPOND_MODEL",
@@ -9605,6 +10348,12 @@ export class DefaultMessageService implements IMessageService {
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
 						? async (chunk, messageId, accumulated) => {
+								// Sensitive turns deliver once through the final callback,
+								// where the audience is re-read. Streaming bytes cannot be
+								// recalled if room membership changes mid-generation.
+								if (ownerExclusiveDisclosureWasUsed(message)) {
+									return;
+								}
 								let streamText: string;
 								// If we have accumulated text, also sync streamTextFallback so the
 								// fallback path has accurate state if the stream source later changes.
@@ -9738,7 +10487,10 @@ export class DefaultMessageService implements IMessageService {
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
-					timeoutDuration: options?.timeoutDuration ?? 60 * 60 * 1000, // 1 hour
+					// A turn has no implicit wall-clock deadline. Callers that own a
+					// real execution budget may provide one explicitly; cancellation
+					// otherwise travels through abortSignal.
+					timeoutDuration: options?.timeoutDuration ?? 0,
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -9853,6 +10605,7 @@ export class DefaultMessageService implements IMessageService {
 					);
 
 					const timeoutPromise = new Promise<never>((_, reject) => {
+						if (opts.timeoutDuration <= 0) return;
 						timeoutId = setTimeout(async () => {
 							await runtime.emitEvent(EventType.RUN_TIMEOUT, {
 								runtime,
@@ -10098,6 +10851,13 @@ export class DefaultMessageService implements IMessageService {
 		startTime: number,
 		opts: ResolvedMessageOptions,
 	): Promise<MessageProcessingResult> {
+		// A reply already handed to a delivery callback for this room may still
+		// be persisting (deliver-then-persist fast path). Composing now would
+		// read RECENT_MESSAGES without the reply this message may be answering,
+		// so wait for those persists to settle first. Same room only, a few
+		// hundred ms worst case, and a no-op when nothing is pending.
+		await this.awaitDeliveredReplyPersistence(runtime, message.roomId);
+
 		const agentResponses = latestResponseIds.get(runtime.agentId);
 		if (!agentResponses) throw new Error("Agent responses map not found");
 
@@ -10152,20 +10912,11 @@ export class DefaultMessageService implements IMessageService {
 			const persistableMessage = stripAugmentationForPersistence(message);
 
 			if (message.id) {
-				const existingMemory = await runtime.getMemoryById(message.id);
-				if (existingMemory) {
-					runtime.logger.debug(
-						{ src: "service:message" },
-						"Memory already exists, skipping creation",
-					);
-					memoryToQueue = existingMemory;
-				} else {
-					const createdMemoryId = await runtime.createMemory(
-						persistableMessage,
-						"messages",
-					);
-					memoryToQueue = { ...persistableMessage, id: createdMemoryId };
-				}
+				const createdMemoryId = await runtime.createMemory(
+					persistableMessage,
+					"messages",
+				);
+				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
 				await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 			} else {
 				const memoryId = await runtime.createMemory(
@@ -10450,6 +11201,7 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		let stage1RiskGateApplied = false;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
 		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
@@ -10474,7 +11226,16 @@ export class DefaultMessageService implements IMessageService {
 		}
 		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
-					const text = event.text.trim();
+					const proposedText = event.text.trim();
+					const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+						reply: proposedText,
+						actionResults: [],
+						actions: runtime.actions,
+					});
+					const text =
+						earlyReplyEgressDecision.verdict === "allow"
+							? proposedText
+							: "On it.";
 					if (!text || !message.id) return;
 					const currentResponseId = latestResponseIds
 						.get(runtime.agentId)
@@ -10496,7 +11257,7 @@ export class DefaultMessageService implements IMessageService {
 						return;
 					}
 					const earlyResponseId = asUUID(v4());
-					const earlyContent: Content = {
+					let earlyContent: Content = {
 						thought: event.messageHandler.thought,
 						actions: ["REPLY"],
 						text,
@@ -10504,7 +11265,9 @@ export class DefaultMessageService implements IMessageService {
 						inReplyTo: createUniqueUuid(runtime, message.id),
 						// #14873: the early reply IS the Stage-1 model's replyText —
 						// genuine agent voice — so gated transports must not re-voice it.
-						agentVoiced: true,
+						...(earlyReplyEgressDecision.verdict === "allow"
+							? { agentVoiced: true }
+							: {}),
 					};
 					await runtime.applyPipelineHooks(
 						"outgoing_before_deliver",
@@ -10514,6 +11277,15 @@ export class DefaultMessageService implements IMessageService {
 							message,
 							responseId: earlyResponseId,
 						}),
+					);
+					earlyContent = enforceEffectGroundedVisibleContent(
+						runtime,
+						earlyContent,
+					);
+					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
+						runtime,
+						message,
+						earlyContent,
 					);
 					const earlyMemory: Memory = {
 						id: earlyResponseId,
@@ -10591,20 +11363,25 @@ export class DefaultMessageService implements IMessageService {
 			}
 			try {
 				const [outcome] = await Promise.all([
-					runV5MessageRuntimeStage1({
-						runtime,
-						message,
-						state,
-						responseId,
-						...(callback ? { callback } : {}),
-						deliveredVisibleTexts,
-						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
-					}),
-					runtime.applyPipelineHooks(
-						"parallel_with_should_respond",
-						parallelHookCtx,
+					timeInferenceSpan("message:planner", () =>
+						runV5MessageRuntimeStage1({
+							runtime,
+							message,
+							state,
+							responseId,
+							...(callback ? { callback } : {}),
+							deliveredVisibleTexts,
+							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+						}),
+					),
+					timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
+						runtime.applyPipelineHooks(
+							"parallel_with_should_respond",
+							parallelHookCtx,
+						),
 					),
 				]);
+				stage1RiskGateApplied = outcome.kind !== "terminal";
 				const routedContexts = outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
@@ -10763,16 +11540,20 @@ export class DefaultMessageService implements IMessageService {
 		// to respond — escalate a borderline USER/GUEST message to a single
 		// TEXT_LARGE adjudication. OWNER/ADMIN bypass; benign traffic short-circuits
 		// before any model call. A blocked verdict suppresses the response.
-		if (shouldRespondToMessage) {
-			const injectionGate = await runShouldRespondInjectionGate({
-				runtime,
-				message,
-				// Per-turn role already resolved in handleMessage; fall back to a
-				// fresh lookup only outside a trajectory scope.
-				resolveSenderRole: () =>
-					getTrajectoryContext()?.userRole ??
-					resolveStage1SenderRole(runtime, message),
-			});
+		if (shouldRespondToMessage && !stage1RiskGateApplied) {
+			const injectionGate = await timeInferenceSpan(
+				"evaluators:injection-risk-gate",
+				() =>
+					runShouldRespondInjectionGate({
+						runtime,
+						message,
+						// Per-turn role already resolved in handleMessage; fall back to a
+						// fresh lookup only outside a trajectory scope.
+						resolveSenderRole: () =>
+							getTrajectoryContext()?.userRole ??
+							resolveStage1SenderRole(runtime, message),
+					}),
+			);
 			if (injectionGate.blocked) {
 				shouldRespondToMessage = false;
 				terminalDecision = null;
@@ -10818,6 +11599,9 @@ export class DefaultMessageService implements IMessageService {
 
 		let responseContent: Content | null = null;
 		let responseMessages: Memory[] = [];
+		const persistedResponseMessageIds = new Set<UUID>(
+			Array.from(persistedEarlyReplyIds, (id) => id as UUID),
+		);
 		let actionResults: ActionResult[] | undefined;
 		let mode: StrategyMode = "none";
 
@@ -10891,6 +11675,13 @@ export class DefaultMessageService implements IMessageService {
 			if (responseContent && message.id) {
 				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 			}
+			if (responseContent) {
+				responseContent = await enforceTrustedDeliveryAudienceAtEgress(
+					runtime,
+					message,
+					responseContent,
+				);
+			}
 
 			// Save response memory to database.
 			// - simple mode: persists after hooks in the branch below.
@@ -10913,6 +11704,11 @@ export class DefaultMessageService implements IMessageService {
 					}
 					// Update the content in case inReplyTo was added
 					if (responseContent) {
+						responseContent = await enforceTrustedDeliveryAudienceAtEgress(
+							runtime,
+							message,
+							responseContent,
+						);
 						responseMemory.content = responseContent;
 					}
 					if (shouldSkipResponseMemoryPersistence(responseMemory)) {
@@ -10929,6 +11725,9 @@ export class DefaultMessageService implements IMessageService {
 					await timeInferenceSpan("message:delivery:persistence", () =>
 						runtime.createMemory(responseMemory, "messages"),
 					);
+					if (responseMemory.id) {
+						persistedResponseMessageIds.add(responseMemory.id);
+					}
 
 					await timeInferenceSpan("message:delivery:event", () =>
 						this.emitMessageSent(
@@ -10941,10 +11740,19 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			if (responseContent) {
-				const deliverableResponseContent = responseContent;
+				let deliverableResponseContent = responseContent;
 				if (mode === "simple") {
-					// Keep content hooks and DB write before delivery so the wire
-					// response and stored memory match. Do not put MESSAGE_SENT
+					// Keep content hooks before delivery so the wire response carries
+					// their edits. The response-memory DB write runs AFTER the
+					// callback: it is the largest post-LLM cost on this path
+					// (~250-440ms measured via the message:delivery:persistence
+					// InferenceTiming span) and the user must not wait on it. The
+					// persist is still awaited before this turn proceeds, so
+					// everything downstream in THIS turn (MESSAGE_SENT, post-turn
+					// evaluators, followUp) observes the stored reply — and a
+					// CONCURRENT same-room turn started off this delivery waits on
+					// the pendingReplyPersists barrier before composing, so its
+					// RECENT_MESSAGES read observes it too. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
 					// side effects and must not stall user-visible streaming.
 					await timeInferenceSpan("message:delivery:hooks", () =>
@@ -10960,44 +11768,104 @@ export class DefaultMessageService implements IMessageService {
 							}),
 						),
 					);
-					if (responseMessages.length > 0) {
-						for (const responseMemory of responseMessages) {
-							if (
-								responseMemory.id &&
-								persistedEarlyReplyIds.has(responseMemory.id)
-							) {
-								continue;
-							}
-							responseMemory.content = deliverableResponseContent;
-							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+					deliverableResponseContent = enforceEffectGroundedVisibleContent(
+						runtime,
+						deliverableResponseContent,
+					);
+					deliverableResponseContent =
+						await enforceTrustedDeliveryAudienceAtEgress(
+							runtime,
+							message,
+							deliverableResponseContent,
+						);
+					responseContent = deliverableResponseContent;
+					// Registered BEFORE the callback fires so a follow-up prompted
+					// by this delivery always finds the barrier pending; released
+					// (never rejected) in the finally once the persist settles.
+					const releaseReplyPersistBarrier = this.registerPendingReplyPersist(
+						runtime,
+						message.roomId,
+					);
+					try {
+						// Settled-result handling instead of catch blocks: a delivery
+						// failure must not skip the persist, and callers classify the
+						// raw delivery error by identity (TURN_ABORTED / generation-
+						// timeout checks at the conversation route), so both failures
+						// are rethrown UNCHANGED after both operations settle.
+						const deliveryTask = callback
+							? timeInferenceSpan("message:delivery:callback", () =>
+									callback(deliverableResponseContent),
+								).then((value) => {
+									markInference(INFERENCE_MARKS.replyDelivered);
+									return value;
+								})
+							: Promise.resolve(undefined);
+						const persistTask = (async () => {
+							for (const responseMemory of responseMessages) {
+								if (
+									responseMemory.id &&
+									persistedEarlyReplyIds.has(responseMemory.id)
+								) {
+									continue;
+								}
+								responseMemory.content =
+									await enforceTrustedDeliveryAudienceAtEgress(
+										runtime,
+										message,
+										deliverableResponseContent,
+									);
+								if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+									runtime.logger.debug(
+										{ src: "service:message", memoryId: responseMemory.id },
+										"Skipping transient response memory persistence",
+									);
+									continue;
+								}
 								runtime.logger.debug(
 									{ src: "service:message", memoryId: responseMemory.id },
-									"Skipping transient response memory persistence",
+									"Saving response to memory",
 								);
-								continue;
-							}
-							runtime.logger.debug(
-								{ src: "service:message", memoryId: responseMemory.id },
-								"Saving response to memory",
-							);
-							await timeInferenceSpan("message:delivery:persistence", () =>
-								runtime.createMemory(responseMemory, "messages"),
-							);
+								await timeInferenceSpan("message:delivery:persistence", () =>
+									runtime.createMemory(responseMemory, "messages"),
+								);
+								if (responseMemory.id) {
+									persistedResponseMessageIds.add(responseMemory.id);
+								}
 
-							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-								this.emitMessageSent(
-									runtime,
-									responseMemory,
-									message.content.source ?? "messageHandler",
-								),
-							);
+								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+									this.emitMessageSent(
+										runtime,
+										responseMemory,
+										message.content.source ?? "messageHandler",
+									),
+								);
+							}
+						})();
+						const [deliveryOutcome, persistOutcome] = await Promise.allSettled([
+							deliveryTask,
+							persistTask,
+						]);
+						if (persistOutcome.status === "rejected") {
+							// The persist failure (data loss) outranks the delivery
+							// failure for propagation; the held delivery failure is
+							// reported so it is never silently superseded.
+							if (deliveryOutcome.status === "rejected") {
+								runtime.reportError(
+									"MessageService.simpleDeliveryCallback",
+									deliveryOutcome.reason,
+									{
+										agentId: runtime.agentId,
+										roomId: message.roomId,
+									},
+								);
+							}
+							throw persistOutcome.reason;
 						}
-					}
-					if (callback) {
-						await timeInferenceSpan("message:delivery:callback", () =>
-							callback(deliverableResponseContent),
-						);
-						markInference(INFERENCE_MARKS.replyDelivered);
+						if (deliveryOutcome.status === "rejected") {
+							throw deliveryOutcome.reason;
+						}
+					} finally {
+						releaseReplyPersistBarrier();
 					}
 				}
 			}
@@ -11053,7 +11921,7 @@ export class DefaultMessageService implements IMessageService {
 
 			// Construct a minimal content object indicating the terminal decision
 			const terminalAction = terminalDecision ?? "IGNORE";
-			const terminalContent: Content = {
+			let terminalContent: Content = {
 				thought:
 					terminalAction === "STOP"
 						? "Agent decided to stop and end the run."
@@ -11071,6 +11939,11 @@ export class DefaultMessageService implements IMessageService {
 						message,
 					}),
 				),
+			);
+			terminalContent = await enforceTrustedDeliveryAudienceAtEgress(
+				runtime,
+				message,
+				terminalContent,
 			);
 
 			const terminalMemory: Memory = {
@@ -11108,6 +11981,13 @@ export class DefaultMessageService implements IMessageService {
 
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
+		({ responseContent, responseMessages } =
+			await enforceTrustedDeliveryAudienceOnResult(
+				runtime,
+				message,
+				responseContent,
+				responseMessages,
+			));
 
 		// Post-turn evaluation runs first as one structured call over registered
 		// evaluator items. ALWAYS_AFTER actions remain available for plugin hooks
@@ -11208,8 +12088,9 @@ export class DefaultMessageService implements IMessageService {
 			roomName,
 		};
 
-		// Emit run ended event
-		await timeInferenceSpan("message:lifecycle:run-ended", () =>
+		// Delivery is already committed; lifecycle observers run after the
+		// caller receives the result and remain drainable during shutdown.
+		detachPostDeliverySideEffect(runtime, "RUN_ENDED", () =>
 			runtime.emitEvent(EventType.RUN_ENDED, {
 				runtime,
 				source: "messageHandler",
@@ -11223,11 +12104,17 @@ export class DefaultMessageService implements IMessageService {
 				duration: Date.now() - startTime,
 			} as RunEventPayload),
 		);
-
 		return {
 			didRespond,
 			responseContent,
 			responseMessages,
+			...(persistedResponseMessageIds.size > 0
+				? {
+						persistedResponseMessageIds: Array.from(
+							persistedResponseMessageIds,
+						),
+					}
+				: {}),
 			...(actionResults ? { actionResults } : {}),
 			state,
 			mode,

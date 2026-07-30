@@ -647,7 +647,7 @@ const relationshipsFixtures: Record<string, () => Record<string, unknown>> = {
 };
 
 // ---------------------------------------------------------------------------
-// Calendar (plugin-calendar) — hook seam, driven via global. Four states.
+// Calendar (plugin-calendar) — hook seam, driven via global. Six states.
 // ---------------------------------------------------------------------------
 
 function calEvent(over: { id: string } & Record<string, unknown>) {
@@ -676,13 +676,36 @@ function calEvent(over: { id: string } & Record<string, unknown>) {
   };
 }
 
+function calSource(over: Record<string, unknown> = {}) {
+  return {
+    key: {
+      provider: "google",
+      side: "owner",
+      grantId: "grant-work",
+      connectorAccountId: "account-work",
+      calendarId: "primary",
+    },
+    summary: "Work",
+    accessRole: "owner",
+    visibility: "details",
+    status: "fresh",
+    syncedAt: new Date().toISOString(),
+    error: null,
+    ...over,
+  };
+}
+
 const noopFn = () => {};
 const asyncNoop = async () => {};
 
 function calResult(over: Record<string, unknown> = {}) {
   return {
     events: [] as unknown[],
+    feedState: "complete",
+    sources: [calSource()],
+    status: "ready",
     loading: false,
+    refreshing: false,
     error: null as string | null,
     viewMode: "week",
     setViewMode: noopFn,
@@ -697,11 +720,122 @@ function calResult(over: Record<string, unknown> = {}) {
   };
 }
 
+function calSummary(over: Record<string, unknown> = {}) {
+  return {
+    provider: "google",
+    side: "owner",
+    grantId: "grant-work",
+    connectorAccountId: "account-work",
+    accountEmail: "work@example.com",
+    calendarId: "primary",
+    summary: "Work",
+    description: null,
+    primary: true,
+    accessRole: "owner",
+    backgroundColor: null,
+    foregroundColor: null,
+    timeZone: "America/Los_Angeles",
+    selected: true,
+    includeInFeed: true,
+    ...over,
+  };
+}
+
+function calSourcePreferences(over: Record<string, unknown> = {}) {
+  return {
+    calendars: [
+      calSummary(),
+      calSummary({
+        provider: "microsoft",
+        grantId: "grant-family",
+        connectorAccountId: "account-family",
+        accountEmail: "family@example.com",
+        calendarId: "family",
+        summary: "Family",
+        primary: false,
+        accessRole: "reader",
+        includeInFeed: false,
+      }),
+    ],
+    status: "ready",
+    loading: false,
+    refreshing: false,
+    error: null,
+    refreshError: null,
+    pendingKeys: new Set<string>(),
+    mutationErrors: {},
+    ...over,
+  };
+}
+
 /** Calendar's seam is a hook, not a prop — these populate the global instead. */
 const calendarCalendarStates: Record<string, () => Record<string, unknown>> = {
-  loading: () => calResult({ loading: true, events: [] }),
-  error: () => calResult({ error: "Calendar failed to load." }),
-  empty: () => calResult({ events: [] }),
+  loading: () =>
+    calResult({
+      loading: true,
+      events: [],
+      feedState: null,
+      sources: [],
+      status: "loading",
+    }),
+  error: () =>
+    calResult({
+      error: "Calendar failed to load.",
+      feedState: null,
+      sources: [],
+      status: "error",
+    }),
+  unavailable: () =>
+    calResult({
+      feedState: "unavailable",
+      status: "unavailable",
+      sources: [
+        calSource({
+          status: "disconnected",
+          syncedAt: null,
+          error: {
+            code: "OAUTH_REVOKED",
+            message: "Authorization was revoked.",
+            retryable: true,
+          },
+        }),
+      ],
+    }),
+  partial: () =>
+    calResult({
+      feedState: "partial",
+      status: "partial",
+      sources: [
+        calSource(),
+        calSource({
+          key: {
+            provider: "microsoft",
+            side: "owner",
+            grantId: "grant-family",
+            connectorAccountId: "account-family",
+            calendarId: "family",
+          },
+          summary: "Family",
+          status: "stale",
+          syncedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+          error: {
+            code: "CALENDAR_REFRESH_FAILED",
+            message: "Refresh failed.",
+            retryable: true,
+          },
+        }),
+      ],
+      events: [
+        calEvent({
+          id: "cached-family",
+          title: "School pickup",
+          location: "West gate",
+          startAt: new Date(2026, 5, 15, 15, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 15, 15, 30, 0).toISOString(),
+        }),
+      ],
+    }),
+  empty: () => calResult({ events: [], status: "empty" }),
   populated: () =>
     calResult({
       events: [
@@ -721,6 +855,102 @@ const calendarCalendarStates: Record<string, () => Record<string, unknown>> = {
         }),
       ],
     }),
+  "sources-mixed": () =>
+    calResult({
+      feedState: "partial",
+      status: "partial",
+      sources: [
+        calSource(),
+        calSource({
+          key: {
+            provider: "microsoft",
+            side: "owner",
+            grantId: "grant-family",
+            connectorAccountId: "account-family",
+            calendarId: "family",
+          },
+          summary: "Family",
+          accessRole: "reader",
+          visibility: "busy_only",
+          status: "stale",
+          syncedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+        }),
+        calSource({
+          key: {
+            provider: "google",
+            side: "owner",
+            grantId: "grant-retired",
+            connectorAccountId: "account-retired",
+            calendarId: "travel",
+          },
+          summary: "Travel",
+          accessRole: "reader",
+          visibility: "busy_only",
+          status: "disconnected",
+          syncedAt: null,
+        }),
+      ],
+      events: [
+        calEvent({
+          id: "school-pickup",
+          title: "School pickup",
+          location: "West gate",
+          startAt: new Date(2026, 5, 15, 15, 0, 0).toISOString(),
+          endAt: new Date(2026, 5, 15, 15, 30, 0).toISOString(),
+        }),
+      ],
+    }),
+  "sources-error": () => calResult(),
+  "sources-empty": () =>
+    calResult({ events: [], sources: [], status: "empty" }),
+  "sources-pending": () => calResult(),
+};
+
+const calendarSourceStates: Record<string, () => Record<string, unknown>> = {
+  loading: () =>
+    calSourcePreferences({
+      calendars: [],
+      status: "loading",
+      loading: true,
+    }),
+  error: () =>
+    calSourcePreferences({
+      calendars: [],
+      status: "error",
+      error: "Calendar sources could not load.",
+    }),
+  unavailable: () => calSourcePreferences(),
+  partial: () => calSourcePreferences(),
+  empty: () => calSourcePreferences(),
+  populated: () => calSourcePreferences(),
+  "sources-mixed": () => calSourcePreferences(),
+  "sources-error": () =>
+    calSourcePreferences({
+      calendars: [],
+      status: "error",
+      error: "Calendar sources could not load.",
+    }),
+  "sources-empty": () =>
+    calSourcePreferences({
+      calendars: [],
+      status: "empty",
+    }),
+  "sources-pending": () => {
+    const work = calSummary();
+    const key = JSON.stringify([
+      work.provider,
+      work.side,
+      work.grantId,
+      work.connectorAccountId,
+      work.calendarId,
+    ]);
+    return calSourcePreferences({
+      pendingKeys: new Set([key]),
+      mutationErrors: {
+        [key]: "Couldn’t exclude “Work”. Your current setting was kept.",
+      },
+    });
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -734,6 +964,8 @@ export interface ViewSpec {
   propsFor: (state: string) => Record<string, unknown>;
   /** Calendar-only: result object to place on the global hook seam. */
   calendarResultFor?: (state: string) => Record<string, unknown>;
+  /** Calendar-only: source preference result for the second hook seam. */
+  calendarSourcesResultFor?: (state: string) => Record<string, unknown>;
 }
 
 export const VIEW_SPECS: Record<string, ViewSpec> = {
@@ -777,10 +1009,22 @@ export const VIEW_SPECS: Record<string, ViewSpec> = {
     propsFor: (s) => relationshipsFixtures[s](),
   },
   calendar: {
-    states: ["loading", "error", "empty", "populated"],
+    states: [
+      "loading",
+      "error",
+      "unavailable",
+      "partial",
+      "empty",
+      "populated",
+      "sources-mixed",
+      "sources-error",
+      "sources-empty",
+      "sources-pending",
+    ],
     // CalendarView takes no props; its seam is the hook global.
     propsFor: () => ({}),
     calendarResultFor: (s) => calendarCalendarStates[s](),
+    calendarSourcesResultFor: (s) => calendarSourceStates[s](),
   },
 };
 

@@ -1421,6 +1421,53 @@ describe("useShellController — transcription mode", () => {
     return sessions;
   }
 
+  it("drains the hands-free recorder through transcription before opening its replacement", async () => {
+    const { result } = renderHook(() => useShellController());
+    const sessions = sinkSessions(result);
+    await act(async () => result.current.toggleHandsFree());
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    const handsFreeOptions = lastCaptureOpts;
+    let releaseDrain: (() => void) | undefined;
+    const drainReleased = new Promise<void>((resolve) => {
+      releaseDrain = resolve;
+    });
+    captureHandles[0]?.stop.mockImplementation(async () => {
+      await drainReleased;
+      handsFreeOptions?.onTranscript?.({
+        text: "captured during the mode handoff",
+        final: true,
+        backend: "local-inference",
+        audioWav: makeWav(1200),
+      });
+      handsFreeOptions?.onStateChange?.("stopped");
+    });
+
+    let enterTranscription: Promise<void> | undefined;
+    await act(async () => {
+      enterTranscription = Promise.resolve(
+        result.current.toggleTranscriptionMode(),
+      );
+      await Promise.resolve();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseDrain?.();
+      await enterTranscription;
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(2);
+    expect(captureHandles[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(captureHandles[1]?.start).toHaveBeenCalledTimes(1);
+
+    await act(async () => result.current.toggleTranscriptionMode());
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.segments.map((segment) => segment.text)).toEqual([
+      "captured during the mode handoff",
+    ]);
+    expect(sessions[0]?.audioWav?.byteLength).toBeGreaterThan(1000);
+  });
+
   it("accumulates finals into ONE recording session, not per-utterance DMs", async () => {
     const { result } = renderHook(() => useShellController());
     const sessions = sinkSessions(result);

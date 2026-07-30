@@ -171,6 +171,14 @@ async function main() {
             );
             // Loading states never settle effects further; give layout a beat.
             await page.waitForTimeout(120);
+            if (viewId === "calendar" && state.startsWith("sources-")) {
+              await page
+                .getByRole("button", { name: "Manage calendar sources" })
+                .click();
+              await page
+                .getByText("New calendars are included automatically")
+                .waitFor({ state: "visible", timeout: 5_000 });
+            }
           } catch (e) {
             renderError = e instanceof Error ? e.message : String(e);
           }

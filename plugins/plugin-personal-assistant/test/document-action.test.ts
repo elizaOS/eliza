@@ -57,11 +57,14 @@ vi.mock("@elizaos/agent", () => ({
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
+    capability: "eliza.approval-execution",
+    protocolVersion: 2,
     enqueue: mocks.enqueue,
     list: vi.fn(),
     approve: vi.fn(),
     reject: vi.fn(),
-    markExecuting: vi.fn(),
+    claimExecution: vi.fn(),
+    markDispatchStarted: vi.fn(),
     markDone: vi.fn(),
   }),
 }));

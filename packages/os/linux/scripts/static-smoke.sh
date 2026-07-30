@@ -66,25 +66,38 @@ for custom_tails_package in \
     libapparmor1 \
     libevdocument3-4t64 \
     libevview3-3t64 \
-    libgcrypt20 \
     libhavege2 \
     libyelp0 \
     yelp
 do
     grep -qx "${custom_tails_package}" tails/config/chroot_local-hooks/99-custom-packages-check
 done
+if grep -qx "libgcrypt20" tails/config/chroot_local-hooks/99-custom-packages-check; then
+    echo "Debian's security-fixed libgcrypt20 must supersede the temporary Tails hotfix." >&2
+    exit 1
+fi
+grep -Fq "Package: libgcrypt20" tails/config/chroot_apt/preferences
+grep -Fq "Pin-Priority: -1" tails/config/chroot_apt/preferences
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/build-cache-contract.test.sh \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
     scripts/run-cool-build.sh \
+    scripts/smoke-test-iso.sh \
+    scripts/smoke-test-iso.test.sh \
+    scripts/submodule-checkout.test.sh \
     scripts/submodule-checkout.sh \
     scripts/security-smoke.sh
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
 grep -Fq "sort -nr" build-iso.sh
+grep -Fq -- '-name "tails-${ELIZAOS_ARCH}-*.iso"' ../../../.github/workflows/build-linux-iso.yml
 bash scripts/build-cache-contract.test.sh
+bash scripts/smoke-test-iso.test.sh
+bash scripts/submodule-checkout.test.sh
+node --test scripts/package-list-contract.test.mjs
+node --test scripts/resolve-apt-snapshots.test.mjs
 bash -n scripts/sync-runtime-to-chroot.sh
 sh -n \
     tails/auto/config \
@@ -1096,7 +1109,8 @@ grep -q 'TAILS_ROOT = Path(__file__).resolve().parents\[2\]' \
 grep -q 'CHROOT_DIR = TAILS_ROOT / "chroot"' \
     tails/auto/scripts/create-usb-image-from-iso
 grep -qx 'sudo' tails/config/chroot_local-packageslists/tails-common.list
-grep -Eq '^syslinux( \[amd64\])?$' tails/config/chroot_local-packageslists/tails-common.list
+grep -qx 'syslinux' tails/config/chroot_local-packageslists/tails-common.list
+grep -qx 'syslinux-common' tails/config/chroot_local-packageslists/tails-common.list
 grep -q 'elizaos.sbomLite' scripts/generate-release-evidence.mjs
 grep -q 'elizaos.releaseProvenance' scripts/generate-release-evidence.mjs
 grep -q 'elizaos.modelCatalog' scripts/validate-model-catalog.mjs

@@ -102,15 +102,16 @@ export function registerDefaultEscalationLadders(
 
 /**
  * Resolve the effective ladder for a task. Inline `escalation.steps` win
- * over `escalation.ladderKey` resolution. If neither is set, the
- * priority-default ladder is returned.
+ * over `escalation.ladderKey` resolution, including an empty array used to
+ * opt out of escalation. If neither is set, the priority-default ladder is
+ * returned.
  */
 export function resolveEffectiveLadder(
   task: ScheduledTask,
   registry: EscalationLadderRegistry,
 ): EscalationLadder {
   const explicit: ScheduledTaskEscalation | undefined = task.escalation;
-  if (explicit?.steps && explicit.steps.length > 0) {
+  if (explicit?.steps) {
     return { ladderKey: explicit.ladderKey ?? "inline", steps: explicit.steps };
   }
   if (explicit?.ladderKey) {

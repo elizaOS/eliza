@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { CalendarServiceError } from "../src/internal/errors.js";
 import {
+  buildRecurrenceSplitPlan,
   describeRecurrence,
   expandRecurrenceOccurrences,
   firstRecurrenceRule,
@@ -374,12 +375,76 @@ describe("describeRecurrence", () => {
   });
 });
 
+describe("buildRecurrenceSplitPlan", () => {
+  it("partitions COUNT without duplicating or dropping occurrences", () => {
+    expect(
+      buildRecurrenceSplitPlan({
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=6"],
+        seriesStartAt: new Date("2026-07-01T17:00:00.000Z"),
+        targetStartAt: new Date("2026-07-15T17:00:00.000Z"),
+        timeZone: "UTC",
+      }),
+    ).toEqual({
+      truncatedRecurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2"],
+      followingRecurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=4"],
+      targetOccurrenceIndex: 2,
+      futureExceptionsReset: true,
+    });
+  });
+
+  it("trims an open series before target and accepts an explicit new rule", () => {
+    expect(
+      buildRecurrenceSplitPlan({
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE"],
+        replacementRecurrence: ["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE"],
+        seriesStartAt: new Date("2026-07-01T17:00:00.000Z"),
+        targetStartAt: new Date("2026-07-15T17:00:00.000Z"),
+        timeZone: "UTC",
+      }),
+    ).toMatchObject({
+      truncatedRecurrence: [
+        "RRULE:FREQ=WEEKLY;BYDAY=WE;UNTIL=20260715T165959Z",
+      ],
+      followingRecurrence: ["RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=WE"],
+      targetOccurrenceIndex: 2,
+    });
+  });
+
+  it("fails before mutation when recurrence state cannot be preserved", () => {
+    for (const recurrence of [
+      ["RRULE:FREQ=WEEKLY;BYDAY=WE", "EXDATE:20260708T170000Z"],
+      ["RRULE:FREQ=MONTHLY;BYDAY=2WE"],
+    ]) {
+      expect(() =>
+        buildRecurrenceSplitPlan({
+          recurrence,
+          seriesStartAt: new Date("2026-07-01T17:00:00.000Z"),
+          targetStartAt: new Date("2026-07-15T17:00:00.000Z"),
+          timeZone: "UTC",
+        }),
+      ).toThrowError(CalendarServiceError);
+    }
+    expect(() =>
+      buildRecurrenceSplitPlan({
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE"],
+        seriesStartAt: new Date("2026-07-01T17:00:00.000Z"),
+        targetStartAt: new Date("2026-07-16T17:00:00.000Z"),
+        timeZone: "UTC",
+      }),
+    ).toThrowError(CalendarServiceError);
+  });
+});
+
 describe("scope + event helpers", () => {
   it("normalizes recurrence scopes and fails closed on junk", () => {
     expect(normalizeRecurrenceScope(undefined)).toBeUndefined();
     expect(normalizeRecurrenceScope("")).toBeUndefined();
     expect(normalizeRecurrenceScope("instance")).toBe("instance");
     expect(normalizeRecurrenceScope("Occurrence")).toBe("instance");
+    expect(normalizeRecurrenceScope("this and following")).toBe(
+      "this_and_following",
+    );
+    expect(normalizeRecurrenceScope("future")).toBe("this_and_following");
     expect(normalizeRecurrenceScope("SERIES")).toBe("series");
     expect(normalizeRecurrenceScope("all")).toBe("series");
     expect(() => normalizeRecurrenceScope("everything")).toThrowError(

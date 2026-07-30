@@ -10,15 +10,23 @@
  * an idempotency key are completely unaffected.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  type AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  stringToUuid,
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __getChatDedupeTtlMsForTests,
   __resetChatDedupeForTests,
+  getChatMessageIdOutcome,
   isDuplicateChatMessage,
   normalizeClientMessageId,
+  persistExactConversationMemory,
+  setChatMessageIdOutcome,
 } from "../chat-routes.ts";
 
-const OLD_ARRIVAL_TTL_MS = 30_000;
 const DEFAULT_GENERATION_TIMEOUT_MS = 180_000;
 const RECONNECT_WAIT_TIMEOUT_MS = 30_000;
 const RECONNECT_SIGNAL_DEBOUNCE_MS = 400;
@@ -59,12 +67,13 @@ describe("isDuplicateChatMessage", () => {
     expect(isDuplicateChatMessage(SCOPE, null, now + 1)).toBe(false);
   });
 
-  it("treats a first sighting as new and a repeat within TTL as duplicate", () => {
+  it("keeps an active turn reserved regardless of elapsed wall time", () => {
     const now = 2_000_000;
     expect(isDuplicateChatMessage(SCOPE, "msg-1", now)).toBe(false);
-    // Immediate replay and a replay near the TTL boundary are both duplicates.
     expect(isDuplicateChatMessage(SCOPE, "msg-1", now)).toBe(true);
-    expect(isDuplicateChatMessage(SCOPE, "msg-1", now + TTL_MS)).toBe(true);
+    expect(isDuplicateChatMessage(SCOPE, "msg-1", now + TTL_MS * 100)).toBe(
+      true,
+    );
   });
 
   it("does not suppress a different idempotency key in the same scope", () => {
@@ -76,7 +85,59 @@ describe("isDuplicateChatMessage", () => {
     expect(isDuplicateChatMessage(SCOPE, "msg-b", now)).toBe(true);
   });
 
-  it("covers the long-turn reconnect retry window that exceeded the old 30s arrival TTL", () => {
+  it("replays only the durable outcome bound to the exact key", () => {
+    const now = 3_250_000;
+    expect(isDuplicateChatMessage(SCOPE, "turn-a", now)).toBe(false);
+    expect(isDuplicateChatMessage(SCOPE, "turn-b", now + 1)).toBe(false);
+
+    const outcome = {
+      text: "reply b",
+      agentName: "Eliza",
+      messageId: stringToUuid("reply-b"),
+      transcriptVisibility: "internal" as const,
+      thought: "reasoning",
+      usage: {
+        promptTokens: 4,
+        completionTokens: 2,
+        totalTokens: 6,
+        isEstimated: false,
+        llmCalls: 1,
+      },
+      actionResults: [{ actionName: "VIEWS", success: true }],
+      failureKind: "no_provider" as const,
+      accountConnect: { providers: ["openai-codex" as const] },
+      localInference: { status: "ready" },
+    };
+    setChatMessageIdOutcome(SCOPE, "turn-b", outcome);
+    outcome.actionResults[0].success = false;
+    expect(getChatMessageIdOutcome(SCOPE, "turn-a")).toBeNull();
+    expect(getChatMessageIdOutcome(SCOPE, "turn-b")).toEqual({
+      text: "reply b",
+      agentName: "Eliza",
+      messageId: stringToUuid("reply-b"),
+      transcriptVisibility: "internal",
+      thought: "reasoning",
+      usage: {
+        promptTokens: 4,
+        completionTokens: 2,
+        totalTokens: 6,
+        isEstimated: false,
+        llmCalls: 1,
+      },
+      actionResults: [{ actionName: "VIEWS", success: true }],
+      failureKind: "no_provider",
+      accountConnect: { providers: ["openai-codex"] },
+      localInference: { status: "ready" },
+    });
+
+    setChatMessageIdOutcome(SCOPE, "unknown", {
+      text: "must not attach",
+      agentName: "Eliza",
+    });
+    expect(getChatMessageIdOutcome(SCOPE, "unknown")).toBeNull();
+  });
+
+  it("covers reconnect retries after a long-running turn", () => {
     const now = 3_500_000;
     const retryAfterLongTurn =
       DEFAULT_GENERATION_TIMEOUT_MS +
@@ -84,24 +145,27 @@ describe("isDuplicateChatMessage", () => {
       RECONNECT_SIGNAL_DEBOUNCE_MS;
 
     expect(isDuplicateChatMessage(SCOPE, "msg-long-turn", now)).toBe(false);
-    expect(retryAfterLongTurn).toBeGreaterThan(OLD_ARRIVAL_TTL_MS);
     expect(
       isDuplicateChatMessage(SCOPE, "msg-long-turn", now + retryAfterLongTurn),
     ).toBe(true);
   });
 
-  it("does not suppress the same id once the TTL has elapsed", () => {
+  it("expires only after the turn has a settled replayable outcome", () => {
     const now = 4_000_000;
-    expect(isDuplicateChatMessage(SCOPE, "msg-ttl", now)).toBe(false);
-    // Just past the window the id is new again (legitimate re-send of the same
-    // text minutes later must go through).
-    expect(isDuplicateChatMessage(SCOPE, "msg-ttl", now + TTL_MS + 1)).toBe(
-      false,
-    );
-    // ...and is then deduped within its own fresh window.
-    expect(isDuplicateChatMessage(SCOPE, "msg-ttl", now + TTL_MS + 1)).toBe(
-      true,
-    );
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      expect(isDuplicateChatMessage(SCOPE, "msg-ttl", now)).toBe(false);
+      setChatMessageIdOutcome(SCOPE, "msg-ttl", {
+        text: "durable",
+        agentName: "Eliza",
+      });
+      expect(isDuplicateChatMessage(SCOPE, "msg-ttl", now + TTL_MS)).toBe(true);
+      expect(isDuplicateChatMessage(SCOPE, "msg-ttl", now + TTL_MS + 1)).toBe(
+        false,
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("scopes the key per conversation/user — same id in a different scope is new", () => {
@@ -116,16 +180,75 @@ describe("isDuplicateChatMessage", () => {
 
   it("evicts expired entries so the cache stays bounded", () => {
     const start = 6_000_000;
-    // Seed an entry, then let the window pass and trigger the amortized sweep
-    // with a fresh request; the original key must read as new again afterward.
-    expect(isDuplicateChatMessage(SCOPE, "old", start)).toBe(false);
-    // A later request past the sweep window evicts "old".
-    expect(
-      isDuplicateChatMessage(SCOPE, "trigger-sweep", start + TTL_MS + 1),
-    ).toBe(false);
-    // "old" is gone → new again, not a stale duplicate.
-    expect(isDuplicateChatMessage(SCOPE, "old", start + TTL_MS + 2)).toBe(
-      false,
-    );
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(start);
+    try {
+      expect(isDuplicateChatMessage(SCOPE, "old", start)).toBe(false);
+      setChatMessageIdOutcome(SCOPE, "old", {
+        text: "done",
+        agentName: "Eliza",
+      });
+      expect(
+        isDuplicateChatMessage(SCOPE, "trigger-sweep", start + TTL_MS + 1),
+      ).toBe(false);
+      expect(isDuplicateChatMessage(SCOPE, "old", start + TTL_MS + 2)).toBe(
+        false,
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+});
+
+describe("persistExactConversationMemory", () => {
+  it("recognizes a committed row after the storage acknowledgement is lost", async () => {
+    const memory = createMessageMemory({
+      id: stringToUuid("ack-lost-memory"),
+      entityId: stringToUuid("ack-lost-user"),
+      agentId: stringToUuid("ack-lost-agent"),
+      roomId: stringToUuid("ack-lost-room"),
+      content: {
+        text: "exact payload",
+        source: "api",
+        channelType: ChannelType.DM,
+      },
+    });
+    let stored: typeof memory | undefined;
+    const runtime = {
+      getMemoriesByIds: vi.fn(async () => (stored ? [stored] : [])),
+      createMemory: vi.fn(async () => {
+        stored = memory;
+        throw new Error("commit acknowledgement lost");
+      }),
+    } as unknown as AgentRuntime;
+
+    await expect(
+      persistExactConversationMemory(runtime, memory),
+    ).resolves.toMatchObject({ id: memory.id, content: memory.content });
+    expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an existing id whose stored ownership or content differs", async () => {
+    const memory = createMessageMemory({
+      id: stringToUuid("conflicting-memory"),
+      entityId: stringToUuid("conflicting-user"),
+      agentId: stringToUuid("conflicting-agent"),
+      roomId: stringToUuid("conflicting-room"),
+      content: { text: "expected", channelType: ChannelType.DM },
+    });
+    const runtime = {
+      getMemoriesByIds: vi.fn(async () => [
+        {
+          ...memory,
+          agentId: stringToUuid("different-agent"),
+          content: { ...memory.content, text: "different" },
+        },
+      ]),
+      createMemory: vi.fn(),
+    } as unknown as AgentRuntime;
+
+    await expect(
+      persistExactConversationMemory(runtime, memory),
+    ).rejects.toThrow("already bound to different content");
+    expect(runtime.createMemory).not.toHaveBeenCalled();
   });
 });

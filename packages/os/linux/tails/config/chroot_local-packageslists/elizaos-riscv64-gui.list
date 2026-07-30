@@ -3,6 +3,7 @@
 # This file is intentionally kept with the canonical Tails-derived distro even
 # though upstream Tails' live-build plumbing remains amd64-first today. Do not
 # move riscv64 Linux support back into a second distro tree.
+#if ARCHITECTURE riscv64
 linux-image-riscv64
 grub-efi-riscv64
 grub-efi-riscv64-bin
@@ -24,3 +25,4 @@ nodejs
 node-undici
 node-ws
 node-fetch
+#endif

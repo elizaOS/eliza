@@ -20,11 +20,13 @@ function echoAction(
 	opts: {
 		validate?: () => Promise<boolean>;
 		onOptions?: (options: Record<string, unknown> | undefined) => void;
+		parameters?: Action["parameters"];
 	} = {},
 ): Action {
 	return {
 		name: "ECHO_COMMAND",
 		description: "echo",
+		...(opts.parameters ? { parameters: opts.parameters } : {}),
 		validate: opts.validate ?? (async () => true),
 		handler: async (_rt, message, _state, options, callback) => {
 			opts.onOptions?.(options);
@@ -104,15 +106,23 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			result?.result.actionResults,
 		);
 		expect(useModel).not.toHaveBeenCalled();
-		// #8792: a SLASH_COMMAND_INVOKED interaction event is emitted.
-		expect(emitEvent).toHaveBeenCalledTimes(1);
-		const [eventType, payload] = emitEvent.mock.calls[0] as [
+		// The shared executor emits lifecycle events as well as the interaction.
+		const interactionEvents = emitEvent.mock.calls.filter(
+			(call) => call[0] === EventType.SLASH_COMMAND_INVOKED,
+		);
+		expect(interactionEvents).toHaveLength(1);
+		const [eventType, payload] = interactionEvents[0] as [
 			string,
 			Record<string, unknown>,
 		];
 		expect(eventType).toBe(EventType.SLASH_COMMAND_INVOKED);
 		expect(payload.command).toBe("echo");
 		expect(payload.initiatedBy).toBe("user");
+		expect(emitEvent.mock.calls.map((call) => call[0])).toEqual([
+			EventType.ACTION_STARTED,
+			EventType.ACTION_COMPLETED,
+			EventType.SLASH_COMMAND_INVOKED,
+		]);
 	});
 
 	it("returns null for a non-command message (turn proceeds to the LLM)", async () => {
@@ -187,7 +197,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
-	it("falls through and logs when an explicit shortcut action validate() throws (#9153)", async () => {
+	it("falls through and logs when an explicit shortcut action validate() throws", async () => {
 		const boom = new Error("validate exploded");
 		const validate = vi.fn(async () => {
 			throw boom;
@@ -205,23 +215,19 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			responseId,
 			senderRole: "OWNER",
 		});
-		// A crashing validate() must still fall through to the pipeline (return null)
-		// without invoking the model — but the crash must be observable, not swallowed.
+		// A crashing validate() falls through without invoking the model, while
+		// remaining observable because no planner transcript receives it.
 		expect(result).toBeNull();
 		expect(validate).toHaveBeenCalledTimes(1);
 		expect(useModel).not.toHaveBeenCalled();
 		expect(warn).toHaveBeenCalledTimes(1);
-		const [context, message] = warn.mock.calls[0] as [
-			Record<string, unknown>,
-			string,
-		];
-		expect(context).toMatchObject({
+		expect(warn.mock.calls[0]?.[0]).toMatchObject({
 			src: "shortcut-gate",
 			shortcut: "cmd:echo",
 			action: "ECHO_COMMAND",
 			err: boom,
 		});
-		expect(message).toContain("validate");
+		expect(warn.mock.calls[0]?.[1]).toContain("failed");
 	});
 
 	it("fires a confident natural-language shortcut without an env gate (voice/typed parity)", async () => {
@@ -230,6 +236,14 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			actions: [
 				echoAction({
 					onOptions: (options) => seenOptions.push(options),
+					parameters: [
+						{
+							name: "what",
+							description: "Text to echo",
+							required: true,
+							schema: { type: "string" },
+						},
+					],
 				}),
 			],
 		});
@@ -254,7 +268,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			{ success: true, data: { actionName: "ECHO_COMMAND" } },
 		]);
 		expect(result?.result.responseContent.thought).toBe("Shortcut: nl:echo");
-		expect(seenOptions[0]).toEqual({ what: "hello there", mode: "simple" });
+		expect(seenOptions[0]?.parameters).toEqual({ what: "hello there" });
 		expect(useModel).not.toHaveBeenCalled();
 		const shortcutEvents = emitEvent.mock.calls.filter(
 			(c) => c[0] === EventType.SHORTCUT_FIRED,

@@ -19,9 +19,12 @@ import {
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+  ANDROID_LP3_COLOR_POLICY_ACTIONS,
+  ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS,
   ANDROID_LP3_COLOR_POLICY_COMPONENTS,
   ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
   ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
+  ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
   enforceAndroidLp3ColorPolicyBuildPolicy,
   isAndroidLp3ColorPolicyEnabled,
   resolveAndroidCloudStripPolicy,
@@ -40,6 +43,10 @@ const debugManifestPath = path.join(
 const servicePath = path.join(
   androidRoot,
   "lp3-color-policy/src/debug/java/ai/elizaos/app/Lp3ColorPolicyService.java",
+);
+const initializerPath = path.join(
+  androidRoot,
+  "lp3-color-policy/src/debug/java/ai/elizaos/app/Lp3ColorPolicyInitializer.java",
 );
 const readmePath = path.join(androidRoot, "README.md");
 const repoRoot = path.resolve(scriptsDir, "../../..");
@@ -239,6 +246,9 @@ describe("LP3 direct Cloud build flag", () => {
 
     expect(direct.components).toContain("ElizaAgentService");
     expect(direct.permissions).toContain("MANAGE_APP_OPS_MODES");
+    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).not.toContain(
+      "POST_NOTIFICATIONS",
+    );
     expect(direct.javaFiles).toContain("ElizaAgentService.java");
   });
 
@@ -252,6 +262,9 @@ describe("LP3 direct Cloud build flag", () => {
     for (const permission of ANDROID_LP3_COLOR_POLICY_PERMISSIONS) {
       const full = `android.permission.${permission}`;
       expect(hasAndroidPermissionRequest(normal, full)).toBe(false);
+    }
+    for (const action of ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS) {
+      expect(normal).not.toContain(action);
     }
   });
 
@@ -288,21 +301,47 @@ describe("LP3 direct Cloud build flag", () => {
       receiverStart,
       manifest.indexOf("</receiver>", receiverStart),
     );
+    const initializerStart = manifest.indexOf(
+      'android:name=".Lp3ColorPolicyInitializer"',
+    );
+    const initializerBlock = manifest.slice(
+      initializerStart,
+      manifest.indexOf("/>", initializerStart),
+    );
 
+    expect(manifest).toContain("Lp3ColorPolicyInitializer");
     expect(manifest).toContain("Lp3ColorPolicyService");
     expect(manifest).toContain('android:foregroundServiceType="specialUse"');
     expect(manifest).toContain("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE");
     expect(manifest).toContain("Lp3ColorPolicyBootReceiver");
     expect(manifest).not.toMatch(
-      /Lp3ColorPolicy(?:Service|BootReceiver)[\s\S]{0,160}directBootAware/,
+      /Lp3ColorPolicy(?:Initializer|Service|BootReceiver)[\s\S]{0,160}directBootAware/,
     );
+    for (const permission of ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS) {
+      expect(manifest).toContain(`android.permission.${permission}`);
+    }
+    expect(initializerBlock).toContain('android:exported="false"');
+    expect(initializerBlock).toMatch(
+      /android:authorities="\$\{applicationId\}\.lp3-color-policy-initializer"/,
+    );
+    expect(initializerBlock).toContain('android:grantUriPermissions="false"');
+    expect(initializerBlock).toContain('android:initOrder="100"');
     expect(manifest).toContain("android.intent.action.BOOT_COMPLETED");
     expect(manifest).toContain("android.intent.action.MY_PACKAGE_REPLACED");
+    expect(manifest).not.toContain(
+      "android.app.action.APP_BLOCK_STATE_CHANGED",
+    );
+    expect(manifest).not.toContain(
+      "android.app.action.NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED",
+    );
     expect(manifest).toContain("ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY");
     expect(manifest).toContain(
       "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
     );
     expect(manifest).toContain("ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY");
+    for (const action of ANDROID_LP3_COLOR_POLICY_ACTIONS) {
+      expect(receiverBlock).toContain(action);
+    }
     expect(receiverBlock).toContain('android:exported="false"');
     expect(receiverBlock).not.toContain("android:permission=");
     expect(gradle).toContain(
@@ -315,7 +354,10 @@ describe("LP3 direct Cloud build flag", () => {
   });
 
   it("keeps runtime opt-in private and writable only through same-UID commands", () => {
-    const service = fs.readFileSync(servicePath, "utf8");
+    const service = fs
+      .readFileSync(servicePath, "utf8")
+      .replace(/\r\n?/g, "\n");
+    const initializer = fs.readFileSync(initializerPath, "utf8");
     const readme = fs.readFileSync(readmePath, "utf8");
 
     expect(service).toContain('PREFERENCES_NAME = "lp3_color_policy"');
@@ -325,9 +367,46 @@ describe("LP3 direct Cloud build flag", () => {
     expect(service).not.toContain("Settings.System");
     expect(service).toContain("if (!initialized)");
     expect(service).toContain("return START_NOT_STICKY");
+    expect(service).toContain("MISSING_NOTIFICATION_PERMISSION");
+    expect(service).toContain("MISSING_NOTIFICATION_DISCLOSURE");
+    expect(service).toContain("Manifest.permission.POST_NOTIFICATIONS");
+    expect(service).toContain("manager.areNotificationsEnabled()");
+    expect(service).toContain("NotificationManager.IMPORTANCE_NONE");
+    expect(service).toContain(
+      "NotificationManager.ACTION_APP_BLOCK_STATE_CHANGED",
+    );
+    expect(service).toContain(
+      "NotificationManager.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED",
+    );
+    expect(service).toContain("Context.RECEIVER_NOT_EXPORTED");
+    expect(service).toContain(
+      "NotificationManager.EXTRA_NOTIFICATION_CHANNEL_ID",
+    );
+    expect(service).toContain("unregisterReceiver(registeredReceiver)");
+    expect(service).toContain(
+      "currentDecision(this);\n            if (decision",
+    );
+    expect(service).toContain('"service-create-post-channel"');
+    expect(initializer).toContain("extends ContentProvider");
+    expect(initializer).toContain(
+      'Lp3ColorPolicyService.sync(appContext, "process-start")',
+    );
+    expect(initializer).toContain(
+      'Lp3ColorPolicyService.sync(activity, "activity-resumed")',
+    );
+    expect(initializer).toContain("activity.requestPermissions");
+    expect(initializer).toContain("shouldRequestPostNotifications");
+    expect(initializer).toContain("acceptsNotificationStateChange");
+    expect(initializer).toContain("app.unregisterReceiver(registeredReceiver)");
+    expect(initializer).toContain("Manifest.permission.POST_NOTIFICATIONS");
     expect(readme).toContain("adb shell run-as ai.elizaos.app am broadcast");
+    expect(readme).toContain(
+      "adb shell pm grant ai.elizaos.app android.permission.POST_NOTIFICATIONS",
+    );
     expect(readme).toContain("ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY");
     expect(readme).toContain("ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY");
+    expect(readme).toContain("channel-level block");
+    expect(readme).toContain("permission-prompt loop");
   });
 
   it("does not grant the direct-only permission to generic AOSP builds", () => {

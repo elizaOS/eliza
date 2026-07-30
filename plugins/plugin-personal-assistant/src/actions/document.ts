@@ -235,6 +235,14 @@ function patchDocument(
   return next;
 }
 
+/** Read-only preflight for a queued signature approval. */
+export function getDocumentRequest(
+  runtime: IAgentRuntime,
+  documentRequestId: string,
+): DocumentRequest | null {
+  return getDocStore(runtime).get(documentRequestId) ?? null;
+}
+
 /**
  * Execute an owner-approved `sign_document` request: flip the underlying
  * DocumentRequest from `pending` to `in_progress` so the deadline watcher

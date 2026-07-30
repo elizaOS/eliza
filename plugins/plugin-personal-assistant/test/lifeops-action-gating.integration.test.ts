@@ -233,6 +233,15 @@ describe("LifeOps plugin action gating", () => {
     if (!actionParam) {
       throw new Error("ENTITY has no `action` parameter");
     }
+    const connectorAccountParam = (entity.parameters ?? []).find(
+      (parameter) => parameter.name === "connectorAccountId",
+    );
+    expect(connectorAccountParam).toMatchObject({
+      schema: { type: "string" },
+    });
+    expect(connectorAccountParam?.description).toMatch(
+      /exact configured connector account/i,
+    );
     // Follow-up cadence lives on SCHEDULED_TASKS now; the transitional
     // legacy child names (`add_follow_up`, `complete_follow_up`,
     // `follow_up_list`, `days_since`, `list_overdue_followups`,

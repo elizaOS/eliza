@@ -19,8 +19,8 @@ import {
 /**
  * Built-in LifeOps anchors resolve owner-window times into concrete fire
  * instants in the owner's timezone — the basis for `relative_to_anchor`
- * scheduling. The math must land on the correct UTC instant and degrade to
- * null on missing/invalid windows.
+ * scheduling. The math must land on the correct UTC instant, degrade to null
+ * only when a window is absent, and reject malformed supplied times.
  */
 
 const ctx = (
@@ -74,11 +74,17 @@ describe("built-in anchors", () => {
     });
   });
 
-  it("returns null on a missing window or malformed time", () => {
+  it("returns null for a missing window and a typed error for malformed time", () => {
     expect(anchor("morning.start").resolve(ctx({}))).toBeNull();
-    expect(
+    expect(() =>
       anchor("night.start").resolve(ctx({ eveningWindow: { start: "25:61" } })),
-    ).toBeNull();
+    ).toThrow(
+      expect.objectContaining({
+        code: "invalid_local_time",
+        reason: "malformed_hhmm",
+        localTime: "25:61",
+      }),
+    );
   });
 
   it("treats meeting.ended as event-driven (always null here)", () => {

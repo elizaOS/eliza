@@ -96,14 +96,22 @@ describe("delegation connector event normalization", () => {
       upsertDelegationContract: vi.fn(async () => undefined),
     };
     const approvalQueue: ApprovalQueue = {
+      capability: "eliza.approval-execution",
+      protocolVersion: 2,
       enqueue: vi.fn(),
       list: vi.fn(),
       byId: vi.fn(),
       approve: vi.fn(),
       reject: vi.fn(),
-      markExecuting: vi.fn(),
+      claimExecution: vi.fn(),
+      markDispatchStarted: vi.fn(),
       markDone: vi.fn(),
+      markRetryableFailure: vi.fn(),
+      markReconciliationRequired: vi.fn(),
+      recoverUnstartedExecution: vi.fn(),
+      reconcileExecution: vi.fn(),
       markExpired: vi.fn(),
+      removePending: vi.fn(),
       purgeExpired: vi.fn(),
     };
     const processingResult: DelegationInboundProcessingResult = {

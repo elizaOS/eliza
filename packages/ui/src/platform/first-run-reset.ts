@@ -14,6 +14,7 @@ const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 const SETUP_STEP_STORAGE_KEY = "eliza:setup:step";
 const FIRST_RUN_COMPLETE_STORAGE_KEY = "eliza:first-run-complete";
 const FORCE_FRESH_FIRST_RUN_STORAGE_KEY = "elizaos:first-run:force-fresh";
+const FORCE_FRESH_RESET_APPLIED_STORAGE_KEY = "elizaos:first-run:reset-applied";
 const RESET_QUERY_PARAM = "reset";
 const PATCH_STATE = Symbol.for("elizaos.forceFreshFirstRunPatch");
 type PatchableClient = ClientLike & { [PATCH_STATE]?: PatchState };
@@ -56,9 +57,13 @@ export function enableForceFreshFirstRun(storage?: StorageLike | null): void {
   try {
     // Privileged: the reset escape hatch must work no matter which view is
     // active, and these are the shell's own reserved keys.
-    runAsPrivilegedShell(() =>
-      resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1"),
-    );
+    runAsPrivilegedShell(() => {
+      resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1");
+      // A reload-triggered reset still needs startup restore to clear the old
+      // active server. Do not inherit a stale marker from an interrupted
+      // query-param reset.
+      resolvedStorage.removeItem(FORCE_FRESH_RESET_APPLIED_STORAGE_KEY);
+    });
   } catch {
     // Ignore storage failures during startup.
   }
@@ -87,11 +92,32 @@ export function clearForceFreshFirstRun(storage?: StorageLike | null): void {
   }
 
   try {
-    runAsPrivilegedShell(() =>
-      resolvedStorage.removeItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY),
-    );
+    runAsPrivilegedShell(() => {
+      resolvedStorage.removeItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY);
+      resolvedStorage.removeItem(FORCE_FRESH_RESET_APPLIED_STORAGE_KEY);
+    });
   } catch {
     // Ignore storage failures during startup.
+  }
+}
+
+/**
+ * Reports whether the `?reset` boot path already removed the prior active
+ * server before React startup began. A server present alongside this marker
+ * was created after that reset and represents newer connection intent.
+ */
+export function wasForceFreshResetApplied(
+  storage?: StorageLike | null,
+): boolean {
+  const resolvedStorage = getStorage(storage);
+  if (!resolvedStorage) return false;
+
+  try {
+    return (
+      resolvedStorage.getItem(FORCE_FRESH_RESET_APPLIED_STORAGE_KEY) === "1"
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -118,6 +144,10 @@ export function applyForceFreshFirstRunReset(args?: {
         resolvedStorage.removeItem(SETUP_STEP_STORAGE_KEY);
         resolvedStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
         resolvedStorage.setItem(FORCE_FRESH_FIRST_RUN_STORAGE_KEY, "1");
+        // Startup restore consumes this marker with the force-fresh flag. It
+        // prevents that later phase from deleting a connection established by
+        // a deep link after the old target was already cleared here.
+        resolvedStorage.setItem(FORCE_FRESH_RESET_APPLIED_STORAGE_KEY, "1");
       });
     } catch {
       // Ignore storage failures during startup.

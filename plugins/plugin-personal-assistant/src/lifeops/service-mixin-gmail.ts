@@ -115,7 +115,7 @@ export interface LifeOpsGmailService {
   sendGmailMessage(
     requestUrl: URL,
     request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true }>;
+  ): Promise<{ ok: true; messageId: string; threadId: string | null }>;
   sendGmailReplies(
     requestUrl: URL,
     request: SendLifeOpsGmailBatchReplyRequest,

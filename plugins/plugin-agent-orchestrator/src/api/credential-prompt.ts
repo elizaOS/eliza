@@ -14,14 +14,23 @@
  * `session.metadata` at spawn time (`roomId`, `source`).
  */
 
-import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
-import { logger, MESSAGE_SOURCE_SUB_AGENT } from "@elizaos/core";
+import type {
+  Content,
+  IAgentRuntime,
+  SendHandlerResult,
+  UUID,
+} from "@elizaos/core";
+import {
+  logger,
+  MESSAGE_SOURCE_SUB_AGENT,
+  requireConfirmedSendHandlerDelivery,
+} from "@elizaos/core";
 
 type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
     target: { source: string; roomId?: UUID; accountId?: string },
     content: Content,
-  ) => Promise<unknown>;
+  ) => SendHandlerResult;
 };
 
 interface CredentialPromptOrigin {
@@ -222,10 +231,12 @@ export async function emitCredentialPrompt(input: {
     ...(secretRequest ? { secretRequest } : {}),
   } as Content & { secretRequest?: CredentialSecretRequestEnvelope };
   try {
-    await send.call(
-      runtime,
-      { source: origin.source, roomId: origin.roomId },
-      content,
+    requireConfirmedSendHandlerDelivery(
+      await send.call(
+        runtime,
+        { source: origin.source, roomId: origin.roomId },
+        content,
+      ),
     );
     return true;
   } catch (error) {
@@ -261,12 +272,14 @@ export async function emitCredentialResolved(input: {
   }
   const who = label ? `**${label}**` : "the sub-agent";
   try {
-    await (runtime as RuntimeWithSendTarget).sendMessageToTarget?.(
-      { source: origin.source, roomId: origin.roomId },
-      {
-        text: `✅ Credential \`${key}\` received — resuming ${who}.`,
-        source: origin.source,
-      },
+    requireConfirmedSendHandlerDelivery(
+      await (runtime as RuntimeWithSendTarget).sendMessageToTarget?.(
+        { source: origin.source, roomId: origin.roomId },
+        {
+          text: `✅ Credential \`${key}\` received — resuming ${who}.`,
+          source: origin.source,
+        },
+      ),
     );
     return true;
   } catch (error) {

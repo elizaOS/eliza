@@ -4,7 +4,13 @@
  * ensures the LifeOps scheduler task exists so the profile drives scheduling.
  */
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
-import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  stableStringify,
+  type Task,
+  type UUID,
+} from "@elizaos/core";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -442,6 +448,11 @@ export type LifeOpsMeetingPreferencesPatch = Partial<
   Omit<LifeOpsMeetingPreferences, "updatedAt">
 >;
 
+export interface LifeOpsMeetingPreferencesUpdate {
+  readonly taskId: UUID;
+  readonly preferences: LifeOpsMeetingPreferences;
+}
+
 const DEFAULT_MEETING_PREFERENCES: LifeOpsMeetingPreferences = {
   timeZone: "America/Los_Angeles",
   preferredStartLocal: "09:00",
@@ -542,7 +553,7 @@ export async function readLifeOpsMeetingPreferences(
 export async function updateLifeOpsMeetingPreferences(
   runtime: IAgentRuntime,
   patch: LifeOpsMeetingPreferencesPatch | Record<string, unknown>,
-): Promise<LifeOpsMeetingPreferences | null> {
+): Promise<LifeOpsMeetingPreferencesUpdate | null> {
   const normalizedPatch = normalizeLifeOpsMeetingPreferencesPatch(patch);
   if (Object.keys(normalizedPatch).length === 0) return null;
 
@@ -561,7 +572,31 @@ export async function updateLifeOpsMeetingPreferences(
   await runtime.updateTask(taskId, {
     metadata: { ...metadata, meetingPreferences: next },
   });
-  return next;
+  const persistedTask = await readLifeOpsSchedulerTask(runtime);
+  const persistedMetadata =
+    persistedTask && isRecord(persistedTask.metadata)
+      ? persistedTask.metadata
+      : null;
+  const persisted = resolveMeetingPreferences(persistedMetadata);
+  if (
+    persistedTask?.id !== taskId ||
+    stableStringify(persisted) !== stableStringify(next)
+  ) {
+    throw new ElizaError(
+      "Meeting preferences write completed without matching task read-back",
+      {
+        code: "LIFEOPS_MEETING_PREFERENCES_PERSISTENCE_PROOF_REQUIRED",
+        context: {
+          taskId,
+          persistedTaskId: persistedTask?.id ?? null,
+          expectedUpdatedAt: next.updatedAt,
+          persistedUpdatedAt: persisted.updatedAt,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  return { taskId, preferences: persisted };
 }
 
 export async function updateLifeOpsOwnerProfile(

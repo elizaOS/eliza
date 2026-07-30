@@ -94,7 +94,11 @@ function resolveBunCommand(env) {
 // With shell:true node joins args into one cmd.exe command line without
 // quoting. CI passes no extra args; guard local invocations against args that
 // cmd.exe would misparse instead of silently mangling them.
-const SHELL_SAFE_ARG = /^[A-Za-z0-9_\-./\\=:*?,[\]@+]+$/;
+// `~` is allowed because Windows 8.3 short paths contain it (e.g.
+// C:\Users\RUNNER~1\AppData\Local\Temp\...): the wrapper's own e2e test spawns
+// this script with a probe file under tmpdir(), and cmd.exe treats `~`
+// literally, so it is quote-safe.
+const SHELL_SAFE_ARG = /^[A-Za-z0-9_~\-./\\=:*?,[\]@+]+$/;
 function assertShellSafe(args) {
   const offender = args.find((arg) => !SHELL_SAFE_ARG.test(arg));
   if (offender !== undefined) {

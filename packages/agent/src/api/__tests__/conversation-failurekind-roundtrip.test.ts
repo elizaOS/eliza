@@ -55,7 +55,22 @@ vi.mock("../chat-routes.ts", async () => {
       metadata: undefined,
     })),
     persistConversationMemory: vi.fn(async () => undefined),
-    persistAssistantConversationMemory: vi.fn(async () => undefined),
+    persistAssistantConversationMemory: vi.fn(
+      async (
+        runtime: { agentId: UUID },
+        roomId: UUID,
+        content: string | Record<string, unknown>,
+        _channelType: ChannelType,
+        _dedupeSinceMs?: number,
+        memoryId?: UUID,
+      ) => ({
+        id: memoryId ?? stringToUuid("assistant-persisted"),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId,
+        content: typeof content === "string" ? { text: content } : content,
+      }),
+    ),
     hasRecentVisibleAssistantMemorySince: vi.fn(async () => false),
     generateChatResponse: vi.fn(
       async (
@@ -64,7 +79,9 @@ vi.mock("../chat-routes.ts", async () => {
         agentName: string,
         opts: { onChunk?: (chunk: string) => void },
       ) => {
-        opts?.onChunk?.("ok");
+        if (generateResult.transcriptVisibility !== "internal") {
+          opts?.onChunk?.("ok");
+        }
         return {
           text: "ok",
           agentName,
@@ -112,7 +129,10 @@ import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
-import { handleConversationRoutes } from "../conversation-routes.ts";
+import {
+  buildPersistedAssistantContent,
+  handleConversationRoutes,
+} from "../conversation-routes.ts";
 
 const AGENT_ID = stringToUuid("agent-1") as UUID;
 const USER_ID = stringToUuid("user-1") as UUID;
@@ -154,15 +174,29 @@ function createState(
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
+  const worlds = new Map<
+    UUID,
+    { id: UUID; agentId: UUID; metadata: Record<string, unknown> }
+  >();
   const runtime = {
     agentId: AGENT_ID,
     character: { name: "Test Agent" },
     logger,
     getMemories: vi.fn(async () => memories),
-    ensureConnection: vi.fn(async () => undefined),
+    ensureConnection: vi.fn(async (input: { worldId?: UUID }) => {
+      if (!input.worldId) throw new Error("worldId is required");
+      if (!worlds.has(input.worldId)) {
+        worlds.set(input.worldId, {
+          id: input.worldId,
+          agentId: AGENT_ID,
+          metadata: {},
+        });
+      }
+    }),
     updateWorld: vi.fn(async () => undefined),
-    getWorld: vi.fn(async () => null),
+    getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async () => [USER_ID, AGENT_ID]),
     adapter: {},
   };
   return {
@@ -185,6 +219,7 @@ function createReq(method: string, url: string): http.IncomingMessage {
     method,
     url,
     headers: {},
+    socket: { remoteAddress: "127.0.0.1" },
   }) as http.IncomingMessage;
 }
 
@@ -357,6 +392,155 @@ describe("conversation failureKind round-trip", () => {
 
     const payload = captured.payload as { failureKind?: string };
     expect(payload.failureKind).toBe("insufficient_credits");
+  });
+});
+
+describe("conversation transcript visibility round-trip", () => {
+  beforeEach(() => {
+    generateResult = {};
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("persists internal visibility alongside the raw diagnostic text", () => {
+    expect(
+      buildPersistedAssistantContent("available_views:\nviews[1]{id}: notes", {
+        transcriptVisibility: "internal",
+      }),
+    ).toMatchObject({
+      text: "available_views:\nviews[1]{id}: notes",
+      transcriptVisibility: "internal",
+    });
+  });
+
+  it("removes inherited internal visibility when authoritative text is visible", () => {
+    expect(
+      buildPersistedAssistantContent("Notes is ready.", {
+        responseContent: {
+          text: "available_views:\nviews[1]{id}: notes",
+          transcriptVisibility: "internal",
+        },
+        responseMessages: [
+          {
+            id: "00000000-0000-0000-0000-000000000031" as UUID,
+            content: {
+              text: "available_views:\nviews[1]{id}: notes",
+              transcriptVisibility: "internal",
+            },
+          },
+        ],
+      }),
+    ).toMatchObject({ text: "Notes is ready." });
+    expect(
+      buildPersistedAssistantContent("Notes is ready.", {
+        responseContent: {
+          text: "available_views:\nviews[1]{id}: notes",
+          transcriptVisibility: "internal",
+        },
+      }).transcriptVisibility,
+    ).toBeUndefined();
+  });
+
+  it("GET /messages omits persisted internal diagnostics from visible history", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({
+        text: "available_views:\nviews[1]{id}: notes",
+        transcriptVisibility: "internal",
+      }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{
+        role: string;
+        text: string;
+        transcriptVisibility?: string;
+      }>;
+    };
+    const assistant = payload.messages.find((m) => m.role === "assistant");
+    expect(assistant).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain("available_views");
+  });
+
+  it("streaming suppresses internal fallback tokens and tags only the done frame", async () => {
+    generateResult = {
+      text: "available_views:\nviews[1]{id}: notes",
+      transcriptVisibility: "internal",
+    };
+    const state = createState();
+    const { ctx, record } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages/stream",
+      state,
+    );
+
+    const done = handleConversationRoutes(ctx);
+    for (let i = 0; i < 12; i++) await new Promise((r) => setImmediate(r));
+    await done;
+
+    const frames = record.writes
+      .flatMap((write) => write.split("\n\n"))
+      .filter((frame) => frame.startsWith("data: "))
+      .map((frame) => JSON.parse(frame.slice("data: ".length)) as object);
+    expect(frames).not.toContainEqual(
+      expect.objectContaining({ type: "token" }),
+    );
+    expect(frames).toContainEqual(
+      expect.objectContaining({
+        type: "done",
+        fullText: "",
+        transcriptVisibility: "internal",
+      }),
+    );
+  });
+
+  it("non-streaming JSON carries internal visibility", async () => {
+    generateResult = {
+      text: "available_views:\nviews[1]{id}: notes",
+      transcriptVisibility: "internal",
+    };
+    const state = createState();
+    const { ctx, captured } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    expect(captured.payload).toMatchObject({
+      text: "",
+      transcriptVisibility: "internal",
+    });
+  });
+
+  it("preserves a distinct visible summary across the non-streaming boundary", async () => {
+    generateResult = {
+      text: "Notes and Calendar are ready to use.",
+    };
+    const state = createState();
+    const { ctx, captured } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    expect(captured.payload).toMatchObject({
+      text: "Notes and Calendar are ready to use.",
+    });
+    expect(captured.payload).not.toMatchObject({
+      transcriptVisibility: "internal",
+    });
   });
 });
 

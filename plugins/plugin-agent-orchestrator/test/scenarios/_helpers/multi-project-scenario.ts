@@ -135,6 +135,13 @@ export class MultiProjectAcp {
     return [];
   }
 
+  // Auto goal verification reads the orchestrator-owned artifact ledger;
+  // without this the optional-chained call throws and completions park in
+  // `validating` (mirrors the main orchestrator-scenario-harness stub).
+  getOrchestratorOwnedArtifacts(_sessionId: string): [] {
+    return [];
+  }
+
   async stopSession(id: string): Promise<void> {
     const s = this.sessions.get(id);
     if (s) s.status = "stopped";

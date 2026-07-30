@@ -30,6 +30,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { getCloudAuthToken } from "./api/client-cloud";
 import {
   type ActiveViewLayout,
   createNavigateViewHandler,
@@ -51,13 +52,13 @@ import {
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
+import { AgentAuthGateSurface } from "./components/auth/AgentAuthGateSurface";
 import {
-  CloudHostedAgentAuthNotice,
   CloudPairRelay,
   getCloudPairTokenFromLocation,
   isElizaCloudHostedLocation,
+  resolveCloudHostedAgentUrl,
 } from "./components/auth/CloudPairRelay";
-import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
@@ -70,6 +71,7 @@ import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
+import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -90,14 +92,15 @@ import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud";
 import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
+import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
-  CONNECT_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
+  listenForConnectRequests,
   NAVIGATE_VIEW_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
@@ -119,6 +122,7 @@ import {
   getWindowNavigationPath,
   isAospShellEnabled,
   isRouteRootPath,
+  NATIVE_OS_VIEW_IDS,
   pathForTab,
   shouldUseHashNavigation,
   TAB_PATHS,
@@ -134,6 +138,7 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
+import { shouldShowCloudAgentReauthNotice } from "./state/agent-session-recovery";
 import {
   useChatComposer,
   useChatInputRef,
@@ -156,6 +161,7 @@ import { shellHistory } from "./surface-realm-channel";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
+import { openExternalUrl } from "./utils/openExternalUrl";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -227,6 +233,7 @@ import {
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
+import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
   isWalletSectionPath,
   WalletSectionNav,
@@ -622,10 +629,12 @@ function TabContentView({
   // is transparent unless a view opts back into its own opaque surface.
   surface = "transparent",
   nav,
+  reserveChatClearance = true,
 }: {
   children: ReactNode;
   surface?: "opaque" | "transparent";
   nav?: ReactNode;
+  reserveChatClearance?: boolean;
 }) {
   return (
     <AppWorkspaceChrome
@@ -635,13 +644,24 @@ function TabContentView({
       main={
         <div
           data-shell-content-region="true"
-          className="eliza-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+          className={cn(
+            "eliza-chat-scroll flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden",
+            reserveChatClearance &&
+              "pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]",
+          )}
         >
           {children}
         </div>
       }
     />
   );
+}
+
+function surfaceOwnsViewport(
+  declaration: SurfaceManifestBearer | null | undefined,
+): boolean {
+  const header = resolveSurfaceManifest(declaration).header;
+  return header === "fullscreen" || header === "immersive";
 }
 
 interface ResolvedDynamicPage {
@@ -752,12 +772,12 @@ function RegisteredAppShellPage({
 }: {
   registration: AppShellPageRegistration;
 }) {
+  let content: ReactNode;
   if (registration.Component) {
     const Component = registration.Component;
-    return <Component />;
-  }
-  if (registration.loader) {
-    return (
+    content = <Component />;
+  } else if (registration.loader) {
+    content = (
       <RetainedLazyComponent
         loader={registration.loader}
         cacheKey={registration.id}
@@ -774,11 +794,21 @@ function RegisteredAppShellPage({
         )}
       />
     );
+  } else {
+    content = (
+      <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+        {registration.label} is not available in this build.
+      </div>
+    );
   }
+
+  // In-process plugin pages bypass DynamicViewLoader, so the shell owns the
+  // capability bridge for them. This keeps registry pages and remote bundles
+  // equivalent: controls registered with useAgentElement are live immediately.
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      {registration.label} is not available in this build.
-    </div>
+    <ShellViewAgentSurface viewId={registration.id}>
+      {content}
+    </ShellViewAgentSurface>
   );
 }
 
@@ -1133,17 +1163,19 @@ function findRemoteViewForRoute(
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (SHELL_RESERVED_PATHS.has(normalizedPath)) return undefined;
+  // Exact plugin paths own their route even when they share a reserved tab
+  // affinity such as Wallet. This lets web/desktop mount the agent-served
+  // bundle while native shells still fall back to their in-process page.
+  const exactMatch = views.find(
+    (view) => remoteViewAvailable(view) && view.path === normalizedPath,
+  );
+  if (exactMatch) return exactMatch;
   if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
     return undefined;
   }
-  return (
-    views.find(
-      (view) => remoteViewAvailable(view) && view.path === normalizedPath,
-    ) ??
-    views.find(
-      (view) =>
-        remoteViewAvailable(view) && remoteViewMatchesTab(view, tab, appSlug),
-    )
+  return views.find(
+    (view) =>
+      remoteViewAvailable(view) && remoteViewMatchesTab(view, tab, appSlug),
   );
 }
 
@@ -1155,9 +1187,12 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   // matching #13586 ("the shell enforces the shared ViewHeader on every normal
   // view"); `fullscreen`/`modal`/`immersive` opt out. A section nav (Wallet /
   // Character strip) already supplies the header, so it suppresses this one.
-  const showHeader = !nav && resolveSurfaceManifest(view).header === "normal";
+  const manifest = resolveSurfaceManifest(view);
+  const showHeader = !nav && manifest.header === "normal";
+  const ownsViewport =
+    manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
-    <TabContentView nav={nav}>
+    <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
       {showHeader ? <ViewHeader title={view.label} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DynamicViewLoader
@@ -1544,43 +1579,28 @@ function renderViewRouterContent({
   settingsNavigatePayload?: unknown;
   settingsNavigateSequence?: number;
 }): ReactNode {
-  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
-    return (
-      <TabContentView>
-        <DynamicPluginPage resolved={dynamicPage} />
-      </TabContentView>
-    );
-  }
-  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
-    return (
-      <TabContentView>
-        <DynamicPluginPage resolved={dynamicAppPage} />
-      </TabContentView>
-    );
-  }
-  // Wallet-family routes share one sub-nav rendered in the workspace chrome
-  // nav slot. Plugins join it by registering app-shell pages with group=wallet.
+  // Path ownership is more specific than tab affinity. Wallet-family plugins
+  // intentionally share the `inventory` tab, but their exact routes must mount
+  // their own registrations before that affinity resolves to the wallet root.
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
-
-  // Character-family routes (Personality/Relationships/Skills/Experience) share
-  // one "Character" header + section strip in the same nav slot (#13591). Unlike
-  // Wallet, the members are a fixed host-owned set, so the strip is static.
-  const characterNav = isCharacterSectionPath(navigationPath) ? (
-    <CharacterSectionNav activePath={navigationPath} />
-  ) : undefined;
-
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  // The AOSP system surfaces are host-owned because they coordinate privileged
+  // device APIs beyond the narrower plugin views. Keep them stable when remote
+  // metadata or a late in-process registration for the same path arrives.
   if (
-    appShellPageForRoute &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
+    nativeOsSurfaceEnabled &&
+    (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
   ) {
-    return (
-      <TabContentView nav={walletNav}>
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
+    return renderStaticViewRouterTab({
+      tab,
+      nativeOsSurfaceEnabled,
+      navigationPath,
+      settingsInitialSection,
+      settingsNavigatePayload,
+      settingsNavigateSequence,
+      walletNav,
+    });
   }
   const remoteView = findRemoteViewForRoute(
     availableViews,
@@ -1591,6 +1611,47 @@ function renderViewRouterContent({
   if (remoteView?.bundleUrl || remoteView?.frameUrl) {
     return renderRemoteView(remoteView, walletNav);
   }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (
+    appShellPageForRoute &&
+    isViewVisible(appShellPageForRoute, enabledKinds)
+  ) {
+    return (
+      <TabContentView
+        nav={walletNav}
+        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
+      >
+        <RegisteredAppShellPage registration={appShellPageForRoute} />
+      </TabContentView>
+    );
+  }
+
+  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
+    return (
+      <TabContentView
+        reserveChatClearance={!surfaceOwnsViewport(dynamicPage.registration)}
+      >
+        <DynamicPluginPage resolved={dynamicPage} />
+      </TabContentView>
+    );
+  }
+  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
+    return (
+      <TabContentView
+        reserveChatClearance={!surfaceOwnsViewport(dynamicAppPage.registration)}
+      >
+        <DynamicPluginPage resolved={dynamicAppPage} />
+      </TabContentView>
+    );
+  }
+
+  // Character-family routes (Personality/Relationships/Skills/Experience) share
+  // one "Character" header + section strip in the same nav slot (#13591). Unlike
+  // Wallet, the members are a fixed host-owned set, so the strip is static.
+  const characterNav = isCharacterSectionPath(navigationPath) ? (
+    <CharacterSectionNav activePath={navigationPath} />
+  ) : undefined;
+
   return renderStaticViewRouterTab({
     tab,
     nativeOsSurfaceEnabled,
@@ -1620,33 +1681,15 @@ function ViewRouter({
   settingsNavigateSequence?: number;
 }) {
   const activeTab = useAppSelector((s) => s.tab);
-  const setActiveTab = useAppSelector((s) => s.setTab);
   const tab = routeOverride?.tab ?? activeTab;
   // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
   // camera + the home tiles + the launcher tiles) — never rendered on web,
   // desktop, iOS, or stock Play-Store Android, even via a deep link.
   const nativeOsSurfaceEnabled = isAospShellEnabled();
+  // AppProvider owns late path-to-tab reconciliation through setTabRaw. Doing
+  // it here through the public setTab command would rewrite exact plugin paths
+  // to a shared affinity's canonical path (for example /hyperliquid → /wallet).
   const dynamicPage = useResolvedDynamicPage(tab);
-  // Late plugin registrations can land AFTER the boot path→tab resolution: a
-  // direct deep link to a plugin-owned page (e.g. /phone-companion) resolves
-  // to the "views" fallback because registerAppShellPage runs on the deferred
-  // idle pump, after first paint. Re-derive the tab for the current path on
-  // every registry change and adopt the now-registered page. Correcting only
-  // away from the "views" fallback means user navigation is never fought —
-  // for a fixed path, tabFromPath's answer only changes when a registration
-  // lands.
-  const shellPageRegistryVersion = useAppShellPageRegistryVersion();
-  useEffect(() => {
-    // The version is the re-run trigger (same pattern as useResolvedDynamicPage).
-    void shellPageRegistryVersion;
-    if (routeOverride) return;
-    if (activeTab !== "views") return;
-    if (typeof window === "undefined") return;
-    const resolved = tabFromPath(getWindowNavigationPath());
-    if (resolved && resolved !== "views") {
-      setActiveTab(resolved);
-    }
-  }, [shellPageRegistryVersion, routeOverride, activeTab, setActiveTab]);
   const [navigationPath, setNavigationPath] = useState(
     () =>
       routeOverride?.navigationPath ??
@@ -1995,9 +2038,8 @@ function ChatOverlayMount(): ReactNode {
 }
 
 /**
- * The iOS-style home dashboard for chat and launcher routes. Notifications,
- * apps, and ranked widgets share one vertical surface behind the always-present
- * chat overlay. Host-provided tile taps still route through the real nav:
+ * The iOS-style home dashboard sits beside the launcher behind the
+ * always-present chat overlay. Host-provided tile taps still route through the real nav:
  * builtin tabs via setTab, plugin/remote views via the navigate-view event.
  */
 function HomeScreenMount({
@@ -2036,8 +2078,9 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
+  const launcher = useMemo(() => <LauncherSurface />, []);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
-  // apps so the onboarding overlay reveals only the shared wallpaper.
+  // launcher so the onboarding overlay reveals only the shared wallpaper.
   return (
     <div
       aria-hidden={firstRunOpen ? "true" : undefined}
@@ -2047,18 +2090,11 @@ function HomeScreenMount({
         firstRunOpen && "invisible",
       )}
     >
-      <section
-        data-testid="home-launcher-surface"
-        data-page={initialSection === "apps" ? "launcher" : "home"}
-        className="absolute inset-0"
-      >
-        {/* Native harnesses read the route intent through the accessibility
-            tree; the combined visual surface has no separate horizontal page. */}
-        <span className="sr-only" data-testid="home-launcher-page-probe">
-          {`home-launcher-page:${initialSection === "apps" ? "launcher" : "home"}`}
-        </span>
-        {home}
-      </section>
+      <HomeLauncherSurface
+        home={home}
+        launcher={launcher}
+        initialPage={initialSection === "apps" ? "launcher" : "home"}
+      />
     </div>
   );
 }
@@ -2072,6 +2108,7 @@ function AppContent() {
     tab,
     setTab,
     setState,
+    completeFirstRun,
     setActionNotice,
     actionNotice,
     activeOverlayApp,
@@ -2090,6 +2127,7 @@ function AppContent() {
     tab: s.tab,
     setTab: s.setTab,
     setState: s.setState,
+    completeFirstRun: s.completeFirstRun,
     setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
     activeOverlayApp: s.activeOverlayApp,
@@ -2136,22 +2174,13 @@ function AppContent() {
   useEffect(() => {
     if (!isShellPaintableNow) return;
 
-    const handleConnect = async (event: Event): Promise<void> => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      const payload =
-        detail && typeof detail === "object" && !Array.isArray(detail)
-          ? (detail as {
-              gatewayUrl?: unknown;
-              token?: unknown;
-              completeFirstRun?: unknown;
-              skipConfirm?: unknown;
-            })
-          : null;
-      if (typeof payload?.gatewayUrl !== "string") {
-        return;
-      }
-
-      const completeFirstRun = payload.completeFirstRun === true;
+    const handleConnect = async (payload: {
+      gatewayUrl: string;
+      token?: string;
+      completeFirstRun?: boolean;
+      skipConfirm?: boolean;
+    }): Promise<void> => {
+      const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
         const approved = await confirmDesktopAction({
@@ -2181,14 +2210,13 @@ function AppContent() {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
-        if (completeFirstRun) {
+        if (shouldCompleteFirstRun) {
           await adoptRemoteAgentFirstRun(client, {
             apiBase: connection.apiBase,
             token: connection.token,
             uiLanguage,
           });
-          setState("firstRunComplete", true);
-          startupCoordinator.dispatch({ type: "FIRST_RUN_COMPLETE" });
+          completeFirstRun();
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
@@ -2203,14 +2231,13 @@ function AppContent() {
       }
     };
 
-    document.addEventListener(CONNECT_EVENT, handleConnect);
-    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+    return listenForConnectRequests(handleConnect);
   }, [
+    completeFirstRun,
     isShellPaintableNow,
     retryStartup,
     setActionNotice,
     setState,
-    startupCoordinator.dispatch,
     uiLanguage,
   ]);
 
@@ -2234,12 +2261,14 @@ function AppContent() {
   // session is still valid. Rather than dead-end at the agent's internal
   // password wall (a credential no cloud user has), transparently re-run the
   // pairing exchange to refresh the credential. Only fires for a cloud-managed
-  // dedicated agent WITH a valid cloud session; otherwise stays "idle" and the
-  // wall renders exactly as before.
+  // dedicated agent WITH a valid cloud session. Managed native failures retain
+  // their classification (reauth, retry, or management); self-hosted failures
+  // retain the password wall.
   const agentSessionRecoveryStatus = useAgentSessionRecovery({
     active: authState.phase === "unauthenticated",
     reason:
       authState.phase === "unauthenticated" ? authState.reason : undefined,
+    onRecovered: refetchAuth,
   });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
@@ -2254,6 +2283,49 @@ function AppContent() {
   const contextMenu = useContextMenu();
   const cloudPairToken = getCloudPairTokenFromLocation();
   const isElizaCloudHosted = isElizaCloudHostedLocation();
+  const activeAgentProfile = useAppSelector((s) => s.activeAgentProfile);
+  const handleCloudLogin = useAppSelector((s) => s.handleCloudLogin);
+  const showCloudAgentReauthNotice = shouldShowCloudAgentReauthNotice({
+    isHostedLocation: isElizaCloudHosted,
+    isNative,
+    activeServer: activeAgentProfile,
+    recoveryStatus:
+      agentSessionRecoveryStatus === "idle" ||
+      agentSessionRecoveryStatus === "recovering"
+        ? null
+        : agentSessionRecoveryStatus,
+  });
+  const nativeCloudRecoveryMode =
+    agentSessionRecoveryStatus === "cloud-retry-required"
+      ? "retry"
+      : agentSessionRecoveryStatus === "cloud-manage-required"
+        ? "manage"
+        : "reauth";
+  const recoverManagedNativeAgent = useCallback(async () => {
+    if (nativeCloudRecoveryMode === "retry") {
+      window.location.reload();
+      return;
+    }
+    if (nativeCloudRecoveryMode === "manage") {
+      await openExternalUrl(resolveCloudHostedAgentUrl());
+      return;
+    }
+    const rejectedCloudToken = getCloudAuthToken();
+    await handleCloudLogin(null, {
+      requireClientAuth: true,
+      forceReauth: true,
+    });
+    const refreshedCloudToken = getCloudAuthToken();
+    if (!refreshedCloudToken || refreshedCloudToken === rejectedCloudToken) {
+      throw new Error(
+        "Eliza Cloud sign-in did not complete. Please try again.",
+      );
+    }
+    window.location.reload();
+  }, [handleCloudLogin, nativeCloudRecoveryMode]);
+  const retryManagedNativeAgent = useCallback(async () => {
+    window.location.reload();
+  }, []);
 
   useSecretsManagerShortcut();
 
@@ -2403,7 +2475,10 @@ function AppContent() {
     tab,
     trimmedNavigationPath(navigationPath),
   );
-  const isFullBleed = useTabIsFullBleed(tab);
+  const isFullBleed =
+    useTabIsFullBleed(tab) ||
+    activeViewSurface.manifest.header === "fullscreen" ||
+    activeViewSurface.manifest.header === "immersive";
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -2805,9 +2880,10 @@ function AppContent() {
     if (authState.phase === "unauthenticated") {
       // #15132: a stale post-upgrade agent credential with a valid cloud session
       // is recoverable, so hold the startup surface while the re-pair runs (it
-      // ends in a full-page navigation to `/pair`) instead of flashing the
-      // password wall. Recovery drops back to "idle" if it can't proceed, and
-      // the wall renders then.
+      // navigates through `/pair` on web or installs the bearer in-process on
+      // native) instead of flashing the password wall. Managed failures expose
+      // an actionable Cloud recovery surface; only self-hosted failures render
+      // the owner-password form.
       if (agentSessionRecoveryStatus === "recovering") {
         return (
           <BugReportProvider value={bugReport}>
@@ -2816,17 +2892,13 @@ function AppContent() {
           </BugReportProvider>
         );
       }
-      if (isElizaCloudHosted) {
-        return (
-          <BugReportProvider value={bugReport}>
-            <CloudHostedAgentAuthNotice />
-            <BugReportModal />
-          </BugReportProvider>
-        );
-      }
       return (
         <BugReportProvider value={bugReport}>
-          <LoginView
+          <AgentAuthGateSurface
+            showCloudReauth={showCloudAgentReauthNotice}
+            nativeRecoveryMode={nativeCloudRecoveryMode}
+            onNativeReauth={isNative ? recoverManagedNativeAgent : undefined}
+            onNativeRetry={isNative ? retryManagedNativeAgent : undefined}
             onLoginSuccess={() => {
               // A successful owner-password login proves this is an existing,
               // initialized backend. Clear the stale unauthenticated browser's
@@ -2906,7 +2978,9 @@ function AppContent() {
           // clear their status bar. Top banners bleed their bg back up via
           // `.mobile-top-banner:first-child` (styles.css). No-op on web.
           style={{
-            paddingTop: "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
+            paddingTop: isFullBleed
+              ? 0
+              : "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling

@@ -58,9 +58,22 @@ export interface Bindings {
    */
   SHARED_RUNTIME_CONVERSATIONS?: RuntimeDurableObjectNamespace;
 
+  /**
+   * One strongly ordered admission coordinator per organization. It serializes
+   * cached balance leases and endpoint rate limits without querying Postgres.
+   */
+  INFERENCE_ADMISSION_GATES?: RuntimeDurableObjectNamespace;
+
+  /**
+   * One strongly ordered identity/quota cache per anonymous chat session.
+   * Postgres hydration and counter mirrors run only outside the response path.
+   */
+  ANONYMOUS_CHAT_GATES?: RuntimeDurableObjectNamespace;
+
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+  DASHBOARD_CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -335,6 +348,7 @@ export interface Bindings {
   // Redis window), the 60s shouldBlockUser memo, and the 60s model-catalog
   // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
   INFERENCE_HOT_PATH_CACHES?: string;
+  INFERENCE_AUTH_CACHE_ENABLED?: string;
   // Pass-through streaming fast path (#15428): "true" pipes qualifying
   // streamed chat completions (OpenAI-compatible direct upstream, no
   // tools/response_format/web-search) byte-for-byte from the provider instead

@@ -5,7 +5,7 @@
  * and calling client.
  */
 
-import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
+import type { ActionResult, ViewType } from "@elizaos/core";
 import { subviewsForView } from "./settings-subviews.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 
@@ -46,17 +46,14 @@ function formatViewTable(
 export interface RunViewsListInput {
 	client: ViewsClient;
 	viewType?: ViewType;
-	callback?: HandlerCallback;
 }
 
 export async function runViewsList({
 	client,
 	viewType,
-	callback,
 }: RunViewsListInput): Promise<ActionResult> {
 	const views = await client.listViews({ viewType });
 	const text = formatViewTable(views, viewType);
-	await callback?.({ text });
 	const viewsWithSubviews = views.map((view) => {
 		const subviews = subviewsForView(view.id);
 		return subviews ? { ...view, subviews } : view;
@@ -64,6 +61,7 @@ export async function runViewsList({
 	return {
 		success: true,
 		text,
+		transcriptVisibility: "internal",
 		values: {
 			mode: "list",
 			viewType: viewType ?? "gui",

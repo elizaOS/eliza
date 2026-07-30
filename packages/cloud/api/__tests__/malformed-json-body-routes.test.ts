@@ -126,7 +126,11 @@ beforeEach(() => {
           totalMs: 0.1,
         },
       });
-      return { kind: "slow_path", reason: "non_api_key" };
+      return {
+        kind: "authorized",
+        source: "cache",
+        ctx: { userId: USER, orgId: ORG, apiKeyId: "api-key-id" },
+      };
     },
   );
 });

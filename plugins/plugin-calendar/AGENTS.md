@@ -7,8 +7,11 @@ overview and `../../CLAUDE.md` (repo root) for monorepo-wide rules.
 
 Owns the calendar domain extracted from `@elizaos/plugin-personal-assistant`: the calendar
 event/sync store + schema, the Google + Apple calendar feed, event CRUD, the
-`CALENDAR` action and its LLM handler, `/api/calendar/*` routes, the client API
-methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
+`CALENDAR` action and its LLM handler, the shared calendar route dispatcher,
+the provider-authenticated Google webhook, the client API methods augmented
+onto `@elizaos/ui`, and the owner-facing calendar views. Private
+`/api/lifeops/calendar/*` routes are mounted by the personal-assistant host
+behind its OWNER/ADMIN role gate.
 
 ## Boundary rules
 
@@ -17,9 +20,10 @@ methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
   which injects a `CalendarConnectorGate` into `CalendarService` at init. Never
   import `@elizaos/plugin-personal-assistant` from this package — the dependency direction
   is `plugin-lifeops -> plugin-calendar`.
-- **Schema namespace is `app_calendar`.** The two calendar tables
-  (`life_calendar_events`, `life_calendar_sync_states`) were carved out of PA's
-  `app_lifeops` schema. `calendarPgSchema = pgSchema("app_calendar")` is
+- **Schema namespace is `app_calendar`.** Calendar events and sync states were
+  carved out of PA's `app_lifeops` schema; ICS sources, the durable secret
+  cleanup outbox, feed preferences, and Google watch channels are
+  calendar-native tables. `calendarPgSchema = pgSchema("app_calendar")` is
   registered via the plugin `schema` field, and `CalendarMigrationService`
   performs a non-destructive one-time copy of any existing `app_lifeops` rows
   (the plugin-finances carve pattern: skip if source missing / target non-empty,
@@ -34,12 +38,12 @@ methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
 
 ```
 src/
-  plugin.ts          Plugin definition (action, service, routes)
+  plugin.ts          Plugin definition (action, service, provider webhook)
   index.ts           Public exports
   service/           CalendarService + connector gate + repository + schema
   apple-calendar.ts  Native Apple Calendar bridge
   actions/           CALENDAR action + handler
-  routes/            /api/calendar/* HTTP handlers
+  routes/            Shared host adapter + Google push webhook
   api/               client-calendar.ts (side-effect client augmentation)
   components/        Calendar views + event editor (React)
   hooks/             useCalendarWeek
@@ -55,6 +59,13 @@ bun run --cwd plugins/plugin-calendar build:types
 bun run --cwd plugins/plugin-calendar test
 bun run --cwd plugins/plugin-calendar typecheck
 ```
+
+## Google push configuration
+
+- `GOOGLE_CALENDAR_WEBHOOK_ENABLED` must be exactly `true` before the public
+  callback or watch creation is active; omission is fail-closed.
+- `GOOGLE_CALENDAR_WEBHOOK_URL` must be a public HTTPS URL with the exact
+  `/api/lifeops/calendar/google/webhook` path.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

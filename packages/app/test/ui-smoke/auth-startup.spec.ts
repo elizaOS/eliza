@@ -281,6 +281,16 @@ test("cloud bootstrap exchange stores the session bearer and resumes startup", a
   await page.getByRole("button", { name: "Activate" }).click();
 
   await expect.poll(() => exchangeRequests).toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = localStorage.getItem("elizaos:active-server");
+        if (!stored) return null;
+        const parsed = JSON.parse(stored) as { accessToken?: string };
+        return parsed.accessToken ?? null;
+      }),
+    )
+    .toBe("cloud-session");
   await expect.poll(() => authedAuthMeRequests).toBeGreaterThan(0);
   await expect(
     page.getByRole("heading", { name: "Finish setting up your container" }),

@@ -14,6 +14,8 @@
  *   2. The OLD behavior (no dedupe, appId-keyed) DOUBLE-credits — pinning the bug.
  *   3. `normalizeLedgerSourceId` maps the composite key deterministically, so a
  *      retry of the same request dedupes while distinct requests do not.
+ *   4. Versioned affiliate payout keys are globally unique across beneficiaries
+ *      while legacy, unversioned rows remain migration-compatible.
  *
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails to initialize — never a silent skip.
  */
@@ -33,7 +35,10 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
-import { organizations } from "../../../db/schemas/organizations";
+import {
+  organizationBalanceRevisionSequence,
+  organizations,
+} from "../../../db/schemas/organizations";
 import {
   earningsSourceEnum,
   ledgerEntryTypeEnum,
@@ -87,6 +92,7 @@ beforeAll(async () => {
     ({ redeemableEarningsService } = await import("../redeemable-earnings"));
     const schema = {
       organizations,
+      organizationBalanceRevisionSequence,
       users,
       redeemableEarnings,
       redeemableEarningsLedger,
@@ -118,6 +124,56 @@ describe("creator earnings idempotency (#10423)", () => {
   beforeEach(async () => {
     if (!pgliteReady) return;
     userId = await seedUser();
+  });
+
+  test("positive earnings round down to ledger precision and never over-credit", async () => {
+    if (!pgliteReady) return;
+    const result = await redeemableEarningsService.addEarnings({
+      userId,
+      amount: 0.00019,
+      source: "miniapp",
+      sourceId: uniq("round-down"),
+      description: "Fractional creator earning",
+    });
+
+    expect(result).toMatchObject({ success: true, deduplicated: false });
+    expect(await balanceOf(userId)).toBe(0.0001);
+    const [ledger] = await dbWrite
+      .select({ amount: redeemableEarningsLedger.amount })
+      .from(redeemableEarningsLedger)
+      .where(eq(redeemableEarningsLedger.id, result.ledgerEntryId));
+    expect(Number(ledger.amount)).toBe(0.0001);
+  });
+
+  test("quantized-zero amounts and blank source identities are rejected without writes", async () => {
+    if (!pgliteReady) return;
+    await expect(
+      redeemableEarningsService.addEarnings({
+        userId,
+        amount: 0.00009,
+        source: "miniapp",
+        sourceId: uniq("dust"),
+        description: "Unrepresentable creator earning",
+      }),
+    ).resolves.toMatchObject({
+      success: false,
+      error: "Amount is below the minimum ledger precision of 0.0001",
+    });
+    await expect(
+      redeemableEarningsService.addEarnings({
+        userId,
+        amount: 1,
+        source: "miniapp",
+        sourceId: " \t ",
+        description: "Blank identity",
+      }),
+    ).resolves.toMatchObject({
+      success: false,
+      error: "Source ID must not be blank",
+    });
+
+    expect(await balanceOf(userId)).toBe(0);
+    expect(await earningLedgerCount(userId)).toBe(0);
   });
 
   test("FIX: same per-charge key + dedupe credits once; the retry is deduplicated", async () => {
@@ -191,6 +247,100 @@ describe("creator earnings idempotency (#10423)", () => {
     });
     expect(await balanceOf(userId)).toBeCloseTo(0.6, 6);
     expect(await earningLedgerCount(userId)).toBe(2);
+  });
+});
+
+describe("affiliate payout global identity", () => {
+  test("one versioned request key cannot credit two affiliate owners", async () => {
+    if (!pgliteReady) return;
+    const firstOwner = await seedUser();
+    const secondOwner = await seedUser();
+    const sourceId = uniq("affiliate-payout-request");
+
+    await expect(
+      redeemableEarningsService.addEarnings({
+        userId: firstOwner,
+        amount: 0.5,
+        source: "affiliate",
+        sourceId,
+        dedupeBySourceId: true,
+        description: "Affiliate inference payout",
+        metadata: { affiliatePayoutVersion: 1 },
+      }),
+    ).resolves.toMatchObject({ success: true, deduplicated: false });
+
+    await expect(
+      redeemableEarningsService.addEarnings({
+        userId: secondOwner,
+        amount: 0.5,
+        source: "affiliate",
+        sourceId,
+        dedupeBySourceId: true,
+        description: "Conflicting affiliate inference payout",
+        metadata: { affiliatePayoutVersion: 1 },
+      }),
+    ).rejects.toThrow();
+
+    expect(await balanceOf(firstOwner)).toBeCloseTo(0.5, 6);
+    expect(await balanceOf(secondOwner)).toBe(0);
+  });
+
+  test("the versioned index does not reject historical unversioned identities", async () => {
+    if (!pgliteReady) return;
+    const firstOwner = await seedUser();
+    const secondOwner = await seedUser();
+    const sourceId = uniq("legacy-affiliate-payout");
+
+    await redeemableEarningsService.addEarnings({
+      userId: firstOwner,
+      amount: 0.25,
+      source: "affiliate",
+      sourceId,
+      dedupeBySourceId: true,
+      description: "Legacy affiliate payout",
+    });
+    await redeemableEarningsService.addEarnings({
+      userId: secondOwner,
+      amount: 0.25,
+      source: "affiliate",
+      sourceId,
+      dedupeBySourceId: true,
+      description: "Legacy affiliate payout under historical owner",
+    });
+
+    expect(await balanceOf(firstOwner)).toBeCloseTo(0.25, 6);
+    expect(await balanceOf(secondOwner)).toBeCloseTo(0.25, 6);
+  });
+
+  test("a legacy same-owner row cannot swallow a versioned payout replay", async () => {
+    if (!pgliteReady) return;
+    const owner = await seedUser();
+    const sourceId = uniq("legacy-then-versioned-affiliate");
+
+    await redeemableEarningsService.addEarnings({
+      userId: owner,
+      amount: 0.25,
+      source: "affiliate",
+      sourceId,
+      dedupeBySourceId: true,
+      description: "Historical unversioned affiliate payout",
+    });
+    const versioned = await redeemableEarningsService.addEarnings({
+      userId: owner,
+      amount: 0.5,
+      source: "affiliate",
+      sourceId,
+      dedupeBySourceId: true,
+      description: "Versioned affiliate payout",
+      metadata: {
+        affiliatePayoutVersion: 1,
+        affiliateCodeId: "11111111-1111-4111-8111-111111111111",
+      },
+    });
+
+    expect(versioned).toMatchObject({ success: true, deduplicated: false });
+    expect(await balanceOf(owner)).toBe(0.75);
+    expect(await earningLedgerCount(owner)).toBe(2);
   });
 });
 

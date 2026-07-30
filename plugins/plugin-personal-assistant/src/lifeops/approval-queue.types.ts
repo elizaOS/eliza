@@ -1,10 +1,59 @@
 /** Types for the owner-approval queue: request states, action kinds, and payload shapes. */
+import {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
+  ApprovalIdempotencyConflictError as RuntimeApprovalIdempotencyConflictError,
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+} from "@elizaos/agent";
+import type { TransactionalDb } from "./sql.js";
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
+
+export const SCHEDULING_APPROVAL_MESSAGE_KINDS = [
+  "opening",
+  "proposal",
+  "confirmation",
+  "cancellation",
+] as const;
+export type SchedulingApprovalMessageKind =
+  (typeof SCHEDULING_APPROVAL_MESSAGE_KINDS)[number];
+
+export const SCHEDULING_APPROVAL_TRANSPORT_CHANNELS = [
+  "email",
+  "telegram",
+  "discord",
+  "signal",
+  "whatsapp",
+  "imessage",
+  "sms",
+] as const;
+export type SchedulingApprovalTransportChannel =
+  (typeof SCHEDULING_APPROVAL_TRANSPORT_CHANNELS)[number];
+
+/**
+ * Binds an approval row to one immutable scheduling draft. The hash covers
+ * the transport envelope and exact message bytes, so a later executor can
+ * refuse altered content rather than treating approval as open-ended consent.
+ */
+export interface SchedulingApprovalCorrelation {
+  readonly kind: "scheduling_message";
+  readonly negotiationId: string;
+  readonly proposalId: string | null;
+  readonly messageKind: SchedulingApprovalMessageKind;
+  readonly transportChannel: SchedulingApprovalTransportChannel;
+  readonly sourceUpdatedAt: string;
+  readonly counterpartyEntityId: string;
+  readonly counterpartyEntityUpdatedAt: string;
+  readonly draftVersion: 1;
+  readonly contentSha256: string;
+}
 
 export type ApprovalRequestState =
   | "pending"
   | "approved"
   | "executing"
+  | "retryable"
+  | "reconciliation_required"
   | "done"
   | "rejected"
   | "expired";
@@ -24,15 +73,70 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
+  | "signal"
+  | "whatsapp"
   | "slack"
   | "imessage"
   | "sms"
   | "x_dm"
   | "email"
   | "google_calendar"
+  | "microsoft_calendar"
+  | "apple_calendar"
+  | "ics_calendar"
   | "browser"
   | "phone"
   | "internal";
+
+export interface ApprovalExecution {
+  readonly attemptId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+  readonly claimedAt: Date;
+  readonly dispatchStartedAt: Date | null;
+  readonly providerReceipt: Readonly<Record<string, unknown>> | null;
+  readonly error: string | null;
+  readonly reconciledAt: Date | null;
+  readonly reconciledBy: string | null;
+  readonly reconciliationReason: string | null;
+}
+
+export type CalendarMutationRecurrenceScope =
+  | "instance"
+  | "this_and_following"
+  | "series";
+
+export type CalendarCancellationMode =
+  | "organizer_cancel"
+  | "decline_invitation"
+  | "remove_private_copy";
+
+export interface CalendarApprovalAttendee {
+  readonly email: string;
+  readonly displayName?: string | null;
+  readonly optional?: boolean;
+}
+
+/** String entries remain readable for approvals persisted before attendee metadata was retained. */
+export type CalendarApprovalAttendeeInput = string | CalendarApprovalAttendee;
+
+export interface CalendarSeriesMasterBinding {
+  readonly externalId: string;
+  readonly startAtMs: number;
+  readonly updatedAt: string;
+  readonly etag: string;
+}
+
+/**
+ * A mutable calendar source must be named explicitly once more than one
+ * account can expose the same provider calendar id. Optionality preserves
+ * persisted single-account create approvals; update/delete execution requires
+ * all target-version fields and fails closed for older unbound approvals.
+ */
+export type CalendarMutationSourceBinding = {
+  readonly grantId?: string | null;
+  readonly side?: "owner" | "agent" | null;
+};
 
 export type ApprovalPayload =
   | {
@@ -40,6 +144,7 @@ export type ApprovalPayload =
       recipient: string;
       body: string;
       replyToMessageId: string | null;
+      scheduling?: SchedulingApprovalCorrelation;
     }
   | {
       action: "send_email";
@@ -50,36 +155,81 @@ export type ApprovalPayload =
       body: string;
       threadId: string | null;
       replyToMessageId?: string | null;
+      scheduling?: SchedulingApprovalCorrelation;
     }
-  | {
+  | ({
       action: "schedule_event";
       calendarId: string;
       title: string;
       startsAtMs: number;
       endsAtMs: number;
-      attendees: ReadonlyArray<string>;
+      timeZone?: string | null;
+      durationMinutes?: number | null;
+      windowPreset?:
+        | "tomorrow_morning"
+        | "tomorrow_afternoon"
+        | "tomorrow_evening"
+        | null;
+      attendees: ReadonlyArray<CalendarApprovalAttendeeInput>;
       location: string | null;
       description: string | null;
-    }
-  | {
+      recurrence?: ReadonlyArray<string> | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
+      travelBuffer?: {
+        readonly bufferMinutes: number;
+        readonly method: string;
+        readonly originAddress: string | null;
+        readonly destinationAddress: string | null;
+      } | null;
+    } & CalendarMutationSourceBinding)
+  | ({
       action: "modify_event";
       calendarId: string;
       eventId: string;
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      expectedProviderVersion?: string | null;
+      recurrenceScope?: CalendarMutationRecurrenceScope | null;
+      seriesMaster?: CalendarSeriesMasterBinding | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
       patch: {
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;
-        attendees: ReadonlyArray<string> | null;
+        timeZone?: string | null;
+        attendees: ReadonlyArray<CalendarApprovalAttendeeInput> | null;
         location: string | null;
         description: string | null;
+        recurrence?: ReadonlyArray<string> | null;
       };
-    }
-  | {
+    } & CalendarMutationSourceBinding)
+  | ({
       action: "cancel_event";
       calendarId: string;
       eventId: string;
       notifyAttendees: boolean;
-    }
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      expectedProviderVersion?: string | null;
+      recurrenceScope?: CalendarMutationRecurrenceScope | null;
+      seriesMaster?: CalendarSeriesMasterBinding | null;
+      cancellationMode?: CalendarCancellationMode | null;
+      editorRequestSha256?: string;
+    } & CalendarMutationSourceBinding)
   | {
       action: "book_travel";
       kind: TravelBookingPayloadFields["kind"];
@@ -155,10 +305,21 @@ export interface ApprovalRequest {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  readonly idempotencyKey: string | null;
   readonly expiresAt: Date;
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
   readonly resolutionReason: string | null;
+  readonly execution: ApprovalExecution | null;
+}
+
+/**
+ * Atomic enqueue outcome. `reused` comes from the idempotency-constrained
+ * insert itself; consumers must not reconstruct it from row state or time.
+ */
+export interface ApprovalEnqueueResult {
+  readonly request: ApprovalRequest;
+  readonly reused: boolean;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -169,8 +330,23 @@ export interface ApprovalEnqueueInput {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  /**
+   * Permanently binds one caller-defined intent to its immutable request,
+   * including terminal rejection. Reconsideration requires an explicit fresh
+   * revision/nonce key; implementations never resurrect a rejected row.
+   */
+  readonly idempotencyKey?: string | null;
   readonly expiresAt: Date;
 }
+
+/**
+ * A reused idempotency key must describe the same immutable approval. Thrown
+ * by the runtime store, so LifeOps re-exports that class rather than declaring
+ * a look-alike `instanceof` would not match.
+ */
+export {
+  RuntimeApprovalIdempotencyConflictError as ApprovalIdempotencyConflictError,
+};
 
 /** Filter for `list`. All fields combine with AND. */
 export interface ApprovalListFilter {
@@ -186,26 +362,41 @@ export interface ApprovalResolution {
   readonly resolutionReason: string;
 }
 
-/** Thrown when a state transition is invalid. */
-export class ApprovalStateTransitionError extends Error {
-  public readonly requestId: string;
-  public readonly from: ApprovalRequestState;
-  public readonly to: ApprovalRequestState;
-
-  constructor(
-    requestId: string,
-    from: ApprovalRequestState,
-    to: ApprovalRequestState,
-  ) {
-    super(
-      `[ApprovalQueue] invalid transition for request ${requestId}: ${from} -> ${to}`,
-    );
-    this.name = "ApprovalStateTransitionError";
-    this.requestId = requestId;
-    this.from = from;
-    this.to = to;
-  }
+export interface ApprovalExecutionClaim {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
 }
+
+export interface ApprovalExecutionMutation {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly attemptId: string;
+}
+
+export interface ApprovalExecutionFailure extends ApprovalExecutionMutation {
+  readonly error: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionCompletion extends ApprovalExecutionMutation {
+  readonly providerReceipt: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionReconciliation
+  extends ApprovalExecutionMutation {
+  readonly outcome: "delivered" | "not_delivered";
+  readonly reconciledBy: string;
+  readonly reconciliationReason: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+/** Thrown when a state transition is invalid. */
+export {
+  RuntimeApprovalNotFoundError as ApprovalNotFoundError,
+  RuntimeApprovalStateTransitionError as ApprovalStateTransitionError,
+};
 
 /**
  * Thrown when a compare-and-swap state transition loses a concurrent race:
@@ -216,7 +407,7 @@ export class ApprovalStateTransitionError extends Error {
  * still applies; callers may match this class first to surface the conflict
  * distinctly.
  */
-export class ApprovalTransitionConflictError extends ApprovalStateTransitionError {
+export class ApprovalTransitionConflictError extends RuntimeApprovalStateTransitionError {
   constructor(
     requestId: string,
     actualState: ApprovalRequestState,
@@ -228,32 +419,104 @@ export class ApprovalTransitionConflictError extends ApprovalStateTransitionErro
   }
 }
 
-/** Thrown when an operation references an unknown request id. */
-export class ApprovalNotFoundError extends Error {
-  public readonly requestId: string;
+/** Thrown before resolution when a registered queue predates required methods. */
+export class ApprovalQueueCompatibilityError extends Error {
+  public readonly actualCapability: unknown;
+  public readonly actualVersion: unknown;
 
-  constructor(requestId: string) {
-    super(`[ApprovalQueue] request not found: ${requestId}`);
-    this.name = "ApprovalNotFoundError";
-    this.requestId = requestId;
+  constructor(actualCapability: unknown, actualVersion: unknown) {
+    super(
+      `[ApprovalQueue] registered capability is incompatible; expected ${APPROVAL_EXECUTION_CAPABILITY}@${APPROVAL_EXECUTION_PROTOCOL_VERSION}`,
+    );
+    this.name = "ApprovalQueueCompatibilityError";
+    this.actualCapability = actualCapability;
+    this.actualVersion = actualVersion;
   }
 }
 
 /**
- * Queue interface. Implementations must:
+ * The subject-scoped approval state machine. `@elizaos/agent` owns the only
+ * SQL implementation; LifeOps re-declares the contract here because its
+ * payload/channel unions are richer than the runtime's structural ones.
+ *
+ * Implementations must:
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
  *  - Reject unknown ids by throwing `ApprovalNotFoundError`.
  *  - Use the structured logger only (no `console.*`).
  *  - Treat `purgeExpired` as idempotent.
  */
-export interface ApprovalQueue {
+export interface ApprovalExecutionCapability {
+  readonly capability: typeof APPROVAL_EXECUTION_CAPABILITY;
+  readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
+  /**
+   * Persist an already-confirmed owner gesture without emitting a second
+   * approval prompt. The same immutable queue and transition rules apply.
+   */
+  enqueueConfirmed(
+    input: ApprovalEnqueueInput,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  /**
+   * Insert or reuse an approval inside the caller's transaction so a domain
+   * mutation and its owner gate commit together. Owner-facing side channels
+   * run after the commit via {@link ApprovalQueue.surfaceEnqueuedApproval}.
+   */
+  enqueueTransactional(
+    input: ApprovalEnqueueInput,
+    tx: TransactionalDb,
+  ): Promise<ApprovalEnqueueResult>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
-  byId(id: string): Promise<ApprovalRequest | null>;
-  approve(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  reject(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  markExecuting(id: string): Promise<ApprovalRequest>;
-  markDone(id: string): Promise<ApprovalRequest>;
-  markExpired(id: string): Promise<ApprovalRequest>;
+  byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null>;
+  byIdempotencyKey(
+    idempotencyKey: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null>;
+  approve(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  reject(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  claimExecution(claim: ApprovalExecutionClaim): Promise<ApprovalRequest>;
+  markDispatchStarted(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  markDone(completion: ApprovalExecutionCompletion): Promise<ApprovalRequest>;
+  markRetryableFailure(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  markReconciliationRequired(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  recoverUnstartedExecution(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  reconcileExecution(
+    reconciliation: ApprovalExecutionReconciliation,
+  ): Promise<ApprovalRequest>;
+  /** Terminally invalidate a pending or approved request without dispatch. */
+  markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
+  removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
+}
+
+/**
+ * What LifeOps consumers hold: the runtime capability plus the owner-facing
+ * surfacing the runtime cannot do (a scheduled approval task, the chat choice
+ * event, and the notification rail).
+ */
+export interface ApprovalQueue extends ApprovalExecutionCapability {
+  /**
+   * Raise the owner prompt for a row that is already committed. Separate from
+   * enqueue so a transactional caller surfaces only after its commit.
+   */
+  surfaceEnqueuedApproval(request: ApprovalRequest): Promise<void>;
 }

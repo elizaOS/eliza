@@ -90,7 +90,7 @@ jobs:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24.15.0"
 
@@ -111,8 +111,25 @@ jobs:
           if command -v docker >/dev/null 2>&1; then
             docker rm -f develop-live-postgres 2>/dev/null || true
             docker run -d --name develop-live-postgres \
-              -e POSTGRES_USER=eliza_test -e POSTGRES_PASSWORD=test123 -e POSTGRES_DB=eliza_test \
-              -p 127.0.0.1:5433:5432 postgres:17
+              -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=eliza_test \
+              --health-cmd "pg_isready -U postgres -d eliza_test" \
+              --health-interval 1s --health-timeout 5s --health-retries 30 \
+              -p 127.0.0.1:5433:5432 pgvector/pgvector:pg16
+            for attempt in {1..30}; do
+              if [ "$(docker inspect --format '{{.State.Health.Status}}' develop-live-postgres)" = "healthy" ]; then
+                break
+              fi
+              if [ "$attempt" -eq 30 ]; then
+                docker logs develop-live-postgres
+                exit 1
+              fi
+              sleep 1
+            done
+            docker exec develop-live-postgres psql -v ON_ERROR_STOP=1 \
+              -U postgres -d eliza_test \
+              -c "CREATE ROLE eliza_test LOGIN PASSWORD 'test123'" \
+              -c "GRANT ALL PRIVILEGES ON DATABASE eliza_test TO eliza_test" \
+              -c "GRANT USAGE, CREATE ON SCHEMA public TO eliza_test"
             echo "POSTGRES_URL=postgresql://eliza_test:test123@127.0.0.1:5433/eliza_test" >> "$GITHUB_ENV"
           else
             echo "docker unavailable; plugin-sql Postgres real suites will self-skip"

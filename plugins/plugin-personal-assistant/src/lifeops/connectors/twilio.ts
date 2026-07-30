@@ -18,8 +18,11 @@ import {
   type TwilioDeliveryResult,
 } from "@elizaos/plugin-phone/twilio";
 import {
+  type ConnectorSendPayload,
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type {
@@ -44,14 +47,26 @@ function parseTarget(target: string): {
 
 function deliveryResultToDispatch(
   result: TwilioDeliveryResult,
+  payload: ConnectorSendPayload,
 ): DispatchResult {
   if (result.ok) {
-    return { ok: true, messageId: result.sid };
+    const receipt = dispatchReceipt({
+      provider: "twilio",
+      providerMessageId: result.sid,
+      payload,
+    });
+    if (!receipt) return missingProviderReceipt("Twilio");
+    return {
+      ok: true,
+      messageId: result.sid,
+      receipt,
+    };
   }
   if (result.status === 401 || result.status === 403) {
     return {
       ok: false,
       reason: "auth_expired",
+      acceptance: "not_accepted",
       userActionable: true,
       message: result.error ?? "Twilio rejected the request (auth).",
     };
@@ -60,6 +75,7 @@ function deliveryResultToDispatch(
     return {
       ok: false,
       reason: "rate_limited",
+      acceptance: "not_accepted",
       retryAfterMinutes: 5,
       userActionable: false,
       message: result.error ?? "Twilio rate limited.",
@@ -69,6 +85,7 @@ function deliveryResultToDispatch(
     return {
       ok: false,
       reason: "unknown_recipient",
+      acceptance: "not_accepted",
       userActionable: true,
       message: result.error ?? "Twilio rejected the recipient.",
     };
@@ -76,6 +93,7 @@ function deliveryResultToDispatch(
   return {
     ok: false,
     reason: "transport_error",
+    acceptance: "unknown",
     userActionable: false,
     message: result.error ?? "Twilio delivery failed.",
   };
@@ -89,6 +107,7 @@ export function createTwilioConnectorContribution(
     capabilities: ["twilio.sms.send", "twilio.voice.send"],
     modes: ["cloud"],
     describe: { label: "Twilio (SMS + Voice)" },
+    receiptContract: "provider_receipt_id",
     async start() {},
     async disconnect() {
       // Twilio is configured via env vars; LifeOps doesn't manage credential
@@ -118,6 +137,7 @@ export function createTwilioConnectorContribution(
         return {
           ok: false,
           reason: "disconnected",
+          acceptance: "not_accepted",
           userActionable: true,
           message:
             "Twilio is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.",
@@ -129,6 +149,7 @@ export function createTwilioConnectorContribution(
           return {
             ok: false,
             reason: "unknown_recipient",
+            acceptance: "not_accepted",
             userActionable: true,
             message: "Twilio target is empty.",
           };
@@ -139,14 +160,14 @@ export function createTwilioConnectorContribution(
             to,
             message: payload.message,
           });
-          return deliveryResultToDispatch(result);
+          return deliveryResultToDispatch(result, payload);
         }
         const result = await sendTwilioSms({
           credentials,
           to,
           body: payload.message,
         });
-        return deliveryResultToDispatch(result);
+        return deliveryResultToDispatch(result, payload);
       } catch (error) {
         return errorToDispatchResult(error);
       }

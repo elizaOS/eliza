@@ -4,13 +4,13 @@
  */
 
 export interface CrossPackageImportViolation {
-	file: string;
-	line: number;
-	specifier: string;
+  file: string;
+  line: number;
+  specifier: string;
 }
 
 export declare const agentPackageRoot: string;
 
 export declare function findCrossPackageImports(
-	packageRoot?: string,
+  packageRoot?: string,
 ): CrossPackageImportViolation[];

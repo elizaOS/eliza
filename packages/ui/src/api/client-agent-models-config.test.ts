@@ -27,8 +27,27 @@ describe("ElizaClient.getModelsCatalog", () => {
     const result = await client.getModelsCatalog();
     // catalogOnly skips the server's all-providers model-list fan-out, which
     // exceeds the client's 10s fetch budget on a cold cache.
-    expect(fetchMock).toHaveBeenCalledWith("/api/models?catalogOnly=1");
+    // The second argument is the RequestInit passthrough — absent here, so it
+    // arrives as undefined rather than being omitted from the call.
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/models?catalogOnly=1",
+      undefined,
+    );
     expect(result.catalog).toEqual({ providers: {} });
+  });
+
+  it("forwards a caller's RequestInit (abort signal) to the transport", async () => {
+    const { client, fetchMock } = clientWithBody({
+      providers: {},
+      catalog: { providers: {} },
+    });
+    // Callers pass an AbortSignal to cancel a slow catalog read on unmount;
+    // dropping it would leak the request past the component's lifetime.
+    const controller = new AbortController();
+    await client.getModelsCatalog({ signal: controller.signal });
+    expect(fetchMock).toHaveBeenCalledWith("/api/models?catalogOnly=1", {
+      signal: controller.signal,
+    });
   });
 });
 

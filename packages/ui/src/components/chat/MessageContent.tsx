@@ -28,7 +28,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import type { UiSpec } from "../../config/ui-spec";
-import { CONNECT_EVENT, dispatchAppEvent } from "../../events";
+import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isDesktopPlatform, isNative } from "../../platform";
@@ -947,7 +947,7 @@ export function SensitiveRequestBlock({
             );
             return;
           }
-          dispatchAppEvent(CONNECT_EVENT, {
+          dispatchConnectRequest({
             gatewayUrl: normalized,
             token: values.token?.trim() || undefined,
             completeFirstRun: true,

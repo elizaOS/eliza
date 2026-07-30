@@ -26,6 +26,7 @@ import type {
   ImageAttachment,
 } from "../api";
 import type { LoadConversationMessagesResult } from "./internal";
+import { STREAMING_RENDER_INTERVAL_MS } from "./streaming-render-cadence";
 import { useChatSend } from "./useChatSend";
 import { applyStreamingTextModification } from "./useStreamingText";
 
@@ -238,8 +239,8 @@ function conversationFixture(id: string, roomId: string): Conversation {
  * Minimal `useChatSend` deps: most setters are inert spies; only the
  * conversation list + the `setConversationMessages` reducer are ref-backed
  * with real state so the streaming commits land somewhere observable. The
- * `setConversationMessages` spy counts commits so the test can assert the
- * rAF throttle bounds them.
+ * `setConversationMessages` spy counts commits so the test can assert one
+ * synchronous transport burst is coalesced.
  */
 function makeChatSendDeps() {
   const conversationsRef = {
@@ -304,37 +305,20 @@ function makeChatSendDeps() {
 }
 
 /**
- * Integration proof for the streaming-commit THROTTLE (`useChatSend`'s rAF
- * token-coalescing seam, distinct from the reducer tested above). The reducer
- * tests prove a commit paints incrementally; this proves the production hook
- * does NOT commit once per token. `onToken` fires faster than the display can
- * paint (>60/sec on a fast model), so several tokens arriving within one frame
- * must collapse into AT MOST ONE commit, with the final text flushed once the
- * stream resolves.
+ * Integration proof for the streaming-paint coalescer in `useChatSend`,
+ * distinct from the reducer tested above. The reducer tests prove a commit
+ * paints incrementally; these prove synchronous transport bursts collapse,
+ * separate fast events stay bounded, and terminal text flushes without loss.
  */
-describe("streaming → useChatSend rAF token-coalescing throttle", () => {
+describe("streaming → useChatSend paint coalescing", () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it("coalesces many same-frame tokens into ≤1 commit per frame and flushes the complete text", async () => {
-    // Manual rAF queue: callbacks park here and only run when we `flushFrame()`,
-    // so "within one frame" is fully deterministic — no real timers.
-    const rafQueue: FrameRequestCallback[] = [];
-    let rafId = 0;
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      rafQueue.push(cb);
-      rafId += 1;
-      return rafId;
-    });
-    vi.stubGlobal("cancelAnimationFrame", () => {});
-    const flushFrame = () => {
-      const pending = rafQueue.splice(0);
-      for (const cb of pending) cb(performance.now());
-    };
-
+  it("coalesces one synchronous token burst into one commit and flushes terminal text", async () => {
     // Capture the streaming `onToken` (3rd arg) and resolve the stream when we
     // decide the turn is done, so we control exactly when flushStreamingText runs.
     let onToken!: (token: string, accumulatedText?: string) => void;
@@ -369,24 +353,14 @@ describe("streaming → useChatSend rAF token-coalescing throttle", () => {
     // commit counter so we measure ONLY the streaming-token commits.
     setConversationMessages.mockClear();
 
-    // Cumulative snapshots arriving WITHIN one frame (no frame flushed yet).
+    // Cumulative snapshots decoded from one synchronous transport burst.
     const snapshots = ["He", "Hell", "Hello ", "Hello the", "Hello there"];
-    act(() => {
+    await act(async () => {
       for (const snapshot of snapshots) onToken("", snapshot);
+      await Promise.resolve();
     });
 
-    // Throttled: many tokens, but NOT one commit each (the rAF hasn't fired).
-    expect(setConversationMessages.mock.calls.length).toBeLessThan(
-      snapshots.length,
-    );
-    const beforeFrame = setConversationMessages.mock.calls.length;
-
-    // Flush the single scheduled frame → at most one additional commit lands.
-    act(() => {
-      flushFrame();
-    });
-    const afterFrame = setConversationMessages.mock.calls.length;
-    expect(afterFrame - beforeFrame).toBeLessThanOrEqual(1);
+    expect(setConversationMessages).toHaveBeenCalledTimes(1);
 
     // The streamed text painted so far is the latest parked snapshot.
     const assistantText = () =>
@@ -400,5 +374,84 @@ describe("streaming → useChatSend rAF token-coalescing throttle", () => {
       await sendPromise;
     });
     expect(assistantText()).toBe("Hello there, friend");
+  });
+
+  it("bounds paints across separate fast token events and flushes terminal text immediately", async () => {
+    vi.useFakeTimers();
+    let onToken!: (token: string, accumulatedText?: string) => void;
+    let resolveStream!: (data: { text: string; completed: boolean }) => void;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        token: (t: string, acc?: string) => void,
+      ) => {
+        onToken = token;
+        return new Promise((resolve) => {
+          resolveStream = resolve;
+        });
+      },
+    );
+
+    const { deps, setConversationMessages, conversationMessagesRef } =
+      makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+    });
+    setConversationMessages.mockClear();
+
+    const assistantText = () =>
+      conversationMessagesRef.current.find((m) => m.role === "assistant")
+        ?.text ?? "";
+
+    await act(async () => {
+      onToken("", "A");
+      await Promise.resolve();
+    });
+    expect(setConversationMessages).toHaveBeenCalledTimes(1);
+    expect(assistantText()).toBe("A");
+
+    const fastSnapshots = ["AB", "ABC", "ABCD", "ABCDE", "ABCDEF", "ABCDEFG"];
+    for (const snapshot of fastSnapshots) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10);
+        onToken("", snapshot);
+        await Promise.resolve();
+      });
+    }
+
+    // Six transport events arrived in 60 ms, inside one paint interval. Their
+    // cumulative text is parked without six expensive overlay commits.
+    expect(setConversationMessages).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STREAMING_RENDER_INTERVAL_MS);
+    });
+    expect(setConversationMessages).toHaveBeenCalledTimes(2);
+    expect(assistantText()).toBe("ABCDEFG");
+
+    const commitsBeforeTerminal = setConversationMessages.mock.calls.length;
+    await act(async () => {
+      onToken("", "ABCDEFGH");
+      resolveStream({ text: "ABCDEFGHI", completed: true });
+      await sendPromise;
+    });
+    expect(assistantText()).toBe("ABCDEFGHI");
+    expect(setConversationMessages.mock.calls.length).toBeGreaterThan(
+      commitsBeforeTerminal,
+    );
+
+    const commitsAfterTerminal = setConversationMessages.mock.calls.length;
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(setConversationMessages).toHaveBeenCalledTimes(commitsAfterTerminal);
+    vi.useRealTimers();
   });
 });

@@ -15,6 +15,7 @@ import {
 } from "@elizaos/core";
 import { AcpService } from "../../../src/services/acp-service.js";
 import { augmentTaskWithDeployGuidance } from "../../../src/services/app-deploy-guidance.js";
+import type { OrchestratorOwnedArtifact } from "../../../src/services/orchestrator-artifact-ownership.js";
 import { OrchestratorTaskService } from "../../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../../src/services/orchestrator-task-store.js";
 import type { OrchestratorTaskDocument } from "../../../src/services/orchestrator-task-types.js";
@@ -206,6 +207,15 @@ class ScenarioAcpService {
   }
 
   getChangedPaths(_sessionId: string): string[] {
+    return [];
+  }
+
+  // Auto goal verification reads the orchestrator-owned artifact ledger
+  // (residualsOrchestratorOwnedArtifacts); without this the optional-chained
+  // call throws and every changeset-backed completion parks in `validating`.
+  getOrchestratorOwnedArtifacts(
+    _sessionId: string,
+  ): OrchestratorOwnedArtifact[] {
     return [];
   }
 

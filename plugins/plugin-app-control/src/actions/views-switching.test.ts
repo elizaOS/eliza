@@ -262,6 +262,42 @@ describe("view switching — VIEWS action resolver", () => {
 		vi.clearAllMocks();
 	});
 
+	it("keeps inventory internal through the public wrapper while preserving natural navigation replies", async () => {
+		const action = createViewsAction({
+			client: clientFor(REGISTRY),
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		const inventory = await action.handler(
+			{ agentId: "agent-1" } as never,
+			message("what views are available?") as never,
+			undefined,
+			{ action: "list" },
+			vi.fn(),
+		);
+
+		expect(inventory).toMatchObject({
+			success: true,
+			text: expect.stringMatching(/^available_views:/),
+			transcriptVisibility: "internal",
+		});
+		expect(inventory?.userFacingText).toBeUndefined();
+		expect(inventory?.verifiedUserFacing).toBeUndefined();
+
+		const { navigated } = installNavigateCapture();
+		const navigation = await action.handler(
+			{ agentId: "agent-1" } as never,
+			message("open calendar") as never,
+			undefined,
+			{ action: "show", view: "calendar" },
+			vi.fn(),
+		);
+
+		expect(navigated).toEqual(["calendar"]);
+		expect(navigation?.transcriptVisibility).toBe("internal");
+		expect(navigation?.userFacingText).toBe(navigation?.text);
+		expect(navigation?.verifiedUserFacing).toBe(true);
+	});
+
 	describe("ACTIVE navigation — every user-facing view reachable by an explicit command", () => {
 		// [phrase, expected view id]. These are the explicit-navigation commands a
 		// user would type. The resolver must dispatch a navigate POST to that id.
@@ -317,6 +353,57 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["settings"]);
+		});
+
+		it("owns one canonical completion after a successful view switch", async () => {
+			installNavigateCapture();
+
+			const { result, callback } = await runShow(REGISTRY, "open the calendar");
+
+			expect(callback).toHaveBeenCalledTimes(1);
+			expect(callback).toHaveBeenCalledWith({ text: "Opened Calendar." });
+			expect(result).toMatchObject({
+				success: true,
+				text: "Opened Calendar.",
+				transcriptVisibility: "internal",
+				userFacingText: "Opened Calendar.",
+				verifiedUserFacing: true,
+				turnComplete: true,
+				values: {
+					mode: "show",
+					viewId: "calendar",
+					viewType: "gui",
+					label: "Calendar",
+				},
+			});
+		});
+
+		it("acknowledges Home without relabeling an explicit Messages destination", async () => {
+			installNavigateCapture();
+			const messagesView = [
+				{
+					...REGISTRY[0],
+					label: "Messages",
+				},
+			];
+
+			const home = await runShow(messagesView, "go home");
+			expect(home.callback).toHaveBeenCalledWith({ text: "Opened Home." });
+			expect(home.result).toMatchObject({
+				success: true,
+				text: "Opened Home.",
+				values: { viewId: "chat", label: "Home" },
+			});
+
+			const messages = await runShow(messagesView, "open messages");
+			expect(messages.callback).toHaveBeenCalledWith({
+				text: "Opened Messages.",
+			});
+			expect(messages.result).toMatchObject({
+				success: true,
+				text: "Opened Messages.",
+				values: { viewId: "chat", label: "Messages" },
+			});
 		});
 	});
 

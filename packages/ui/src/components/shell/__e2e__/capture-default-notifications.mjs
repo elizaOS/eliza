@@ -1,8 +1,9 @@
 /**
  * Browser regression run + screenshots for the notification shade, desktop +
- * mobile: rested Z-stacks, the pull-gesture expand/collapse (real mouse drag
- * and wheel — the paths jsdom cannot exercise against real layout),
- * per-stack fan/fold controls, and swipe-to-dismiss. No app server:
+ * mobile: rested Z-stacks, real-layout pull expansion, directional wheel
+ * behavior, per-stack fan/fold controls, explicit shade collapse, and
+ * swipe-to-dismiss. It saves full-page screenshots plus walkthrough video.
+ * No app server:
  * bundles the fixture with esbuild (core/node builtins stubbed dead-in-browser)
  * and drives it in headless chromium.
  *
@@ -92,19 +93,26 @@ const result = await build({
 const js = result.outputFiles[0].text;
 console.log(`bundled (${js.length} bytes)`);
 
-// Fetch the tailwind runtime ONCE and serve it from the loopback server: the
-// CDN can take >8s cold, which used to screenshot the first page unstyled.
-let tailwindJs = "";
-try {
-  const res = await fetch("https://cdn.tailwindcss.com");
-  if (res.ok) tailwindJs = await res.text();
-} catch {
-  // offline — the checks are DOM/computed-style based; pixels go unstyled.
+// Fetch the Tailwind runtime once and serve it from the loopback server. Styled
+// pixels are part of this evidence contract, so a missing runtime must abort the
+// capture instead of silently producing an unreviewable unstyled artifact.
+const tailwindResponse = await fetch("https://cdn.tailwindcss.com", {
+  signal: AbortSignal.timeout(30_000),
+});
+if (!tailwindResponse.ok) {
+  throw new Error(
+    `Tailwind runtime prerequisite failed (${tailwindResponse.status} ${tailwindResponse.statusText})`,
+  );
 }
-if (!tailwindJs) console.log("(tailwind CDN unavailable — unstyled pixels)");
+const tailwindJs = await tailwindResponse.text();
+if (!tailwindJs.trim()) {
+  throw new Error("Tailwind runtime prerequisite returned an empty response");
+}
 
-const html = `<!doctype html><html><head><meta charset="utf-8"><title>notifications e2e</title>
-${tailwindJs ? '<script src="/tailwind.js"></script>' : ""}
+const html = `<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>notifications e2e</title>
+<script src="/tailwind.js"></script>
 <style>html,body{margin:0;height:100%;color:#f4f4f5;font-family:ui-sans-serif,system-ui;
   background-color:#0a0d16;
   background-image:
@@ -174,7 +182,11 @@ for (const [name, width, height] of [
   ["mobile", 390, 844],
 ]) {
   console.log(`\n── ${name} (${width}x${height}) ──`);
-  const page = await browser.newPage({ viewport: { width, height } });
+  const context = await browser.newContext({
+    viewport: { width, height },
+    recordVideo: { dir: outDir, size: { width, height } },
+  });
+  const page = await context.newPage();
   // Headless: still the entrance + scroll-driven (`animation-timeline: view()`)
   // effects for deterministic pixels and to dodge the headless-shell compositor
   // crash driving view-timeline rows while the scroller transforms. Headful
@@ -185,19 +197,27 @@ for (const [name, width, height] of [
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await page.waitForSelector(ROW);
-  // Readiness = an APPLIED tailwind effect (the runtime's global lands before
-  // the JIT has styled the DOM, so probing the global would screenshot an
-  // unstyled tree). Skipped when the runtime couldn't be fetched.
-  if (tailwindJs) {
-    await page.waitForFunction(() => {
-      const row = document.querySelector('[data-testid="notification-row"]');
-      // The row button carries `text-left`; buttons default to center, so a
-      // left alignment proves the JIT styles landed.
-      return !!row && getComputedStyle(row).textAlign === "left";
-    });
-  }
+  // Readiness = an applied Tailwind effect. The runtime global lands before
+  // the JIT has styled the DOM, so probing the global would still permit an
+  // unstyled screenshot.
+  await page.waitForFunction(() => {
+    const row = document.querySelector('[data-testid="notification-row"]');
+    // The row button carries `text-left`; buttons default to center, so left
+    // alignment proves the generated utility styles reached the real element.
+    return !!row && getComputedStyle(row).textAlign === "left";
+  });
   await page.waitForTimeout(200);
-
+  const viewportState = await page.evaluate(() => ({
+    innerHeight: window.innerHeight,
+    innerWidth: window.innerWidth,
+    visualViewportHeight: window.visualViewport?.height ?? null,
+    visualViewportWidth: window.visualViewport?.width ?? null,
+  }));
+  check(
+    `${name} capture uses the requested CSS viewport`,
+    viewportState.innerWidth === width && viewportState.innerHeight === height,
+    JSON.stringify(viewportState),
+  );
   // 1. RESTED: interrupt triage — the task group is a Z-stack (urgent on top,
   //    two glass peeks, no header eyebrow), the solo system row is flat, the
   //    rest hides behind the "N more" button.
@@ -213,9 +233,9 @@ for (const [name, width, height] of [
     ),
   );
   check(
-    "two glass peeks",
+    "two producer stacks retain their glass peeks",
     (await page.locator('[data-testid="notification-stack-peek"]').count()) ===
-      2,
+      4,
   );
   check(
     "no group header eyebrows / stack counts",
@@ -238,6 +258,26 @@ for (const [name, width, height] of [
     "hidden tier not visible at rest",
     (await page.locator("text=Take the tour").count()) === 0,
   );
+  const restedPreviewFaces = await page
+    .locator("[data-notification-stack-preview-content]")
+    .evaluateAll((previews) =>
+      previews.map((preview) => {
+        const style = getComputedStyle(preview);
+        return {
+          opacity: Number.parseFloat(style.opacity),
+          visibility: style.visibility,
+        };
+      }),
+    );
+  check(
+    "folded stack masks every underlying notification face at rest",
+    restedPreviewFaces.length === 4 &&
+      restedPreviewFaces.every(
+        ({ opacity, visibility }) =>
+          opacity === 0 && visibility === "hidden",
+      ),
+    JSON.stringify(restedPreviewFaces),
+  );
   const glass = await page
     .locator('[data-testid="notification-row-swipe"]')
     .first()
@@ -249,15 +289,93 @@ for (const [name, width, height] of [
       };
     });
   check(
-    "cards are liquid glass (backdrop blur + inset edge)",
-    glass.blur.includes("blur") && glass.shadow.includes("inset"),
-    glass.blur,
+    "stacked cards retain the liquid-glass inset edge",
+    glass.shadow.includes("inset"),
+    glass.shadow,
   );
   await page.screenshot({
     path: join(outDir, `notifications-${name}-rested.png`),
     fullPage: true,
   });
   console.log(`  📸 notifications-${name}-rested.png`);
+
+  // A partial horizontal swipe exposes the actual next notification rather
+  // than a blank decorative plate. Release below threshold restores the stack
+  // without changing inbox state.
+  const restedSwipe = page
+    .locator('[data-testid="notification-row-swipe"]')
+    .first();
+  const restedSwipeBox = await restedSwipe.boundingBox();
+  const underlyingPeek = page
+    .locator('[data-testid="notification-stack-peek"]')
+    .first();
+  await page.mouse.move(
+    restedSwipeBox.x + 40,
+    restedSwipeBox.y + restedSwipeBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    restedSwipeBox.x + 124,
+    restedSwipeBox.y + restedSwipeBox.height / 2,
+    { steps: 8 },
+  );
+  const underCard = await underlyingPeek.evaluate((peek) => {
+    const content = peek.querySelector(
+      "[data-notification-stack-preview-content]",
+    );
+    const title = peek.querySelector("[data-notification-stack-preview-title]");
+    const contentStyle = content ? getComputedStyle(content) : null;
+    return {
+      opacity: contentStyle
+        ? Number.parseFloat(contentStyle.opacity)
+        : Number.NaN,
+      title: title?.getAttribute("data-notification-stack-preview-title"),
+      renderedTitle: title ? getComputedStyle(title, "::before").content : "",
+      visibility: contentStyle?.visibility ?? "",
+    };
+  });
+  const deeperCard = await page
+    .locator('[data-testid="notification-stack-peek"]')
+    .nth(1)
+    .locator("[data-notification-stack-preview-content]")
+    .evaluate((content) => {
+      const style = getComputedStyle(content);
+      return {
+        opacity: Number.parseFloat(style.opacity),
+        visibility: style.visibility,
+      };
+    });
+  check(
+    "partial stack swipe reveals the next notification face",
+    underCard.title === "PR #42 approved" &&
+      underCard.renderedTitle.includes("PR #42 approved") &&
+      underCard.opacity === 1 &&
+      underCard.visibility === "visible",
+    JSON.stringify(underCard),
+  );
+  check(
+    "partial stack swipe keeps deeper folded faces masked",
+    deeperCard.opacity === 0 && deeperCard.visibility === "hidden",
+    JSON.stringify(deeperCard),
+  );
+  await page.screenshot({
+    path: join(outDir, `notifications-${name}-during-stack-swipe.png`),
+    fullPage: true,
+  });
+  console.log(`  📸 notifications-${name}-during-stack-swipe.png`);
+  await page.mouse.up();
+  await page.waitForFunction(
+    (selector) =>
+      !document
+        .querySelector(selector)
+        ?.getAttribute("style")
+        ?.includes("translateX"),
+    '[data-testid="notification-row-swipe"]',
+  );
+  check(
+    "cancelled stack swipe restores the original inbox",
+    (await page.locator(ROW).count()) === 2,
+  );
 
   // 2. PULL TO EXPAND: a real mouse drag down from the list top reveals every
   //    priority tier — but the Z-stacks PERSIST (per-stack fan-out below).
@@ -276,6 +394,53 @@ for (const [name, width, height] of [
       1 &&
       (await page.locator('[data-testid="notifications-collapse"]').count()) ===
         1,
+  );
+  const clearAllControl = page.locator(
+    '[data-testid="notifications-clear-all"]',
+  );
+  const clearAllRestBox = await clearAllControl.boundingBox();
+  await clearAllControl.hover();
+  await page.waitForTimeout(220);
+  const clearAllHoverBox = await clearAllControl.boundingBox();
+  check(
+    "Clear All stays an X on hover",
+    Math.abs(clearAllRestBox.width - clearAllHoverBox.width) <= 1 &&
+      (await clearAllControl.getAttribute("data-clear-stage")) === "0",
+  );
+  await clearAllControl.click();
+  await page.waitForTimeout(220);
+  const firstClearStage = {
+    stage: await clearAllControl.getAttribute("data-clear-stage"),
+    label: await clearAllControl.getAttribute("aria-label"),
+  };
+  check(
+    "first Clear All click reveals Clear all",
+    firstClearStage.stage === "1" &&
+      firstClearStage.label === "Continue clearing all notifications",
+    JSON.stringify(firstClearStage),
+  );
+  await clearAllControl.click();
+  await page.waitForTimeout(220);
+  const secondClearStage = {
+    stage: await clearAllControl.getAttribute("data-clear-stage"),
+    label: await clearAllControl.getAttribute("aria-label"),
+  };
+  check(
+    "second Clear All click requires Confirm?",
+    secondClearStage.stage === "2" &&
+      secondClearStage.label === "Confirm clear all notifications",
+    JSON.stringify(secondClearStage),
+  );
+  await page.evaluate(() => {
+    document.body.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+  });
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="notifications-clear-all"]')
+        ?.getAttribute("data-clear-stage") === "0",
   );
   check(
     "stacks persist through the shade expand",
@@ -324,10 +489,23 @@ for (const [name, width, height] of [
       (await page.locator('[data-testid="notification-stack-clear"]').count()) >
         0,
   );
+  check(
+    "global Collapse remains visible with fanned stacks",
+    await page.locator('[data-testid="notifications-collapse"]').isVisible(),
+  );
   await page
     .locator('[data-testid="notification-stack-collapse"]')
     .first()
     .click();
+  await page.waitForFunction(
+    ({ rowSelector, peekSelector }) =>
+      document.querySelectorAll(rowSelector).length === 5 &&
+      document.querySelectorAll(peekSelector).length === 2,
+    {
+      rowSelector: ROW,
+      peekSelector: '[data-testid="notification-stack-peek"]',
+    },
+  );
   check(
     "Show Less folds the producer back into a stack",
     (await page.locator(ROW).count()) === 5 &&
@@ -373,11 +551,14 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-after-swipe.png`);
 
-  // 5. DIRECTIONAL COLLAPSE: fingers-up (positive wheel deltas) at the top
-  //    compresses the shade back to triage; fingers-down (negative) while
-  //    expanded is a no-op — the gesture is directional, so trailing trackpad
-  //    momentum can never snap the shade shut right after opening it.
+  // 5. DIRECTIONAL SETTLE: fingers-down (negative wheel deltas) while expanded
+  //    is a no-op, so trailing trackpad momentum cannot snap the shade shut.
+  //    The global Collapse control remains available even when producer stacks
+  //    are fanned and closes the complete notification surface in one action.
   const listBox = await page.locator(LIST).boundingBox();
+  await page.locator(LIST).evaluate((list) => {
+    list.scrollTop = 0;
+  });
   await page.mouse.move(
     listBox.x + listBox.width / 2,
     listBox.y + listBox.height / 3,
@@ -388,19 +569,14 @@ for (const [name, width, height] of [
     "fingers-down while expanded does NOT collapse (momentum-proof)",
     (await shadeMode(page)) === "expanded",
   );
-  // Collapse contributions are per-event capped, so it takes a sustained
-  // fingers-up run (several events) to commit.
-  for (let i = 0; i < 4; i++) {
-    await page.mouse.wheel(0, 30);
-    await page.waitForTimeout(30);
-  }
+  await page.locator('[data-testid="notifications-collapse"]').click();
   await page.waitForFunction(
     (sel) =>
       document.querySelector(sel)?.getAttribute("data-shade-mode") === "rested",
     LIST,
   );
   check(
-    "fingers-up at the top collapses back to triage",
+    "the explicit collapse control returns to triage",
     (await shadeMode(page)) === "rested",
   );
 
@@ -408,7 +584,12 @@ for (const [name, width, height] of [
     console.log(`  page errors:`, errors);
     failures += 1;
   }
+  const video = page.video();
   await page.close();
+  await context.close();
+  if (video) {
+    await video.saveAs(join(outDir, `notifications-${name}-walkthrough.webm`));
+  }
 }
 if (HEADFUL) {
   console.log("HEADFUL: holding the window open 8s for live inspection…");

@@ -18,6 +18,7 @@ import {
   agentSessionRepairNeedsCloudToken,
   dedicatedAgentIdFromApiBase,
   resolveAgentSessionRecovery,
+  shouldShowCloudAgentReauthNotice,
 } from "./agent-session-recovery";
 
 function cloudServer(agentId: string) {
@@ -56,6 +57,23 @@ describe("resolveAgentSessionRecovery", () => {
         apiBase: "https://box.example.com",
       },
       cloudToken: null,
+      cloudApiBase: "https://elizacloud.ai",
+      alreadyAttempted: false,
+    });
+
+    expect(decision.action).toBe("show-wall");
+  });
+
+  it("does not trust a self-hosted server that copies the Cloud shared-agent path", () => {
+    const decision = resolveAgentSessionRecovery({
+      reason: "remote_auth_required",
+      activeServer: {
+        kind: "remote",
+        id: "remote:vps",
+        label: "VPS",
+        apiBase: "https://vps.example/api/v1/eliza/agents/agent-1",
+      },
+      cloudToken: "steward.jwt.token",
       cloudApiBase: "https://elizacloud.ai",
       alreadyAttempted: false,
     });
@@ -266,5 +284,68 @@ describe("dedicatedAgentIdFromApiBase", () => {
     expect(
       dedicatedAgentIdFromApiBase("https://my-box.example.com"),
     ).toBeNull();
+  });
+});
+
+describe("shouldShowCloudAgentReauthNotice", () => {
+  it("routes managed native Cloud targets to Cloud instead of the password wall", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: false,
+        isNative: true,
+        activeServer: cloudServer("23766030-0000-0000-0000-000000000000"),
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves the password wall for native self-hosted targets", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: false,
+        isNative: true,
+        activeServer: {
+          kind: "remote",
+          id: "remote:vps",
+          label: "VPS",
+          apiBase: "https://box.example.com",
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("preserves the password wall for a native remote path lookalike", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: false,
+        isNative: true,
+        activeServer: {
+          kind: "remote",
+          id: "remote:vps",
+          label: "VPS",
+          apiBase: "https://vps.example/api/v1/eliza/agents/agent-1",
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("continues to show the Cloud notice on hosted browser surfaces", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: true,
+        isNative: false,
+        activeServer: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("trusts the recovery status when the active profile snapshot is absent", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: false,
+        isNative: true,
+        activeServer: null,
+        recoveryStatus: "cloud-retry-required",
+      }),
+    ).toBe(true);
   });
 });

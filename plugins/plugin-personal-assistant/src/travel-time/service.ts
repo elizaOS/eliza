@@ -1,21 +1,30 @@
 /**
- * T8a — Travel-time awareness (plan §6.9).
+ * Travel-buffer calculation over Google Routes v2 route matrices.
  *
- * {@link TravelTimeService} computes a travel-time buffer (in minutes) for a
- * calendar event. It calls Google's Distance Matrix API with
- * `departure_time=now` and prefers `duration_in_traffic` over `duration`.
- * Missing configuration, missing addresses, and provider failures are surfaced
- * as explicit errors. The service never fabricates a travel buffer.
+ * The compatibility surface still accepts address strings and returns minutes,
+ * while the provider boundary uses typed waypoints, header-only credentials,
+ * explicit per-cell errors, and no fabricated duration.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/shared";
+import type {
+  RouteMatrixOraclePayload,
+  RouteMatrixOracleQuery,
+  RouteWaypoint,
+} from "../lifeops/oracles/contracts.js";
+import {
+  GOOGLE_ROUTES_MATRIX_URL,
+  GoogleRoutesMatrixAdapter,
+} from "../lifeops/oracles/google-routes.js";
+import type { OracleFetch } from "../lifeops/oracles/http.js";
 
-export const GOOGLE_DISTANCE_MATRIX_URL =
-  "https://maps.googleapis.com/maps/api/distancematrix/json";
+export { GOOGLE_ROUTES_MATRIX_URL };
+/** @deprecated Use {@link GOOGLE_ROUTES_MATRIX_URL}. */
+export const GOOGLE_DISTANCE_MATRIX_URL = GOOGLE_ROUTES_MATRIX_URL;
 
 export type TravelBufferMethod = "maps-api";
 
@@ -31,7 +40,6 @@ export interface ComputeTravelBufferInput {
   originAddress?: string;
 }
 
-/** Structural provider for resolving an event's destination address. */
 export interface CalendarEventLookupLike {
   getCalendarFeed(
     requestUrl: URL,
@@ -40,23 +48,24 @@ export interface CalendarEventLookupLike {
   ): Promise<LifeOpsCalendarFeed>;
 }
 
-/** Injectable HTTP fetcher so tests don't hit the network. */
+/**
+ * Compatibility transport retained for existing embedders. Production uses
+ * global fetch; contract tests for the Routes adapter use real loopback HTTP.
+ */
 export type TravelTimeFetch = (
   url: string,
-  init?: { signal?: AbortSignal },
+  init?: {
+    signal?: AbortSignal;
+    method?: string;
+    headers?: HeadersInit;
+    body?: BodyInit | null;
+  },
 ) => Promise<{
   ok: boolean;
   status: number;
   json: () => Promise<unknown>;
 }>;
 
-/**
- * Structural slice of the Location plugin
- * (`@elizaos/plugin-location`'s `LocationPlugin`).
- *
- * Captured here as a local interface so this service stays free of any
- * platform/native imports — the action layer wires the real plugin in.
- */
 export interface LocationProviderLike {
   checkPermissions(): Promise<{ location: "granted" | "denied" | "prompt" }>;
   getCurrentPosition(options?: {
@@ -68,56 +77,56 @@ export interface LocationProviderLike {
   } | null>;
 }
 
+export interface RoutesMatrixLike {
+  compute(
+    query: RouteMatrixOracleQuery,
+    now?: Date,
+  ): Promise<{
+    health: "complete" | "partial";
+    value: RouteMatrixOraclePayload;
+  }>;
+}
+
+export interface TravelTimeRuntime {
+  getSetting(key: string): unknown;
+}
+
 export interface TravelTimeServiceDeps {
   calendar: CalendarEventLookupLike;
-  /** Optional fetch override. Defaults to global `fetch`. */
   fetchImpl?: TravelTimeFetch;
-  /** Optional env accessor — defaults to `process.env.GOOGLE_MAPS_API_KEY`. */
   getApiKey?: () => string | undefined;
-  /** Default origin used when caller omits originAddress. */
   defaultOriginAddress?: string | null;
-  /**
-   * Optional Location plugin handle. When supplied, the service falls back
-   * to `Location.getCurrentPosition()` if no origin address was provided
-   * (and no `defaultOriginAddress` is configured) but the user has granted
-   * location permission. A denied permission, a missing plugin, or a
-   * plugin error all surface as `MISSING_ORIGIN` so callers fail loud
-   * instead of silently fabricating a buffer.
-   */
   locationProvider?: LocationProviderLike;
+  routesAdapter?: RoutesMatrixLike;
 }
 
-interface DistanceMatrixElement {
-  status: string;
-  duration?: { value: number; text: string };
-  duration_in_traffic?: { value: number; text: string };
-}
+export type TravelTimeUnavailableCode =
+  | "MISSING_DESTINATION"
+  | "MISSING_ORIGIN"
+  | "MISSING_API_KEY"
+  | "DISTANCE_MATRIX_FAILED"
+  | "INVALID_DISTANCE_MATRIX_RESPONSE"
+  | "EVENT_NOT_FOUND";
 
-interface DistanceMatrixResponse {
-  status: string;
-  rows?: Array<{ elements: DistanceMatrixElement[] }>;
-  origin_addresses?: string[];
-  destination_addresses?: string[];
-}
+export class TravelTimeUnavailableError extends ElizaError {
+  override readonly name = "TravelTimeUnavailableError";
 
-export class TravelTimeUnavailableError extends Error {
   constructor(
     message: string,
-    readonly code:
-      | "MISSING_DESTINATION"
-      | "MISSING_ORIGIN"
-      | "MISSING_API_KEY"
-      | "DISTANCE_MATRIX_FAILED"
-      | "INVALID_DISTANCE_MATRIX_RESPONSE",
+    readonly code: TravelTimeUnavailableCode,
+    cause?: unknown,
   ) {
-    super(message);
-    this.name = "TravelTimeUnavailableError";
+    super(message, {
+      code,
+      cause,
+      severity: "ephemeral",
+    });
   }
 }
 
 export class TravelTimeService {
   constructor(
-    readonly _runtime: IAgentRuntime,
+    private readonly runtime: TravelTimeRuntime,
     private readonly deps: TravelTimeServiceDeps,
   ) {}
 
@@ -126,7 +135,10 @@ export class TravelTimeService {
   ): Promise<TravelBufferResult> {
     const event = await this.resolveEvent(input.eventId);
     if (!event) {
-      throw new Error(`[TravelTimeService] event ${input.eventId} not found`);
+      throw new TravelTimeUnavailableError(
+        `[TravelTimeService] event ${input.eventId} was not found.`,
+        "EVENT_NOT_FOUND",
+      );
     }
     return this.computeBufferForEvent(event, input.originAddress);
   }
@@ -138,8 +150,7 @@ export class TravelTimeService {
     const destinationAddress = normalizeAddress(event.location);
     const explicitOrigin =
       normalizeAddress(originAddressInput) ??
-      normalizeAddress(this.deps.defaultOriginAddress ?? null);
-
+      normalizeAddress(this.deps.defaultOriginAddress);
     if (!destinationAddress) {
       throw new TravelTimeUnavailableError(
         "Cannot compute travel time because the event has no destination location.",
@@ -151,69 +162,77 @@ export class TravelTimeService {
       explicitOrigin ?? (await this.resolveOriginFromLocationPlugin());
     if (!originAddress) {
       throw new TravelTimeUnavailableError(
-        "Cannot compute travel time because no origin address was supplied.",
+        "Cannot compute travel time because no origin was supplied.",
         "MISSING_ORIGIN",
       );
     }
-
-    const apiKey = (
-      this.deps.getApiKey ?? (() => process.env.GOOGLE_MAPS_API_KEY)
-    )();
+    const apiKeyResolver =
+      this.deps.getApiKey ??
+      (() => normalizeSetting(this.runtime.getSetting("GOOGLE_MAPS_API_KEY")));
+    const apiKey = apiKeyResolver();
     if (!apiKey) {
       throw new TravelTimeUnavailableError(
-        "Cannot compute travel time because GOOGLE_MAPS_API_KEY is not configured.",
+        "Cannot compute travel time because the Routes API credential is not configured.",
         "MISSING_API_KEY",
       );
     }
 
-    const url = buildDistanceMatrixUrl({
-      apiKey,
-      origin: originAddress,
-      destination: destinationAddress,
-    });
-    const fetchImpl = this.deps.fetchImpl ?? globalFetch;
-
-    const response = await safeFetch(fetchImpl, url);
-    if (response.ok === false) {
+    const adapter =
+      this.deps.routesAdapter ??
+      new GoogleRoutesMatrixAdapter({
+        apiKeyResolver: () => apiKey,
+        ...(this.deps.fetchImpl
+          ? { fetchImpl: adaptCompatibilityFetch(this.deps.fetchImpl) }
+          : {}),
+      });
+    let payload: RouteMatrixOraclePayload;
+    try {
+      const snapshot = await adapter.compute({
+        kind: "route-matrix",
+        origins: [parseWaypoint(originAddress)],
+        destinations: [parseWaypoint(destinationAddress)],
+        travelMode: "DRIVE",
+        routingPreference: "TRAFFIC_AWARE",
+        departureTime: new Date().toISOString(),
+      });
+      if (snapshot.health === "unavailable") {
+        throw new TravelTimeUnavailableError(
+          "Google Routes is unavailable for this route.",
+          "DISTANCE_MATRIX_FAILED",
+        );
+      }
+      payload = snapshot.value;
+    } catch (cause) {
+      // error-policy:J2 The calendar surface retains its stable error contract
+      // while preserving the typed Routes failure as the cause.
       throw new TravelTimeUnavailableError(
-        `Distance Matrix ${response.kind} error: ${response.message}`,
+        "Google Routes could not compute the requested travel buffer.",
         "DISTANCE_MATRIX_FAILED",
+        cause,
       );
     }
-    const parsed = parseDistanceMatrix(response.body);
-    if (parsed.ok === false) {
+
+    const cell = payload.cells.find(
+      (candidate) =>
+        candidate.originIndex === 0 && candidate.destinationIndex === 0,
+    );
+    if (!cell || cell.status === "unknown") {
       throw new TravelTimeUnavailableError(
-        parsed.reason,
+        "Google Routes returned no usable duration for this route.",
         "INVALID_DISTANCE_MATRIX_RESPONSE",
       );
     }
     return {
-      bufferMinutes: parsed.bufferMinutes,
+      bufferMinutes: Math.max(1, Math.ceil(cell.durationSeconds / 60)),
       method: "maps-api",
       originAddress,
       destinationAddress,
     };
   }
 
-  /**
-   * Ask the Location plugin for the user's current coordinates and format
-   * them as a `lat,lng` string the Distance Matrix API accepts as origin.
-   *
-   * Returns null when:
-   *   - no location provider was injected,
-   *   - the user has not granted location permission,
-   *   - the plugin returned no fix.
-   *
-   * Throws `TravelTimeUnavailableError("MISSING_ORIGIN")` when the plugin
-   * call itself fails — surfaces the underlying error message so callers
-   * can debug instead of silently fabricating a buffer.
-   *
-   * Returning null causes the caller to throw `MISSING_ORIGIN` too.
-   */
   private async resolveOriginFromLocationPlugin(): Promise<string | null> {
     const provider = this.deps.locationProvider;
     if (!provider) return null;
-
     const status = await this.callLocationPlugin(
       () => provider.checkPermissions(),
       "checkPermissions",
@@ -221,40 +240,37 @@ export class TravelTimeService {
     if (status.location !== "granted") return null;
 
     const position = await this.callLocationPlugin(
-      () => provider.getCurrentPosition({ timeout: 5000 }),
+      () => provider.getCurrentPosition({ timeout: 5_000 }),
       "getCurrentPosition",
     );
     if (!position) return null;
-
     const { latitude, longitude } = position.coords;
     if (
-      typeof latitude !== "number" ||
-      typeof longitude !== "number" ||
       !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude)
+      latitude < -90 ||
+      latitude > 90 ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
     ) {
       return null;
     }
     return `${latitude},${longitude}`;
   }
 
-  /**
-   * Boundary-translation wrapper for the Location plugin. The plugin lives
-   * outside this service's trust domain (Capacitor / native bridge), so we
-   * convert any rejection into a typed `TravelTimeUnavailableError` with
-   * enough context for an operator to diagnose the failure.
-   */
   private async callLocationPlugin<T>(
-    op: () => Promise<T>,
+    operation: () => Promise<T>,
     label: string,
   ): Promise<T> {
     try {
-      return await op();
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
+      return await operation();
+    } catch (cause) {
+      // error-policy:J2 The native bridge is outside this trust boundary; the
+      // caller receives a stable code with the original rejection preserved.
       throw new TravelTimeUnavailableError(
-        `Cannot compute travel time because the location plugin failed during ${label}: ${detail}`,
+        `Cannot compute travel time because the location provider failed during ${label}.`,
         "MISSING_ORIGIN",
+        cause,
       );
     }
   }
@@ -264,10 +280,10 @@ export class TravelTimeService {
   ): Promise<LifeOpsCalendarEvent | null> {
     const now = new Date();
     const timeMin = new Date(
-      now.getTime() - 7 * 24 * 60 * 60 * 1000,
+      now.getTime() - 7 * 24 * 60 * 60 * 1_000,
     ).toISOString();
     const timeMax = new Date(
-      now.getTime() + 30 * 24 * 60 * 60 * 1000,
+      now.getTime() + 30 * 24 * 60 * 60 * 1_000,
     ).toISOString();
     const feed = await this.deps.calendar.getCalendarFeed(
       new URL("internal://travel-time/resolve"),
@@ -275,8 +291,9 @@ export class TravelTimeService {
       now,
     );
     return (
-      feed.events.find((e) => e.id === eventId || e.externalId === eventId) ??
-      null
+      feed.events.find(
+        (event) => event.id === eventId || event.externalId === eventId,
+      ) ?? null
     );
   }
 }
@@ -287,78 +304,49 @@ function normalizeAddress(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function buildDistanceMatrixUrl(input: {
-  apiKey: string;
-  origin: string;
-  destination: string;
-}): string {
-  const params = new URLSearchParams({
-    origins: input.origin,
-    destinations: input.destination,
-    departure_time: "now",
-    key: input.apiKey,
-  });
-  return `${GOOGLE_DISTANCE_MATRIX_URL}?${params.toString()}`;
+function normalizeSetting(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
-type SafeFetchResult =
-  | { ok: true; body: unknown }
-  | { ok: false; kind: "network" | "http"; message: string };
-
-async function safeFetch(
-  fetchImpl: TravelTimeFetch,
-  url: string,
-): Promise<SafeFetchResult> {
-  try {
-    const res = await fetchImpl(url);
-    if (!res.ok) {
-      return {
-        ok: false,
-        kind: "http",
-        message: `status ${res.status}`,
-      };
+function parseWaypoint(value: string): RouteWaypoint {
+  const coordinateMatch = value.match(
+    /^\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*(-?(?:\d+(?:\.\d+)?|\.\d+))\s*$/,
+  );
+  if (coordinateMatch) {
+    const latitude = Number(coordinateMatch[1]);
+    const longitude = Number(coordinateMatch[2]);
+    if (
+      Number.isFinite(latitude) &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      Number.isFinite(longitude) &&
+      longitude >= -180 &&
+      longitude <= 180
+    ) {
+      return { kind: "coordinates", latitude, longitude };
     }
-    const body = await res.json();
-    return { ok: true, body };
-  } catch (err) {
-    return {
-      ok: false,
-      kind: "network",
-      message: err instanceof Error ? err.message : String(err),
-    };
   }
+  const placeMatch = value.match(/^place-id:([A-Za-z0-9_-]+)$/);
+  if (placeMatch) {
+    return { kind: "place", placeId: placeMatch[1] };
+  }
+  return { kind: "address", address: value };
 }
 
-function parseDistanceMatrix(
-  body: unknown,
-): { ok: true; bufferMinutes: number } | { ok: false; reason: string } {
-  if (!body || typeof body !== "object") {
-    return { ok: false, reason: "response was not an object" };
-  }
-  const resp = body as DistanceMatrixResponse;
-  if (resp.status !== "OK") {
-    return { ok: false, reason: `distance matrix status ${resp.status}` };
-  }
-  const element = resp.rows?.[0]?.elements?.[0];
-  if (!element) {
-    return { ok: false, reason: "distance matrix returned no elements" };
-  }
-  if (element.status !== "OK") {
-    return { ok: false, reason: `element status ${element.status}` };
-  }
-  const seconds =
-    element.duration_in_traffic?.value ?? element.duration?.value ?? null;
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
-    return { ok: false, reason: "no duration in response" };
-  }
-  return { ok: true, bufferMinutes: Math.max(1, Math.ceil(seconds / 60)) };
-}
-
-const globalFetch: TravelTimeFetch = async (url, init) => {
-  const res = await fetch(url, init);
-  return {
-    ok: res.ok,
-    status: res.status,
-    json: () => res.json(),
+function adaptCompatibilityFetch(fetchImpl: TravelTimeFetch): OracleFetch {
+  return async (input, init) => {
+    const response = await fetchImpl(String(input), {
+      signal: init?.signal ?? undefined,
+      method: init?.method,
+      headers: init?.headers,
+      body: init?.body,
+    });
+    const body = await response.json();
+    return new Response(JSON.stringify(body), {
+      status: response.status,
+      headers: { "Content-Type": "application/json" },
+    });
   };
-};
+}

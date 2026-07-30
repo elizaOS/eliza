@@ -76,6 +76,7 @@ function unavailableSystemPermission(id: PermissionId): PermissionState {
 
 const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "granted",
+  "limited",
   "denied",
   "not-determined",
   "restricted",

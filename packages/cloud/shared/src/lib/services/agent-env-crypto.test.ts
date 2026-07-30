@@ -11,16 +11,17 @@
  * The crypto is the REAL FieldEncryptionService (AES-256-GCM, org DEK wrapped
  * by SECRETS_MASTER_KEY) — only its org-key persistence (the db helpers) is
  * swapped for an in-memory store, exactly the boundary the sibling service
- * tests already mock. The repository row store is `spyOn`-captured so the test
- * asserts the exact bytes that would land in Postgres.
+ * tests already mock. The lifecycle transaction's row write is captured so
+ * the test asserts the exact bytes that would land in Postgres.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import * as realHelpersNs from "../../db/helpers";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
-import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 
 // ---- in-memory organization_encryption_keys store for FieldEncryptionService ----
 interface OrgKeyRow {
@@ -59,6 +60,50 @@ const orgKeyDb = {
       }),
     }),
   }),
+  transaction: async (
+    callback: (tx: {
+      execute: (query: SQL) => Promise<{ rows: AgentSandbox[] }>;
+      update: () => {
+        set: (data: Record<string, unknown>) => {
+          where: () => {
+            returning: () => Promise<AgentSandbox[]>;
+          };
+        };
+      };
+    }) => Promise<unknown>,
+  ) => {
+    return await callback({
+      execute: async (query) => {
+        const { sql: text } = new PgDialect().sqlToQuery(query);
+        const normalized = text.toLowerCase();
+        if (normalized.includes("set_config") || normalized.includes("pg_advisory_xact_lock")) {
+          return { rows: [] };
+        }
+        if (
+          normalized.includes("select *") &&
+          normalized.includes('from "agent_sandboxes"') &&
+          normalized.includes("for update")
+        ) {
+          return { rows: [storedRow] };
+        }
+        throw new Error(`Unexpected lifecycle SQL in test transaction: ${text}`);
+      },
+      update: () => ({
+        set: (data) => ({
+          where: () => ({
+            returning: async () => {
+              capturedUpdate = data;
+              storedRow = {
+                ...storedRow,
+                environment_vars: data.environment_vars as Record<string, string>,
+              };
+              return [storedRow];
+            },
+          }),
+        }),
+      }),
+    });
+  },
 };
 
 const realHelpers = { ...realHelpersNs };
@@ -71,7 +116,7 @@ afterAll(() => {
   mock.module("../../db/helpers", () => realHelpers);
 });
 
-// ---- captured repository writes (the at-rest boundary) ----
+// ---- captured lifecycle-transaction writes (the at-rest boundary) ----
 const ORG_ID = "00000000-0000-4000-8000-00000000a001";
 const AGENT_ID = "00000000-0000-4000-8000-00000000a002";
 const SECRET = "sk-ant-api03-users-real-provider-key";
@@ -89,34 +134,16 @@ function sandboxRow(env: Record<string, string>): AgentSandbox {
 let storedRow: AgentSandbox;
 let capturedUpdate: Record<string, unknown> | undefined;
 
-const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockImplementation(
-  async () => storedRow,
-);
-const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
-  async (_id, data) => {
-    capturedUpdate = data as Record<string, unknown>;
-    storedRow = { ...storedRow, ...data } as AgentSandbox;
-    return storedRow;
-  },
-);
-
 const TEST_MASTER_KEY = "a".repeat(64);
 
 beforeEach(() => {
   process.env.SECRETS_MASTER_KEY = TEST_MASTER_KEY;
   storedRow = sandboxRow({});
   capturedUpdate = undefined;
-  findSpy.mockClear();
-  updateSpy.mockClear();
 });
 
 afterEach(() => {
   delete process.env.SECRETS_MASTER_KEY;
-});
-
-afterAll(() => {
-  findSpy.mockRestore();
-  updateSpy.mockRestore();
 });
 
 async function patchEnv(env: Record<string, string>): Promise<Record<string, string>> {

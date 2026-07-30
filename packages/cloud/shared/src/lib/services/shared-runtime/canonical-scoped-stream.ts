@@ -7,7 +7,7 @@
 
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
-import { InsufficientCreditsError } from "../../api/errors";
+import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
@@ -23,18 +23,18 @@ const STREAM_HEADERS = {
 } as const;
 
 export interface CanonicalScopedStreamRequest {
+  /**
+   * Tenancy-resolved agent supplied by the caller. Requiring this at the type
+   * boundary prevents Worker callers from falling through to the legacy
+   * repository-backed bridge when cache authorization is unavailable.
+   */
+  agent: AgentSandbox;
   agentId: string;
   orgId: string;
   conversationId: string;
   userId?: string;
-  agent?: AgentSandbox;
-  namespace?: RuntimeDurableObjectNamespace;
-  /**
-   * Workers only: lets the shared-tier turn defer its billing tail off the
-   * SSE `done` path via executionCtx.waitUntil. Absent (tests, non-Worker
-   * callers) the tail settles inline as before.
-   */
-  executionCtx?: BridgeExecutionContext;
+  namespace: RuntimeDurableObjectNamespace;
+  executionCtx: BridgeExecutionContext;
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
@@ -98,22 +98,13 @@ export async function handleCanonicalScopedAgentStream(
     },
   };
 
-  let upstream: Response | null;
+  let upstream: Response;
   const bridgeStartedAt = nowMs();
   try {
-    upstream = request.agent
-      ? await coordinateSharedStream(request.agent, rpc, {
-          namespace: request.namespace,
-          executionCtx: request.executionCtx,
-        })
-      : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
-          elizaSandboxService.bridgeStream(
-            request.agentId,
-            request.orgId,
-            rpc,
-            request.executionCtx,
-          ),
-        );
+    upstream = await coordinateSharedStream(request.agent, rpc, {
+      namespace: request.namespace,
+      executionCtx: request.executionCtx,
+    });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
     timings.bridge = elapsedMs(bridgeStartedAt);
@@ -133,6 +124,29 @@ export async function handleCanonicalScopedAgentStream(
               retryable: false,
             },
             { status: 402 },
+          ),
+          CORS_METHODS,
+          request.origin,
+        ),
+        timings,
+      );
+    }
+    if (error instanceof RateLimitError) {
+      return addStreamTimingHeaders(
+        applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: error.message,
+              code: "rate_limit_exceeded",
+              retryable: true,
+            },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": String(error.retryAfter ?? 60),
+              },
+            },
           ),
           CORS_METHODS,
           request.origin,
@@ -167,7 +181,7 @@ export async function handleCanonicalScopedAgentStream(
     });
   }
 
-  if (!upstream?.body) {
+  if (!upstream.body) {
     const body = `event: error\ndata: ${JSON.stringify({
       message: "Agent produced no streamed response",
     })}\n\n`;

@@ -28,6 +28,21 @@ import {
 } from "../shell/wallpaper-idiom";
 import { ViewTileImage } from "../views/ViewTileImage";
 
+const LAUNCHER_RESPONSIVE_CSS = `
+[data-testid="launcher"] { container-type: inline-size; }
+[data-testid="launcher"] [data-launcher-icon] {
+  width: clamp(3.5rem, 16cqi, 4.5rem);
+  height: clamp(3.5rem, 16cqi, 4.5rem);
+  border-radius: clamp(1rem, 4cqi, 1.25rem);
+}
+[data-testid="launcher"] [data-launcher-label] {
+  font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem);
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  [data-testid="launcher"] [data-launcher-icon] { width: 3.5rem; height: 3.5rem; }
+}
+`;
+
 export interface LauncherProps {
   entries: ViewEntry[];
   loading?: boolean;
@@ -96,6 +111,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
       >
         <div className="relative">
           <div
+            data-launcher-icon=""
             className={cn(
               // ViewTileImage renders this surface as an app icon, not as a
               // cropped catalog preview. The tile stays a generous hit target,
@@ -113,7 +129,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
               entry={entry}
               source="launcher"
               containerClassName="grid h-full w-full place-items-center"
-              glyphClassName="h-7 w-7"
+              glyphClassName="size-[clamp(1.5rem,7cqi,2rem)]"
               imageTestId={`launcher-image-${entry.id}`}
             />
           </div>
@@ -132,6 +148,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             label while keeping OCR-readable 12px copy from clipping mid-glyph
             (#14427). line-clamp-2 still wraps multi-word labels. */}
         <span
+          data-launcher-label=""
           className={cn(
             "line-clamp-2 max-w-[5.5rem] text-center text-xs font-semibold leading-tight tracking-normal whitespace-normal",
             WALLPAPER_TEXT.base,
@@ -172,6 +189,7 @@ export function Launcher({
       data-testid="launcher"
       aria-busy={showSkeleton || undefined}
     >
+      <style>{LAUNCHER_RESPONSIVE_CSS}</style>
       <div
         className={cn(
           "relative flex flex-col",
@@ -183,10 +201,10 @@ export function Launcher({
         <div
           data-testid="launcher-page-window"
           className={cn(
-            "scrollbar-hide relative flex touch-pan-y flex-col items-center overscroll-y-contain pt-2 pb-8 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
+            "scrollbar-hide relative flex touch-pan-y flex-col items-center overscroll-y-contain pt-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
             embedded
-              ? "overflow-visible px-2 [@media(orientation:landscape)_and_(max-height:520px)]:pt-0"
-              : "min-h-0 flex-1 overflow-y-auto px-6",
+              ? "overflow-visible px-2 pb-8 [@media(orientation:landscape)_and_(max-height:520px)]:pt-0"
+              : "scroll-fade scroll-fade-t-[3.5rem] scroll-fade-b-[calc(var(--eliza-chat-clearance,5.25rem)+1.25rem)] [--scroll-fade-reveal:1px] min-h-0 flex-1 scroll-pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)] overflow-y-auto ps-6 pe-[calc(1.5rem+var(--eliza-chat-side-clearance,0px))] pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)]",
           )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">
@@ -197,7 +215,10 @@ export function Launcher({
                     key={id}
                     className="flex flex-col items-center gap-1.5 opacity-60"
                   >
-                    <div className="h-16 w-16 rounded-2xl bg-white/15" />
+                    <div
+                      data-launcher-icon=""
+                      className="h-16 w-16 rounded-2xl bg-white/15"
+                    />
                     <div className="h-2.5 w-12 rounded-full bg-white/25" />
                   </div>
                 ))}

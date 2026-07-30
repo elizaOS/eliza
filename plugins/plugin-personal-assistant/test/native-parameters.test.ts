@@ -24,12 +24,20 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(),
   queue: {
     list: vi.fn(),
+    byId: vi.fn(),
     reject: vi.fn(),
     approve: vi.fn(),
   },
 }));
 
-vi.mock("@elizaos/agent", () => ({
+// Layer the hasOwnerAccess override on the shared agent stub rather than
+// replacing the module with a one-key object: `approval-queue.types.ts` is in
+// this test's module graph and SUBCLASSES `ApprovalStateTransitionError`, so a
+// narrow mock leaves it extending `undefined` and the whole suite fails to LOAD
+// ("no tests"). The stub re-exports the real class, keeping `instanceof` genuine
+// for the subclass — same pattern as first-run-provider.test.ts.
+vi.mock("@elizaos/agent", async () => ({
+  ...(await import("./stubs/agent.ts")),
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
@@ -63,7 +71,10 @@ function makeRuntime(): IAgentRuntime {
 
 function makeMessage(text = "reject req-1"): Memory {
   return {
+    id: "message-native-parameters",
     entityId: "owner-1",
+    roomId: "room-native-parameters",
+    createdAt: Date.parse("2026-07-06T12:00:00.000Z"),
     content: { text },
   } as Memory;
 }
@@ -115,10 +126,19 @@ describe("LifeOps native options.parameters migration", () => {
       { id: "req-1", action: "send_message", channel: "sms", reason: "one" },
       { id: "req-2", action: "send_email", channel: "gmail", reason: "two" },
     ]);
+    mocks.queue.byId.mockResolvedValue({
+      id: "req-1",
+      action: "send_message",
+      subjectUserId: "owner-1",
+      state: "pending",
+      payload: { action: "send_message" },
+    });
     mocks.queue.reject.mockResolvedValue({
       id: "req-1",
       action: "send_message",
       state: "rejected",
+      updatedAt: new Date("2026-07-27T12:00:00.000Z"),
+      idempotencyKey: null,
     });
 
     const result = await resolveRequestAction.handler(
@@ -138,7 +158,9 @@ describe("LifeOps native options.parameters migration", () => {
       success: true,
       data: { requestId: "req-1", state: "rejected" },
     });
-    expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", {
+    // reject(requestId, subjectUserId, resolution) — the subject is passed
+    // explicitly so the store scopes the transition to that owner.
+    expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", "owner-1", {
       resolvedBy: "owner-1",
       resolutionReason: "not now",
     });
@@ -156,10 +178,19 @@ describe("LifeOps native options.parameters migration", () => {
     mocks.queue.list.mockResolvedValue([
       { id: "req-1", action: "send_message", channel: "sms", reason: "one" },
     ]);
+    mocks.queue.byId.mockResolvedValue({
+      id: "req-1",
+      action: "send_message",
+      subjectUserId: "owner-1",
+      state: "pending",
+      payload: { action: "send_message" },
+    });
     mocks.queue.reject.mockResolvedValue({
       id: "req-1",
       action: "send_message",
       state: "rejected",
+      updatedAt: new Date("2026-07-27T12:00:00.000Z"),
+      idempotencyKey: null,
     });
 
     const result = await rejectVirtual.handler(
@@ -175,7 +206,7 @@ describe("LifeOps native options.parameters migration", () => {
       success: true,
       data: { requestId: "req-1", state: "rejected" },
     });
-    expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", {
+    expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", "owner-1", {
       resolvedBy: "owner-1",
       resolutionReason:
         "Wait - which Chris? There are two. Don't send it, reject that for now.",

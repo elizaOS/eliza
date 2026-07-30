@@ -3,6 +3,7 @@
  * with deterministic manifest and DEX payloads.
  */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -86,6 +87,17 @@ const REAL_AAB_FIXTURE = fileURLToPath(
   ),
 );
 const REAL_AAB_PACKAGE = "com.google.android.samples.dynamicfeatures.ondemand";
+const REAL_AAB_MANIFEST_MUTATOR = fileURLToPath(
+  new URL(
+    "../test/fixtures/android/RelocateAndroidManifestFixture.java",
+    import.meta.url,
+  ),
+);
+const RELOCATED_STRIPPED_CLASS = "ElizaAccessibilityService";
+const RELOCATED_STRIPPED_COMPONENT =
+  "com.feature.relocated.security.component.abc.ElizaAccessibilityService";
+const RELOCATED_STRIPPED_DESCRIPTOR =
+  "Lcom/feature/relocated/security/component/abc/ElizaAccessibilityService;";
 // Generic app-core CI lanes do not all provision a JDK or permit downloads.
 // Opt in only after the caller has provisioned the Android/JDK toolchain.
 const RUN_REAL_AAB_TEST = process.env.ELIZA_ANDROID_RUN_REAL_AAB_TEST === "1";
@@ -309,6 +321,51 @@ function writeMutatedRealAab(temporaryDir, name, mutate) {
   return { archive, artifact };
 }
 
+function replaceExactBytes(bytes, original, replacement) {
+  const source = Buffer.from(original, "utf8");
+  const target = Buffer.from(replacement, "utf8");
+  if (source.byteLength !== target.byteLength) {
+    throw new Error("real AAB fixture replacements must preserve byte length");
+  }
+  const offset = bytes.indexOf(source);
+  if (offset === -1 || bytes.indexOf(source, offset + 1) !== -1) {
+    throw new Error(
+      `expected exactly one real AAB fixture marker: ${original}`,
+    );
+  }
+  const rewritten = Buffer.from(bytes);
+  target.copy(rewritten, offset);
+  return rewritten;
+}
+
+function rewriteRealFeatureManifest(temporaryDir, archive) {
+  const input = path.join(temporaryDir, "feature-manifest.pb");
+  const output = path.join(temporaryDir, "relocated-feature-manifest.pb");
+  fs.writeFileSync(input, archive["java/manifest/AndroidManifest.xml"]);
+  const java = path.join(
+    process.env.JAVA_HOME,
+    "bin",
+    process.platform === "win32" ? "java.exe" : "java",
+  );
+  const result = spawnSync(
+    java,
+    [
+      "--class-path",
+      realBundletoolJar,
+      REAL_AAB_MANIFEST_MUTATOR,
+      input,
+      output,
+    ],
+    { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `real AAB manifest fixture mutation failed: ${result.stderr || result.stdout}`,
+    );
+  }
+  archive["java/manifest/AndroidManifest.xml"] = fs.readFileSync(output);
+}
+
 describe("Android App Bundle entry discovery", () => {
   it("distinguishes APKs and AABs and rejects other artifact types", () => {
     expect(resolveAndroidArtifactKind("/artifacts/app-debug.APK")).toBe("apk");
@@ -434,6 +491,64 @@ describeRealAab("real multi-module bundletool regression", () => {
           `module java contains forbidden component: ${escapedComponent}`,
       ),
     );
+  });
+
+  it("rejects a relocated non-LP3 service and its privileged binding in a real feature manifest", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-real-aab-manifest-policy-"),
+    );
+    try {
+      const { archive, artifact } = writeMutatedRealAab(
+        temporaryDir,
+        "relocated-privileged-service.aab",
+        (entries) => rewriteRealFeatureManifest(temporaryDir, entries),
+      );
+
+      expect(() =>
+        inspectAndroidAppBundle({
+          ...realAabInspectionOptions(artifact, archive),
+          strippedComponents: [RELOCATED_STRIPPED_CLASS],
+          strippedPermissions: ["BIND_ACCESSIBILITY_SERVICE"],
+        }),
+      ).toThrow(
+        new RegExp(
+          `module java contains forbidden component permission: android\\.permission\\.BIND_ACCESSIBILITY_SERVICE[\\s\\S]*` +
+            `module java contains forbidden component: ${RELOCATED_STRIPPED_COMPONENT.replaceAll(".", String.raw`\.`)}`,
+        ),
+      );
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a relocated non-LP3 class in a real feature DEX", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-real-aab-relocated-dex-"),
+    );
+    try {
+      const { archive, artifact } = writeMutatedRealAab(
+        temporaryDir,
+        "relocated-feature-class.aab",
+        (entries) => {
+          entries["java/dex/classes.dex"] = replaceExactBytes(
+            Buffer.from(entries["java/dex/classes.dex"]),
+            "Lcom/google/android/samples/dynamicfeatures/ondemand/JavaSampleActivity;",
+            RELOCATED_STRIPPED_DESCRIPTOR,
+          );
+        },
+      );
+
+      expect(() =>
+        inspectAndroidAppBundle({
+          ...realAabInspectionOptions(artifact, archive),
+          strippedComponents: [RELOCATED_STRIPPED_CLASS],
+        }),
+      ).toThrow(
+        "java/dex/classes.dex contains forbidden stripped component class: ElizaAccessibilityService",
+      );
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
   });
 
   it("rejects a forbidden marker found only in a real feature DEX", () => {
@@ -1072,12 +1187,9 @@ describe("Android artifact boundary selection", () => {
     );
 
     expect(() =>
-      readAndroidArtifactEntryBuffers(
-        "/artifact.aab",
-        [entry],
-        JAVA_HOME,
-        { artifactBytes: archive },
-      ),
+      readAndroidArtifactEntryBuffers("/artifact.aab", [entry], JAVA_HOME, {
+        artifactBytes: archive,
+      }),
     ).toThrow(
       expect.objectContaining({ code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE" }),
     );
@@ -1801,8 +1913,18 @@ describe("inspectAndroidAppBundle", () => {
       "forbidden component",
     ],
     [
+      "relocated non-LP3 stripped component",
+      '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><service android:name="com.feature.ElizaAgentService"/></application></manifest>',
+      "forbidden component",
+    ],
+    [
       "relocated private LP3 component",
       '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application><service a:name="com.attacker.Lp3ColorPolicyService"/></application></manifest>',
+      "forbidden LP3 component",
+    ],
+    [
+      "relocated private LP3 initializer",
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application><provider a:name="com.attacker.Lp3ColorPolicyInitializer"/></application></manifest>',
       "forbidden LP3 component",
     ],
     [
@@ -1829,6 +1951,52 @@ describe("inspectAndroidAppBundle", () => {
         harness.deps,
       ),
     ).toThrow(new RegExp(`module feature contains ${message}`));
+  });
+
+  it.each(["permission", "readPermission", "writePermission"])(
+    "rejects a forbidden component android:%s binding in any module",
+    (attributeName) => {
+      const manifest =
+        '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application>' +
+        `<provider a:name="com.feature.ElizaAgentService" a:${attributeName}="android.permission.WRITE_SECURE_SETTINGS"/>` +
+        "</application></manifest>";
+      const harness = successfulToolHarness(
+        new Map([
+          ["base", CLEAN_MANIFEST],
+          ["feature", manifest],
+        ]),
+      );
+
+      expect(() =>
+        inspectAndroidAppBundle(
+          inspectOptions({ entries: MULTI_MODULE_ENTRIES }),
+          harness.deps,
+        ),
+      ).toThrow(
+        `module feature contains forbidden component ${attributeName}: android.permission.WRITE_SECURE_SETTINGS`,
+      );
+    },
+  );
+
+  it("does not reject manifest class-name lookalikes", () => {
+    const manifest =
+      '<manifest xmlns:a="http://schemas.android.com/apk/res/android"><application>' +
+      '<service a:name="com.feature.SafeElizaAgentService"/>' +
+      '<service a:name="com.feature.ElizaAgentServiceProxy"/>' +
+      "</application></manifest>";
+    const harness = successfulToolHarness(
+      new Map([
+        ["base", CLEAN_MANIFEST],
+        ["feature", manifest],
+      ]),
+    );
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({ entries: MULTI_MODULE_ENTRIES }),
+        harness.deps,
+      ),
+    ).not.toThrow();
   });
 
   it("rejects an LP3 marker found only in a feature module DEX", () => {
@@ -1886,6 +2054,58 @@ describe("inspectAndroidAppBundle", () => {
     );
   });
 
+  it.each(["feature/dex/classes2.dex", "base/assets/classes.dex"])(
+    "rejects a relocated non-LP3 stripped class in %s",
+    (offendingEntry) => {
+      const entries = offendingEntry.startsWith("feature/")
+        ? MULTI_MODULE_ENTRIES
+        : [...BASE_ENTRIES, offendingEntry];
+      const manifests = offendingEntry.startsWith("feature/")
+        ? new Map([
+            ["base", CLEAN_MANIFEST],
+            ["feature", CLEAN_MANIFEST],
+          ])
+        : new Map([["base", CLEAN_MANIFEST]]);
+      const harness = successfulToolHarness(manifests);
+      const readDexEntries = (dexEntries) =>
+        dexEntries.map((entry) =>
+          Buffer.from(
+            entry === offendingEntry
+              ? RELOCATED_STRIPPED_DESCRIPTOR
+              : "clean base dex",
+            "utf8",
+          ),
+        );
+
+      expect(() =>
+        inspectAndroidAppBundle(
+          inspectOptions({
+            entries,
+            readDexEntries,
+            strippedComponents: [RELOCATED_STRIPPED_CLASS],
+          }),
+          harness.deps,
+        ),
+      ).toThrow(
+        `${offendingEntry} contains forbidden stripped component class: ${RELOCATED_STRIPPED_CLASS}`,
+      );
+    },
+  );
+
+  it("does not reject DEX class-name lookalikes", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from(
+        "Lcom/feature/SafeElizaAgentService;Lcom/feature/ElizaAgentServiceProxy;",
+        "utf8",
+      ),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(inspectOptions({ readDexEntries }), harness.deps),
+    ).not.toThrow();
+  });
+
   it("rejects LP3 class descriptors even when the caller omits LP3 strip entries", () => {
     const harness = successfulToolHarness();
     const readDexEntries = () => [
@@ -1902,7 +2122,7 @@ describe("inspectAndroidAppBundle", () => {
         harness.deps,
       ),
     ).toThrow(
-      "base/dex/classes.dex contains forbidden LP3 marker: ai/elizaos/app/Lp3ColorPolicyService",
+      "base/dex/classes.dex contains forbidden stripped component class: Lp3ColorPolicyService",
     );
   });
 
@@ -1922,7 +2142,27 @@ describe("inspectAndroidAppBundle", () => {
         harness.deps,
       ),
     ).toThrow(
-      "base/dex/classes.dex contains forbidden LP3 marker: /Lp3ColorPolicyService;",
+      "base/dex/classes.dex contains forbidden stripped component class: Lp3ColorPolicyService",
+    );
+  });
+
+  it("rejects a relocated LP3 initializer descriptor", () => {
+    const harness = successfulToolHarness();
+    const readDexEntries = () => [
+      Buffer.from("Lcom/attacker/Lp3ColorPolicyInitializer;", "utf8"),
+    ];
+
+    expect(() =>
+      inspectAndroidAppBundle(
+        inspectOptions({
+          readDexEntries,
+          strippedComponents: [],
+          strippedPermissions: [],
+        }),
+        harness.deps,
+      ),
+    ).toThrow(
+      "base/dex/classes.dex contains forbidden stripped component class: Lp3ColorPolicyInitializer",
     );
   });
 

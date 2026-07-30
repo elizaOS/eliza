@@ -7,7 +7,12 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
-import { normalizeCloudSiteUrl, resolveCloudApiBaseUrl } from "./base-url";
+import {
+  defaultCloudSiteUrl,
+  isDevCloudTarget,
+  normalizeCloudSiteUrl,
+  resolveCloudApiBaseUrl,
+} from "./base-url";
 
 describe("Eliza Cloud base URL normalization", () => {
   const savedConfig = getBootConfig();
@@ -76,5 +81,80 @@ describe("Eliza Cloud base URL normalization", () => {
 
     expect(resolveCloudApiBaseUrl()).toBe("https://branded.example.com/api/v1");
     expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBeUndefined();
+  });
+});
+
+/**
+ * The dev/production cloud split. `bun run dev` must not exercise production
+ * credentials, billing, or agent state by default, so the unconfigured default
+ * follows the entrypoint: staging from dev, production everywhere else. Staging
+ * is a separate deployment with its own database and keys — crossing the
+ * boundary by accident is the failure these cases exist to prevent.
+ */
+describe("default cloud target by environment", () => {
+  const savedDevSource = process.env.ELIZA_DEV_SOURCE;
+
+  afterEach(() => {
+    if (savedDevSource === undefined) delete process.env.ELIZA_DEV_SOURCE;
+    else process.env.ELIZA_DEV_SOURCE = savedDevSource;
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
+    delete process.env.NODE_ENV;
+  });
+
+  it("defaults to staging under the dev entrypoint", () => {
+    process.env.ELIZA_DEV_SOURCE = "1";
+    expect(isDevCloudTarget()).toBe(true);
+    expect(defaultCloudSiteUrl()).toBe("https://staging.elizacloud.ai");
+    expect(resolveCloudApiBaseUrl()).toBe(
+      "https://staging.elizacloud.ai/api/v1",
+    );
+  });
+
+  it("defaults to production when the dev flag is absent", () => {
+    delete process.env.ELIZA_DEV_SOURCE;
+    expect(isDevCloudTarget()).toBe(false);
+    expect(defaultCloudSiteUrl()).toBe("https://elizacloud.ai");
+    expect(resolveCloudApiBaseUrl()).toBe("https://elizacloud.ai/api/v1");
+  });
+
+  it("ignores NODE_ENV=development — only the explicit dev flag counts", () => {
+    // Test runners, benchmarks, and assorted tooling set NODE_ENV=development;
+    // none of them should be silently re-pointed at staging.
+    process.env.NODE_ENV = "development";
+    delete process.env.ELIZA_DEV_SOURCE;
+    expect(isDevCloudTarget()).toBe(false);
+    expect(defaultCloudSiteUrl()).toBe("https://elizacloud.ai");
+  });
+
+  it('treats any value other than exactly "1" as not-dev', () => {
+    for (const value of ["0", "", "true", "yes"]) {
+      process.env.ELIZA_DEV_SOURCE = value;
+      expect(isDevCloudTarget()).toBe(false);
+    }
+  });
+
+  it("lets ELIZAOS_CLOUD_BASE_URL override the default in both directions", () => {
+    // dev run pinned back to production
+    process.env.ELIZA_DEV_SOURCE = "1";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://elizacloud.ai";
+    expect(resolveCloudApiBaseUrl()).toBe("https://elizacloud.ai/api/v1");
+
+    // non-dev run pointed at staging
+    delete process.env.ELIZA_DEV_SOURCE;
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
+    expect(resolveCloudApiBaseUrl()).toBe(
+      "https://staging.elizacloud.ai/api/v1",
+    );
+  });
+
+  it("does not collapse staging into the production apex", () => {
+    // api/www/apex are production aliases that normalize to the apex; staging
+    // must NOT be swept into that set or dev would silently hit production.
+    expect(normalizeCloudSiteUrl("https://staging.elizacloud.ai")).toBe(
+      "https://staging.elizacloud.ai",
+    );
+    expect(normalizeCloudSiteUrl("https://api-staging.elizacloud.ai")).toBe(
+      "https://api-staging.elizacloud.ai",
+    );
   });
 });

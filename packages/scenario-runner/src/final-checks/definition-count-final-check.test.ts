@@ -239,6 +239,149 @@ describe("definitionCountDelta final check", () => {
     expect(result.detail).toContain("Stored definition titles: (none)");
   });
 
+  it("fails a times_per_day definition whose slots include a forbidden local time", async () => {
+    mockState.definitions = [
+      definitionRecord({
+        title: "Seminar paper work sessions",
+        cadence: {
+          kind: "times_per_day",
+          slots: [
+            { key: "clock-1", label: "8am", minuteOfDay: 480 },
+            { key: "clock-2", label: "1pm", minuteOfDay: 780 },
+          ],
+        },
+      }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "Seminar paper",
+      titleAliases: ["Seminar paper work sessions"],
+      delta: 1,
+      forbiddenDueLocalTimes: [
+        { hour: 8, minute: 0 },
+        { hour: 9, minute: 0 },
+      ],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.detail).toContain("slot at local time 08:00 is forbidden");
+  });
+
+  it("passes a times_per_day definition whose slots avoid all forbidden local times", async () => {
+    mockState.definitions = [
+      definitionRecord(
+        {
+          title: "Seminar paper work sessions",
+          cadence: {
+            kind: "times_per_day",
+            slots: [
+              { key: "clock-1", label: "1pm", minuteOfDay: 780 },
+              { key: "clock-2", label: "5pm", minuteOfDay: 1020 },
+            ],
+          },
+        },
+        { id: "plan-1" },
+      ),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "Seminar paper",
+      titleAliases: ["Seminar paper work sessions"],
+      delta: 1,
+      forbiddenDueLocalTimes: [
+        { hour: 8, minute: 0 },
+        { hour: 9, minute: 0 },
+      ],
+      requireReminderPlan: true,
+    });
+
+    expect(result.status).toBe("passed");
+  });
+
+  it("does not fail a window-based cadence (no clock times) for forbidden local times", async () => {
+    mockState.definitions = [
+      definitionRecord({
+        title: "School morning checklist",
+        cadence: { kind: "daily", windows: ["morning"] },
+      }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "School morning",
+      titleAliases: ["School morning checklist"],
+      delta: 1,
+      forbiddenDueLocalTimes: [{ hour: 8, minute: 0 }],
+    });
+
+    expect(result.status).toBe("passed");
+  });
+
+  it("embeds the matched store rows in a delta>0 pass detail (artifact receipt)", async () => {
+    mockState.definitions = [
+      definitionRecord(
+        {
+          title: "School morning checklist",
+          timezone: "America/Chicago",
+          cadence: { kind: "daily", windows: ["morning"] },
+        },
+        { id: "plan-1", leadMinutes: [0, 15] },
+      ),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "School morning",
+      titleAliases: ["School morning checklist"],
+      delta: 1,
+      requireReminderPlan: true,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.detail).toContain("stored:");
+    expect(result.detail).toContain('"School morning checklist"');
+    expect(result.detail).toContain("cadence=daily");
+    expect(result.detail).toContain("tz=America/Chicago");
+    expect(result.detail).toContain("reminderPlan=leadMinutes=[0,15]");
+  });
+
+  it("shows everything that IS stored on a delta=0 pass (negative receipt)", async () => {
+    mockState.definitions = [
+      definitionRecord({
+        title: "Chem lab report",
+        cadence: { kind: "once", dueAt: "2026-07-28T23:00:00.000Z" },
+      }),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "pizza",
+      titleAliases: ["pizza order"],
+      delta: 0,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.detail).toContain(
+      'no matching definition for "pizza" among 1 stored definition(s)',
+    );
+    expect(result.detail).toContain('"Chem lab report"');
+    expect(result.detail).toContain("dueAt=2026-07-28T23:00:00.000Z");
+  });
+
+  it("reports an empty store explicitly on a delta=0 pass", async () => {
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "pizza",
+      delta: 0,
+    });
+
+    expect(result.status).toBe("passed");
+    expect(result.detail).toContain("among 0 stored definition(s)");
+    expect(result.detail).toContain("(store empty)");
+  });
+
   it("fails when website access fields do not match", async () => {
     mockState.definitions = [
       definitionRecord({
@@ -265,5 +408,28 @@ describe("definitionCountDelta final check", () => {
 
     expect(result.status).toBe("failed");
     expect(result.detail).toContain("websiteAccess");
+  });
+});
+
+describe("definitionCountDelta title matching", () => {
+  beforeEach(() => {
+    mockState.definitions = [];
+  });
+
+  it("folds dashes when loose-matching titles (#16941)", async () => {
+    mockState.definitions = [
+      definitionRecord(
+        { title: "Before-school routine" },
+        { leadMinutes: [10] },
+      ),
+    ];
+
+    const result = await run({
+      type: "definitionCountDelta",
+      title: "before school",
+      delta: 1,
+    } as ScenarioFinalCheck);
+
+    expect(result.status).toBe("passed");
   });
 });

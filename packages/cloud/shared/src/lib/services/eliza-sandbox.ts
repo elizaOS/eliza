@@ -40,6 +40,7 @@ import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
+import { createCreditReservationSettler } from "../utils/credit-reservation";
 import { logger } from "../utils/logger";
 import { settleOffResponsePath } from "../utils/settle-off-response-path";
 import { withTimeout } from "../utils/with-timeout";
@@ -1857,13 +1858,19 @@ export class ElizaSandboxService {
         return { ok: false as const, error: "Agent provisioning is in progress" };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
-      const deletionStartedAt = rec.deletion_started_at ?? new Date();
+      // `rec` comes from a RAW `SELECT * FOR UPDATE` (getAgentForLifecycleMutation),
+      // and raw drizzle rows carry timestamptz as STRINGS, not Dates. Writing
+      // `rec.deletion_started_at` back through the typed builder therefore threw
+      // `value.toISOString is not a function` on EVERY retry of a failed
+      // deletion — the #17249 production incident (160/160 delete jobs failing,
+      // 37 agents trapped). A continuation keeps the original start time by
+      // leaving the column alone; only a fresh deletion stamps it.
       const [owned] = await tx
         .update(agentSandboxes)
         .set({
           status: "deletion_pending",
           deletion_attempt_id: deletionAttemptId,
-          deletion_started_at: deletionStartedAt,
+          ...(rec.deletion_started_at === null ? { deletion_started_at: new Date() } : {}),
           updated_at: new Date(),
         })
         .where(
@@ -1925,10 +1932,16 @@ export class ElizaSandboxService {
       }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      // `rec` is a RAW row: its timestamptz fields are strings at runtime
+      // despite the Date type, so `.getTime()` on them throws. Normalize both
+      // sides to epoch through the Date constructor (which accepts either)
+      // before comparing — a mismatch must fail the fence, not crash it.
+      const recDeletionStartedAtMs =
+        rec.deletion_started_at === null ? null : new Date(rec.deletion_started_at).getTime();
       if (
         rec.status !== "deletion_pending" ||
         rec.deletion_attempt_id !== ownership.deletionAttemptId ||
-        rec.deletion_started_at?.getTime() !== ownership.deletionStartedAt.getTime() ||
+        recDeletionStartedAtMs !== ownership.deletionStartedAt.getTime() ||
         rec.sandbox_id !== ownership.sandboxId ||
         rec.environment_revision !== ownership.environmentRevision ||
         hasActiveProvisionJob
@@ -3235,17 +3248,14 @@ export class ElizaSandboxService {
         }
       : null;
     let reservation: CreditReservation | null = null;
-    let reservationSettled = false;
+    let settleReservedCredits = createCreditReservationSettler(undefined);
     const settleReservation = async (
       actualCost: number,
-    ): Promise<CreditReconciliationResult | null> => {
-      if (!reservation || reservationSettled) return null;
-      reservationSettled = true;
-      return (await reservation.reconcile(actualCost)) ?? null;
-    };
+    ): Promise<CreditReconciliationResult | null> => settleReservedCredits(actualCost);
     if (billingContext) {
       try {
         reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+        settleReservedCredits = createCreditReservationSettler(reservation);
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return {
@@ -3303,6 +3313,13 @@ export class ElizaSandboxService {
               const billing = await billUsage(
                 billingContext,
                 this.sharedRuntimeBillingUsage(turn, estimatedInputTokens),
+                reservation
+                  ? {
+                      ...reservation,
+                      reconcile: async (actualCost) =>
+                        (await settleReservation(actualCost)) ?? undefined,
+                    }
+                  : undefined,
               );
               const settlement = await settleReservation(billing.totalCost);
               const usageRecord = await recordUsageAnalytics(billingContext, billing, {
@@ -3414,17 +3431,14 @@ export class ElizaSandboxService {
         }
       : null;
     let reservation: CreditReservation | null = null;
-    let reservationSettled = false;
+    let settleReservedCredits = createCreditReservationSettler(undefined);
     const settleReservation = async (
       actualCost: number,
-    ): Promise<CreditReconciliationResult | null> => {
-      if (!reservation || reservationSettled) return null;
-      reservationSettled = true;
-      return (await reservation.reconcile(actualCost)) ?? null;
-    };
+    ): Promise<CreditReconciliationResult | null> => settleReservedCredits(actualCost);
     if (billingContext) {
       try {
         reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+        settleReservedCredits = createCreditReservationSettler(reservation);
       } catch (error) {
         // error-policy:J1 boundary translation — no SSE bytes exist before credit
         // reservation, so the HTTP route can still return the canonical 402.
@@ -3524,6 +3538,13 @@ export class ElizaSandboxService {
                         part.usage,
                         estimatedInputTokens,
                       ),
+                      reservation
+                        ? {
+                            ...reservation,
+                            reconcile: async (actualCost) =>
+                              (await settleReservation(actualCost)) ?? undefined,
+                          }
+                        : undefined,
                     );
                     const settlement = await settleReservation(billing.totalCost);
                     const usageRecord = await recordUsageAnalytics(billingContext, billing, {

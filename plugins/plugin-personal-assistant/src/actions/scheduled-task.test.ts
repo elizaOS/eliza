@@ -109,6 +109,26 @@ vi.mock("../lifeops/pending-prompts/store.js", () => ({
   })),
 }));
 
+// This unit file isolates planner-parameter wiring. The integration suite
+// exercises the real SQL-backed state log; this seam supplies the same
+// authoritative log shape for the three create-only cases below.
+vi.mock("../lifeops/repository.js", () => ({
+  LifeOpsRepository: class {
+    async listScheduledTaskLog(args: { taskId: string; agentId: string }) {
+      return [
+        {
+          logId: `log-${args.taskId}`,
+          taskId: args.taskId,
+          agentId: args.agentId,
+          occurredAtIso: new Date().toISOString(),
+          transition: "scheduled",
+          rolledUp: false,
+        },
+      ];
+    }
+  },
+}));
+
 vi.mock("./life.js", () => ({
   OWNER_OPERATION_VALIDATE: vi.fn(async () => true),
   runLifeOperationHandler: vi.fn(async () => ({
@@ -133,6 +153,19 @@ function makeMessage(): Memory {
     entityId: "owner-entity",
     roomId: "room-1",
     content: { text: "" },
+  } as unknown as Memory;
+}
+
+/**
+ * Autonomy-sourced message: the raw scheduler keeps serving reminder-kind
+ * creates for the agent's own background work, while owner-chat reminder
+ * creates delegate to OWNER_REMINDERS (routing contract, #16941).
+ */
+function makeAutonomyMessage(): Memory {
+  return {
+    entityId: "owner-entity",
+    roomId: "room-1",
+    content: { text: "", source: "autonomy" },
   } as unknown as Memory;
 }
 
@@ -327,7 +360,7 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
   it("normalizes planner create aliases and empty structural objects before scheduling", async () => {
     const result = await scheduledTaskAction.handler(
       makeRuntime(),
-      makeMessage(),
+      makeAutonomyMessage(),
       undefined,
       {
         parameters: {
@@ -363,7 +396,7 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
   it("maps common planner output aliases back to the channel destination", async () => {
     const result = await scheduledTaskAction.handler(
       makeRuntime(),
-      makeMessage(),
+      makeAutonomyMessage(),
       undefined,
       {
         parameters: {
@@ -447,7 +480,7 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
     expect(scheduledInputs).toEqual([]);
   });
 
-  it("does not delegate non-goal LifeOps draft confirmations to OWNER_GOALS", async () => {
+  it("routes non-goal reminder confirmations to OWNER_REMINDERS, not OWNER_GOALS or the raw scheduler", async () => {
     const result = await scheduledTaskAction.handler(
       makeRuntime(),
       makeTextMessage("ok save that one"),
@@ -458,6 +491,66 @@ describe("SCHEDULED_TASKS list — dueWindow filter", () => {
           kind: "reminder",
           promptInstructions: "Brush teeth every night before bed.",
           trigger: { kind: "cron", expression: "0 21 * * *", tz: "UTC" },
+        },
+      },
+      undefined,
+    );
+
+    expect(result).toMatchObject({ success: true, data: { delegated: true } });
+    expect(runLifeOperationHandler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ content: { text: "ok save that one" } }),
+      expect.anything(),
+      { parameters: { action: "create", ownerSurface: "OWNER_REMINDERS" } },
+      undefined,
+    );
+    expect(scheduledInputs).toEqual([]);
+  });
+
+  it("delegates owner-chat reminder creates to OWNER_REMINDERS even with a valid raw trigger", async () => {
+    const result = await scheduledTaskAction.handler(
+      makeRuntime(),
+      makeTextMessage(
+        "tomorrow after school remind me to ask Ms. Rivera what the science report topic is",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "reminder",
+          promptInstructions:
+            "Remind the owner to ask Ms. Rivera what the science report topic is.",
+          trigger: { kind: "once", atIso: "2026-07-24T20:00:00.000Z" },
+        },
+      },
+      undefined,
+    );
+
+    // A well-formed trigger must not buy the raw path: the live defect was a
+    // reminder that survived cancellation in a store OWNER_REMINDERS review
+    // never reads (#16941, child-cancel-reask).
+    expect(result).toMatchObject({ success: true, data: { delegated: true } });
+    expect(runLifeOperationHandler).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      { parameters: { action: "create", ownerSurface: "OWNER_REMINDERS" } },
+      undefined,
+    );
+    expect(scheduledInputs).toEqual([]);
+  });
+
+  it("keeps autonomy-sourced reminder creates on the raw scheduler", async () => {
+    const result = await scheduledTaskAction.handler(
+      makeRuntime(),
+      makeAutonomyMessage(),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "reminder",
+          promptInstructions: "Nudge the owner about the standup notes.",
+          trigger: { kind: "once", atIso: "2026-07-24T09:00:00.000Z" },
         },
       },
       undefined,

@@ -1,11 +1,40 @@
-/** Coalesces and briefly caches canonical pricing reads on the inference billing hot path. */
+/**
+ * Coalesces canonical pricing reads and owns the Worker-safe rate cache.
+ *
+ * Catalog rows remain short-lived process caches for non-Worker billing work.
+ * Cache-only inference admission reads canonical token rates from an L1 plus
+ * the configured Worker cache; misses hydrate from authoritative catalogs only
+ * under `waitUntil`, so Postgres and provider HTTP never join model dispatch.
+ */
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
+import { cache } from "../../cache/client";
+import { logger } from "../../utils/logger";
 import {
   EXTERNAL_CACHE_TTL_MS,
   type ExternalCacheValue,
   NEGATIVE_EXTERNAL_CACHE_TTL_MS,
   type PreparedPricingEntry,
+  type TokenPricingRates,
 } from "./types";
+
+export interface PricingCacheReadOptions {
+  cacheOnly?: boolean;
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+}
+
+export class AiPricingCacheWarmingError extends Error {
+  constructor() {
+    super("AI pricing cache is warming; retry the request");
+    this.name = "AiPricingCacheWarmingError";
+  }
+}
+
+export class AiPricingCacheUnavailableError extends Error {
+  constructor() {
+    super("AI pricing cache is unavailable; retry the request");
+    this.name = "AiPricingCacheUnavailableError";
+  }
+}
 
 /** Input and output rates resolve concurrently, so cold reads share one promise per canonical key. */
 function coalesce<T>(
@@ -125,8 +154,245 @@ export async function getCachedPersistedEntries(
   });
 }
 
-/** Test hook: reset the persisted-pricing cache between tests. */
+const TEXT_PRICING_FRESH_TTL_MS = 60 * 1000;
+const TEXT_PRICING_HARD_TTL_SECONDS = 15 * 60;
+const TEXT_PRICING_HARD_TTL_MS = TEXT_PRICING_HARD_TTL_SECONDS * 1000;
+const TEXT_PRICING_FAILURE_TTL_MS = 15 * 1000;
+const TEXT_PRICING_CACHE_VERSION = 1;
+
+interface CachedTextPricingRates {
+  v: typeof TEXT_PRICING_CACHE_VERSION;
+  cachedAt: number;
+  rates: TokenPricingRates;
+}
+
+const textPricingCache = new Map<string, CachedTextPricingRates>();
+const textPricingInFlight = new Map<string, Promise<TokenPricingRates>>();
+const textPricingPersistenceInFlight = new Map<string, Promise<TokenPricingRates>>();
+const textPricingFailures = new Map<string, number>();
+
+function durableTextPricingKey(cacheKey: string): string {
+  return `iac:pricing:${cacheKey}:v1`;
+}
+
+function isPositiveRate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isCachedTextPricingRates(
+  value: unknown,
+  required: { input: boolean; output: boolean },
+): value is CachedTextPricingRates {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as {
+    v?: unknown;
+    cachedAt?: unknown;
+    rates?: { inputUnitPrice?: unknown; outputUnitPrice?: unknown };
+  };
+  if (
+    candidate.v !== TEXT_PRICING_CACHE_VERSION ||
+    typeof candidate.cachedAt !== "number" ||
+    !Number.isFinite(candidate.cachedAt) ||
+    typeof candidate.rates !== "object" ||
+    candidate.rates === null
+  ) {
+    return false;
+  }
+  const inputValid =
+    candidate.rates.inputUnitPrice === null || isPositiveRate(candidate.rates.inputUnitPrice);
+  const outputValid =
+    candidate.rates.outputUnitPrice === null || isPositiveRate(candidate.rates.outputUnitPrice);
+  return (
+    inputValid &&
+    outputValid &&
+    (!required.input || isPositiveRate(candidate.rates.inputUnitPrice)) &&
+    (!required.output || isPositiveRate(candidate.rates.outputUnitPrice))
+  );
+}
+
+function assertLoadedRates(
+  rates: TokenPricingRates,
+  required: { input: boolean; output: boolean },
+): void {
+  const record: CachedTextPricingRates = {
+    v: TEXT_PRICING_CACHE_VERSION,
+    cachedAt: Date.now(),
+    rates,
+  };
+  if (!isCachedTextPricingRates(record, required)) {
+    throw new Error("AI pricing loader returned invalid or incomplete token rates");
+  }
+}
+
+function observePricingCacheWrite(cacheKey: string, record: CachedTextPricingRates): Promise<void> {
+  return cache
+    .setWithOutcome(durableTextPricingKey(cacheKey), record, TEXT_PRICING_HARD_TTL_SECONDS)
+    .then((outcome) => {
+      if (outcome.kind !== "written") {
+        logger.warn("[AI Pricing] canonical rate cache write was not durable", {
+          cacheKey,
+          outcome: outcome.kind,
+          backend: outcome.backend,
+        });
+      }
+    });
+}
+
+function loadTextPricingRates(
+  cacheKey: string,
+  required: { input: boolean; output: boolean },
+  loader: () => Promise<TokenPricingRates>,
+): Promise<TokenPricingRates> {
+  const existing = textPricingInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const started = Promise.resolve()
+    .then(loader)
+    .then((rates) => {
+      assertLoadedRates(rates, required);
+      const record: CachedTextPricingRates = {
+        v: TEXT_PRICING_CACHE_VERSION,
+        cachedAt: Date.now(),
+        rates,
+      };
+      textPricingCache.set(cacheKey, record);
+      textPricingFailures.delete(cacheKey);
+      return rates;
+    });
+  textPricingInFlight.set(cacheKey, started);
+  const cleanup = () => {
+    if (textPricingInFlight.get(cacheKey) === started) {
+      textPricingInFlight.delete(cacheKey);
+    }
+  };
+  started.then(cleanup, cleanup);
+  return started;
+}
+
+function persistTextPricingRates(
+  cacheKey: string,
+  required: { input: boolean; output: boolean },
+  loader: () => Promise<TokenPricingRates>,
+): Promise<TokenPricingRates> {
+  const existing = textPricingPersistenceInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const persistence = loadTextPricingRates(cacheKey, required, loader).then(async (rates) => {
+    const record = textPricingCache.get(cacheKey);
+    if (!record) {
+      throw new Error("AI pricing hydration completed without a cache record");
+    }
+    await observePricingCacheWrite(cacheKey, record);
+    return rates;
+  });
+  textPricingPersistenceInFlight.set(cacheKey, persistence);
+  const cleanup = () => {
+    if (textPricingPersistenceInFlight.get(cacheKey) === persistence) {
+      textPricingPersistenceInFlight.delete(cacheKey);
+    }
+  };
+  persistence.then(cleanup, cleanup);
+  return persistence;
+}
+
+function scheduleTextPricingHydration(
+  cacheKey: string,
+  required: { input: boolean; output: boolean },
+  loader: () => Promise<TokenPricingRates>,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void },
+): void {
+  const hydration = persistTextPricingRates(cacheKey, required, loader);
+  const observed = hydration.then(
+    () => undefined,
+    (error) => {
+      textPricingFailures.set(cacheKey, Date.now() + TEXT_PRICING_FAILURE_TTL_MS);
+      // error-policy:J7 pricing hydration is intentionally outside model
+      // dispatch; retain a typed unavailable state and surface the failure.
+      logger.warn("[AI Pricing] canonical rate cache hydration failed", {
+        cacheKey,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  );
+  executionCtx.waitUntil(observed);
+}
+
+function readLocalTextPricingRates(
+  cacheKey: string,
+  required: { input: boolean; output: boolean },
+): { record: CachedTextPricingRates; stale: boolean } | null {
+  const record = textPricingCache.get(cacheKey);
+  if (!record || !isCachedTextPricingRates(record, required)) {
+    textPricingCache.delete(cacheKey);
+    return null;
+  }
+  const ageMs = Date.now() - record.cachedAt;
+  if (ageMs >= TEXT_PRICING_HARD_TTL_MS) {
+    textPricingCache.delete(cacheKey);
+    return null;
+  }
+  return { record, stale: ageMs >= TEXT_PRICING_FRESH_TTL_MS };
+}
+
+/**
+ * Resolve canonical token rates without allowing authoritative I/O to leak
+ * into a Worker request. A cold cache returns a typed retryable state after
+ * registering hydration; a stale-but-bounded rate serves immediately and
+ * refreshes in the background.
+ */
+export async function getCachedTextPricingRates(
+  cacheKey: string,
+  required: { input: boolean; output: boolean },
+  loader: () => Promise<TokenPricingRates>,
+  options: PricingCacheReadOptions = {},
+): Promise<TokenPricingRates> {
+  const local = readLocalTextPricingRates(cacheKey, required);
+  if (local && !local.stale) {
+    return local.record.rates;
+  }
+  if (!options.cacheOnly) {
+    return await loadTextPricingRates(cacheKey, required, loader);
+  }
+  if (!options.executionCtx) {
+    throw new AiPricingCacheUnavailableError();
+  }
+
+  if (local) {
+    scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
+    return local.record.rates;
+  }
+
+  const outcome = await cache.getWithOutcome<unknown>(durableTextPricingKey(cacheKey));
+  if (
+    outcome.kind === "hit" &&
+    isCachedTextPricingRates(outcome.value, required) &&
+    Date.now() - outcome.value.cachedAt < TEXT_PRICING_HARD_TTL_MS
+  ) {
+    textPricingCache.set(cacheKey, outcome.value);
+    if (Date.now() - outcome.value.cachedAt >= TEXT_PRICING_FRESH_TTL_MS) {
+      scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
+    }
+    return outcome.value.rates;
+  }
+
+  const failedUntil = textPricingFailures.get(cacheKey);
+  if (failedUntil !== undefined && failedUntil > Date.now()) {
+    throw new AiPricingCacheUnavailableError();
+  }
+  textPricingFailures.delete(cacheKey);
+  scheduleTextPricingHydration(cacheKey, required, loader, options.executionCtx);
+  if (outcome.kind === "miss") {
+    throw new AiPricingCacheWarmingError();
+  }
+  throw new AiPricingCacheUnavailableError();
+}
+
+/** Test hook: reset all process-local pricing caches between tests. */
 export function __clearPersistedPricingCache(): void {
   persistedPricingCache.clear();
   persistedPricingInFlight.clear();
+  textPricingCache.clear();
+  textPricingInFlight.clear();
+  textPricingPersistenceInFlight.clear();
+  textPricingFailures.clear();
 }

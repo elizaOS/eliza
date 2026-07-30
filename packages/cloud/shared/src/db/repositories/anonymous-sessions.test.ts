@@ -25,6 +25,7 @@ beforeAll(async () => {
         last_message_at timestamp,
         hourly_message_count integer NOT NULL DEFAULT 0,
         hourly_reset_at timestamp,
+        gate_revision bigint NOT NULL DEFAULT 0,
         ip_address text,
         user_agent text,
         fingerprint text,

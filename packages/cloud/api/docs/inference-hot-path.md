@@ -1,544 +1,272 @@
-# Inference hot path — single-entry auth cache + off-path billing
-
-Refs: #9899 (root-cause), #9900 (instrumentation), #8434 (tracking).
-
-> This design was hardened by an adversarial review (9-agent workflow, 4 lenses:
-> billing-correctness, security-isolation, consistency-staleness,
-> rollout-blast-radius). The review **rejected** the original "skip the upfront
-> credit reserve entirely" model as billing-unsafe. The result is a two-tier
-> plan: **Tier 1** (ship now — safe, default-on, fully testable) and **Tier 2**
-> (deferred — requires a durable backstop before it can be correct). The
-> blocker analysis that forced the split is in the appendix.
-
-## Problem
-
-A dedicated cloud-agent chat turn takes ~6–9s while cerebras-direct answers the
-same prompt (`gpt-oss-120b`) in ~0.24s. #9899 measured that **100% of the
-overhead is `cloud-api` pre-forward time-to-first-token** — work the Worker does
-in `v1/chat/completions/route.ts` *before* forwarding to the model.
-
-## Where the time goes (measured + code-traced)
-
-Production config: `CACHE_BACKEND=auto` + `CACHE_KV` bound → Cloudflare KV is the
-cache backend; `REDIS_RATE_LIMITING=false`. Pre-forward steps, serial:
-
-| # | Step | Backend | Cost |
-|---|------|---------|------|
-| 1 | `requireAuthOrApiKeyWithOrg` → `validateApiKey` | KV read (hit) / Postgres (miss) | 1 RT |
-| 2 | …→ `getWithOrganization` | KV read (hit) / Postgres (miss) | 1 RT |
-| 3 | `enforceOrgRateLimit` | **no-op in prod** (`REDIS_RATE_LIMITING=false`) | 0 |
-| 4 | Hono `rateLimit(RELAXED)` | **falls open in prod** (same flag) | 0 |
-| 5 | `appsService.getById` | KV read — **only when `X-App-Id` present** | 0 for dedicated agents |
-| 6 | `getCachedGatewayModelById` | KV SWR read (reasoning detection) | 1 RT |
-| 7 | `contentModerationService.shouldBlockUser` | **Postgres read, UNCACHED** | 1 cross-region RT every request |
-| 8 | `reserveCredits` | **Postgres write (transaction)** | 1 cross-region RT every request |
-
-Findings: rate-limit is already a no-op in prod (not the hotspot). `shouldBlockUser`
-is an **unconditional uncached Postgres read** on every request. `reserveCredits`
-is a Postgres write. Post-response billing (`billUsage → reconcile → analytics →
-audit`) is deferred via `executionCtx.waitUntil` (`settleOffResponsePath`) on
-**both** response paths: the non-streaming handler defers the whole chain, and
-the streaming handler's `onFinish` hands its (first-call-wins, single-flight)
-settlement to the same seam — the AI SDK awaits `onFinish` before ending
-`fullStream`, so an inline-awaited chain would hold the final SSE frame +
-`[DONE]` hostage for the full write latency. Only the **upfront** reserve is
-synchronous.
-
-## Goal
-
-Collapse the pre-forward auth/account-validity work to **a single cache read**,
-remove the uncached moderation Postgres read from the hot path, and remove a KV
-read for cerebras-native ids — without any billing-correctness regression.
-
----
-
-## Tier 1 — single-entry auth+moderation cache (SHIP NOW, default-on)
-
-### `InferenceAuthContext` (IAC) — one KV entry, API-key auth only
-
-Collapse steps 1, 2, and 7 (auth + user/org + moderation) into one KV read.
-Scope: **`X-API-Key` / `Bearer eliza_*` credentials only** — the actual
-dedicated-agent hot path. Session-cookie, Bearer-JWT, and wallet auth always
-take the existing authoritative slow path (they cannot be safely cached — see
-appendix blockers SEC-1, SEC-2, RB-4).
-
-```ts
-interface InferenceAuthContext {
-  v: 1;                 // schema discriminant; bump key suffix on breaking change
-  cachedAt: number;
-  userId: string;
-  orgId: string;
-  apiKeyId: string;
-  keyHash: string;      // full sha256(key) — used for exact invalidation
-}
-```
-
-Critically, **a positive IAC entry is only ever written when the credential is
-FULLY authorized**: active user **and** active org **and** not suspended **and**
-org present. There are **no** `userActive`/`orgActive`/`suspended` booleans in the
-cached shape — their presence would tempt the route to render the rich
-401/403/402 taxonomy from stale booleans (blocker RB-3). Any non-OK condition ⇒
-**no positive cache** ⇒ the request falls to the authoritative chain, which
-produces the exact `(status, code, message)` unchanged.
-
-- **Key:** `iac:auth:<sha256(key)>:v1` (full sha256, env-prefixed by
-  `CacheClient.pk()`). Full hash, not a 16-char prefix, so invalidation is exact.
-- **TTL:** 60s. With KV propagation lag the real worst-case exposure of a
-  revoked/banned credential is ~TTL + KV lag (~up to 2 min); TTL is the
-  load-bearing bound (appendix CS-3). The `validateApiKey` 10-min positive cache
-  is *also* cleared on revoke (it already is), so the slow path can't re-import a
-  revoked key (blocker SEC-3).
-- **Resolver `resolveInferenceAuthContext(req)`:**
-  1. If not an API-key credential (wallet headers present, or Bearer-JWT, or
-     cookie-only) → return `{ fastPath: false }`; route uses the slow path.
-  2. `cache.get(iacKey)`. Shape-valid positive → return `{ fastPath: true, ctx }`.
-  3. Miss → run authoritative chain ONCE: `requireAuthOrApiKeyWithOrg(req)` +
-     `shouldBlockUser`. If authorized & not suspended → write IAC, return
-     `{ fastPath: true, ctx }`. If suspended → return `{ fastPath: false,
-     suspended: true }` (route 403s) and DO NOT write a positive entry.
-  4. **No try/catch that returns a context on error.** Any error propagates
-     (deny / 5xx). Never fail-open (blocker SEC-5).
-- The route, on `fastPath: true`, uses `ctx.{userId, orgId, apiKeyId}` and
-  **skips** `requireAuthOrApiKeyWithOrg` and `shouldBlockUser`, then continues
-  the existing flow: rate-limit (429) → reserve (402) → forward. Order preserved
-  (RB-6). The synchronous `reserveCredits` write **stays** — it is the correct,
-  safe credit guard (a single indexed `FOR UPDATE` UPDATE).
-
-### Catalog lookup for reasoning detection
-
-`getCachedGatewayModelById` exists only for reasoning-parameter detection, and
-`modelUsesReasoningTokens` already returns true via id name-pattern for the
-cerebras ids (`gpt-oss-120b` → `/^gpt-oss/`, `zai-glm-4.7` → `/^zai-glm-/`). For
-ids in the **`REASONING_MODEL_PATTERNS` allowlist**, skip the catalog read. This
-must stay **pinned** to the name-pattern set with a guard test so a future
-cerebras id that advertises reasoning only in the catalog can't silently lose
-its reasoning-token floor (blocker RB-2).
-
-### Invalidation wiring (Tier 1)
-
-- API-key revoke/update/delete/deactivate (`api-keys.ts` lines 216/230/240/279):
-  add `cache.del(iac:auth:<full key_hash>:v1)` alongside the existing
-  `invalidateCache(key_hash)` (blocker SEC-3).
-- `adminService.banUser()` + the moderation `onViolation` callback (≥5
-  violations): fan out IAC deletes for all of the user's API keys via a new
-  `apiKeysRepository.listByUser(userId)` (blockers SEC-1, SEC-6). Wire directly
-  into `banUser`, not only the caller-provided callback (which does not auto-ban).
-- User/org deactivation: same fan-out (CS-7).
-- These are the only correctness-load-bearing invalidations; everything else is
-  bounded by the 60s TTL.
-
-### Rollout (Tier 1)
-
-The IAC resolver is the only auth path for chat completions. API-key requests use
-the auth-context cache when the shared cache backend is available; non-API-key
-and cache-unavailable requests take the existing authoritative
-`requireAuthOrApiKeyWithOrg` + `shouldBlockUser` path. Confirm via the
-`[preforward]` log that eligible API-key auth+reads collapse to one cache read.
-
-### Tests (Tier 1)
-
-- **IAC resolver unit tests:** API-key hit; miss→populate; non-API-key→no
-  fastPath; suspended→no positive entry + slow path; shape-guard reject; error
-  propagates (never fail-open); cache-unavailable→slow path.
-- **Invalidation unit tests:** revoke/ban deletes the IAC entry; ban fan-out
-  across multiple keys; `listByUser` correctness.
-- **Route regression:** 429→403→402 priority preserved; wallet headers disable
-  fast path; app-credits path unchanged; catalog skip output-identical for the
-  allowlisted ids; a non-pattern cerebras id is NOT skipped (guard test).
-- **Benchmark/assertion:** warm IAC ⇒ hot path performs exactly **1
-  cache read and 0 auth/moderation DB reads** before reserve (spy on cache + db).
-
----
-
-## Tier 2 — optimistic off-path billing (IMPLEMENTED — flag-gated, default OFF)
-
-The user's "fire off billing without blocking, no DB writes in the hot path" ask
-means removing the synchronous `reserveCredits`. A naive "skip reserve + debit in
-`waitUntil`" change is **not safe**; the review (appendix) showed it needs a
-durable backstop and several guards. Tier 2 ships all of them behind
-`INFERENCE_OPTIMISTIC_BILLING` (default OFF). Implementation lives in
-`@/lib/services/inference-billing-fast-path` (settler, gate, sweep) and
-`@/lib/services/inference-auth-cache` (org-balance hint). When eligible, the
-org-credits branch SKIPS `reserveCredits` and instead: writes a durable KV
-pending-charge → forwards → debits the ACTUAL cost off the response path (the
-existing `settleReservation` chain, now backed by `createOptimisticDebitSettler`).
-
-1. **Durable pending-charge backstop** independent of `waitUntil`
-   (`writePendingInferenceCharge` → `iac:pending:<requestId>:v1`, TTL 1800s),
-   written BEFORE forwarding. A `* * * * *` cron
-   (`/api/cron/sweep-inference-charges` → `sweepStalePendingInferenceCharges`)
-   settles entries older than a 20-min grace whose inline settle never ran,
-   charging the ESTIMATE. Steady-state the inline settler deletes its own entry,
-   so the sweep set is just rare stragglers — it does NOT process every request.
-   Bounds dropped-`waitUntil` loss to "eventually charged" (blocker BILL-4).
-2. **Org-scoped balance hint + org-level invalidation** (`OrgBalanceHint`,
-   `iac:org-balance:<orgId>:v1`, TTL 15s) — the gate reads the org balance, not a
-   per-credential value. On any failed/over-drawn debit the hint is invalidated
-   so the next request re-reads fresh (blocker BILL-2).
-3. **Uncollected-overage handling:** the DB `CHECK(credit_balance >= 0)` means a
-   failed deferred debit does NOT go negative — `deductCredits` returns
-   `success:false`. On failure we log the uncollected amount for alerting,
-   invalidate the org-balance hint, and invalidate the user's IAC
-   (`invalidateInferenceContextForUser`) — forcing the org back onto the
-   synchronous-reserve slow path, which then returns the exact `402` until they
-   top up. So a failed debit is bounded over-spend (the in-flight call only),
-   never free-forever, and self-heals on top-up (blocker BILL-1). A persistent
-   debt ledger would need a migration and is intentionally NOT added (logged
-   instead) — out of scope for the optimistic-billing MVP.
-4. **Idempotent settlement** keyed on `requestId`: the inline settler atomically
-   CLAIMS the pending entry via `cache.getAndDelete` before debiting, and the
-   cron sweep claims the same way — so the two can never both charge one request
-   (BILL-minor). Residual: the claim is a near-atomic KV get-then-delete; a crash
-   between claim and debit loses a single charge (under-bill, never double-bill).
-5. **Fail-safe threshold:** `resolveSafeBalanceThresholdUsd` returns `+Infinity`
-   (everyone slow-path) on unset/blank/non-finite/non-positive
-   `SAFE_BALANCE_THRESHOLD`, never 0 (blocker BILL-5). The gate
-   (`isOptimisticEligible`) requires `balance > threshold && balance > estimate`
-   from a freshly-read balance (15s hint, not the 600s `user.withOrg` snapshot)
-   (CS-1).
-6. **Settler-shape parity:** `createOptimisticDebitSettler` returns the SAME
-   `(actualCost) => Promise<CreditReconciliationResult|null>` shape as the
-   reservation settler, so the route's single post-response `settleReservation`
-   chain is unchanged and covers both streaming and non-streaming paths (RB-5).
-7. **Backend assertion:** the IAC fast path requires `cache.isAvailable()`; a
-   degraded/memory/disabled cache forces the slow path (resolver returns
-   `slow_path` with reason `cache_unavailable`), since invalidation is ineffective
-   off the bound KV namespace (CS-5).
-
-Tier 2 is billing-critical; its prod behavior (KV consistency, `waitUntil`
-eviction) cannot be fully proven by unit tests, so it ships **default OFF**.
-Enable in staging behind `INFERENCE_OPTIMISTIC_BILLING` with a conservative
-`SAFE_BALANCE_THRESHOLD`, watch the `[InferenceBilling]` uncollected/sweep logs,
-then prod.
-
----
-
-## Appendix — blockers the review surfaced (and how Tier 2 addresses them)
-
-- **BILL-1 / SEC-4:** `CHECK(credit_balance >= 0)` + `WHERE current_balance >=
-  amount` ⇒ failed deferred debit = free inference, not negative balance; the
-  "drain→invalidate→hard-block" chain never fires.
-- **BILL-2:** per-credential IAC cannot bound org-level drain (multiple
-  keys/sessions/app-path share one org balance).
-- **BILL-3 / CS-1:** the fast-vs-safe gate would decide on a balance that is up
-  to ~11 min stale (60s IAC over a 600s `user.withOrg` snapshot that credit
-  deductions don't invalidate).
-- **BILL-4:** `waitUntil` is best-effort; with no upfront reserve it's the only
-  billing — eviction/error/abort ⇒ free + unrecorded.
-- **BILL-5:** threshold parse fallback to 0 fails open.
-- **SEC-1 / CS-2:** session-token IAC entries have no `userId→tokenHash` index ⇒
-  un-invalidatable on ban/logout/expiry ⇒ restrict fast path to API keys.
-- **SEC-2:** wallet auth is signature/timestamp-bound + fail-closed ⇒ not
-  cacheable; exclude.
-- **SEC-3:** `validateApiKey` 10-min positive cache ⇒ revoked-key exposure is
-  10 min unless both caches cleared; existing `invalidateCache` doesn't touch IAC.
-- **SEC-5:** resolver must never catch-and-default to a permissive context.
-- **CS-3:** KV is eventually consistent; invalidation is best-effort; real bound
-  is TTL + propagation (~2 min), so TTL is load-bearing.
-- **CS-5:** module-level singleton CacheClient ⇒ invalidation only works on the
-  bound KV namespace, not a per-isolate memory adapter; optimization is inert if
-  cache is disabled in prod.
-- **RB-1:** deleted. The auth-context resolver is now the default path; cache
-  unavailable still falls back to the authoritative path before granting auth.
-- **RB-2:** catalog skip must be pinned to the name-pattern allowlist (else empty-
-  but-billed-output regression for a catalog-only-reasoning id).
-- **RB-3:** IAC must store no `active/suspended` booleans — only cache fully-OK
-  contexts; non-OK ⇒ slow path to preserve the 401/403/402 taxonomy.
-- **RB-5:** streaming/non-streaming settlement parity.
-- **RB-6:** preserve 429→403→402 ordering.
-
----
-
-## Post-implementation adversarial review (round 2) — fixes + residuals
-
-A second adversarial review of the shipped code surfaced 12 confirmed findings.
-The high-confidence, contained ones were FIXED:
-
-- **Free-on-cache-failure (HIGH):** `writePendingInferenceCharge` used a
-  swallow-on-failure `cache.set`, so on a KV brownout / open circuit it no-op'd
-  and the request forwarded with no recorded charge. FIXED: the optimistic branch
-  now gates on `isOptimisticBackstopAvailable()` (`cache.isAvailable()`, NOT
-  `supportsAtomicOperations()` — that is false on KV and would disable Tier 2 in
-  prod) AND `writePendingInferenceCharge` now uses `setIfNotExists` to REPORT
-  persistence; a non-durable backstop falls through to the synchronous reserve.
-- **Auto-suspension didn't invalidate IAC (MED):** `updateUserModerationStatus`
-  (the authoritative mutation behind chat/messages/A2A moderation) now drops the
-  user's IAC when they cross into a blocking state (banned / ≥5 violations).
-- **IAC invalidation fan-out (LOW):** async moderation invalidates the user's IAC
-  when a blocking violation is detected, so the next request re-checks
-  authoritatively.
-- **Out-of-order hint raise (LOW):** the debit settler writes the org-balance
-  hint lower-only (`lowerOrgBalanceHint`), so a late concurrent debit can never
-  raise the gate value.
-- **Sweep hardening (MED):** pending TTL widened to 60 min (40-min sweep window
-  over the 20-min grace, survives cron hiccups); a best-effort single-flight lock
-  guards against overlapping sweeps; a `capHit` is logged, never silently dropped.
-
-Residuals that are INHERENT to a KV-backed backstop and require the **DB-backed
-pending-charge + settlement ledger** (the documented next step) before enabling
-at scale — these are bounded, not free-forever, and must be covered by a
-conservative `SAFE_BALANCE_THRESHOLD` until then:
-
-- **Concurrent in-flight overdraw (BILL-2 redux):** the gate has no per-org
-  in-flight accounting, so a burst within the 15s hint window can collectively
-  overdraw; the DB `CHECK(>=0)` then refuses the overdrawing debits (uncollected,
-  logged) and the org is forced to the slow path. Bounded by the threshold; a
-  hard bound needs atomic admission (DB or atomic counter — KV has neither).
-- **Exactly-once settlement:** the inline-vs-sweep and sweep-vs-sweep claim is an
-  atomic `getAndDelete` on Redis but a non-atomic get-then-delete on KV, so a
-  rare double-bill is possible there; the lock narrows it. True exactly-once
-  needs a DB unique constraint on `request_id`.
-- **Sweep drain rate:** the sweep is bounded to `maxKeys` per run with no cursor
-  continuation; a sustained backlog above that needs the age-ordered DB query.
-- **Gate/pricing DB reads:** the gate still reads a fresh balance on a hint miss,
-  and pricing lookups remain per-request — the "zero DB reads pre-forward" claim
-  holds for AUTH+MODERATION (Tier 1), not for the billing gate (Tier 2).
-
-The money-safety invariants (no double-charge under an atomic backend, no
-free-forever on cache failure, fail-safe `+Inf` threshold, uncollected→slow-path)
-are unit-tested; the residuals above are the explicit boundary of what unit tests
-on the in-memory adapter can prove about the production KV backend.
-
----
-
-## Tier 3 — DB-backed pending-charge + settlement ledger (IMPLEMENTED — flag-gated, default OFF)
-
-The "documented next step" above is now built: a real database table
-(`inference_pending_charges`, migration `0153`) that is the durable, exactly-once
-replacement for the KV pending-charge backstop. It is selected by
-`INFERENCE_BILLING_LEDGER="db"` (default `kv` = the KV backstop). Code lives in
-`@/lib/services/inference-billing-ledger` (`admitInferenceChargeViaLedger`,
-`createLedgerDebitSettler`, `sweepStalePendingInferenceChargesDb`,
-`resolveInferenceBillingLedger`); the chat + embeddings routes admit through it
-when the flag is `db`, and the `sweep-inference-charges` cron sweeps BOTH backends
-every run.
-
-> This design — like Tier 1/2 — was hardened by an adversarial review (5-lens,
-> 3-vote verify). It surfaced that a first cut (single `FOR UPDATE` admission +
-> non-transactional claim-then-debit) did **not** actually bound overdraw on real
-> Postgres and could lose a charge on a crash between claim and debit. The
-> mechanisms below are the corrected design; the review's confirmed findings and
-> their fixes are catalogued in `.github/issue-evidence/9899-db-ledger.md`.
-
-It closes the three KV-inherent residuals point-for-point:
-
-1. **Hard concurrent-overdraw bound (was BILL-2 redux).** Admission runs inside a
-   transaction that FIRST takes a per-org `pg_advisory_xact_lock`, THEN reads the
-   org balance + the `SUM` of its still-`pending` charges and inserts a `pending`
-   row only when `balance > threshold` AND `balance − in-flight ≥ estimate`. The
-   advisory lock serializes admissions for one org, so each reads the in-flight
-   `SUM` only after any concurrent admission has **committed** (READ COMMITTED
-   takes a fresh snapshot per statement). A bare `SELECT … FOR UPDATE` on the org
-   row is **not** sufficient — the in-flight `SUM` scans a *different* table and
-   would read a stale MVCC snapshot, so two concurrent admissions both see the same
-   pre-insert `SUM` and both admit. (Single-connection PGlite serializes and hides
-   this; real multi-connection Postgres does not — which is why the lock is
-   load-bearing.) In-flight is the live `SUM` of `pending` rows themselves, so it
-   is self-correcting: a crashed/dropped settle leaves its row `pending` and still
-   counted until the sweep settles it — no separate counter to drift.
-2. **Exactly-once settlement, crash-safe.** The claim (`UPDATE … SET
-   status='settled' WHERE request_id=$ AND status='pending' RETURNING`) and the
-   actual debit run in **one transaction**. The `request_id` PK + the `pending`
-   guard make the claim exactly-once (only one of {inline settler, cron sweep} can
-   win), and because claim+debit commit together: (a) a crash between them ROLLS
-   BACK the claim, leaving the row `pending` for the sweep to recover — **no lost
-   charge**; and (b) no concurrent admission ever observes a claimed-but-undebited
-   state — **no over-admit window**. The debit replicates the same atomic `FOR
-   UPDATE` balance guard + `credit_transactions` row as `reserveAndDeductCredits`
-   (so it can run inside the claim transaction — `deductCredits` cannot take an
-   external transaction); cache invalidation fires post-commit. Because the claim
-   is a true DB transition the cron needs **no** KV-style single-flight lock —
-   overlapping sweeps and a racing inline settler are all safe.
-3. **Age-ordered sweep drain + bounded growth.** The sweep selects `status='pending'
-   AND enqueued_at < NOW() − interval(grace) ORDER BY enqueued_at ASC LIMIT batch`
-   over a partial index and loops batches until empty (bounded by `maxBatches`,
-   `log`-surfaced when hit) — no silent cap. The cutoff is computed **in SQL**
-   against `NOW()` so it is timezone-consistent with the `NOW()`-written
-   `enqueued_at` (a client-side ISO-`Z` string would skew under a non-UTC session
-   timezone). The sweep also GCs terminal (`settled`/`uncollected`) rows older than
-   a retention window, so a caller-supplied `request_id` cannot pin an immortal row
-   and the table stays bounded.
-
-A successful debit fires the SAME post-debit notifications every other billing
-path does — low-credits email, auto-top-up check, and the waifu hosted-agent pause
-webhook — via the shared `creditsService.notifyBalanceDecrease`, so an org draining
-through optimistic inference still gets low-balance warnings (the ledger mutates
-the balance with its own transactional SQL rather than through `deductCredits`, so
-this parity is explicit, not inherited). `uncollected` is a first-class row state
-(auditable) instead of log-only: a debit the DB refuses (would overdraw) marks the
-row `uncollected`, drops the org-balance hint, and the org's NEXT admission reads
-the now-depleted balance and self-heals onto the synchronous-reserve path (402).
-Bounded over-spend, never free-forever.
-
-The cron sweeps **both** backends (`db` + `kv`) on every run regardless of the
-flag — each is idempotent and a cheap no-op when empty — so a flag flip (or
-rollback) between a charge's admit-time and the next sweep cannot orphan its
-pending row on the no-longer-selected backend.
-
-What the ledger does NOT change: pricing lookups remain per-request, and the
-admission still reads a balance — the Tier-2 caveat that "zero DB reads pre-forward"
-holds for AUTH+MODERATION (Tier 1) and not for the billing gate still stands. The
-win is correctness-at-scale, not a further latency cut.
-
-> Known parity residual (shared with the KV backstop, NOT fixed here because it is
-> a product-semantics question): when `billUsage` throws *after* the model produced
-> billable output, the route's error path calls `settle(0)`, which claims the row
-> and charges nothing — a bounded single-request under-bill. Fixing it (charge the
-> estimate vs. leave for the sweep vs. treat as a free abort) needs a decision on
-> abort billing; tracked as a follow-up, not a regression.
-
-### Rollout (Tier 3)
-
-Same soak-then-cutover discipline as Tier 1/2, and orthogonal to them
-(`INFERENCE_BILLING_LEDGER` is independent of `INFERENCE_HOT_PATH_CACHE` and
-`INFERENCE_OPTIMISTIC_BILLING`; the ledger still requires
-`INFERENCE_OPTIMISTIC_BILLING="true"`). Default `""`/`kv` everywhere = no behavior
-change. To cut over: ship migration `0153`, flip `INFERENCE_BILLING_LEDGER="db"`
-in staging, drive load, watch `[InferenceLedger] uncollected inference charge`
-and the sweep stats (`settled`/`skipped`/`capHit`), then flip prod. Revert =
-flag back to `""` (the KV backstop is unchanged and still wired). The KV backstop
-stays as the rollback target during the migration; once the DB ledger is soaked
-in prod, the KV pending-charge path can be retired.
-
-### Tests (Tier 3 — ledger)
-
-`packages/cloud/shared/src/lib/services/__tests__/inference-billing-ledger.test.ts`
-drives the REAL SQL against in-process PGlite (the same honest pattern as
-`credits-deduct-guard.test.ts`): admission (affordable / threshold gate / **hard
-overdraw bound** via seeded in-flight rows / unknown org / `+Inf` threshold /
-idempotent re-delivery / a concurrent burst that cannot collectively overdraw /
-in-flight self-correction once a charge settles); settle (actual debit /
-**exactly-once** double-settle no-op / `settle(0)` / **uncollected** under
-`CHECK(>=0)`); sweep (stale-vs-young / inline-then-sweep no double-charge /
-age-ordered multi-batch drain / **dropped-inline recovery** — a never-settled row
-stays `pending` and the sweep recovers the estimate / **GC** of terminal rows past
-retention). Because single-connection PGlite serializes, the burst test asserts the
-*accounting* (in-flight ≤ balance); the HARD bound under multi-connection Postgres
-is provided by the per-org advisory lock (a property of Postgres locking the unit
-test documents but cannot exercise in PGlite). The migration file itself is applied
-to PGlite and asserted (`inference-pending-charges-migration.test.ts`): table + PK
-+ both partial indexes exist, and re-applying is idempotent. The cron route test
-(`cron/sweep-inference-charges/route.test.ts`) asserts it sweeps **both** backends.
-
----
-
-## Tier 3 (latency) — deferred admission + cached decision gates (IMPLEMENTED — flag-gated, default OFF)
-
-> Naming note: the a07084e9cbc two-tier numbering (Tier 1 = single-cache auth,
-> Tier 2 = optimistic billing) calls this work "Tier-3"; within this doc the DB
-> ledger above already holds the "Tier 3" heading as the *correctness* step, so
-> this section is the Tier-3 **latency** continuation. Two flags, both default
-> OFF, both required for zero-behavior-change rollback:
-> `INFERENCE_DEFERRED_ADMISSION` (billing admission) and
-> `INFERENCE_HOT_PATH_CACHES` (the in-isolate decision caches — orthogonal to
-> billing, so deliberately NOT coupled to the admission flag).
-
-Fresh measurement (2026-07-07): warm TTFB through the gateway is **1.6–1.8s**
-(3.2s cold) against a **0.15s** cerebras-direct provider call, with Tier-1/2
-warm. DNS+TLS is 0.03s, so ~1.6s is per-request Worker work. The remaining
-pre-forward round-trips, profiled per step:
-
-| Step | Warm backend work | Warm cost | Disposition |
-|------|-------------------|-----------|-------------|
-| Hono `rateLimit(RELAXED)` middleware | per-call Redis client + TCP/TLS + INCR when `REDIS_RATE_LIMITING=true` | 0 (flag off) / ~100–300ms | out of scope here (all-routes middleware) — follow-up candidate |
-| `resolveInferenceAuthContext` | 1 shared-cache read (Tier-1 IAC) | ~5–40ms | stays (auth) |
-| `enforceOrgRateLimit` | 1 cache read (org tier) + per-call Redis client + 4-cmd pipeline | 0 / ~100–400ms | **in-isolate 5s decision lease** |
-| `shouldBlockUser` | skipped on API-key fast path; uncached Postgres read on session/JWT path | 0 / ~100–400ms | **in-isolate 60s memo + violation invalidation** |
-| `getCachedGatewayModelById` | skipped for name-pattern reasoning ids; else full-catalog shared-cache read | 0 / ~10–60ms | **in-isolate 60s per-model memo** |
-| `calculateCost` | in-isolate 60s persisted-pricing memo (pre-existing) | ~0 warm | already cached — verified, unchanged |
-| `getGateBalanceUsd` | 1 shared-cache read (15s hint) | ~5–40ms | stays — it IS the cached 402 gate |
-| Billing admission (`admitInferenceChargeViaLedger` / `writePendingInferenceCharge`) | Postgres write transaction / KV write, cross-provider | **~100–400ms every request** | **deferred via `executionCtx.waitUntil`** |
-| `reserveCredits` (sync path) | Postgres CTE write | ~100–400ms | unchanged — the safe fallback |
-
-### Deferred admission
-
-When `INFERENCE_DEFERRED_ADMISSION="true"` AND the request carries a Workers
-`executionCtx` AND the request is already eligible for the optimistic path
-(`INFERENCE_OPTIMISTIC_BILLING`, org-credits, no affiliate code):
-
-1. **Critical path keeps a CACHED 402 gate**: the 15s org-balance hint
-   (`getGateBalanceUsd`) + `isOptimisticEligible` + a 60s in-isolate refusal
-   blocklist (`inference-billing-deferred`). An org the hint says is broke
-   falls through to the synchronous reserve and 402s exactly as today.
-2. **Only the WRITE moves off-path**: the durable admission (ledger insert on
-   `INFERENCE_BILLING_LEDGER="db"`, else the KV pending charge) is started
-   immediately, registered with `executionCtx.waitUntil`, and runs concurrently
-   with the ≥150ms provider call — in practice it lands before the first token.
-3. **The settler awaits the admission first**, so reconciliation ordering is
-   unchanged: admitted → the normal exactly-once settler (ledger claim / KV
-   getAndDelete); refused/not-durable → the request already forwarded, so the
-   settler charges the ACTUAL cost directly via the fail-closed
-   `debitInferenceCost` (uncollected → logged + hint/IAC invalidation), marks
-   the org refused (blocklist), and drops the balance hint — the org's NEXT
-   request takes the synchronous reserve. The settler is first-call-wins
-   (#11512 pattern) because the route's error path can invoke it twice.
-
-### Safety envelope (what changed, honestly)
-
-- **402 window**: the hard gate moves from an authoritative in-transaction
-  balance read (db ledger) to the 15s hint + refusal blocklist. Serial traffic
-  402s one request later; the honest CONCURRENT bound is **every request
-  admitted within one 15s hint window (per org, fleet-wide — the hint is
-  shared) plus in-flight streams**. Every slipped request is still charged (or
-  recorded `uncollected`, DB CHECK ≥ 0), the first refused settle invalidates
-  hint + IAC + blocklists, and the org self-heals to the synchronous 402. On
-  the prod KV config this window is identical to Tier-2 today; the weakening
-  is only on `INFERENCE_BILLING_LEDGER="db"`. Same residual class as the
-  Tier-2 KV gate.
-- **Durability window**: the pending record now depends on `waitUntil`
-  surviving until the admission write lands (typically < the provider call). An
-  isolate crash in that window loses the record AND the settle — a
-  single-request under-bill, the same class as the Tier-2 claim/debit residual.
-  Bounded by `SAFE_BALANCE_THRESHOLD` orgs and per-request cost.
-- **Not eligible, unchanged**: monetized-app billing
-  (`reserveInferenceCredits`, #11976 contract — stays synchronous),
-  affiliate-marked requests (#12749), non-optimistic configs, requests without
-  an `executionCtx`.
-
-### Cached decision gates (`INFERENCE_HOT_PATH_CACHES`, default OFF)
-
-- `enforceOrgRateLimit`: in-isolate 5s lease per (org, endpoint). Allowed
-  decisions are served locally up to min(remaining, the org's pro-rated window
-  share per TTL); denials are leased too (stops 429 hammering). **Convergent,
-  not lossy**: every leased request is carried into the NEXT authoritative
-  check (`checkRateLimitRedis`'s `carriedCount` appends them to the sliding
-  window before counting) and the carry survives lease expiry, so a hot
-  isolate can exceed the org limit by at most ONE in-flight lease budget
-  before the window catches up and denies — sustained throughput converges to
-  the org limit (proven by the D1 convergence test). Residual: a carry lost to
-  isolate death is bounded ≤ one budget.
-- `shouldBlockUser`: in-isolate 60s memo; dropped locally on a recorded
-  violation / reset, other isolates age out within the TTL — a banned user can
-  keep inferring for up to 60s per warm isolate, the same bound the 60s Tier-1
-  IAC already accepts for API-key auth. Flag off = the uncached read.
-- `getCachedGatewayModelById`: in-isolate 60s per-model memo in front of the
-  SWR catalog read. Catalog data only ever ADDS reasoning capability, so a TTL
-  of staleness cannot regress the token floor. Flag off = the SWR read;
-  the only unconditional micro-change is that Groq-native ids no longer fetch
-  the merged catalog they never used (output-identical, zero staleness).
-
-### Rollout
-
-Same soak-then-cutover discipline: both flags `"false"` everywhere = zero
-behavior change. The two flags flip independently: `INFERENCE_HOT_PATH_CACHES`
-first (read-side caches, no billing semantics), then
-`INFERENCE_DEFERRED_ADMISSION` in staging with
-`INFERENCE_OPTIMISTIC_BILLING="true"`, watching `[InferenceBilling] deferred
-admission refused after forward` + uncollected logs and the sweep stats, then
-prod. Revert = flags off (Tier-2 synchronous admission and all authoritative
-reads are untouched underneath).
-
-### Tests (Tier 3 — latency)
-
-`inference-billing-deferred.test.ts` (settler admitted/refused/fallback-debit/
-first-call-wins, refusal blocklist, flag parsing — real in-memory cache + real
-`debitInferenceCost` with the credits seam mocked);
-`rate-limit-org-lease.test.ts` (lease budget, per-key isolation, denial lease,
-authoritative fallback with carried-count flush, zero-remaining no-lease,
-flag-off = authoritative-every-time, and the D1 convergence proof — a hot
-isolate driving 5× the limit is bounded to limit + one lease budget);
-`content-moderation-block-cache.test.ts` (memo, thrown-read-not-cached,
-invalidation); route-level `chat-completions-optimistic-billing.test.ts`
-Tier-3 block (waitUntil capture, no synchronous reserve on the warm path,
-402-still-fires with a broke cached balance, refusal → next-request synchronous
-reserve, no-executionCtx inert, flag-off inert).
+# Inference hot path
+
+Refs: #9899, #16917, and #16925.
+
+## Contract
+
+An admitted Cloudflare Worker token/model request must not query or mutate
+Postgres, connect to Railway Redis, or wait for an accounting write before
+dispatching the provider request. This contract covers `/v1/chat`,
+`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/embeddings`,
+shared-agent model turns, and the internal Eliza model turn used by a voice
+session.
+
+Direct TTS, STT, and voice-clone requests are outside this contract. They are
+metered media or stateful job endpoints with their own reservation and job-state
+requirements; they are not token/model LLM dispatches.
+
+The synchronous Worker path is:
+
+1. Cloudflare-native ingress rate limit.
+2. Cloudflare KV cache reads for authorization, model pricing, organization
+   balance revision, affiliate attribution, and app policy as applicable.
+3. A per-organization Durable Object call that serializes the exact endpoint
+   rate decision.
+4. A call to the same object that durably leases the estimated charge.
+5. A final call that durably marks provider-dispatch intent immediately before
+   the provider invocation.
+6. Provider dispatch.
+
+A warm billed request therefore makes three serial Durable Object calls before
+the provider. Keeping rate, money, and dispatch-intent transitions explicit
+makes the crash states independently testable. The repository benchmark measures
+those calls in-process; it is a regression tripwire, not evidence of deployed
+cross-isolate or regional network latency.
+
+The provider response, including direct provider-error responses, is not delayed
+by database accounting. Post-provider settlement, cache projection, analytics,
+and payout delivery run under `executionCtx.waitUntil`. A Durable Object alarm
+recovers an expired dispatched monetary lease if response-side settlement
+disappears.
+
+This contract applies to the listed token/model routes in the inference Worker.
+Non-Worker tools and excluded media/job endpoints retain their synchronous
+accounting contracts, but a covered Worker route must never fall back to that
+path. Missing or unavailable cache state produces a retryable 503 and starts
+asynchronous hydration; insufficient cached balance produces 402; a rate denial
+produces 429.
+
+## Why Railway Redis is not on this path
+
+Railway Redis remains useful to services running inside Railway's private
+network. A Cloudflare Worker would reach it across providers using a public TCP
+connection, adding connection setup, latency, egress, and another availability
+dependency to every model request.
+
+The covered token/model routes therefore bypass the legacy Railway Redis
+deployment guard. Their ingress limits use Cloudflare Rate Limiting bindings,
+and exact organization limits use the same per-organization Durable Object that
+owns monetary leases. General API and excluded media/job routes can continue
+using Railway Redis without making it a prerequisite for an LLM request.
+
+Moving the entire inference control plane into Railway would change this
+tradeoff. In that topology, Redis with atomic scripts could own exact counters
+and short-lived leases. Mixing a Cloudflare Worker with Railway Redis is not the
+selected production architecture.
+
+## State ownership
+
+| State | Synchronous owner | Durable/source-of-truth owner | Consistency |
+| --- | --- | --- | --- |
+| API-key and Steward-session authorization | Postgres/Steward | Postgres/Steward | Authoritative while `INFERENCE_AUTH_CACHE_ENABLED` is false |
+| Moderation decision | Cloudflare KV auth context | Postgres | Invalidated on lifecycle changes; bounded staleness |
+| Model pricing | Cloudflare KV | Pricing tables | Revisioned cache; cold requests warm and retry |
+| Affiliate attribution | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
+| App policy | Cloudflare KV | Postgres | Immutable snapshot per admitted request |
+| Organization balance hint | Cloudflare KV | Postgres | Revisioned, lower-only admission hint |
+| Organization endpoint rate | Durable Object | Durable Object | Strongly ordered per organization |
+| In-flight estimated spend | Durable Object | Durable Object | Strongly ordered per organization |
+| Anonymous identity and quota | Durable Object | Postgres projection | Strongly ordered counters; async revisioned mirror |
+| Token/model credits, transactions, and payouts | none before provider | Postgres | Written after provider; idempotent recovery |
+
+Eventual consistency is acceptable for metadata and projections whose revision,
+TTL, and invalidation rules are explicit. It is not acceptable for concurrent
+rate increments or admission against in-flight spend. Those decisions are
+serialized in a Durable Object instead of implemented as read-modify-write
+operations in KV. Post-provider credit debits and external balance mutations
+remain transactional in Postgres and publish monotonic cache revisions.
+
+## Authorization and cold-cache behavior
+
+Authorization remains authoritative by default. `INFERENCE_AUTH_CACHE_ENABLED`
+is a separate, fail-closed rollout control and stays false in every checked-in
+environment until revocation has a strongly consistent boundary. A successful
+KV deletion is not proof that every point of presence has stopped serving an
+older positive value.
+
+The gated implementation accepts positive cache entries only for fully
+authorized credentials. API-key entries are keyed by the full credential hash.
+Steward-session entries currently use the verified subject, so the gate must
+also remain disabled until they use an immutable session identity. Wallet
+signatures remain outside the cache-only Worker path because their timestamped
+proof cannot safely be replayed as an asynchronous hydration.
+
+On a Worker cache miss:
+
+- the request receives a retryable warming response;
+- the authoritative lookup is registered with `waitUntil`;
+- concurrent hydration is single-flight by identity; and
+- no provider request starts until a later request observes the populated
+  cache.
+
+When the gate is enabled, cache errors never fabricate authorization and never
+join a Postgres fallback to the request promise. Invalidation is only a cache
+hygiene mechanism; it is not the authorization revocation boundary.
+
+Pricing, affiliate attribution, app policy, balance, and uninitialized Durable
+Objects follow the same fail-closed warming pattern. The first request may warm
+state; it does not purchase lower latency by bypassing a correctness check.
+
+### Flag scope: the IAC vs. the shared-agent scope cache
+
+`INFERENCE_AUTH_CACHE_ENABLED` governs ONLY the inference auth-context (IAC)
+entries above (`iac:auth:*`, `iac:session-auth:*`). "Positive KV entries are
+ignored while the flag is off" is an IAC statement; it does not describe the
+shared-agent chat surface.
+
+The shared-agent model routes (`POST .../agents/:id/stream|bridge` and
+`.../api/conversations/:id/messages[/stream]`) are authorized by a distinct,
+flag-independent positive cache: the shared-agent SCOPE entry
+(`shared-agent-scope:*`, 30s base TTL, credential-revalidated sliding refresh
+capped at 5 minutes). It is bounded rather than gated because every hit re-runs
+a per-request credential gate before the cached scope is served:
+
+- API-key hits re-check the revoke-invalidated key-validation entry and the
+  org match; key revocation fails closed (unconfirmed invalidation throws).
+- Session hits re-verify the steward JWT, require subject equality with the
+  entry, and consult the lifecycle-invalidated `user:steward:<id>` entry for
+  an active user in the cached org's active organization. Ban, deactivate,
+  and org-detach evict that entry, so a session hit deauthorizes on the next
+  turn after the mutation; a miss fails closed into re-hydration.
+
+Residual exposure bound: an authorization-relevant mutation that evicts no
+cache entry (none is currently known for the session path; for the API-key
+path a user-level ban does not revoke the key or its validation entry) is
+bounded by the 30s idle TTL and the 5-minute sliding-refresh cap, after which
+the entry must re-hydrate through the authoritative gate. Cache-only misses
+never authorize — they warm under `waitUntil` and return a retryable 503.
+
+## Organization admission protocol
+
+`InferenceAdmissionGate` is addressed by organization ID. A lease request
+contains:
+
+- request and organization identity;
+- the cached balance and monotonic balance revision;
+- an estimated charge; and
+- a versioned recovery snapshot that pins the only allowed accounting lane.
+
+The object durably:
+
+1. applies only safe balance revisions;
+2. subtracts all active and expired monetary holds;
+3. rejects an unaffordable request;
+4. stores the lease and its recovery snapshot before replying;
+5. persists provider-dispatch intent immediately before invocation; and
+6. schedules recovery atomically with every persisted active-lease state.
+
+Duplicate request IDs are idempotent only when their immutable lease facts
+match. A higher but stale balance hint cannot restore capacity. An expired lease
+that was never dispatched releases its hold. An expired dispatched lease is
+claimed for recovery and retains its hold until the pinned accounting lane
+finishes. The exact object lease replaces the KV optimistic lane's minimum
+balance cushion: an organization below that compatibility threshold is admitted
+whenever its cached balance can cover this request, including exact equality.
+
+After provider work, exactly one lane settles the lease:
+
+- **organization credits:** deterministic direct debit keyed by organization
+  and request;
+- **affiliate inference:** atomic direct debit plus payout-outbox insertion,
+  using the pinned affiliate and payout identity; or
+- **monetized app:** server-generated app reservation using the same estimate
+  and request identity, followed by reconciliation to actual usage.
+
+The response-side task debits/reconciles Postgres, refreshes projections, and
+then tells the Durable Object the balance-backed amount, conservative
+gate-consumed amount, and authoritative post-accounting balance revision. If
+that task is lost, the alarm replays the same idempotent lane at the conservative
+estimate. The object clears a dispatched lease only with request-specific
+proof. Any uncollected amount remains gate debt and cannot be resurrected by a
+delayed balance snapshot.
+
+There is no pre-provider database ledger insert, KV pending-charge write, or
+background reservation. The durable lease itself is the write-ahead record.
+This avoids switching accounting identities between normal settlement and
+recovery, which could otherwise double charge a request after an ambiguous
+acknowledgement.
+
+## Anonymous chat
+
+Anonymous chat uses a separate Durable Object keyed by a hash of the opaque
+session token. It owns session expiry, moderation state, lifetime quota, hourly
+quota, active leases, and idempotent commit/refund.
+
+A cold object returns 503 while Postgres state hydrates under `waitUntil`.
+Admitted and refunded counter snapshots mirror to Postgres asynchronously with
+monotonic revisions. The Durable Object remains authoritative for live quota,
+so a delayed projection cannot grant extra messages.
+
+## Failure semantics
+
+- Missing/invalid cache or binding: 503; never synchronous SQL fallback.
+- Cold cache or Durable Object: 503 plus asynchronous hydration.
+- Cached or exact insufficient balance: 402 before provider dispatch.
+- Exact endpoint or ingress limit: 429 before provider dispatch.
+- Provider failure known to be uncharged: release/reconcile with zero according
+  to the route's provider-outcome classifier.
+- Ambiguous or billable provider outcome: conservatively settle.
+- Accounting failure after provider: keep the lease, invalidate permissive
+  balance projections, and retry through the same idempotent identity.
+- Expired undispatched lease: release the hold without charging.
+- Expired dispatched or recovering lease: keep the hold until alarm recovery
+  returns an authoritative balance revision.
+
+These rules prefer an explicit retry over hidden latency or free inference.
+
+## Deployment configuration
+
+Staging and production require:
+
+- `CACHE_KV`;
+- `GLOBAL_RATE_LIMITER`, `CHAT_ROUTE_RATE_LIMITER`, and
+  `DASHBOARD_CHAT_ROUTE_RATE_LIMITER`;
+- `INFERENCE_ADMISSION_GATES`;
+- `ANONYMOUS_CHAT_GATES`;
+- `INFERENCE_OPTIMISTIC_BILLING="true"`;
+- `INFERENCE_DEFERRED_ADMISSION="true"`; and
+- `INFERENCE_HOT_PATH_CACHES="true"`.
+
+`INFERENCE_AUTH_CACHE_ENABLED` remains `"false"` in staging and production.
+Enabling it requires the strong revocation and immutable-session contract
+described above plus deployed rollback evidence.
+
+`INFERENCE_BILLING_LEDGER` still selects the compatibility ledger for
+non-Worker callers and sweep migration support. It does not add a ledger write
+before provider dispatch on the Worker path.
+
+`REDIS_RATE_LIMITING` continues to govern general API routes. The covered
+token/model routes use Cloudflare-native bindings and do not require
+`REDIS_URL`.
+
+## Verification
+
+The production contract is protected at three layers:
+
+1. Route tripwire tests install database seams that throw if chat,
+   completions, messages, responses, embeddings, shared-agent, or the
+   voice-session internal Eliza turn touches them before provider dispatch.
+   These tripwires are what enforce the zero pre-provider Postgres, Redis,
+   ledger, reservation, and payout guarantee.
+2. Admission tests assert the only warm pre-dispatch write is the Durable
+   Object lease, including organization, affiliate, app, anonymous, cold-cache,
+   concurrency, and crash-recovery cases.
+3. An in-process benchmark measures the serial rate, lease, and dispatch
+   transitions against the admission object in isolation. It is a latency
+   regression tripwire only; the zero-operation guarantee lives in the route
+   tripwires above, and deployed Worker-to-Durable-Object latency must be
+   measured separately in the target Cloudflare topology.
+
+Migration tests apply the accounting schema to PGlite. Money tests exercise
+idempotent direct debits, app reconciliation, affiliate payout outbox replay,
+alarm-versus-late-settlement races, and monotonic balance revisions.

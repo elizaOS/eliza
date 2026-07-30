@@ -54,6 +54,7 @@ import type {
 import {
   createUniqueUuid,
   getConnectorAccountManager,
+  requireConfirmedSendHandlerDelivery,
   resolveEffectiveMuteState,
   roleRank,
   setRoomMuteUntil,
@@ -2773,25 +2774,27 @@ export async function handleInboxRoute(
     }
 
     try {
-      await runtime.sendMessageToTarget(
-        {
-          ...(accountRouting.accountId
-            ? { accountId: accountRouting.accountId }
-            : {}),
-          source,
-          roomId: room.id,
-          channelId: room.channelId ?? room.id,
-          serverId: room.serverId,
-        } as Parameters<typeof runtime.sendMessageToTarget>[0],
-        {
-          ...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
-          source,
-          text,
-          // voice-policy:V2 this is the owner's own manually-typed inbox reply —
-          // it is a real person's words, so the voice gate must pass it through
-          // verbatim and never rephrase it.
-          agentVoiced: true,
-        },
+      requireConfirmedSendHandlerDelivery(
+        await runtime.sendMessageToTarget(
+          {
+            ...(accountRouting.accountId
+              ? { accountId: accountRouting.accountId }
+              : {}),
+            source,
+            roomId: room.id,
+            channelId: room.channelId ?? room.id,
+            serverId: room.serverId,
+          } as Parameters<typeof runtime.sendMessageToTarget>[0],
+          {
+            ...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
+            source,
+            text,
+            // voice-policy:V2 this is the owner's own manually-typed inbox reply —
+            // it is a real person's words, so the voice gate must pass it through
+            // verbatim and never rephrase it.
+            agentVoiced: true,
+          },
+        ),
       );
 
       const [message] = await loadInboxMessages(
@@ -2804,6 +2807,8 @@ export async function handleInboxRoute(
 
       helpers.json(res, message ? { ok: true, message } : { ok: true });
     } catch (err) {
+      // error-policy:J1 HTTP route boundary returns a structured 500 when the
+      // connector throws or cannot prove provider acceptance.
       helpers.error(
         res,
         `failed to send inbox reply: ${err instanceof Error ? err.message : String(err)}`,

@@ -657,6 +657,26 @@ function normalizeNativeToolsForCall(
 
   const toolSet: Record<string, unknown> = {};
 
+  // Cerebras's grammar compiler treats strictness as request-wide, not
+  // per-tool: one non-strict (or unflagged) tool downgrades every tool in the
+  // call, so the wire flag must be emitted uniformly — and always explicitly,
+  // since an omitted flag is not the same as false to the compiler. Schema
+  // handling below still follows each tool's declared flag (a declared
+  // non-strict schema passes through raw; everything else is sanitized).
+  const cerebrasRequestStrict =
+    options.cerebrasMode === true &&
+    tools.every((rawTool) => {
+      const tool = asRecord(rawTool);
+      const functionTool = asRecord(tool.function);
+      const declared =
+        typeof tool.strict === "boolean"
+          ? tool.strict
+          : typeof functionTool.strict === "boolean"
+            ? functionTool.strict
+            : undefined;
+      return declared === true;
+    });
+
   for (const rawTool of tools) {
     const tool = asRecord(rawTool);
     const functionTool = asRecord(tool.function);
@@ -667,11 +687,9 @@ function normalizeNativeToolsForCall(
     }
 
     const description = firstString(tool.description, functionTool.description);
-    // Default to a permissive object schema. The empty-properties shape
-    // (`{ type: "object", properties: {}, additionalProperties: false }`) is
-    // accepted by OpenAI but rejected by strict-grammar providers like
-    // Cerebras with `Object fields require at least one of: 'properties' or
-    // 'anyOf' with a list of possible properties`.
+    // A missing schema means the tool takes no arguments. Provider-specific
+    // normalization below turns this bare object into the explicit closed
+    // shape required by strict grammar compilers.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
     const strict =
@@ -700,7 +718,9 @@ function normalizeNativeToolsForCall(
       // recursively so deep schemas are accepted by the grammar compiler.
       // Pass isRoot: true so the top-level invariant is enforced (must be
       // type:"object" with no root oneOf/anyOf/enum/not).
-      inputSchema = normalizeSchemaForCerebras(inputSchema, true) as JSONSchema7;
+      inputSchema = normalizeSchemaForCerebras(inputSchema, true, {
+        strict: strict !== false,
+      }) as JSONSchema7;
     }
 
     // Cerebras's grammar compiler rejects function names containing characters
@@ -717,7 +737,11 @@ function normalizeNativeToolsForCall(
     toolSet[registeredName] = {
       ...(description ? { description } : {}),
       inputSchema: jsonSchema(inputSchema as JSONSchema7),
-      ...(strict === undefined ? {} : { strict }),
+      ...(options.cerebrasMode
+        ? { strict: cerebrasRequestStrict }
+        : strict === undefined
+          ? {}
+          : { strict }),
     };
   }
 
@@ -1205,9 +1229,12 @@ function sanitizeJsonSchema(
   transforms?: RecordArgTransform[]
 ): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    // Permissive fallback: no `properties: {}`/`additionalProperties: false`
-    // pair, which strict-grammar providers reject. See `normalizeSchemaForCerebras`
-    // in @elizaos/core for the rationale.
+    // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
+    // closes this afterwards (explicit empty `properties` +
+    // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
+    // bare `{type: "object"}` with a request-fatal 400. See
+    // `normalizeSchemaForCerebras` in @elizaos/core for the live-bisected
+    // provider rules.
     return { type: "object" };
   }
 

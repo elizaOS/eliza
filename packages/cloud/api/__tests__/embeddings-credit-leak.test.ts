@@ -21,7 +21,9 @@ import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as admissionActual from "@/lib/services/organization-inference-admission";
 import * as usageActual from "@/lib/services/usage";
+import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 
 const aiActual = require("ai") as Record<string, unknown>;
 
@@ -64,6 +66,28 @@ mock.module("@/lib/services/ai-billing", () => ({
   billUsage,
 }));
 
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
+  admitOrganizationInference: async (params: {
+    context: Record<string, unknown>;
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    affiliateCode?: string | null;
+  }) => {
+    const reservation = await reserveCredits(
+      { ...params.context, affiliateCode: params.affiliateCode ?? undefined },
+      params.estimatedInputTokens,
+      params.estimatedOutputTokens,
+    );
+    const settle = createCreditReservationSettler(reservation);
+    return {
+      mode: "synchronous_reservation",
+      settle,
+      settleUnknown: () => settle(reservation.reservedAmount),
+    };
+  },
+}));
+
 const usageCreate = mock();
 mock.module("@/lib/services/usage", () => ({
   ...usageActual,
@@ -88,6 +112,10 @@ afterAll(() => {
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => admissionActual,
+  );
+  mock.module(
     "@/lib/services/inference-auth-context",
     () => inferenceAuthActual,
   );
@@ -101,8 +129,10 @@ type AppCtx = { set: (k: string, v: unknown) => void };
 function makeLedgerReservation(startBalance: number, hold: number) {
   let balance = startBalance - hold;
   let reconcileCalls = 0;
+  const actualCosts: number[] = [];
   return {
     startBalance,
+    actualCosts,
     get balance() {
       return balance;
     },
@@ -113,6 +143,7 @@ function makeLedgerReservation(startBalance: number, hold: number) {
       reservedAmount: hold,
       reconcile: async (actualCost: number) => {
         reconcileCalls++;
+        actualCosts.push(actualCost);
         balance += hold - actualCost;
         return undefined;
       },
@@ -179,16 +210,21 @@ beforeEach(() => {
     };
   });
   resolveInferenceAuthContext.mockResolvedValue({
-    kind: "slow_path",
-    reason: "non_api_key",
+    kind: "authorized",
+    source: "cache",
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+    },
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   usageCreate.mockResolvedValue({ id: "usage-1" });
 });
 
-describe("embeddings — provider error releases the credit reservation", () => {
+describe("embeddings — provider errors settle by provable outcome", () => {
   for (const statusCode of [429, 503]) {
-    test(`single-input provider ${statusCode}: hold released to 0, balance restored`, async () => {
+    test(`single-input provider ${statusCode}: ambiguous server failures retain the estimate`, async () => {
       const ledger = makeLedgerReservation(100, 0.01);
       reserveCredits.mockResolvedValue(ledger.reservation);
       expect(ledger.balance).toBe(100 - 0.01); // hold debited up front
@@ -202,11 +238,19 @@ describe("embeddings — provider error releases the credit reservation", () => 
 
       // Upstream provider failure is surfaced as the recoverable status, not a 401/403.
       expect(res.status).toBe(statusCode === 429 ? 429 : 503);
-      // Billing never ran; the hold was released to 0 → balance back to pre-request.
+      // Billing never ran. Explicit rate-limit rejection is free; an ambiguous
+      // server failure after dispatch retains the admitted estimate.
       expect(billUsage).not.toHaveBeenCalled();
-      expect(scheduled.length).toBe(0);
+      expect(scheduled.length).toBe(1);
+      await Promise.all(scheduled);
       expect(ledger.reconcileCalls).toBe(1);
-      expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+      const expectedCost =
+        statusCode >= 500 ? ledger.reservation.reservedAmount : 0;
+      expect(ledger.actualCosts).toEqual([expectedCost]);
+      expect(ledger.balance).toBeCloseTo(
+        ledger.startBalance - expectedCost,
+        10,
+      );
     });
   }
 
@@ -215,13 +259,14 @@ describe("embeddings — provider error releases the credit reservation", () => 
     reserveCredits.mockResolvedValue(ledger.reservation);
     embedMany.mockRejectedValue(makeApiCallError(429));
 
-    const { ctx } = makeExecutionCtx();
+    const { ctx, scheduled } = makeExecutionCtx();
     const res = await post(
       { model: "text-embedding-3-small", input: ["a", "b"] },
       ctx,
     );
 
     expect(res.status).toBe(429);
+    await Promise.all(scheduled);
     expect(ledger.reconcileCalls).toBe(1);
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
   });
@@ -277,9 +322,6 @@ describe("embeddings — success settles to actual usage exactly once", () => {
     billUsage.mockImplementation(async (_ctx, _usage, reservationArg) => {
       expect(reservationArg).toBeDefined();
       expect(reservationArg).not.toBe(ledger.reservation);
-      expect(reservationArg.reservedAmount).toBe(
-        ledger.reservation.reservedAmount,
-      );
       // Mirror the real billUsage: reconcile via the handed-in reservation.
       await reservationArg.reconcile(ACTUAL);
       return makeBilling(ACTUAL);
@@ -299,13 +341,13 @@ describe("embeddings — success settles to actual usage exactly once", () => {
   });
 });
 
-describe("embeddings — billUsage internal throw releases the hold (#10557)", () => {
-  test("billUsage throws AFTER embedding (e.g. calculateCost/affiliate lookup): hold released to 0, no double-refund", async () => {
+describe("embeddings — unknown post-provider cost retains the admitted estimate", () => {
+  test("billUsage throws AFTER embedding: the conservative estimate settles once instead of becoming free", async () => {
     // The original leak: the embedding succeeded and the reservation hold was
     // taken, but billUsage threw before its internal reconcile (calculateCost or
     // the affiliate-code lookup throwing). The deferred settleBilling only logged
-    // → the ~1.5x hold leaked permanently. After the fix, settleBilling's catch
-    // releases the hold via the settler.
+    // → older recovery refunded to zero even though the provider had completed
+    // paid work. The explicit unknown terminal retains the admitted estimate.
     const ledger = makeLedgerReservation(100, 0.01);
     reserveCredits.mockResolvedValue(ledger.reservation);
     embed.mockResolvedValue({ embedding: [0.1], usage: { tokens: 5 } });
@@ -321,20 +363,24 @@ describe("embeddings — billUsage internal throw releases the hold (#10557)", (
     // Billing is deferred, so the vectors still returned 200.
     expect(res.status).toBe(200);
     expect(scheduled.length).toBe(1);
-    // The deferred task swallows its own error after releasing the hold.
+    // The deferred task observes and logs its own billing error after applying
+    // the conservative terminal.
     await Promise.all(scheduled);
 
     expect(billUsage).toHaveBeenCalledTimes(1);
-    // Hold released exactly once → balance back to pre-request (no permanent over-debit).
+    // Provider work cannot become free when local pricing fails.
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.balance).toBeCloseTo(
+      ledger.startBalance - ledger.reservation.reservedAmount,
+      10,
+    );
     // usage record never written because billUsage threw first.
     expect(usageCreate).not.toHaveBeenCalled();
   });
 
   test("billUsage succeeds then usage-record write throws: actual cost stays settled, NOT refunded to 0", async () => {
     // Defense of the idempotency guarantee: if settlement already happened and a
-    // later step (usageService.create) throws, the catch's settleReservation(0)
+    // later step (usageService.create) throws, the conservative terminal
     // must be a no-op (first-call-wins) — the customer stays billed the real
     // cost, never refunded for inference they received.
     const ledger = makeLedgerReservation(100, 0.01);

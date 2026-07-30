@@ -36,12 +36,15 @@ import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
-import { billFlatUsage } from "@/lib/services/ai-billing";
+import {
+  type BillingContext,
+  billFlatUsage,
+  reserveFlatUsageCredits,
+} from "@/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@/lib/services/ai-pricing";
 import { contentSafetyService } from "@/lib/services/content-safety";
 import {
   type CreditReservation,
-  creditsService,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
@@ -552,21 +555,45 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) /
         1_000_000
       : ttsCost.totalCost;
+    const billingCost = {
+      totalCost: estimatedCost,
+      baseTotalCost: isCustomVoice
+        ? Math.round(
+            ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
+          ) / 1_000_000
+        : ttsCost.baseTotalCost,
+      platformMarkup: isCustomVoice
+        ? Math.round(
+            ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
+          ) / 1_000_000
+        : ttsCost.platformMarkup,
+    };
 
     // #16425: the client mints one Idempotency-Key per logical utterance and
     // sends it on BOTH the direct request and the proxy fallback, so a retry
     // after an ambiguous network outcome replays the committed reservation
     // instead of charging the utterance twice. Org-scoped inside reserve().
     const ttsIdempotencyKey = request.headers.get("Idempotency-Key");
+    const billingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId: apiKey?.id ?? null,
+      model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+      provider: "elevenlabs",
+      billingSource: "elevenlabs",
+      requestId: ttsIdempotencyKey
+        ? `voice-tts:${user.organization_id}:${ttsIdempotencyKey}`
+        : `voice-tts:${crypto.randomUUID()}`,
+      affiliateCode: request.headers.get("X-Affiliate-Code"),
+      description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
+    };
 
     try {
-      reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
-        amount: estimatedCost,
-        userId: user.id,
-        description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
-        ...(ttsIdempotencyKey && { idempotencyKey: ttsIdempotencyKey }),
-      });
+      reservation = await reserveFlatUsageCredits(
+        billingContext,
+        billingCost,
+        ttsIdempotencyKey ? { idempotencyKey: ttsIdempotencyKey } : undefined,
+      );
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
@@ -676,32 +703,14 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
     const billing = await billFlatUsage(
       {
-        organizationId: user.organization_id,
-        userId: user.id,
-        apiKeyId: apiKey?.id ?? null,
+        ...billingContext,
         model:
           synthesisEngine === "cartesia"
             ? "cartesia/sonic-3.5"
-            : `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+            : billingContext.model,
         provider: synthesisEngine,
-        billingSource: "elevenlabs",
-        // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
-        affiliateCode: request.headers.get("X-Affiliate-Code"),
-        description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
       },
-      {
-        totalCost: estimatedCost,
-        baseTotalCost: isCustomVoice
-          ? Math.round(
-              ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
-            ) / 1_000_000
-          : ttsCost.baseTotalCost,
-        platformMarkup: isCustomVoice
-          ? Math.round(
-              ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
-            ) / 1_000_000
-          : ttsCost.platformMarkup,
-      },
+      billingCost,
       reservation,
     );
 

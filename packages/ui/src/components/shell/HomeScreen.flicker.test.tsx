@@ -89,6 +89,11 @@ describe("HomeScreen entrance flicker lock (#9304)", () => {
 
     // First mount: the entrance class is present (animation plays once).
     expect(classOnAnyBlock(container)).toBe(true);
+    expect(
+      container
+        .querySelector("[data-home-below-notifications]")
+        ?.getAttribute("data-eliza-layout-shift-intent"),
+    ).toBe("transient");
     sample(); // opacity 0 (fade start)
 
     // Advance past the mount window so the once-guard strips the class.
@@ -96,6 +101,11 @@ describe("HomeScreen entrance flicker lock (#9304)", () => {
       vi.advanceTimersByTime(750);
     });
     expect(classOnAnyBlock(container)).toBe(false); // entrance done, class gone
+    expect(
+      container
+        .querySelector("[data-home-below-notifications]")
+        ?.hasAttribute("data-eliza-layout-shift-intent"),
+    ).toBe(false);
     sample(); // opacity settled at 1
 
     // A later re-render (e.g. a prop / resize-driven update) must NOT re-add the

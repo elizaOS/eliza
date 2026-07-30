@@ -5,9 +5,19 @@
  * independently bounded (its own SSH/HTTP/Redis timeout), so a rejected race
  * never leaves truly-unbounded I/O running behind it.
  */
+export class OperationTimeoutError extends Error {
+  constructor(
+    readonly label: string,
+    readonly timeoutMs: number,
+  ) {
+    super(`${label} timed out after ${timeoutMs}ms`);
+    this.name = "OperationTimeoutError";
+  }
+}
+
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    const timer = setTimeout(() => reject(new OperationTimeoutError(label, ms)), ms);
     promise.then(
       (value) => {
         clearTimeout(timer);

@@ -173,6 +173,10 @@ function createRuntime(
     getRoom: vi.fn(async () => null),
     getService: vi.fn(() => null),
     getServiceLoadPromise: vi.fn(async () => undefined),
+    // The route's J7 diagnostic paths (inference-timing persistence, recovery
+    // failures) call runtime.reportError; a fixture without it turns those
+    // catches into unhandled TypeErrors that abort the flow under test.
+    reportError: vi.fn(),
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
     drainChatPreHandlers: vi.fn(async () => null),
@@ -313,16 +317,19 @@ describe("document-query-recovery is skipped on a plain turn through the message
     expect(textLargeRecoveryCalls(useModel)).toHaveLength(0);
   });
 
-  it("DOES fire exactly one TEXT_LARGE recovery call when the corpus returns a sub-threshold candidate (negative control)", async () => {
-    // Proves the zero-call assertions above are not vacuous: when documents
-    // exist but the top candidate falls below the relevance threshold, the
-    // recovery TEXT_LARGE round-trip is the intended behaviour and the spy
-    // filter detects it through the same route path.
+  it("keeps the sub-threshold path LLM-free: the lexical cross-scope retry replaced query recovery (negative control)", async () => {
+    // This is the case that used to fire the recovery TEXT_LARGE round-trip:
+    // documents exist but the top candidate falls below the relevance
+    // threshold. #16916 removed that model call — the augmentation now retries
+    // lexically across scopes instead. Pinning zero TEXT_LARGE calls HERE
+    // keeps the zero-call assertions above non-vacuous: this turn provably
+    // exercises the below-threshold branch (the corpus is searched more than
+    // once), and even it may not spend a model round-trip.
     const agentId = stringToUuid("recovery-fires-agent") as UUID;
     const documents = {
       // First search (raw user prompt) returns a sub-threshold candidate;
-      // documents clearly exist, so recovery is warranted. Recovered-query
-      // searches return nothing, so the turn still falls through to a reply.
+      // the lexical/cross-scope retries return nothing, so the turn still
+      // falls through to a reply.
       searchDocuments: vi
         .fn()
         .mockResolvedValueOnce([
@@ -334,9 +341,7 @@ describe("document-query-recovery is skipped on a plain turn through the message
         ])
         .mockResolvedValue([]),
     };
-    // Recovery model returns a parseable queries JSON so the recovered-query
-    // searches run; none clear the threshold, so the message passes through.
-    const useModel = vi.fn(async () => JSON.stringify({ queries: ["x"] }));
+    const useModel = vi.fn(async () => "");
     const runtime = createRuntime(agentId, {
       messageService: createMessageService("ok"),
       getService: vi.fn((name: string) =>
@@ -355,10 +360,9 @@ describe("document-query-recovery is skipped on a plain turn through the message
     const handled = await invoke();
     expect(handled).toBe(true);
     expect(record.status).toBe(200);
-    expect(textLargeRecoveryCalls(useModel)).toHaveLength(1);
-    expect(textLargeRecoveryCalls(useModel)[0][1]).toMatchObject({
-      responseFormat: { type: "json_object" },
-    });
+    // The below-threshold branch ran a retry search, not a model call.
+    expect(documents.searchDocuments.mock.calls.length).toBeGreaterThan(1);
+    expect(textLargeRecoveryCalls(useModel)).toHaveLength(0);
   });
 
   it("does not call useModel at all from augmentation when the documents service is absent", async () => {

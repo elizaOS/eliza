@@ -30,6 +30,7 @@ import {
 	type Trajectory,
 } from "./features/trajectories/types";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
+import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
 import {
 	getTrajectoryContext,
@@ -1191,8 +1192,11 @@ async function withChildTrajectoryStep<T>(
 			) {
 				childStepId = normalizedStartedStepId;
 			}
-		} catch {
-			// startStep is best-effort; continue with the generated id
+		} catch (error) {
+			runtime.reportError("TrajectoryChildStep.start", error, {
+				purpose: options.purpose,
+				actionName: options.actionName,
+			});
 		}
 	}
 
@@ -1207,24 +1211,22 @@ async function withChildTrajectoryStep<T>(
 	try {
 		return await runWithTrajectoryContext(childContext, () => fn());
 	} finally {
-		if (
-			trajectoryId &&
-			typeof trajectoryLogger.flushWriteQueue === "function"
-		) {
-			try {
-				await trajectoryLogger.flushWriteQueue(trajectoryId);
-			} catch {
-				// Trajectory flushing must never break the host flow.
-			}
-		}
-		try {
-			await annotateActiveTrajectoryStep(runtime, {
-				stepId: parentStepId,
-				appendChildSteps: [childStepId],
-			});
-		} catch {
-			// Trajectory annotation must never break the host flow.
-		}
+		void trackPostDeliveryTask(
+			runtime,
+			`trajectory-child:${options.purpose}:${childStepId}`,
+			async () => {
+				if (
+					trajectoryId &&
+					typeof trajectoryLogger.flushWriteQueue === "function"
+				) {
+					await trajectoryLogger.flushWriteQueue(trajectoryId);
+				}
+				await annotateActiveTrajectoryStep(runtime, {
+					stepId: parentStepId,
+					appendChildSteps: [childStepId],
+				});
+			},
+		);
 	}
 }
 

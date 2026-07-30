@@ -14,9 +14,11 @@ import { formatError } from "@elizaos/core";
 import { INTERNAL_URL } from "../access.js";
 import { LifeOpsService } from "../service.js";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type {
@@ -35,6 +37,8 @@ export interface GoogleSendPayload {
     subject?: string;
     side?: "owner" | "agent";
     htmlBody?: string;
+    cc?: readonly string[];
+    bcc?: readonly string[];
   };
 }
 
@@ -54,6 +58,7 @@ export function createGoogleConnectorContribution(
     ],
     modes: ["local"],
     describe: { label: "Google (Gmail + Calendar)" },
+    receiptContract: "provider_receipt_id",
     // Gmail outbound goes through the owner-send-policy approval queue.
     // `requiresApproval` is the registry-driven flag for this gate.
     requiresApproval: true,
@@ -95,16 +100,32 @@ export function createGoogleConnectorContribution(
             .split(",")
             .map((t) => t.trim())
             .filter(Boolean),
+          cc: meta.cc ? [...meta.cc] : undefined,
+          bcc: meta.bcc ? [...meta.bcc] : undefined,
           subject: meta.subject ?? "(no subject)",
           bodyText: payload.message,
           confirmSend: true,
         });
         if (result.ok) {
-          return { ok: true };
+          const receipt = dispatchReceipt({
+            provider: "gmail",
+            providerMessageId: result.messageId,
+            payload,
+            metadata: {
+              ...(result.threadId ? { threadId: result.threadId } : {}),
+            },
+          });
+          if (!receipt) return missingProviderReceipt("Gmail");
+          return {
+            ok: true,
+            messageId: result.messageId,
+            receipt,
+          };
         }
         return {
           ok: false,
           reason: "transport_error",
+          acceptance: "unknown",
           userActionable: false,
           message: "Gmail send returned a non-ok response.",
         };

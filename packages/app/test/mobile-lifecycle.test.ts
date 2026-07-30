@@ -6,9 +6,9 @@
  * wiring (`createMobileLifecycle`). Exercises the two device-free seams a
  * jsdom test can drive deterministically:
  *
- *   - `initializeAppLifecycle()` — `@capacitor/app` `appStateChange` /
- *     `backButton` / `appUrlOpen` listeners + the cold-launch `getLaunchUrl()`
- *     deep-link bootstrap. Asserts the events the module dispatches
+ *   - `initializeDeepLinks()` + `initializeAppLifecycle()` — early
+ *     `appUrlOpen`/cold-launch capture plus `appStateChange` / `backButton`
+ *     wiring. Asserts the events the module dispatches
  *     (`APP_RESUME_EVENT` / `APP_PAUSE_EVENT`), the shipped Android hardware
  *     back contract (#9148) — `dispatchBackIntent()` gets first crack and a
  *     handled press returns early; an unhandled press falls through to
@@ -158,6 +158,23 @@ function makeContext(
   };
 }
 
+function makeDeepLinkBuffer(initialUrl: string | null = null) {
+  let pendingUrl = initialUrl;
+  return {
+    bridge: {
+      peekPendingUrl: vi.fn(async () => ({ url: pendingUrl })),
+      acknowledgePendingUrl: vi.fn(async ({ url }: { url: string }) => {
+        const cleared = pendingUrl === url;
+        if (cleared) pendingUrl = null;
+        return { cleared };
+      }),
+    },
+    setPendingUrl(url: string | null) {
+      pendingUrl = url;
+    },
+  };
+}
+
 let historyBackSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -186,6 +203,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
     // The live entrypoint must route through the extracted helper — this suite
     // certifies the shipped behavior only while main.tsx actually calls it.
     expect(mainSrc).toContain("getMobileLifecycle().initializeAppLifecycle()");
+    expect(mainSrc).toContain("getMobileLifecycle().initializeDeepLinks()");
     expect(mainSrc).toContain(
       "getMobileLifecycle().initializeNetworkListener()",
     );
@@ -373,6 +391,100 @@ describe("createMobileLifecycle — app lifecycle", () => {
 
     expect(ctx.handleDeepLink).toHaveBeenCalledTimes(1);
     expect(ctx.handleDeepLink).toHaveBeenCalledWith("elizaos://chat/abc");
+  });
+
+  it("captures a warm URL before the rest of app lifecycle initializes", async () => {
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+    expect(appListeners.has("appStateChange")).toBe(false);
+    expect(appListeners.has("backButton")).toBe(false);
+
+    fireAppEvent("appUrlOpen", {
+      url: "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337",
+    });
+
+    expect(ctx.handleDeepLink).not.toHaveBeenCalled();
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() =>
+      expect(appListeners.has("appStateChange")).toBe(true),
+    );
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    expect(ctx.handleDeepLink).toHaveBeenCalledWith(
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337",
+    );
+    expect(appListeners.get("appUrlOpen")?.length).toBe(1);
+  });
+
+  it("routes and acknowledges an Android URL buffered before JS listener registration", async () => {
+    const bufferedUrl =
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337";
+    const deepLinkBuffer = makeDeepLinkBuffer(bufferedUrl);
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+
+    expect(ctx.handleDeepLink).not.toHaveBeenCalled();
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    lifecycle.initializeAppLifecycle();
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    expect(ctx.handleDeepLink).toHaveBeenCalledWith(bufferedUrl);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url: bufferedUrl,
+      }),
+    );
+  });
+
+  it("acknowledges a native replay duplicate after appUrlOpen already routed it", async () => {
+    vi.useFakeTimers();
+    const url = "elizaos://chat/replayed";
+    const deepLinkBuffer = makeDeepLinkBuffer();
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+    fireAppEvent("appUrlOpen", { url });
+    deepLinkBuffer.setPendingUrl(url);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled();
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+      url,
+    });
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+  });
+
+  it("deduplicates one URL across early warm delivery and cold replay", async () => {
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+    const url =
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337";
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+    fireAppEvent("appUrlOpen", { url });
+    capacitorAppMock.__setLaunchUrl({ url });
+    lifecycle.initializeAppLifecycle();
+
+    await vi.waitFor(() =>
+      expect(capacitorAppMock.getLaunchUrl).toHaveBeenCalled(),
+    );
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
   });
 
   it("routes cold-launch getLaunchUrl URLs through handleDeepLink", async () => {

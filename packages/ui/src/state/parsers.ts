@@ -160,6 +160,7 @@ export function parseConversationMessageEvent(
   const text = value.text;
   const timestamp = value.timestamp;
   const source = value.source;
+  const transcriptVisibility = value.transcriptVisibility;
   const actionName = value.actionName;
   const actionCallbackHistory = value.actionCallbackHistory;
   const from = value.from;
@@ -178,6 +179,9 @@ export function parseConversationMessageEvent(
     return null;
   }
   const parsed: ConversationMessage = { id, role, text, timestamp };
+  if (transcriptVisibility === "internal") {
+    parsed.transcriptVisibility = transcriptVisibility;
+  }
   if (typeof source === "string" && source.length > 0) {
     parsed.source = source;
   }

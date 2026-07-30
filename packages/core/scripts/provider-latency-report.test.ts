@@ -17,7 +17,8 @@ interface ProviderLatencyReport {
 		providerName: string;
 		latencyMs: { count: number };
 	}>;
-	cachedProvidersPerSample: { min: number; max: number };
+	execution: string;
+	reusedProviderResultsPerSample: { min: number; max: number };
 	effectiveParallelism: { mean: number };
 }
 
@@ -64,8 +65,13 @@ describe("provider latency report process", () => {
 		expect(
 			report.providers.every((provider) => provider.latencyMs.count === 1),
 		).toBe(true);
-		expect(report.cachedProvidersPerSample.min).toBe(report.providerCount);
-		expect(report.cachedProvidersPerSample.max).toBe(report.providerCount);
+		expect(report.execution).toContain("production turn context");
+		expect(report.reusedProviderResultsPerSample.min).toBe(
+			report.providerCount,
+		);
+		expect(report.reusedProviderResultsPerSample.max).toBe(
+			report.providerCount,
+		);
 		expect(report.effectiveParallelism.mean).toBeGreaterThan(1);
 	});
 });

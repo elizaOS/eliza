@@ -13,11 +13,40 @@ import type {
   MessageRef,
   SearchMessagesFilters,
 } from "@elizaos/core";
+import { Service } from "@elizaos/core";
+
+export class GoogleWorkspaceTestService extends Service {
+  static serviceType = "google";
+
+  capabilityDescription =
+    "Test Google Workspace service requiring explicit per-test method stubs";
+
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<GoogleWorkspaceTestService> {
+    return new GoogleWorkspaceTestService(runtime);
+  }
+
+  async stop(): Promise<void> {}
+
+  async createEvent(_input: {
+    calendarId?: string;
+    title: string;
+    start: string;
+    end: string;
+    timeZone?: string;
+    description?: string;
+    location?: string;
+  }): Promise<never> {
+    throw new Error("Google calendar createEvent is not stubbed for this test");
+  }
+}
 
 export const googlePlugin = {
   name: "google",
   description: "Google connector test double",
   init: async () => undefined,
+  services: [GoogleWorkspaceTestService],
 };
 
 export class GoogleGmailAdapter implements MessageAdapter {

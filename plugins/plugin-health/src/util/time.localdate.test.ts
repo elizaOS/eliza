@@ -65,6 +65,70 @@ describe("buildUtcDateFromLocalParts (inverse of getZonedDateParts)", () => {
     expect(utc.toISOString()).toBe("2026-01-15T12:00:00.000Z");
     expect(getZonedDateParts(utc, "America/New_York")).toEqual(parts);
   });
+
+  it("moves Santiago's skipped midnight forward by the one-hour gap", () => {
+    const utc = buildUtcDateFromLocalParts("America/Santiago", {
+      year: 2026,
+      month: 9,
+      day: 6,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+
+    expect(utc.toISOString()).toBe("2026-09-06T04:00:00.000Z");
+    expect(getZonedDateParts(utc, "America/Santiago")).toEqual({
+      year: 2026,
+      month: 9,
+      day: 6,
+      hour: 1,
+      minute: 0,
+      second: 0,
+    });
+  });
+
+  it("moves Apia's skipped date forward by the 24-hour gap", () => {
+    const utc = buildUtcDateFromLocalParts("Pacific/Apia", {
+      year: 2011,
+      month: 12,
+      day: 30,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+
+    expect(utc.toISOString()).toBe("2011-12-30T10:00:00.000Z");
+    expect(getZonedDateParts(utc, "Pacific/Apia")).toEqual({
+      year: 2011,
+      month: 12,
+      day: 31,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+  });
+
+  it("chooses the earlier repeat and shifts a skipped clock time forward", () => {
+    const repeated = buildUtcDateFromLocalParts("America/New_York", {
+      year: 2026,
+      month: 11,
+      day: 1,
+      hour: 1,
+      minute: 30,
+      second: 0,
+    });
+    const skipped = buildUtcDateFromLocalParts("America/New_York", {
+      year: 2026,
+      month: 3,
+      day: 8,
+      hour: 2,
+      minute: 30,
+      second: 0,
+    });
+
+    expect(repeated.toISOString()).toBe("2026-11-01T05:30:00.000Z");
+    expect(skipped.toISOString()).toBe("2026-03-08T07:30:00.000Z");
+  });
 });
 
 describe("formatInstantAsRfc3339InTimeZone", () => {

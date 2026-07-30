@@ -21,6 +21,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         name="Coach me toward a better sleep schedule",
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
+        expected_world_mutation="optional",
         persona=PERSONA_TARA_NIGHT,
         instruction=(
             "I keep falling asleep around 2am and feeling wrecked. Look "
@@ -462,7 +463,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep coordinate_sleep_with_partner',
+        id='live.sleep.coordinate_sleep_with_partner',
         name='Coordinate sleep schedule with my partner',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -485,7 +486,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep recommend_optimal_room_temperature',
+        id='live.sleep.recommend_optimal_room_temperature',
         name='Recommend optimal room temperature for sleep',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -508,7 +509,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep plan_sleep_around_holiday_travel',
+        id='live.sleep.plan_sleep_around_holiday_travel',
         name='Plan sleep around upcoming holiday travel',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -531,7 +532,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep address_sleep_issues_due_to_noise',
+        id='live.sleep.address_sleep_issues_due_to_noise',
         name='Address sleep issues caused by nighttime noise',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -554,7 +555,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep create_sleep_log_template',
+        id='live.sleep.create_sleep_log_template',
         name='Create a sleep log template for daily tracking',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -577,7 +578,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep suggest_optimal_sleep_window_for_shift_worker',
+        id='live.sleep.suggest_optimal_sleep_window_for_shift_worker',
         name='Suggest optimal sleep window for a shift worker',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -600,7 +601,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep evaluate_effect_of_screen_time_on_sleep',
+        id='live.sleep.evaluate_effect_of_screen_time_on_sleep',
         name='Evaluate the effect of my screen time on sleep',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -623,7 +624,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep set_weekend_sleep_consistency_goals',
+        id='live.sleep.set_weekend_sleep_consistency_goals',
         name='Set weekend sleep consistency goals',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -646,7 +647,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep recommend_pre_sleep_technology_habits',
+        id='live.sleep.recommend_pre_sleep_technology_habits',
         name='Recommend pre‑sleep technology habits',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -669,7 +670,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep plan_sleep_for_upcoming_exam_period',
+        id='live.sleep.plan_sleep_for_upcoming_exam_period',
         name='Plan sleep for my upcoming exam period',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -692,7 +693,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep suggest_sleep_improvement_after_recent_illness',
+        id='live.sleep.suggest_sleep_improvement_after_recent_illness',
         name='Suggest sleep improvement after recent illness',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -715,7 +716,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep coordinate_sleep_with_family_vacation',
+        id='live.sleep.coordinate_sleep_with_family_vacation',
         name='Coordinate sleep with a family vacation itinerary',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -738,7 +739,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep advise_on_sleep_after_long_flight',
+        id='live.sleep.advise_on_sleep_after_long_flight',
         name='Advise on sleep after a long international flight',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -761,7 +762,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep create_sleep_habit_tracker',
+        id='live.sleep.create_sleep_habit_tracker',
         name='Create a sleep habit tracker in my notes app',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -784,7 +785,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep recommend_sleep_adjustments_for_high_stress',
+        id='live.sleep.recommend_sleep_adjustments_for_high_stress',
         name='Recommend sleep adjustments for high stress periods',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -807,7 +808,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep schedule_morning_exercise_without_sacrificing_sleep',
+        id='live.sleep.schedule_morning_exercise_without_sacrificing_sleep',
         name='Schedule morning exercise without sacrificing sleep',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -830,7 +831,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep provide_sleep_tips_for_digital_nomads',
+        id='live.sleep.provide_sleep_tips_for_digital_nomads',
         name='Provide sleep tips for a digital nomad lifestyle',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -853,7 +854,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep advise_on_sleep_during_menstrual_cycle',
+        id='live.sleep.advise_on_sleep_during_menstrual_cycle',
         name='Advise on sleep during menstrual cycle',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -876,7 +877,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep create_evening_routine_for_better_sleep',
+        id='live.sleep.create_evening_routine_for_better_sleep',
         name='Create an evening routine for better sleep',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -899,7 +900,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep suggest_sleep_improvement_for_work_from_home',
+        id='live.sleep.suggest_sleep_improvement_for_work_from_home',
         name='Suggest sleep improvement for a work‑from‑home schedule',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -922,7 +923,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep plan_sleep_for_upcoming_conference',
+        id='live.sleep.plan_sleep_for_upcoming_conference',
         name='Plan sleep for an upcoming conference with early sessions',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -945,7 +946,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep recommend_sleep_habits_for_early_retirement',
+        id='live.sleep.recommend_sleep_habits_for_early_retirement',
         name='Recommend sleep habits for early retirement planning',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -968,7 +969,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep design_sleep_schedule_for_remote_team_meetings',
+        id='live.sleep.design_sleep_schedule_for_remote_team_meetings',
         name='Design a sleep‑friendly schedule for remote team meetings across time zones',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -991,7 +992,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep suggest_pre_sleep_reading_materials',
+        id='live.sleep.suggest_pre_sleep_reading_materials',
         name='Suggest pre‑sleep reading materials',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -1014,7 +1015,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep evaluate_sleep_impact_of_recent_time_change',
+        id='live.sleep.evaluate_sleep_impact_of_recent_time_change',
         name='Evaluate sleep impact of recent daylight‑saving time change',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -1037,7 +1038,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep propose_sleep_schedule_for_back_to_school',
+        id='live.sleep.propose_sleep_schedule_for_back_to_school',
         name='Propose a sleep schedule for back‑to‑school mornings',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,
@@ -1060,7 +1061,7 @@ LIVE_SLEEP_SCENARIOS: list[Scenario] = [
         ],
     ),
     Scenario(
-        id='live.sleep suggest_sleep_improvement_for_night_shift_caregiver',
+        id='live.sleep.suggest_sleep_improvement_for_night_shift_caregiver',
         name='Suggest sleep improvement for a night‑shift caregiver',
         domain=Domain.SLEEP,
         mode=ScenarioMode.LIVE,

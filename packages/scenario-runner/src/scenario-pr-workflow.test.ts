@@ -25,6 +25,10 @@ const scenarioRunnerPackagePath = resolve(
   "../package.json",
 );
 const scenarioExecutorPath = resolve(import.meta.dirname, "./executor.ts");
+const scenarioRequiredPluginsPath = resolve(
+  import.meta.dirname,
+  "./required-plugins.ts",
+);
 const appAssistantFlowPath = resolve(
   import.meta.dirname,
   "../../app/test/ui-smoke/assistant-home-flow.spec.ts",
@@ -214,6 +218,10 @@ describe("scenario PR workflow contract", () => {
       readFileSync(scenarioRunnerPackagePath, "utf8"),
     ) as { scripts?: Record<string, string> };
     const scenarioExecutor = readFileSync(scenarioExecutorPath, "utf8");
+    const scenarioRequiredPlugins = readFileSync(
+      scenarioRequiredPluginsPath,
+      "utf8",
+    );
     const appControlViewsManagement = readFileSync(
       appControlViewsManagementPath,
       "utf8",
@@ -585,10 +593,16 @@ describe("scenario PR workflow contract", () => {
     expect(deterministicScenarioReadme).toContain(
       "runtime currently removes `UPDATE_ENTITY`",
     );
-    expect(scenarioExecutor).toContain('@elizaos/plugin-app-control"');
+    // App-control plugin wiring lives in required-plugins.ts (extracted from
+    // executor.ts); the guarded contract is unchanged: bare package import, no
+    // relative plugin paths, and all four actions registered — settingsAction
+    // is load-bearing for the app-permissions / semantic-SETTINGS scenarios
+    // (#14622).
+    expect(scenarioRequiredPlugins).toContain('@elizaos/plugin-app-control"');
+    expect(scenarioRequiredPlugins).not.toContain("../../../plugins/");
     expect(scenarioExecutor).not.toContain("../../../plugins/");
-    expect(scenarioExecutor).toContain(
-      "actions: [\n        mod.appAction,\n        mod.backgroundAction,\n        mod.viewsAction,\n        mod.settingsAction,\n      ]",
+    expect(scenarioRequiredPlugins).toContain(
+      "actions: [\n      mod.appAction,\n      mod.backgroundAction,\n      mod.viewsAction,\n      mod.settingsAction,\n    ]",
     );
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",

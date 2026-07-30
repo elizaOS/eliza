@@ -19,6 +19,7 @@ import { logger } from "./logger";
 // createUniqueUuid from this module). The role-resolution values are pulled via a
 // dynamic import at call time in resolveTrustedComponentSourceIds.
 import type { RolesWorldMetadata } from "./roles";
+import { memoizeTurnWork } from "./trajectory-context.ts";
 import {
 	type Entity,
 	type IAgentRuntime,
@@ -33,7 +34,10 @@ import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
 import { isObjectRecord as isRecord } from "./utils/type-guards";
 
-type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
+type EntityDetailsRecord = Pick<
+	Entity,
+	"id" | "agentId" | "names" | "metadata"
+> & {
 	name?: string;
 	data: string;
 };
@@ -86,12 +90,6 @@ export async function resolveTrustedComponentSourceIds(
 const MAX_ENTITY_DISPLAY_NAMES = 8;
 const MAX_ENTITY_DISPLAY_COUNT = 10;
 const MAX_ENTITY_METADATA_CHARS = 2_000;
-const ENTITY_DETAILS_CACHE_TTL_MS = 1_000;
-const entityDetailsCache = new WeakMap<
-	IAgentRuntime,
-	Map<string, { expiresAt: number; promise: Promise<EntityDetailsRecord[]> }>
->();
-
 interface EntityMatch {
 	name?: string;
 	reason?: string;
@@ -563,97 +561,81 @@ export async function getEntityDetails({
 	runtime: IAgentRuntime;
 	roomId: UUID;
 }) {
-	const runtimeCache = entityDetailsCache.get(runtime) ?? new Map();
-	entityDetailsCache.set(runtime, runtimeCache);
+	return memoizeTurnWork(
+		`entity-details:${runtime.agentId}:${roomId}`,
+		async () => {
+			const [room, roomEntities] = await Promise.all([
+				runtime.getRoom(roomId),
+				runtime.getEntitiesForRoom(roomId, true),
+			]);
 
-	const cacheKey = String(roomId);
-	const cachedEntry = runtimeCache.get(cacheKey);
-	if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
-		return cachedEntry.promise;
-	}
+			const uniqueEntities = new Map<string, EntityDetailsRecord>();
 
-	const pendingPromise = (async () => {
-		const [room, roomEntities] = await Promise.all([
-			runtime.getRoom(roomId),
-			runtime.getEntitiesForRoom(roomId, true),
-		]);
+			for (const entity of roomEntities) {
+				const entityId = entity.id;
+				if (!entityId || uniqueEntities.has(entityId)) continue;
 
-		const uniqueEntities = new Map<string, EntityDetailsRecord>();
-
-		for (const entity of roomEntities) {
-			const entityId = entity.id;
-			if (!entityId || uniqueEntities.has(entityId)) continue;
-
-			const allData = {};
-			for (const component of entity.components || []) {
-				Object.assign(allData, component.data);
-			}
-
-			const mergedData: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(allData)) {
-				if (!mergedData[key]) {
-					mergedData[key] = value;
-					continue;
+				const allData = {};
+				for (const component of entity.components || []) {
+					Object.assign(allData, component.data);
 				}
 
-				if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
-					mergedData[key] = [...new Set([...mergedData[key], ...value])];
-				} else if (
-					typeof mergedData[key] === "object" &&
-					typeof value === "object"
-				) {
-					mergedData[key] = { ...mergedData[key], ...value };
-				}
-			}
+				const mergedData: Record<string, unknown> = {};
+				for (const [key, value] of Object.entries(allData)) {
+					if (!mergedData[key]) {
+						mergedData[key] = value;
+						continue;
+					}
 
-			const getEntityNameFromMetadata = (
-				source: string,
-			): string | undefined => {
-				const sourceMetadata = entity.metadata?.[source];
-				if (
-					sourceMetadata &&
-					typeof sourceMetadata === "object" &&
-					sourceMetadata !== null
-				) {
-					const metadataObj = sourceMetadata as Record<string, unknown>;
-					if ("name" in metadataObj && typeof metadataObj.name === "string") {
-						return metadataObj.name;
+					if (Array.isArray(mergedData[key]) && Array.isArray(value)) {
+						mergedData[key] = [...new Set([...mergedData[key], ...value])];
+					} else if (
+						typeof mergedData[key] === "object" &&
+						typeof value === "object"
+					) {
+						mergedData[key] = { ...mergedData[key], ...value };
 					}
 				}
-				return undefined;
-			};
 
-			uniqueEntities.set(entityId, {
-				id: entityId,
-				name: room?.source
-					? getEntityNameFromMetadata(String(room.source)) || entity.names[0]
-					: entity.names[0],
-				names: entity.names,
-				data: stableStringify({ ...mergedData, ...entity.metadata }),
+				const getEntityNameFromMetadata = (
+					source: string,
+				): string | undefined => {
+					const sourceMetadata = entity.metadata?.[source];
+					if (
+						sourceMetadata &&
+						typeof sourceMetadata === "object" &&
+						sourceMetadata !== null
+					) {
+						const metadataObj = sourceMetadata as Record<string, unknown>;
+						if ("name" in metadataObj && typeof metadataObj.name === "string") {
+							return metadataObj.name;
+						}
+					}
+					return undefined;
+				};
+
+				uniqueEntities.set(entityId, {
+					id: entityId,
+					agentId: entity.agentId,
+					name: room?.source
+						? getEntityNameFromMetadata(String(room.source)) || entity.names[0]
+						: entity.names[0],
+					names: entity.names,
+					metadata: entity.metadata,
+					data: stableStringify({ ...mergedData, ...entity.metadata }),
+				});
+			}
+
+			return Array.from(uniqueEntities.values()).sort((left, right) => {
+				const leftName = left.name ?? left.names[0] ?? "";
+				const rightName = right.name ?? right.names[0] ?? "";
+				return (
+					leftName.localeCompare(rightName) ||
+					String(left.id ?? "").localeCompare(String(right.id ?? ""))
+				);
 			});
-		}
-
-		return Array.from(uniqueEntities.values()).sort((left, right) => {
-			const leftName = left.name ?? left.names[0] ?? "";
-			const rightName = right.name ?? right.names[0] ?? "";
-			return (
-				leftName.localeCompare(rightName) ||
-				String(left.id ?? "").localeCompare(String(right.id ?? ""))
-			);
-		});
-	})();
-
-	runtimeCache.set(cacheKey, {
-		expiresAt: Date.now() + ENTITY_DETAILS_CACHE_TTL_MS,
-		promise: pendingPromise,
-	});
-
-	try {
-		return await pendingPromise;
-	} catch (error) {
-		runtimeCache.delete(cacheKey);
-		throw error;
-	}
+		},
+	);
 }
 
 function formatEntityNames(names: string[]): string {

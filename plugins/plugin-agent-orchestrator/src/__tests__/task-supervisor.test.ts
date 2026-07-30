@@ -2,7 +2,12 @@
  * Verifies TaskSupervisorService digest sinks (#8902 AC2).
  * Deterministic unit test with a stubbed runtime; no live model.
  */
-import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
+import type {
+  Content,
+  IAgentRuntime,
+  SendHandlerResult,
+  UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { TaskSupervisorService } from "../services/task-supervisor-service.ts";
 
@@ -10,7 +15,7 @@ function makeRuntime(
   sendMessageToTarget?: (
     target: { source: string; roomId?: UUID },
     content: Content,
-  ) => Promise<unknown>,
+  ) => SendHandlerResult,
 ): IAgentRuntime {
   const taskService = {
     listTasks: vi.fn(async () => [
@@ -36,6 +41,16 @@ function makeRuntime(
 }
 
 describe("TaskSupervisorService digest sinks (#8902 AC2)", () => {
+  const confirmedSend = () => ({
+    kind: "delivered" as const,
+    receipt: {
+      providerMessageIds: ["supervisor-message-1"] as [string],
+      acceptedAt: 1_780_000_000_000,
+      persistence: { status: "persisted" as const, memoryIds: [] },
+    },
+    memories: [],
+  });
+
   it("lets a source-specific sink handle changed digests instead of sending a plain message", async () => {
     const sendMessageToTarget = vi.fn(async () => undefined);
     const service = new TaskSupervisorService(makeRuntime(sendMessageToTarget));
@@ -59,14 +74,15 @@ describe("TaskSupervisorService digest sinks (#8902 AC2)", () => {
   });
 
   it("falls back to runtime delivery when a sink declines the target", async () => {
-    const sendMessageToTarget = vi.fn(async () => undefined);
+    const sendMessageToTarget = vi.fn(async () => confirmedSend());
     const service = new TaskSupervisorService(makeRuntime(sendMessageToTarget));
     const sink = vi.fn(async () => false);
 
     service.registerDigestSink("telegram", sink);
-    await service.runOnce();
+    const result = await service.runOnce();
 
     expect(sink).toHaveBeenCalledTimes(1);
+    expect(result.posted).toEqual(["00000000-0000-4000-8000-000000000890"]);
     expect(sendMessageToTarget).toHaveBeenCalledWith(
       {
         source: "telegram",
@@ -89,5 +105,16 @@ describe("TaskSupervisorService digest sinks (#8902 AC2)", () => {
     expect(firstSink).toHaveBeenCalledTimes(1);
     expect(secondSink).toHaveBeenCalledTimes(1);
     expect(sendMessageToTarget).not.toHaveBeenCalled();
+  });
+
+  it("does not mark a digest posted when runtime delivery is unconfirmed", async () => {
+    const service = new TaskSupervisorService(
+      makeRuntime(vi.fn(async () => undefined)),
+    );
+
+    await expect(service.runOnce()).resolves.toEqual({
+      posted: [],
+      skipped: [],
+    });
   });
 });

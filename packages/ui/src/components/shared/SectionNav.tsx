@@ -19,6 +19,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { useAgentElement } from "../../agent-surface";
 import {
   type AppShellPageRegistration,
   getAppShellPageRegistrySnapshot,
@@ -147,14 +148,56 @@ export function SectionNavTab({
   label,
   isActive,
   onSelect,
+  agentId,
+  agentLabel,
+  agentGroup,
 }: {
   label: React.ReactNode;
   isActive: boolean;
   onSelect: () => void;
+  agentId?: string;
+  agentLabel?: string;
+  agentGroup?: string;
+}): React.JSX.Element {
+  if (agentId && agentLabel) {
+    return (
+      <AgentSectionNavTab
+        label={label}
+        isActive={isActive}
+        onSelect={onSelect}
+        agentId={agentId}
+        agentLabel={agentLabel}
+        agentGroup={agentGroup}
+      />
+    );
+  }
+  return (
+    <SectionNavTabButton
+      label={label}
+      isActive={isActive}
+      onSelect={onSelect}
+    />
+  );
+}
+
+function SectionNavTabButton({
+  label,
+  isActive,
+  onSelect,
+  agentRef,
+  agentProps,
+}: {
+  label: React.ReactNode;
+  isActive: boolean;
+  onSelect: () => void;
+  agentRef?: React.Ref<HTMLButtonElement>;
+  agentProps?: Record<string, string>;
 }): React.JSX.Element {
   return (
     <Button
+      ref={agentRef}
       aria-current={isActive ? "page" : undefined}
+      aria-pressed={isActive}
       onClick={() => {
         if (!isActive) onSelect();
       }}
@@ -166,9 +209,46 @@ export function SectionNavTab({
           ? "bg-accent/15 text-accent"
           : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
       )}
+      {...agentProps}
     >
       {label}
     </Button>
+  );
+}
+
+function AgentSectionNavTab({
+  label,
+  isActive,
+  onSelect,
+  agentId,
+  agentLabel,
+  agentGroup,
+}: {
+  label: React.ReactNode;
+  isActive: boolean;
+  onSelect: () => void;
+  agentId: string;
+  agentLabel: string;
+  agentGroup?: string;
+}): React.JSX.Element {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: agentId,
+    role: "tab",
+    label: agentLabel,
+    group: agentGroup,
+    status: isActive ? "active" : "inactive",
+    onActivate: () => {
+      if (!isActive) onSelect();
+    },
+  });
+  return (
+    <SectionNavTabButton
+      label={label}
+      isActive={isActive}
+      onSelect={onSelect}
+      agentRef={ref}
+      agentProps={agentProps}
+    />
   );
 }
 
@@ -190,8 +270,13 @@ export function SectionTabStrip({
   testId,
   ariaLabel,
   className,
+  agentIdPrefix,
 }: {
-  entries: readonly { id: string; label: React.ReactNode }[];
+  entries: readonly {
+    id: string;
+    label: React.ReactNode;
+    agentLabel?: string;
+  }[];
   activeId: string;
   onSelect: (id: string) => void;
   /** `data-testid` for the nav landmark (e.g. `section-nav-wallet`). */
@@ -199,6 +284,8 @@ export function SectionTabStrip({
   /** Accessible name for the nav landmark. */
   ariaLabel: string;
   className?: string;
+  /** Prefix that opts each tab into the enclosing view's agent surface. */
+  agentIdPrefix?: string;
 }): React.JSX.Element | null {
   // A single-entry section is just its header; no secondary nav to render.
   if (entries.length < 2) return null;
@@ -217,6 +304,9 @@ export function SectionTabStrip({
           label={entry.label}
           isActive={entry.id === activeId}
           onSelect={() => onSelect(entry.id)}
+          agentId={agentIdPrefix ? `${agentIdPrefix}-${entry.id}` : undefined}
+          agentLabel={entry.agentLabel}
+          agentGroup={agentIdPrefix}
         />
       ))}
     </nav>

@@ -33,7 +33,7 @@ export {
   type DispatchPolicyDecision,
   decideDispatchPolicy,
 } from "./dispatch-policy.ts";
-export type { DispatchResult } from "./dispatch-types.ts";
+export type { DispatchReceipt, DispatchResult } from "./dispatch-types.ts";
 export {
   schedulingPlugin,
   waitForScheduledTaskRunnerService,

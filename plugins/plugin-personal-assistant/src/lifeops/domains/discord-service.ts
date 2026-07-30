@@ -4,7 +4,11 @@
  * scraper in `@elizaos/plugin-discord`. This layer owns the LifeOps connector
  * grant/degradation projection only; capture and send happen in the discord plugin.
  */
-import { logger } from "@elizaos/core";
+import {
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  type TargetInfo,
+} from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgePageContext,
@@ -90,13 +94,19 @@ type DiscordPluginServiceLike = {
   } | null;
 };
 
+/**
+ * Success DTO for a Discord send, naming the target that was actually
+ * addressed: `channelId` for channel/DM-channel sends, `userId` for
+ * user-targeted DM sends where plugin-discord resolves the DM channel itself
+ * (`users.fetch` → `createDM`). The two id spaces are disjoint, so the field
+ * name is the target's type — a user id must never be reported as a channelId.
+ */
 export type DiscordSendMessageResult = {
   provider: "discord";
   side: LifeOpsConnectorSide;
-  channelId: string;
   ok: true;
   deliveryStatus: "sent" | "sending" | "failed" | "unknown";
-};
+} & ({ channelId: string } | { userId: string });
 
 export type DiscordConnectorVerification = {
   provider: "discord";
@@ -104,6 +114,7 @@ export type DiscordConnectorVerification = {
   verifiedAt: string;
   status: LifeOpsDiscordConnectorStatus;
   send: {
+    attempted: boolean;
     ok: boolean;
     error: string | null;
     channelId: string | null;
@@ -1584,13 +1595,24 @@ export class DiscordDomain {
   async sendDiscordMessage(request: {
     side?: LifeOpsConnectorSide;
     channelId?: string;
+    /**
+     * Discord user id target. Mutually exclusive with `channelId`; the
+     * discord runtime service resolves the DM channel (`users.fetch` →
+     * `createDM`), so callers addressing a person never guess a channel id.
+     */
+    userId?: string;
     text: string;
+    allowTransportFallback?: boolean;
   }): Promise<DiscordSendMessageResult> {
     const normalizedSide =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const text = request.text.trim();
     if (!text) {
       fail(400, "text is required");
+    }
+    const userId = request.userId?.trim();
+    if (userId && request.channelId?.trim()) {
+      fail(400, "channelId and userId are mutually exclusive send targets.");
     }
 
     const status = await this.getDiscordConnectorStatus(normalizedSide);
@@ -1599,6 +1621,43 @@ export class DiscordDomain {
     }
     if (!status.grantedCapabilities.includes("discord.send")) {
       fail(403, "Discord send capability is not granted.");
+    }
+
+    if (userId) {
+      // User-id targets resolve to a DM inside plugin-discord's send handler
+      // (`target.entityId` → `users.fetch` → `createDM`). The desktop-CDP
+      // transport cannot take this path — it navigates
+      // `/channels/@me/<dm-channel-id>` and has no user→DM resolution — so
+      // user-targeted sends always go through the runtime send handler.
+      if (typeof this.ctx.runtime.sendMessageToTarget !== "function") {
+        fail(503, "Discord send handler is not available.");
+      }
+      const accountId = status.grant?.connectorAccountId ?? "default";
+      // TargetInfo types `entityId` as a runtime UUID, but plugin-discord's
+      // handler explicitly also accepts a raw Discord snowflake there
+      // (normalizeDiscordTargetUserId) — same cast the runtime-service
+      // delegates use for connector platform ids.
+      const target: TargetInfo = {
+        source: "discord",
+        accountId,
+        entityId: userId,
+      } as TargetInfo;
+      requireConfirmedSendHandlerDelivery(
+        await this.ctx.runtime.sendMessageToTarget(target, {
+          text,
+          source: "lifeops",
+          metadata: { accountId },
+        }),
+      );
+      return {
+        provider: "discord",
+        side: normalizedSide,
+        userId,
+        ok: true,
+        // Confirmed-delivered disposition from the send handler; the CDP tab
+        // capture below observes the owner's client, not the bot DM.
+        deliveryStatus: "sent",
+      };
     }
 
     const channelId =
@@ -1649,13 +1708,18 @@ export class DiscordDomain {
             },
           );
         }
+        if (request.allowTransportFallback === false) {
+          fail(503, "The selected Discord send transport is unavailable.");
+        }
         if (typeof this.ctx.runtime.sendMessageToTarget !== "function") {
           fail(503, "Discord send handler is not available.");
         }
         const accountId = status.grant?.connectorAccountId ?? "default";
-        await this.ctx.runtime.sendMessageToTarget(
-          { source: "discord", accountId, channelId },
-          { text, source: "lifeops", metadata: { accountId } },
+        requireConfirmedSendHandlerDelivery(
+          await this.ctx.runtime.sendMessageToTarget(
+            { source: "discord", accountId, channelId },
+            { text, source: "lifeops", metadata: { accountId } },
+          ),
         );
       }
     }
@@ -1684,27 +1748,15 @@ export class DiscordDomain {
     channelId?: string;
     sendMessage?: string;
   }): Promise<DiscordConnectorVerification> {
+    if (request.channelId !== undefined || request.sendMessage !== undefined) {
+      fail(
+        400,
+        "Discord verification is read-only. Draft a message and obtain owner approval before testing outbound delivery.",
+      );
+    }
     const normalizedSide =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-    const message =
-      request.sendMessage?.trim() ||
-      `LifeOps Discord verification ${new Date().toISOString()}`;
     const status = await this.getDiscordConnectorStatus(normalizedSide);
-    const channelId =
-      request.channelId?.trim() || selectedDiscordChannelIdFromStatus(status);
-
-    let send: Awaited<ReturnType<DiscordDomain["sendDiscordMessage"]>> | null =
-      null;
-    let error: string | null = null;
-    try {
-      send = await this.sendDiscordMessage({
-        side: normalizedSide,
-        ...(channelId ? { channelId } : {}),
-        text: message,
-      });
-    } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
-    }
 
     return {
       provider: "discord",
@@ -1712,11 +1764,13 @@ export class DiscordDomain {
       verifiedAt: new Date().toISOString(),
       status,
       send: {
-        ok: Boolean(send),
-        error,
-        channelId: send?.channelId ?? channelId ?? null,
-        message,
-        deliveryStatus: send?.deliveryStatus ?? null,
+        attempted: false,
+        ok: false,
+        error:
+          "Outbound verification requires a drafted message and explicit owner approval.",
+        channelId: null,
+        message: "",
+        deliveryStatus: null,
       },
     };
   }

@@ -37,11 +37,27 @@ const reconcileReservation = mock(async (actualCost: number) => ({
   adjustmentType: "refund" as const,
 }));
 
-const reserveCredits = mock(async () => ({
+const affiliateAttribution = {
+  affiliateCodeId: "00000000-0000-4000-8000-000000000010",
+  affiliateUserId: "00000000-0000-4000-8000-000000000011",
+  affiliateCode: "PARTNER",
+  markupPercent: 0.2,
+};
+
+// The real reserveCredits pins affiliate attribution + payout source on the
+// reservation; billUsage refuses an affiliate payout without that pinned pair
+// (requireAffiliatePayoutSource). Every restore of the mock must reinstate
+// this full shape, or later tests silently exercise a reservation the
+// production reserve path can no longer produce.
+const defaultReservation = () => ({
   reservedAmount: 0.002,
   reservationTransactionId: "reservation-1",
+  affiliateAttribution,
+  affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
   reconcile: reconcileReservation,
-}));
+});
+
+const reserveCredits = mock(async () => defaultReservation());
 
 const billUsage = mock(async () => ({
   inputCost: 0.0001,
@@ -370,9 +386,23 @@ describe("ElizaSandboxService shared runtime billing", () => {
       expect(billUsage).toHaveBeenCalledWith(
         expect.objectContaining({
           organizationId: sandbox.organization_id,
+          userId: sandbox.user_id,
           model: "gpt-oss-120b",
+          requestId: expect.stringMatching(/^shared-runtime-/),
+          metadata: expect.objectContaining({
+            agentId: sandbox.id,
+            executionTier: "shared",
+            runtime: "shared",
+            prompt: "hello",
+            idempotencyKey: expect.stringMatching(/^shared-runtime:/),
+          }),
         }),
         { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+        expect.objectContaining({
+          affiliateAttribution,
+          affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
+          reconcile: expect.any(Function),
+        }),
       );
       expect(reconcileReservation).toHaveBeenCalledWith(0.0003);
       expect(recordUsageAnalytics).toHaveBeenCalledWith(
@@ -488,11 +518,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
         status: 402,
       });
     } finally {
-      reserveCredits.mockImplementation(async () => ({
-        reservedAmount: 0.002,
-        reservationTransactionId: "reservation-1",
-        reconcile: reconcileReservation,
-      }));
+      reserveCredits.mockImplementation(async () => defaultReservation());
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
     }
@@ -609,9 +635,23 @@ describe("ElizaSandboxService shared runtime billing", () => {
       expect(billUsage).toHaveBeenCalledWith(
         expect.objectContaining({
           organizationId: sandbox.organization_id,
+          userId: sandbox.user_id,
           model: "gpt-oss-120b",
+          requestId: expect.stringMatching(/^shared-runtime-/),
+          metadata: expect.objectContaining({
+            agentId: sandbox.id,
+            executionTier: "shared",
+            runtime: "shared",
+            prompt: "hello",
+            idempotencyKey: expect.stringMatching(/^shared-runtime:/),
+          }),
         }),
         { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+        expect.objectContaining({
+          affiliateAttribution,
+          affiliatePayoutSourceId: "ai_billing:affiliate:shared-sandbox-test",
+          reconcile: expect.any(Function),
+        }),
       );
       expect(reconcileReservation).toHaveBeenCalledWith(0.0003);
       expect(recordUsageAnalytics).toHaveBeenCalledWith(

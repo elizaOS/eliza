@@ -24,9 +24,7 @@ import {
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import {
   generateChatClientMessageId,
-  isNetworkCurrentlyConnected,
   isStreamGenerationError,
-  onNetworkStatusChange,
 } from "../api/client-base";
 import {
   expandSavedCustomCommand,
@@ -35,7 +33,6 @@ import {
 } from "../chat";
 import { dispatchWorkflowActionHandoff } from "../components/pages/workflow-action-handoff";
 import {
-  APP_RESUME_EVENT,
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
@@ -63,10 +60,15 @@ import {
   clearPendingChatTurn,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
+import { streamingRenderDelayMs } from "./streaming-render-cadence";
 
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+
+type ConversationStreamResult = Awaited<
+  ReturnType<typeof client.sendConversationMessageStream>
+>;
 
 async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
@@ -242,174 +244,20 @@ export function buildSendFailureNotice(err: unknown): string {
 
 /**
  * Assistant-bubble copy for a user turn the server never accepted — e.g. sent
- * while the local model was still warming up and the runtime-ready hold
- * expired (503), or the runtime produced nothing and persisted nothing.
+ * while the local model was unavailable (503), or the runtime produced
+ * nothing and persisted nothing.
  * Stamped with a retryable `provider_issue` failureKind so the thread shows a
  * Retry chip instead of silently evicting the message (#11670).
  */
 export const UNDELIVERED_TURN_NOTICE =
   "That message didn't reach the agent — it may still be starting up. Retry in a moment.";
 
-/**
- * Whether a send failure is a *transport* failure worth auto-retrying once when
- * connectivity returns — a dropped connection / DNS failure (`kind:"network"`),
- * a request that never completed in time (`kind:"timeout"`), or the gateway
- * bad/unavailable pair (502/503) an edge throws mid-blip. Deliberately narrow:
- *
- *  - 4xx (validation / auth / rate-limit / not-found) are NOT transport blips —
- *    replaying them on reconnect fails identically, so they keep their existing
- *    manual-resend copy.
- *  - AbortError is a user Stop, never retried.
- *  - A structured stream gate (no_provider / accountConnect) is a real answer,
- *    not a transport failure.
- *
- * Exported for the send path and unit tests (the classification is the crux of
- * "retry the blips, don't loop on real rejections").
- */
-export function isRetryableSendError(err: unknown): boolean {
-  if (err == null) return false;
-  const name = (err as { name?: unknown }).name;
-  if (name === "AbortError") return false;
-  const kind = (err as { kind?: unknown }).kind;
-  if (kind === "network" || kind === "timeout") return true;
-  const status = (err as { status?: unknown }).status;
-  return status === 502 || status === 503;
-}
-
-/**
- * Whether THIS failure should trigger the wait-for-reconnect auto-retry, as
- * opposed to just being retryable copy on a manual affordance. Scoped tighter
- * than {@link isRetryableSendError} so we only *hold* a turn (waiting for the
- * network to come back) when a network drop is the plausible cause:
- *
- *  - a genuine transport drop (`kind:"network"`, e.g. "Failed to fetch") — the
- *    blip case the E2 lane targets ("no more lost messages on network blips"),
- *    ALWAYS eligible even if the bridge hasn't yet flipped to offline (iOS
- *    frequently kills the socket on suspend without firing an `offline` edge);
- *  - any retryable error while the device is ALREADY reporting offline — a
- *    503/timeout during a known outage is worth holding for reconnect too.
- *
- * A 503 "agent waking up" or a slow-response timeout while the device is ONLINE
- * is NOT a connectivity problem — there is no reconnect coming, so waiting is
- * pointless; those keep the existing immediate manual-resend affordance.
- */
 export function resolveAbortRoomId(
   conversationId: string,
   knownRoomId: string | null | undefined,
   cachedRoomId: string | null | undefined,
 ): string {
   return knownRoomId?.trim() || cachedRoomId?.trim() || conversationId;
-}
-
-export function shouldAutoRetryOnReconnect(err: unknown): boolean {
-  if (!isRetryableSendError(err)) return false;
-  const kind = (err as { kind?: unknown }).kind;
-  if (kind === "network") return true;
-  return !isNetworkCurrentlyConnected();
-}
-
-/**
- * Debounce for coalescing a burst of reconnect signals (an `online` edge, a
- * `ws-reconnected`, and an `APP_RESUME` can all fire within a few ms of a
- * device waking) into a single retry trigger — so the auto-retry runs ONCE,
- * not once per signal.
- */
-const RECONNECT_SIGNAL_DEBOUNCE_MS = 400;
-
-/**
- * Max time to wait for a reconnect signal before giving up and surfacing the
- * manual resend affordance. A blip that never heals within this window is
- * treated as a genuine outage — the user gets the resend chip rather than a
- * turn stuck forever in the sending state.
- */
-const RECONNECT_WAIT_TIMEOUT_MS = 30_000;
-
-/**
- * Resolve `true` the moment connectivity plausibly returns — the first of a
- * bridged network `online` edge ({@link onNetworkStatusChange}), an
- * {@link APP_RESUME_EVENT} (iOS foreground, where `online` often does NOT
- * fire because the socket was silently killed on suspend, not on a network
- * change), or a WS reconnect (`ws-reconnected`) — debounced so a cluster of
- * signals fires the retry once. Resolves `false` on timeout or if `signal`
- * aborts (the turn was superseded / the user navigated away). Never rejects,
- * and always tears down every listener + timer on settle so nothing leaks.
- */
-function waitForReconnect(
-  onWsEvent: (type: string, handler: () => void) => () => void,
-  signal: AbortSignal | null | undefined,
-  timeoutMs: number = RECONNECT_WAIT_TIMEOUT_MS,
-): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    if (signal?.aborted) {
-      resolve(false);
-      return;
-    }
-    let settled = false;
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
-    const cleanups: Array<() => void> = [];
-
-    const teardown = (): void => {
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
-      if (timeoutTimer !== null) clearTimeout(timeoutTimer);
-      for (const cleanup of cleanups) {
-        try {
-          cleanup();
-        } catch {
-          // a listener teardown throwing must not block the others
-        }
-      }
-    };
-
-    const settle = (value: boolean): void => {
-      if (settled) return;
-      settled = true;
-      teardown();
-      resolve(value);
-    };
-
-    // Debounce the resolve so a burst (online + ws-reconnected + resume) fires
-    // the retry exactly once.
-    const onSignal = (): void => {
-      if (settled) return;
-      if (debounceTimer !== null) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(
-        () => settle(true),
-        RECONNECT_SIGNAL_DEBOUNCE_MS,
-      );
-    };
-
-    // Bridged Capacitor/`online` network transition (true = connected).
-    cleanups.push(
-      onNetworkStatusChange((connected) => {
-        if (connected) onSignal();
-      }),
-    );
-
-    // WS reconnect — the dedicated-agent REST path never fires this, but the
-    // shared-runtime WS does, and it's a strong "we're back online" signal.
-    cleanups.push(onWsEvent("ws-reconnected", onSignal));
-
-    // App foreground: on iOS the socket is often silently dead after a suspend
-    // and no `online` edge fires, so resume is the only reconnect hint we get.
-    if (typeof document !== "undefined") {
-      const onResume = (): void => onSignal();
-      document.addEventListener(APP_RESUME_EVENT, onResume);
-      cleanups.push(() =>
-        document.removeEventListener(APP_RESUME_EVENT, onResume),
-      );
-    }
-
-    // The turn was superseded (new chat / conversation switch / stop) — stop
-    // waiting so the retry doesn't fire into a torn-down context.
-    if (signal) {
-      const onAbort = (): void => settle(false);
-      signal.addEventListener("abort", onAbort, { once: true });
-      cleanups.push(() => signal.removeEventListener("abort", onAbort));
-    }
-
-    timeoutTimer = setTimeout(() => settle(false), timeoutMs);
-  });
 }
 
 /**
@@ -610,26 +458,8 @@ export interface QueuedChatSend {
   conversationId?: string | null;
   images?: ImageAttachment[];
   metadata?: Record<string, unknown>;
-  /**
-   * Idempotency key for this logical turn. Minted once on the first attempt and
-   * reused verbatim on the single auto-retry so a request that actually landed
-   * server-side during a blip is de-duped instead of double-delivered. Absent
-   * on a fresh enqueue (the drain mints it); present on the retry re-enqueue.
-   */
+  /** Stable idempotency key for the initial request and route-level recovery. */
   clientMessageId?: string;
-  /**
-   * True on the re-enqueued turn AFTER its one auto-retry-on-reconnect has been
-   * spent — the guard that makes the auto-retry fire exactly once (never a
-   * loop). A retry that also fails falls straight through to the manual resend
-   * affordance.
-   */
-  autoRetried?: boolean;
-  /** Stable local row identities reused when a transport retry replays a turn. */
-  optimisticTurn?: {
-    userMsgId: string;
-    assistantMsgId: string;
-    timestamp: number;
-  };
   resolve: () => void;
   reject: (error: unknown) => void;
 }
@@ -824,14 +654,17 @@ export function useChatSend(deps: UseChatSendDeps) {
   // when `preferSharedCloudTier` is off, since no `migrating` phase ever fires).
   const handoffFrozenRef = useRef(false);
 
-  // Streaming-commit throttle.
+  // Streaming-paint coalescer.
   // The SSE stream fires three per-event callbacks that each trigger a state
   // commit: `onToken` (cumulative text, often >60/sec on a fast model),
   // `onStatus` (live turn phase), and `onToolEvent` (inline tool-call steps).
-  // Committing each one synchronously means up to three React renders per SSE
-  // event; instead every callback parks its latest value here and a single rAF
-  // commits all three in ONE frame. Chat sends are serialized through the
-  // queue, so a single in-flight buffer is sufficient.
+  // A microtask merges callbacks decoded from one transport event, but a fast
+  // model still delivers separate events faster than the full chat overlay can
+  // render them. Park cumulative snapshots and paint the first one immediately,
+  // then at a bounded cadence. Terminal/abort paths synchronously flush the
+  // latest snapshot, so throttling cannot lose text. A timeout is the delivery
+  // clock rather than rAF because hidden/resource-constrained tabs may defer
+  // animation frames for seconds.
   //
   // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
   // parked", distinct from a parked `null` (an explicit clear-the-status
@@ -842,14 +675,20 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingText: string | null;
     pendingStatus: ChatTurnStatus | null | typeof NO_PENDING_STATUS;
     pendingToolEvents: ChatToolCallEvent[];
-    frameId: number | null;
+    flushScheduled: boolean;
+    flushGeneration: number;
+    flushTimer: ReturnType<typeof setTimeout> | null;
+    lastFlushAtMs: number | null;
   }>({
     conversationId: null,
     messageId: "",
     pendingText: null,
     pendingStatus: NO_PENDING_STATUS,
     pendingToolEvents: [],
-    frameId: null,
+    flushScheduled: false,
+    flushGeneration: 0,
+    flushTimer: null,
+    lastFlushAtMs: null,
   });
 
   const isConversationCommitActive = useCallback(
@@ -882,6 +721,81 @@ export function useChatSend(deps: UseChatSendDeps) {
     [isConversationCommitActive, setConversationMessages],
   );
 
+  const reconcileTerminalStream = useCallback(
+    (
+      conversationId: string,
+      assistantMessageId: string,
+      streamedAssistantText: string,
+      data: ConversationStreamResult,
+      options: {
+        includeReasoning: boolean;
+        includeAccountConnect: boolean;
+      },
+    ): string | null => {
+      if (data.transcriptVisibility === "internal") {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "drop",
+        });
+        return null;
+      }
+
+      if (!data.text.trim()) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          ...(data.failureKind
+            ? { mode: "fail", failureKind: data.failureKind }
+            : { mode: "drop" }),
+        });
+      } else if (
+        shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
+        (options.includeReasoning && data.reasoning) ||
+        data.messageId
+      ) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "complete",
+          fullText: data.text,
+          ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(options.includeAccountConnect && data.accountConnect
+            ? { accountConnect: data.accountConnect }
+            : {}),
+          ...(options.includeReasoning && data.reasoning
+            ? { reasoning: data.reasoning }
+            : {}),
+          ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+        });
+      } else if (data.failureKind) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "fail",
+          failureKind: data.failureKind,
+        });
+      } else if (options.includeAccountConnect && data.accountConnect) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "complete",
+          fullText: data.text,
+          accountConnect: data.accountConnect,
+          ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+        });
+      }
+
+      const interruptedPartial =
+        !data.completed && streamedAssistantText.trim()
+          ? data.text.trim() || streamedAssistantText
+          : null;
+      if (interruptedPartial) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "interrupt",
+        });
+      }
+      return interruptedPartial;
+    },
+    [applyStreamingModificationForConversation],
+  );
+
   const setServerTurnStatusForConversation = useCallback(
     (conversationId: string | null, status: ChatTurnStatus | null) => {
       if (!isConversationCommitActive(conversationId)) return;
@@ -893,7 +807,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   // Commit whatever text/status/tool events are parked for the in-flight turn in
   // one pass, then clear the pending slots. Order matters: tool events merge
   // onto the same turn as the text, and the status is a sibling indicator — all
-  // three settle together so the frame reflects a single coherent stream state.
+  // three settle together so the commit reflects one coherent stream state.
   // Safe to call when nothing is pending (no-op).
   const commitStreamingBuffer = useCallback(() => {
     const buffer = streamingFlushRef.current;
@@ -903,6 +817,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       return;
     }
+    let committed = false;
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
       buffer.pendingText = null;
@@ -911,6 +826,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         mode: "replace",
         fullText,
       });
+      committed = true;
     }
     if (buffer.pendingToolEvents.length > 0) {
       const toolEvents = buffer.pendingToolEvents;
@@ -922,27 +838,33 @@ export function useChatSend(deps: UseChatSendDeps) {
           event,
         });
       }
+      committed = true;
     }
     if (buffer.pendingStatus !== NO_PENDING_STATUS) {
       const status = buffer.pendingStatus;
       buffer.pendingStatus = NO_PENDING_STATUS;
       setServerTurnStatus(status);
+      committed = true;
     }
+    if (committed) buffer.lastFlushAtMs = performance.now();
   }, [
     isConversationCommitActive,
     setConversationMessages,
     setServerTurnStatus,
   ]);
 
-  // Apply whatever streaming state is parked for the in-flight turn NOW
-  // (synchronously) and cancel the pending frame — called before every terminal
-  // / abort transition so no token, tool row, or status is lost. Safe when
-  // nothing is pending (no-op).
+  // Apply whatever streaming state is parked for the in-flight turn NOW and
+  // invalidate its pending microtask/timer. Called before every terminal/abort
+  // transition so no token, tool row, or status is lost.
   const flushStreamingText = useCallback(() => {
     const buffer = streamingFlushRef.current;
-    if (buffer.frameId !== null) {
-      cancelAnimationFrame(buffer.frameId);
-      buffer.frameId = null;
+    if (buffer.flushScheduled) {
+      buffer.flushGeneration += 1;
+      buffer.flushScheduled = false;
+    }
+    if (buffer.flushTimer !== null) {
+      clearTimeout(buffer.flushTimer);
+      buffer.flushTimer = null;
     }
     commitStreamingBuffer();
   }, [commitStreamingBuffer]);
@@ -958,44 +880,60 @@ export function useChatSend(deps: UseChatSendDeps) {
         buffer.messageId === messageId
       )
         return;
-      if (buffer.frameId !== null) cancelAnimationFrame(buffer.frameId);
+      if (buffer.flushScheduled) buffer.flushGeneration += 1;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
+      }
       buffer.conversationId = conversationId;
       buffer.messageId = messageId;
       buffer.pendingText = null;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
-      buffer.frameId = null;
+      buffer.flushScheduled = false;
+      buffer.lastFlushAtMs = null;
     },
     [],
   );
 
-  // Ensure a single rAF is scheduled to commit whatever is currently parked.
-  // Repeated calls within a frame never schedule additional frames.
-  const ensureStreamingFrame = useCallback(() => {
+  // The first snapshot paints in a microtask; later snapshots within the
+  // cadence window share one trailing timer and overwrite the cumulative text.
+  const ensureStreamingFlush = useCallback(() => {
     const buffer = streamingFlushRef.current;
-    if (buffer.frameId !== null) return;
-    buffer.frameId = requestAnimationFrame(() => {
-      buffer.frameId = null;
+    if (buffer.flushScheduled) return;
+    buffer.flushScheduled = true;
+    const generation = buffer.flushGeneration;
+    const commitScheduled = () => {
+      if (buffer.flushGeneration !== generation) return;
+      buffer.flushTimer = null;
+      buffer.flushScheduled = false;
       commitStreamingBuffer();
-    });
+    };
+    const delayMs = streamingRenderDelayMs(
+      buffer.lastFlushAtMs,
+      performance.now(),
+    );
+    if (delayMs === 0) {
+      queueMicrotask(commitScheduled);
+      return;
+    }
+    buffer.flushTimer = setTimeout(commitScheduled, delayMs);
   }, [commitStreamingBuffer]);
 
-  // Park the latest cumulative text for `messageId` and ensure a single rAF is
-  // scheduled to commit it. Repeated calls within a frame overwrite the parked
-  // text without scheduling additional frames: N tokens become at most one
-  // commit per frame.
+  // Park the latest cumulative text for `messageId`. Synchronous callbacks from
+  // one decoded SSE batch overwrite the parked value and commit together.
   const scheduleStreamingText = useCallback(
     (conversationId: string, messageId: string, fullText: string) => {
       startStreamingTurn(conversationId, messageId);
       streamingFlushRef.current.pendingText = fullText;
-      ensureStreamingFrame();
+      ensureStreamingFlush();
     },
-    [startStreamingTurn, ensureStreamingFrame],
+    [startStreamingTurn, ensureStreamingFlush],
   );
 
   // Park a live turn-status phase for `messageId`; the latest value wins within
-  // a frame (superseded phases are never rendered). Coalesced into the same
-  // frame as text/tool events (#8813).
+  // one synchronous transport burst (superseded phases are never rendered).
+  // Coalesced with text/tool events from that burst (#8813).
   const scheduleServerTurnStatus = useCallback(
     (
       conversationId: string,
@@ -1004,31 +942,33 @@ export function useChatSend(deps: UseChatSendDeps) {
     ) => {
       startStreamingTurn(conversationId, messageId);
       streamingFlushRef.current.pendingStatus = status;
-      ensureStreamingFrame();
+      ensureStreamingFlush();
     },
-    [startStreamingTurn, ensureStreamingFrame],
+    [startStreamingTurn, ensureStreamingFlush],
   );
 
   // Park one inline tool-call step for `messageId`. Unlike text/status these
-  // ACCUMULATE within a frame — each step (call → result/error) is a distinct
+  // ACCUMULATE within a transport burst — each step (call → result/error) is a distinct
   // merge onto the turn's `toolEvents`, so none may be dropped (#13535).
   const scheduleToolEvent = useCallback(
     (conversationId: string, messageId: string, event: ChatToolCallEvent) => {
       startStreamingTurn(conversationId, messageId);
       streamingFlushRef.current.pendingToolEvents.push(event);
-      ensureStreamingFrame();
+      ensureStreamingFlush();
     },
-    [startStreamingTurn, ensureStreamingFrame],
+    [startStreamingTurn, ensureStreamingFlush],
   );
 
-  // Cancel any in-flight frame on unmount so a late rAF never commits into a
-  // torn-down tree.
+  // Invalidate any queued flush on unmount so it cannot commit into a torn-down
+  // tree.
   useEffect(() => {
     const buffer = streamingFlushRef.current;
     return () => {
-      if (buffer.frameId !== null) {
-        cancelAnimationFrame(buffer.frameId);
-        buffer.frameId = null;
+      buffer.flushGeneration += 1;
+      buffer.flushScheduled = false;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
       }
       buffer.pendingText = null;
       buffer.conversationId = null;
@@ -1099,7 +1039,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     activeTurn?.controller.abort();
     chatAbortRef.current?.abort();
     // Commit any parked partial text (so a stopped turn keeps what the user saw)
-    // and cancel the pending frame so it can't fire after the stop.
+    // and invalidate the pending scheduled flush so it can't fire after stop.
     flushStreamingText();
     activeChatTurnRef.current = null;
     chatAbortRef.current = null;
@@ -1465,10 +1405,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
-      // Mint the idempotency key ONCE per logical turn and reuse it across the
-      // single auto-retry (the re-enqueued turn carries it back in). A send
-      // that actually landed server-side during a blip is then de-duped by the
-      // server on the retry instead of double-delivered.
+      // One idempotency key spans the initial request and route-level recovery.
       const clientMessageId =
         turn.clientMessageId ?? generateChatClientMessageId();
       let controller: AbortController | null = null;
@@ -1500,14 +1437,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       }
 
-      const optimisticTurn =
-        turn.optimisticTurn ??
-        ({
-          userMsgId: `temp-${clientMessageId}`,
-          assistantMsgId: `temp-resp-${clientMessageId}`,
-          timestamp: Date.now(),
-        } satisfies NonNullable<QueuedChatSend["optimisticTurn"]>);
-      const { userMsgId, assistantMsgId, timestamp: now } = optimisticTurn;
+      const now = Date.now();
+      const userMsgId = `temp-${clientMessageId}`;
+      const assistantMsgId = `temp-resp-${clientMessageId}`;
 
       // Paint the accepted turn before conversation creation / room discovery.
       // Those calls can take seconds on a cold cloud agent; clearing the composer
@@ -1530,6 +1462,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         : undefined;
       const optimisticUserMessage: ConversationMessage = {
         id: userMsgId,
+        clientRenderId: userMsgId,
         role: "user",
         text,
         timestamp: now,
@@ -1539,6 +1472,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       };
       const optimisticAssistantMessage: ConversationMessage = {
         id: assistantMsgId,
+        clientRenderId: assistantMsgId,
         role: "assistant",
         text: "",
         timestamp: now,
@@ -1688,8 +1622,8 @@ export function useChatSend(deps: UseChatSendDeps) {
             if (isConversationCommitActive(convId)) {
               setChatFirstTokenReceived(true);
             }
-            // Coalesce tokens into at most one commit per frame; the parked text is
-            // flushed synchronously below before any terminal modification.
+            // Coalesce tokens delivered in one transport burst into a microtask;
+            // the parked text is flushed synchronously before terminal changes.
             scheduleStreamingText(convId, assistantMsgId, nextText);
           },
           channelType,
@@ -1698,15 +1632,14 @@ export function useChatSend(deps: UseChatSendDeps) {
           turn.metadata,
           // Live server phase → the rich status indicator. Additive; the reply
           // streams through onToken above regardless. Coalesced into the same
-          // rAF frame as the text/tool commits (flushed synchronously below
-          // before any terminal transition).
+          // transport-burst microtask as text/tool commits and flushed
+          // synchronously before any terminal transition.
           (status) => scheduleServerTurnStatus(convId, assistantMsgId, status),
           // Inline tool-call steps → the turn's tool rows (call → result/error),
           // merged by callId so one row flips running → settled (#13535).
-          // Coalesced into the streaming frame with the text + status.
+          // Coalesced into the current transport burst with the text + status.
           (event) => scheduleToolEvent(convId, assistantMsgId, event),
-          // Idempotency key — reused verbatim across the single auto-retry so a
-          // send that landed during a blip is server-side de-duped.
+          // Stable idempotency key for this logical turn.
           clientMessageId,
         );
 
@@ -1714,61 +1647,20 @@ export function useChatSend(deps: UseChatSendDeps) {
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
         flushStreamingText();
 
-        if (!data.text.trim()) {
-          if (data.failureKind) {
-            // Empty reply but the server flagged a failure class — surface the
-            // gate UI (e.g. "Connect a provider") instead of silently dropping
-            // the turn. The failure branch below is an `else if`, unreachable
-            // once the text is empty, so it must be handled here.
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "fail",
-              failureKind: data.failureKind,
-            });
-          } else {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "drop",
-            });
-          }
-        } else if (
-          shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
-          data.reasoning ||
-          data.messageId
-        ) {
+        if (data.userMessageId) {
           applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "complete",
-            fullText: data.text,
-            ...(data.failureKind ? { failureKind: data.failureKind } : {}),
-            ...(data.accountConnect
-              ? { accountConnect: data.accountConnect }
-              : {}),
-            ...(data.reasoning ? { reasoning: data.reasoning } : {}),
-            ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
-          });
-        } else if (data.failureKind) {
-          // Streaming text already matched but the server flagged a failure
-          // class — stamp it on the assistant turn so the renderer can swap
-          // in the gate UI (e.g. "Connect a provider").
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "fail",
-            failureKind: data.failureKind,
-          });
-        } else if (data.accountConnect) {
-          // Streaming text already matched but the server flagged a
-          // "connect another account" request — stamp it (via complete, which
-          // carries accountConnect) so the renderer swaps in the
-          // AccountConnectBlock while keeping the already-streamed text.
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "complete",
-            fullText: data.text,
-            accountConnect: data.accountConnect,
-            ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+            messageId: userMsgId,
+            mode: "rekey",
+            persistedMessageId: data.userMessageId,
           });
         }
+        const interruptedPartial = reconcileTerminalStream(
+          convId,
+          assistantMsgId,
+          streamedAssistantText,
+          data,
+          { includeReasoning: true, includeAccountConnect: true },
+        );
         if (data.usage) {
           setChatLastUsage({
             promptTokens: data.usage.promptTokens,
@@ -1783,17 +1675,6 @@ export function useChatSend(deps: UseChatSendDeps) {
         // Snapshot it BEFORE the reload below (which full-replaces local state
         // with the server's copy) so it can be re-attached if the server never
         // persisted it.
-        const interruptedPartial =
-          !data.completed && streamedAssistantText.trim()
-            ? data.text.trim() || streamedAssistantText
-            : null;
-        if (interruptedPartial) {
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "interrupt",
-          });
-        }
-
         // The stream result is the user-visible end of this turn. History
         // reconciliation can continue below, but it must not leave a completed
         // reply looking active. Keep the busy state when another turn is queued.
@@ -1810,9 +1691,17 @@ export function useChatSend(deps: UseChatSendDeps) {
           setActionNotice(message, "error", 8_000);
         });
 
-        // Action callbacks can persist additional assistant turns that are not
-        // mirrored by the optimistic streaming draft in local state.
-        if (activeConversationIdRef.current === convId) {
+        // Direct replies already carry both committed memory ids, so reloading
+        // the whole transcript would add a DB round trip, replace every message
+        // object, and race the terminal frame. Action callbacks are the only
+        // topology that may commit extra rows outside the streamed bubble.
+        if (
+          activeConversationIdRef.current === convId &&
+          (data.historyRefreshRequired ||
+            !data.completed ||
+            (!data.messageId && !data.assistantEphemeral) ||
+            !data.userMessageId)
+        ) {
           await loadConversationMessages(convId);
           // The reload above full-replaces the thread; a stopped reply is often
           // NOT persisted server-side, so re-attach the partial the user watched
@@ -2023,29 +1912,13 @@ export function useChatSend(deps: UseChatSendDeps) {
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
 
-            if (!retryData.text.trim()) {
-              applyStreamingModificationForConversation(conversation.id, {
-                messageId: replayAssistantId,
-                ...(retryData.failureKind
-                  ? { mode: "fail", failureKind: retryData.failureKind }
-                  : { mode: "drop" }),
-              });
-            } else {
-              applyStreamingModificationForConversation(conversation.id, {
-                messageId: replayAssistantId,
-                mode: "complete",
-                fullText: retryData.text,
-                ...(retryData.failureKind
-                  ? { failureKind: retryData.failureKind }
-                  : {}),
-                ...(retryData.reasoning
-                  ? { reasoning: retryData.reasoning }
-                  : {}),
-                ...(retryData.messageId
-                  ? { persistedMessageId: retryData.messageId }
-                  : {}),
-              });
-            }
+            reconcileTerminalStream(
+              conversation.id,
+              replayAssistantId,
+              replayStreamedText,
+              retryData,
+              { includeReasoning: true, includeAccountConnect: true },
+            );
           } catch (replayErr) {
             // The re-seed above replaced the whole thread, so the ORIGINAL
             // placeholder id is gone — dropping it was a no-op that left the
@@ -2065,85 +1938,14 @@ export function useChatSend(deps: UseChatSendDeps) {
               );
             }
           }
-        } else if (shouldAutoRetryOnReconnect(err) && !turn.autoRetried) {
-          // Retryable transport failure (a network blip / timeout / 502/503)
-          // on the FIRST attempt: instead of immediately surfacing the manual
-          // resend affordance, hold the turn in its normal sending state and
-          // auto-retry ONCE the moment connectivity returns. This is the E2
-          // "messages survive network blips" guarantee — the common case on
-          // cellular is a sub-second drop that heals on its own, and making the
-          // user tap Resend for it is the difference between "just works" and
-          // "ugh, again." The retry:
-          //   - keeps the existing pending/sending UI (no new surface), so the
-          //     turn simply looks like it's still sending during the wait;
-          //   - reuses the SAME clientMessageId so a request that actually
-          //     landed server-side during the blip is de-duped, not doubled;
-          //   - fires EXACTLY once (waitForReconnect is debounced and the
-          //     re-enqueued turn is stamped autoRetried) — never a loop;
-          //   - aborts cleanly if the turn is superseded (new chat / stop /
-          //     conversation switch abort the controller signal we wait on);
-          //   - falls through to the manual affordance below only if the retry
-          //     ALSO fails or connectivity never returns within the window.
-          const reconnected = await waitForReconnect(
-            (type, handler) => client.onWsEvent(type, () => handler()),
-            controller?.signal,
-          );
-          if (reconnected && !controller?.signal.aborted) {
-            // Re-enqueue at the FRONT so the retry runs before any turns the
-            // user queued behind it, preserving send order. Same key + text +
-            // images + metadata; autoRetried stops a second auto-retry.
-            chatSendQueueRef.current.unshift({
-              rawInput: turn.rawInput,
-              channelType: turn.channelType,
-              conversationId: convId,
-              images: turn.images,
-              metadata: turn.metadata,
-              clientMessageId,
-              autoRetried: true,
-              optimisticTurn,
-              resolve: () => {},
-              reject: () => {},
-            });
-            // The drain loop (flushQueuedChatSends) re-invokes this for the
-            // requeued turn; nothing more to do here.
-            return;
-          }
-          // Connectivity never returned (timeout) or the turn was superseded
-          // (abort). An abort is a user Stop / navigation — stay silent, drop
-          // the placeholder, and let the finally block settle. A timeout falls
-          // through to the manual resend affordance so the turn isn't stuck
-          // sending forever.
-          if (controller?.signal.aborted) {
-            dropEmptyAssistantPlaceholder(convId, assistantMsgId);
-            return;
-          }
-          // Timed out waiting — surface the manual resend path (mirror the
-          // generic branch: drop the placeholder, KEEP the user's message,
-          // notice + reconcile + restore-evicted).
-          dropEmptyAssistantPlaceholder(convId, assistantMsgId);
-          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
-          await loadConversationMessages(convId);
-          if (activeConversationIdRef.current === convId) {
-            restoreEvictedUserTurn(convId, {
-              userMsgId,
-              assistantMsgId,
-              text,
-              timestamp: now,
-              ...(optimisticAttachments
-                ? { attachments: optimisticAttachments }
-                : {}),
-            });
-          }
         } else {
           // Non-abort, non-404 send failure (network/timeout/5xx/auth/429/4xx).
-          // Reaches here on a NON-retryable failure, or a retryable one whose
-          // single auto-retry was already spent (turn.autoRetried) — either way
-          // the user gets the manual resend affordance now.
+          // Surface the manual resend affordance immediately. Waiting for a
+          // speculative reconnect makes a dead request look like a slow model
+          // response and can hide failure for tens of seconds.
           // Drop the empty assistant placeholder but KEEP the user's message,
-          // and surface a status-specific notice so a stalled turn is never
-          // silent dead air (the typing indicator stalls at ~30s while the SSE
-          // idle timeout is 60s — without this the user just sees the dots
-          // vanish and nothing replace them, reading as "my message was lost").
+          // and surface a status-specific notice so a failed turn is never
+          // silent dead air.
           dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           const isAuth = status === 401 || status === 403;
           if (getSendValidationFailureMessage(err) !== null) {
@@ -2202,7 +2004,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
       } finally {
-        // Belt-and-braces: cancel any frame still pending so it can't commit a
+        // Belt-and-braces: invalidate any microtask still pending so it cannot commit a
         // stale snapshot into the next turn (idempotent — every exit path above
         // already flushed).
         flushStreamingText();
@@ -2229,6 +2031,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       appendLocalCommandTurn,
       applyStreamingModificationForConversation,
+      reconcileTerminalStream,
       loadConversationMessages,
       loadConversations,
       tryHandlePrefixedChatCommand,
@@ -2580,8 +2383,8 @@ export function useChatSend(deps: UseChatSendDeps) {
               if (isConversationCommitActive(convId)) {
                 setChatFirstTokenReceived(true);
               }
-              // Coalesce tokens into at most one commit per frame; flushed synchronously
-              // below before any terminal modification.
+              // Coalesce tokens delivered in one transport burst into a microtask;
+              // flush synchronously before terminal changes.
               scheduleStreamingText(convId, assistantMsgId, nextText);
             },
             "DM",
@@ -2590,7 +2393,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             buildChatViewMetadata(tab),
             // No overlay status on the action/DM path (its finally doesn't clear
             // it); still stream inline tool rows onto the turn (#13535),
-            // coalesced into the streaming frame with the text.
+            // coalesced into the current transport burst with the text.
             undefined,
             (event) => scheduleToolEvent(convId, assistantMsgId, event),
           );
@@ -2602,53 +2405,13 @@ export function useChatSend(deps: UseChatSendDeps) {
             setActionNotice(message, "error", 8_000);
           });
 
-          if (!data.text.trim()) {
-            if (data.failureKind) {
-              // Empty reply but the server flagged a failure class — surface the
-              // gate UI instead of silently dropping the turn (the failure
-              // branch below is an `else if`, unreachable once the text is
-              // empty). Mirrors the non-terminal handler above.
-              applyStreamingModificationForConversation(convId, {
-                messageId: assistantMsgId,
-                mode: "fail",
-                failureKind: data.failureKind,
-              });
-            } else {
-              applyStreamingModificationForConversation(convId, {
-                messageId: assistantMsgId,
-                mode: "drop",
-              });
-            }
-          } else if (
-            shouldApplyFinalStreamText(streamedAssistantText, data.text)
-          ) {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "complete",
-              fullText: data.text,
-              ...(data.failureKind ? { failureKind: data.failureKind } : {}),
-              ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
-            });
-          } else if (data.failureKind) {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "fail",
-              failureKind: data.failureKind,
-            });
-          }
-
-          // Snapshot a stopped/dropped partial before the reload below so it can
-          // survive a full-replace the server's copy lacks (see runQueuedChatSend).
-          const interruptedPartial =
-            !data.completed && streamedAssistantText.trim()
-              ? data.text.trim() || streamedAssistantText
-              : null;
-          if (interruptedPartial) {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "interrupt",
-            });
-          }
+          const interruptedPartial = reconcileTerminalStream(
+            convId,
+            assistantMsgId,
+            streamedAssistantText,
+            data,
+            { includeReasoning: false, includeAccountConnect: false },
+          );
 
           // Keep the visible thread authoritative when the server stores
           // additional action-generated messages during a successful send.
@@ -2698,7 +2461,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             });
           }
         } finally {
-          // Belt-and-braces: cancel any frame still pending (idempotent).
+          // Belt-and-braces: invalidate any pending scheduled flush (idempotent).
           flushStreamingText();
           if (chatAbortRef.current === controller) {
             chatAbortRef.current = null;
@@ -2739,6 +2502,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       loadConversations,
       pollCloudCredits,
       applyStreamingModificationForConversation,
+      reconcileTerminalStream,
       restoreEvictedUserTurn,
       dropEmptyAssistantPlaceholder,
       reattachInterruptedPartial,

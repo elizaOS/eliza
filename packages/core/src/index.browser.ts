@@ -32,6 +32,7 @@ export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export * from "./database";
+export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 // `isTruthyEnvValue` is pure string logic (no Node deps), so it is browser-safe
@@ -50,6 +51,10 @@ export {
 	isYouTubeUrl,
 } from "./features/documents/index";
 export type {
+	DeferredMessageScheduleCommit,
+	DeferredMessageScheduleRequest,
+	DeferredMessageScheduleResult,
+	DeferredMessageScheduler,
 	DraftRecord,
 	DraftRequest,
 	ListOptions,
@@ -69,10 +74,12 @@ export {
 	BaseMessageAdapter,
 	filterInMemory,
 	getDefaultMessageRefStore,
+	getDeferredMessageScheduler,
 	getSendPolicy,
 	MessageRefStore,
 	NotYetImplementedError,
 	rankScored,
+	registerDeferredMessageScheduler,
 	registerSendPolicy,
 	resetMissingServiceWarning,
 	resolveContactWeight,
@@ -101,6 +108,12 @@ export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-polic
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export {
+	__resetDirectActionRoutingRulesForTests,
+	type DirectActionRoutingRule,
+	getDirectActionRoutingRules,
+	registerDirectActionRoutingRule,
+} from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
@@ -117,6 +130,20 @@ export * from "./search";
 // browser-safe; cloud-shared's logger (bundled into the app UI) imports
 // isSensitiveKeyName/redactLogArgs from the root barrel (#12572 follow-up).
 export * from "./security/redact";
+export {
+	disclosureGateFailure,
+	evaluateOwnerExclusiveDisclosure,
+	getTrustedDeliveryAudience,
+	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+	type OwnerExclusiveDisclosureDecision,
+	type OwnerExclusiveDisclosureDenial,
+	ownerExclusiveDisclosureWasUsed,
+	PRIVACY_DENIED_TEXT,
+	type TrustedDeliveryAudience,
+	type TrustedDeliveryAudienceKind,
+	type TrustedDeliveryAudienceProvenance,
+	trustedDeliveryAudienceCacheKey,
+} from "./security/trusted-delivery-audience";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";

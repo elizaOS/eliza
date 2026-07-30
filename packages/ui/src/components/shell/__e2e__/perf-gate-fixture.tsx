@@ -18,16 +18,17 @@
 // Paired with run-chat-perf-gate.mjs and run-perf-gate-e2e.mjs.
 //
 // STREAMING DRIVER: the harness also exposes `window.__ELIZA_PERF_STREAM__` — a
-// function the perf gate calls once per simulated token to append a character
-// to the tail assistant message (flipping `responding` to true) and force a
-// REAL transcript re-render, so the gate can measure the frame budget of the
-// hot path the memoized widgets protect: streaming into the open chat. Driving
-// it from the fixture keeps ChatOverlay itself untouched.
+// function the perf gate calls once per simulated token to append characters
+// to the tail assistant message. The driver receives token events at rAF speed
+// but paints cumulative snapshots at the same bounded cadence as useChatSend,
+// so the gate measures the production hot path instead of an impossible
+// per-token paint loop. Driving it here keeps ChatOverlay itself untouched.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { MockAppProvider } from "../../../storybook/mock-providers";
+import { streamingRenderDelayMs } from "../../../state/streaming-render-cadence";
 import { ChatOverlay } from "../ChatOverlay";
 import type { ConversationNav } from "../conversation-nav";
 import type { ShellMessage } from "../shell-state";
@@ -78,7 +79,6 @@ function longThread(): ShellMessage[] {
 const TAIL_WIDGET_PREFIX =
   "Here is my answer so far, streaming in token by token. " +
   "[CHOICE:disambiguate id=perf-choice]\nyes=Yes, proceed\nno=No, cancel\n[/CHOICE]\n";
-
 declare global {
   interface Window {
     __ELIZA_PERF_STREAM__?: (chars?: number) => void;
@@ -90,11 +90,12 @@ function Harness(): React.JSX.Element {
   const [responding, setResponding] = React.useState(false);
   // The streamed tail turn is appended once, then grows character-by-character.
   const streamedRef = React.useRef("");
+  const lastStreamPaintRef = React.useRef<number | null>(null);
+  const pendingStreamPaintRef = React.useRef<number | null>(null);
 
-  // Expose a token driver the perf gate calls. Each call appends `chars` more
-  // characters of the streamed body (everything AFTER the widget prefix) and
-  // flips `responding`, producing the same reference-changing message-array
-  // update the real chat container emits per streamed token.
+  // Expose the transport-facing token driver. Calls append to the cumulative
+  // body immediately; trailing paints overwrite the parked snapshot, matching
+  // useChatSend while still producing real message-array updates.
   React.useEffect(() => {
     const tailId = "a-stream";
     const streamedBody =
@@ -114,21 +115,37 @@ function Harness(): React.JSX.Element {
         },
       ];
     });
-    window.__ELIZA_PERF_STREAM__ = (chars = 1) => {
-      streamedRef.current = streamedBody.slice(
-        0,
-        Math.min(streamedBody.length, streamedRef.current.length + chars),
-      );
+    const paintStream = () => {
+      pendingStreamPaintRef.current = null;
+      lastStreamPaintRef.current = performance.now();
       const nextContent = TAIL_WIDGET_PREFIX + streamedRef.current;
       setResponding(true);
-      // New array + new tail object each tick (matches the real container).
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tailId ? { ...m, content: nextContent } : m,
         ),
       );
     };
+    window.__ELIZA_PERF_STREAM__ = (chars = 1) => {
+      streamedRef.current = streamedBody.slice(
+        0,
+        Math.min(streamedBody.length, streamedRef.current.length + chars),
+      );
+      if (pendingStreamPaintRef.current !== null) return;
+      const delayMs = streamingRenderDelayMs(
+        lastStreamPaintRef.current,
+        performance.now(),
+      );
+      if (delayMs === 0) {
+        paintStream();
+        return;
+      }
+      pendingStreamPaintRef.current = window.setTimeout(paintStream, delayMs);
+    };
     return () => {
+      if (pendingStreamPaintRef.current !== null) {
+        window.clearTimeout(pendingStreamPaintRef.current);
+      }
       window.__ELIZA_PERF_STREAM__ = undefined;
     };
   }, []);

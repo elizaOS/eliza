@@ -182,6 +182,14 @@ describe("AppsRepository.create + reads", () => {
     const byId = await appsRepository.findById(created.id);
     expect(byId?.id).toBe(created.id);
 
+    expect(await appsRepository.findByIdInOrganizationForWrite(created.id, organizationId)).toEqual(
+      created,
+    );
+    const otherOrganizationId = await seedOrg();
+    expect(
+      await appsRepository.findByIdInOrganizationForWrite(created.id, otherOrganizationId),
+    ).toBeUndefined();
+
     const bySlug = await appsRepository.findBySlug(created.slug);
     expect(bySlug?.id).toBe(created.id);
 

@@ -45,6 +45,7 @@ function makeMessage(): Memory {
 function makeRuntime(actions: Action[]): IAgentRuntime {
 	return {
 		actions,
+		getRoom: vi.fn(async () => null),
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),

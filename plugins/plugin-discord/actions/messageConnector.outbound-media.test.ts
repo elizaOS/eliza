@@ -41,8 +41,10 @@ function createRuntime() {
 			error: vi.fn(),
 		},
 		getRoom: vi.fn(),
+		getMemoryById: vi.fn().mockResolvedValue(null),
 		ensureConnection: vi.fn().mockResolvedValue(undefined),
 		createMemory: vi.fn().mockResolvedValue(undefined),
+		reportError: vi.fn(),
 	} as unknown as IAgentRuntime;
 }
 

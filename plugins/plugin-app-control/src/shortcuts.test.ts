@@ -23,6 +23,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 	it("resolves explicit typed and ASR-normalized view navigation to VIEWS", () => {
 		for (const phrase of [
 			"open settings",
+			"open notes",
 			"go home",
 			"return to the main screen",
 			"open the home dashboard",

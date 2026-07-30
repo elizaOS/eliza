@@ -174,6 +174,39 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     expect(workflow).toContain("runner.temp }}/develop-live-evidence");
   });
 
+  test("the live PostgreSQL proof provisions the vector extension required by migrations", () => {
+    const workflow = fs.readFileSync(
+      path.join(repoRoot, ".github/workflows/develop-live.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("pgvector/pgvector:pg16");
+    expect(workflow).not.toMatch(/-p 127[.]0[.]0[.]1:5433:5432 postgres:/);
+    expect(workflow).toContain(
+      "-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres",
+    );
+    expect(workflow).toContain(
+      "-c \"CREATE ROLE eliza_test LOGIN PASSWORD 'test123'\"",
+    );
+    expect(workflow).toContain(
+      "POSTGRES_URL=postgresql://eliza_test:test123@127.0.0.1:5433/eliza_test",
+    );
+  });
+
+  test("Eliza Cloud streamed tool-call proof requires an explicit credentialed live run", () => {
+    expect(
+      manifest.find(
+        (entry) =>
+          entry.file ===
+          "plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts",
+      ),
+    ).toMatchObject({
+      optIn: "ELIZA_TOOLCALL_STREAM_LIVE",
+      requires: ["ELIZAOS_CLOUD_API_KEY"],
+      notes: expect.stringContaining("exact-head/output metadata"),
+    });
+  });
+
   test("computer-use service actuation is isolated behind a per-command acknowledgment", () => {
     const entry = manifest.find(
       (candidate) =>

@@ -116,6 +116,20 @@ describe("canActionRun — ACTION_ROLE_POLICY replaces the declared gate", () =>
 		expect(canActionRun(shell, ctx({ userRoles: ["GUEST"] }))).toBe(false);
 		expect(canActionRun(shell, ctx({ userRoles: ["ADMIN"] }))).toBe(true);
 	});
+
+	it("cannot loosen a component's owner-exclusive disclosure policy", () => {
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ SECRETS: "GUEST" });
+		_resetActionRolePolicyCacheForTests();
+		const secrets = action({
+			name: "SECRETS",
+			disclosureGate: { require: "owner_exclusive" },
+		});
+
+		expect(canActionRun(secrets, ctx({ userRoles: ["OWNER"] }))).toBe(false);
+		expect(actionGateFailure(secrets, ctx({ userRoles: ["OWNER"] }))).toContain(
+			"missing_attestation",
+		);
+	});
 });
 
 describe("warnOnUnmatchedActionRolePolicyKeys (#12087 Item 19)", () => {

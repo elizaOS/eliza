@@ -5,13 +5,11 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import {
   getIpKey,
   getRequestIp,
   rateLimit,
-  rateLimitConfigVerdict,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
@@ -108,36 +106,6 @@ export function createInferenceApp(): Hono<AppEnv> {
         };
       },
     );
-  });
-
-  let rateLimitConfigLogged = false;
-  app.use("*", async (c, next) => {
-    const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
-    const verdict = rateLimitConfigVerdict({
-      environment: env.ENVIRONMENT,
-      redisRateLimiting: env.REDIS_RATE_LIMITING,
-      hasRedisClient: Boolean(buildRedisClient(c.env)),
-    });
-    if (!rateLimitConfigLogged) {
-      rateLimitConfigLogged = true;
-      if (verdict === "fail-closed") {
-        logger.error(
-          "[inference-app] FATAL: REDIS_RATE_LIMITING=true in production but no Redis client is reachable. Failing closed.",
-        );
-      } else if (verdict === "warn-disabled") {
-        logger.warn("[inference-app] Rate limiting is disabled in production");
-      }
-    }
-    if (verdict === "fail-closed") {
-      return c.json(
-        {
-          error: "Rate limiting misconfigured",
-          code: "RATE_LIMIT_UNAVAILABLE",
-        },
-        503,
-      );
-    }
-    await next();
   });
 
   app.use(

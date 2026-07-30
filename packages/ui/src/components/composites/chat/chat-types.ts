@@ -101,6 +101,8 @@ export interface ChatVoiceSpeaker {
 
 export interface ChatMessageData {
   avatarUrl?: string;
+  /** Stable UI row identity across optimistic-to-durable id reconciliation. */
+  clientRenderId?: string;
   from?: string;
   fromUserName?: string;
   id: string;
@@ -112,6 +114,8 @@ export interface ChatMessageData {
   role: string;
   source?: string;
   text: string;
+  /** Message creation time as epoch milliseconds, when the transport supplies it. */
+  timestamp?: number;
   /** Voice speaker attribution when this message arrived via voice (R10 §4.1). */
   voiceSpeaker?: ChatVoiceSpeaker;
   /**

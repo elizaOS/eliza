@@ -5,7 +5,12 @@
  * through this typed dependency object instead of importing LifeOps internals.
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarRecurrenceScope,
+} from "@elizaos/shared";
 
 /**
  * Arguments for a single LLM call routed through the host's model runner.
@@ -72,10 +77,108 @@ export interface CalendarTravelBufferDep {
     event: Pick<LifeOpsCalendarEvent, "id" | "location">;
     travelIntent: CalendarTravelIntent;
   }): Promise<CalendarTravelBufferResult>;
+  /**
+   * Persist the computed interval through CalendarService before the action
+   * claims that travel time was added.
+   */
+  reserveTravelBuffer(args: {
+    runtime: IAgentRuntime;
+    eventId: string;
+    travelBuffer: CalendarTravelBufferResult;
+  }): Promise<void>;
   /** Narrow an unknown error to the travel-time-unavailable case. */
   isTravelTimeUnavailable(
     error: unknown,
   ): error is { code: string; message: string };
+}
+
+export interface CalendarMutationApprovalResult {
+  readonly requestId: string;
+  readonly action: "schedule_event" | "modify_event" | "cancel_event";
+  /**
+   * Mirrors the host approval queue's state, including the execution-protocol
+   * states a dispatch can settle into. A calendar mutation that failed
+   * retryably, or whose provider outcome is unknown and needs reconciliation,
+   * is a real row state — narrowing it here would report a row as something it
+   * is not.
+   */
+  readonly state:
+    | "pending"
+    | "approved"
+    | "executing"
+    | "retryable"
+    | "reconciliation_required"
+    | "done"
+    | "rejected"
+    | "expired";
+  /** Timestamp read back from the durable approval row after enqueue/replay. */
+  readonly acceptedAt: string;
+  /** Stable queue-level intent key which made duplicate enqueue safe. */
+  readonly idempotencyKey: string;
+  /** True only when the queue verified and returned an existing request. */
+  readonly replayed: boolean;
+  readonly text: string;
+}
+
+type PreparedCalendarCreateRequest = CreateLifeOpsCalendarEventRequest & {
+  readonly side: "owner" | "agent";
+  readonly grantId: string;
+  readonly calendarId: string;
+  readonly startAt: string;
+  readonly endAt: string;
+  readonly timeZone: string;
+};
+
+export interface CalendarMutationUpdateRequest {
+  readonly side: "owner" | "agent";
+  readonly grantId: string;
+  readonly calendarId: string;
+  readonly eventId: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly location?: string;
+  readonly startAt?: string;
+  readonly endAt?: string;
+  readonly timeZone?: string;
+  readonly attendees?: CreateLifeOpsCalendarEventAttendee[];
+  readonly recurrence?: string[];
+  readonly recurrenceScope?: LifeOpsCalendarRecurrenceScope;
+  readonly notifyAttendees: boolean;
+}
+
+export interface CalendarMutationCancelRequest {
+  readonly side: "owner" | "agent";
+  readonly grantId: string;
+  readonly calendarId: string;
+  readonly eventId: string;
+  readonly recurrenceScope?: LifeOpsCalendarRecurrenceScope;
+  readonly notifyAttendees: boolean;
+}
+
+/**
+ * Approval boundary for conversational writes. The calendar action resolves
+ * and validates an exact source/target, but only the host-owned approval queue
+ * may persist mutation intent; provider CRUD happens later in the ledger.
+ */
+export interface CalendarMutationGatewayDep {
+  schedule(args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    request: PreparedCalendarCreateRequest;
+    travelBuffer?: CalendarTravelBufferResult;
+  }): Promise<CalendarMutationApprovalResult>;
+  modify(args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    targetEvent: LifeOpsCalendarEvent;
+    request: CalendarMutationUpdateRequest;
+  }): Promise<CalendarMutationApprovalResult>;
+  cancel(args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    targetEvent: LifeOpsCalendarEvent;
+    request: CalendarMutationCancelRequest;
+  }): Promise<CalendarMutationApprovalResult>;
 }
 
 /**
@@ -101,4 +204,10 @@ export interface CalendarActionDeps {
   }): Promise<string[]>;
   /** Optional travel-buffer integration (LifeOps travel domain). */
   travelBuffer?: CalendarTravelBufferDep;
+  /**
+   * Immutable owner-approval boundary for all conversational calendar writes.
+   * Hosts without an approval ledger may still use calendar reads, but writes
+   * fail explicitly instead of mutating the provider directly.
+   */
+  mutationGateway?: CalendarMutationGatewayDep;
 }

@@ -36,6 +36,10 @@ export {
   toElizaError,
 } from "../../../core/src/errors.ts";
 export {
+  isBlockedHostname,
+  isPrivateIpAddress,
+} from "../../../core/src/network/ssrf.ts";
+export {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "../../../core/src/runtime-route-context.ts";

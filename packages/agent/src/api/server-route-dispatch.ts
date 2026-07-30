@@ -10,6 +10,7 @@
  */
 import type http from "node:http";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { handleApprovalRoute } from "./approval-routes.ts";
 import { handleChatRoutes } from "./chat-routes.ts";
 import { handleConversationRoutes } from "./conversation-routes.ts";
@@ -71,6 +72,7 @@ interface DispatchRouteContext extends DispatchRouteHelpers {
   url: URL;
   state: ServerState;
   inboxCallerAuthorization?: InboxRouteCallerAuthorization;
+  callerAuthorization?: AgentHttpRequestAuthorization;
 }
 
 interface CloudAndCoreRouteContext extends DispatchRouteContext {
@@ -282,6 +284,7 @@ export async function handleConversationRouteGroup({
   json,
   error,
   readJsonBody,
+  callerAuthorization,
 }: DispatchRouteContext): Promise<boolean> {
   if (pathname.startsWith("/api/conversations")) {
     return handleConversationRoutes({
@@ -293,6 +296,7 @@ export async function handleConversationRouteGroup({
       json,
       error,
       state: coerce<ConversationRouteArg["state"]>(state),
+      callerAuthorization,
     });
   }
 
@@ -316,6 +320,7 @@ export async function handleConversationRouteGroup({
     json,
     error,
     state: coerce<ChatRouteArg["state"]>(state),
+    callerAuthorization,
   });
 }
 

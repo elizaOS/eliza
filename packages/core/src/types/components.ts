@@ -12,6 +12,7 @@ import type {
 	ContextGate,
 	RoleGate,
 } from "./contexts";
+import type { EffectReceipt } from "./effects";
 import type { Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -234,8 +235,10 @@ export interface EvaluationResult {
 }
 
 /**
- * Callback function type for handlers. actionName is optional so callers can attribute
- * the response to the action that produced it without parsing content (backward compatible).
+ * Delivers handler output to a transport. `actionName` is present only when an
+ * executing action produced the callback; message-service deliveries such as
+ * simple, early, terminal, attachment, and voice output omit it. Consumers must
+ * not infer action provenance from `Content.actions`.
  */
 export type HandlerCallback = (
 	response: Content,
@@ -326,6 +329,15 @@ export const HOOK_MODES: readonly ActionMode[] = [
  */
 export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
 
+/**
+ * Non-overridable policy for components whose prompt or result can contain
+ * owner-private data. Unlike a role gate, this binds access to the attested
+ * destination audience as well as the actor.
+ */
+export interface DisclosureGate {
+	require: "owner_exclusive";
+}
+
 export interface Action {
 	/** Action name */
 	name: string;
@@ -372,7 +384,14 @@ export interface Action {
 	 */
 	override?: boolean;
 
-	/** Optional tags for categorization */
+	/**
+	 * Optional structural capability tags. Effectful actions use
+	 * `capability:write|update|delete|schedule|send|delegate|execute`; add
+	 * `effect:idempotent` only when every invocation carries a stable operation
+	 * key and the authoritative provider or store safely replays it. Add
+	 * `effect:receipt-required` only after every successful visible branch binds
+	 * exact user-facing text to a validated effect receipt.
+	 */
 	tags?: string[];
 
 	/**
@@ -508,6 +527,17 @@ export interface Action {
 	allowAdditionalParameters?: boolean;
 
 	/**
+	 * Whether provider-native tool calls should use strict JSON Schema mode.
+	 *
+	 * Defaults to true. Set false only for an aggregator whose single planner
+	 * tool intentionally spans multiple parameter shapes and therefore needs
+	 * optional fields to remain optional on the wire. Runtime argument
+	 * validation and the handler's resolved child contract still enforce the
+	 * selected operation before execution.
+	 */
+	toolSchemaStrict?: boolean;
+
+	/**
 	 * Domain contexts this action belongs to.
 	 * Used by the context-routing classifier to scope the planner's action search.
 	 * An action may belong to multiple contexts (e.g., a token-swap action is both
@@ -526,6 +556,13 @@ export interface Action {
 
 	/** Optional role gate checked by planners before exposing this action. */
 	roleGate?: RoleGate;
+
+	/**
+	 * Destination-audience policy enforced before catalog exposure, execution,
+	 * provider composition, and visible delivery. Operator role policy cannot
+	 * weaken this gate.
+	 */
+	disclosureGate?: DisclosureGate;
 
 	/**
 	 * Optional connector account policy checked by planner tool exposure and
@@ -769,6 +806,9 @@ export interface Provider {
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 
+	/** Non-overridable destination-audience policy for sensitive context. */
+	disclosureGate?: DisclosureGate;
+
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];
 
@@ -837,6 +877,9 @@ export interface ActionResult {
 	/** Optional text description of the result */
 	text?: string;
 
+	/** Marks raw machine-only output that must not render as assistant prose. */
+	transcriptVisibility?: "internal";
+
 	/**
 	 * Optional clean user-facing answer. When set, the planner-loop's
 	 * terminal-FINISH fallback uses this as the reply shown to the user
@@ -860,6 +903,20 @@ export interface ActionResult {
 	 * than echoing the action verbatim.
 	 */
 	verifiedUserFacing?: boolean;
+
+	/**
+	 * Canonical mutation outcomes produced by this action. `success` alone is
+	 * never proof that an external change committed; only an applied receipt with
+	 * commit proof can ground a user-facing completion claim.
+	 */
+	effectReceipts?: readonly EffectReceipt[];
+
+	/**
+	 * Receipt IDs described by the exact `userFacingText`. The runtime accepts a
+	 * completion confirmation only when every ID resolves to an active applied
+	 * receipt from this turn.
+	 */
+	userFacingEffectReceiptIds?: readonly string[];
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

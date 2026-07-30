@@ -157,8 +157,13 @@ test("browser route is chat/voice-drivable through the agent bridge", async ({
   expect(click?.ok).toBe(true);
 
   const browserWorkspaceView = page.getByTestId("browser-workspace-view");
+  await browserWorkspaceView
+    .getByTestId("browser-workspace-tab-fold-control")
+    .click();
+  // The folded switcher is a dialog portal, so its tab cards live outside the
+  // workspace subtree even though the fold control remains in the toolbar.
   await expect(
-    browserWorkspaceView.locator('[role="tab"][title="https://example.com/"]'),
+    page.locator('[role="tab"][title="https://example.com/"]'),
   ).toHaveCount(1, { timeout: 15_000 });
   await expect(page.getByTestId("browser-workspace-address-input")).toHaveValue(
     "https://example.com/",

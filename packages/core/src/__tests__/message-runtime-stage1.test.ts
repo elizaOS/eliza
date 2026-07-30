@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
+import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
@@ -1232,6 +1233,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"contexts",
 			"intents",
 			"replyText",
+			"replyEffectStatus",
 			"candidateActionNames",
 		]);
 		expect(required).not.toContain("shouldRespond");
@@ -2566,6 +2568,77 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("stamps an exact internal VIEWS diagnostic before simple delivery", async () => {
+		const inventory = ["available_views:", "  type: gui", "  count: 0"].join(
+			"\n",
+		);
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["VIEWS"],
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Inspect available views.",
+				toolCalls: [
+					{
+						id: "views-list-1",
+						name: "VIEWS",
+						args: { action: "list" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Return the tool result.",
+				messageToUser: inventory,
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "VIEWS",
+				description: "List available views.",
+				parameters: [
+					{
+						name: "action",
+						description: "View operation",
+						required: true,
+						schema: { type: "string", enum: ["list"] },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: inventory,
+					transcriptVisibility: "internal",
+					data: { views: [] },
+				}),
+			},
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what apps are available?",
+				mentionContext: { isMention: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") return;
+		expect(result.result.responseContent?.transcriptVisibility).toBe(
+			"internal",
+		);
+		expect(result.result.responseContent?.text).toContain("available_views:");
+		expect(
+			result.result.responseMessages[0]?.content.transcriptVisibility,
+		).toBe("internal");
+	});
+
 	it("routes progress-only coding delegation replies through the planner", () => {
 		const routed = messageHandlerFromFieldResult(
 			{
@@ -3489,6 +3562,90 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
+		const canonicalText = "Done — the pickup reminder is scheduled.";
+		const observedAt = "2026-07-27T18:00:00.000Z";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The reminder still needs to be persisted.",
+				contexts: ["tasks"],
+				candidateActionNames: ["CREATE_REMINDER"],
+				replyText: canonicalText,
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Persist the reminder.",
+				toolCalls: [
+					{
+						id: "reminder-1",
+						name: "CREATE_REMINDER",
+						args: {},
+					},
+				],
+			},
+		]);
+		runtime.actions = [
+			{
+				name: "CREATE_REMINDER",
+				description: "Persist a reminder.",
+				tags: ["capability:write", "capability:schedule"],
+				contexts: ["tasks"],
+				suppressPostActionContinuation: true,
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: canonicalText,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					effectReceipts: [
+						{
+							receiptId: "receipt-reminder-1",
+							operation: "lifeops.reminder.create",
+							resource: {
+								kind: "lifeops.reminder",
+								id: "pickup-reminder",
+							},
+							artifacts: [],
+							idempotency: {
+								key: "pickup-reminder-request",
+								replayed: false,
+							},
+							observedAt,
+							outcome: "applied",
+							commit: {
+								kind: "durable",
+								id: "transaction-reminder-1",
+								committedAt: observedAt,
+							},
+						},
+					],
+					userFacingEffectReceiptIds: ["receipt-reminder-1"],
+				}),
+			},
+		] as IAgentRuntime["actions"];
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Please remind me about pickup." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "On it." }),
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(canonicalText);
+			expect(result.result.responseContent?.effectReceiptIds).toEqual([
+				"receipt-reminder-1",
+			]);
+		}
+	});
+
 	it("uses the Stage 1 ack when an async action finishes without planner prose", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -4317,6 +4474,293 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 		// Only Stage 1 should have run — no planner reroute, no extra model calls.
 		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
+	it("forces a registered tracked-work read before reply output and emits the canonical recap once", async () => {
+		const recap = "Today: completed Sort receipts; still open Reply to Jordan.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "There is not much to report from today.",
+				extra: { requiresTool: false },
+			}),
+			{
+				thought: "Read the owner's tracked day.",
+				toolCalls: [
+					{
+						id: "brief-1",
+						name: "BRIEF",
+						args: { action: "compose_evening", period: "today" },
+					},
+				],
+			},
+		]);
+		const briefHandler = vi.fn(
+			async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: recap, source: "action", action: "BRIEF" });
+				return {
+					success: true,
+					text: recap,
+					userFacingText: recap,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					data: {
+						actionName: "BRIEF",
+						subaction: "compose_evening",
+						completed: ["Sort receipts"],
+						open: ["Reply to Jordan"],
+					},
+				};
+			},
+		);
+		runtime.actions = [
+			{
+				name: "BRIEF",
+				similes: [],
+				tags: ["domain:briefing", "resource:tracked-work", "capability:read"],
+				description: "Read and compose the owner's tracked day.",
+				contexts: ["briefing", "tasks"],
+				suppressPostActionContinuation: true,
+				parameters: [
+					{
+						name: "action",
+						description: "Brief operation",
+						schema: {
+							type: "string",
+							enum: ["compose_evening"],
+						},
+					},
+					{
+						name: "period",
+						description: "Brief period",
+						schema: {
+							type: "string",
+							enum: ["today"],
+						},
+					},
+				],
+				validate: async () => true,
+				handler: briefHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.tracked-work-recap",
+			actionNames: ["BRIEF"],
+			requiredActionTags: [
+				"domain:briefing",
+				"resource:tracked-work",
+				"capability:read",
+			],
+			contexts: ["briefing", "tasks"],
+			matches: (text) => /\brecap my day\b/iu.test(text),
+		});
+		const deliveredVisibleTexts = new Set<string>();
+		const delivered: string[] = [];
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Recap my day." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) {
+					delivered.push(content.text);
+					deliveredVisibleTexts.add(content.text.toLowerCase());
+				}
+				return [];
+			},
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(result.messageHandler.plan.requiresTool).toBe(true);
+		expect(result.messageHandler.plan.reply).toBeUndefined();
+		expect(result.messageHandler.plan.candidateActions).toContain("BRIEF");
+		expect(briefHandler).toHaveBeenCalledTimes(1);
+		expect(delivered).toEqual([recap]);
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.responseMessages).toEqual([]);
+		}
+	});
+
+	it("does not treat a tasks-context CHOOSE_OPTION action as a recap reader", async () => {
+		const chooseHandler = vi.fn(async () => ({
+			success: true,
+			text: "Choice accepted.",
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText:
+					"I don't have today's log in front of me — no notes, tasks, or messages from earlier today.",
+				extra: { requiresTool: false },
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "CHOOSE_OPTION",
+				similes: [],
+				tags: [],
+				description: "Resolve a pending user choice.",
+				contexts: ["general", "tasks", "admin"],
+				validate: async () => true,
+				handler: chooseHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.no-reader-recap",
+			actionNames: ["CHOOSE_OPTION"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["tasks"],
+			matches: (text) => /\brecap my day\b/iu.test(text),
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Recap my day." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(chooseHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(result.messageHandler.plan.requiresTool).toBe(false);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"wasn't able to check",
+			);
+			expect(result.result.responseContent?.text).not.toContain(
+				"no notes, tasks",
+			);
+		}
+	});
+
+	it("keeps literal visible-chat recap on the direct reply path", async () => {
+		const briefHandler = vi.fn(async () => ({
+			success: true,
+			text: "This should not run.",
+		}));
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "We discussed the launch checklist and demo timing.",
+				extra: { requiresTool: false },
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "BRIEF",
+				similes: [],
+				tags: ["resource:tracked-work", "capability:read"],
+				description: "Read the tracked owner day.",
+				contexts: ["briefing", "tasks"],
+				validate: async () => true,
+				handler: briefHandler,
+			},
+		] as never;
+		registerDirectActionRoutingRule(runtime, {
+			id: "test.tracked-recap-not-chat-recall",
+			actionNames: ["BRIEF"],
+			requiredActionTags: ["resource:tracked-work", "capability:read"],
+			contexts: ["briefing", "tasks"],
+			matches: (text) =>
+				/\brecap\b/iu.test(text) &&
+				!/\b(?:chat|conversation|thread)\b/iu.test(text),
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Recap our conversation." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(briefHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"We discussed the launch checklist and demo timing.",
+			);
+		}
+	});
+
+	it("does not let an unrelated successful tool ground a completion claim or start a second planner loop", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				candidateActionNames: ["WEB_SEARCH"],
+				replyText: "",
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Search for the requested public information.",
+				toolCalls: [
+					{
+						id: "search-1",
+						name: "WEB_SEARCH",
+						args: { query: "demo weather" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Confirm the request.",
+				messageToUser:
+					"You're all set — I've scheduled your reminder for tomorrow.",
+			}),
+		]);
+		const searchHandler = vi.fn(async () => ({
+			success: true,
+			text: "Sunny.",
+			data: { query: "demo weather" },
+		}));
+		runtime.actions = [
+			{
+				name: "WEB_SEARCH",
+				similes: [],
+				tags: ["resource:web", "capability:read"],
+				description: "Read current public information.",
+				contexts: ["general", "web"],
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				validate: async () => true,
+				handler: searchHandler,
+			},
+		] as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Search for the demo weather." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(searchHandler).toHaveBeenCalledTimes(1);
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toContain("couldn't verify");
+			expect(result.result.responseContent?.text).not.toContain(
+				"scheduled your reminder",
+			);
+		}
 	});
 });
 

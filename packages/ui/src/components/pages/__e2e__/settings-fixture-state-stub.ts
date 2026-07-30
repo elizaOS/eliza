@@ -32,6 +32,13 @@ const fixtureState: Record<string, unknown> = {
   setState: () => {},
   setTab: () => {},
   setActionNotice: () => {},
+  handleCloudLogin: async (popup: Window | null = null) => {
+    document.documentElement.dataset.elizaSettingsCloudLoginPopup = Boolean(
+      popup && !popup.closed,
+    )
+      ? "live"
+      : "blocked";
+  },
 };
 
 const useApp = () => fixtureState;

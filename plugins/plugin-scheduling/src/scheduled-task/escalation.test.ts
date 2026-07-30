@@ -81,6 +81,16 @@ describe("resolveEffectiveLadder", () => {
     expect(out.steps).toBe(inline);
   });
 
+  it("treats empty inline steps as an explicit no-escalation policy", () => {
+    const steps: [] = [];
+    const out = resolveEffectiveLadder(
+      task({ priority: "high", escalation: { steps } }),
+      reg,
+    );
+    expect(out.ladderKey).toBe("inline");
+    expect(out.steps).toBe(steps);
+  });
+
   it("resolves a named ladderKey when no inline steps", () => {
     const out = resolveEffectiveLadder(
       task({ priority: "low", escalation: { ladderKey: "custom" } }),

@@ -369,8 +369,17 @@ test.describe("dashboard shell interaction framerate", () => {
     // --- Scenario E: /chat -> another-view transition -------------------------
     const viewTransitionSummary = await measureFrames(page, async () => {
       await page.evaluate(() => {
-        window.history.pushState(null, "", "/settings");
-        window.dispatchEvent(new PopStateEvent("popstate"));
+        window.dispatchEvent(
+          new CustomEvent("eliza:navigate:view", {
+            detail: {
+              viewId: "settings",
+              viewPath: "/settings",
+              viewLabel: "Settings",
+              viewType: "gui",
+              alwaysOnTop: false,
+            },
+          }),
+        );
       });
       await expect(page.getByTestId("settings-shell")).toBeVisible({
         timeout: 20_000,

@@ -71,6 +71,11 @@ function makeDurableHarness(): DurableHarness {
 	const sends: Sent[] = [];
 	let handleCalls = 0;
 	let crashMode: CrashMode = "none";
+	// Canonical room state backing the delivery-audience attestation: the
+	// manager calls ensureConnection before attesting, so the store mirrors
+	// what the connector declared and survives simulated restarts.
+	const rooms = new Map<UUID, { id: UUID; type?: string }>();
+	const participantsByRoom = new Map<UUID, UUID[]>();
 
 	const indexMemory = (memory: Memory, id: UUID, tableName: string) => {
 		const stored = { ...memory, id };
@@ -94,7 +99,17 @@ function makeDurableHarness(): DurableHarness {
 		getSetting: (key: string) =>
 			key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
 		getService: () => null,
-		ensureConnection: vi.fn(async () => {}),
+		ensureConnection: vi.fn(
+			async (params: { entityId: UUID; roomId: UUID; type?: string }) => {
+				rooms.set(params.roomId, { id: params.roomId, type: params.type });
+				participantsByRoom.set(params.roomId, [params.entityId, AGENT_ID]);
+			},
+		),
+		getRoom: vi.fn(async (roomId: UUID) => rooms.get(roomId) ?? null),
+		getParticipantsForRoom: vi.fn(
+			async (roomId: UUID) => participantsByRoom.get(roomId) ?? [],
+		),
+		reportError: vi.fn(),
 		getMemoryById: vi.fn(async (id: UUID) => memoriesById.get(id) ?? null),
 		createMemory: vi.fn(
 			async (memory: Memory, tableName = "messages", _unique?: boolean) => {

@@ -13,12 +13,23 @@ import type {
 	Memory,
 	State,
 	ViewCapability,
+	ViewCapabilityParameter,
 	ViewType,
 } from "@elizaos/core";
-import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
+import {
+	hasOwnerAccess as defaultOwnerAccessFn,
+	logger,
+	testSchemaPattern,
+} from "@elizaos/core";
+import {
+	AGENT_SURFACE_CAPABILITY_IDS,
+	STANDARD_CAPABILITIES,
+} from "@elizaos/shared";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
 	createViewsClient,
+	parseViewInteractionResponse,
+	readViewInteractionReceipt,
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
@@ -691,6 +702,14 @@ function readViewTargetOption(
 	);
 }
 
+function readCatalogViewTargetOption(
+	options?: Record<string, unknown>,
+): string | null {
+	return (
+		readStringOption(options, "view") ?? readStringOption(options, "viewId")
+	);
+}
+
 const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"action",
 	"mode",
@@ -699,6 +718,8 @@ const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"id",
 	"name",
 	"target",
+	"subview",
+	"section",
 	"views",
 	"viewIds",
 	"targets",
@@ -728,6 +749,13 @@ type ResolvedViewCapability = {
 	view: ViewSummary;
 	capability: ViewCapability;
 };
+
+const STANDARD_VIEW_CAPABILITY_BY_KEY = new Map<string, string>(
+	[
+		...Object.values(STANDARD_CAPABILITIES),
+		...AGENT_SURFACE_CAPABILITY_IDS,
+	].map((id) => [normalizeCapabilityKey(id), id]),
+);
 
 type OperationFamily = "create" | "read" | "update" | "delete" | "select";
 
@@ -1015,61 +1043,133 @@ function resolveViewCapability({
 	return best?.candidate ?? null;
 }
 
+type CapabilityParamsResolution =
+	| { ok: true; params: Record<string, unknown> | undefined }
+	| { ok: false; error: string };
+
+function isCapabilityParamsRecord(
+	value: unknown,
+): value is Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateCapabilityParam(
+	name: string,
+	schema: ViewCapabilityParameter,
+	value: unknown,
+): string | null {
+	const typeError = (expected: string) => {
+		const actual =
+			value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+		return `parameter "${name}" must be ${expected}, received ${actual}`;
+	};
+	switch (schema.type) {
+		case "string":
+			if (typeof value !== "string") return typeError("a string");
+			if (schema.minLength !== undefined && value.length < schema.minLength) {
+				return `parameter "${name}" must be at least ${schema.minLength} character(s)`;
+			}
+			if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+				return `parameter "${name}" must be at most ${schema.maxLength} character(s)`;
+			}
+			if (schema.pattern !== undefined) {
+				const result = testSchemaPattern(schema.pattern, value);
+				if (!result.ok) return `parameter "${name}" ${result.reason}`;
+			}
+			break;
+		case "number":
+			if (typeof value !== "number" || !Number.isFinite(value))
+				return typeError("a finite number");
+			break;
+		case "integer":
+			if (typeof value !== "number" || !Number.isSafeInteger(value))
+				return typeError("an integer");
+			break;
+		case "boolean":
+			if (typeof value !== "boolean") return typeError("a boolean");
+			break;
+		case "array":
+			if (!Array.isArray(value)) return typeError("an array");
+			break;
+		case "object":
+			if (!isCapabilityParamsRecord(value)) return typeError("an object");
+			break;
+		default:
+			return `parameter "${name}" declares unsupported schema type "${schema.type}"`;
+	}
+	if (
+		schema.enum &&
+		!schema.enum.some((candidate) => Object.is(candidate, value))
+	) {
+		return `parameter "${name}" must be one of: ${schema.enum.join(", ")}`;
+	}
+	if (
+		typeof value === "number" &&
+		schema.minimum !== undefined &&
+		value < schema.minimum
+	) {
+		return `parameter "${name}" must be at least ${schema.minimum}`;
+	}
+	if (
+		typeof value === "number" &&
+		schema.maximum !== undefined &&
+		value > schema.maximum
+	) {
+		return `parameter "${name}" must be at most ${schema.maximum}`;
+	}
+	return null;
+}
+
 function readCapabilityParams(
 	options: Record<string, unknown> | undefined,
 	capability?: ViewCapability | null,
-	resolvedView?: ViewSummary | null,
 	messageText?: string,
-): Record<string, unknown> | undefined {
+): CapabilityParamsResolution {
 	const params: Record<string, unknown> = {};
-	const capabilityParamKeys = new Set(Object.keys(capability?.params ?? {}));
+	const capabilitySchema = capability?.params ?? {};
+	const capabilityParamKeys = new Set(Object.keys(capabilitySchema));
 	const nested = options?.params;
-	if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-		Object.assign(params, nested);
+	if (nested !== undefined && !isCapabilityParamsRecord(nested)) {
+		return { ok: false, error: 'parameter "params" must be an object' };
 	}
 
 	for (const [key, value] of Object.entries(options ?? {})) {
+		if (key === "params") continue;
 		if (key.startsWith("params.")) {
-			const paramKey = key.slice("params.".length).trim();
-			if (paramKey) params[paramKey] = value;
-			continue;
+			return {
+				ok: false,
+				error: `dotted capability parameter "${key}" is not supported; use the params object`,
+			};
 		}
 		if (capabilityParamKeys.has(key)) {
 			params[key] = value;
 			continue;
 		}
-		if (!CAPABILITY_PARAM_RESERVED_KEYS.has(key)) {
+		if (!capability && !CAPABILITY_PARAM_RESERVED_KEYS.has(key)) {
 			params[key] = value;
 		}
 	}
 
-	const unresolvedTarget = readViewTargetOption(options);
-	const capabilityFamily = capability
-		? operationFamilyForCapability(capability)
-		: null;
-	if (
-		capabilityFamily !== "delete" &&
-		unresolvedTarget &&
-		!targetMatchesResolvedView(unresolvedTarget, resolvedView) &&
-		!params.title &&
-		capabilityParamKeys.has("title")
-	) {
-		params.title = unresolvedTarget;
-	} else if (
-		capabilityFamily !== "delete" &&
-		unresolvedTarget &&
-		!targetMatchesResolvedView(unresolvedTarget, resolvedView) &&
-		!params.name &&
-		capabilityParamKeys.has("name")
-	) {
-		params.name = unresolvedTarget;
+	if (isCapabilityParamsRecord(nested)) {
+		if (capability) {
+			const unknownKey = Object.keys(nested).find(
+				(key) => !capabilityParamKeys.has(key),
+			);
+			if (unknownKey) {
+				return {
+					ok: false,
+					error: `capability "${capability.id}" does not accept parameter "${unknownKey}"`,
+				};
+			}
+		}
+		Object.assign(params, nested);
 	}
 
 	const intent = readStringOption(options, "intent");
 	if (intent) {
 		Object.assign(
 			params,
-			deriveParamsFromIntent(intent, capabilityParamKeys, params),
+			deriveParamsFromIntent(intent, capability, capabilityParamKeys, params),
 		);
 	}
 	if (messageText && capability) {
@@ -1085,20 +1185,38 @@ function readCapabilityParams(
 	}
 
 	for (const key of Object.keys(params)) {
-		if (
-			params[key] === undefined ||
-			params[key] === null ||
-			params[key] === ""
-		) {
+		if (params[key] === undefined) {
 			delete params[key];
 		}
 	}
 
-	return Object.keys(params).length > 0 ? params : undefined;
+	if (capability) {
+		for (const [name, schema] of Object.entries(capabilitySchema)) {
+			const value = params[name];
+			if (schema.required === true && value === undefined) {
+				return {
+					ok: false,
+					error: `capability "${capability.id}" requires parameter "${name}"`,
+				};
+			}
+			if (value === undefined) continue;
+			const validationError = validateCapabilityParam(name, schema, value);
+			if (validationError)
+				return {
+					ok: false,
+					error: `capability "${capability.id}" ${validationError}`,
+				};
+		}
+	}
+	return {
+		ok: true,
+		params: Object.keys(params).length > 0 ? params : undefined,
+	};
 }
 
 function deriveParamsFromIntent(
 	intent: string,
+	capability: ViewCapability | null | undefined,
 	capabilityParamKeys: Set<string>,
 	existing: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1107,23 +1225,33 @@ function deriveParamsFromIntent(
 	if (!trimmed) return derived;
 
 	const title = extractIntentTitle(trimmed);
-	if (capabilityParamKeys.has("title") && !existing.title) {
-		derived.title = title ?? trimmed;
+	if (capabilityParamKeys.has("title") && existing.title === undefined) {
+		if (title) derived.title = title;
+		else if (
+			capability &&
+			operationFamilyForCapability(capability) === "create"
+		) {
+			derived.title = trimmed;
+		}
 	}
 	const body = extractIntentTextAfter(trimmed, ["body", "content"]);
-	if (capabilityParamKeys.has("body") && !existing.body && body) {
+	if (capabilityParamKeys.has("body") && existing.body === undefined && body) {
 		derived.body = body;
 	}
 	const notes = extractIntentTextAfter(trimmed, ["notes", "note"]);
-	if (capabilityParamKeys.has("notes") && !existing.notes && notes) {
+	if (
+		capabilityParamKeys.has("notes") &&
+		existing.notes === undefined &&
+		notes
+	) {
 		derived.notes = notes;
 	}
 	const date = extractIsoDate(trimmed);
-	if (capabilityParamKeys.has("date") && !existing.date && date) {
+	if (capabilityParamKeys.has("date") && existing.date === undefined && date) {
 		derived.date = date;
 	}
 	const time = extractClockTime(trimmed);
-	if (capabilityParamKeys.has("time") && !existing.time && time) {
+	if (capabilityParamKeys.has("time") && existing.time === undefined && time) {
 		derived.time = time;
 	}
 
@@ -1222,18 +1350,6 @@ function extractIsoDate(intent: string): string | null {
 
 function extractClockTime(intent: string): string | null {
 	return /\b(?:at|time)\s+(\d{1,2}:\d{2})\b/i.exec(intent)?.[1] ?? null;
-}
-
-function targetMatchesResolvedView(
-	target: string,
-	resolvedView?: ViewSummary | null,
-): boolean {
-	const normalizedTarget = normalizeCapabilityKey(target);
-	return !!(
-		resolvedView &&
-		(normalizeCapabilityKey(resolvedView.id) === normalizedTarget ||
-			normalizeCapabilityKey(resolvedView.label) === normalizedTarget)
-	);
 }
 
 function isCloseAllRequest(
@@ -1893,6 +2009,12 @@ async function runViewsLayout({
 }
 
 function withViewsUserFacingText(result: ActionResult): ActionResult {
+	if (
+		result.transcriptVisibility === "internal" &&
+		result.userFacingText === undefined
+	) {
+		return result;
+	}
 	const text = typeof result.text === "string" ? result.text.trim() : "";
 	if (!text) return result;
 	return {
@@ -2068,6 +2190,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		routingHint:
 			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'list my apps', 'what apps are running'), launching/restarting an app, or building a new app is the APP action, not VIEWS; only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
 		allowAdditionalParameters: true,
+		toolSchemaStrict: false,
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -2472,7 +2595,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 				switch (effectiveMode) {
 					case "list":
-						return runViewsList({ client, viewType, callback });
+						return runViewsList({ client, viewType });
 
 					case "current": {
 						const currentView = await client.getCurrentView();
@@ -2565,12 +2688,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "interact": {
-						let viewId =
-							readStringOption(actionOptions, "view") ??
-							readStringOption(actionOptions, "viewId") ??
-							readStringOption(actionOptions, "id") ??
-							readStringOption(actionOptions, "name") ??
-							readStringOption(actionOptions, "target");
+						let viewId = readCatalogViewTargetOption(actionOptions);
 						let capability = readStringOption(actionOptions, "capability");
 						let resolvedViewType = viewType;
 						const views = await getViews().catch(() => []);
@@ -2583,15 +2701,28 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							!viewId && !forcedResolvedCapability
 								? await getCurrentView()
 								: null;
+						// Only INFER a target from the message text when the caller did not
+						// name both a view and a capability. An explicit `view` +
+						// `capability` is a structured planner decision, and
+						// resolveViewCapability is a text heuristic that overwrites both on
+						// a match — so `interact view=scenario-active-ledger
+						// capability=agent-click` was being dispatched onto an unrelated
+						// surface (task-coordinator's "list-sessions"), which then rejected
+						// the caller's own params. Skipping the heuristic here leaves the
+						// explicit view to the `matches`/alias resolution below, which is
+						// already scoped to that one view.
+						const shouldInferTarget = !viewId || !capability;
 						let resolvedCapability =
 							forcedResolvedCapability ??
-							resolveViewCapability({
-								views,
-								text,
-								options: actionOptions,
-								viewType,
-								currentViewId: viewId ?? currentViewForResolution?.viewId,
-							});
+							(shouldInferTarget
+								? resolveViewCapability({
+										views,
+										text,
+										options: actionOptions,
+										viewType,
+										currentViewId: viewId ?? currentViewForResolution?.viewId,
+									})
+								: null);
 						if (!resolvedCapability && (!viewId || !capability)) {
 							const currentView = await getCurrentView();
 							resolvedCapability = resolveViewCapability({
@@ -2622,12 +2753,62 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							await callback?.({ text: reply });
 							return { success: false, text: reply };
 						}
-						const params = readCapabilityParams(
+						const resolvedView =
+							resolvedCapability?.view ?? resolveViewTarget(viewId, views);
+						if (!resolvedCapability && resolvedView) {
+							const matches = (resolvedView.capabilities ?? []).filter(
+								(candidate) =>
+									normalizeCapabilityKey(candidate.id) ===
+									normalizeCapabilityKey(capability),
+							);
+							if (matches.length === 1 && matches[0]) {
+								resolvedCapability = {
+									view: resolvedView,
+									capability: matches[0],
+								};
+								capability = matches[0].id;
+							} else if (matches.length === 0) {
+								// Generated action labels may be a unique semantic alias for
+								// a declared catalog capability. Keep the view target fixed so
+								// this cannot dispatch across an unrelated surface.
+								const alias = resolveViewCapability({
+									views,
+									text: `${capability} ${text}`,
+									options: {
+										...actionOptions,
+										capability: undefined,
+										view: viewId,
+									},
+									viewType,
+									currentViewId: viewId,
+								});
+								if (alias?.view.id === resolvedView.id) {
+									resolvedCapability = alias;
+									capability = alias.capability.id;
+								}
+							}
+						}
+						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
+							normalizeCapabilityKey(capability),
+						);
+						if (!resolvedCapability && !standardCapability) {
+							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
+							await callback?.({ text: reply });
+							return { success: false, text: reply };
+						}
+						if (!resolvedCapability && standardCapability)
+							capability = standardCapability;
+						const paramsResolution = readCapabilityParams(
 							actionOptions,
 							resolvedCapability?.capability,
-							resolvedCapability?.view,
 							text,
 						);
+						if (!paramsResolution.ok) {
+							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`;
+							await callback?.({ text: reply });
+							return { success: false, text: reply };
+						}
+						const params = paramsResolution.params;
 						const timeoutMs =
 							typeof actionOptions?.timeoutMs === "number" &&
 							actionOptions.timeoutMs > 0
@@ -2641,10 +2822,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							resolvedViewType,
 						);
 						const resultText = interaction.text;
+						const receipt = interaction.success
+							? readViewInteractionReceipt(interaction.result)
+							: undefined;
 						await callback?.({ text: resultText });
 						return {
 							success: interaction.success,
 							text: resultText,
+							...(interaction.success
+								? {
+										userFacingText: resultText,
+										verifiedUserFacing: true,
+										turnComplete: true,
+									}
+								: {}),
 							values: {
 								mode: "interact",
 								viewId,
@@ -2656,6 +2847,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								viewType: resolvedViewType ?? "gui",
 								capability,
 								params,
+								...(receipt ? { receipt } : {}),
 							},
 						};
 					}
@@ -3324,18 +3516,17 @@ async function interactWithView(
 		};
 	}
 
-	let result: unknown;
-	try {
-		result = await resp.json();
-	} catch {
+	const parsed = await parseViewInteractionResponse(resp);
+	if (!parsed.ok) {
 		return {
-			success: true,
-			text: `Interacted with view "${viewId}" (capability "${capability}") — no parseable result.`,
+			success: false,
+			text: `Interact with view "${viewId}" failed: ${parsed.error}.`,
 		};
 	}
 
+	const result = parsed.body;
 	const text = textFromInteractionResult(result);
-	const success = successFromInteractionResult(result);
+	const success = parsed.success && successFromInteractionResult(result);
 	if (text) return { success, text, result };
 
 	return {

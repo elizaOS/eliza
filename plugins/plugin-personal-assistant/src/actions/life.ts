@@ -16,13 +16,20 @@ import {
 import type {
   ActionResult,
   AgentContext,
+  EffectReceipt,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  normalizeEffectReceipt,
+  resolveActionArgs,
+  type SubactionsMap,
+} from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -42,6 +49,12 @@ import {
   INTERNAL_URL,
 } from "../lifeops/access.js";
 import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
+import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
 } from "../lifeops/apple-reminders.js";
@@ -51,6 +64,7 @@ import {
 } from "../lifeops/defaults.js";
 import {
   dayRange,
+  detailArray,
   detailBoolean,
   detailNumber,
   detailObject,
@@ -89,6 +103,7 @@ import {
 } from "./lib/extract-update-fields.js";
 import {
   clearDeferredLifeDraftCache,
+  clearRecentLifeSaveCache,
   countTurnsSinceLatestDeferredLifeDraft,
   type DeferredLifeDefinitionDraft,
   type DeferredLifeDraft,
@@ -97,9 +112,12 @@ import {
   type DeferredLifeGoalDraft,
   deferredLifeDraftExpiryReason,
   extractDeferredLifeDraftFollowupWithLlm,
+  isLifeSaveRetraction,
   latestDeferredLifeDraft,
   readDeferredLifeDraftCache,
+  readRecentLifeSaveCache,
   writeDeferredLifeDraftCache,
+  writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
 import {
   applyOwnerPolicyConfigureEscalation,
@@ -519,24 +537,55 @@ function resolveDeferredLifeDraftReuseMode(args: {
   return null;
 }
 
+const LIFE_CONFIRMATION_VETO_RE =
+  /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u;
+const LIFE_CONFIRMATION_CUE_RE =
+  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u;
+
+// Sentence-scoped on purpose: a message-wide negation veto turned "yes lock
+// it in! and can it bug me before friday too, not just friday morning" into
+// a non-confirmation, so three consecutive confirmed creates previewed and
+// nothing persisted (#16941 live). A sentence that carries its own negation
+// ("don't save that one") still never counts as consent.
 function isExplicitLifeCreateConfirmation(text: string): boolean {
-  const normalized = text
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/u);
+  for (const sentence of sentences) {
+    const normalized = sentence
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+    if (!normalized) {
+      continue;
+    }
+    if (LIFE_CONFIRMATION_VETO_RE.test(normalized)) {
+      continue;
+    }
+    if (LIFE_CONFIRMATION_CUE_RE.test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// A confirmation is "bare" when stripping the yes-cues and politeness filler
+// leaves essentially nothing — "yes save it exactly like that." is bare,
+// "yes, save that plan. draft first, citations after dinner…" is not.
+const LIFE_CONFIRMATION_CUE_STRIP_RE =
+  /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/gu;
+const LIFE_CONFIRMATION_FILLER_STRIP_RE =
+  /\b(?:please|pls|thanks|thank you|now|just|exactly|like|that|this|it|the|one|plan|sounds|good|great|perfect|awesome)\b/gu;
+
+function isBareLifeCreateConfirmationMessage(text: string): boolean {
+  if (!isExplicitLifeCreateConfirmation(text)) {
+    return false;
+  }
+  const residue = text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(LIFE_CONFIRMATION_CUE_STRIP_RE, " ")
+    .replace(LIFE_CONFIRMATION_FILLER_STRIP_RE, " ")
     .trim();
-  if (!normalized) {
-    return false;
-  }
-  if (
-    /\b(?:no|not|don t|do not|cancel|hold off|wait|later|change)\b/u.test(
-      normalized,
-    )
-  ) {
-    return false;
-  }
-  return /\b(?:ok|okay|yes|yep|yeah|sure|confirm|confirmed|approve|approved|save it|save that|save this|save the goal|set it|lock it in|do it|looks good|that works|go ahead)\b/u.test(
-    normalized,
-  );
+  return residue.length <= 3;
 }
 
 function stringifyLifeDetailForPrompt(value: unknown): string | null {
@@ -1826,6 +1875,31 @@ export function resolveOnceDueAt(args: {
   return null;
 }
 
+// Canonical comparison key for a cadence: deep key-sorted JSON, so two
+// structurally identical cadences compare equal regardless of construction
+// order. Used only by the duplicate-create guard.
+function stableCadenceKey(cadence: unknown): string {
+  const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonicalize);
+    if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(record).sort()) {
+        if (record[key] === undefined) continue;
+        // Visibility lead/lag are scheduling presentation hints, not item
+        // identity — a re-call that adds a lead-up shape must still hit the
+        // content-duplicate guard.
+        if (key === "visibilityLeadMinutes" || key === "visibilityLagMinutes")
+          continue;
+        out[key] = canonicalize(record[key]);
+      }
+      return out;
+    }
+    return value;
+  };
+  return JSON.stringify(canonicalize(cadence));
+}
+
 function mergeMetadataRecords(
   ...records: Array<Record<string, unknown> | undefined>
 ): Record<string, unknown> | undefined {
@@ -1839,26 +1913,98 @@ function mergeMetadataRecords(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+// A clock token under a preceding negation cue in the same clause is an
+// EXCLUDED time ("no 8am/9am reminders", "do not set me a 9am ping"), not a
+// requested slot. Clause scope resets at sentence boundaries and at
+// contrastive connectives, so "no mornings, but 9pm works" still yields 9pm.
+// "don't forget" is an idiom that AFFIRMS the following time, hence the
+// lookahead carve-out.
+const NEGATED_CLOCK_CUE_RE =
+  /\b(?:no|not|don'?t|do\s+not|never|avoid|without|skip|drop|stop|instead\s+of|rather\s+than|none\s+of)\b(?!\s+forget\b)/i;
+const CLOCK_CLAUSE_BOUNDARY_RE = /[.;!?\n—–]|\bbut\b/gi;
+
+function clockClauseStart(intent: string, tokenStart: number): number {
+  let clauseStart = 0;
+  for (const boundary of intent.matchAll(CLOCK_CLAUSE_BOUNDARY_RE)) {
+    if (boundary.index >= tokenStart) {
+      break;
+    }
+    clauseStart = boundary.index + boundary[0].length;
+  }
+  return clauseStart;
+}
+
+function clockTokenIsNegated(intent: string, tokenStart: number): boolean {
+  return NEGATED_CLOCK_CUE_RE.test(
+    intent.slice(clockClauseStart(intent, tokenStart), tokenStart),
+  );
+}
+
+// "due thursday at 5pm" names the DEADLINE, not a work slot — storing it as a
+// daily slot schedules the work session exactly at the due instant (#16941
+// live, night-owl: the saved plan's 17:00 slot coincided with the deadline).
+const DEADLINE_CLOCK_CONTEXT_RE =
+  /\b(?:due|deadline|submit(?:ted)?\s+by|turn(?:\s+it)?\s+in\s+by|hand(?:\s+it)?\s+in\s+by)\b[^.!?\n;]*$/i;
+
+function clockTokenIsDeadline(intent: string, tokenStart: number): boolean {
+  return DEADLINE_CLOCK_CONTEXT_RE.test(
+    intent.slice(clockClauseStart(intent, tokenStart), tokenStart),
+  );
+}
+
+// Owner-vocabulary day anchors that carry a concrete time but never match the
+// numeric clock pattern ("citations after dinner", "again late evening").
+// Conservative midpoints; negation/deadline scoping applies the same way.
+const PHRASE_SLOT_MINUTES: ReadonlyArray<[RegExp, number]> = [
+  [/\bafter\s+dinner\b/gi, 19 * 60 + 30],
+  [/\bafter\s+lunch\b/gi, 13 * 60 + 30],
+  [/\bafter\s+school\b/gi, 15 * 60 + 30],
+  [/\blate\s+(?:evening|night)\b/gi, 21 * 60 + 30],
+  [/\bbefore\s+bed(?:time)?\b/gi, 21 * 60 + 30],
+];
+
 function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
-  const tokens = [
-    ...intent.matchAll(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi),
-  ]
-    .map((match) => match[1])
-    .filter(
-      (token): token is string => typeof token === "string" && token.length > 0,
-    );
+  const tokens: Array<{ label: string; minuteOfDay: number }> = [];
+  for (const match of intent.matchAll(
+    /\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi,
+  )) {
+    const token = match[1];
+    if (typeof token !== "string" || token.length === 0) {
+      continue;
+    }
+    if (
+      clockTokenIsNegated(intent, match.index) ||
+      clockTokenIsDeadline(intent, match.index)
+    ) {
+      continue;
+    }
+    const minuteOfDay = parseClockToken(token);
+    if (minuteOfDay !== null) {
+      tokens.push({ label: token.trim(), minuteOfDay });
+    }
+  }
+  for (const [phraseRe, minuteOfDay] of PHRASE_SLOT_MINUTES) {
+    for (const match of intent.matchAll(phraseRe)) {
+      if (
+        clockTokenIsNegated(intent, match.index) ||
+        clockTokenIsDeadline(intent, match.index)
+      ) {
+        continue;
+      }
+      tokens.push({ label: match[0].trim().toLowerCase(), minuteOfDay });
+    }
+  }
   const seen = new Set<number>();
   const slots: LifeOpsDailySlot[] = [];
   for (const [index, token] of tokens.entries()) {
-    const minuteOfDay = parseClockToken(token);
-    if (minuteOfDay === null || seen.has(minuteOfDay)) {
+    if (seen.has(token.minuteOfDay)) {
       continue;
     }
-    seen.add(minuteOfDay);
+    seen.add(token.minuteOfDay);
     slots.push({
       key: `clock-${index + 1}`,
-      label: token.trim(),
-      minuteOfDay,
+      label: token.label,
+      minuteOfDay: token.minuteOfDay,
       durationMinutes: 45,
     });
   }
@@ -2464,6 +2610,208 @@ function buildDefaultReminderPlan(
   };
 }
 
+// "bug me before friday too", "remind me earlier as well", "not just friday
+// morning" — an explicit ask for a lead-up nudge on top of the due-time
+// reminder. Kept as a deterministic detector because the ask arrives inside a
+// confirmation turn where extraction focuses on the base item (#16941 live:
+// the earlier checkpoint was proposed in prose but never persisted).
+const EARLIER_NUDGE_ASK_RE =
+  /(?:\b(?:bug|remind|nudge|ping|poke)\s+me\b[^.!?\n]{0,60}\b(?:before|earlier|ahead of|leading up)\b|\bcan\s+it\b[^.!?\n]{0,60}\bbefore\b|\bnot just\b[^.!?\n]{0,40}\b(?:morning|tonight|that day|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\bearlier\s+(?:nudge|reminder|check[-\s]?in|checkpoint|heads[-\s]?up)\b)/i;
+
+export function wantsEarlierReminderNudge(text: string): boolean {
+  return EARLIER_NUDGE_ASK_RE.test(text);
+}
+
+/** "-4320" -> "3 days", "-1440" -> "a day", "-90" -> "1.5 hours". */
+export function formatLeadOffsetPhrase(offsetMinutes: number): string {
+  const minutes = Math.abs(offsetMinutes);
+  if (minutes >= 1380 && minutes <= 1500) {
+    return "a day";
+  }
+  if (minutes > 1500) {
+    const days = minutes / 1440;
+    const rendered =
+      days >= 10 || Number.isInteger(days)
+        ? String(Math.round(days))
+        : days.toFixed(1);
+    return `${rendered} days`;
+  }
+  if (minutes >= 60) {
+    const hours = minutes / 60;
+    const rendered = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+    return `${rendered} hour${hours === 1 ? "" : "s"}`;
+  }
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+/**
+ * Reshapes a dated one-off into the store's lead-up form when the owner asked
+ * to be nudged before the due time too. Reminder-plan step offsets must be
+ * >= 0 and fire at `relevanceStartAt + offset`, so earliness is expressed by
+ * widening the once cadence's `visibilityLeadMinutes` (relevance opens at
+ * `dueAt - lead`) and anchoring the early step at offset 0 with the due-time
+ * step at `lead`. A first attempt stored negative offsets and the service
+ * rightly rejected them (#16941 live: every "bug me before friday too" plan
+ * collapsed to a single due-time step).
+ */
+export function applyLeadUpReminderShape(args: {
+  cadence: LifeOpsCadence;
+  plan: NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]>;
+  ownerText: string;
+  title: string;
+  milestones: string[];
+  now?: number;
+}): {
+  cadence: LifeOpsCadence;
+  plan: NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]>;
+} {
+  const unchanged = { cadence: args.cadence, plan: args.plan };
+  if (args.cadence.kind !== "once") {
+    return unchanged;
+  }
+  const dueAtMs = Date.parse(args.cadence.dueAt);
+  if (!Number.isFinite(dueAtMs)) {
+    return unchanged;
+  }
+  const now = args.now ?? Date.now();
+  const runwayMinutes = Math.floor((dueAtMs - now) / 60_000);
+  const hasMilestones = args.milestones.length >= 2 && runwayMinutes >= 120;
+  const wantsLead =
+    wantsEarlierReminderNudge(args.ownerText) && runwayMinutes >= 60;
+  if (!hasMilestones && !wantsLead) {
+    return unchanged;
+  }
+  // Already shaped (an explicit lead plus a multi-step ladder) — keep it.
+  if (
+    (args.cadence.visibilityLeadMinutes ?? 0) >= 60 &&
+    args.plan.steps.length >= 2
+  ) {
+    return unchanged;
+  }
+  // 15-minute granularity keeps a same-turn planner re-call from minting a
+  // slightly different lead and slipping past the content-duplicate guard.
+  const quantize = (minutes: number): number => Math.round(minutes / 15) * 15;
+  if (hasMilestones) {
+    const count = args.milestones.length;
+    const lead = Math.max(15, quantize((runwayMinutes * count) / (count + 1)));
+    const steps = args.milestones.map((label, index) => ({
+      channel: "in_app" as const,
+      offsetMinutes: Math.min(
+        lead,
+        quantize((runwayMinutes * index) / (count + 1)),
+      ),
+      label,
+    }));
+    steps.push({
+      channel: "in_app",
+      offsetMinutes: lead,
+      label: `Due: ${args.title}`,
+    });
+    return {
+      cadence: { ...args.cadence, visibilityLeadMinutes: lead },
+      plan: { ...args.plan, steps },
+    };
+  }
+  const lead = Math.max(
+    15,
+    quantize(Math.min(1440, Math.floor(runwayMinutes / 2))),
+  );
+  return {
+    cadence: { ...args.cadence, visibilityLeadMinutes: lead },
+    plan: {
+      ...args.plan,
+      steps: [
+        {
+          channel: "in_app",
+          offsetMinutes: 0,
+          label: `Early start: ${args.title}`,
+        },
+        {
+          channel: "in_app",
+          offsetMinutes: lead,
+          label: `${args.title} reminder`,
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Minutes before the due instant a plan step fires, given the cadence lead:
+ * a step at offset 0 fires at `dueAt - lead`, the step at offset = lead fires
+ * at the due time. Non-positive results mean "at (or after) the due time".
+ */
+export function reminderStepMinutesBeforeDue(
+  cadence: LifeOpsCadence,
+  offsetMinutes: number,
+): number {
+  const lead =
+    cadence.kind === "once" ? (cadence.visibilityLeadMinutes ?? 15) : 0;
+  return lead - offsetMinutes;
+}
+
+/**
+ * Pulls an enumerated milestone list ("outline, rough draft, and final
+ * proofread") out of a multi-milestone create ask. Prefers the segment after
+ * a colon, else after "for"; the list ends at the "and X" item or at the
+ * first segment that reads like schedule prose rather than a milestone name.
+ */
+export function parseMilestoneListFromIntent(text: string): string[] {
+  const match =
+    text.match(/:\s*([^.!?\n]+)/) ?? text.match(/\bfor\b\s+([^.!?\n]+)/i);
+  if (!match) {
+    return [];
+  }
+  const items: string[] = [];
+  for (const rawPart of match[1].split(/,\s*/)) {
+    const isLast = /^and\s+/i.test(rawPart.trim());
+    const part = rawPart
+      .trim()
+      .replace(/^and\s+/i, "")
+      .trim();
+    if (
+      part.length === 0 ||
+      part.length > 40 ||
+      part.split(/\s+/).length > 5 ||
+      /\b(?:due|deadline|ahead|before|by|remind|reminders?)\b/i.test(part)
+    ) {
+      break;
+    }
+    items.push(part);
+    if (isLast) {
+      break;
+    }
+  }
+  return items.length >= 2 ? items : [];
+}
+
+function resolveMilestoneLabels(args: {
+  details: Record<string, unknown> | undefined;
+  intent: string;
+  ownerText: string;
+  multiStep: boolean;
+}): string[] {
+  // Planner-supplied steps are trusted directly; intent parsing only runs
+  // when extraction itself judged the ask multi-milestone, so a plain
+  // comma-separated errand list never becomes a staged plan.
+  const fromDetails = (detailArray(args.details, "steps") ?? [])
+    .filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    )
+    .map((value) => value.trim());
+  if (fromDetails.length >= 2) {
+    return fromDetails;
+  }
+  if (!args.multiStep) {
+    return [];
+  }
+  const fromIntent = parseMilestoneListFromIntent(args.intent);
+  return fromIntent.length >= 2
+    ? fromIntent
+    : parseMilestoneListFromIntent(args.ownerText);
+}
+
 function scoreDefinitionTitleQuality(value: string | null | undefined): number {
   const normalized = normalizeTitle(value ?? "");
   if (!normalized) {
@@ -2556,11 +2904,17 @@ function shouldRequireLifeCreateConfirmation(args: {
   messageSource: string | undefined;
   requestKind?: NativeAppleReminderLikeKind | null;
   cadence?: LifeOpsCadence;
+  multiStep?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
     return false;
   }
-  if (args.requestKind && args.cadence?.kind === "once") {
+  // Crisp single dated asks save immediately (#16935); a multi-milestone ask
+  // ("reminders for outline, rough draft, and final proofread") collapses into
+  // one definition whose derived breakdown the owner has not seen, so it keeps
+  // the two-phase preview even when extraction resolved a once cadence
+  // (#16941 live finding: the exemption over-triggered and wrote pre-consent).
+  if (args.requestKind && args.cadence?.kind === "once" && !args.multiStep) {
     return false;
   }
   return !args.confirmed;
@@ -2662,6 +3016,7 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "capability:update",
   "capability:delete",
   "capability:schedule",
+  "effect:receipt-required",
   "surface:internal",
 ];
 
@@ -2706,12 +3061,453 @@ function ownerSurfaceActionNameFromOptions(
     : "OWNER_TODOS";
 }
 
-export async function runLifeOperationHandler(
+function lifeEffectRequestId(message: Memory): string {
+  return message.id ?? `room:${message.roomId}`;
+}
+
+function lifeEffectReceiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `OWNER_LIFE:${operation}:${lifeEffectRequestId(message)}:${resourceId}`;
+}
+
+function lifeEffectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function lifeEffectString(value: unknown, field: string): string | null {
+  const record = lifeEffectRecord(value);
+  const candidate = record?.[field];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
+}
+
+function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
+  const id = lifeEffectRequestId(message);
+  return normalizeEffectReceipt({
+    receiptId: lifeEffectReceiptId(message, operation, id),
+    operation,
+    resource: {
+      kind: "lifeops.owner_draft",
+      id,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: new Date().toISOString(),
+    outcome: "preview",
+  });
+}
+
+function lifeRequestedOperation(options: HandlerOptions | undefined): string {
+  const params = lifeEffectRecord(options?.parameters);
+  const raw =
+    lifeEffectString(params, "subaction") ??
+    lifeEffectString(params, "action") ??
+    "resolve";
+  return raw.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+async function latestLifeAudit(args: {
+  runtime: IAgentRuntime;
+  ownerType: "definition" | "goal" | "occurrence";
+  ownerId: string;
+  eventTypes: readonly string[];
+}) {
+  const service = new LifeOpsService(args.runtime);
+  const audits = await service.repository.listAuditEvents(
+    args.runtime.agentId,
+    args.ownerType,
+    args.ownerId,
+  );
+  const audit = audits.find((candidate) =>
+    args.eventTypes.includes(candidate.eventType),
+  );
+  if (!audit) {
+    throw new ElizaError(
+      `LifeOps ${args.ownerType} mutation committed without matching audit proof`,
+      {
+        code: "LIFEOPS_EFFECT_AUDIT_REQUIRED",
+        context: {
+          ownerId: args.ownerId,
+          ownerType: args.ownerType,
+          eventTypes: args.eventTypes,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  return audit;
+}
+
+function lifeFailureCode(result: ActionResult): string {
+  const data = lifeEffectRecord(result.data);
+  const values = lifeEffectRecord(result.values);
+  return (
+    lifeEffectString(data, "error") ??
+    lifeEffectString(values, "error") ??
+    (data?.missingField ? "LIFEOPS_MISSING_FIELD" : null) ??
+    "LIFEOPS_OPERATION_REJECTED"
+  );
+}
+
+async function lifeEffectReceiptForResult(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  options: HandlerOptions | undefined;
+  result: ActionResult;
+}): Promise<EffectReceipt> {
+  const data = lifeEffectRecord(args.result.data);
+  const operationHint = lifeRequestedOperation(args.options);
+  const operation = `lifeops.owner.${operationHint}`;
+  const requestId = lifeEffectRequestId(args.message);
+
+  if (
+    data?.deferred === true ||
+    data?.saved === false ||
+    data?.requiresConfirmation === true
+  ) {
+    return lifeEffectPreview(args.message, `${operation}.preview`);
+  }
+
+  if (args.result.success === false) {
+    return lifeOpsFailedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, requestId),
+      operation,
+      resource: { kind: "runtime.message", id: requestId },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: new Date().toISOString(),
+      failure: {
+        code: lifeFailureCode(args.result),
+        retryable: false,
+        acceptance: "rejected",
+      },
+    });
+  }
+
+  const readOnlyOperation =
+    operationHint === "review" ||
+    operationHint === "overview" ||
+    operationHint === "calendar" ||
+    operationHint === "email" ||
+    operationHint.startsWith("query_");
+  if (
+    (data?.noop === true || readOnlyOperation) &&
+    lifeEffectRecord(data?.deleted) === null
+  ) {
+    const readGoal = lifeEffectRecord(data?.goal);
+    const readGoalId = lifeEffectString(readGoal, "id");
+    const resourceId = readGoalId ?? requestId;
+    return lifeOpsNoopEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, resourceId),
+      operation,
+      resource: readGoalId
+        ? {
+            kind: "lifeops.goal",
+            id: readGoalId,
+            ...(lifeEffectString(readGoal, "updatedAt")
+              ? { version: lifeEffectString(readGoal, "updatedAt") as string }
+              : {}),
+          }
+        : { kind: "runtime.message", id: requestId },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: new Date().toISOString(),
+      reason:
+        "The operation only read, evaluated, clarified, or intentionally left state unchanged.",
+    });
+  }
+
+  const deleted = lifeEffectRecord(data?.deleted);
+  const deletedId = lifeEffectString(deleted, "id");
+  const deletedType = lifeEffectString(deleted, "kind");
+  if (deletedId && (deletedType === "definition" || deletedType === "goal")) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: deletedType,
+      ownerId: deletedId,
+      eventTypes:
+        deletedType === "definition"
+          ? ["definition_deleted"]
+          : ["goal_deleted"],
+    });
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, deletedId),
+      operation:
+        deletedType === "definition"
+          ? "lifeops.definition.delete"
+          : "lifeops.goal.delete",
+      resource: {
+        kind: `lifeops.${deletedType}`,
+        id: deletedId,
+        version: audit.id,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const definition =
+    lifeEffectRecord(data?.definition) ??
+    lifeEffectRecord(lifeEffectRecord(data?.updated)?.definition);
+  const definitionId = lifeEffectString(definition, "id");
+  const definitionUpdatedAt = lifeEffectString(definition, "updatedAt");
+  if (definitionId && data?.deduplicated === true) {
+    return lifeOpsNoopEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
+      operation: "lifeops.definition.create",
+      resource: {
+        kind: "lifeops.definition",
+        id: definitionId,
+        ...(definitionUpdatedAt ? { version: definitionUpdatedAt } : {}),
+      },
+      artifacts: [],
+      idempotency: { key: definitionId, replayed: true },
+      observedAt: new Date().toISOString(),
+      reason: "An equivalent active definition already exists.",
+    });
+  }
+  if (definitionId && definitionUpdatedAt) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "definition",
+      ownerId: definitionId,
+      eventTypes: ["definition_updated", "definition_created"],
+    });
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
+      operation:
+        audit.eventType === "definition_created"
+          ? "lifeops.definition.create"
+          : "lifeops.definition.update",
+      resource: {
+        kind: "lifeops.definition",
+        id: definitionId,
+        version: definitionUpdatedAt,
+      },
+      artifacts: [],
+      idempotency:
+        audit.eventType === "definition_created"
+          ? { key: definitionId, replayed: false }
+          : { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const goal = lifeEffectRecord(data?.goal);
+  const goalId = lifeEffectString(goal, "id");
+  const goalUpdatedAt = lifeEffectString(goal, "updatedAt");
+  if (goalId && data?.deduplicated === true) {
+    return lifeOpsNoopEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, goalId),
+      operation: "lifeops.goal.create",
+      resource: {
+        kind: "lifeops.goal",
+        id: goalId,
+        ...(goalUpdatedAt ? { version: goalUpdatedAt } : {}),
+      },
+      artifacts: [],
+      idempotency: { key: goalId, replayed: true },
+      observedAt: new Date().toISOString(),
+      reason: "An equivalent active goal already exists.",
+    });
+  }
+  if (goalId && goalUpdatedAt) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "goal",
+      ownerId: goalId,
+      eventTypes: ["goal_updated", "goal_created"],
+    });
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, goalId),
+      operation:
+        audit.eventType === "goal_created"
+          ? "lifeops.goal.create"
+          : "lifeops.goal.update",
+      resource: {
+        kind: "lifeops.goal",
+        id: goalId,
+        version: goalUpdatedAt,
+      },
+      artifacts: [],
+      idempotency:
+        audit.eventType === "goal_created"
+          ? { key: goalId, replayed: false }
+          : { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const occurrenceId = lifeEffectString(data, "id");
+  const occurrenceUpdatedAt = lifeEffectString(data, "updatedAt");
+  const occurrenceState = lifeEffectString(data, "state");
+  const definitionIdForOccurrence = lifeEffectString(data, "definitionId");
+  if (
+    occurrenceId &&
+    occurrenceUpdatedAt &&
+    occurrenceState &&
+    definitionIdForOccurrence
+  ) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "occurrence",
+      ownerId: occurrenceId,
+      eventTypes: [
+        "occurrence_completed",
+        "occurrence_skipped",
+        "occurrence_snoozed",
+      ],
+    });
+    const replayed = data?.effectReplayed === true;
+    if (replayed) {
+      return lifeOpsNoopEffect({
+        receiptId: lifeEffectReceiptId(args.message, operation, occurrenceId),
+        operation: `lifeops.occurrence.${occurrenceState}`,
+        resource: {
+          kind: "lifeops.occurrence",
+          id: occurrenceId,
+          version: occurrenceUpdatedAt,
+        },
+        artifacts: [
+          {
+            kind: "lifeops.definition",
+            id: definitionIdForOccurrence,
+          },
+        ],
+        idempotency: { key: occurrenceId, replayed: true },
+        observedAt: new Date().toISOString(),
+        reason: `The occurrence was already ${occurrenceState}.`,
+      });
+    }
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, occurrenceId),
+      operation: `lifeops.occurrence.${occurrenceState}`,
+      resource: {
+        kind: "lifeops.occurrence",
+        id: occurrenceId,
+        version: occurrenceUpdatedAt,
+      },
+      artifacts: [
+        {
+          kind: "lifeops.definition",
+          id: definitionIdForOccurrence,
+        },
+      ],
+      idempotency:
+        occurrenceState === "completed" || occurrenceState === "skipped"
+          ? { key: occurrenceId, replayed: false }
+          : { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const preference = lifeEffectRecord(data?.preference);
+  const effectivePreference = lifeEffectRecord(preference?.effective);
+  const preferenceUpdatedAt = lifeEffectString(
+    effectivePreference,
+    "updatedAt",
+  );
+  if (preference && preferenceUpdatedAt) {
+    const preferenceDefinitionId = lifeEffectString(preference, "definitionId");
+    const resourceId = preferenceDefinitionId ?? "global";
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, resourceId),
+      operation: "lifeops.reminder_policy.update",
+      resource: {
+        kind: "lifeops.reminder_policy",
+        id: resourceId,
+        version: preferenceUpdatedAt,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: preferenceUpdatedAt,
+      commit: {
+        kind: "durable",
+        id: `lifeops.reminder_policy:${resourceId}:${preferenceUpdatedAt}`,
+        committedAt: preferenceUpdatedAt,
+      },
+    });
+  }
+
+  const facts = lifeEffectRecord(data?.facts);
+  const escalationRules = lifeEffectRecord(facts?.escalationRules);
+  const escalationProvenance = lifeEffectRecord(escalationRules?.provenance);
+  const escalationUpdatedAt = lifeEffectString(
+    escalationProvenance,
+    "recordedAt",
+  );
+  if (escalationUpdatedAt) {
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, "global"),
+      operation: "lifeops.escalation_policy.update",
+      resource: {
+        kind: "lifeops.escalation_policy",
+        id: "global",
+        version: escalationUpdatedAt,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: escalationUpdatedAt,
+      commit: {
+        kind: "durable",
+        id: `lifeops.escalation_policy:global:${escalationUpdatedAt}`,
+        committedAt: escalationUpdatedAt,
+      },
+    });
+  }
+
+  return lifeOpsNoopEffect({
+    receiptId: lifeEffectReceiptId(args.message, operation, requestId),
+    operation,
+    resource: { kind: "runtime.message", id: requestId },
+    artifacts: [],
+    idempotency: {
+      key:
+        data?.deduplicated === true
+          ? (lifeEffectString(data, "id") ?? requestId)
+          : null,
+      replayed: data?.deduplicated === true,
+    },
+    observedAt: new Date().toISOString(),
+    reason:
+      data?.deduplicated === true
+        ? "The requested resource already exists."
+        : "The operation only read, evaluated, clarified, or intentionally left state unchanged.",
+  });
+}
+
+async function runLifeOperationHandlerInner(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
   options: HandlerOptions | undefined,
-  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
   // Defense-in-depth: validate() excludes owner-operation candidates on
@@ -2720,7 +3516,7 @@ export async function runLifeOperationHandler(
   if (await isForeignPageScope(runtime, message)) {
     return {
       success: false,
-      text: "",
+      text: "Owner life actions are unavailable from this page.",
       data: {
         actionName: ownerSurfaceActionName,
         reason: "foreign_page_scope",
@@ -2747,16 +3543,24 @@ export async function runLifeOperationHandler(
     deferredDraft != null
       ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
       : undefined;
+  // A bare yes skips the classifier; a yes that CARRIES content ("yes, save
+  // that plan. draft first, citations after dinner…") must still be
+  // classified, because confirm-mode reuses the parked draft verbatim and
+  // would drop the newly named specifics (#16941 live, night-owl: the saved
+  // plan kept the draft's slots and lost the after-dinner citations session).
+  // The classifier abstaining never cancels an explicit yes, though — that
+  // falls back to confirm instead of dropping consent.
   const deferredDraftFollowupMode = deferredDraft
-    ? explicitCreateConfirmation
+    ? explicitCreateConfirmation &&
+      isBareLifeCreateConfirmationMessage(currentText)
       ? "confirm"
-      : await extractDeferredLifeDraftFollowupWithLlm({
+      : ((await extractDeferredLifeDraftFollowupWithLlm({
           runtime,
           message,
           state,
           currentText,
           draft: deferredDraft,
-        })
+        })) ?? (explicitCreateConfirmation ? "confirm" : null))
     : null;
   const draftExpiryReason = deferredLifeDraftExpiryReason({
     draft: deferredDraft,
@@ -2810,6 +3614,71 @@ export async function runLifeOperationHandler(
     };
   }
   const explicitAction = normalizeExplicitLifeAction(params.action);
+  // Retraction of an un-previewed save: the crisp-ask fast path persists with
+  // no draft to cancel, and the planner cannot be trusted to translate
+  // "actually don't save that one" into action=delete — observed live
+  // (#16941, child-cancel-reask) it reviewed the row, replied "I won't save
+  // it", and left the definition active. This runs before extraction so no
+  // classifier verdict can strand the stale row; a same-message create
+  // (retract + replace in one utterance) still runs after the deletion.
+  if (deferredDraft === null && isLifeSaveRetraction(messageText(message))) {
+    const recentSave = await readRecentLifeSaveCache(runtime, message);
+    const retractionMessageId =
+      message.id !== undefined && message.id !== null ? String(message.id) : "";
+    if (
+      recentSave !== null &&
+      (recentSave.sourceMessageId === undefined ||
+        recentSave.sourceMessageId !== retractionMessageId)
+    ) {
+      const retractionService = new LifeOpsService(runtime);
+      const retracted = (await retractionService.listDefinitions()).find(
+        (record) =>
+          record.definition.id === recentSave.definitionId &&
+          record.definition.status === "active",
+      );
+      await clearRecentLifeSaveCache(runtime, message);
+      if (retracted) {
+        await retractionService.deleteDefinition(retracted.definition.id);
+        logger.info(
+          `[LifeAction] retracted recent un-previewed save "${retracted.definition.title}" (${retracted.definition.id})`,
+        );
+        const plannerRequestedCreate =
+          explicitAction !== null &&
+          explicitAction !== "phone" &&
+          explicitAction.operation === "create";
+        if (!plannerRequestedCreate) {
+          const fallback = `Okay — I removed "${retracted.definition.title}". Nothing is saved for it now.`;
+          const text = await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent: currentText,
+            scenario: "deleted_definition",
+            fallback,
+            context: {
+              deleted: { title: retracted.definition.title },
+              reason: "retracted_recent_save",
+            },
+          });
+          return {
+            success: true,
+            text,
+            userFacingText: text,
+            verifiedUserFacing: true,
+            data: {
+              actionName: ownerSurfaceActionName,
+              retractedRecentSave: true,
+              deleted: {
+                kind: "definition",
+                id: retracted.definition.id,
+                title: retracted.definition.title,
+              },
+            },
+          };
+        }
+      }
+    }
+  }
   if (explicitAction === "phone") {
     return {
       success: false,
@@ -3042,11 +3911,26 @@ export async function runLifeOperationHandler(
     params.title ??
     routedParams?.target ??
     routedParams?.title;
+  // Planner-asserted `confirmed` is only real consent when the owner has
+  // actually seen a preview: either the current owner text is an explicit
+  // yes, or a draft previewed on an EARLIER message is still pending.
+  // Observed live (#16941, child-morning-routine): after previewing a daily
+  // routine, the planner immediately re-called create with confirmed:true in
+  // the same turn — saving a routine the child never approved — then told the
+  // child nothing was saved, and the real confirm turn duplicated the row.
+  const plannerAssertedConfirmed =
+    params.confirmed === true || detailBoolean(details, "confirmed") === true;
+  const currentMessageId =
+    message.id !== undefined && message.id !== null ? String(message.id) : "";
+  const priorTurnDraftPending =
+    deferredDraft != null &&
+    (deferredDraft.sourceMessageId === undefined ||
+      currentMessageId === "" ||
+      deferredDraft.sourceMessageId !== currentMessageId);
   const createConfirmed =
     deferredDraftReuseMode === "confirm" ||
-    params.confirmed === true ||
-    detailBoolean(details, "confirmed") === true ||
-    explicitCreateConfirmation;
+    explicitCreateConfirmation ||
+    (plannerAssertedConfirmed && priorTurnDraftPending);
 
   try {
     const createDefinition = async () => {
@@ -3316,14 +4200,36 @@ export async function runLifeOperationHandler(
           | CreateLifeOpsDefinitionRequest["kind"]
           | undefined) ??
         "habit";
+      const leadShaped = applyLeadUpReminderShape({
+        cadence,
+        plan:
+          (detailObject(details, "reminderPlan") as
+            | CreateLifeOpsDefinitionRequest["reminderPlan"]
+            | undefined) ??
+          deferredDefinitionDraft?.request.reminderPlan ??
+          buildDefaultReminderPlan(`${title} reminder`),
+        ownerText: messageText(message),
+        title,
+        milestones: resolveMilestoneLabels({
+          details,
+          intent,
+          ownerText: messageText(message),
+          multiStep: llmPlan?.multiStep === true,
+        }),
+      });
       const definitionDraft: DeferredLifeDefinitionDraft = {
         intent,
         operation: "create_definition",
         createdAt: editingDeferredDefinitionDraft
           ? Date.now()
           : (deferredDefinitionDraft?.createdAt ?? Date.now()),
+        // Preserve the ORIGINAL previewing turn's id on reuse — a same-turn
+        // re-preview must not launder the draft into "prior-turn" consent.
+        sourceMessageId:
+          deferredDefinitionDraft?.sourceMessageId ??
+          (currentMessageId !== "" ? currentMessageId : undefined),
         request: {
-          cadence,
+          cadence: leadShaped.cadence,
           description:
             explicitDescription ??
             llmDescription ??
@@ -3346,12 +4252,7 @@ export async function runLifeOperationHandler(
               "progressionRule",
             ) as CreateLifeOpsDefinitionRequest["progressionRule"]) ??
             deferredDefinitionDraft?.request.progressionRule,
-          reminderPlan:
-            (detailObject(details, "reminderPlan") as
-              | CreateLifeOpsDefinitionRequest["reminderPlan"]
-              | undefined) ??
-            deferredDefinitionDraft?.request.reminderPlan ??
-            buildDefaultReminderPlan(`${title} reminder`),
+          reminderPlan: leadShaped.plan,
           timezone:
             normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
             normalizeLifeTimeZoneToken(
@@ -3378,9 +4279,30 @@ export async function runLifeOperationHandler(
               : undefined,
           requestKind: timedRequestKind,
           cadence: definitionDraft.request.cadence,
+          multiStep: llmPlan?.multiStep === true,
         })
       ) {
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}. Confirm and I'll save it, or tell me what to change.`;
+        const draftLeadSteps = (
+          definitionDraft.request.reminderPlan?.steps ?? []
+        )
+          .map((step) => ({
+            label: step.label,
+            minutesBeforeDue: reminderStepMinutesBeforeDue(
+              definitionDraft.request.cadence,
+              step.offsetMinutes,
+            ),
+          }))
+          .filter((step) => step.minutesBeforeDue >= 60);
+        const draftLeadPhrase =
+          draftLeadSteps.length > 0
+            ? ` It includes early nudges: ${draftLeadSteps
+                .map(
+                  (step) =>
+                    `"${step.label}" ${formatLeadOffsetPhrase(step.minutesBeforeDue)} before`,
+                )
+                .join(", ")}.`
+            : "";
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -3423,6 +4345,39 @@ export async function runLifeOperationHandler(
         ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
         : null;
 
+      // Content-level duplicate guard, mirroring the scheduled-task one: a
+      // confirm turn that re-describes an already-saved item mints a fresh
+      // create (observed live, #16941: "yes lock it in! and can it bug me
+      // before friday too" after the plan had saved stacked a second
+      // identical "Book report…" definition). An ACTIVE definition with the
+      // same normalized title and structurally identical cadence IS the same
+      // item — report it as already saved instead of stacking a twin.
+      const duplicateOf = (await service.listDefinitions()).find(
+        (record) =>
+          record.definition.status === "active" &&
+          normalizeLifeInputText(record.definition.title).toLowerCase() ===
+            normalizeLifeInputText(
+              definitionDraft.request.title,
+            ).toLowerCase() &&
+          stableCadenceKey(record.definition.cadence) ===
+            stableCadenceKey(definitionDraft.request.cadence),
+      );
+      if (duplicateOf) {
+        await clearDeferredLifeDraftCache(runtime, message);
+        const alreadyText = `"${duplicateOf.definition.title}" is already saved as ${summarizeCadence(duplicateOf.definition.cadence)} — nothing new was created.`;
+        return {
+          success: true as const,
+          text: alreadyText,
+          userFacingText: alreadyText,
+          verifiedUserFacing: true,
+          data: {
+            actionName: ownerSurfaceActionName,
+            deduplicated: true,
+            definition: duplicateOf.definition,
+          },
+        };
+      }
+
       const created = await service.createDefinition({
         ownership,
         kind: definitionDraft.request.kind,
@@ -3443,24 +4398,69 @@ export async function runLifeOperationHandler(
         source: "chat",
       });
       await clearDeferredLifeDraftCache(runtime, message);
-      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}.`;
+      // The un-previewed fast path leaves no draft to cancel, so park an undo
+      // handle: a next-turn retraction deletes this row deterministically.
+      await writeRecentLifeSaveCache(runtime, message, {
+        definitionId: created.definition.id,
+        title: created.definition.title,
+        createdAt: Date.now(),
+        ...(currentMessageId !== ""
+          ? { sourceMessageId: currentMessageId }
+          : {}),
+      });
+      const savedLeadSteps = (created.reminderPlan?.steps ?? [])
+        .map((step) => ({
+          label: step.label,
+          minutesBeforeDue: reminderStepMinutesBeforeDue(
+            created.definition.cadence,
+            step.offsetMinutes,
+          ),
+        }))
+        .filter((step) => step.minutesBeforeDue >= 60);
+      const leadPhrase =
+        savedLeadSteps.length === 1
+          ? ` with an early nudge ${formatLeadOffsetPhrase(savedLeadSteps[0].minutesBeforeDue)} before`
+          : savedLeadSteps.length > 1
+            ? ` with early nudges ${savedLeadSteps
+                .map(
+                  (step) =>
+                    `"${step.label}" ${formatLeadOffsetPhrase(step.minutesBeforeDue)} before`,
+                )
+                .join(", ")}`
+            : "";
+      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}${leadPhrase}.`;
+      const savedText = await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "saved_definition",
+        fallback,
+        context: {
+          created: {
+            title: created.definition.title,
+            cadence: created.definition.cadence,
+            ...(savedLeadSteps.length > 0
+              ? {
+                  earlyNudges: savedLeadSteps.map(
+                    (step) =>
+                      `${step.label} ${formatLeadOffsetPhrase(step.minutesBeforeDue)} before`,
+                  ),
+                }
+              : {}),
+          },
+          requestKind: timedRequestKind,
+        },
+      });
+      // verifiedUserFacing mirrors the preview branch: a completed persist is
+      // exactly the state the evaluator must not paraphrase — observed live
+      // (#16941): the synthesized reply told the owner "nothing is saved yet"
+      // after this branch had already persisted the definition.
       return {
         success: true as const,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "saved_definition",
-          fallback,
-          context: {
-            created: {
-              title: created.definition.title,
-              cadence: created.definition.cadence,
-            },
-            requestKind: timedRequestKind,
-          },
-        }),
+        text: savedText,
+        userFacingText: savedText,
+        verifiedUserFacing: true,
         data: toActionData(created),
       };
     };
@@ -3646,6 +4646,7 @@ export async function runLifeOperationHandler(
         intent,
         operation: "create_goal",
         createdAt: Date.now(),
+        sourceMessageId: currentMessageId !== "" ? currentMessageId : undefined,
         request: {
           cadence,
           description,
@@ -3764,6 +4765,25 @@ export async function runLifeOperationHandler(
         },
       });
       await clearDeferredLifeDraftCache(runtime, message);
+      const createAudit = await latestLifeAudit({
+        runtime,
+        ownerType: "goal",
+        ownerId: created.goal.id,
+        eventTypes: ["goal_created"],
+      });
+      if (createAudit.decision.dedup === true) {
+        const text = `"${created.goal.title}" is already saved as a goal — nothing new was created.`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: toActionData({
+            ...created,
+            deduplicated: true,
+          }),
+        };
+      }
       const createdExperienceLoop = await service.buildGoalExperienceLoop({
         goalId: created.goal.id,
         title: created.goal.title,
@@ -4040,6 +5060,14 @@ export async function runLifeOperationHandler(
             },
           },
         }),
+        data: {
+          actionName: ownerSurfaceActionName,
+          deleted: {
+            kind: "definition",
+            id: target.definition.id,
+            title: target.definition.title,
+          },
+        },
       };
     }
 
@@ -4091,6 +5119,14 @@ export async function runLifeOperationHandler(
             },
           },
         }),
+        data: {
+          actionName: ownerSurfaceActionName,
+          deleted: {
+            kind: "goal",
+            id: target.goal.id,
+            title: target.goal.title,
+          },
+        },
       };
     }
 
@@ -4124,27 +5160,39 @@ export async function runLifeOperationHandler(
         }
         resolvedTargetId = target.id;
       }
+      const priorOccurrence = await service.repository.getOccurrence(
+        runtime.agentId,
+        resolvedTargetId,
+      );
       const completed = await service.completeOccurrence(resolvedTargetId, {
         note: detailString(details, "note"),
       });
-      const fallback = `Marked "${completed.title}" done.`;
+      const effectReplayed = priorOccurrence?.state === "completed";
+      const fallback = effectReplayed
+        ? `"${completed.title}" was already marked done — nothing changed.`
+        : `Marked "${completed.title}" done.`;
       return {
         success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "completed_occurrence",
-          fallback,
-          context: {
-            completed: {
-              title: completed.title,
-            },
-            note: detailString(details, "note"),
-          },
+        text: effectReplayed
+          ? fallback
+          : await renderLifeActionReply({
+              runtime,
+              message,
+              state,
+              intent,
+              scenario: "completed_occurrence",
+              fallback,
+              context: {
+                completed: {
+                  title: completed.title,
+                },
+                note: detailString(details, "note"),
+              },
+            }),
+        data: toActionData({
+          ...completed,
+          effectReplayed,
         }),
-        data: toActionData(completed),
       };
     }
 
@@ -4186,7 +5234,10 @@ export async function runLifeOperationHandler(
             },
           },
         }),
-        data: toActionData(skipped),
+        data: toActionData({
+          ...skipped,
+          effectReplayed: target.state === "skipped",
+        }),
       };
     }
 
@@ -4357,7 +5408,17 @@ export async function runLifeOperationHandler(
       text: "I didn't understand that life management request.",
     };
   } catch (err) {
+    // error-policy:J1 The action boundary translates typed domain failures into a rejected user-visible operation.
     if (err instanceof LifeOpsServiceError) {
+      logger.error(
+        {
+          boundary: "lifeops-owner-action",
+          operation,
+          status: err.status,
+          err,
+        },
+        `[LifeAction] ${operation ?? "unknown"} failed: ${err.message}`,
+      );
       const fallback = buildLifeServiceErrorFallback(err, intent);
       return {
         success: false,
@@ -4373,8 +5434,38 @@ export async function runLifeOperationHandler(
             operation,
           },
         }),
+        data: {
+          actionName: ownerSurfaceActionName,
+          error: "LIFEOPS_SERVICE_ERROR",
+          status: err.status,
+        },
       };
     }
     throw err;
   }
+}
+
+export async function runLifeOperationHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const result = await runLifeOperationHandlerInner(
+    runtime,
+    message,
+    state,
+    options,
+  );
+  return completeLifeOpsEffect(
+    callback,
+    result,
+    await lifeEffectReceiptForResult({
+      runtime,
+      message,
+      options,
+      result,
+    }),
+  );
 }

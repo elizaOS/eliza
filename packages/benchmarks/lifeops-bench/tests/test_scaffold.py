@@ -71,10 +71,14 @@ def test_core_types_instantiate() -> None:
         total_latency_ms=0,
         model_name="gpt-oss-120b",
         judge_model_name="claude-opus-4-7",
+        evaluator_provider="cerebras",
+        judge_provider="anthropic",
         timestamp="2026-05-10T00:00:00Z",
         seeds=1,
     )
     assert result.seeds == 1
+    assert result.evaluator_provider == "cerebras"
+    assert result.judge_provider == "anthropic"
 
 
 def test_smoke_scenarios_load() -> None:
@@ -99,26 +103,49 @@ def test_smoke_scenarios_load() -> None:
     assert Domain.MAIL in SCENARIOS_BY_DOMAIN
 
 
-def test_cli_live_evaluator_detection_respects_filters() -> None:
-    from eliza_lifeops_bench.__main__ import _needs_live_evaluator
+def test_cli_evaluator_detection_covers_semantic_static_and_live_filters() -> None:
+    from eliza_lifeops_bench.__main__ import _needs_evaluator
     from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
     from eliza_lifeops_bench.types import Domain, ScenarioMode
 
     static = SCENARIOS_BY_ID["smoke_static_calendar_01"]
     live = SCENARIOS_BY_ID["smoke_live_mail_01"]
 
-    assert _needs_live_evaluator([static, live], domain=None, mode=None) is True
     assert (
-        _needs_live_evaluator(
-            [static, live], domain=Domain.CALENDAR, mode=ScenarioMode.STATIC
-        )
-        is False
-    )
-    assert (
-        _needs_live_evaluator(
-            [static, live], domain=Domain.MAIL, mode=ScenarioMode.LIVE
+        _needs_evaluator(
+            [static, live],
+            domain=None,
+            mode=None,
+            static_grading_mode="semantic",
         )
         is True
+    )
+    assert (
+        _needs_evaluator(
+            [static, live],
+            domain=Domain.CALENDAR,
+            mode=ScenarioMode.STATIC,
+            static_grading_mode="semantic",
+        )
+        is True
+    )
+    assert (
+        _needs_evaluator(
+            [static, live],
+            domain=Domain.MAIL,
+            mode=ScenarioMode.LIVE,
+            static_grading_mode="offline_conformance",
+        )
+        is True
+    )
+    assert (
+        _needs_evaluator(
+            [static, live],
+            domain=Domain.CALENDAR,
+            mode=ScenarioMode.STATIC,
+            static_grading_mode="offline_conformance",
+        )
+        is False
     )
 
 
@@ -135,6 +162,8 @@ def test_runner_instantiates_with_noop_agent_fn() -> None:
         agent_fn=noop_agent_fn,
         world_factory=world_factory,  # type: ignore[arg-type]
         scenarios=ALL_SCENARIOS,
+        evaluator_provider="cerebras",
+        judge_provider="anthropic",
         concurrency=2,
         seeds=1,
         max_cost_usd=0.01,
@@ -145,6 +174,8 @@ def test_runner_instantiates_with_noop_agent_fn() -> None:
     assert len(runner.scenarios) == len(ALL_SCENARIOS)
     assert runner.evaluator_model == "gemma-4-31b"
     assert runner.judge_model == "claude-opus-4-7"
+    assert runner.evaluator_provider == "cerebras"
+    assert runner.judge_provider == "anthropic"
 
 
 def test_runner_builds_openai_compatible_tool_manifest() -> None:
@@ -158,6 +189,7 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
     tool_names = [tool["function"]["name"] for tool in tools]
 
     assert "CALENDAR" in tool_names
+    assert "CALENDAR_SOURCES" in tool_names
     assert "MESSAGE" in tool_names
     assert "SCHEDULED_TASK_CREATE" in tool_names
     assert "CALENDAR.create" not in tool_names
@@ -170,7 +202,9 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
         assert function["description"]
         assert function["parameters"]["type"] == "object"
 
-    calendar_tool = next(tool for tool in tools if tool["function"]["name"] == "CALENDAR")
+    calendar_tool = next(
+        tool for tool in tools if tool["function"]["name"] == "CALENDAR"
+    )
     calendar_params = calendar_tool["function"]["parameters"]
     assert "startAt" in calendar_params["properties"]
     assert "endAt" in calendar_params["properties"]
@@ -185,6 +219,99 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
         "next_event",
         "update_preferences",
     ]
+    source_tool = next(
+        tool for tool in tools if tool["function"]["name"] == "CALENDAR_SOURCES"
+    )
+    source_params = source_tool["function"]["parameters"]
+    assert source_params["required"] == ["operation"]
+    assert source_params["properties"]["operation"]["enum"] == [
+        "list",
+        "select",
+        "deselect",
+        "connect",
+        "reconnect",
+    ]
+    assert {
+        "provider",
+        "grantId",
+        "connectorAccountId",
+        "calendarId",
+        "expectedVersion",
+    }.issubset(source_params["properties"])
+
+
+def test_calendar_source_executor_exposes_planning_without_fake_connection() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    listed = _execute_action(
+        Action(name="CALENDAR_SOURCES", kwargs={"operation": "list"}),
+        world,
+    )
+
+    assert listed["simulatedOnly"] is True
+    assert listed["providerReceipt"] is None
+    assert listed["snapshot"]["state"] == "complete"
+    assert {source["key"]["provider"] for source in listed["snapshot"]["sources"]} == {
+        "apple_calendar",
+        "google",
+    }
+
+    oauth = _execute_action(
+        Action(
+            name="CALENDAR_SOURCES",
+            kwargs={"operation": "connect", "provider": "google"},
+        ),
+        world,
+    )
+    assert oauth == {
+        "operation": "connect",
+        "connection": {
+            "state": "authorization_required",
+            "provider": "google",
+            "connected": False,
+            "handoff": "external_oauth_required",
+        },
+        "ok": False,
+        "simulatedOnly": True,
+        "providerReceipt": None,
+    }
+
+    source = listed["snapshot"]["sources"][0]
+    refused_write = _execute_action(
+        Action(
+            name="CALENDAR_SOURCES",
+            kwargs={
+                "operation": "deselect",
+                **source["key"],
+                "expectedVersion": source["selectionVersion"],
+            },
+        ),
+        world,
+    )
+    assert refused_write["ok"] is False
+    assert refused_write["changed"] is False
+    assert refused_write["error"] == "external_source_selection_required"
+
+
+def test_calendar_source_executor_normalizes_granular_list_alias() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action, _normalize_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    normalized = _normalize_action(Action(name="CALENDAR_LIST_ACTIVE", kwargs={}))
+
+    assert normalized == Action(
+        name="CALENDAR_SOURCES",
+        kwargs={"operation": "list"},
+    )
+    listed = _execute_action(normalized, world)
+    assert listed["snapshot"]["state"] == "complete"
+    assert listed["providerReceipt"] is None
+    assert listed["simulatedOnly"] is True
 
 
 def test_executor_accepts_promoted_calendar_alias_without_subaction() -> None:
@@ -392,7 +519,7 @@ def test_executor_calendar_search_returns_matching_events() -> None:
     assert [event["id"] for event in result["events"]] == ["event_00040"]
 
 
-def test_executor_treats_reply_as_terminal_noop() -> None:
+def test_executor_treats_reply_as_explicit_effectless_terminal() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action
     from eliza_lifeops_bench.types import Action
@@ -400,7 +527,12 @@ def test_executor_treats_reply_as_terminal_noop() -> None:
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
     result = _execute_action(Action(name="REPLY", kwargs={"text": "done"}), world)
 
-    assert result == {"ok": True, "noop": True, "reply": {"text": "done"}}
+    assert result == {
+        "ok": True,
+        "effect": "none",
+        "terminal": True,
+        "reply": {"text": "done"},
+    }
 
 
 def test_executor_accepts_calendar_delete_alias_with_id() -> None:
@@ -409,7 +541,9 @@ def test_executor_accepts_calendar_delete_alias_with_id() -> None:
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
-    target = next(event for event in world.calendar_events.values() if event.status != "cancelled")
+    target = next(
+        event for event in world.calendar_events.values() if event.status != "cancelled"
+    )
     result = _execute_action(
         Action(name="CALENDAR_DELETE_EVENT", kwargs={"id": target.id}),
         world,
@@ -422,7 +556,7 @@ def test_executor_accepts_calendar_delete_alias_with_id() -> None:
     )
     assert missing == {
         "ok": False,
-        "noop": True,
+        "noEffect": True,
         "missing_id": "evt_12345",
         "subaction": "delete_event",
     }
@@ -568,12 +702,12 @@ def test_executor_accepts_message_subaction_alias() -> None:
         world,
     )
 
-    assert result == {
-        "operation": "read_with_contact",
-        "source": "signal",
-        "ok": True,
-        "noop": True,
-    }
+    assert result["ok"] is True
+    assert result["effect"] == "none"
+    assert result["operation"] == "MESSAGE/read_with_contact"
+    assert result["source"] == "signal"
+    assert result["matchedContactIds"] == ["contact_00001"]
+    assert result["messages"] == []
 
 
 def test_executor_persists_contact_priority_and_relationship_updates() -> None:
@@ -801,24 +935,104 @@ def test_executor_models_scheduled_tasks_as_first_class_state() -> None:
     assert snoozed["trigger"]["atIso"] == "2026-05-10T22:30:00Z"
 
 
-def test_executor_materializes_unseeded_scheduled_task_mutations() -> None:
+def test_executor_rejects_mutation_of_missing_scheduled_task() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
-    result = _execute_action(
-        Action(
-            name="SCHEDULED_TASKS_COMPLETE",
-            kwargs={"taskId": "task_unseeded"},
-        ),
-        world,
-    )
+    with pytest.raises(KeyError, match="target does not exist"):
+        _execute_action(
+            Action(
+                name="SCHEDULED_TASKS_COMPLETE",
+                kwargs={"taskId": "task_unseeded"},
+            ),
+            world,
+        )
+    assert "task_unseeded" not in world.scheduled_tasks
 
-    assert result == {"id": "task_unseeded", "state": "completed"}
-    assert world.scheduled_tasks["task_unseeded"].metadata["materialized_from"] == (
-        "SCHEDULED_TASKS_COMPLETE"
+
+def test_corpus_scheduled_task_mutations_target_existing_state() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import (
+        _execute_action,
+        _normalize_action,
+        _scheduled_task_id,
     )
+    from eliza_lifeops_bench.scenarios import CORE_SCENARIOS
+
+    direct_mutations = {
+        "SCHEDULED_TASK_UPDATE",
+        "SCHEDULED_TASK_SNOOZE",
+        "SCHEDULED_TASKS_ACKNOWLEDGE",
+        "SCHEDULED_TASKS_CANCEL",
+        "SCHEDULED_TASKS_COMPLETE",
+        "SCHEDULED_TASKS_DISMISS",
+        "SCHEDULED_TASKS_REOPEN",
+        "SCHEDULED_TASKS_SKIP",
+    }
+    umbrella_mutations = {
+        "update",
+        "snooze",
+        "acknowledge",
+        "cancel",
+        "complete",
+        "dismiss",
+        "reopen",
+        "skip",
+    }
+    world_factory = _build_world_factory()
+    checked: list[tuple[str, str]] = []
+    all_create_receipt_ids: set[str] = set()
+
+    for scenario in CORE_SCENARIOS:
+        actions = [
+            _normalize_action(action) for action in scenario.ground_truth_actions
+        ]
+        if not any(
+            action.name in direct_mutations
+            or (
+                action.name == "SCHEDULED_TASKS"
+                and action.kwargs.get("operation") in umbrella_mutations
+            )
+            for action in actions
+        ):
+            continue
+
+        world = world_factory(scenario.world_seed, scenario.now_iso)
+        initial_task_ids = set(world.scheduled_tasks)
+        create_receipt_ids: set[str] = set()
+        for action in actions:
+            is_create = action.name == "SCHEDULED_TASK_CREATE" or (
+                action.name == "SCHEDULED_TASKS"
+                and action.kwargs.get("operation") == "create"
+            )
+            if is_create:
+                assert (
+                    _scheduled_task_id(action.kwargs) is None
+                ), f"{scenario.id} seeds a server-owned scheduled-task id"
+                receipt = _execute_action(action, world)
+                create_receipt_ids.add(receipt["id"])
+                all_create_receipt_ids.add(receipt["id"])
+                continue
+
+            is_mutation = action.name in direct_mutations or (
+                action.name == "SCHEDULED_TASKS"
+                and action.kwargs.get("operation") in umbrella_mutations
+            )
+            if is_mutation:
+                task_id = _scheduled_task_id(action.kwargs)
+                assert (
+                    task_id in world.scheduled_tasks
+                ), f"{scenario.id} mutates missing scheduled task {task_id!r}"
+                assert (
+                    task_id in initial_task_ids or task_id in create_receipt_ids
+                ), f"{scenario.id} mutation id {task_id!r} has no source receipt"
+                checked.append((scenario.id, task_id))
+            _execute_action(action, world)
+
+    assert checked
+    assert all_create_receipt_ids
 
 
 @pytest.mark.asyncio
@@ -830,7 +1044,9 @@ async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
     captured_tool_names: list[str] = []
     captured_user_content: list[str] = []
 
-    async def capture_agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn:
+    async def capture_agent_fn(
+        history: list[MessageTurn], tools: list[dict]
+    ) -> MessageTurn:
         captured_user_content.append(history[0].content)
         captured_tool_names.extend(tool["function"]["name"] for tool in tools)
         return MessageTurn(role="assistant", content="done")
@@ -842,6 +1058,7 @@ async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
         concurrency=1,
         seeds=1,
         max_cost_usd=0.01,
+        static_grading_mode="offline_conformance",
     )
     await runner.run_one(SCENARIOS_BY_ID["smoke_static_calendar_01"], 2026)
 
@@ -902,7 +1119,9 @@ def test_compare_actions_partial_credit() -> None:
     from eliza_lifeops_bench.types import Action
 
     gt = [Action(name="calendar.create_event", kwargs={"title": "x", "duration": 30})]
-    exact = [Action(name="calendar.create_event", kwargs={"title": "x", "duration": 30})]
+    exact = [
+        Action(name="calendar.create_event", kwargs={"title": "x", "duration": 30})
+    ]
     arg_mismatch = [Action(name="calendar.create_event", kwargs={"title": "y"})]
     wrong_name = [Action(name="mail.send", kwargs={})]
 

@@ -12,6 +12,8 @@
  */
 
 import {
+  ElizaError,
+  evaluateOwnerExclusiveDisclosure,
   getAccountPrivacy,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -79,6 +81,13 @@ async function summarizeConnectorDegradation(
         const status = await contribution.status();
         return { contribution, status };
       } catch (error) {
+        // error-policy:J4 a registered connector whose status() probe throws
+        // degrades to a visible "disconnected" line below; reportError keeps
+        // the failure in RECENT_ERRORS so a broken probe cannot hide behind
+        // the degrade.
+        runtime.reportError("LifeOpsProvider.connectorStatus", error, {
+          connectorId: contribution.kind,
+        });
         const message = error instanceof Error ? error.message : String(error);
         return {
           contribution,
@@ -352,11 +361,21 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
+    // The destination decides the audience, never the sender's claim about
+    // itself: an unattested turn (or one attested to a shared room) reads as
+    // public here even when its own metadata says "OWNER". `plugin.ts` stamps
+    // this provider with OWNER_EXCLUSIVE_DISCLOSURE_GATE via
+    // `ownerPrivateProvider`, and this check is the same evidence read inside
+    // the provider so a direct call cannot bypass it.
+    const disclosure = evaluateOwnerExclusiveDisclosure(message);
+    const audience: LifeOpsAudience = disclosure.allowed ? "owner" : "public";
+    if (audience !== "owner") {
+      return { text: "", values: {}, data: {} };
+    }
     const isOwner = await hasLifeOpsAccess(runtime, message);
     if (!isOwner) {
       return { text: "", values: {}, data: {} };
     }
-    const audience: LifeOpsAudience = "owner";
 
     try {
       const service = new LifeOpsService(runtime);
@@ -369,9 +388,25 @@ export const lifeOpsProvider: Provider = {
         entityId: message.entityId,
       });
       const accountManager = getConnectorAccountManager(runtime);
-      const connectorAccounts = await accountManager
-        .listAccounts("google")
-        .catch(() => []);
+      let connectorAccounts: Awaited<
+        ReturnType<typeof accountManager.listAccounts>
+      >;
+      try {
+        connectorAccounts = await accountManager.listAccounts("google");
+      } catch (cause) {
+        // error-policy:J2 context-adding rethrow — a failed connector-account
+        // read must not silently shrink the privacy metadata to an empty set;
+        // the provider boundary below reports it and renders the explicit
+        // unavailable state instead of a healthy-looking overview.
+        runtime.reportError("LifeOpsProvider.connectorAccounts", cause, {
+          provider: "google",
+        });
+        throw new ElizaError("Google connector account read failed.", {
+          code: "LIFEOPS_CONNECTOR_ACCOUNTS_READ_FAILED",
+          cause,
+          context: { provider: "google" },
+        });
+      }
       const privacyByAccountKey = new Map<
         string,
         ReturnType<typeof getAccountPrivacy>
@@ -417,10 +452,13 @@ export const lifeOpsProvider: Provider = {
           ),
         );
       } catch (cause) {
-        logger.debug(
-          { err: cause },
-          "[LifeOpsProvider] account privacy table unavailable — defaulting to owner-only context",
-        );
+        // error-policy:J4 fail closed — with the per-account privacy table
+        // unreadable every account stays owner-only (the most restrictive
+        // policy); reportError surfaces the broken read instead of letting the
+        // degrade look healthy.
+        runtime.reportError("LifeOpsProvider.accountPrivacy", cause, {
+          agentId: runtime.agentId,
+        });
       }
       const now = new Date();
       const ownerLines = summarizeOccurrences(
@@ -551,10 +589,12 @@ export const lifeOpsProvider: Provider = {
                   await service.getNextCalendarEventContext(INTERNAL_URL);
                 calendarLines.push(...summarizeNextEvent(nextEventContext));
               } catch (cause) {
-                logger.warn(
-                  { err: cause },
-                  "[LifeOpsProvider] calendar fetch failed — omitting calendar context",
-                );
+                // error-policy:J4 the granted calendar read failed — degrade
+                // to a visible "degraded" line and report, never a silently
+                // empty calendar.
+                runtime.reportError("LifeOpsProvider.calendar", cause, {
+                  roomId: message.roomId,
+                });
                 calendarLines.push(
                   `Calendar connector degraded: ${cause instanceof Error ? cause.message : String(cause)}`,
                 );
@@ -583,10 +623,12 @@ export const lifeOpsProvider: Provider = {
                 gmailSummary = triage.summary;
                 emailLines.push(...summarizeGmailTriage(triage.summary));
               } catch (cause) {
-                logger.warn(
-                  { err: cause },
-                  "[LifeOpsProvider] gmail triage fetch failed — omitting email context",
-                );
+                // error-policy:J4 the granted Gmail triage read failed —
+                // degrade to a visible "degraded" line and report, never a
+                // silently empty inbox.
+                runtime.reportError("LifeOpsProvider.gmail", cause, {
+                  roomId: message.roomId,
+                });
                 emailLines.push(
                   `Gmail connector degraded: ${cause instanceof Error ? cause.message : String(cause)}`,
                 );
@@ -601,6 +643,12 @@ export const lifeOpsProvider: Provider = {
               await service.getNextCalendarEventContext(INTERNAL_URL);
             calendarLines.push(...summarizeNextEvent(nextEventContext));
           } catch (cause) {
+            // error-policy:J4 designed absence — with no calendar source
+            // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
+            // every turn of a connector-less install, so it stays a
+            // debug-level omit rather than a reportError that would escalate
+            // an unconfigured install as a systemic failure; genuine failures
+            // on the capability-granted path are reported above.
             logger.debug(
               { err: cause },
               "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
@@ -608,10 +656,13 @@ export const lifeOpsProvider: Provider = {
           }
         }
       } catch (cause) {
-        logger.debug(
-          { err: cause },
-          "[LifeOpsProvider] Google connector unavailable — skipping calendar/email context",
-        );
+        // error-policy:J4 the Google connector read itself failed (a missing
+        // plugin reports connected:false without throwing) — degrade to a
+        // visible status line and report rather than silently dropping the
+        // calendar/email context.
+        runtime.reportError("LifeOpsProvider.googleConnector", cause, {
+          roomId: message.roomId,
+        });
         accountLines.push(
           `Google connector status unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
@@ -630,11 +681,12 @@ export const lifeOpsProvider: Provider = {
         text: [
           "## Owner Operations",
           "Use OWNER_TODOS for personal todos and live todo-status questions. Use OWNER_REMINDERS for one-off or recurring reminders. Use OWNER_ALARMS for alarm-like reminders. Use OWNER_ROUTINES for habits and daily/weekly routines. Use OWNER_GOALS for long-term goals. Examples: 'add a todo', 'remember to call mom on Sunday', 'track my gym sessions three times a week', 'set a goal to save $5,000'. Do not use REPLY or ENTITY for these.",
+          "When the owner retracts something that was just saved ('actually don't save that', 'cancel that one', 'never mind'), call the owning surface with action=delete and the item title — never answer with a bare reply or a review call: a saved row stays saved until a delete runs.",
           "Use CALENDAR for live calendar reads, calendar writes, availability, proposed meeting times, scheduling preferences, and scheduling negotiation. Examples: 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', 'schedule a dentist appointment next Tuesday at 3pm', 'find meeting options with Alice', or 'protect my sleep window from calls'. Do not answer these from provider context alone.",
           "Use MESSAGE action=triage/list_inbox/search_inbox for Gmail, email, and cross-channel inbox review: 'triage my Gmail inbox', 'summarize my unread emails', 'triage my inbox', 'give me my inbox digest', daily briefs, missed-call repair, and group-chat handoff. Use MESSAGE action=draft_reply when the owner asks to draft a reply to an existing message, MESSAGE action=respond when the owner asks to send/respond to an existing message, and MESSAGE action=manage for unsubscribe, block, archive, trash, spam, label, or mark-read requests. Do not use MESSAGE just because the user mentioned email or messages while venting.",
           "Use MESSAGE action=send_draft for owner-scoped outbound messages and drafts on the owner's behalf. Examples: 'send a Telegram message to Jane saying I am running late', 'send a Signal message to Priya saying thanks', 'email alice@example.com the notes', 'DM Bob on Discord', or 'text Sam that I am outside'. Always prefer MESSAGE action=send_draft over CALENDAR for relaying a message, even if the message text mentions a meeting.",
           "Use CREDENTIALS for credential lookup, saved-login requests, and trusted-page autofill. Examples: 'look up my GitHub password', 'show me my saved logins for github.com', 'copy my AWS password to clipboard', 'log me into github on this sign-in page'. Do not surface raw secrets in chat.",
-          "Use ENTITY for Rolodex contacts and typed relationships (add a contact, log an interaction, set an identity, set a relationship, merge duplicates). Examples: 'who are my closest contacts?', 'add Sam to my Rolodex', 'Pat is my manager'. Use SCHEDULED_TASKS for follow-up cadence questions: 'remind me to follow up with David next week', 'how long has it been since I talked to David?', 'who is overdue for follow-up?'.",
+          "Use ENTITY for Rolodex contacts and typed relationships (add a contact, log an interaction, set an identity, set a relationship, merge duplicates). Examples: 'who are my closest contacts?', 'add Sam to my Rolodex', 'Pat is my manager'. Use SCHEDULED_TASKS only for follow-up cadence STATUS questions: 'how long has it been since I talked to David?', 'who is overdue for follow-up?'. Every 'remind me…' ask — including reminders about people ('remind me to follow up with David next week') — routes to OWNER_REMINDERS, never SCHEDULED_TASKS.",
           "Use OWNER_SCREENTIME for quantitative device/app/website usage questions. Examples: 'how much screen time have I used today?', 'break down my screen time by app this week', 'what websites did I spend the most time on?'. If the owner is only reflecting or venting like 'I spend too much time on my phone', stay in chat instead of calling OWNER_SCREENTIME.",
           "Use BLOCK for phone app and website blocking requests. Pass target=app for phone apps and target=website for websites. Examples: 'block all games on my phone until 6pm', 'block Slack while I focus on deep work', 'block reddit.com until after my workout'.",
           "Use OWNER_FINANCES for subscription audits, recurring membership reviews, cancellation requests, and cancellation-status checks. Examples: 'audit my subscriptions', 'cancel my Google Play subscription', 'what happened with that subscription cancellation?', 'cancel this subscription even if it needs sign-in first'. Use MESSAGE action=manage for email newsletter unsubscribe requests.",
@@ -728,9 +780,21 @@ export const lifeOpsProvider: Provider = {
         },
       };
     } catch (error) {
+      // error-policy:J4 provider boundary — the owner sees an explicit
+      // "LifeOps overview unavailable." block rather than a healthy-looking
+      // overview, and reportError surfaces the failure in RECENT_ERRORS so the
+      // agent can react to a broken overview pipeline.
+      runtime.reportError("LifeOpsProvider.get", error, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
       return {
         text: "LifeOps overview unavailable.",
-        values: { ownerOpenOccurrences: 0, ownerActiveGoals: 0 },
+        // No counts: a failed read that reports zero open occurrences and zero
+        // active goals is indistinguishable from a genuinely empty day, and the
+        // model would state it as fact. The marker lets a consumer tell the
+        // three states apart.
+        values: { lifeOpsOverviewUnavailable: true },
         data: {
           error: error instanceof Error ? error.message : String(error),
         },

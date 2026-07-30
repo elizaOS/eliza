@@ -176,7 +176,21 @@ export type GitHubPrOp = "list" | "review";
 export type GitHubActionResult<T = unknown> =
   | { success: true; data: T; text?: string }
   | { success: false; error: string }
-  | { success: false; requiresConfirmation: true; preview: string };
+  | {
+      success: false;
+      requiresConfirmation: true;
+      preview: string;
+      /** The delivered confirmation prompt. The planner's terminal path only
+       * trusts tool-owned text on the result, and only spots the pending
+       * interaction through `data` markers — without both it appends its
+       * generic failed-tool fallback after the visible prompt. */
+      text: string;
+      data: {
+        requiresConfirmation: true;
+        preview: string;
+        awaitingUserInput: true;
+      };
+    };
 
 export interface RateLimitError {
   kind: "rate-limit";

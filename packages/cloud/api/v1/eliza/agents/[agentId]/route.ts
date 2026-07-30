@@ -46,6 +46,19 @@ const editAgentSchema = z
     message: "Provide agentName and/or agentConfig",
   });
 
+const conditionalDeleteSchema = z
+  .object({
+    expectedAgentName: z.string().min(1).max(100),
+    expectedCreatedAt: z.string().datetime({ offset: true }),
+    expectedExecutionTier: z.enum([
+      "shared",
+      "dedicated-lazy",
+      "dedicated-always",
+      "custom",
+    ]),
+  })
+  .strict();
+
 type Agent = NonNullable<
   Awaited<ReturnType<typeof elizaSandboxService.getAgent>>
 >;
@@ -372,6 +385,44 @@ app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
+    let expectedIdentity:
+      | {
+          agentName: string;
+          createdAt: string;
+          executionTier:
+            | "shared"
+            | "dedicated-lazy"
+            | "dedicated-always"
+            | "custom";
+        }
+      | undefined;
+    if (c.req.raw.body !== null) {
+      const rawBody = await c.req.text();
+      if (rawBody.trim() !== "") {
+        let body: unknown;
+        try {
+          body = JSON.parse(rawBody);
+        } catch {
+          // error-policy:J3 malformed JSON is an invalid conditional request
+          return c.json(
+            { success: false, error: "Invalid conditional delete request" },
+            400,
+          );
+        }
+        const parsed = conditionalDeleteSchema.safeParse(body);
+        if (!parsed.success) {
+          return c.json(
+            { success: false, error: "Invalid conditional delete request" },
+            400,
+          );
+        }
+        expectedIdentity = {
+          agentName: parsed.data.expectedAgentName,
+          createdAt: parsed.data.expectedCreatedAt,
+          executionTier: parsed.data.expectedExecutionTier,
+        };
+      }
+    }
 
     const existing = await elizaSandboxService.getAgent(
       agentId,
@@ -381,14 +432,14 @@ app.delete("/", async (c) => {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
-    if (existing.status === "provisioning") {
+    if (existing.status === "provisioning" && !expectedIdentity) {
       return c.json(
         { success: false, error: "Agent provisioning is in progress" },
         409,
       );
     }
 
-    if (existing.execution_tier === "shared") {
+    if (existing.execution_tier === "shared" && !expectedIdentity) {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
@@ -447,6 +498,7 @@ app.delete("/", async (c) => {
       agentId,
       organizationId: user.organization_id,
       userId: user.id,
+      expectedIdentity,
     });
 
     // Best-effort wake of the worker so the user does not wait for the

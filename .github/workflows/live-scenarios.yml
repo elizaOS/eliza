@@ -1,12 +1,13 @@
 # Live Scenario Runner (nightly)
 #
-# Executes the executive-assistant, connector certification, plugin-health, and
-# app-control scenarios against a live LLM runtime with real connector
-# credentials and uploads the JSON report. Scheduled runs are enforcing: once the
-# runner reaches scenario execution, any scenario failure or aggregate LLM-judge
-# score below LIFEOPS_JUDGE_THRESHOLD fails the lane. Manual dispatch can still opt
-# into report-only mode while debugging by leaving `enforce_gate` false. Missing
-# setup prerequisites fail loudly and still upload a placeholder report artifact.
+# Executes the executive-assistant, connector certification, plugin-health,
+# app-control, and scenario-runner view-chat scenarios against a live LLM
+# runtime with real credentials. Scheduled runs are enforcing: once the runner
+# reaches scenario execution, any scenario failure or aggregate LLM-judge score
+# below LIFEOPS_JUDGE_THRESHOLD fails the lane. Manual dispatch can select one
+# named shard and filter inside that shard; it can also opt into report-only mode
+# while debugging by leaving `enforce_gate` false. Missing setup prerequisites
+# fail loudly and still upload a placeholder report artifact.
 #
 # Required repo secrets (self-documented):
 #   LLM provider (at least one):
@@ -35,7 +36,8 @@
 #     TRAVEL_BOOKING_API_KEY
 # Optional:
 #   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
-#   SCENARIO_FILTER        (comma-separated scenario ids, default all)
+#   SCENARIO_SHARD         (manual choice; scheduled runs execute all shards)
+#   SCENARIO_FILTER        (comma-separated ids inside one selected manual shard)
 #   SCENARIO_ENFORCE_GATE  (schedule: enforced; manual input default false)
 #   SKIP_REASON            (required if SCENARIO_SKIP is set)
 #
@@ -55,10 +57,21 @@ on:
   workflow_dispatch:
     inputs:
       scenario_filter:
-        description: "EA/connector scenario ids (empty = all suites)"
+        description: "Scenario ids inside scenario_shard (empty = shard default)"
         required: false
         type: string
         default: ""
+      scenario_shard:
+        description: "Named shard to run (filters require a single named shard)"
+        required: true
+        type: choice
+        default: "lifeops-connectors"
+        options:
+          - all
+          - lifeops-connectors
+          - plugin-health
+          - app-control
+          - scenario-runner-view-chat
       judge_threshold:
         description: "LLM-judge minimum pass score (0.0 - 1.0)"
         required: false
@@ -90,7 +103,7 @@ permissions:
 
 jobs:
   live-scenarios:
-    name: Live scenarios (EA + connectors + health + app-control)
+    name: Live scenarios (EA + connectors + health + app-control + view-chat)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     steps:
@@ -101,7 +114,7 @@ jobs:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -118,25 +131,66 @@ jobs:
 
       - name: Prepare live scenario report placeholder
         run: |
-          mkdir -p artifacts/scenario-runs/live
+          mkdir -p \
+            artifacts/scenario-runs/live \
+            artifacts/scenario-runs/plugin-health \
+            artifacts/scenario-runs/app-control \
+            artifacts/scenario-runs/scenario-runner-view-chat
           node - <<'NODE'
           const fs = require("node:fs");
-          const report = {
-            schema: "eliza_live_scenario_setup_v1",
-            status: "setup_not_completed",
-            generatedAt: new Date().toISOString(),
-            note:
-              "Placeholder written before build/setup. If this file is uploaded unchanged, the workflow failed before scenario execution and no live model trajectory was produced.",
-            scenarios: [],
-            totalCount: 0,
-            passedCount: 0,
-            failedCount: 0
-          };
-          fs.writeFileSync(
-            "artifacts/lifeops-scenario-report.json",
-            `${JSON.stringify(report, null, 2)}\n`,
-          );
+          for (const [shard, output] of [
+            ["lifeops-connectors", "artifacts/lifeops-scenario-report.json"],
+            ["plugin-health", "artifacts/plugin-health-scenario-report.json"],
+            ["app-control", "artifacts/app-control-scenario-report.json"],
+            ["scenario-runner-view-chat", "artifacts/scenario-runner-view-chat-report.json"],
+          ]) {
+            const report = {
+              schema: "eliza_live_scenario_setup_v1",
+              shard,
+              status: "setup_not_completed",
+              generatedAt: new Date().toISOString(),
+              note:
+                "Placeholder written before build/setup. If this file is uploaded unchanged, the workflow failed before scenario execution and no live model trajectory was produced.",
+              scenarios: [],
+              totalCount: 0,
+              passedCount: 0,
+              failedCount: 0
+            };
+            fs.writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
+          }
           NODE
+
+      - name: Resolve manual shard selection
+        id: selection
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          SCENARIO_SHARD: ${{ inputs.scenario_shard }}
+        run: |
+          selected="${SCENARIO_SHARD:-lifeops-connectors}"
+          # A workflow_dispatch request is validated against the default-branch
+          # input schema. The prefix lets an exact-head run select a new shard
+          # before this workflow revision itself reaches the default branch.
+          case "$SCENARIO_FILTER" in
+            lifeops-connectors:*) selected="lifeops-connectors" ;;
+            plugin-health:*) selected="plugin-health" ;;
+            app-control:*) selected="app-control" ;;
+            scenario-runner-view-chat:*) selected="scenario-runner-view-chat" ;;
+          esac
+
+          case "$selected" in
+            all|lifeops-connectors|plugin-health|app-control|scenario-runner-view-chat) ;;
+            *)
+              echo "unknown scenario_shard: $selected" >&2
+              exit 2
+              ;;
+          esac
+
+          if [ -n "$SCENARIO_FILTER" ] && [ "$selected" = "all" ]; then
+            echo "scenario_filter requires one named scenario_shard; 'all' is ambiguous" >&2
+            exit 2
+          fi
+          echo "shard=$selected" >> "$GITHUB_OUTPUT"
 
       - name: Validate authoritative shard prerequisites
         id: preflight
@@ -151,7 +205,7 @@ jobs:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
           status=0
-          for shard in lifeops-connectors plugin-health app-control; do
+          for shard in lifeops-connectors plugin-health app-control scenario-runner-view-chat; do
             node packages/scripts/live-scenario-contract.mjs preflight "$shard" || status=$?
           done
           exit "$status"
@@ -262,7 +316,7 @@ jobs:
 
       - name: Run EA + connector live scenarios
         id: run
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'lifeops-connectors') }}
         continue-on-error: true
         env:
           # The runner and ordinary workspace dependencies stay on checkout
@@ -320,6 +374,7 @@ jobs:
           NOTIFICATION_RELAY_TOKEN: ${{ secrets.NOTIFICATION_RELAY_TOKEN }}
           TRAVEL_BOOKING_API_KEY: ${{ secrets.TRAVEL_BOOKING_API_KEY }}
           # Run controls
+          SCENARIO_SHARD: lifeops-connectors
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
           SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
@@ -333,7 +388,7 @@ jobs:
 
       - name: Run plugin-health live scenarios
         id: run-health
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && !inputs.scenario_filter }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'plugin-health') }}
         continue-on-error: true
         env:
           NODE_OPTIONS: "--conditions=eliza-source"
@@ -350,6 +405,7 @@ jobs:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           # Run controls
           SCENARIO_ROOT: plugins/plugin-health/test/scenarios
+          SCENARIO_SHARD: plugin-health
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
           SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
@@ -364,7 +420,7 @@ jobs:
 
       - name: Run app-control live scenarios
         id: run-app-control
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && !inputs.scenario_filter }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'app-control') }}
         continue-on-error: true
         env:
           NODE_OPTIONS: "--conditions=eliza-source"
@@ -381,6 +437,7 @@ jobs:
           SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
           # Run controls
           SCENARIO_ROOT: plugins/plugin-app-control/test/scenarios
+          SCENARIO_SHARD: app-control
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
           SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
@@ -393,17 +450,51 @@ jobs:
           mkdir -p artifacts/scenario-runs/app-control
           node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/app-control/runner.log
 
+      - name: Run scenario-runner view-chat live scenarios
+        id: run-view-chat
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'scenario-runner-view-chat') }}
+        continue-on-error: true
+        env:
+          NODE_OPTIONS: "--conditions=eliza-source"
+          # LLM providers
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Independent LLM judge (#9310): judge on Cerebras, never the model
+          # under test.
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+          # This shard deliberately owns a bounded subset of the runner's
+          # mixed-purpose live catalog. A selected manual filter may narrow it
+          # further; scheduled/all runs execute the declared shard default.
+          SCENARIO_ROOT: packages/scenario-runner/test/scenarios
+          SCENARIO_SHARD: scenario-runner-view-chat
+          SCENARIO_FILTER: ${{ inputs.scenario_filter || 'live-document-delete' }}
+          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
+          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
+          SKIP_REASON: ${{ inputs.skip_reason }}
+          REPORT_PATH: artifacts/scenario-runner-view-chat-report.json
+          RUN_DIR: artifacts/scenario-runs/scenario-runner-view-chat
+          EXPORT_NATIVE_PATH: artifacts/scenario-runs/scenario-runner-view-chat/native.jsonl
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/scenario-runs/scenario-runner-view-chat
+          node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/scenario-runner-view-chat/runner.log
+
       - name: Verify every requested shard published its evidence contract
         id: verify-evidence
         if: ${{ always() && steps.preflight.outcome == 'success' && steps.build.outcome == 'success' }}
         env:
-          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          SCENARIO_SHARD: ${{ github.event_name == 'schedule' && 'all' || steps.selection.outputs.shard }}
         run: |
-          node packages/scripts/live-scenario-contract.mjs verify lifeops-connectors
-          if [ -z "$SCENARIO_FILTER" ]; then
-            node packages/scripts/live-scenario-contract.mjs verify plugin-health
-            node packages/scripts/live-scenario-contract.mjs verify app-control
-          fi
+          for shard in lifeops-connectors plugin-health app-control scenario-runner-view-chat; do
+            if [ "$SCENARIO_SHARD" = "all" ] || [ "$SCENARIO_SHARD" = "$shard" ]; then
+              node packages/scripts/live-scenario-contract.mjs verify "$shard"
+            fi
+          done
 
       - name: Upload scenario report
         if: always()
@@ -414,9 +505,11 @@ jobs:
             artifacts/lifeops-scenario-report.json
             artifacts/plugin-health-scenario-report.json
             artifacts/app-control-scenario-report.json
+            artifacts/scenario-runner-view-chat-report.json
             artifacts/scenario-runs/live/
             artifacts/scenario-runs/plugin-health/
             artifacts/scenario-runs/app-control/
+            artifacts/scenario-runs/scenario-runner-view-chat/
           if-no-files-found: error
           retention-days: 30
 
@@ -428,12 +521,29 @@ jobs:
           LIFEOPS_OUTCOME: ${{ steps.run.outcome }}
           HEALTH_OUTCOME: ${{ steps.run-health.outcome }}
           APP_CONTROL_OUTCOME: ${{ steps.run-app-control.outcome }}
+          VIEW_CHAT_OUTCOME: ${{ steps.run-view-chat.outcome }}
           EVIDENCE_OUTCOME: ${{ steps.verify-evidence.outcome }}
-          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          SCENARIO_SHARD: ${{ github.event_name == 'schedule' && 'all' || steps.selection.outputs.shard }}
         run: |
           node - <<'NODE'
-          const required = ["PREFLIGHT_OUTCOME", "BUILD_OUTCOME", "LIFEOPS_OUTCOME", "EVIDENCE_OUTCOME"];
-          if (!process.env.SCENARIO_FILTER) required.push("HEALTH_OUTCOME", "APP_CONTROL_OUTCOME");
+          const required = ["PREFLIGHT_OUTCOME", "BUILD_OUTCOME", "EVIDENCE_OUTCOME"];
+          const shardOutcome = {
+            "lifeops-connectors": "LIFEOPS_OUTCOME",
+            "plugin-health": "HEALTH_OUTCOME",
+            "app-control": "APP_CONTROL_OUTCOME",
+            "scenario-runner-view-chat": "VIEW_CHAT_OUTCOME",
+          };
+          const selected = process.env.SCENARIO_SHARD || "all";
+          if (selected === "all") {
+            required.push(...Object.values(shardOutcome));
+          } else {
+            const outcome = shardOutcome[selected];
+            if (!outcome) {
+              console.error(`Unknown live scenario shard: ${selected}`);
+              process.exit(2);
+            }
+            required.push(outcome);
+          }
           const failures = required.filter((name) => process.env[name] !== "success");
           if (failures.length) {
             console.error(`Live scenario authority failed: ${failures.map((name) => `${name}=${process.env[name] || "missing"}`).join(", ")}`);

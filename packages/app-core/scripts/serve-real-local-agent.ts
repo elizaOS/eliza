@@ -33,37 +33,48 @@ function resolvePort(): number {
   return port;
 }
 
+function resolveNonNegativeIntegerEnv(name: string, fallback: string): number {
+  const raw = process.env[name] ?? fallback;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer: ${raw}`);
+  }
+  return value;
+}
+
+function resolvePositiveIntegerEnv(name: string, fallback: string): number {
+  const value = resolveNonNegativeIntegerEnv(name, fallback);
+  if (value === 0) {
+    throw new Error(`${name} must be greater than zero`);
+  }
+  return value;
+}
+
 async function main(): Promise<void> {
   const t0 = Date.now();
   const port = resolvePort();
-  const streamIntervalMs = Number.parseInt(
-    process.env.ELIZA_E2E_MODEL_STREAM_INTERVAL_MS ?? "",
-    10,
+  const streamIntervalMs = resolveNonNegativeIntegerEnv(
+    "ELIZA_E2E_MODEL_STREAM_INTERVAL_MS",
+    "0",
   );
-  const streamChunkSize = Number.parseInt(
-    process.env.ELIZA_E2E_MODEL_STREAM_CHUNK_SIZE ?? "4",
-    10,
+  const streamChunkSize = resolvePositiveIntegerEnv(
+    "ELIZA_E2E_MODEL_STREAM_CHUNK_SIZE",
+    "4",
   );
-  const deterministicStream =
-    Number.isSafeInteger(streamIntervalMs) && streamIntervalMs >= 0
-      ? {
-          chunkSize: streamChunkSize,
-          intervalMs: streamIntervalMs,
-          modelTypes: [ModelType.RESPONSE_HANDLER],
-        }
-      : undefined;
+  const deterministicStream = {
+    chunkSize: streamChunkSize,
+    intervalMs: streamIntervalMs,
+    modelTypes: [ModelType.RESPONSE_HANDLER],
+  };
 
   process.env.ELIZA_PAIRING_DISABLED ??= "1";
 
   const configEnv = useIsolatedConfigEnv("eliza-device-e2e-host-agent-");
   const proxy = createDeterministicLlmProxyPlugin({
     failOnUnhandledAction: false,
-    ...(deterministicStream ? { stream: deterministicStream } : {}),
+    stream: deterministicStream,
     resolve(call) {
-      if (
-        !deterministicStream ||
-        call.modelType !== ModelType.RESPONSE_HANDLER
-      ) {
+      if (call.modelType !== ModelType.RESPONSE_HANDLER) {
         return null;
       }
       const args = {

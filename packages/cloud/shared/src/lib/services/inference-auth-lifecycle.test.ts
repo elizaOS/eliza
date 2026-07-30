@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ── Captured side effects + per-test repository state ───────────────────────
 const invalidatedHashBatches: string[][] = [];
+const invalidatedSessionBatches: string[][] = [];
 const userDeleteCalls: string[] = [];
 const orgDeleteCalls: string[] = [];
 
@@ -29,6 +30,9 @@ let listByUserError: Error | null = null;
 mock.module("./inference-auth-cache", () => ({
   invalidateInferenceAuthContextsByKeyHashes: async (hashes: readonly string[]) => {
     invalidatedHashBatches.push([...hashes]);
+  },
+  invalidateInferenceSessionAuthContexts: async (ids: readonly string[]) => {
+    invalidatedSessionBatches.push([...ids]);
   },
 }));
 
@@ -53,6 +57,9 @@ mock.module("../../db/repositories", () => ({
   },
   organizationsRepository: {
     update: async (id: string, data: Record<string, unknown>) => ({ id, ...data }),
+    findWithUsers: async () => ({
+      users: listByOrganizationUsers,
+    }),
     delete: async (id: string) => {
       orgDeleteCalls.push(id);
       orgApiKeys = [];
@@ -74,6 +81,7 @@ mock.module("../utils/logger", () => ({
 
 beforeEach(() => {
   invalidatedHashBatches.length = 0;
+  invalidatedSessionBatches.length = 0;
   userDeleteCalls.length = 0;
   orgDeleteCalls.length = 0;
   userApiKeys = [];
@@ -85,17 +93,28 @@ beforeEach(() => {
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
   test("update with is_active=false evicts the user's cached key hashes", async () => {
-    userRecord = { id: "u1", organization_id: "o1", email: null };
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-u1",
+    };
     userApiKeys = [{ key_hash: "uh1" }, { key_hash: "uh2" }];
 
     const { usersService } = await import("./users");
     await usersService.update("u1", { is_active: false });
 
     expect(invalidatedHashBatches).toEqual([["uh1", "uh2"]]);
+    expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
   });
 
   test("update without an is_active=false transition does NOT invalidate", async () => {
-    userRecord = { id: "u1", organization_id: "o1", email: null };
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-u1",
+    };
     userApiKeys = [{ key_hash: "uh1" }];
 
     const { usersService } = await import("./users");
@@ -107,7 +126,12 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
 
   test("delete resolves the key hashes BEFORE deleting the row", async () => {
     // organization_id null so the last-user org-cascade is skipped.
-    userRecord = { id: "u1", organization_id: null, email: null };
+    userRecord = {
+      id: "u1",
+      organization_id: null,
+      email: null,
+      steward_user_id: "steward-u1",
+    };
     userApiKeys = [{ key_hash: "uh1" }];
 
     const { usersService } = await import("./users");
@@ -116,10 +140,16 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     expect(userDeleteCalls).toEqual(["u1"]);
     // The row is wiped on delete; a non-empty batch proves resolution happened first.
     expect(invalidatedHashBatches).toEqual([["uh1"]]);
+    expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
   });
 
   test("delete invalidation is best-effort: a cache/db failure does not throw", async () => {
-    userRecord = { id: "u1", organization_id: null, email: null };
+    userRecord = {
+      id: "u1",
+      organization_id: null,
+      email: null,
+      steward_user_id: "steward-u1",
+    };
     userApiKeys = [{ key_hash: "uh1" }];
     listByUserError = new Error("db down");
 
@@ -133,11 +163,16 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
 describe("OrganizationsService — IAC invalidation on lifecycle", () => {
   test("update with is_active=false evicts the org's cached key hashes", async () => {
     orgApiKeys = [{ key_hash: "oh1" }, { key_hash: "oh2" }];
+    listByOrganizationUsers = [
+      { steward_user_id: "steward-u1" },
+      { steward_user_id: "steward-u2" },
+    ];
 
     const { organizationsService } = await import("./organizations");
     await organizationsService.update("o1", { is_active: false });
 
     expect(invalidatedHashBatches).toEqual([["oh1", "oh2"]]);
+    expect(invalidatedSessionBatches).toEqual([["steward-u1", "steward-u2"]]);
   });
 
   test("update without an is_active=false transition does NOT invalidate", async () => {

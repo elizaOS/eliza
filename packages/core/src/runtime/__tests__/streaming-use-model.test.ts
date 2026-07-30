@@ -41,7 +41,7 @@ const responseSkeleton: ResponseSkeleton = {
 };
 
 describe("AgentRuntime structured streaming", () => {
-	it("preserves local handler stream callbacks and emits only replyText", async () => {
+	it("holds local structured envelopes when no response field is approved for streaming", async () => {
 		const runtime = makeRuntime();
 		const streamed: Array<[string, string | undefined]> = [];
 		const raw =
@@ -82,13 +82,10 @@ describe("AgentRuntime structured streaming", () => {
 		);
 
 		expect(result).toBe(raw);
-		expect(streamed).toEqual([
-			["On it ", "On it "],
-			["now.", "On it now."],
-		]);
+		expect(streamed).toEqual([]);
 	});
 
-	it("streams structured fields from non-local handlers that return text streams", async () => {
+	it("holds non-local structured envelopes when no response field is approved for streaming", async () => {
 		const runtime = makeRuntime();
 		const streamed: string[] = [];
 		const raw =
@@ -129,7 +126,7 @@ describe("AgentRuntime structured streaming", () => {
 		);
 
 		expect(result).toBe(raw);
-		expect(streamed.join("")).toBe("auth-ok");
+		expect(streamed).toEqual([]);
 	});
 
 	it("preserves streamed provider tool calls, finish reason, and usage", async () => {

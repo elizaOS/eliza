@@ -1,9 +1,11 @@
-/** Tests the final-check dispatcher `runFinalCheck` (final-checks/index.ts): routing to the right handler by check `type` and the unknown-type/error behavior, against a synthetic context. */
+/** Tests final-check routing and trusted-observation matching against bounded in-memory contexts. */
+import { createHash } from "node:crypto";
 import type {
   ScenarioContext,
   ScenarioFinalCheck,
 } from "@elizaos/scenario-runner/schema";
 import { describe, expect, it } from "vitest";
+import type { ScenarioEvidenceReport } from "../types.ts";
 import { type FinalCheckRuntime, runFinalCheck } from "./index";
 
 const runtime: FinalCheckRuntime = {};
@@ -15,6 +17,104 @@ function createContext(
     actionsCalled: [],
     memoryWrites: [],
     ...overrides,
+  };
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function providerEvidence(): ScenarioEvidenceReport {
+  const trajectorySha256 = sha256("trajectory");
+  return {
+    schemaVersion: 1,
+    executionProfile: "provider-qualified",
+    qualification: {
+      status: "qualified",
+      publishable: true,
+      reasons: [],
+    },
+    observerProvenance: [
+      {
+        observerId: "calendar-observer",
+        kind: "provider-api",
+        implementation: "calendar-readback",
+        version: "1.0.0",
+        environment: "sandbox",
+        configurationSha256: sha256("configuration"),
+      },
+    ],
+    trajectoryHashes: [
+      {
+        trajectoryId: "trajectory-1",
+        relativePath: "trajectories/trajectory-1.json",
+        sha256: trajectorySha256,
+        recorder: {
+          implementation: "trajectory-recorder",
+          version: "1.0.0",
+          environment: "sandbox",
+        },
+      },
+    ],
+    observations: [
+      {
+        observationId: "observation-1",
+        kind: "provider-effect",
+        observedAtIso: "2026-07-28T12:00:01.000Z",
+        observerId: "calendar-observer",
+        source: {
+          kind: "provider-api",
+          system: "google-calendar",
+          environment: "sandbox",
+          recordIdSha256: sha256("event-1"),
+          accountRefSha256: sha256("parent-account"),
+        },
+        payloadSha256: sha256("payload"),
+        trajectoryRefs: [
+          {
+            trajectoryId: "trajectory-1",
+            stageId: "stage-1",
+            sha256: trajectorySha256,
+          },
+        ],
+        provider: "google-calendar",
+        operation: "create",
+        accountRefSha256: sha256("parent-account"),
+        requestSha256: sha256("request"),
+        responseSha256: sha256("response"),
+        providerReceiptIdSha256: sha256("event-1"),
+        readbackSha256: sha256("readback"),
+      },
+      {
+        observationId: "observation-2",
+        kind: "provider-no-effect",
+        observedAtIso: "2026-07-28T12:00:02.000Z",
+        observerId: "calendar-observer",
+        source: {
+          kind: "provider-api",
+          system: "google-calendar",
+          environment: "sandbox",
+          recordIdSha256: sha256("calendar-scope"),
+          accountRefSha256: sha256("parent-account"),
+        },
+        payloadSha256: sha256("no-effect-payload"),
+        trajectoryRefs: [
+          {
+            trajectoryId: "trajectory-1",
+            stageId: "stage-1",
+            sha256: trajectorySha256,
+          },
+        ],
+        provider: "google-calendar",
+        accountRefSha256: sha256("parent-account"),
+        effectKinds: ["delete"],
+        scopeSha256: sha256("calendar-scope"),
+        beforeSnapshotSha256: sha256("snapshot"),
+        afterSnapshotSha256: sha256("snapshot"),
+        observationStartedAtIso: "2026-07-28T11:59:59.000Z",
+        observationEndedAtIso: "2026-07-28T12:00:03.000Z",
+      },
+    ],
   };
 }
 
@@ -63,6 +163,94 @@ function runtimeWithTrajectoryService(
     },
   };
 }
+
+describe("trusted observation finalChecks", () => {
+  it("matches provider effects by plaintext filters against hashed external identities", async () => {
+    await expect(
+      runFinalCheck(
+        {
+          type: "providerEffectObserved",
+          observerId: "calendar-observer",
+          provider: "google-calendar",
+          accountId: "parent-account",
+          operation: "create",
+          resourceId: "event-1",
+        },
+        {
+          runtime,
+          ctx: createContext(),
+          trustedEvidence: providerEvidence(),
+          scenarioStartedAtIso: "2026-07-28T12:00:00.000Z",
+          scenarioEndedAtIso: "2026-07-28T12:00:02.000Z",
+        },
+      ),
+    ).resolves.toMatchObject({
+      type: "providerEffectObserved",
+      status: "passed",
+    });
+  });
+
+  it("requires a no-effect observer interval to cover the scenario", async () => {
+    const context = {
+      runtime,
+      ctx: createContext(),
+      trustedEvidence: providerEvidence(),
+      scenarioStartedAtIso: "2026-07-28T12:00:00.000Z",
+      scenarioEndedAtIso: "2026-07-28T12:00:02.000Z",
+    };
+    await expect(
+      runFinalCheck(
+        {
+          type: "providerNoEffectObserved",
+          provider: "google-calendar",
+          resourceId: "calendar-scope",
+        },
+        context,
+      ),
+    ).resolves.toMatchObject({ status: "passed" });
+
+    await expect(
+      runFinalCheck(
+        {
+          type: "providerNoEffectObserved",
+          provider: "google-calendar",
+        },
+        {
+          ...context,
+          scenarioStartedAtIso: "2026-07-28T11:00:00.000Z",
+        },
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      detail: expect.stringContaining("saw 0"),
+    });
+  });
+
+  it("skips rather than inferring trusted evidence from captured action results", async () => {
+    await expect(
+      runFinalCheck(
+        { type: "providerEffectObserved", provider: "google-calendar" },
+        {
+          runtime,
+          ctx: createContext({
+            actionsCalled: [
+              {
+                actionName: "CALENDAR",
+                result: {
+                  success: true,
+                  data: { providerReceiptId: "invented-action-payload" },
+                },
+              },
+            ],
+          }),
+        },
+      ),
+    ).resolves.toMatchObject({
+      status: "skipped",
+      detail: expect.stringContaining("not accepted as substitutes"),
+    });
+  });
+});
 
 describe("modelCallOccurred finalCheck", () => {
   it("passes when a matching scenario trajectory contains the requested purpose", async () => {

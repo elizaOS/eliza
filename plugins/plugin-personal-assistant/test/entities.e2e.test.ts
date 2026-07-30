@@ -6,6 +6,7 @@
  * Runs against a real PGLite-backed runtime via createRealTestRuntime.
  */
 
+import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -126,6 +127,92 @@ describe("EntityStore — real PGLite", () => {
     expect(result.entity.entityId).not.toBe(SELF_ENTITY_ID);
     expect(result.entity.identities).toHaveLength(1);
     expect(result.entity.identities[0]?.platform).toBe("x");
+  });
+
+  it("persists and resolves identical handles in exact connector-account partitions", async () => {
+    const handle = `account-bound-${crypto.randomUUID()}`;
+    const entity = await store.upsert({
+      type: "person",
+      preferredName: "Account Bound",
+      identities: [
+        {
+          platform: "discord",
+          handle,
+          connectorAccountId: "family",
+          verified: true,
+          confidence: 1,
+          addedAt: new Date().toISOString(),
+          addedVia: "user_chat",
+          evidence: ["family-route"],
+        },
+        {
+          platform: "discord",
+          handle,
+          connectorAccountId: "work",
+          verified: false,
+          confidence: 0.8,
+          addedAt: new Date().toISOString(),
+          addedVia: "user_chat",
+          evidence: ["work-route"],
+        },
+      ],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+
+    expect((await store.get(entity.entityId))?.identities).toHaveLength(2);
+    expect(
+      await store.resolve({
+        identity: {
+          platform: "discord",
+          handle,
+          connectorAccountId: "family",
+        },
+      }),
+    ).toMatchObject([
+      {
+        entity: { entityId: entity.entityId },
+        safeToSend: true,
+        evidence: ["family-route"],
+      },
+    ]);
+    expect(
+      await store.resolve({
+        identity: {
+          platform: "discord",
+          handle,
+          connectorAccountId: "work",
+        },
+      }),
+    ).toMatchObject([
+      {
+        entity: { entityId: entity.entityId },
+        safeToSend: false,
+        evidence: ["work-route"],
+      },
+    ]);
+    expect(
+      await store.resolve({ identity: { platform: "discord", handle } }),
+    ).toEqual([]);
+    expect(
+      (
+        await store.list({
+          hasPlatform: "discord",
+          hasConnectorAccountId: "work",
+        })
+      ).some((candidate) => candidate.entityId === entity.entityId),
+    ).toBe(true);
+
+    const observed = await store.observeIdentity({
+      platform: "discord",
+      handle,
+      connectorAccountId: "school",
+      evidence: ["school-route"],
+      confidence: 0.95,
+    });
+    expect(observed.entity.entityId).not.toBe(entity.entityId);
+    expect(observed.entity.identities[0]?.connectorAccountId).toBe("school");
   });
 
   it("observeIdentity surfaces conflict when multiple candidates match", async () => {

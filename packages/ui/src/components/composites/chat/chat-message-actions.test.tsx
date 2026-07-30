@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 //
-// The desktop hover action rail's Copy button fires `onCopy` (which the
-// ChatView wires to the clipboard helper) and reflects the copied state in its
-// label. This closes the coverage gap called out in #9148 — the overlay copy
-// was tested but the desktop ChatMessageActions copy was not.
+/**
+ * Behavior and presentation checks for shared per-message actions. The real
+ * controls render directly so callback, confirmation, panel glass, bare
+ * overlay icons, and the absence of destructive actions stay locked together.
+ */
 
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -21,10 +22,59 @@ describe("ChatMessageActions copy", () => {
   });
 
   it("reflects the copied state in the button label", () => {
-    render(<ChatMessageActions copied onCopy={vi.fn()} />);
+    render(
+      <ChatMessageActions appearance="glass-row" copied onCopy={vi.fn()} />,
+    );
+    const copy = screen.getByRole("button", { name: "Copied!" });
+    expect(copy).toBeTruthy();
+    expect(copy.className.split(" ")).toContain("bg-transparent");
+    expect(copy.className.split(" ")).not.toContain("bg-white/10");
+    expect(copy.className.split(" ")).toContain("hover:bg-transparent");
+    expect(screen.getByTestId("copy-status-icon").dataset.state).toBe("copied");
+  });
+
+  it("animates copy feedback in place without replacing the action surface", () => {
+    const onCopy = vi.fn();
+    const { rerender } = render(
+      <ChatMessageActions
+        appearance="glass-row"
+        copied={false}
+        onCopy={onCopy}
+      />,
+    );
+    const surface = screen.getByTestId("thread-line-action-surface");
+    const copy = screen.getByRole("button", { name: "Copy" });
     expect(
-      screen.getByRole("button", { name: "Copied to clipboard" }),
-    ).toBeTruthy();
+      screen
+        .getAllByTestId("copy-status-icon")
+        .some((icon) => icon.dataset.state === "idle"),
+    ).toBe(true);
+
+    rerender(
+      <ChatMessageActions appearance="glass-row" copied onCopy={onCopy} />,
+    );
+    expect(screen.getByTestId("thread-line-action-surface")).toBe(surface);
+    expect(screen.getByRole("button", { name: "Copied!" })).toBe(copy);
+    expect(
+      screen
+        .getAllByTestId("copy-status-icon")
+        .some((icon) => icon.dataset.state === "copied"),
+    ).toBe(true);
+
+    rerender(
+      <ChatMessageActions
+        appearance="glass-row"
+        copied={false}
+        onCopy={onCopy}
+      />,
+    );
+    expect(screen.getByTestId("thread-line-action-surface")).toBe(surface);
+    expect(screen.getByRole("button", { name: "Copy" })).toBe(copy);
+    expect(
+      screen
+        .getAllByTestId("copy-status-icon")
+        .some((icon) => icon.dataset.state === "idle"),
+    ).toBe(true);
   });
 
   it("uses provided copy labels when supplied", () => {
@@ -37,34 +87,46 @@ describe("ChatMessageActions copy", () => {
     expect(screen.getByRole("button", { name: "Copy text" })).toBeTruthy();
   });
 
-  it("invokes onDelete when the delete button is enabled and clicked", async () => {
-    const onDelete = vi.fn();
-    render(<ChatMessageActions canDelete onDelete={onDelete} />);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Delete message" }),
-    );
-    expect(onDelete).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders glass-row actions as unframed icons", () => {
+  it("renders overlay actions as a bare icon lane", () => {
     render(
       <ChatMessageActions
         appearance="glass-row"
-        canDelete
         canEdit
+        canPlay
         canReply
         onCopy={vi.fn()}
-        onDelete={vi.fn()}
         onEdit={vi.fn()}
+        onPlay={vi.fn()}
         onReply={vi.fn()}
       />,
     );
 
+    const surface = screen.getByTestId("thread-line-action-surface");
+    expect(surface.className).not.toContain("bg-black/55");
+    expect(surface.className).not.toContain("border-white/25");
+    expect(surface.className).not.toContain("rounded-xl");
+    expect(surface.style.backgroundImage).toBe("");
+    expect(surface.style.backdropFilter).toBe("");
+
     for (const button of screen.getAllByRole("button")) {
       expect(button.className).toContain("bg-transparent");
       expect(button.className).toContain("rounded-none");
+      expect(button.className).toContain("h-5");
+      expect(button.className).toContain("hover:bg-transparent");
+      expect(button.className).toContain("pointer-coarse:h-11");
       expect(button.className).not.toContain("bg-white/10");
-      expect(button.className).not.toContain("rounded-full");
+      expect(button.className).toContain("keyboard-focus-emphasis");
+      expect(button.className).not.toContain("text-[rgb(255");
     }
+    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
+  });
+
+  it("keeps panel actions on the neutral glass surface", () => {
+    render(<ChatMessageActions canReply onCopy={vi.fn()} onReply={vi.fn()} />);
+    const surface = screen.getByTestId("chat-message-actions");
+    expect(surface.className).toContain("bg-black/55");
+    expect(surface.className).toContain("border-white/25");
+    expect(surface.style.backgroundImage).toContain("radial-gradient");
+    expect(surface.style.backdropFilter).toBe("");
   });
 });

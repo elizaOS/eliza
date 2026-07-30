@@ -40,14 +40,6 @@ const allowedCallsites = new Map<string, string>([
 		"page router; attributes callbacks to routed child actions",
 	],
 	[
-		"packages/agent/src/api/chat-routes.ts",
-		"direct chat task-dispatch bypass; rewrites callback text with TEXT_SMALL",
-	],
-	[
-		"packages/agent/src/api/fallback-action-helpers.ts",
-		"fallback action bypass; rewrites action callback output with TEXT_SMALL",
-	],
-	[
 		"packages/scenario-runner/src/executor.ts",
 		"scenario action turns; rewrites action response text with TEXT_SMALL",
 	],
@@ -86,10 +78,6 @@ const allowedCallsites = new Map<string, string>([
 	[
 		"plugins/plugin-commands/src/actions/handlers.ts",
 		"slash-command dispatcher (/compact -> COMPACT_CONVERSATION via runCompactAction); forwards the original callback to the dispatched action and returns result.text as a CommandResult reply",
-	],
-	[
-		"packages/core/src/services/message.ts",
-		"shortcut-gate (runShortcutGate, #8792): fires a slash-command action; its callback only captures content.text (emits nothing) and the captured text is returned as a Stage1 direct_reply, so the normal message-service voice rewrite still applies",
 	],
 ]);
 

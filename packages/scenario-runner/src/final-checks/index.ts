@@ -4,13 +4,19 @@
  * cannot be misspelled or silently skipped.
  */
 
+import { createHash } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
 } from "@elizaos/scenario-runner/schema";
-import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
+import type {
+  FinalCheckReport,
+  FinalCheckStatus,
+  ScenarioEvidenceObservation,
+  ScenarioEvidenceReport,
+} from "../types.ts";
 import { isLoopbackUrl, toRecord } from "../utils.js";
 
 export type FinalCheckRuntime = {
@@ -26,6 +32,9 @@ const MODEL_CALL_OCCURRED_POLL_INTERVAL_MS = 50;
 export interface FinalCheckHandlerContext {
   runtime: FinalCheckRuntime;
   ctx: ScenarioContext;
+  trustedEvidence?: ScenarioEvidenceReport;
+  scenarioStartedAtIso?: string;
+  scenarioEndedAtIso?: string;
 }
 
 type FinalCheckOutcome =
@@ -317,7 +326,10 @@ function normalizeChannel(value: string): string {
 }
 
 function normalizeComparableText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  // Dashes fold to spaces so hyphenation never defeats a loose title match:
+  // live models legitimately title a "before school" routine
+  // "Before-school routine" (#16941).
+  return value.trim().toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ");
 }
 
 function textMatchesLoose(actual: string, expected: string): boolean {
@@ -746,8 +758,31 @@ function definitionMismatchReasons(
     check.forbiddenDueLocalTimes.length > 0
   ) {
     const dueAt = cadence?.dueAt;
+    const slots = Array.isArray(cadence?.slots) ? cadence.slots : [];
     for (const forbidden of check.forbiddenDueLocalTimes) {
       if (typeof forbidden.hour !== "number") {
+        continue;
+      }
+      const forbiddenMinute = forbidden.minute ?? 0;
+      // Slot-based cadences (times_per_day) encode timezone-local clock times
+      // as minuteOfDay directly — no due instant exists to convert.
+      const forbiddenMinuteOfDay = forbidden.hour * 60 + forbiddenMinute;
+      if (slots.length > 0) {
+        if (
+          slots.some(
+            (slot) => toRecord(slot)?.minuteOfDay === forbiddenMinuteOfDay,
+          )
+        ) {
+          reasons.push(
+            `slot at local time ${String(forbidden.hour).padStart(2, "0")}:${String(forbiddenMinute).padStart(2, "0")} is forbidden`,
+          );
+        }
+        continue;
+      }
+      if (typeof dueAt !== "string" && cadence?.kind !== "once") {
+        // Window/interval cadences carry no explicit clock time at all, so
+        // there is nothing at the forbidden instant — "missing" here is not a
+        // broken pipeline, it is a cadence shape without due instants.
         continue;
       }
       const timeZone = forbidden.timeZone ?? record.definition.timezone;
@@ -786,6 +821,64 @@ function definitionMismatchReasons(
     }
   }
   return reasons;
+}
+
+/**
+ * Compact receipt line for one persisted definition row. Pass details embed
+ * these so a report reader can inspect the actual stored artifact (title,
+ * cadence, due instant, timezone, reminder-plan presence) instead of trusting
+ * a bare match count — the evidence bar for catalog verification is "store
+ * rows shown, not just asserted".
+ */
+function definitionReceipt(record: DefinitionRecordLike): string {
+  const cadence = toRecord(record.definition.cadence);
+  const parts = [`"${String(record.definition.title ?? "(untitled)")}"`];
+  if (cadence?.kind !== undefined) {
+    parts.push(`cadence=${String(cadence.kind)}`);
+  }
+  if (typeof cadence?.dueAt === "string") {
+    parts.push(`dueAt=${cadence.dueAt}`);
+  }
+  if (Array.isArray(cadence?.slots) && cadence.slots.length > 0) {
+    const slotText = cadence.slots
+      .map((slot) => {
+        const slotRecord = toRecord(slot);
+        return typeof slotRecord?.minuteOfDay === "number"
+          ? `${String(Math.floor(slotRecord.minuteOfDay / 60)).padStart(2, "0")}:${String(slotRecord.minuteOfDay % 60).padStart(2, "0")}`
+          : "?";
+      })
+      .join(",");
+    parts.push(`slots=[${slotText}]`);
+  }
+  if (typeof record.definition.timezone === "string") {
+    parts.push(`tz=${record.definition.timezone}`);
+  }
+  const planEntries = toRecord(record.reminderPlan);
+  const planSteps = Array.isArray(planEntries?.steps)
+    ? planEntries.steps
+        .map((step) => {
+          const stepRecord = toRecord(step);
+          return typeof stepRecord?.offsetMinutes === "number"
+            ? `${stepRecord.offsetMinutes}m`
+            : "?";
+        })
+        .join(",")
+    : null;
+  const planLeads = Array.isArray(planEntries?.leadMinutes)
+    ? `leadMinutes=[${planEntries.leadMinutes.join(",")}]`
+    : planSteps !== null && planSteps.length > 0
+      ? // Step offsets are the stored artifact for "nudge me before it's due
+        // too" asks (negative = minutes before the anchor), so the receipt
+        // shows them instead of a bare presence flag.
+        `steps=[${planSteps}]`
+      : recordHasEntries(record.reminderPlan)
+        ? "present"
+        : typeof record.definition.reminderPlanId === "string" &&
+            record.definition.reminderPlanId.length > 0
+          ? `id=${record.definition.reminderPlanId}`
+          : "none";
+  parts.push(`reminderPlan=${planLeads}`);
+  return parts.join(" ");
 }
 
 type GmailMockRequest = {
@@ -1029,9 +1122,218 @@ function actionCallSummary(
   }).slice(0, 500);
 }
 
+type TrustedObservationCheck = {
+  type:
+    | "durableApprovalObserved"
+    | "durableDraftObserved"
+    | "providerEffectObserved"
+    | "providerNoEffectObserved"
+    | "scheduledTaskObserved";
+  observerId?: string | string[];
+  provider?: string | string[];
+  accountId?: string | string[];
+  operation?: string | string[];
+  resourceId?: string | string[];
+  state?: string | string[];
+  minCount?: number;
+  intervalCoversScenario?: boolean;
+};
+
+const TRUSTED_OBSERVATION_KIND_BY_CHECK: Record<
+  TrustedObservationCheck["type"],
+  ScenarioEvidenceObservation["kind"]
+> = {
+  durableApprovalObserved: "durable-approval",
+  durableDraftObserved: "durable-draft",
+  providerEffectObserved: "provider-effect",
+  providerNoEffectObserved: "provider-no-effect",
+  scheduledTaskObserved: "scheduled-task",
+};
+
+function sha256Identity(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function matchesStringFilter(
+  actual: string | undefined,
+  expected: string | string[] | undefined,
+): boolean {
+  return (
+    expected === undefined ||
+    (typeof actual === "string" && toArray(expected).includes(actual))
+  );
+}
+
+function observationProvider(observation: ScenarioEvidenceObservation): string {
+  return "provider" in observation
+    ? observation.provider
+    : observation.source.system;
+}
+
+function observationOperation(
+  observation: ScenarioEvidenceObservation,
+): string | undefined {
+  if ("operation" in observation) {
+    return observation.operation;
+  }
+  if (observation.kind === "durable-approval") {
+    return observation.actionName;
+  }
+  return undefined;
+}
+
+function observationState(
+  observation: ScenarioEvidenceObservation,
+): string | undefined {
+  return "state" in observation ? observation.state : undefined;
+}
+
+function observationAccountHashes(
+  observation: ScenarioEvidenceObservation,
+): string[] {
+  const hashes = [
+    observation.source.accountRefSha256,
+    "accountRefSha256" in observation
+      ? observation.accountRefSha256
+      : undefined,
+  ];
+  return hashes.filter((value): value is string => typeof value === "string");
+}
+
+function observationResourceHashes(
+  observation: ScenarioEvidenceObservation,
+): string[] {
+  const hashes: Array<string | undefined> = [observation.source.recordIdSha256];
+  if (observation.kind === "durable-approval") {
+    hashes.push(observation.approvalIdSha256);
+  } else if (observation.kind === "durable-draft") {
+    hashes.push(observation.draftIdSha256);
+  } else if (observation.kind === "provider-effect") {
+    hashes.push(observation.providerReceiptIdSha256);
+  } else if (observation.kind === "provider-no-effect") {
+    hashes.push(observation.scopeSha256);
+  } else {
+    hashes.push(observation.taskIdSha256);
+  }
+  return hashes.filter((value): value is string => typeof value === "string");
+}
+
+function matchesHashedFilter(
+  actualHashes: readonly string[],
+  expected: string | string[] | undefined,
+): boolean {
+  if (expected === undefined) {
+    return true;
+  }
+  return toArray(expected).some((value) =>
+    actualHashes.includes(sha256Identity(value)),
+  );
+}
+
+function observationCoversScenario(
+  observation: ScenarioEvidenceObservation,
+  startedAtIso: string | undefined,
+  endedAtIso: string | undefined,
+): boolean {
+  if (
+    observation.kind !== "provider-no-effect" ||
+    !startedAtIso ||
+    !endedAtIso
+  ) {
+    return false;
+  }
+  return (
+    Date.parse(observation.observationStartedAtIso) <=
+      Date.parse(startedAtIso) &&
+    Date.parse(observation.observationEndedAtIso) >= Date.parse(endedAtIso)
+  );
+}
+
+function runTrustedObservationCheck(
+  check: TrustedObservationCheck,
+  handlerCtx: FinalCheckHandlerContext,
+): FinalCheckOutcome {
+  const evidence = handlerCtx.trustedEvidence;
+  if (evidence?.executionProfile !== "provider-qualified") {
+    return {
+      status: "skipped",
+      detail:
+        "trusted observer evidence is unavailable; action results and model prose are not accepted as substitutes",
+    };
+  }
+  const expectedKind = TRUSTED_OBSERVATION_KIND_BY_CHECK[check.type];
+  const matches = evidence.observations.filter((observation) => {
+    if (observation.kind !== expectedKind) {
+      return false;
+    }
+    if (!matchesStringFilter(observation.observerId, check.observerId)) {
+      return false;
+    }
+    if (
+      !matchesStringFilter(observationProvider(observation), check.provider)
+    ) {
+      return false;
+    }
+    if (
+      !matchesStringFilter(observationOperation(observation), check.operation)
+    ) {
+      return false;
+    }
+    if (!matchesStringFilter(observationState(observation), check.state)) {
+      return false;
+    }
+    if (
+      !matchesHashedFilter(
+        observationAccountHashes(observation),
+        check.accountId,
+      )
+    ) {
+      return false;
+    }
+    if (
+      !matchesHashedFilter(
+        observationResourceHashes(observation),
+        check.resourceId,
+      )
+    ) {
+      return false;
+    }
+    return (
+      check.type !== "providerNoEffectObserved" ||
+      check.intervalCoversScenario === false ||
+      observationCoversScenario(
+        observation,
+        handlerCtx.scenarioStartedAtIso,
+        handlerCtx.scenarioEndedAtIso,
+      )
+    );
+  });
+  const minimum = Math.max(1, check.minCount ?? 1);
+  return matches.length >= minimum
+    ? {
+        status: "passed",
+        detail: `${matches.length} independently observed ${expectedKind} record(s) matched`,
+      }
+    : {
+        status: "failed",
+        detail: `expected at least ${minimum} independently observed ${expectedKind} record(s), saw ${matches.length}`,
+      };
+}
+
 // ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------
+
+for (const type of Object.keys(
+  TRUSTED_OBSERVATION_KIND_BY_CHECK,
+) as TrustedObservationCheck["type"][]) {
+  registerFinalCheckHandler(type, (check, handlerCtx) =>
+    runTrustedObservationCheck(
+      check as unknown as TrustedObservationCheck,
+      handlerCtx,
+    ),
+  );
+}
 
 registerFinalCheckHandler("custom", async (check, { runtime, ctx }) => {
   const { predicate } = check as { predicate?: unknown };
@@ -1419,11 +1721,18 @@ registerFinalCheckHandler(
     );
     const delta =
       typeof definitionCheck.delta === "number" ? definitionCheck.delta : 1;
+    // Pass details carry the queried store rows so the report itself is the
+    // domain-artifact receipt: a delta<=0 pass shows everything that IS stored
+    // (proving the forbidden item is absent), a delta>0 pass shows the matched
+    // rows' cadence/due/reminder-plan fields for hand inspection.
     if (delta <= 0) {
       if (matched.length === 0) {
+        const storedReceipts =
+          records.map((record) => definitionReceipt(record)).join(" | ") ||
+          "(store empty)";
         return {
           status: "passed",
-          detail: `no matching definition for "${definitionCheck.title}"`,
+          detail: `no matching definition for "${definitionCheck.title}" among ${records.length} stored definition(s): ${storedReceipts}`,
         };
       }
       return {
@@ -1432,9 +1741,12 @@ registerFinalCheckHandler(
       };
     }
     if (matched.length >= delta) {
+      const matchedReceipts = matched
+        .map((record) => definitionReceipt(record))
+        .join(" | ");
       return {
         status: "passed",
-        detail: `${matched.length} matching definition(s) for "${definitionCheck.title}"`,
+        detail: `${matched.length} matching definition(s) for "${definitionCheck.title}" — stored: ${matchedReceipts}`,
       };
     }
     const mismatchDetails = titleMatches

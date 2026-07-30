@@ -33,6 +33,13 @@ export type DeferredLifeDefinitionDraft = {
   operation: "create_definition";
   /** Epoch ms when the draft was created. Used for expiry. */
   createdAt?: number;
+  /**
+   * Id of the owner message whose turn previewed this draft. Consent
+   * checking uses it to tell "the owner saw this preview on an earlier turn"
+   * from "the planner re-called create in the same turn it previewed":
+   * planner-asserted `confirmed` only counts against a prior-turn draft.
+   */
+  sourceMessageId?: string;
   request: {
     cadence: LifeOpsCadence;
     description?: string;
@@ -54,6 +61,8 @@ export type DeferredLifeGoalDraft = {
   operation: "create_goal";
   /** Epoch ms when the draft was created. Used for expiry. */
   createdAt?: number;
+  /** See DeferredLifeDefinitionDraft.sourceMessageId. */
+  sourceMessageId?: string;
   request: {
     cadence?: CreateLifeOpsGoalRequest["cadence"];
     description?: string;
@@ -103,7 +112,14 @@ export async function writeDeferredLifeDraftCache(
 ): Promise<void> {
   await asCacheRuntime(runtime).setCache(
     deferredLifeDraftCacheKey(runtime, message),
-    draft,
+    // Stamp the previewing turn's message id so the confirm path can tell a
+    // prior-turn draft (owner saw the preview) from a same-turn re-call.
+    {
+      ...draft,
+      ...(message.id !== undefined && message.id !== null
+        ? { sourceMessageId: String(message.id) }
+        : {}),
+    },
   );
 }
 
@@ -134,6 +150,11 @@ export function coerceDeferredLifeDraft(
     typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
       ? record.createdAt
       : undefined;
+  const sourceMessageId =
+    typeof record.sourceMessageId === "string" &&
+    record.sourceMessageId.length > 0
+      ? record.sourceMessageId
+      : undefined;
 
   if (!request || !intent) {
     return null;
@@ -157,6 +178,7 @@ export function coerceDeferredLifeDraft(
       createdAt,
       intent,
       operation,
+      sourceMessageId,
       request: {
         cadence,
         description:
@@ -192,6 +214,7 @@ export function coerceDeferredLifeDraft(
       createdAt,
       intent,
       operation,
+      sourceMessageId,
       request: {
         cadence: request.cadence as CreateLifeOpsGoalRequest["cadence"],
         description:
@@ -517,8 +540,8 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
     "",
     'Return ONLY a JSON object with exactly this field, for example {"mode":"confirm"}.',
     "",
-    "Choose confirm when the user clearly approves saving the current draft now.",
-    "Choose edit when the user wants to change the draft or continue specifying it before saving.",
+    "Choose confirm when the user clearly approves saving the current draft now, exactly as previewed.",
+    "Choose edit when the user wants to change the draft or continue specifying it before saving. This INCLUDES an approval that adds or changes details in the same message ('yes, save it — but make it 9pm', 'save that plan. draft first, citations after dinner, final pass before the deadline'): approval that carries new or changed specifics is edit, not confirm, so the added details reach the saved item.",
     "Choose cancel when the user says not to save it, never mind, not now, hold off, or equivalent.",
     "Choose none when the follow-up is unrelated or too ambiguous to attach to the draft.",
     "",
@@ -555,4 +578,119 @@ export async function extractDeferredLifeDraftFollowupWithLlm(args: {
   } catch {
     return null;
   }
+}
+
+/**
+ * Record of the most recent chat-sourced definition save in a room. The crisp
+ * single-dated-ask fast path (#16935) persists without a preview turn, so the
+ * owner's only undo affordance is a retraction on the NEXT turn ("actually
+ * don't save that one"). Observed live (#16941, child-cancel-reask): the
+ * planner answered such a retraction with a review call and a "won't save it"
+ * reply while the row stayed active. This record lets the life handler
+ * deterministically delete the just-saved row instead of trusting the
+ * planner to pick action=delete.
+ */
+export type RecentLifeSaveRecord = {
+  definitionId: string;
+  title: string;
+  /** Owner message id of the turn that saved. Guards same-turn re-entry. */
+  sourceMessageId?: string;
+  /** Epoch ms of the save. The retraction window mirrors draft expiry. */
+  createdAt: number;
+};
+
+const RECENT_LIFE_SAVE_CACHE_PREFIX = "lifeops:recent-save";
+
+/** Retraction is only honored this soon after an un-previewed save. */
+export const RECENT_SAVE_RETRACTION_WINDOW_MS = DRAFT_EXPIRY_MS;
+
+function recentLifeSaveCacheKey(
+  runtime: IAgentRuntime,
+  message: Memory,
+): string {
+  return [
+    RECENT_LIFE_SAVE_CACHE_PREFIX,
+    runtime.agentId,
+    message.roomId,
+    message.entityId,
+  ].join(":");
+}
+
+export function coerceRecentLifeSaveRecord(
+  value: unknown,
+): RecentLifeSaveRecord | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const definitionId =
+    typeof record.definitionId === "string" && record.definitionId.length > 0
+      ? record.definitionId
+      : null;
+  const title = typeof record.title === "string" ? record.title.trim() : "";
+  const createdAt =
+    typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : null;
+  if (!definitionId || !title || createdAt === null) {
+    return null;
+  }
+  return {
+    definitionId,
+    title,
+    createdAt,
+    ...(typeof record.sourceMessageId === "string" &&
+    record.sourceMessageId.length > 0
+      ? { sourceMessageId: record.sourceMessageId }
+      : {}),
+  };
+}
+
+export async function readRecentLifeSaveCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<RecentLifeSaveRecord | null> {
+  const stored = await asCacheRuntime(runtime).getCache<unknown>(
+    recentLifeSaveCacheKey(runtime, message),
+  );
+  const record = coerceRecentLifeSaveRecord(stored);
+  if (!record) {
+    return null;
+  }
+  if (Date.now() - record.createdAt > RECENT_SAVE_RETRACTION_WINDOW_MS) {
+    return null;
+  }
+  return record;
+}
+
+export async function writeRecentLifeSaveCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+  record: RecentLifeSaveRecord,
+): Promise<void> {
+  await asCacheRuntime(runtime).setCache(
+    recentLifeSaveCacheKey(runtime, message),
+    record,
+  );
+}
+
+export async function clearRecentLifeSaveCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<void> {
+  await asCacheRuntime(runtime).deleteCache(
+    recentLifeSaveCacheKey(runtime, message),
+  );
+}
+
+// A retraction is a short-window undo of the item that just saved, so the
+// vocabulary stays narrow: negated save/keep verbs and demonstrative
+// cancel/undo forms. Broad phrases ("forget it") are still safe because the
+// caller only consults this within RECENT_SAVE_RETRACTION_WINDOW_MS of an
+// un-previewed save in the same room.
+const LIFE_SAVE_RETRACTION_RE =
+  /(?:\b(?:don'?t|do not|no,? don'?t)\b[^.!?\n]{0,40}\b(?:save|keep|set|schedule|add|create)\b\s+(?:that(?:\s+one)?|this(?:\s+one)?|it)\b|\b(?:cancel|undo|scrap|delete|remove|drop)\b\s+(?:that(?:\s+one)?|it|this(?:\s+one)?|the last one)\b|\bnever\s?mind\b|\bget rid of (?:that|it)\b)/i;
+
+export function isLifeSaveRetraction(text: string): boolean {
+  return LIFE_SAVE_RETRACTION_RE.test(text);
 }

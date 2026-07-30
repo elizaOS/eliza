@@ -44,8 +44,13 @@ function Seeded({
     return () => __resetNotificationStoreForTests();
   }, [notifications]);
   if (!ready) return null;
+  // Definite width AND height: the centered story layout shrink-wraps its
+  // item, so `w-full`/`max-w-md` resolve against a zero-width parent and the
+  // center (whose rows take width from their container) collapses to a
+  // 0x480 column — the "blank-render: single-color" gate verdict. 28rem is
+  // max-w-md's value as a definite width.
   return (
-    <div className="max-w-md">
+    <div className="flex h-[480px] w-[28rem] flex-col">
       <NotificationsHomeCenter />
     </div>
   );

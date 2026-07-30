@@ -60,7 +60,7 @@ jobs:
           fi
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -69,6 +69,9 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          # Fork lint is intentionally bounded; restoring the broad fallback
+          # can cost more than installing the exact lockfile dependency set.
+          cache-bun-install: "false"
 
       - name: Run anti-larp test gate self-test
         run: bun run audit:focused-tests:self-test
@@ -100,7 +103,7 @@ jobs:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -123,7 +126,9 @@ jobs:
         run: bun run build
 
       - name: Run typecheck
-        run: bun run typecheck
+        # The full graph starts native TypeScript workers; eight concurrent
+        # processes can exhaust a four-vCPU hosted runner before diagnostics.
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4
 
   build:
     name: Build
@@ -139,7 +144,7 @@ jobs:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -186,7 +191,7 @@ jobs:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 

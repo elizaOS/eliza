@@ -1,3 +1,7 @@
+/**
+ * Exchanges one-time Cloud pairing links, persists the resulting agent
+ * credential, and renders the browser/native recovery surfaces.
+ */
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import { setElizaApiToken } from "../../utils/eliza-globals";
@@ -7,6 +11,7 @@ export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
 
 interface PairExchangeResponse {
   apiKey?: unknown;
+  code?: unknown;
   error?: unknown;
 }
 
@@ -14,6 +19,7 @@ export class CloudPairExchangeError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
     this.name = "CloudPairExchangeError";
@@ -52,10 +58,56 @@ export function resolveCloudPairExchangeUrl(cloudApiBase?: string): string {
     .replace(/\/+$/, "")
     .replace(/\/api\/v1\/?$/, "");
   const url = new URL(`${base}/api/auth/pair`);
-  if (url.hostname === "www.elizacloud.ai") {
-    url.hostname = "elizacloud.ai";
+  const apiHost = new Map([
+    ["elizacloud.ai", "api.elizacloud.ai"],
+    ["www.elizacloud.ai", "api.elizacloud.ai"],
+    ["app.elizacloud.ai", "api.elizacloud.ai"],
+    ["dev.elizacloud.ai", "api.elizacloud.ai"],
+    ["staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+    ["app-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+  ]).get(url.hostname.toLowerCase());
+  if (apiHost) {
+    url.hostname = apiHost;
   }
   return url.toString();
+}
+
+export function resolveNativeCloudPairExchangeUrl(
+  cloudApiBase?: string,
+): string {
+  const url = new URL(resolveCloudPairExchangeUrl(cloudApiBase));
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/native`;
+  return url.toString();
+}
+
+async function readCloudPairResponse(response: Response): Promise<string> {
+  // error-policy:J3 malformed dependency responses are handled by the same
+  // typed failure path as a successful response missing its required API key.
+  const body = (await response
+    .json()
+    .catch(() => null)) as PairExchangeResponse | null;
+
+  if (!response.ok) {
+    const message =
+      typeof body?.error === "string" && body.error.trim()
+        ? body.error.trim()
+        : "Cloud pairing failed.";
+    const code =
+      typeof body?.code === "string" && body.code.trim()
+        ? body.code.trim()
+        : undefined;
+    throw new CloudPairExchangeError(message, response.status, code);
+  }
+
+  if (typeof body?.apiKey !== "string" || !body.apiKey.trim()) {
+    throw new CloudPairExchangeError(
+      "Cloud did not return an agent session.",
+      502,
+      "invalid_pairing_response",
+    );
+  }
+
+  return body.apiKey.trim();
 }
 
 export async function exchangeCloudPairToken(
@@ -77,26 +129,44 @@ export async function exchangeCloudPairToken(
     },
   );
 
-  const body = (await response
-    .json()
-    .catch(() => null)) as PairExchangeResponse | null;
+  return readCloudPairResponse(response);
+}
 
-  if (!response.ok) {
-    const message =
-      typeof body?.error === "string" && body.error.trim()
-        ? body.error.trim()
-        : "Cloud pairing failed.";
-    throw new CloudPairExchangeError(message, response.status);
-  }
+/**
+ * Exchange a native in-process pair token without relying on an Origin header.
+ * The Cloud bearer and every binding copied from the authenticated mint
+ * response are verified server-side in one atomic token claim.
+ */
+export async function exchangeAuthenticatedNativeCloudPairToken(
+  token: string,
+  options: {
+    cloudToken: string;
+    agentId: string;
+    expectedOrigin: string;
+    signal?: AbortSignal;
+    fetchFn?: typeof fetch;
+    cloudApiBase?: string;
+  },
+): Promise<string> {
+  const fetchFn = options.fetchFn ?? fetch;
+  const response = await fetchFn(
+    resolveNativeCloudPairExchangeUrl(options.cloudApiBase),
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${options.cloudToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        token,
+        agentId: options.agentId,
+        expectedOrigin: options.expectedOrigin,
+      }),
+      signal: options.signal,
+    },
+  );
 
-  if (typeof body?.apiKey !== "string" || !body.apiKey.trim()) {
-    throw new CloudPairExchangeError(
-      "Cloud did not return an agent session.",
-      502,
-    );
-  }
-
-  return body.apiKey.trim();
+  return readCloudPairResponse(response);
 }
 
 function tryPersistBrowserStorage(
@@ -219,28 +289,111 @@ function describePairFailure(error: unknown): Exclude<
   };
 }
 
-export function CloudHostedAgentAuthNotice() {
+export interface CloudHostedAgentAuthNoticeProps {
+  /**
+   * Native shells supply the canonical device-code login flow here. A plain
+   * `_top` navigation can replace a Capacitor WebView and discard its bridge.
+   */
+  onNativeReauth?: () => Promise<void>;
+  /** Retry the agent connection after returning from Cloud management. */
+  onNativeRetry?: () => Promise<void>;
+  /** Whether native should renew Cloud auth or retry the agent connection. */
+  nativeRecoveryMode?: "reauth" | "retry" | "manage";
+}
+
+export function CloudHostedAgentAuthNotice({
+  onNativeReauth,
+  onNativeRetry,
+  nativeRecoveryMode = "reauth",
+}: CloudHostedAgentAuthNoticeProps = {}) {
   const reopenUrl = resolveCloudHostedAgentUrl();
+  const [activeNativeAction, setActiveNativeAction] = useState<
+    "primary" | "retry" | null
+  >(null);
+  const [reauthError, setReauthError] = useState<string | null>(null);
+  const handleNativeAction = async (
+    action: (() => Promise<void>) | undefined,
+    actionName: "primary" | "retry",
+  ) => {
+    if (!action || activeNativeAction) return;
+    setActiveNativeAction(actionName);
+    setReauthError(null);
+    try {
+      await action();
+    } catch (error) {
+      // error-policy:J4 the sign-in surface remains usable and displays the
+      // recoverable failure inline so the user can retry.
+      setReauthError(
+        error instanceof Error
+          ? error.message
+          : "Could not reopen Eliza Cloud. Please try again.",
+      );
+    } finally {
+      setActiveNativeAction(null);
+    }
+  };
+
+  const ctaClass =
+    "mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710] disabled:cursor-wait disabled:opacity-70";
+
   return (
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[25rem]">
         <div className="mx-auto mb-6 h-2 w-2 rotate-45 bg-[#f3a51f]" />
         <p className="mb-4 text-sm font-semibold text-white/45">Eliza</p>
         <h1 className="text-2xl font-semibold text-white">
-          Open this agent from Eliza Cloud
+          {nativeRecoveryMode === "retry"
+            ? "Reconnect to this Cloud agent"
+            : nativeRecoveryMode === "manage"
+              ? "Manage this Cloud agent"
+              : "Open this agent from Eliza Cloud"}
         </h1>
         <p className="mt-3 text-sm leading-6 text-white/60">
-          This Cloud agent uses your Eliza Cloud session. Open it from Eliza
-          Cloud again to create a fresh secure sign-in link.
+          {nativeRecoveryMode === "retry"
+            ? "Your Cloud session is still available, but this agent could not reconnect. Try again without signing out."
+            : nativeRecoveryMode === "manage"
+              ? "This agent needs attention in Eliza Cloud before it can reconnect. Your current Cloud session will stay signed in."
+              : "This Cloud agent uses your Eliza Cloud session. Open it from Eliza Cloud again to create a fresh secure sign-in link."}
         </p>
-        <a
-          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
-          href={reopenUrl}
-          rel="noopener"
-          target="_top"
-        >
-          Re-open from Eliza Cloud
-        </a>
+        {onNativeReauth ? (
+          <button
+            className={ctaClass}
+            disabled={activeNativeAction !== null}
+            onClick={() => void handleNativeAction(onNativeReauth, "primary")}
+            type="button"
+          >
+            {activeNativeAction === "primary"
+              ? nativeRecoveryMode === "retry"
+                ? "Trying again…"
+                : "Opening Eliza Cloud…"
+              : nativeRecoveryMode === "retry"
+                ? "Try again"
+                : nativeRecoveryMode === "manage"
+                  ? "Open Eliza Cloud"
+                  : "Re-open from Eliza Cloud"}
+          </button>
+        ) : (
+          <a className={ctaClass} href={reopenUrl} rel="noopener" target="_top">
+            Re-open from Eliza Cloud
+          </a>
+        )}
+        {nativeRecoveryMode === "manage" && onNativeRetry ? (
+          <button
+            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-70"
+            disabled={activeNativeAction !== null}
+            onClick={() => void handleNativeAction(onNativeRetry, "retry")}
+            type="button"
+          >
+            {activeNativeAction === "retry"
+              ? "Reconnecting…"
+              : "I fixed it — reconnect"}
+          </button>
+        ) : null}
+        {reauthError ? (
+          <p className="mt-4 text-sm leading-6 text-[#f4b55a]" role="alert">
+            {reauthError}
+          </p>
+        ) : null}
       </div>
     </main>
   );

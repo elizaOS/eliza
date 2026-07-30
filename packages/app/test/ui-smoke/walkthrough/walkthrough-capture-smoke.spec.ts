@@ -2,6 +2,8 @@
  * Playwright UI-smoke spec for the Walkthrough Capture Smoke app flow using
  * the real renderer fixture.
  */
+
+import { FIRST_RUN_SIGN_IN_PROMPT } from "@elizaos/ui/first-run/first-run-greeting";
 import {
   expect,
   type Page,
@@ -227,11 +229,9 @@ test.describe("walkthrough capture smoke", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     const onboarding = page.getByTestId("chat-overlay");
     await expect(onboarding).toBeVisible({ timeout: 20_000 });
-    await expect(
-      page.getByText("Sign in to Eliza Cloud and I'll get you set up.", {
-        exact: false,
-      }),
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(FIRST_RUN_SIGN_IN_PROMPT)).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
     await expect(
       page.getByTestId("choice-__first_run__:runtime:cloud"),

@@ -32,12 +32,20 @@ import type {
   ActionExample,
   ActionParameterSchema,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { stableStringify } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
 import { resolvePendingPromptsStore } from "../lifeops/pending-prompts/store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
@@ -85,6 +93,26 @@ type ScheduledTaskKindParam = ScheduledTaskKind;
 type ScheduledTaskStatusParam = ScheduledTaskStatus;
 type ScheduledTaskSubjectKindParam = ScheduledTaskSubjectKind;
 type ScheduledTaskPriorityParam = ScheduledTaskPriority;
+
+const MUTATING_SUBACTIONS: ReadonlySet<Subaction> = new Set([
+  "create",
+  "update",
+  "snooze",
+  "skip",
+  "complete",
+  "acknowledge",
+  "dismiss",
+  "cancel",
+  "reopen",
+]);
+
+const TERMINAL_TASK_STATUSES: ReadonlySet<ScheduledTaskStatusParam> = new Set([
+  "completed",
+  "skipped",
+  "expired",
+  "failed",
+  "dismissed",
+]);
 
 interface ScheduledTaskParams {
   action?: Subaction;
@@ -281,6 +309,288 @@ function getParams(options: HandlerOptions | undefined): ScheduledTaskParams {
     return raw as ScheduledTaskParams;
   }
   return {};
+}
+
+function scheduledRequestId(message: Memory): string {
+  return typeof message.id === "string"
+    ? message.id
+    : `room:${String(message.roomId)}`;
+}
+
+function scheduledResultData(result: ActionResult): Record<string, unknown> {
+  return result.data &&
+    typeof result.data === "object" &&
+    !Array.isArray(result.data)
+    ? (result.data as Record<string, unknown>)
+    : {};
+}
+
+function scheduledReceiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `SCHEDULED_TASKS:${operation}:${scheduledRequestId(message)}:${resourceId}`;
+}
+
+function scheduledFailureReceipt(args: {
+  message: Memory;
+  operation: string;
+  resourceId: string;
+  code: string;
+  idempotencyKey: string | null;
+  observedAt?: string;
+}) {
+  const observedAt = args.observedAt ?? new Date().toISOString();
+  return lifeOpsFailedEffect({
+    receiptId: scheduledReceiptId(
+      args.message,
+      args.operation,
+      args.resourceId,
+    ),
+    operation: args.operation,
+    resource: { kind: "lifeops.scheduled_task", id: args.resourceId },
+    artifacts: [],
+    idempotency: { key: args.idempotencyKey, replayed: false },
+    observedAt,
+    failure: {
+      code: args.code,
+      retryable: false,
+      acceptance: "rejected",
+    },
+  });
+}
+
+function scheduledTransition(
+  subaction: Subaction,
+  task: ScheduledTask,
+): ScheduledTaskLogEntry["transition"] {
+  if (subaction === "create") return "scheduled";
+  if (subaction === "update") return "edited";
+  if (subaction === "snooze") return "snoozed";
+  if (subaction === "skip") return "skipped";
+  if (subaction === "complete") return "completed";
+  if (subaction === "cancel") return "dismissed";
+  if (subaction === "dismiss") return "dismissed";
+  if (subaction === "reopen") return "reopened";
+  if (subaction === "acknowledge" && task.state.status === "completed") {
+    return "completed";
+  }
+  if (subaction === "acknowledge") return "acknowledged";
+  return subaction as ScheduledTaskLogEntry["transition"];
+}
+
+async function completeScheduledTaskResult(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  subaction: Subaction | "authorize" | "resolve";
+  params: ScheduledTaskParams;
+  result: ActionResult;
+  callback: HandlerCallback | undefined;
+  startedAt: string;
+  scope?: RunnerScope;
+}): Promise<ActionResult> {
+  const operation = `lifeops.scheduled_task.${args.subaction}`;
+  const data = scheduledResultData(args.result);
+  const task =
+    data.task && typeof data.task === "object"
+      ? (data.task as ScheduledTask)
+      : null;
+  const taskId =
+    task?.taskId ??
+    (typeof args.params.taskId === "string" &&
+    args.params.taskId.trim().length > 0
+      ? args.params.taskId.trim()
+      : args.subaction === "list" || args.subaction === "history"
+        ? String(args.runtime.agentId)
+        : scheduledRequestId(args.message));
+  const idempotencyKey =
+    typeof args.params.idempotencyKey === "string" &&
+    args.params.idempotencyKey.trim().length > 0
+      ? args.params.idempotencyKey.trim()
+      : null;
+
+  if (args.result.success === false) {
+    const error =
+      typeof data.error === "string" ? data.error : "SCHEDULED_TASK_REJECTED";
+    return completeLifeOpsEffect(
+      args.callback,
+      args.result,
+      scheduledFailureReceipt({
+        message: args.message,
+        operation,
+        resourceId: taskId,
+        code: error,
+        idempotencyKey,
+      }),
+    );
+  }
+
+  if (
+    args.subaction === "authorize" ||
+    args.subaction === "resolve" ||
+    !MUTATING_SUBACTIONS.has(args.subaction)
+  ) {
+    const observedAt = new Date().toISOString();
+    return completeLifeOpsEffect(
+      args.callback,
+      args.result,
+      lifeOpsNoopEffect({
+        receiptId: scheduledReceiptId(args.message, operation, taskId),
+        operation,
+        resource: {
+          kind:
+            args.subaction === "list" || args.subaction === "history"
+              ? "lifeops.scheduled_task_collection"
+              : "lifeops.scheduled_task",
+          id: taskId,
+        },
+        artifacts: [],
+        idempotency: { key: idempotencyKey, replayed: false },
+        observedAt,
+        reason: "The operation only read or resolved scheduled-task state.",
+      }),
+    );
+  }
+
+  if (data.deduplicated === true || data.unchanged === true) {
+    const replayed =
+      data.deduplicated === true &&
+      idempotencyKey !== null &&
+      data.dedupeCause === "idempotency_key";
+    const observedAt = new Date().toISOString();
+    return completeLifeOpsEffect(
+      args.callback,
+      args.result,
+      lifeOpsNoopEffect({
+        receiptId: scheduledReceiptId(args.message, operation, taskId),
+        operation,
+        resource: { kind: "lifeops.scheduled_task", id: taskId },
+        artifacts: [],
+        idempotency: { key: idempotencyKey, replayed },
+        observedAt,
+        reason:
+          data.deduplicated === true
+            ? "An equivalent persisted scheduled task already exists."
+            : "The requested scheduled-task state was already current.",
+      }),
+    );
+  }
+
+  if (!task || !args.scope) {
+    const failureResult: ActionResult = {
+      ...args.result,
+      success: false,
+      text: "I could not verify a durable scheduled-task change, so I am not claiming it was applied.",
+      data: {
+        ...data,
+        error: "SCHEDULED_TASK_COMMIT_PROOF_MISSING",
+      },
+    };
+    return completeLifeOpsEffect(
+      args.callback,
+      failureResult,
+      scheduledFailureReceipt({
+        message: args.message,
+        operation,
+        resourceId: taskId,
+        code: "SCHEDULED_TASK_COMMIT_PROOF_MISSING",
+        idempotencyKey,
+      }),
+    );
+  }
+
+  const transition = scheduledTransition(args.subaction, task);
+  const entries = await new LifeOpsRepository(
+    args.runtime,
+  ).listScheduledTaskLog({
+    agentId: args.scope.agentId,
+    taskId: task.taskId,
+    sinceIso: args.startedAt,
+    excludeRollups: true,
+  });
+  const committed = entries
+    .filter((entry) => entry.transition === transition)
+    .at(-1);
+  if (!committed) {
+    if (
+      args.subaction === "create" &&
+      idempotencyKey !== null &&
+      task.idempotencyKey === idempotencyKey
+    ) {
+      return completeLifeOpsEffect(
+        args.callback,
+        {
+          ...args.result,
+          text: "That scheduled item was already saved; no duplicate was created.",
+          data: {
+            ...data,
+            deduplicated: true,
+            dedupeCause: "idempotency_key",
+          },
+        },
+        lifeOpsNoopEffect({
+          receiptId: scheduledReceiptId(args.message, operation, task.taskId),
+          operation,
+          resource: { kind: "lifeops.scheduled_task", id: task.taskId },
+          artifacts: [],
+          idempotency: { key: idempotencyKey, replayed: true },
+          observedAt: new Date().toISOString(),
+          reason:
+            "The persisted idempotency key already identified this scheduled task.",
+        }),
+      );
+    }
+    const failureResult: ActionResult = {
+      ...args.result,
+      success: false,
+      text: "I could not verify the scheduled-task ledger entry, so I am not claiming that change was applied.",
+      data: {
+        ...data,
+        error: "SCHEDULED_TASK_COMMIT_PROOF_MISSING",
+        expectedTransition: transition,
+      },
+    };
+    return completeLifeOpsEffect(
+      args.callback,
+      failureResult,
+      scheduledFailureReceipt({
+        message: args.message,
+        operation,
+        resourceId: task.taskId,
+        code: "SCHEDULED_TASK_COMMIT_PROOF_MISSING",
+        idempotencyKey,
+      }),
+    );
+  }
+
+  return completeLifeOpsEffect(
+    args.callback,
+    args.result,
+    lifeOpsAppliedEffect({
+      receiptId: scheduledReceiptId(args.message, operation, committed.logId),
+      operation,
+      resource: {
+        kind: "lifeops.scheduled_task",
+        id: task.taskId,
+        version: committed.logId,
+      },
+      artifacts: [
+        {
+          kind: "lifeops.scheduled_task_log",
+          id: committed.logId,
+          version: committed.transition,
+        },
+      ],
+      idempotency: { key: idempotencyKey, replayed: false },
+      observedAt: committed.occurredAtIso,
+      commit: {
+        kind: "durable",
+        id: committed.logId,
+        committedAt: committed.occurredAtIso,
+      },
+    }),
+  );
 }
 
 function isExplicitLifeDraftConfirmation(message: Memory): boolean {
@@ -854,13 +1164,25 @@ async function handleCreate(
   // turn-2 retries reused taskId "brush-teeth-8am-daily" under fresh
   // idempotency keys).
   const requestedTaskId = params.taskId?.trim() || undefined;
-  const activeSiblings = await scope.runner.list({
-    kind,
-    status: ["scheduled", "fired", "acknowledged"],
-  });
+  const allTasks = await scope.runner.list();
+  const activeSiblings = allTasks.filter(
+    (candidate) =>
+      candidate.kind === kind &&
+      (candidate.state.status === "scheduled" ||
+        candidate.state.status === "fired" ||
+        candidate.state.status === "acknowledged"),
+  );
   const normalizedInstructions = promptInstructions.toLowerCase();
   const triggerKey = stableTriggerKey(trigger);
-  const duplicate = activeSiblings.find(
+  const idempotencyDuplicate =
+    typeof params.idempotencyKey === "string" &&
+    params.idempotencyKey.trim().length > 0
+      ? allTasks.find(
+          (candidate) =>
+            candidate.idempotencyKey === params.idempotencyKey?.trim(),
+        )
+      : undefined;
+  const contentDuplicate = activeSiblings.find(
     (candidate) =>
       (candidate.promptInstructions.trim().toLowerCase() ===
         normalizedInstructions &&
@@ -869,11 +1191,19 @@ async function handleCreate(
         (candidate.taskId === requestedTaskId ||
           candidate.metadata?.plannerTaskId === requestedTaskId)),
   );
+  const duplicate = idempotencyDuplicate ?? contentDuplicate;
   if (duplicate) {
     return {
       success: true,
       text: `That ${noun} is already scheduled.`,
-      data: { subaction: "create", task: duplicate, deduplicated: true },
+      data: {
+        subaction: "create",
+        task: duplicate,
+        deduplicated: true,
+        dedupeCause: idempotencyDuplicate
+          ? "idempotency_key"
+          : "equivalent_content",
+      },
     };
   }
   const output = normalizeOutputInput(scope, params.output);
@@ -965,6 +1295,30 @@ async function handleUpdate(
       data: { subaction: "update", error: "MISSING_PATCH" },
     };
   }
+  const existing = (await scope.runner.list()).find(
+    (candidate) => candidate.taskId === taskId,
+  );
+  if (!existing) {
+    return {
+      success: false,
+      text: "I could not find that scheduled item.",
+      data: { subaction: "update", error: "NOT_FOUND" },
+    };
+  }
+  const patchEntries = Object.entries(params.patch);
+  const unchanged =
+    patchEntries.length === 0 ||
+    patchEntries.every(([key, value]) => {
+      const current = (existing as unknown as Record<string, unknown>)[key];
+      return stableStringify(current) === stableStringify(value);
+    });
+  if (unchanged) {
+    return {
+      success: true,
+      text: "That scheduled item is already up to date.",
+      data: { subaction: "update", task: existing, unchanged: true },
+    };
+  }
   const updated = await scope.runner.apply(taskId, "edit", params.patch);
   return {
     success: true,
@@ -1000,6 +1354,27 @@ async function handleSnooze(
       data: { subaction: "snooze", error: "MISSING_SNOOZE_TARGET" },
     };
   }
+  const existing = (await scope.runner.list()).find(
+    (candidate) => candidate.taskId === taskId,
+  );
+  if (!existing) {
+    return {
+      success: false,
+      text: "I could not find that scheduled item.",
+      data: { subaction: "snooze", error: "NOT_FOUND" },
+    };
+  }
+  if (TERMINAL_TASK_STATUSES.has(existing.state.status)) {
+    return {
+      success: false,
+      text: "That scheduled item is already closed. Reopen it before snoozing it.",
+      data: {
+        subaction: "snooze",
+        error: "INVALID_STATE_TRANSITION",
+        state: existing.state.status,
+      },
+    };
+  }
   const snoozed = await scope.runner.apply(taskId, "snooze", {
     ...(minutes !== undefined ? { minutes } : {}),
     ...(untilIso ? { untilIso } : {}),
@@ -1022,6 +1397,38 @@ async function handleAcknowledge(
       success: false,
       text: "I need to know which scheduled item you mean.",
       data: { subaction: "acknowledge", error: "MISSING_TASK_ID" },
+    };
+  }
+  const existing = (await scope.runner.list()).find(
+    (candidate) => candidate.taskId === taskId,
+  );
+  if (!existing) {
+    return {
+      success: false,
+      text: "I could not find that scheduled item.",
+      data: { subaction: "acknowledge", error: "NOT_FOUND" },
+    };
+  }
+  if (existing.state.status === "acknowledged") {
+    return {
+      success: true,
+      text: "That scheduled item was already acknowledged.",
+      data: {
+        subaction: "acknowledge",
+        task: existing,
+        unchanged: true,
+      },
+    };
+  }
+  if (TERMINAL_TASK_STATUSES.has(existing.state.status)) {
+    return {
+      success: false,
+      text: "That scheduled item is already closed and cannot be acknowledged.",
+      data: {
+        subaction: "acknowledge",
+        error: "INVALID_STATE_TRANSITION",
+        state: existing.state.status,
+      },
     };
   }
   await scope.runner.apply(taskId, "acknowledge");
@@ -1048,6 +1455,53 @@ async function handleVerbWithReason(
       success: false,
       text: "I need to know which scheduled item you mean.",
       data: { subaction: verb, error: "MISSING_TASK_ID" },
+    };
+  }
+  const existing = (await scope.runner.list()).find(
+    (candidate) => candidate.taskId === taskId,
+  );
+  if (!existing) {
+    return {
+      success: false,
+      text: "I could not find that scheduled item.",
+      data: { subaction: verb, error: "NOT_FOUND" },
+    };
+  }
+  const targetStatus: ScheduledTaskStatusParam =
+    verb === "reopen"
+      ? "scheduled"
+      : verb === "skip"
+        ? "skipped"
+        : verb === "complete"
+          ? "completed"
+          : "dismissed";
+  if (existing.state.status === targetStatus) {
+    return {
+      success: true,
+      text: `That scheduled item was already ${verbPastTense(label)}.`,
+      data: { subaction: verb, task: existing, unchanged: true },
+    };
+  }
+  if (verb !== "reopen" && TERMINAL_TASK_STATUSES.has(existing.state.status)) {
+    return {
+      success: false,
+      text: "That scheduled item is already closed and was not changed.",
+      data: {
+        subaction: verb,
+        error: "INVALID_STATE_TRANSITION",
+        state: existing.state.status,
+      },
+    };
+  }
+  if (verb === "reopen" && !TERMINAL_TASK_STATUSES.has(existing.state.status)) {
+    return {
+      success: false,
+      text: "That scheduled item is still active and does not need reopening.",
+      data: {
+        subaction: verb,
+        error: "INVALID_STATE_TRANSITION",
+        state: existing.state.status,
+      },
     };
   }
   const updated = await scope.runner.apply(
@@ -1205,6 +1659,7 @@ export const scheduledTaskAction: Action & {
     "capability:update",
     "capability:delete",
     "capability:schedule",
+    "effect:receipt-required",
     "surface:internal",
   ],
   description:
@@ -1399,20 +1854,40 @@ export const scheduledTaskAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
+    const startedAt = new Date().toISOString();
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const text = "Scheduled-task control is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return completeScheduledTaskResult({
+        runtime,
+        message,
+        subaction: "authorize",
+        params: {},
+        result: {
+          text,
+          success: false,
+          data: { error: "PERMISSION_DENIED" },
+        },
+        callback,
+        startedAt,
+      });
     }
 
     const params = getParams(options);
     const subaction = resolveSubaction(params);
     if (!subaction) {
-      return {
-        success: false,
-        text: "Tell me which task operation you want: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, or history.",
-        data: { error: "MISSING_SUBACTION" },
-      };
+      return completeScheduledTaskResult({
+        runtime,
+        message,
+        subaction: "resolve",
+        params,
+        result: {
+          success: false,
+          text: "Tell me which task operation you want: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, or history.",
+          data: { error: "MISSING_SUBACTION" },
+        },
+        callback,
+        startedAt,
+      });
     }
 
     if (
@@ -1424,6 +1899,31 @@ export const scheduledTaskAction: Action & {
         message,
         state,
         { parameters: { action: "create", ownerSurface: "OWNER_GOALS" } },
+        callback,
+      );
+    }
+
+    // Routing contract (lifeops provider): every owner "remind me…" ask
+    // belongs to the OWNER_REMINDERS definition flow — the raw scheduler
+    // surface has no consent preview, builds no reminder plan, and its
+    // records are invisible to OWNER_REMINDERS review. Observed live
+    // (#16941, child-cancel-reask): the model created reminders here once it
+    // fixed a trigger-shape error (the redirect hint only fires on trigger
+    // failures), so a "canceled" science-report reminder silently survived in
+    // a store the review path never reads. Delegating hands the ORIGINAL
+    // owner message to the life flow, so extraction and the consent gate run
+    // against the real ask. Autonomy-sourced creates keep the raw surface:
+    // background automations schedule their own work here by design.
+    if (
+      subaction === "create" &&
+      normalizeKind(params.kind) === "reminder" &&
+      message.content.source !== "autonomy"
+    ) {
+      return runLifeOperationHandler(
+        runtime,
+        message,
+        state,
+        { parameters: { action: "create", ownerSurface: "OWNER_REMINDERS" } },
         callback,
       );
     }
@@ -1479,13 +1979,15 @@ export const scheduledTaskAction: Action & {
         break;
     }
 
-    if (result.text) {
-      await callback?.({
-        text: result.text,
-        source: "action",
-        action: "SCHEDULED_TASKS",
-      });
-    }
-    return result;
+    return completeScheduledTaskResult({
+      runtime,
+      message,
+      subaction,
+      params,
+      result,
+      callback,
+      startedAt,
+      scope,
+    });
   },
 };

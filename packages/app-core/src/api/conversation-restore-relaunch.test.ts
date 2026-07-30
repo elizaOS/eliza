@@ -114,8 +114,6 @@ function createRouteState(
   const adminId = stringToUuid("chat-persistence-admin");
   return {
     runtime: routeRuntime,
-    agentState: "running",
-    awaitRuntimeReady: null,
     config: { user: { name: "Persistence Tester" } } as never,
     agentName: routeRuntime.character.name ?? "Eliza",
     adminEntityId: adminId,
@@ -142,6 +140,7 @@ async function callConversationRoute<TBody extends Record<string, unknown>>(
     method,
     url: pathname,
     headers: { host: "localhost" },
+    socket: { remoteAddress: "127.0.0.1" },
   }) as http.IncomingMessage;
   const res = {
     setHeader: () => undefined,

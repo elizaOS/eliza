@@ -117,6 +117,7 @@ function makeHarness(): Harness {
 			},
 		},
 		emitEvent: vi.fn(),
+		reportError: vi.fn(),
 	} as unknown as ICompatRuntime;
 
 	return {

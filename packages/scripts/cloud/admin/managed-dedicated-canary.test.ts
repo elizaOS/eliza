@@ -1,3 +1,7 @@
+/**
+ * Exercises the staging canary's fail-closed identity, capacity, live-path,
+ * privacy, and exact-cleanup contracts through a deterministic HTTP fixture.
+ */
 import { describe, expect, test } from "bun:test";
 import type { ManagedDedicatedCanaryEvidence } from "./managed-dedicated-canary";
 import {
@@ -10,7 +14,10 @@ import {
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
 const PROVISION_JOB_ID = "22222222-2222-4222-8222-222222222222";
 const DELETE_JOB_ID = "33333333-3333-4333-8333-333333333333";
+const STALE_AGENT_ID = "44444444-4444-4444-8444-444444444444";
+const STALE_DELETE_JOB_ID = "55555555-5555-4555-8555-555555555555";
 const SUFFIX = "12345678901234567890";
+const STALE_SUFFIX = "r30081355987a1";
 const SECRET = "cloud_test_secret_never_emit";
 const DEPLOYED_COMMIT = "a".repeat(40);
 const START_MS = Date.parse("2026-07-13T02:30:00.000Z");
@@ -18,6 +25,12 @@ const START_MS = Date.parse("2026-07-13T02:30:00.000Z");
 interface FixtureOptions {
   healthCommit?: string | null;
   existingCanary?: boolean;
+  existingCanaryCount?: number;
+  existingCanarySuffix?: string;
+  staleCleanupFails?: boolean;
+  staleDeleteThrows?: boolean;
+  staleIdentityMismatch?: boolean;
+  staleTier?: string;
   createdTier?: string;
   readyTier?: string;
   mesh?: boolean;
@@ -26,6 +39,8 @@ interface FixtureOptions {
   bridgeReply?: "real" | "canned";
   cleanupFails?: boolean;
   postCommitsThenThrows?: boolean;
+  provisionNeverCompletes?: boolean;
+  provisionCompletesAfterPolls?: number;
   recoveryListFailures?: number;
   recoveryNeverFinds?: boolean;
   bridgeStatusError?: unknown;
@@ -48,7 +63,12 @@ function createFixture(options: FixtureOptions = {}) {
   let nowMs = START_MS;
   let created = false;
   let deleted = false;
+  let staleDeleted = false;
   let createBody: Record<string, unknown> | null = null;
+  let staleDeleteBody: Record<string, unknown> | null = null;
+  let freshDeleteBody: Record<string, unknown> | null = null;
+  let provisionPolls = 0;
+  let provisionCompleted = false;
   let recoveryListFailures = options.recoveryListFailures ?? 0;
   const calls: Array<{ method: string; pathname: string }> = [];
 
@@ -75,21 +95,30 @@ function createFixture(options: FixtureOptions = {}) {
       }
       return response({
         success: true,
-        data: options.existingCanary
-          ? [
-              {
-                id: "existing-id",
-                agentName: "managed-dedicated-canary-existing",
-              },
-            ]
-          : created && !options.recoveryNeverFinds
-            ? [
+        data:
+          !staleDeleted &&
+          (options.existingCanaryCount ?? (options.existingCanary ? 1 : 0)) > 0
+            ? Array.from(
                 {
-                  id: AGENT_ID,
-                  agentName: String(createBody?.agentName ?? "missing"),
+                  length:
+                    options.existingCanaryCount ??
+                    (options.existingCanary ? 1 : 0),
                 },
-              ]
-            : [],
+                (_, index) => ({
+                  id: index === 0 ? STALE_AGENT_ID : `stale-agent-${index + 1}`,
+                  agentName: `managed-dedicated-canary-${
+                    options.existingCanarySuffix ?? "existing"
+                  }`,
+                }),
+              )
+            : created && !options.recoveryNeverFinds
+              ? [
+                  {
+                    id: AGENT_ID,
+                    agentName: String(createBody?.agentName ?? "missing"),
+                  },
+                ]
+              : [],
       });
     }
 
@@ -117,6 +146,18 @@ function createFixture(options: FixtureOptions = {}) {
     }
 
     if (url.pathname === `/api/v1/jobs/${PROVISION_JOB_ID}`) {
+      provisionPolls += 1;
+      if (
+        options.provisionNeverCompletes ||
+        (options.provisionCompletesAfterPolls !== undefined &&
+          provisionPolls < options.provisionCompletesAfterPolls)
+      ) {
+        return response({
+          success: true,
+          data: { status: "in_progress" },
+        });
+      }
+      provisionCompleted = true;
       return response({
         success: true,
         data: { status: "completed", result: { status: "running" } },
@@ -126,6 +167,58 @@ function createFixture(options: FixtureOptions = {}) {
     if (url.pathname === `/api/v1/jobs/${DELETE_JOB_ID}`) {
       deleted = true;
       return response({ success: true, data: { status: "completed" } });
+    }
+
+    if (url.pathname === `/api/v1/jobs/${STALE_DELETE_JOB_ID}`) {
+      staleDeleted = true;
+      return response({ success: true, data: { status: "completed" } });
+    }
+
+    if (
+      url.pathname === `/api/v1/eliza/agents/${STALE_AGENT_ID}` &&
+      method === "GET"
+    ) {
+      if (staleDeleted) {
+        return response({ success: false, error: "not found" }, 404);
+      }
+      return response({
+        success: true,
+        data: {
+          id: options.staleIdentityMismatch ? AGENT_ID : STALE_AGENT_ID,
+          agentName: `managed-dedicated-canary-${
+            options.existingCanarySuffix ?? "existing"
+          }`,
+          executionTier: options.staleTier ?? "dedicated-always",
+          createdAt: "2026-07-13T08:17:00.000Z",
+          status: "error",
+        },
+      });
+    }
+
+    if (
+      url.pathname === `/api/v1/eliza/agents/${STALE_AGENT_ID}` &&
+      method === "DELETE"
+    ) {
+      staleDeleteBody = JSON.parse(String(init?.body)) as Record<
+        string,
+        unknown
+      >;
+      if (options.staleDeleteThrows) {
+        throw new Error("simulated transport ambiguity");
+      }
+      if (options.staleCleanupFails) {
+        return response(
+          { success: false, error: "provisioning is in progress" },
+          409,
+        );
+      }
+      return response(
+        {
+          success: true,
+          data: { jobId: STALE_DELETE_JOB_ID, status: "pending" },
+        },
+        202,
+      );
     }
 
     if (
@@ -139,10 +232,11 @@ function createFixture(options: FixtureOptions = {}) {
         data: {
           id: AGENT_ID,
           agentName,
-          status: "running",
+          status: provisionCompleted ? "running" : "provisioning",
           databaseStatus: "ready",
           executionTier:
             options.readyTier ?? options.createdTier ?? "dedicated-always",
+          createdAt: "2026-07-13T02:30:00.000Z",
           lastHeartbeatAt:
             options.heartbeatAt === undefined
               ? new Date(nowMs - 5_000).toISOString()
@@ -161,6 +255,10 @@ function createFixture(options: FixtureOptions = {}) {
       url.pathname === `/api/v1/eliza/agents/${AGENT_ID}` &&
       method === "DELETE"
     ) {
+      freshDeleteBody = JSON.parse(String(init?.body)) as Record<
+        string,
+        unknown
+      >;
       if (options.cleanupFails) {
         return response({ success: false, error: "delete failed" }, 500);
       }
@@ -245,13 +343,22 @@ function createFixture(options: FixtureOptions = {}) {
     get createBody() {
       return createBody;
     },
+    get staleDeleteBody() {
+      return staleDeleteBody;
+    },
+    get freshDeleteBody() {
+      return freshDeleteBody;
+    },
     get created() {
       return created;
     },
   };
 }
 
-async function runFixture(options: FixtureOptions = {}) {
+async function runFixture(
+  options: FixtureOptions = {},
+  canaryOptions: { staleCanarySuffix?: string } = {},
+) {
   const fixture = createFixture(options);
   const evidence = await runManagedDedicatedCanary({
     apiKey: SECRET,
@@ -264,6 +371,7 @@ async function runFixture(options: FixtureOptions = {}) {
     cleanupTimeoutMs: 30,
     createRecoveryTimeoutMs: 30,
     createRecoveryPollIntervalMs: 10,
+    ...canaryOptions,
   });
   return { fixture, evidence };
 }
@@ -291,6 +399,12 @@ describe("managed dedicated canary", () => {
       maxChatRequests: 4,
       chatRequests: 2,
     });
+    expect(evidence.recovery).toEqual({
+      requested: false,
+      match: "none",
+      performed: "not-attempted",
+      confirmed: false,
+    });
     expect(evidence.cleanup.status).toBe("passed");
     expect(evidence.cleanup.possibleOrphan).toBe(false);
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
@@ -299,6 +413,11 @@ describe("managed dedicated canary", () => {
       alwaysOn: true,
       forceCreate: true,
       autoProvision: true,
+    });
+    expect(fixture.freshDeleteBody).toEqual({
+      expectedAgentName: `managed-dedicated-canary-${SUFFIX}`,
+      expectedCreatedAt: "2026-07-13T02:30:00.000Z",
+      expectedExecutionTier: "dedicated-always",
     });
     expect(
       fixture.calls.filter(
@@ -369,6 +488,25 @@ describe("managed dedicated canary", () => {
     expect(fixture.calls).toHaveLength(0);
   });
 
+  test("an invalid stale-canary suffix fails before any network access", async () => {
+    const fixture = createFixture();
+    const evidence = await runManagedDedicatedCanary({
+      apiKey: SECRET,
+      suffix: SUFFIX,
+      staleCanarySuffix: "managed-dedicated-canary-delete-anything",
+      fetch: fixture.fetch,
+      now: fixture.now,
+      sleep: fixture.sleep,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "config",
+      code: "invalid_stale_canary_suffix",
+    });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(fixture.calls).toHaveLength(0);
+  });
+
   test("refuses production even when a valid credential is present", async () => {
     const fixture = createFixture();
     const evidence = await runManagedDedicatedCanary({
@@ -432,6 +570,172 @@ describe("managed dedicated canary", () => {
     expect(fixture.created).toBe(false);
   });
 
+  test("an explicit exact suffix deletes one verified stale canary before the fresh proof", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+      },
+      { staleCanarySuffix: STALE_SUFFIX },
+    );
+
+    expect(evidence.verdict).toBe("pass");
+    expect(evidence.failure).toBeNull();
+    expect(evidence.capacity.createdAgents).toBe(1);
+    expect(evidence.recovery).toEqual({
+      requested: true,
+      match: "one",
+      performed: "accepted",
+      confirmed: true,
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(validateManagedDedicatedCanaryEvidence(evidence)).toEqual([]);
+    expect(fixture.staleDeleteBody).toEqual({
+      expectedAgentName: `managed-dedicated-canary-${STALE_SUFFIX}`,
+      expectedCreatedAt: "2026-07-13T08:17:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+    });
+    expect(fixture.calls.filter((call) => call.method === "DELETE")).toEqual([
+      {
+        method: "DELETE",
+        pathname: `/api/v1/eliza/agents/${STALE_AGENT_ID}`,
+      },
+      {
+        method: "DELETE",
+        pathname: `/api/v1/eliza/agents/${AGENT_ID}`,
+      },
+    ]);
+  });
+
+  test("an explicit recovery suffix fails when its stale canary is absent", async () => {
+    const { fixture, evidence } = await runFixture(
+      {},
+      { staleCanarySuffix: STALE_SUFFIX },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "expected_stale_canary_missing",
+    });
+    expect(evidence.recovery).toEqual({
+      requested: true,
+      match: "none",
+      performed: "not-attempted",
+      confirmed: false,
+    });
+    expect(fixture.created).toBe(false);
+  });
+
+  test("stale recovery refuses a different valid canary identity without deleting", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+      },
+      { staleCanarySuffix: "r30081355988a1" },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "identity_mismatch",
+    });
+    expect(fixture.created).toBe(false);
+    expect(
+      fixture.calls.filter((call) => call.method === "DELETE"),
+    ).toHaveLength(0);
+  });
+
+  test("stale recovery refuses a non-dedicated target without deleting", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+        staleTier: "shared",
+      },
+      { staleCanarySuffix: STALE_SUFFIX },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "identity_mismatch",
+    });
+    expect(fixture.created).toBe(false);
+    expect(
+      fixture.calls.filter((call) => call.method === "DELETE"),
+    ).toHaveLength(0);
+  });
+
+  test("stale recovery fails closed when more than one canary exists", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanaryCount: 2,
+        existingCanarySuffix: STALE_SUFFIX,
+      },
+      { staleCanarySuffix: STALE_SUFFIX },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "existing_canary_present",
+    });
+    expect(fixture.created).toBe(false);
+    expect(
+      fixture.calls.filter((call) => call.method === "DELETE"),
+    ).toHaveLength(0);
+  });
+
+  test("stale recovery reports a normal API conflict and never creates a second canary", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+        staleCleanupFails: true,
+      },
+      { staleCanarySuffix: STALE_SUFFIX },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "unexpected_http_409",
+    });
+    expect(fixture.created).toBe(false);
+    expect(
+      fixture.calls.filter(
+        (call) =>
+          call.method === "DELETE" &&
+          call.pathname === `/api/v1/eliza/agents/${STALE_AGENT_ID}`,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("stale recovery records an ambiguous delete transport and never creates a second canary", async () => {
+    const { fixture, evidence } = await runFixture(
+      {
+        existingCanary: true,
+        existingCanarySuffix: STALE_SUFFIX,
+        staleDeleteThrows: true,
+      },
+      { staleCanarySuffix: STALE_SUFFIX },
+    );
+
+    expect(evidence.failure).toEqual({
+      phase: "capacity_guard",
+      code: "request_failed",
+    });
+    expect(evidence.recovery).toEqual({
+      requested: true,
+      match: "one",
+      performed: "ambiguous",
+      confirmed: false,
+    });
+    expect(fixture.created).toBe(false);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
   test("a shared-tier response is red and the exact fresh row is still deleted", async () => {
     const { evidence } = await runFixture({
       createdTier: "shared",
@@ -450,12 +754,21 @@ describe("managed dedicated canary", () => {
 
   test("red evidence classifies an unknown upstream tier without retaining it", async () => {
     const unsafeTier = "private-tier-secret-value";
-    const { evidence } = await runFixture({ createdTier: unsafeTier });
+    const { evidence, fixture } = await runFixture({
+      createdTier: unsafeTier,
+    });
     expect(evidence.failure).toEqual({
-      phase: "create",
-      code: "wrong_execution_tier",
+      phase: "cleanup",
+      code: "identity_mismatch",
     });
     expect(evidence.path.observedTier).toBe("other");
+    expect(evidence.cleanup).toEqual({
+      status: "failed",
+      possibleOrphan: true,
+    });
+    expect(
+      fixture.calls.filter((call) => call.method === "DELETE"),
+    ).toHaveLength(0);
     expect(JSON.stringify(evidence)).not.toContain(unsafeTier);
     expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
@@ -518,6 +831,58 @@ describe("managed dedicated canary", () => {
     });
     expect(
       fixture.calls.filter((call) => call.method === "DELETE"),
+    ).toHaveLength(1);
+  });
+
+  test("cleanup refuses to delete while the known provision job is still running", async () => {
+    const { fixture, evidence } = await runFixture({
+      provisionNeverCompletes: true,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "cleanup_job",
+      code: "job_timeout",
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "failed",
+      possibleOrphan: true,
+    });
+    expect(
+      fixture.calls.filter(
+        (call) =>
+          call.method === "DELETE" &&
+          call.pathname === `/api/v1/eliza/agents/${AGENT_ID}`,
+      ),
+    ).toHaveLength(0);
+    expect(fixture.freshDeleteBody).toBeNull();
+  });
+
+  test("cleanup waits for the known provision job to quiesce before deleting", async () => {
+    const { fixture, evidence } = await runFixture({
+      provisionCompletesAfterPolls: 4,
+    });
+
+    expect(evidence.failure).toEqual({
+      phase: "provision",
+      code: "job_timeout",
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+    expect(
+      fixture.calls.filter(
+        (call) =>
+          call.method === "GET" &&
+          call.pathname === `/api/v1/jobs/${PROVISION_JOB_ID}`,
+      ),
+    ).toHaveLength(4);
+    expect(
+      fixture.calls.filter(
+        (call) =>
+          call.method === "DELETE" &&
+          call.pathname === `/api/v1/eliza/agents/${AGENT_ID}`,
+      ),
     ).toHaveLength(1);
   });
 
@@ -753,6 +1118,36 @@ describe("managed dedicated canary", () => {
     expect(errors).toContain("unsafe_timing_value");
   });
 
+  test("strict artifact validation rejects contradictory recovery claims", async () => {
+    const { evidence } = await runFixture();
+    const mutationWithoutRequest = structuredClone(evidence);
+    mutationWithoutRequest.recovery = {
+      requested: false,
+      match: "none",
+      performed: "accepted",
+      confirmed: true,
+    };
+    const confirmationWithoutAcceptance = structuredClone(evidence);
+    confirmationWithoutAcceptance.recovery = {
+      requested: true,
+      match: "one",
+      performed: "ambiguous",
+      confirmed: true,
+    };
+
+    expect(
+      validateManagedDedicatedCanaryArtifact(mutationWithoutRequest),
+    ).toEqual(
+      expect.arrayContaining([
+        "unsafe_recovery_performed_without_exact_request",
+        "unsafe_recovery_nonmatch_mutation",
+      ]),
+    );
+    expect(
+      validateManagedDedicatedCanaryArtifact(confirmationWithoutAcceptance),
+    ).toContain("unsafe_recovery_confirmation_without_acceptance");
+  });
+
   test("cleanup failure overrides a successful path and stays red", async () => {
     const { evidence } = await runFixture({
       cleanupFails: true,
@@ -776,7 +1171,7 @@ describe("managed dedicated canary", () => {
     );
     expect(
       validateManagedDedicatedCanaryEvidence({
-        schemaVersion: 1,
+        schemaVersion: 2,
         verdict: "pass",
         deployedCommit: DEPLOYED_COMMIT,
         path: {
@@ -795,6 +1190,12 @@ describe("managed dedicated canary", () => {
           createdAgents: 1,
           maxChatRequests: 4,
           chatRequests: 0,
+        },
+        recovery: {
+          requested: false,
+          match: "none",
+          performed: "not-attempted",
+          confirmed: false,
         },
         cleanup: { status: "passed" },
         failure: null,

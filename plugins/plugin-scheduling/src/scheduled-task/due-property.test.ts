@@ -13,9 +13,10 @@
  *      (occurrences are strictly monotonic across a fire chain);
  *  (d) interval tasks with non-positive / non-finite `everyMinutes` never
  *      fire and never index;
- *  (e) due evaluation and next-fire-at never throw for any structurally
- *      valid task, including malformed-ish metadata, garbage ISO strings,
- *      and extreme numeric trigger fields.
+ *  (e) due evaluation and next-fire-at return typed results for structurally
+ *      valid task data, or `InvalidLocalTimeError` for malformed owner-local
+ *      times; malformed metadata and extreme numeric fields never leak an
+ *      untyped exception.
  *
  * Property (e) originally caught two real crashes (RangeError: Invalid Date):
  * `relative_to_anchor` with an `offsetMinutes` whose ms product leaves the
@@ -31,6 +32,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { isScheduledTaskDue, markWindowFireIfNeeded } from "./due.js";
+import { InvalidLocalTimeError } from "./local-time.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import type {
   OwnerFactsView,
@@ -772,7 +774,7 @@ describe("due/next-fire-at fuzz: never throws on hostile-but-type-shaped tasks",
     expect(performance.now() - started).toBeLessThan(2000);
   });
 
-  it("isScheduledTaskDue and computeNextFireAt return typed results, never throw", async () => {
+  it("returns typed results or a typed invalid-local-time error", async () => {
     await fc.assert(
       fc.asyncProperty(
         arbHostileTask,
@@ -782,23 +784,34 @@ describe("due/next-fire-at fuzz: never throws on hostile-but-type-shaped tasks",
           const task = makeTask(shape);
           const now = new Date(msAt(nowMin));
 
-          const decision = await isScheduledTaskDue(task, { now, ownerFacts });
-          expect(typeof decision.due).toBe("boolean");
-          expect(typeof decision.reason).toBe("string");
-          if (decision.due) {
-            expect(
-              Number.isFinite(Date.parse(decision.occurrenceAtIso ?? "")),
-            ).toBe(true);
+          try {
+            const decision = await isScheduledTaskDue(task, {
+              now,
+              ownerFacts,
+            });
+            expect(typeof decision.due).toBe("boolean");
+            expect(typeof decision.reason).toBe("string");
+            if (decision.due) {
+              expect(
+                Number.isFinite(Date.parse(decision.occurrenceAtIso ?? "")),
+              ).toBe(true);
+            }
+          } catch (error) {
+            expect(error).toBeInstanceOf(InvalidLocalTimeError);
           }
 
-          const next = await computeNextFireAt(task, {
-            now,
-            ownerFacts,
-            anchors: null,
-          });
-          expect(next === null || typeof next === "string").toBe(true);
-          if (next !== null) {
-            expect(Number.isFinite(Date.parse(next))).toBe(true);
+          try {
+            const next = await computeNextFireAt(task, {
+              now,
+              ownerFacts,
+              anchors: null,
+            });
+            expect(next === null || typeof next === "string").toBe(true);
+            if (next !== null) {
+              expect(Number.isFinite(Date.parse(next))).toBe(true);
+            }
+          } catch (error) {
+            expect(error).toBeInstanceOf(InvalidLocalTimeError);
           }
         },
       ),

@@ -9,7 +9,11 @@ import type {
 	MessageHandlerDeterministicToolCall,
 	MessageHandlerResult,
 } from "../types/components";
-import type { AgentContext, ContextDefinition } from "../types/contexts";
+import type {
+	AgentContext,
+	ContextDefinition,
+	RoleGateRole,
+} from "../types/contexts";
 import type { Memory } from "../types/memory";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
@@ -38,6 +42,7 @@ export interface ResponseHandlerEvaluatorContext {
 	state: State;
 	messageHandler: MessageHandlerResult;
 	availableContexts: readonly ContextDefinition[];
+	userRoles?: readonly RoleGateRole[];
 }
 
 export interface ResponseHandlerEvaluator {
@@ -234,6 +239,7 @@ export async function runResponseHandlerEvaluators(args: {
 	state: State;
 	messageHandler: MessageHandlerResult;
 	availableContexts: readonly ContextDefinition[];
+	userRoles?: readonly RoleGateRole[];
 	evaluators?: readonly ResponseHandlerEvaluator[];
 }): Promise<ResponseHandlerEvaluationRunResult> {
 	const registered = Array.isArray(args.runtime.responseHandlerEvaluators)
@@ -261,6 +267,7 @@ export async function runResponseHandlerEvaluators(args: {
 			state: args.state,
 			messageHandler: args.messageHandler,
 			availableContexts: args.availableContexts,
+			userRoles: args.userRoles,
 		};
 		try {
 			const shouldRun = await evaluator.shouldRun(context);

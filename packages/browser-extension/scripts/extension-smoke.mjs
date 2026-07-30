@@ -15,7 +15,6 @@ import { run } from "./script-utils.mjs";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(extensionRoot, "..", "..");
-const workspaceRoot = path.resolve(repoRoot, "..");
 const chromeDistDir = path.join(extensionRoot, "dist", "chrome");
 const resultsDir = path.join(extensionRoot, "dist", "test-results");
 const removePathRecursiveScript = path.join(
@@ -52,26 +51,10 @@ function resolveBunCommand() {
 
 function resolvePlaywrightModulePath() {
   const candidates = [
-    path.join(
-      workspaceRoot,
-      "apps",
-      "app",
-      "node_modules",
-      "@playwright",
-      "test",
-      "index.mjs",
-    ),
-    path.join(
-      workspaceRoot,
-      "node_modules",
-      "@playwright",
-      "test",
-      "index.mjs",
-    ),
     path.join(repoRoot, "node_modules", "@playwright", "test", "index.mjs"),
     path.join(
       repoRoot,
-      "apps",
+      "packages",
       "app",
       "node_modules",
       "@playwright",
@@ -486,7 +469,7 @@ async function main() {
       )
     ) {
       throw new Error(
-        `Playwright Chromium is not installed. Run "cd ${path.join(repoRoot, "apps", "app")} && bunx playwright install chromium" and rerun the smoke test.\n\n${error.message}`,
+        `Playwright Chromium is not installed. Run "cd ${repoRoot} && .github/scripts/install-playwright-browsers.sh chromium" and rerun the smoke test.\n\n${error.message}`,
       );
     }
     throw error;

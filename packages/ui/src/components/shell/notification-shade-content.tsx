@@ -6,8 +6,17 @@
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { tierForPriority } from "@elizaos/core";
 import { X } from "lucide-react";
-import { type JSX, memo, useCallback, useRef, useState } from "react";
+import {
+  type JSX,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useSharedNow } from "../../hooks/useSharedNow";
 import { cn } from "../../lib/utils";
+import { formatRelativeTimeShort } from "../../utils/format";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {
   getChatSourceMeta,
@@ -18,6 +27,9 @@ import { notificationPullRevealStyle } from "./notification-shade-presentation";
 import { RelativeTime } from "./RelativeTime";
 
 const SWIPE_DISMISS_PX = 88;
+export const NOTIFICATION_ROW_SETTLE_MS = 220;
+const NOTIFICATION_ROW_DISMISS_COMMIT_MS = NOTIFICATION_ROW_SETTLE_MS + 24;
+const STACK_PEEK_LAYERS = ["near", "far"] as const;
 
 /** Stable shade order: priority, recency, then id as a total tiebreak. */
 export function orderDashboardNotifications(
@@ -93,29 +105,55 @@ export function groupDashboardNotifications(
 }
 
 export function ClearConfirmationContent({
+  armingLabel,
+  confirmingLabel = "Clear",
   confirming,
+  stage,
 }: {
+  armingLabel?: string;
+  confirmingLabel?: string;
   confirming: boolean;
+  stage?: 0 | 1 | 2;
 }): JSX.Element {
+  const resolvedStage = stage ?? (confirming ? 2 : 0);
   return (
     <span className="relative flex h-full w-full items-center justify-center">
-      <X
-        aria-hidden
-        className={cn(
-          "eliza-notif-control-transition absolute h-3.5 w-3.5 transition-[opacity,transform] duration-200 ease-out",
-          confirming ? "scale-75 opacity-0" : "scale-100 opacity-100",
-        )}
-      />
       <span
-        aria-hidden={!confirming}
+        className={cn(
+          "eliza-notif-control-transition absolute flex items-center justify-center transition-[opacity,transform] duration-200 ease-out",
+          resolvedStage === 0 ? "scale-100 opacity-100" : "scale-75 opacity-0",
+        )}
+      >
+        <X
+          aria-hidden
+          className="eliza-notif-control-transition h-3.5 w-3.5 shrink-0 transition-[opacity,transform] duration-200 ease-out"
+        />
+      </span>
+      {armingLabel ? (
+        <span
+          aria-hidden={resolvedStage !== 1}
+          data-notification-clear-arming-label=""
+          className={cn(
+            "eliza-notif-control-transition absolute transition-[opacity,transform] duration-200 ease-out",
+            resolvedStage === 1
+              ? "translate-y-0 scale-100 opacity-100"
+              : "translate-y-0.5 scale-95 opacity-0",
+          )}
+        >
+          {armingLabel}
+        </span>
+      ) : null}
+      <span
+        aria-hidden={resolvedStage !== 2}
+        data-notification-clear-confirming-label=""
         className={cn(
           "eliza-notif-control-transition absolute transition-[opacity,transform] duration-200 ease-out",
-          confirming
+          resolvedStage === 2
             ? "translate-y-0 scale-100 opacity-100"
             : "translate-y-0.5 scale-95 opacity-0",
         )}
       >
-        Clear
+        {confirmingLabel}
       </span>
     </span>
   );
@@ -123,9 +161,13 @@ export function ClearConfirmationContent({
 
 function NotificationSourceIcon({
   count,
+  countVisibility = 1,
+  decorative = false,
   source,
 }: {
   count?: number;
+  countVisibility?: number;
+  decorative?: boolean;
   source: string;
 }): JSX.Element {
   const meta = getChatSourceMeta(source);
@@ -133,22 +175,32 @@ function NotificationSourceIcon({
   const registered = hasChatSourceMeta(source);
   return (
     <span
-      data-testid="notification-source-icon"
+      data-testid={decorative ? undefined : "notification-source-icon"}
       data-source={normalizeChatSourceKey(source) ?? undefined}
       role="img"
+      aria-hidden={decorative ? true : undefined}
       aria-label={
-        count && count > 1
-          ? `${meta.label}, ${count} notifications`
-          : meta.label
+        decorative
+          ? undefined
+          : count && count > 1
+            ? `${meta.label}, ${count} notifications`
+            : meta.label
       }
-      title={meta.label}
+      title={decorative ? undefined : meta.label}
       className={cn(
-        "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
+        "eliza-notif-source-icon relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
         registered && meta.iconClassName,
       )}
     >
       {registered ? (
         <Icon className="h-5 w-5" />
+      ) : decorative ? (
+        <span
+          data-notification-stack-preview-source-initial={
+            meta.label.trim().charAt(0).toUpperCase() || "E"
+          }
+          className="text-sm font-semibold text-white/85"
+        />
       ) : (
         <span aria-hidden className="text-sm font-semibold text-white/85">
           {meta.label.trim().charAt(0).toUpperCase() || "E"}
@@ -156,14 +208,77 @@ function NotificationSourceIcon({
       )}
       {count && count > 1 ? (
         <span
-          data-testid="notification-source-count"
+          data-testid={decorative ? undefined : "notification-source-count"}
+          data-notification-source-count=""
+          data-notification-stack-preview-count={
+            decorative ? (count > 99 ? "99+" : count) : undefined
+          }
           aria-hidden
-          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
+          style={{ opacity: countVisibility }}
+          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
         >
-          {count > 99 ? "99+" : count}
+          {decorative ? null : count > 99 ? "99+" : count}
         </span>
       ) : null}
     </span>
+  );
+}
+
+function NotificationStackPreviewContent({
+  notification,
+  stackCount,
+  visibility,
+}: {
+  notification: AgentNotification;
+  stackCount?: number;
+  visibility: number;
+}): JSX.Element {
+  return (
+    <span
+      aria-hidden
+      data-notification-stack-preview-content=""
+      data-notification-stack-preview-visibility={visibility}
+      style={{
+        opacity: visibility,
+        visibility: visibility > 0 ? "visible" : "hidden",
+      }}
+      className="pointer-events-none flex min-h-touch min-w-0 items-center gap-3 px-3 py-2 text-left"
+    >
+      <NotificationSourceIcon
+        source={notification.source}
+        count={stackCount}
+        decorative
+      />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-baseline gap-1.5">
+          <span
+            data-notification-stack-preview-title={notification.title}
+            className="truncate text-sm font-semibold text-white"
+          />
+          <NotificationStackPreviewTime ts={notification.createdAt} />
+        </span>
+        {notification.body ? (
+          <span
+            data-notification-stack-preview-body={notification.body}
+            className="line-clamp-2 text-xs leading-snug text-white/60"
+          />
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function NotificationStackPreviewTime({
+  ts,
+}: {
+  ts: AgentNotification["createdAt"];
+}): JSX.Element {
+  void useSharedNow();
+  return (
+    <time
+      data-notification-stack-preview-time={formatRelativeTimeShort(ts)}
+      className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
+    />
   );
 }
 
@@ -171,9 +286,23 @@ export interface NotificationRowProps {
   notification: AgentNotification;
   stackKey?: string;
   stackCount?: number;
+  stackCountVisibility?: number;
+  stackPeeks?: {
+    count: number;
+    disabled: boolean;
+    expansionProgress: number;
+    fanned: boolean;
+    groupLabel: string;
+    mode: "close" | "static" | "disposable";
+    openOffsetsPx?: readonly number[];
+    previewRows: readonly AgentNotification[];
+    testIdVisible: boolean;
+    totalCount: number;
+    visibility: number;
+  };
   pullRevealProgress?: number;
   shadeVisibility?: number;
-  onExpandStack?: (key: string) => void;
+  onExpandStack?: (key: string, moveFocus: boolean) => void;
   onOpen: (notification: AgentNotification) => void;
   onDismiss: (id: string) => void;
 }
@@ -192,6 +321,41 @@ export function rowPropsEqual(
     a.source === b.source &&
     previous.stackKey === next.stackKey &&
     previous.stackCount === next.stackCount &&
+    previous.stackCountVisibility === next.stackCountVisibility &&
+    previous.stackPeeks?.count === next.stackPeeks?.count &&
+    previous.stackPeeks?.disabled === next.stackPeeks?.disabled &&
+    previous.stackPeeks?.expansionProgress ===
+      next.stackPeeks?.expansionProgress &&
+    previous.stackPeeks?.fanned === next.stackPeeks?.fanned &&
+    previous.stackPeeks?.groupLabel === next.stackPeeks?.groupLabel &&
+    previous.stackPeeks?.mode === next.stackPeeks?.mode &&
+    previous.stackPeeks?.openOffsetsPx?.[0] ===
+      next.stackPeeks?.openOffsetsPx?.[0] &&
+    previous.stackPeeks?.openOffsetsPx?.[1] ===
+      next.stackPeeks?.openOffsetsPx?.[1] &&
+    previous.stackPeeks?.previewRows?.[0]?.id ===
+      next.stackPeeks?.previewRows?.[0]?.id &&
+    previous.stackPeeks?.previewRows?.[0]?.title ===
+      next.stackPeeks?.previewRows?.[0]?.title &&
+    previous.stackPeeks?.previewRows?.[0]?.body ===
+      next.stackPeeks?.previewRows?.[0]?.body &&
+    previous.stackPeeks?.previewRows?.[0]?.source ===
+      next.stackPeeks?.previewRows?.[0]?.source &&
+    previous.stackPeeks?.previewRows?.[0]?.createdAt ===
+      next.stackPeeks?.previewRows?.[0]?.createdAt &&
+    previous.stackPeeks?.previewRows?.[1]?.id ===
+      next.stackPeeks?.previewRows?.[1]?.id &&
+    previous.stackPeeks?.previewRows?.[1]?.title ===
+      next.stackPeeks?.previewRows?.[1]?.title &&
+    previous.stackPeeks?.previewRows?.[1]?.body ===
+      next.stackPeeks?.previewRows?.[1]?.body &&
+    previous.stackPeeks?.previewRows?.[1]?.source ===
+      next.stackPeeks?.previewRows?.[1]?.source &&
+    previous.stackPeeks?.previewRows?.[1]?.createdAt ===
+      next.stackPeeks?.previewRows?.[1]?.createdAt &&
+    previous.stackPeeks?.testIdVisible === next.stackPeeks?.testIdVisible &&
+    previous.stackPeeks?.totalCount === next.stackPeeks?.totalCount &&
+    previous.stackPeeks?.visibility === next.stackPeeks?.visibility &&
     previous.pullRevealProgress === next.pullRevealProgress &&
     previous.shadeVisibility === next.shadeVisibility &&
     previous.onExpandStack === next.onExpandStack &&
@@ -213,6 +377,8 @@ export const NotificationRow = memo(function NotificationRow({
   notification,
   stackKey,
   stackCount,
+  stackCountVisibility,
+  stackPeeks,
   pullRevealProgress,
   shadeVisibility,
   onExpandStack,
@@ -228,7 +394,17 @@ export const NotificationRow = memo(function NotificationRow({
     startY: number;
     axis: "none" | "x" | "y";
   } | null>(null);
+  const dismissTimer = useRef<number | null>(null);
   const suppressClick = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (dismissTimer.current !== null) {
+        window.clearTimeout(dismissTimer.current);
+      }
+    },
+    [],
+  );
 
   const clearGesture = useCallback(() => {
     gesture.current = null;
@@ -238,7 +414,10 @@ export const NotificationRow = memo(function NotificationRow({
     (direction: "left" | "right") => {
       suppressClick.current = true;
       setDismissing(direction);
-      window.setTimeout(() => onDismiss(notification.id), 180);
+      dismissTimer.current = window.setTimeout(
+        () => onDismiss(notification.id),
+        NOTIFICATION_ROW_DISMISS_COMMIT_MS,
+      );
     },
     [notification.id, onDismiss],
   );
@@ -288,10 +467,33 @@ export const NotificationRow = memo(function NotificationRow({
   );
 
   const dragging = swipeX !== 0 && !dismissing;
+  const promotingStack = Boolean(
+    dismissing && stackPeeks && !stackPeeks.fanned,
+  );
+  const stackPreviewVisibility = promotingStack
+    ? 1
+    : dragging
+      ? Math.min(1, Math.abs(swipeX) / 44)
+      : 0;
+  const collapsingDismissedRow = Boolean(
+    dismissing && (!stackPeeks || stackPeeks.fanned),
+  );
+  const collapsingFannedRow = Boolean(
+    dismissing && (stackPeeks?.fanned || shadeVisibility !== undefined),
+  );
+  const rowPresentationStyle =
+    pullRevealProgress !== undefined
+      ? notificationPullRevealStyle(pullRevealProgress)
+      : shadeVisibility !== undefined
+        ? {
+            opacity: shadeVisibility,
+            transform: `translate3d(0, ${(1 - shadeVisibility) * -8}px, 0)`,
+          }
+        : undefined;
   return (
     <li
       className={cn(
-        "eliza-notif-row relative",
+        "eliza-notif-row relative isolate grid",
         pullRevealProgress !== undefined &&
           "eliza-notif-pull-reveal pointer-events-none",
         shadeVisibility !== undefined && "eliza-notif-shade-transition grid",
@@ -302,23 +504,18 @@ export const NotificationRow = memo(function NotificationRow({
       data-notification-disposable-row={
         shadeVisibility !== undefined ? "" : undefined
       }
+      data-swipe-collapsing={collapsingDismissedRow ? "" : undefined}
       aria-hidden={shadeVisibility === 0 ? true : undefined}
       inert={
         pullRevealProgress !== undefined || shadeVisibility === 0
           ? true
           : undefined
       }
-      style={
-        pullRevealProgress !== undefined
-          ? notificationPullRevealStyle(pullRevealProgress)
-          : shadeVisibility !== undefined
-            ? {
-                gridTemplateRows: `${shadeVisibility}fr`,
-                opacity: shadeVisibility,
-                transform: `translate3d(0, ${(1 - shadeVisibility) * -8}px, 0)`,
-              }
-            : undefined
-      }
+      style={{
+        ...rowPresentationStyle,
+        gridTemplateRows: `${(shadeVisibility ?? 1) * (collapsingDismissedRow ? 0 : 1)}fr`,
+        marginBottom: collapsingFannedRow ? -6 : 0,
+      }}
       data-notif-row
     >
       <div
@@ -330,14 +527,15 @@ export const NotificationRow = memo(function NotificationRow({
             : swipeX
               ? `translateX(${swipeX}px)`
               : undefined,
-          opacity: dismissing ? 0 : Math.max(0, 1 - Math.abs(swipeX) / 220),
+          opacity: dismissing ? 0 : 1,
           touchAction: "pan-y",
+          willChange: dragging || dismissing ? "transform, opacity" : undefined,
         }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
-        className="eliza-notif-row-inner eliza-notif-glass group relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
+        className="eliza-notif-row-inner eliza-notif-row-surface eliza-notif-glass group relative z-[2] flex min-h-0 flex-col overflow-hidden rounded-2xl"
       >
         <button
           type="button"
@@ -357,35 +555,104 @@ export const NotificationRow = memo(function NotificationRow({
               event.preventDefault();
               return;
             }
-            if (stackKey && onExpandStack) onExpandStack(stackKey);
-            else onOpen(notification);
+            if (stackKey && onExpandStack) {
+              onExpandStack(stackKey, event.detail === 0);
+            } else onOpen(notification);
           }}
-          className="flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
+          className="eliza-notif-row-content flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
         >
           <NotificationSourceIcon
             source={notification.source}
             count={stackCount}
+            countVisibility={stackCountVisibility}
           />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex items-baseline gap-1.5">
-              <span className="truncate text-sm font-semibold text-white">
+              <span className="eliza-notif-title truncate text-sm font-semibold text-white">
                 {notification.title}
               </span>
               <RelativeTime
                 ts={notification.createdAt}
                 short
-                className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
+                className="eliza-notif-meta ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
                 data-testid="notification-row-time"
               />
             </span>
             {notification.body ? (
-              <span className="line-clamp-2 text-xs leading-snug text-white/60">
+              <span className="eliza-notif-body line-clamp-2 text-xs leading-snug text-white/60">
                 {notification.body}
               </span>
             ) : null}
           </span>
         </button>
       </div>
+      {stackPeeks
+        ? STACK_PEEK_LAYERS.slice(0, stackPeeks.count).map((layer, index) => {
+            const collapsedOffsetPx = (promotingStack ? index : index + 1) * 7;
+            const openOffsetPx =
+              stackPeeks.openOffsetsPx?.[index] ?? (index + 1) * 44;
+            const offsetPx =
+              collapsedOffsetPx +
+              (openOffsetPx - collapsedOffsetPx) * stackPeeks.expansionProgress;
+            return (
+              <button
+                key={`${notification.id}-stack-peek-${layer}`}
+                type="button"
+                data-testid={
+                  stackPeeks.testIdVisible
+                    ? "notification-stack-peek"
+                    : undefined
+                }
+                data-notif-control=""
+                data-notification-stack-peek=""
+                data-notification-peek-mode={stackPeeks.mode}
+                disabled={stackPeeks.disabled || promotingStack}
+                tabIndex={
+                  stackPeeks.disabled ||
+                  promotingStack ||
+                  stackPeeks.visibility < 1
+                    ? -1
+                    : undefined
+                }
+                aria-hidden={
+                  stackPeeks.disabled ||
+                  promotingStack ||
+                  stackPeeks.visibility === 0
+                    ? true
+                    : undefined
+                }
+                aria-label={`Show all ${stackPeeks.totalCount} ${stackPeeks.groupLabel} notifications`}
+                onClick={(event) => {
+                  if (stackKey && onExpandStack) {
+                    onExpandStack(stackKey, event.detail === 0);
+                  }
+                }}
+                className={cn(
+                  "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition absolute inset-0 rounded-2xl",
+                  stackPeeks.fanned && "pointer-events-none",
+                )}
+                data-swipe-promoting={promotingStack ? "" : undefined}
+                style={{
+                  zIndex: 1 - index,
+                  opacity: stackPeeks.visibility,
+                  transform: `translateY(${offsetPx}px) scale(${1 - (promotingStack ? index : index + 1) * 0.015})`,
+                }}
+              >
+                {stackPeeks.previewRows?.[index] ? (
+                  <NotificationStackPreviewContent
+                    notification={stackPeeks.previewRows[index]}
+                    stackCount={
+                      index === 0 && stackPeeks.totalCount > 2
+                        ? stackPeeks.totalCount - 1
+                        : undefined
+                    }
+                    visibility={index === 0 ? stackPreviewVisibility : 0}
+                  />
+                ) : null}
+              </button>
+            );
+          })
+        : null}
     </li>
   );
 }, rowPropsEqual);

@@ -11,9 +11,9 @@
  * (`createCreditReservationSettler`, not a mock) against a ledger-backed
  * reservation and assert:
  *
- *   1. On a provider 429, the streaming path releases the reservation to 0 — the
- *      org balance returns to its pre-request value.
- *   2. Same for a provider 5xx.
+ *   1. On an explicit provider 429 rejection, the streaming path releases the
+ *      reservation to 0 — the org balance returns to its pre-request value.
+ *   2. An ambiguous 5xx/transport outcome retains the admitted estimate.
  *   3. The error path emits a terminal OpenAI-compatible error chunk + [DONE]
  *      (finding #11) so OpenAI-compatible clients can back off instead of seeing
  *      a silently-truncated 200 stream.
@@ -209,6 +209,7 @@ function callStreaming(
     signal?: AbortSignal;
     useMonetizedAppBilling?: boolean;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    settleUnknown?: () => Promise<unknown> | unknown;
   } = {},
 ) {
   return handleStreamingRequest(
@@ -227,6 +228,8 @@ function callStreaming(
     30_000,
     options.estimatedInputTokens ?? 1,
     settleReservation as never,
+    (options.settleUnknown ?? (async () => null)) as never,
+    undefined,
     {} as never,
     undefined,
     {} as never,
@@ -258,9 +261,9 @@ const EXPECTED_ERROR_TYPE: Record<number, string> = {
   503: "service_unavailable",
 };
 
-describe("streaming chat — provider error releases the credit reservation", () => {
+describe("streaming chat — provider errors settle by provable outcome", () => {
   for (const statusCode of [400, 429, 503]) {
-    test(`provider ${statusCode}: reservation released to 0, balance restored, terminal error chunk emitted`, async () => {
+    test(`provider ${statusCode}: settlement is conservative unless rejection is explicit`, async () => {
       const ledger = makeLedgerReservation(100, 0.015);
       const settle = createCreditReservationSettler(ledger.reservation);
       // Sanity: the upfront hold has already debited the balance.
@@ -281,13 +284,21 @@ describe("streaming chat — provider error releases the credit reservation", ()
         };
       };
 
-      const res = await callStreaming(settle);
+      const res = await callStreaming(settle, {
+        settleUnknown: () => settle(ledger.hold),
+      });
       const body = await res.text();
       await onErrorPromise; // ensure the settle() inside onError completed
 
-      // onFinish/onAbort never fired — only onError. The hold was released to 0.
+      // Explicit caller/rate-limit rejections are known-zero; a 5xx after
+      // dispatch is ambiguous and retains the admitted estimate.
       expect(ledger.reconcileCalls).toBe(1);
-      expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+      const expectedCost = statusCode >= 500 ? ledger.hold : 0;
+      expect(ledger.actualCosts).toEqual([expectedCost]);
+      expect(ledger.balance).toBeCloseTo(
+        ledger.startBalance - expectedCost,
+        10,
+      );
 
       // Finding #11: a terminal OpenAI-shaped error chunk + [DONE] was emitted,
       // with the status-correct error.type (not a blanket rate_limit_error).
@@ -308,7 +319,7 @@ describe("streaming chat — provider error releases the credit reservation", ()
     });
   }
 
-  test("fullStream error releases the reservation even when SDK onError is absent", async () => {
+  test("ambiguous fullStream error retains the estimate when SDK onError is absent", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
     expect(ledger.balance).toBe(100 - 0.015);
@@ -320,15 +331,133 @@ describe("streaming chat — provider error releases the credit reservation", ()
       })(),
     });
 
-    const res = await callStreaming(settle);
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
     const body = await res.text();
 
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
     expect(body).toContain('"error"');
     expect(body).toContain('"type":"service_unavailable"');
     expect(body).toContain('"code":503');
     expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+  });
+
+  test("onError racing the fullStream catch after a delta settles unknown exactly once", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const err = makeApiCallError(503);
+    let onErrorPromise: Promise<unknown> | undefined;
+    streamTextImpl = (config) => {
+      const onError = config.onError as
+        | ((event: { error: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-delta", id: "text-1", text: "already delivered" };
+          onErrorPromise = Promise.resolve(onError?.({ error: err }));
+          yield { type: "error", error: err };
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
+    await res.text();
+    await onErrorPromise;
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+  });
+});
+
+describe("streaming chat — finished stream without reported usage", () => {
+  test("onFinish with an empty usage record settles the admitted estimate, not $0", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    let onFinishPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: { text: string; usage: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-delta", id: "text-1", text: "delivered reply" };
+          yield {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+          };
+          // SDK contract: onFinish fires after the stream completes; a provider
+          // that never reported usage hands it an empty record.
+          onFinishPromise = Promise.resolve(
+            onFinish?.({ text: "delivered reply", usage: {} }),
+          );
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
+    const body = await res.text();
+    expect(onFinishPromise).toBeDefined();
+    await onFinishPromise;
+
+    // Delivered output with unreported usage retains the admitted estimate —
+    // "not reported" must never settle as "free".
+    expect(body).toContain("delivered reply");
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(recordUsageAnalytics).not.toHaveBeenCalled();
+  });
+
+  test("an explicit zero-token usage report still bills as reported (settles $0)", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    let onFinishPromise: Promise<unknown> | undefined;
+
+    streamTextImpl = (config) => {
+      const onFinish = config.onFinish as
+        | ((event: { text: string; usage: unknown }) => Promise<unknown>)
+        | undefined;
+      return {
+        fullStream: (async function* () {
+          yield {
+            type: "finish",
+            finishReason: "stop",
+            rawFinishReason: "stop",
+          };
+          onFinishPromise = Promise.resolve(
+            onFinish?.({
+              text: "",
+              usage: { inputTokens: 0, outputTokens: 0 },
+            }),
+          );
+        })(),
+      };
+    };
+
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
+    await res.text();
+    expect(onFinishPromise).toBeDefined();
+    await onFinishPromise;
+
+    // Explicit zeros are a provider-reported result, not missing data — the
+    // normal billing path runs and reconciles to the billed $0.
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([0]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
   });
 });
 
@@ -411,7 +540,7 @@ describe("streaming chat — client abort settles delivered usage", () => {
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - expectedCost, 10);
   });
 
-  test("AbortError-shaped provider failure without request abort refunds and does not bill", async () => {
+  test("provider failure after a delivered delta retains the admitted estimate", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);
     const deliveredText = "sent before provider failure";
@@ -427,14 +556,16 @@ describe("streaming chat — client abort settles delivered usage", () => {
       })(),
     });
 
-    const res = await callStreaming(settle);
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
     const body = await res.text();
 
     expect(body).toContain(deliveredText);
     expect(body).toContain('"error"');
     expect(ledger.reconcileCalls).toBe(1);
-    expect(ledger.actualCosts).toEqual([0]);
-    expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
     expect(billUsage).not.toHaveBeenCalled();
     expect(recordUsageAnalytics).not.toHaveBeenCalled();
     expect(aiBillingRecord).not.toHaveBeenCalled();
@@ -757,6 +888,22 @@ describe("streaming chat — billing settles OFF the response path (waitUntil pa
     expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
     expect(ledger.reconcileCalls).toBe(1); // settled before the body closed
     expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+  });
+
+  test("post-provider billing failure retains the admitted estimate instead of refunding to zero", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    billUsage.mockRejectedValueOnce(new Error("pricing backend unavailable"));
+
+    sdkFaithfulStream();
+    const res = await callStreaming(settle, {
+      settleUnknown: () => settle(ledger.hold),
+    });
+    await res.text();
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts).toEqual([ledger.hold]);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - ledger.hold, 10);
   });
 
   test("a stray late onError after a deferred onFinish cannot double-settle", async () => {

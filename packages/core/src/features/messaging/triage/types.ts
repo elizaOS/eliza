@@ -106,6 +106,18 @@ export interface DraftRecord {
 	/** Set when scheduleSend has been invoked but the message hasn't gone out. */
 	scheduledForMs?: number;
 	scheduledId?: string;
+	/**
+	 * Authoritative provider acceptance or durable ScheduledTask persistence
+	 * proof for the deferred send. The action uses this exact commit to ground
+	 * its user-facing confirmation.
+	 */
+	scheduleCommit?: {
+		kind: "durable" | "provider_accepted";
+		id: string;
+		committedAt: string;
+		idempotencyKey: string;
+		replayed: boolean;
+	};
 }
 
 export interface ListOptions {

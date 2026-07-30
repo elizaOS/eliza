@@ -6,15 +6,7 @@
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import {
-  Check,
-  Pencil,
-  Plus,
-  RotateCcw,
-  StickyNote,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Check, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import {
   type FormEvent,
   useCallback,
@@ -35,7 +27,6 @@ import {
   LABEL_STYLE,
   SECONDARY_TEXT_STYLE,
   VIEW_ROOT_STYLE,
-  ViewHeader,
   ViewState,
 } from "./viewPrimitives.js";
 
@@ -270,30 +261,12 @@ export function NotesView() {
   }, [confirmClear, mutate, resetComposer]);
 
   return (
-    <main data-testid="simple-notes-view" style={VIEW_ROOT_STYLE}>
-      <ViewHeader
-        icon={<StickyNote size={19} />}
-        title="Notes"
-        detail={headerDetail}
-        actions={
-          notes.length > 0 ? (
-            <AgentAction
-              agentId="notes-clear"
-              agentLabel={
-                confirmClear ? "Confirm clear all notes" : "Clear all notes"
-              }
-              agentGroup="notes-header"
-              agentStatus={confirmClear ? "confirming" : "idle"}
-              disabled={busy}
-              onClick={() => void clearNotes()}
-            >
-              <Trash2 size={15} aria-hidden />
-              {confirmClear ? "Confirm clear" : "Clear"}
-            </AgentAction>
-          ) : null
-        }
-      />
-
+    <main
+      aria-busy={loading || busy}
+      aria-label={`Notes. ${headerDetail}`}
+      data-testid="simple-notes-view"
+      style={VIEW_ROOT_STYLE}
+    >
       <ViewState
         loading={loading && !snapshot}
         error={!snapshot ? error : null}
@@ -453,6 +426,30 @@ export function NotesView() {
           </form>
 
           <section aria-label="Notes" style={{ minWidth: 0 }}>
+            {notes.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginBottom: 8,
+                }}
+              >
+                <AgentAction
+                  agentId="notes-clear"
+                  agentLabel={
+                    confirmClear ? "Confirm clear all notes" : "Clear all notes"
+                  }
+                  agentGroup="notes-list"
+                  agentStatus={confirmClear ? "confirming" : "idle"}
+                  variant="quiet"
+                  disabled={busy}
+                  onClick={() => void clearNotes()}
+                >
+                  <Trash2 size={15} aria-hidden />
+                  {confirmClear ? "Confirm clear" : "Clear"}
+                </AgentAction>
+              </div>
+            ) : null}
             {notes.length === 0 ? (
               <ViewState
                 loading={false}

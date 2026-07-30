@@ -6,12 +6,16 @@
  * how to fold the new identity in. Preserves provenance — every collapsed
  * identity keeps its evidence trail, no observation is silently discarded.
  *
- * The DB-backed `EntityStore` (in `@elizaos/plugin-personal-assistant`) calls
- * into this from both `observeIdentity` (auto-merge on (platform, handle)
- * match) and explicit `merge(target, sources)`.
+ * The DB-backed `EntityStore` (in `@elizaos/agent`) calls into this from both
+ * `observeIdentity` (auto-merge on the account-bound identity tuple) and
+ * explicit `merge(target, sources)`.
  */
 
-import type { Entity, EntityIdentity } from "./entity-types.js";
+import {
+  type Entity,
+  type EntityIdentity,
+  normalizeEntityConnectorAccountId,
+} from "./entity-types.js";
 
 /**
  * Threshold at which `observeIdentity` will auto-merge a new observation
@@ -28,15 +32,17 @@ export const OVERRIDE_CONFIDENCE_DELTA = 0.15;
 export interface IdentityMatchInput {
   platform: string;
   handle: string;
+  /** Omission intentionally targets only the legacy/default account. */
+  connectorAccountId?: string;
   confidence: number;
   /** Operator-confirmed (true) overrides auto-observed (false) on ties. */
   verified?: boolean;
 }
 
 /**
- * Find the entities whose identities collide on `(platform, handle)`.
- * Multiple matches indicate a conflict (the same handle is claimed by
- * different entities) — the caller surfaces this for approval.
+ * Find entities whose identities collide on the exact account-bound route.
+ * Multiple matches indicate a conflict — the caller surfaces this for
+ * approval rather than guessing across entity records.
  */
 export function findIdentityMatches(
   entities: Entity[],
@@ -44,10 +50,15 @@ export function findIdentityMatches(
 ): Entity[] {
   const platformKey = match.platform.toLowerCase();
   const handleKey = match.handle.toLowerCase();
+  const accountKey = normalizeEntityConnectorAccountId(
+    match.connectorAccountId,
+  );
   return entities.filter((entity) =>
     entity.identities.some(
       (identity) =>
         identity.platform.toLowerCase() === platformKey &&
+        normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
+          accountKey &&
         identity.handle.toLowerCase() === handleKey,
     ),
   );
@@ -98,9 +109,9 @@ export function decideIdentityOutcome(args: {
 
 /**
  * Fold a new identity into an existing entity's identities array. If the
- * (platform, handle) already exists, evidence is concatenated (deduped) and
- * the higher-confidence claim wins. Otherwise, the new identity is
- * appended.
+ * (platform, connector account, handle) already exists, evidence is
+ * concatenated (deduped) and the higher-confidence claim wins. Otherwise, the
+ * new identity is appended.
  */
 export function foldIdentity(
   existing: EntityIdentity[],
@@ -108,9 +119,12 @@ export function foldIdentity(
 ): EntityIdentity[] {
   const platformKey = next.platform.toLowerCase();
   const handleKey = next.handle.toLowerCase();
+  const accountKey = normalizeEntityConnectorAccountId(next.connectorAccountId);
   const matchIndex = existing.findIndex(
     (identity) =>
       identity.platform.toLowerCase() === platformKey &&
+      normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
+        accountKey &&
       identity.handle.toLowerCase() === handleKey,
   );
 
@@ -145,6 +159,9 @@ export function foldIdentity(
 
   const merged: EntityIdentity = {
     ...chosen,
+    connectorAccountId: normalizeEntityConnectorAccountId(
+      chosen.connectorAccountId,
+    ),
     confidence: Math.max(match.confidence, next.confidence),
     verified: match.verified || next.verified,
     evidence: mergedEvidence,
@@ -162,7 +179,8 @@ export function foldIdentity(
  * Explicit merge: take a target entity and fold N source entities into it,
  * preserving every identity, attribute, and tag. Returns the merged entity
  * (caller persists it and removes the sources). Provenance is preserved
- * verbatim — no identity is dropped, only deduplicated by (platform, handle).
+ * verbatim — no identity is dropped, only deduplicated by the account-bound
+ * identity tuple.
  */
 export function mergeEntities(args: {
   target: Entity;

@@ -14,6 +14,7 @@ import {
 	autonomyTaskContinueTemplate,
 	autonomyTaskFirstTemplate,
 } from "../../prompts";
+import { registerRuntimeManagedInternalActor } from "../../security/trusted-delivery-audience";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver";
 import {
 	ChannelType,
@@ -75,6 +76,7 @@ export class AutonomyService extends Service {
 	protected autonomousWorldId: UUID;
 	private isThinking = false;
 	protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
+	private releaseInternalActorRegistration?: () => void;
 	private autonomyCompactionStats = {
 		cacheHits: 0,
 		cacheWrites: 0,
@@ -391,7 +393,15 @@ export class AutonomyService extends Service {
 	static async start(runtime: IAgentRuntime): Promise<AutonomyService> {
 		const service = new AutonomyService();
 		service.runtime = runtime;
-		await service.initialize();
+		service.releaseInternalActorRegistration =
+			registerRuntimeManagedInternalActor(runtime, service.autonomyEntityId);
+		try {
+			await service.initialize();
+		} catch (cause) {
+			service.releaseInternalActorRegistration();
+			service.releaseInternalActorRegistration = undefined;
+			throw cause;
+		}
 		return service;
 	}
 
@@ -1226,6 +1236,8 @@ export class AutonomyService extends Service {
 	 */
 	async stop(): Promise<void> {
 		this.runtime.promptBatcher?.removeSection("autonomy");
+		this.releaseInternalActorRegistration?.();
+		this.releaseInternalActorRegistration = undefined;
 		this.isRunning = false;
 		this.runtime.logger.info(
 			{ src: "autonomy", agentId: this.runtime.agentId },

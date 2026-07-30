@@ -290,6 +290,7 @@ export interface LifeOpsSchedulingProposal {
 
 export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "google",
+  "microsoft",
   "x",
   "telegram",
   "discord",
@@ -3072,7 +3073,9 @@ export interface LifeOpsTelegramDialogSummary {
 export interface VerifyLifeOpsTelegramConnectorRequest {
   side?: LifeOpsConnectorSide;
   recentLimit?: number;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendTarget?: string;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendMessage?: string;
 }
 
@@ -3087,6 +3090,7 @@ export interface VerifyLifeOpsTelegramConnectorResponse {
     dialogs: LifeOpsTelegramDialogSummary[];
   };
   send: {
+    attempted: boolean;
     ok: boolean;
     error: string | null;
     target: string;
@@ -3139,7 +3143,9 @@ export interface SendLifeOpsDiscordMessageResponse {
 
 export interface VerifyLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   channelId?: string;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendMessage?: string;
 }
 
@@ -3149,6 +3155,7 @@ export interface VerifyLifeOpsDiscordConnectorResponse {
   verifiedAt: string;
   status: LifeOpsDiscordConnectorStatus;
   send: {
+    attempted: boolean;
     ok: boolean;
     error: string | null;
     channelId: string | null;

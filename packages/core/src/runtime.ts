@@ -61,6 +61,7 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
+import { settleActionHandler } from "./runtime/action-handler-settlement";
 import {
 	executeChainWithFallback,
 	isLocalHandler,
@@ -102,18 +103,23 @@ import {
 } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
+	authorizeOwnerExclusiveDisclosure,
 	CompositeEntityRecognizer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
 	GuardedStreamScanner,
+	ownerExclusiveSuppressionNote,
 	PII_ENTITY_RECOGNIZER_SERVICE,
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
 	PII_SWAP_EXEMPT_VALUES_SETTING,
 	type PiiEntityRecognizer,
 	type PiiEntityRecognizerService,
+	PRIVACY_DENIED_TEXT,
 	PseudonymSession,
 	parsePiiSwapList,
 	RegexEntityRecognizer,
+	revalidateOwnerExclusiveDisclosure,
+	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
 import { redactWithSecrets } from "./security/redact.js";
 import {
@@ -144,6 +150,7 @@ import {
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
+	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
@@ -238,6 +245,7 @@ import {
 	type RuntimeSettings,
 	type RuntimeStopOptions,
 	type SendHandlerFunction,
+	type SendHandlerResult,
 	type Service,
 	type ServiceClass,
 	ServiceType,
@@ -343,7 +351,6 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
-const SLOW_PROVIDER_WARN_MS = 100;
 
 type ProviderExecutionOutcome =
 	| "success"
@@ -555,7 +562,6 @@ export function resolveDefaultOutputFormat(
 
 const DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS = new Set(["text"]);
 const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
-	"replyText",
 	"text",
 	"messageToUser",
 ]);
@@ -1019,6 +1025,12 @@ export class AgentRuntime implements IAgentRuntime {
 		AgentRuntime.READ_MEMO_TTL_MS,
 		AgentRuntime.READ_MEMO_MAX_ENTRIES,
 	);
+	private invalidateTurnEntityDetails(): void {
+		invalidateTurnMemoPrefix(`entity-details:${this.agentId}:`);
+	}
+	private invalidateTurnIdentityClusters(): void {
+		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
+	}
 	readonly fetch = fetch;
 	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
@@ -3740,6 +3752,25 @@ export class AgentRuntime implements IAgentRuntime {
 		const validated: Action[] = [];
 		await Promise.all(
 			candidates.map(async (action) => {
+				if (action.disclosureGate?.require === "owner_exclusive") {
+					const disclosure = await authorizeOwnerExclusiveDisclosure(
+						this,
+						message,
+					);
+					if (!disclosure.allowed) {
+						this.logger.info(
+							{
+								src: "agent",
+								agentId: this.agentId,
+								action: action.name,
+								mode,
+								reason: disclosure.reason,
+							},
+							"Owner-private mode action denied for untrusted delivery audience",
+						);
+						return;
+					}
+				}
 				try {
 					const ok = await action.validate(this, message, state);
 					if (ok) validated.push(action);
@@ -3773,11 +3804,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const worldId = message.worldId ?? roomId;
 
 		const runOne = async (action: Action) => {
-			const callback = options?.callback;
-			const actionCallback: HandlerCallback | undefined = callback
-				? (response, actionName) =>
-						callback(response, actionName ?? action.name)
-				: undefined;
 			await this.emitEvent(EventType.ACTION_STARTED, {
 				runtime: this,
 				messageId,
@@ -3801,20 +3827,79 @@ export class AgentRuntime implements IAgentRuntime {
 			let success = true;
 			let errorMsg: string | undefined;
 			try {
-				await runWithActionRoutingContext(
-					{ actionName: action.name, modelClass: action.modelClass },
-					() =>
-						runWithSuppressedModelStream(() =>
-							action.handler(
-								this,
-								message,
-								composedState,
-								{ mode },
-								actionCallback,
-								options?.responses,
+				if (action.disclosureGate?.require === "owner_exclusive") {
+					const disclosure = await authorizeOwnerExclusiveDisclosure(
+						this,
+						message,
+					);
+					if (!disclosure.allowed) {
+						success = false;
+						errorMsg = PRIVACY_DENIED_TEXT;
+					}
+				}
+				if (success) {
+					const protectedCallback =
+						action.disclosureGate?.require === "owner_exclusive" &&
+						options?.callback
+							? async (
+									...callbackArgs: Parameters<
+										NonNullable<typeof options.callback>
+									>
+								) => {
+									const disclosure = await revalidateOwnerExclusiveDisclosure(
+										this,
+										message,
+									);
+									if (disclosure.allowed) {
+										return options.callback?.(...callbackArgs) ?? [];
+									}
+									return (
+										options.callback?.(
+											{
+												text: PRIVACY_DENIED_TEXT,
+												actions: ["PRIVACY_DENIED"],
+												data: {
+													privacyDenied: true,
+													privacyReason: disclosure.reason,
+												},
+											},
+											"PRIVACY_DENIED",
+										) ?? []
+									);
+								}
+							: options?.callback;
+					await settleActionHandler({
+						runtime: this,
+						action,
+						callback: protectedCallback,
+						handlerError: "rethrow",
+						invoke: (actionCallback) =>
+							runWithActionRoutingContext(
+								{ actionName: action.name, modelClass: action.modelClass },
+								() =>
+									runWithSuppressedModelStream(() =>
+										action.handler(
+											this,
+											message,
+											composedState,
+											{ mode },
+											actionCallback,
+											options?.responses,
+										),
+									),
 							),
-						),
-				);
+					});
+					if (action.disclosureGate?.require === "owner_exclusive") {
+						const disclosure = await revalidateOwnerExclusiveDisclosure(
+							this,
+							message,
+						);
+						if (!disclosure.allowed) {
+							success = false;
+							errorMsg = PRIVACY_DENIED_TEXT;
+						}
+					}
+				}
 			} catch (err) {
 				success = false;
 				errorMsg = err instanceof Error ? err.message : String(err);
@@ -4043,6 +4128,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// invariant — otherwise a concurrent compose could be served a memoized null (for
 		// a just-created room) or a <=1s-stale Room after a metadata upsert.
 		this.roomReadMemo.invalidate(params.roomId);
+		this.invalidateTurnEntityDetails();
 		if (result.createdRoomParticipants > 0) {
 			this.logger.debug(
 				{
@@ -4141,6 +4227,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 	async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
 		const ids = await this.adapter.createRoomParticipants([entityId], roomId);
+		this.invalidateTurnEntityDetails();
 		return ids.length > 0;
 	}
 
@@ -4148,7 +4235,9 @@ export class AgentRuntime implements IAgentRuntime {
 		entityIds: UUID[],
 		roomId: UUID,
 	): Promise<UUID[]> {
-		return this.adapter.createRoomParticipants(entityIds, roomId);
+		const ids = await this.adapter.createRoomParticipants(entityIds, roomId);
+		this.invalidateTurnEntityDetails();
+		return ids;
 	}
 
 	/**
@@ -4252,10 +4341,17 @@ export class AgentRuntime implements IAgentRuntime {
 			data: {},
 			text: "",
 		} as State;
-		const cachedState =
+		const audienceCacheKey = trustedDeliveryAudienceCacheKey(message);
+		const cachedCandidate =
 			skipCache || !message.id
 				? emptyObj
 				: this.stateCache.get(message.id) || emptyObj;
+		const cachedState =
+			cachedCandidate === emptyObj ||
+			cachedCandidate.data.__trustedDeliveryAudienceCacheKey ===
+				audienceCacheKey
+				? cachedCandidate
+				: emptyObj;
 		const activeContexts = getActiveRoutingContextsForTurn(
 			cachedState,
 			message,
@@ -4324,10 +4420,36 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		const providersToGet: Provider[] = [];
+		const deniedSensitiveProviderNames = new Set<string>();
+		let ownerDisclosureDecision:
+			| Awaited<ReturnType<typeof authorizeOwnerExclusiveDisclosure>>
+			| undefined;
+		let containsSensitiveProvider = false;
 		for (const provider of this.providers) {
-			if (providerNames.has(provider.name)) {
-				providersToGet.push(provider);
+			if (!providerNames.has(provider.name)) {
+				continue;
 			}
+			if (provider.disclosureGate?.require === "owner_exclusive") {
+				ownerDisclosureDecision ??= await authorizeOwnerExclusiveDisclosure(
+					this,
+					message,
+				);
+				if (!ownerDisclosureDecision.allowed) {
+					deniedSensitiveProviderNames.add(provider.name);
+					this.logger.info(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							provider: provider.name,
+							reason: ownerDisclosureDecision.reason,
+						},
+						"Owner-private provider denied for untrusted delivery audience",
+					);
+					continue;
+				}
+				containsSensitiveProvider = true;
+			}
+			providersToGet.push(provider);
 		}
 		providersToGet.sort(
 			(a, b) =>
@@ -4353,7 +4475,10 @@ export class AgentRuntime implements IAgentRuntime {
 			: null;
 		const providersToRun = refreshSet
 			? providersToGet.filter(
-					(p) => refreshSet.has(p.name) || !cachedProviderNames?.has(p.name),
+					(p) =>
+						p.disclosureGate?.require === "owner_exclusive" ||
+						refreshSet.has(p.name) ||
+						!cachedProviderNames?.has(p.name),
 				)
 			: providersToGet;
 		const providersToRunNames = new Set(providersToRun.map((p) => p.name));
@@ -4374,7 +4499,11 @@ export class AgentRuntime implements IAgentRuntime {
 				const providerRuntime: IAgentRuntime = this;
 				const inFlightKey =
 					message.id && !refreshSet?.has(provider.name)
-						? `${message.id}\u0000${provider.name}`
+						? `${message.id}\u0000${provider.name}\u0000${
+								provider.disclosureGate?.require === "owner_exclusive"
+									? trustedDeliveryAudienceCacheKey(message)
+									: "public"
+							}`
 						: null;
 				let execution =
 					inFlightKey !== null
@@ -4416,18 +4545,6 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 
-					if (duration > SLOW_PROVIDER_WARN_MS) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								provider: provider.name,
-								durationMs: duration,
-								coalesced: providerCoalesced,
-							},
-							"Slow provider",
-						);
-					}
 					return {
 						...result,
 						providerName: provider.name,
@@ -4521,6 +4638,14 @@ export class AgentRuntime implements IAgentRuntime {
 				| Record<string, CachedProviderResult>
 				| undefined),
 		};
+		for (const provider of this.providers) {
+			if (
+				provider.disclosureGate?.require === "owner_exclusive" ||
+				deniedSensitiveProviderNames.has(provider.name)
+			) {
+				delete currentProviderResults[provider.name];
+			}
+		}
 		for (const freshResult of providerData) {
 			if (freshResult.providerError) continue;
 			// Redact secrets from individual provider text results
@@ -4550,6 +4675,16 @@ export class AgentRuntime implements IAgentRuntime {
 			) {
 				orderedTexts.push(result.text);
 			}
+		}
+		// Denial UX: when the disclosure gate suppressed owner-private providers
+		// or actions this turn, the model sees an explicit notice instead of a
+		// silently thinner toolset — otherwise it fabricates either the missing
+		// data or a permanent inability. Suppressions are recorded by the gate
+		// itself (security/trusted-delivery-audience.ts), so this covers both
+		// the provider drop above and action-gate drops during selection.
+		const suppressionNote = ownerExclusiveSuppressionNote(message);
+		if (suppressionNote) {
+			orderedTexts.push(suppressionNote);
 		}
 		// Redact any secrets from provider context before use
 		const rawProvidersText = orderedTexts.join("\n");
@@ -4726,6 +4861,23 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 			);
 		}
+		if (containsSensitiveProvider) {
+			const disclosure = await revalidateOwnerExclusiveDisclosure(
+				this,
+				message,
+			);
+			if (!disclosure.allowed) {
+				throw new ElizaError(PRIVACY_DENIED_TEXT, {
+					code: "OWNER_PRIVATE_AUDIENCE_CHANGED",
+					severity: "ephemeral",
+					context: {
+						messageId: message.id,
+						roomId: message.roomId,
+						reason: disclosure.reason,
+					},
+				});
+			}
+		}
 		const conversationSeed = buildDeterministicSeed(
 			this.agentId,
 			message.roomId,
@@ -4766,12 +4918,13 @@ export class AgentRuntime implements IAgentRuntime {
 			data: {
 				...cachedState.data,
 				__conversationSeed: conversationSeed,
+				__trustedDeliveryAudienceCacheKey: audienceCacheKey,
 				providerOrder: providerOrderNames,
 				providers: currentProviderResults,
 			},
 			text: providersText,
 		} as State;
-		if (message.id) {
+		if (message.id && !containsSensitiveProvider) {
 			this.stateCache.set(message.id, newState);
 			// Evict oldest entries beyond the cap. The just-set entry and recent
 			// in-flight turns are kept; only stale messages drop out.
@@ -4876,15 +5029,9 @@ export class AgentRuntime implements IAgentRuntime {
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
 		} catch (error) {
-			this.logger.error(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					serviceType,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Service start failed",
-			);
+			this.reportError("AgentRuntime.serviceStart", error, {
+				serviceType,
+			});
 			const handler = this.servicePromiseHandlers.get(serviceType);
 			if (handler) {
 				handler.reject(
@@ -5898,6 +6045,10 @@ export class AgentRuntime implements IAgentRuntime {
 								paramsAsStreaming.responseSkeleton,
 							)
 						: [];
+				const suppressStructuredStream =
+					shouldStream &&
+					paramsAsStreaming?.streamStructured === true &&
+					structuredStreamFields.length === 0;
 				const downstreamChunk = (chunk: string, accumulated?: string): void => {
 					void (async () => {
 						if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
@@ -5976,6 +6127,11 @@ export class AgentRuntime implements IAgentRuntime {
 							structuredExtractor.push(visibleChunk);
 							return;
 						}
+						// A structured caller with no approved stream fields must
+						// hold the provider's raw envelope until the validated final
+						// result is available. Falling through here would expose
+						// routing JSON and unverified reply text token-by-token.
+						if (suppressStructuredStream) return;
 						if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
 						if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
 					});
@@ -9434,6 +9590,7 @@ ${section_end}`;
 			e.agentId = this.agentId;
 		});
 		const result = await this.adapter.createEntities(entities);
+		this.invalidateTurnEntityDetails();
 		// Some adapters (e.g. plugin-sql) return boolean instead of UUID[].
 		// Normalize to UUID[] so callers and wrappers get a consistent contract.
 		if (Array.isArray(result)) return result;
@@ -9444,7 +9601,8 @@ ${section_end}`;
 		entities.forEach((e) => {
 			e.agentId = this.agentId;
 		});
-		return this.adapter.upsertEntities(entities);
+		await this.adapter.upsertEntities(entities);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async getComponents(
@@ -10306,11 +10464,14 @@ ${section_end}`;
 	}
 
 	async updateEntities(entities: Entity[]): Promise<void> {
-		return this.adapter.updateEntities(entities);
+		await this.adapter.updateEntities(entities);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
-		return this.adapter.deleteEntities(entityIds);
+		await this.adapter.deleteEntities(entityIds);
+		this.invalidateTurnEntityDetails();
+		this.invalidateTurnIdentityClusters();
 	}
 	async searchEntitiesByName(params: {
 		query: string;
@@ -10335,12 +10496,15 @@ ${section_end}`;
 
 	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
-		return this.adapter.updateEntities([entity]);
+		await this.adapter.updateEntities([entity]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	// Batch component methods
 	async createComponents(components: Component[]): Promise<UUID[]> {
-		return this.adapter.createComponents(components);
+		const ids = await this.adapter.createComponents(components);
+		this.invalidateTurnEntityDetails();
+		return ids;
 	}
 
 	async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
@@ -10348,16 +10512,19 @@ ${section_end}`;
 	}
 
 	async updateComponents(components: Component[]): Promise<void> {
-		return this.adapter.updateComponents(components);
+		await this.adapter.updateComponents(components);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async deleteComponents(componentIds: UUID[]): Promise<void> {
-		return this.adapter.deleteComponents(componentIds);
+		await this.adapter.deleteComponents(componentIds);
+		this.invalidateTurnEntityDetails();
 	}
 
 	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.adapter.createComponents([component]);
+		this.invalidateTurnEntityDetails();
 		return ids.length > 0;
 	}
 
@@ -10376,22 +10543,26 @@ ${section_end}`;
 	}
 
 	async updateComponent(component: Component): Promise<void> {
-		return this.adapter.updateComponents([component]);
+		await this.adapter.updateComponents([component]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async deleteComponent(componentId: UUID): Promise<void> {
-		return this.adapter.deleteComponents([componentId]);
+		await this.adapter.deleteComponents([componentId]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async upsertComponent(component: Component): Promise<void> {
-		return this.adapter.upsertComponents([component]);
+		await this.adapter.upsertComponents([component]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async upsertComponents(
 		components: Component[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.upsertComponents(components, options);
+		await this.adapter.upsertComponents(components, options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async patchComponent(
@@ -10399,14 +10570,16 @@ ${section_end}`;
 		ops: PatchOp[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.patchComponents([{ componentId, ops }], options);
+		await this.adapter.patchComponents([{ componentId, ops }], options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async patchComponents(
 		updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.patchComponents(updates, options);
+		await this.adapter.patchComponents(updates, options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async patchComponentField(
@@ -10414,7 +10587,8 @@ ${section_end}`;
 		op: PatchOp,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.patchComponents([{ componentId, ops: [op] }], options);
+		await this.adapter.patchComponents([{ componentId, ops: [op] }], options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async getComponentsByType(
@@ -10480,7 +10654,9 @@ ${section_end}`;
 			metadata?: Metadata;
 		}>,
 	): Promise<UUID[]> {
-		return this.adapter.createRelationships(relationships);
+		const ids = await this.adapter.createRelationships(relationships);
+		this.invalidateTurnIdentityClusters();
+		return ids;
 	}
 
 	async getRelationshipsByIds(
@@ -10496,11 +10672,13 @@ ${section_end}`;
 	}
 
 	async updateRelationships(relationships: Relationship[]): Promise<void> {
-		return this.adapter.updateRelationships(relationships);
+		await this.adapter.updateRelationships(relationships);
+		this.invalidateTurnIdentityClusters();
 	}
 
 	async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
-		return this.adapter.deleteRelationships(relationshipIds);
+		await this.adapter.deleteRelationships(relationshipIds);
+		this.invalidateTurnIdentityClusters();
 	}
 
 	// Single-item relationship wrappers
@@ -10511,6 +10689,7 @@ ${section_end}`;
 		metadata?: Metadata;
 	}): Promise<boolean> {
 		const ids = await this.adapter.createRelationships([params]);
+		this.invalidateTurnIdentityClusters();
 		return ids.length > 0;
 	}
 
@@ -10525,7 +10704,8 @@ ${section_end}`;
 	}
 
 	async updateRelationship(relationship: Relationship): Promise<void> {
-		return this.adapter.updateRelationships([relationship]);
+		await this.adapter.updateRelationships([relationship]);
+		this.invalidateTurnIdentityClusters();
 	}
 
 	// ── Batch memory passthroughs ────────────────────────────────────────
@@ -10649,7 +10829,9 @@ ${section_end}`;
 	async deleteParticipants(
 		participants: Array<{ entityId: UUID; roomId: UUID }>,
 	): Promise<boolean> {
-		return this.adapter.deleteParticipants(participants);
+		const deleted = await this.adapter.deleteParticipants(participants);
+		this.invalidateTurnEntityDetails();
+		return deleted;
 	}
 
 	async updateParticipants(
@@ -10659,11 +10841,16 @@ ${section_end}`;
 			updates: Partial<Participant>;
 		}>,
 	): Promise<void> {
-		return this.adapter.updateParticipants(participants);
+		await this.adapter.updateParticipants(participants);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-		return this.adapter.deleteParticipants([{ entityId, roomId }]);
+		const deleted = await this.adapter.deleteParticipants([
+			{ entityId, roomId },
+		]);
+		this.invalidateTurnEntityDetails();
+		return deleted;
 	}
 
 	// ── Room passthroughs & wrappers ────────────────────────────────────
@@ -11053,7 +11240,7 @@ ${section_end}`;
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
-	): Promise<Memory | undefined> {
+	): SendHandlerResult {
 		const source =
 			typeof target.source === "string" ? target.source.trim() : "";
 		const accountId = normalizeConnectorAccountId(target.accountId);
@@ -11089,8 +11276,7 @@ ${section_end}`;
 			typeof voicedContent.text === "string"
 				? { ...voicedContent, text: sanitizeOutboundText(voicedContent.text) }
 				: voicedContent;
-		const result = await handler(this, target, outboundContent);
-		return result as Memory | undefined;
+		return handler(this, target, outboundContent);
 	}
 
 	private resolveMessageConnector(target: TargetInfo): {

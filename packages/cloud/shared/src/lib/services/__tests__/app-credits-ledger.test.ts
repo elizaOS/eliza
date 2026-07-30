@@ -14,15 +14,13 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findTransactionByPaymentIntent = mock();
 const createTransaction = mock();
-const addPurchaseEarnings = mock();
-const addInferenceEarnings = mock();
+const applyCreatorMovement = mock();
 
 mock.module("../../../db/repositories/app-earnings", () => ({
   appEarningsRepository: {
     findTransactionByPaymentIntent,
     createTransaction,
-    addPurchaseEarnings,
-    addInferenceEarnings,
+    applyCreatorMovement,
   },
 }));
 
@@ -94,12 +92,11 @@ mock.module("../redeemable-earnings", () => ({
   },
 }));
 
-const whereMock = mock();
-const setMock = mock(() => ({ where: whereMock }));
-const updateMock = mock(() => ({ set: setMock }));
+const projectAppUsageForDebit = mock();
 
-mock.module("../../../db/helpers", () => ({
-  dbWrite: { update: updateMock },
+mock.module("../app-usage-projections", () => ({
+  APP_USAGE_PROJECTION_VERSION: 1,
+  projectAppUsageForDebit,
 }));
 
 const cacheGet = mock(async () => null);
@@ -138,8 +135,7 @@ function freshService() {
 beforeEach(() => {
   findTransactionByPaymentIntent.mockReset();
   createTransaction.mockReset();
-  addPurchaseEarnings.mockReset();
-  addInferenceEarnings.mockReset();
+  applyCreatorMovement.mockReset();
   findAppById.mockReset();
   trackAppUserActivity.mockReset();
   findOrgById.mockReset();
@@ -150,7 +146,7 @@ beforeEach(() => {
   markReservationSettled.mockReset();
   addEarnings.mockReset();
   reduceEarnings.mockReset();
-  updateMock.mockClear();
+  projectAppUsageForDebit.mockReset();
   cacheGet.mockReset();
   cacheSet.mockReset();
   cacheDel.mockReset();
@@ -162,19 +158,61 @@ beforeEach(() => {
   findUserById.mockResolvedValue({ id: USER_ID, organization_id: ORG_ID });
   findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50" });
   findTransactionByPaymentIntent.mockResolvedValue(null);
-  addCredits.mockResolvedValue({ transaction: { id: "tx-1" }, newBalance: 52.5 });
-  reserveAndDeductCredits.mockResolvedValue({
-    success: true,
-    newBalance: 41.4,
-    transaction: { id: "tx-2" },
-  });
+  addCredits.mockImplementation(
+    async (args: {
+      organizationId: string;
+      amount: number;
+      metadata?: Record<string, unknown>;
+      stripePaymentIntentId?: string;
+    }) => ({
+      transaction: {
+        id: "tx-1",
+        organization_id: args.organizationId,
+        type: "credit",
+        amount: String(args.amount),
+        metadata: args.metadata ?? {},
+        stripe_payment_intent_id: args.stripePaymentIntentId ?? null,
+      },
+      newBalance: 52.5,
+    }),
+  );
+  reserveAndDeductCredits.mockImplementation(
+    async (args: {
+      organizationId: string;
+      amount: number;
+      metadata?: Record<string, unknown>;
+    }) => ({
+      success: true,
+      newBalance: 41.4,
+      transaction: {
+        id: "tx-2",
+        organization_id: args.organizationId,
+        type: "debit",
+        amount: String(-args.amount),
+        metadata: args.metadata ?? {},
+      },
+    }),
+  );
   refundCredits.mockResolvedValue({ newBalance: 43.6 });
   markReservationSettled.mockResolvedValue(true);
-  addEarnings.mockResolvedValue({ success: true });
-  reduceEarnings.mockResolvedValue({ success: true });
+  addEarnings.mockResolvedValue({
+    success: true,
+    newBalance: 0.1,
+    ledgerEntryId: "earning-ledger-1",
+  });
+  reduceEarnings.mockResolvedValue({
+    success: true,
+    newBalance: 0,
+    ledgerEntryId: "adjustment-ledger-1",
+  });
+  projectAppUsageForDebit.mockResolvedValue({
+    chargeTransactionId: "tx-2",
+    status: "applied",
+    deduplicated: false,
+  });
   trackAppUserActivity.mockResolvedValue(undefined);
   createTransaction.mockResolvedValue(undefined);
-  addPurchaseEarnings.mockResolvedValue(undefined);
+  applyCreatorMovement.mockResolvedValue({ deduplicated: false, transaction: {} });
 });
 
 describe("processPurchase — funds the org ledger (#8253)", () => {
@@ -210,12 +248,29 @@ describe("processPurchase — funds the org ledger (#8253)", () => {
     // (10 - 1.00 offset) * 20% = 1.80
     expect(result.platformOffset).toBe(1);
     expect(result.creatorEarnings).toBeCloseTo(1.8, 10);
-    expect(addPurchaseEarnings).toHaveBeenCalledWith(APP_ID, expect.closeTo(1.8, 10));
     expect(addEarnings).toHaveBeenCalledTimes(1);
+    expect(applyCreatorMovement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        appId: APP_ID,
+        type: "purchase_share",
+        creatorAmount: expect.closeTo(1.8, 10),
+        platformRevenueAmount: 1,
+        redeemableLedgerEntryId: "earning-ledger-1",
+      }),
+    );
   });
 
   test("webhook retry dedup returns the org balance without re-crediting", async () => {
-    findTransactionByPaymentIntent.mockResolvedValue({ id: "existing-tx" });
+    findTransactionByPaymentIntent.mockResolvedValue({
+      id: "existing-tx",
+      app_id: APP_ID,
+      user_id: USER_ID,
+      metadata: {
+        organizationId: ORG_ID,
+        purchaseAmount: 10,
+        stripePaymentIntentId: "pi_123",
+      },
+    });
 
     const result = await freshService().processPurchase({
       appId: APP_ID,
@@ -231,7 +286,16 @@ describe("processPurchase — funds the org ledger (#8253)", () => {
   });
 
   test("webhook retry dedup fails closed on a corrupt org balance", async () => {
-    findTransactionByPaymentIntent.mockResolvedValue({ id: "existing-tx" });
+    findTransactionByPaymentIntent.mockResolvedValue({
+      id: "existing-tx",
+      app_id: APP_ID,
+      user_id: USER_ID,
+      metadata: {
+        organizationId: ORG_ID,
+        purchaseAmount: 10,
+        stripePaymentIntentId: "pi_123",
+      },
+    });
     findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50oops" });
 
     await expect(
@@ -290,20 +354,31 @@ describe("deductCredits — debits the same org ledger", () => {
     expect(spend.message).toContain("Insufficient cloud credits");
   });
 
-  // Money-safety: the org balance is debited BEFORE the earnings/activity
-  // accounting runs. If that post-debit accounting throws, the user has already
-  // paid for an inference whose bookkeeping failed — they must be made whole, or
-  // they're charged with nothing to show for it. deductCredits() compensates the
-  // full totalCost and rethrows so the caller still sees the failure.
-  test("compensates the full charge and rethrows when post-debit accounting fails", async () => {
-    // The atomic debit succeeds...
-    reserveAndDeductCredits.mockResolvedValue({
-      success: true,
-      newBalance: 41.4,
-      transaction: { id: "tx-2" },
+  test("usage projection is deferred entirely to the durable sweep", async () => {
+    const result = await freshService().deductCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      baseCost: 1,
+      description: "inference",
     });
-    // ...but the very next step (earnings/activity bookkeeping) blows up.
-    trackAppUserActivity.mockRejectedValue(new Error("accounting down"));
+
+    expect(result.success).toBe(true);
+    expect(result.transactionId).toBe("tx-2");
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(addEarnings).toHaveBeenCalledTimes(1);
+    expect(reserveAndDeductCredits.mock.calls[0][0].metadata).toMatchObject({
+      appUsageProjectionVersion: 1,
+      appId: APP_ID,
+      userId: USER_ID,
+    });
+    expect(projectAppUsageForDebit).not.toHaveBeenCalled();
+  });
+
+  test("a refused creator-earnings write compensates the consumer and records no shadow earnings", async () => {
+    addEarnings.mockResolvedValue({
+      success: false,
+      error: "earnings ledger refused",
+    });
 
     await expect(
       freshService().deductCredits({
@@ -312,33 +387,16 @@ describe("deductCredits — debits the same org ledger", () => {
         baseCost: 1,
         description: "inference",
       }),
-    ).rejects.toThrow("accounting down");
+    ).rejects.toThrow("earnings ledger refused");
 
-    // The $1.10 debit (base $1 + 10% markup) MUST be refunded — exactly once,
-    // to the same org, tagged so it reconciles against the original charge.
     expect(addCredits).toHaveBeenCalledTimes(1);
-    const refund = addCredits.mock.calls[0][0];
-    expect(refund.organizationId).toBe(ORG_ID);
-    expect(refund.amount).toBeCloseTo(1.1, 10);
-    expect(refund.metadata.reason).toBe("post_debit_accounting_failed");
-    expect(refund.metadata.originalChargeTransactionId).toBe("tx-2");
+    expect(addCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
+    expect(applyCreatorMovement).not.toHaveBeenCalled();
+    expect(createTransaction).not.toHaveBeenCalled();
   });
 
-  // #10846: when the failure happens AFTER creator earnings are committed (the
-  // apps aggregate-counter update throws), compensating only the consumer would
-  // leave the creator holding `creatorMarkup` of unbacked redeemable earnings.
-  // The catch must ALSO reverse those earnings.
-  test("reverses committed creator earnings when the apps-counter update throws post-earnings", async () => {
-    reserveAndDeductCredits.mockResolvedValue({
-      success: true,
-      newBalance: 41.4,
-      transaction: { id: "tx-2" },
-    });
-    // trackAppUserActivity + recordCreatorEarnings (addInferenceEarnings /
-    // createTransaction / addEarnings) all succeed (defaults) — so the creator's
-    // app-earnings + redeemable balance ARE committed...
-    // ...then the very next write, the apps aggregate-counter update, throws.
-    whereMock.mockRejectedValueOnce(new Error("apps counter update failed"));
+  test("retains the backing charge when the atomic creator projection state is unknown", async () => {
+    applyCreatorMovement.mockRejectedValueOnce(new Error("projection acknowledgement lost"));
 
     await expect(
       freshService().deductCredits({
@@ -347,22 +405,10 @@ describe("deductCredits — debits the same org ledger", () => {
         baseCost: 1, // 10% markup → creatorMarkup = 0.10, totalCost = 1.10
         description: "inference",
       }),
-    ).rejects.toThrow("apps counter update failed");
+    ).rejects.toThrow("projection acknowledgement lost");
 
-    // Consumer is made whole (the full $1.10).
-    expect(addCredits).toHaveBeenCalledTimes(1);
-    expect(addCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
-
-    // AND the committed creator earnings are reversed — the two stores
-    // recordCreatorEarnings incremented: the app-earnings ledger gets a NEGATIVE
-    // adjustment, and the creator's redeemable balance is reduced. Without the
-    // fix, neither of these fires and unbacked earnings are minted.
-    const negativeAppEarnings = addInferenceEarnings.mock.calls.filter(
-      (c) => typeof c[1] === "number" && c[1] < 0,
-    );
-    expect(negativeAppEarnings.length).toBe(1);
-    expect(negativeAppEarnings[0][1]).toBeCloseTo(-0.1, 10);
-    expect(reduceEarnings).toHaveBeenCalledTimes(1);
+    expect(addCredits).not.toHaveBeenCalled();
+    expect(reduceEarnings).not.toHaveBeenCalled();
   });
 });
 
@@ -386,7 +432,7 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     expect(reservation.reservationTransactionId).toBe("tx-2");
     // #10847: the movement leg — not a route-level phase suffix — makes the
     // earnings dedupe key unique per movement: `${chargeKey}:${type}:${leg}`.
-    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-1:inference_markup:deduct");
+    expect(addEarnings.mock.calls[0][0].sourceId).toBe("app-charge:tx-2:inference_markup:deduct");
   });
 
   test("fails before model work when the upfront app hold cannot be collected", async () => {
@@ -406,7 +452,7 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     ).rejects.toThrow("Insufficient credits");
 
     expect(trackAppUserActivity).not.toHaveBeenCalled();
-    expect(addInferenceEarnings).not.toHaveBeenCalled();
+    expect(applyCreatorMovement).not.toHaveBeenCalled();
     expect(addEarnings).not.toHaveBeenCalled();
   });
 
@@ -446,16 +492,16 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     const result = await reservation.reconcile(2);
 
     expect(result?.adjustmentType).toBe("overage");
+    expect(result?.actualCost).toBeCloseTo(2.2, 10);
     expect(addEarnings).toHaveBeenCalledTimes(2);
-    expect(addEarnings.mock.calls[0][0].sourceId).toBe("req-3:inference_markup:deduct");
-    // #11683: the reconcile legs key on the SERVER-generated reservation
-    // deduct-transaction id, not the request key — the route's late settle and
-    // the stale-reservation sweep run in different request contexts, and only
-    // a reservation-derived key lets their earnings movements cross-dedupe.
+    expect(addEarnings.mock.calls[0][0].sourceId).toBe("app-charge:tx-2:inference_markup:deduct");
+    // The reconcile credit keys on its exact server-generated backing debit,
+    // not a request key. Route settlement and stale sweep both recover that
+    // same debit when the overage charge is replayed.
     // Still distinct from the deduct leg's key, so the estimate credit and the
     // overage top-up never collide (#10847).
     expect(addEarnings.mock.calls[1][0].sourceId).toBe(
-      "reconcile:tx-2:inference_markup:reconcile_charge",
+      "app-charge:tx-2:inference_markup:reconcile_charge",
     );
   });
 });
@@ -578,7 +624,7 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     expect(result.adjustedAmount).toBe(0);
     expect(result.newBalance).toBe(0.05);
     // No revenue was collected — the creator's earnings ledgers stay untouched.
-    expect(addInferenceEarnings).not.toHaveBeenCalled();
+    expect(applyCreatorMovement).not.toHaveBeenCalled();
     expect(addEarnings).not.toHaveBeenCalled();
   });
 });
@@ -687,7 +733,7 @@ describe("processPurchase — clamps an oversized platform offset", () => {
     // Buyer still receives the full purchase as spendable credits.
     expect(result.creditsAdded).toBe(2);
     // Zero creator earnings ⇒ no creator-share bookkeeping fires.
-    expect(addPurchaseEarnings).not.toHaveBeenCalled();
+    expect(applyCreatorMovement).not.toHaveBeenCalled();
     expect(addEarnings).not.toHaveBeenCalled();
   });
 });
@@ -726,7 +772,7 @@ describe("processPurchase — monetization-disabled dedup record", () => {
     expect(tx.metadata.stripePaymentIntentId).toBe("pi_disabled");
 
     // No creator earnings recorded when monetization is off.
-    expect(addPurchaseEarnings).not.toHaveBeenCalled();
+    expect(applyCreatorMovement).not.toHaveBeenCalled();
     expect(addEarnings).not.toHaveBeenCalled();
   });
 });

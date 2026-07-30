@@ -11,14 +11,22 @@
 
 import type {
   CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
+  CreateLifeOpsIcsCalendarSourceRequest,
   GetLifeOpsCalendarFeedRequest,
+  LifeOpsCalendarEventCancellationResult,
   LifeOpsCalendarEventMutationResult,
   LifeOpsCalendarEventUpdate,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
+  LifeOpsIcsCalendarSourceMutationResponse,
+  LifeOpsIcsCalendarSyncResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  ListLifeOpsIcsCalendarSourcesResponse,
   SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
+  UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
 // Load the `@elizaos/ui` barrel so the `declare module "@elizaos/ui"`
 // augmentation below resolves; the calendar methods are exposed on the
@@ -30,6 +38,29 @@ import type {
   MeetingAutoJoinSettings,
 } from "../meetings/auto-join-settings.js";
 
+type CalendarEditorCreateRequest = CreateLifeOpsCalendarEventRequest & {
+  idempotencyKey: string;
+};
+
+type CalendarEditorUpdateRequest = LifeOpsCalendarEventUpdate & {
+  expectedProviderVersion: string;
+  idempotencyKey: string;
+};
+
+type CalendarEditorDeleteRequest = Partial<
+  Pick<
+    LifeOpsCalendarEventUpdate,
+    "calendarId" | "grantId" | "side" | "recurrenceScope" | "notifyAttendees"
+  >
+> & {
+  expectedProviderVersion: string;
+  idempotencyKey: string;
+  cancellationMode:
+    | "organizer_cancel"
+    | "decline_invitation"
+    | "remove_private_copy";
+};
+
 export interface CalendarClientMethods {
   getLifeOpsCalendarFeed(
     options?: GetLifeOpsCalendarFeedRequest,
@@ -39,30 +70,37 @@ export interface CalendarClientMethods {
   ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
   setLifeOpsCalendarIncluded(
     data: SetLifeOpsCalendarIncludedRequest,
-  ): Promise<{ calendar: LifeOpsCalendarSummary }>;
+  ): Promise<SetLifeOpsCalendarIncludedResponse>;
   getLifeOpsNextCalendarEventContext(
     options?: GetLifeOpsCalendarFeedRequest,
   ): Promise<LifeOpsNextCalendarEventContext>;
   createLifeOpsCalendarEvent(
-    data: CreateLifeOpsCalendarEventRequest,
-  ): Promise<{ event: LifeOpsCalendarFeed["events"][number] }>;
+    data: CalendarEditorCreateRequest,
+  ): Promise<CreateLifeOpsCalendarEventResponse>;
   updateLifeOpsCalendarEvent(
     eventId: string,
-    patch: LifeOpsCalendarEventUpdate,
+    patch: CalendarEditorUpdateRequest,
   ): Promise<LifeOpsCalendarEventMutationResult>;
   deleteLifeOpsCalendarEvent(
     eventId: string,
-    options?: Partial<
-      Pick<
-        LifeOpsCalendarEventUpdate,
-        "calendarId" | "grantId" | "side" | "recurrenceScope"
-      >
-    >,
-  ): Promise<{ deleted: true }>;
+    options: CalendarEditorDeleteRequest,
+  ): Promise<LifeOpsCalendarEventCancellationResult>;
   getMeetingAutoJoinSettings(): Promise<MeetingAutoJoinSettings>;
   setMeetingAutoJoinPolicy(
     policy: MeetingAutoJoinPolicy,
   ): Promise<MeetingAutoJoinSettings>;
+  getLifeOpsIcsCalendarSources(): Promise<ListLifeOpsIcsCalendarSourcesResponse>;
+  createLifeOpsIcsCalendarSource(
+    data: CreateLifeOpsIcsCalendarSourceRequest,
+  ): Promise<LifeOpsIcsCalendarSourceMutationResponse>;
+  updateLifeOpsIcsCalendarSource(
+    sourceId: string,
+    data: UpdateLifeOpsIcsCalendarSourceRequest,
+  ): Promise<LifeOpsIcsCalendarSourceMutationResponse>;
+  deleteLifeOpsIcsCalendarSource(sourceId: string): Promise<{ deleted: true }>;
+  syncLifeOpsIcsCalendarSource(
+    sourceId: string,
+  ): Promise<LifeOpsIcsCalendarSyncResponse>;
 }
 
 // The `/api/meetings` client (requestMeetingBot / listMeetings / getMeeting /
@@ -123,12 +161,67 @@ calendarClientPrototype.setLifeOpsCalendarIncluded = async function (
   this: ElizaClient,
   data: SetLifeOpsCalendarIncludedRequest,
 ) {
-  return this.fetch<{ calendar: LifeOpsCalendarSummary }>(
+  return this.fetch<SetLifeOpsCalendarIncludedResponse>(
     `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
     {
       method: "PUT",
       body: JSON.stringify(data),
     },
+  );
+};
+
+calendarClientPrototype.getLifeOpsIcsCalendarSources = async function (
+  this: ElizaClient,
+) {
+  return this.fetch<ListLifeOpsIcsCalendarSourcesResponse>(
+    "/api/lifeops/calendar/sources",
+  );
+};
+
+calendarClientPrototype.createLifeOpsIcsCalendarSource = async function (
+  this: ElizaClient,
+  data: CreateLifeOpsIcsCalendarSourceRequest,
+) {
+  return this.fetch<LifeOpsIcsCalendarSourceMutationResponse>(
+    "/api/lifeops/calendar/sources",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+calendarClientPrototype.updateLifeOpsIcsCalendarSource = async function (
+  this: ElizaClient,
+  sourceId: string,
+  data: UpdateLifeOpsIcsCalendarSourceRequest,
+) {
+  return this.fetch<LifeOpsIcsCalendarSourceMutationResponse>(
+    `/api/lifeops/calendar/sources/${encodeURIComponent(sourceId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+calendarClientPrototype.deleteLifeOpsIcsCalendarSource = async function (
+  this: ElizaClient,
+  sourceId: string,
+) {
+  return this.fetch<{ deleted: true }>(
+    `/api/lifeops/calendar/sources/${encodeURIComponent(sourceId)}`,
+    { method: "DELETE" },
+  );
+};
+
+calendarClientPrototype.syncLifeOpsIcsCalendarSource = async function (
+  this: ElizaClient,
+  sourceId: string,
+) {
+  return this.fetch<LifeOpsIcsCalendarSyncResponse>(
+    `/api/lifeops/calendar/sources/${encodeURIComponent(sourceId)}/sync`,
+    { method: "POST" },
   );
 };
 
@@ -151,9 +244,14 @@ calendarClientPrototype.getLifeOpsNextCalendarEventContext = async function (
 
 calendarClientPrototype.createLifeOpsCalendarEvent = async function (
   this: ElizaClient,
-  data: CreateLifeOpsCalendarEventRequest,
+  data: CalendarEditorCreateRequest,
 ) {
-  return this.fetch<{ event: LifeOpsCalendarFeed["events"][number] }>(
+  if (!data.idempotencyKey?.trim()) {
+    throw new Error(
+      "Calendar event creation requires a stable idempotencyKey.",
+    );
+  }
+  return this.fetch<CreateLifeOpsCalendarEventResponse>(
     "/api/lifeops/calendar/events",
     {
       method: "POST",
@@ -165,8 +263,14 @@ calendarClientPrototype.createLifeOpsCalendarEvent = async function (
 calendarClientPrototype.updateLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId: string,
-  patch: LifeOpsCalendarEventUpdate,
+  patch: CalendarEditorUpdateRequest,
 ) {
+  if (!patch.expectedProviderVersion?.trim()) {
+    throw new Error("Calendar event update requires expectedProviderVersion.");
+  }
+  if (!patch.idempotencyKey?.trim()) {
+    throw new Error("Calendar event update requires a stable idempotencyKey.");
+  }
   return this.fetch<LifeOpsCalendarEventMutationResult>(
     `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}`,
     {
@@ -179,12 +283,7 @@ calendarClientPrototype.updateLifeOpsCalendarEvent = async function (
 calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId: string,
-  options: Partial<
-    Pick<
-      LifeOpsCalendarEventUpdate,
-      "calendarId" | "grantId" | "side" | "recurrenceScope"
-    >
-  > = {},
+  options: CalendarEditorDeleteRequest,
 ) {
   const params = new URLSearchParams();
   if (options.calendarId) params.set("calendarId", options.calendarId);
@@ -193,8 +292,29 @@ calendarClientPrototype.deleteLifeOpsCalendarEvent = async function (
   if (options.recurrenceScope) {
     params.set("recurrenceScope", options.recurrenceScope);
   }
+  if (options.notifyAttendees !== undefined) {
+    params.set("notifyAttendees", String(options.notifyAttendees));
+  }
+  if (!options.expectedProviderVersion?.trim()) {
+    throw new Error(
+      "Calendar event deletion requires expectedProviderVersion.",
+    );
+  }
+  params.set("expectedProviderVersion", options.expectedProviderVersion);
+  if (!options.idempotencyKey?.trim()) {
+    throw new Error(
+      "Calendar event deletion requires a stable idempotencyKey.",
+    );
+  }
+  params.set("idempotencyKey", options.idempotencyKey);
+  if (!options.cancellationMode) {
+    throw new Error(
+      "Calendar event deletion requires an explicit cancellationMode.",
+    );
+  }
+  params.set("cancellationMode", options.cancellationMode);
   const query = params.toString();
-  return this.fetch<{ deleted: true }>(
+  return this.fetch<LifeOpsCalendarEventCancellationResult>(
     `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}${query ? `?${query}` : ""}`,
     {
       method: "DELETE",

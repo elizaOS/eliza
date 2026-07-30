@@ -17,6 +17,8 @@ import {
   type DeliveryResult,
   type DispatchSensitiveRequest,
   logger,
+  requireConfirmedSendHandlerDelivery,
+  type SendHandlerResult,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
   type SensitiveRequestSecretTarget,
@@ -30,10 +32,7 @@ import {
  * unit-tested with a minimal mock and so the registry can pass `unknown`.
  */
 interface OwnerAppInlineRuntime {
-  sendMessageToTarget(
-    target: TargetInfo,
-    content: Content,
-  ): Promise<unknown> | unknown;
+  sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult;
   getRoom?(roomId: string): Promise<{
     channelId?: string;
     serverId?: string;
@@ -296,8 +295,12 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
       const target = resolveTarget(request, channelId);
 
       try {
-        await runtime.sendMessageToTarget(target, content);
+        requireConfirmedSendHandlerDelivery(
+          await runtime.sendMessageToTarget(target, content),
+        );
       } catch (error) {
+        // error-policy:J1 sensitive-request delivery boundary converts
+        // unconfirmed connector outcomes into a typed failed delivery.
         const message = error instanceof Error ? error.message : String(error);
         logger.error(
           "[OwnerAppInlineAdapter] sendMessageToTarget failed",

@@ -209,24 +209,6 @@ const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
     ),
   },
   {
-    name: "reasoning block (single text segment)",
-    message: assistant("You're free after 3pm.", {
-      reasoning: "I checked the calendar and the afternoon is open.",
-    }),
-  },
-  {
-    name: "reasoning block (multi-segment)",
-    message: assistant("The answer is:\n```txt\n42\n```", {
-      reasoning: "I considered several options and settled on 42.",
-    }),
-  },
-  {
-    name: "reasoning + code",
-    message: assistant("Use this:\n```py\nprint(42)\n```", {
-      reasoning: "Python is the simplest demonstration here.",
-    }),
-  },
-  {
     name: "secret request",
     message: assistant("I need a key to continue.", {
       secretRequest: SECRET_REQUEST,
@@ -283,15 +265,16 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
       const fp = fingerprint(view.container);
       if (fp.hasChoiceWidget) seen.add("choice");
       if (fp.hasCodeBlock) seen.add("code");
-      if (fp.hasReasoning) seen.add("reasoning");
       if (fp.hasSecretRequest) seen.add("secret");
       if (fp.hasNoProviderGate) seen.add("no-provider");
       cleanup();
     }
     // If the corpus stopped covering an affordance the parity check would pass
-    // trivially — assert all five rich structures actually appear.
+    // trivially — assert all four rich structures actually appear. (Reasoning
+    // is a PINNED divergence below, not a parity affordance: the overlay never
+    // renders it.)
     expect([...seen].sort()).toEqual(
-      ["choice", "code", "no-provider", "reasoning", "secret"].sort(),
+      ["choice", "code", "no-provider", "secret"].sort(),
     );
   });
 });
@@ -329,11 +312,13 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     expect(overlayPrint.hasInlineCode).toBe(false);
   });
 
-  // (2) Secret request with a rich body + reasoning. MessageContent early-returns
-  //     ONLY the SensitiveRequestBlock — body code/widgets and reasoning are
-  //     suppressed. ThreadLine co-renders the body (so a fenced block still shows
-  //     a code block), the secret block, AND reasoning. Both emit exactly one
-  //     sensitive-request (agreement); the surrounding body is what diverges.
+  // (2) Secret request with a rich body. MessageContent early-returns ONLY the
+  //     SensitiveRequestBlock — body code/widgets are suppressed. ThreadLine
+  //     co-renders the body (so a fenced block still shows a code block) AND
+  //     the secret block. Both emit exactly one sensitive-request (agreement);
+  //     the surrounding body is what diverges. Reasoning appears on neither
+  //     surface here — ChatView suppresses the whole body, and the overlay
+  //     never renders reasoning at all (pin 3).
   it("PIN: a secret request suppresses the body in ChatView, co-renders it in the overlay", () => {
     const { viewPrint, overlayPrint } = renderBoth(
       assistant("Paste the token:\n```ts\nconst t = 1;\n```", {
@@ -349,7 +334,35 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     expect(overlayPrint).toMatchObject({
       hasSecretRequest: true,
       hasCodeBlock: true,
-      hasReasoning: true,
+      hasReasoning: false,
+    });
+  });
+
+  // (3) Model reasoning. ChatView renders the collapsed ThinkingBlock
+  //     disclosure; the overlay's message body deliberately keeps reasoning
+  //     out of transcript chrome (renderOverlayMessageBody: "tool traces and
+  //     model reasoning remain available to diagnostics but never become
+  //     transcript chrome"). The rest of the body keeps full parity.
+  it("PIN: model reasoning renders a ThinkingBlock in ChatView, never in the overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant("You're free after 3pm.", {
+        reasoning: "I checked the calendar and the afternoon is open.",
+      }),
+    );
+    expect(viewPrint.hasReasoning).toBe(true);
+    expect(overlayPrint.hasReasoning).toBe(false);
+  });
+
+  it("PIN: reasoning alongside code diverges only on the ThinkingBlock — the code block keeps parity", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant("Use this:\n```py\nprint(42)\n```", {
+        reasoning: "Python is the simplest demonstration here.",
+      }),
+    );
+    expect(viewPrint).toMatchObject({ hasReasoning: true, hasCodeBlock: true });
+    expect(overlayPrint).toMatchObject({
+      hasReasoning: false,
+      hasCodeBlock: true,
     });
   });
 });

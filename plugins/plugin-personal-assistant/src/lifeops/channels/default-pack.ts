@@ -38,6 +38,7 @@ interface ChannelDescriptor {
    * runtime owns delivery directly.
    */
   connectorKind: string | null;
+  receiptContract?: "provider_receipt_id";
 }
 
 const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
@@ -88,6 +89,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
       quietHoursAware: true,
     },
     connectorKind: "google",
+    receiptContract: "provider_receipt_id",
   },
   {
     kind: "imessage",
@@ -101,6 +103,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
       quietHoursAware: true,
     },
     connectorKind: "imessage",
+    receiptContract: "provider_receipt_id",
   },
   {
     kind: "telegram",
@@ -114,6 +117,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
       quietHoursAware: true,
     },
     connectorKind: "telegram",
+    receiptContract: "provider_receipt_id",
   },
   {
     kind: "discord",
@@ -140,6 +144,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
       quietHoursAware: true,
     },
     connectorKind: "signal",
+    receiptContract: "provider_receipt_id",
   },
   {
     kind: "whatsapp",
@@ -153,6 +158,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
       quietHoursAware: true,
     },
     connectorKind: "whatsapp",
+    receiptContract: "provider_receipt_id",
   },
   {
     kind: "x",
@@ -187,6 +193,7 @@ const CHANNEL_DESCRIPTORS: readonly ChannelDescriptor[] = [
       quietHoursAware: true,
     },
     connectorKind: "twilio",
+    receiptContract: "provider_receipt_id",
   },
   {
     kind: "voice",
@@ -224,6 +231,9 @@ function buildChannelContribution(
       describe: { label: descriptor.label },
       capabilities: descriptor.capabilities,
       connectorKind: descriptor.connectorKind,
+      ...(descriptor.receiptContract
+        ? { receiptContract: descriptor.receiptContract }
+        : {}),
     };
   }
   // Voice channels rewrite the send target so Twilio knows to use TwiML.
@@ -237,6 +247,9 @@ function buildChannelContribution(
     describe: { label: descriptor.label },
     capabilities: descriptor.capabilities,
     connectorKind: descriptor.connectorKind,
+    ...(descriptor.receiptContract
+      ? { receiptContract: descriptor.receiptContract }
+      : {}),
     async send(payload: unknown): Promise<DispatchResult> {
       const registry = getConnectorRegistry(runtime);
       if (!registry) {

@@ -46,6 +46,16 @@ const SELECT_COLUMNS = [
   "resolved_at",
   "resolved_by",
   "resolution_reason",
+  "execution_attempt_id",
+  "execution_provider",
+  "provider_idempotency_key",
+  "execution_claimed_at",
+  "dispatch_started_at",
+  "provider_receipt",
+  "execution_error",
+  "reconciliation_resolved_at",
+  "reconciliation_resolved_by",
+  "reconciliation_reason",
   "created_at",
   "updated_at",
 ];
@@ -100,6 +110,7 @@ interface WhereClause {
   subject_user_id?: string;
   state?: string;
   action?: string;
+  execution_attempt_id?: string;
   expiresAtMax?: string;
 }
 
@@ -135,6 +146,12 @@ function matches(row: Record<string, unknown>, clause: WhereClause): boolean {
   }
   if (clause.state !== undefined && row.state !== clause.state) return false;
   if (clause.action !== undefined && row.action !== clause.action) return false;
+  if (
+    clause.execution_attempt_id !== undefined &&
+    row.execution_attempt_id !== clause.execution_attempt_id
+  ) {
+    return false;
+  }
   if (
     clause.expiresAtMax !== undefined &&
     String(row.expires_at) > clause.expiresAtMax
@@ -179,7 +196,9 @@ function createApprovalTableRuntime(
 
     if (/^INSERT\s+INTO\s+approval_requests/i.test(trimmed)) {
       const colsMatch = trimmed.match(/\(([\s\S]+?)\)\s*VALUES/i);
-      const valsMatch = trimmed.match(/VALUES\s*\(([\s\S]+?)\)\s*RETURNING/i);
+      const valsMatch = trimmed.match(
+        /VALUES\s*\(([\s\S]+?)\)\s*(?:ON\s+CONFLICT[\s\S]+?)?RETURNING/i,
+      );
       if (!colsMatch || !valsMatch) throw new Error("bad INSERT in mock");
       const columns = colsMatch[1].split(",").map((s) => s.trim());
       const values = splitValues(valsMatch[1]);
@@ -187,6 +206,16 @@ function createApprovalTableRuntime(
       columns.forEach((col, idx) => {
         row[col] = unquote(values[idx] ?? "NULL");
       });
+      if (
+        /\bON\s+CONFLICT\b/i.test(trimmed) &&
+        Array.from(rows.values()).some(
+          (existing) =>
+            existing.agent_id === row.agent_id &&
+            existing.idempotency_key === row.idempotency_key,
+        )
+      ) {
+        return { rows: [] };
+      }
       rows.set(String(row.id), row);
       return { rows: [projectSelect(row)] };
     }
@@ -281,7 +310,7 @@ describe("ApprovalService", () => {
     expect(resolveApprovalService(runtime)).toBeNull();
   });
 
-  it("enqueue → approve → markExecuting → markDone happy path", async () => {
+  it("persists a subject-scoped execution attempt and receipt", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
 
@@ -290,10 +319,10 @@ describe("ApprovalService", () => {
     expect(enqueued.resolvedAt).toBeNull();
     expect(enqueued.action).toBe("send_message");
 
-    const fetched = await queue.byId(enqueued.id);
+    const fetched = await queue.byId(enqueued.id, "owner-123");
     expect(fetched?.id).toBe(enqueued.id);
 
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "looks good",
     });
@@ -301,11 +330,32 @@ describe("ApprovalService", () => {
     expect(approved.resolvedBy).toBe("owner-123");
     expect(approved.resolvedAt).toBeInstanceOf(Date);
 
-    const executing = await queue.markExecuting(enqueued.id);
+    const executing = await queue.claimExecution({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      provider: "twilio",
+      providerIdempotencyKey: `approval:${enqueued.id}:twilio`,
+    });
     expect(executing.state).toBe("executing");
 
-    const done = await queue.markDone(enqueued.id);
+    const attemptId = executing.execution?.attemptId;
+    expect(attemptId).toBeTruthy();
+    await queue.markDispatchStarted({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      attemptId: attemptId ?? "",
+    });
+    const done = await queue.markDone({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      attemptId: attemptId ?? "",
+      providerReceipt: { provider: "twilio", sid: "SM123" },
+    });
     expect(done.state).toBe("done");
+    expect(done.execution?.providerReceipt).toEqual({
+      provider: "twilio",
+      sid: "SM123",
+    });
 
     const pendingList = await queue.list({
       subjectUserId: "owner-123",
@@ -329,6 +379,189 @@ describe("ApprovalService", () => {
     expect(arg.groupKey).toBe(`approval:${enqueued.id}`);
   });
 
+  it("persists an authenticated confirmed gesture without a redundant prompt", async () => {
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-confirmed", notifier);
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const input = messageInput({
+      idempotencyKey: "confirmed-owner-gesture-1",
+    });
+
+    const confirmed = await queue.enqueueConfirmed(input, {
+      resolvedBy: "owner-123",
+      resolutionReason: "Authenticated owner editor gesture",
+    });
+    const replay = await queue.enqueueConfirmed(input, {
+      resolvedBy: "owner-123",
+      resolutionReason: "Authenticated owner editor gesture",
+    });
+
+    expect(confirmed.state).toBe("approved");
+    expect(replay.id).toBe(confirmed.id);
+    expect(
+      await queue.byIdempotencyKey("confirmed-owner-gesture-1", "owner-123"),
+    ).toEqual(replay);
+    expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it("preserves structured calendar invitees and conditional-write fields", async () => {
+    const runtime = createApprovalTableRuntime("agent-calendar-approval");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const confirmed = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "modify_event",
+        payload: {
+          action: "modify_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          eventId: "series-occurrence-4",
+          expectedProvider: "google",
+          expectedProviderVersion: '"occurrence-etag-4"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          seriesMaster: {
+            externalId: "series-master-1",
+            startAtMs: Date.parse("2027-01-15T17:00:00.000Z"),
+            updatedAt: "2027-10-01T00:00:00.000Z",
+            etag: '"master-etag-4"',
+          },
+          recurrenceScope: "this_and_following",
+          notifyAttendees: true,
+          editorRequestSha256: "request-sha",
+          patch: {
+            title: "Pickup",
+            startsAtMs: null,
+            endsAtMs: null,
+            attendees: [
+              {
+                email: "helper@example.com",
+                displayName: "Helper",
+                optional: true,
+              },
+            ],
+            location: null,
+            description: null,
+            timeZone: "America/Los_Angeles",
+            recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=FR"],
+          },
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-structured-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+
+    expect(confirmed).toMatchObject({
+      state: "approved",
+      payload: {
+        expectedProviderVersion: '"occurrence-etag-4"',
+        recurrenceScope: "this_and_following",
+        seriesMaster: {
+          externalId: "series-master-1",
+          etag: '"master-etag-4"',
+        },
+        patch: {
+          timeZone: "America/Los_Angeles",
+          attendees: [
+            {
+              email: "helper@example.com",
+              displayName: "Helper",
+              optional: true,
+            },
+          ],
+        },
+      },
+    });
+
+    const cancelled = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "cancel_event",
+        payload: {
+          action: "cancel_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          eventId: "series-occurrence-4",
+          expectedProvider: "google",
+          expectedProviderVersion: '"occurrence-etag-4"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          seriesMaster: {
+            externalId: "series-master-1",
+            startAtMs: Date.parse("2027-01-15T17:00:00.000Z"),
+            updatedAt: "2027-10-01T00:00:00.000Z",
+            etag: '"master-etag-4"',
+          },
+          recurrenceScope: "this_and_following",
+          cancellationMode: "organizer_cancel",
+          notifyAttendees: false,
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-following-cancel-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+    expect(cancelled.payload).toMatchObject({
+      action: "cancel_event",
+      recurrenceScope: "this_and_following",
+      seriesMaster: {
+        externalId: "series-master-1",
+        etag: '"master-etag-4"',
+      },
+    });
+
+    const scheduled = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "schedule_event",
+        payload: {
+          action: "schedule_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          title: "Tomorrow",
+          startsAtMs: Date.parse("2027-10-16T16:00:00.000Z"),
+          endsAtMs: Date.parse("2027-10-16T16:45:00.000Z"),
+          attendees: [],
+          location: null,
+          description: null,
+          timeZone: "America/Los_Angeles",
+          durationMinutes: 45,
+          windowPreset: "tomorrow_morning",
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-preset-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+    expect(scheduled.payload).toMatchObject({
+      timeZone: "America/Los_Angeles",
+      durationMinutes: 45,
+      windowPreset: "tomorrow_morning",
+    });
+  });
+
   it("approving an approval auto-reads its notification by groupKey (§C.5)", async () => {
     const notifier = createNotifierSpy();
     const runtime = createApprovalTableRuntime("agent-autoread", notifier);
@@ -337,7 +570,7 @@ describe("ApprovalService", () => {
     const enqueued = await queue.enqueue(messageInput());
     expect(notifier.markReadByGroupKey).not.toHaveBeenCalled();
 
-    await queue.approve(enqueued.id, {
+    await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "ok",
     });
@@ -353,7 +586,7 @@ describe("ApprovalService", () => {
     const queue = (await ApprovalService.start(runtime)).getQueue();
 
     const enqueued = await queue.enqueue(messageInput());
-    await queue.reject(enqueued.id, {
+    await queue.reject(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "no",
     });
@@ -372,7 +605,7 @@ describe("ApprovalService", () => {
     const queue = (await ApprovalService.start(runtime)).getQueue();
     const enqueued = await queue.enqueue(messageInput());
     // Must resolve cleanly even though markReadByGroupKey is absent.
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "ok",
     });
@@ -385,7 +618,7 @@ describe("ApprovalService", () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-reject" }),
     );
-    const rejected = await queue.reject(enqueued.id, {
+    const rejected = await queue.reject(enqueued.id, "owner-reject", {
       resolvedBy: "owner-reject",
       resolutionReason: "not now",
     });
@@ -405,7 +638,7 @@ describe("ApprovalService", () => {
     );
     const purgedIds = await queue.purgeExpired(new Date());
     expect(purgedIds).toContain(enqueued.id);
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-expire");
     expect(after?.state).toBe("expired");
     expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
       `approval:${enqueued.id}`,
@@ -427,13 +660,13 @@ describe("ApprovalService", () => {
     expect(enqueued.state).toBe("pending");
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-lapsed", {
         resolvedBy: "owner-lapsed",
         resolutionReason: "approving after expiry",
       }),
     ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-lapsed");
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
     expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
@@ -450,7 +683,7 @@ describe("ApprovalService", () => {
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       }),
     );
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-fresh", {
       resolvedBy: "owner-fresh",
       resolutionReason: "in time",
     });
@@ -463,20 +696,21 @@ describe("ApprovalService", () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-invalid" }),
     );
-    // pending -> executing is illegal; must go through approved first.
-    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
-    await expect(queue.markDone(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
+    await expect(
+      queue.claimExecution({
+        requestId: enqueued.id,
+        subjectUserId: "owner-invalid",
+        provider: "test",
+        providerIdempotencyKey: "approval:test",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
   });
 
   it("throws ApprovalNotFoundError on unknown id", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
     await expect(
-      queue.approve("00000000-0000-0000-0000-000000000000", {
+      queue.approve("00000000-0000-0000-0000-000000000000", "owner-123", {
         resolvedBy: "owner-123",
         resolutionReason: "x",
       }),
@@ -489,7 +723,7 @@ describe("ApprovalService", () => {
     const enqueued = await service.getQueue("agent-1").enqueue(messageInput());
     // A queue for a different agentId must not see agent-1's row.
     const otherQueue = service.getQueue("agent-2");
-    expect(await otherQueue.byId(enqueued.id)).toBeNull();
+    expect(await otherQueue.byId(enqueued.id, "owner-123")).toBeNull();
   });
 });
 
@@ -546,24 +780,24 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
     };
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-race", {
         resolvedBy: "owner-race",
         resolutionReason: "too late",
       }),
     ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-race");
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
   });
 
-  it("markExecuting lost to a concurrent reject stays rejected", async () => {
+  it("claimExecution lost to a concurrent reject stays rejected", async () => {
     const runtime = createApprovalTableRuntime("agent-race2");
     const queue = (await ApprovalService.start(runtime)).getQueue();
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-race2" }),
     );
-    await queue.approve(enqueued.id, {
+    await queue.approve(enqueued.id, "owner-race2", {
       resolvedBy: "owner-race2",
       resolutionReason: "ok",
     });
@@ -596,10 +830,15 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
       return rawExecute(chunks);
     };
 
-    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
-    const after = await queue.byId(enqueued.id);
+    await expect(
+      queue.claimExecution({
+        requestId: enqueued.id,
+        subjectUserId: "owner-race2",
+        provider: "test",
+        providerIdempotencyKey: `approval:${enqueued.id}:test`,
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+    const after = await queue.byId(enqueued.id, "owner-race2");
     expect(after?.state).toBe("rejected");
   });
 });

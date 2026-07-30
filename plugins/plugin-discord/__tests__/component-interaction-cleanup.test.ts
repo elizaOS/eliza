@@ -6,7 +6,7 @@
  * the dead `DISCORD_INTERACTION` dispatch — and `buildDiscordComponents` must no
  * longer build type-3 select menus. Fakes drive the real handler + builder.
  */
-import { encodeReplyCallback } from "@elizaos/core";
+import { ChannelType, encodeReplyCallback } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleInteractionCreate } from "../discord-interactions";
 import type { DiscordActionRow } from "../types";
@@ -22,6 +22,17 @@ function makeService(messageService?: {
 		getSetting: vi.fn(() => undefined),
 		logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
 		ensureConnection: vi.fn(async () => {}),
+		// Canonical-room collaborators for the delivery-audience attestation on
+		// the codec-button replay turn.
+		getRoom: vi.fn(async (roomId: string) => ({
+			id: roomId,
+			type: ChannelType.DM,
+		})),
+		getParticipantsForRoom: vi.fn(async () => [
+			"00000000-0000-0000-0000-000000000001",
+			"agent-1",
+		]),
+		reportError: vi.fn(),
 		messageService: messageService ?? null,
 	};
 	return {
@@ -32,7 +43,7 @@ function makeService(messageService?: {
 		slashCommands: [],
 		timeouts: [],
 		resolveDiscordEntityId: vi.fn(() => "00000000-0000-0000-0000-000000000001"),
-		getChannelType: vi.fn(),
+		getChannelType: vi.fn(async () => ChannelType.DM),
 		registerSlashCommands: vi.fn(),
 		refreshOwnerDiscordUserIds: vi.fn(),
 		clientReadyPromise: null,

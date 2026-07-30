@@ -86,6 +86,7 @@ class ClientCall:
     temperature: float = 0.0
     max_tokens: int | None = None
     reasoning_effort: ReasoningEffort = "low"
+    enable_tool_protocol: bool = True
     extra: dict[str, Any] = field(default_factory=dict)
 
 

@@ -11,9 +11,11 @@
 import { LifeOpsServiceError } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type { DispatchResult } from "./contract.js";
@@ -27,6 +29,7 @@ describe("errorToDispatchResult", () => {
       expect(result).toEqual({
         ok: false,
         reason: "auth_expired",
+        acceptance: "not_accepted",
         userActionable: true,
         message: "token gone",
       });
@@ -40,6 +43,7 @@ describe("errorToDispatchResult", () => {
     expect(result).toEqual({
       ok: false,
       reason: "auth_expired",
+      acceptance: "not_accepted",
       userActionable: true,
       message: "forbidden",
     });
@@ -52,6 +56,7 @@ describe("errorToDispatchResult", () => {
     expect(result).toEqual({
       ok: false,
       reason: "unknown_recipient",
+      acceptance: "not_accepted",
       userActionable: true,
       message: "no such chat",
     });
@@ -65,6 +70,7 @@ describe("errorToDispatchResult", () => {
       expect(result).toEqual({
         ok: false,
         reason: "disconnected",
+        acceptance: "not_accepted",
         userActionable: true,
         message: "not connected",
       });
@@ -78,6 +84,7 @@ describe("errorToDispatchResult", () => {
     expect(result).toEqual({
       ok: false,
       reason: "rate_limited",
+      acceptance: "not_accepted",
       retryAfterMinutes: 5,
       userActionable: false,
       message: "slow down",
@@ -91,6 +98,7 @@ describe("errorToDispatchResult", () => {
     expect(result).toEqual({
       ok: false,
       reason: "transport_error",
+      acceptance: "unknown",
       userActionable: false,
       message: "upstream boom",
     });
@@ -101,6 +109,7 @@ describe("errorToDispatchResult", () => {
     expect(result).toEqual({
       ok: false,
       reason: "transport_error",
+      acceptance: "unknown",
       userActionable: false,
       message: "socket hang up",
     });
@@ -111,6 +120,7 @@ describe("errorToDispatchResult", () => {
     expect(result).toEqual({
       ok: false,
       reason: "transport_error",
+      acceptance: "unknown",
       userActionable: false,
       message: "kaboom",
     });
@@ -131,6 +141,7 @@ describe("errorToDispatchResult", () => {
       expect(result).toEqual({
         ok: false,
         reason: "transport_error",
+        acceptance: "unknown",
         userActionable: false,
         message: "[object Object]",
       });
@@ -149,6 +160,7 @@ describe("errorToDispatchResult", () => {
       expect(result).toEqual({
         ok: false,
         reason: "transport_error",
+        acceptance: "unknown",
         userActionable: false,
         message: "[object Object]",
       });
@@ -167,6 +179,7 @@ describe("errorToDispatchResult", () => {
       expect(result).toEqual({
         ok: false,
         reason: "transport_error",
+        acceptance: "unknown",
         userActionable: false,
         message: "[object Object]",
       });
@@ -177,6 +190,7 @@ describe("errorToDispatchResult", () => {
       expect(result).toEqual({
         ok: false,
         reason: "transport_error",
+        acceptance: "unknown",
         userActionable: false,
         message: "Symbol(boom)",
       });
@@ -244,9 +258,64 @@ describe("rejectInvalidPayload", () => {
     expect(rejectInvalidPayload()).toEqual({
       ok: false,
       reason: "transport_error",
+      acceptance: "not_accepted",
       userActionable: false,
       message:
         "ConnectorContribution.send requires { target: string; message: string } payload.",
+    });
+  });
+});
+
+describe("dispatchReceipt", () => {
+  it("builds a typed provider receipt only when provider id and idempotency key exist", () => {
+    const receipt = dispatchReceipt({
+      provider: "twilio",
+      providerMessageId: "SM-123",
+      payload: {
+        target: "+15551234567",
+        message: "hi",
+        idempotencyKey: "scheduling-message:v1:abc",
+      },
+    });
+    expect(receipt).toMatchObject({
+      provider: "twilio",
+      providerMessageId: "SM-123",
+      idempotencyKey: "scheduling-message:v1:abc",
+    });
+    expect(Number.isNaN(Date.parse(receipt?.acceptedAt ?? ""))).toBe(false);
+  });
+
+  it("refuses to fabricate a receipt from a provider boolean or missing provider id", () => {
+    expect(
+      dispatchReceipt({
+        provider: "twilio",
+        providerMessageId: null,
+        payload: {
+          target: "+15551234567",
+          message: "hi",
+          idempotencyKey: "scheduling-message:v1:abc",
+        },
+      }),
+    ).toBeNull();
+    expect(
+      dispatchReceipt({
+        provider: "twilio",
+        providerMessageId: "SM-123",
+        payload: { target: "+15551234567", message: "hi" },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("missingProviderReceipt", () => {
+  it("classifies provider success without an id as ambiguous, never retryable", () => {
+    expect(missingProviderReceipt("Gmail")).toEqual({
+      ok: false,
+      reason: "transport_error",
+      acceptance: "unknown",
+      userActionable: false,
+      message:
+        "Gmail accepted the send path without returning a durable provider receipt.",
     });
   });
 });
@@ -264,6 +333,16 @@ describe("isConnectorSendPayload", () => {
         target: "chat-123",
         message: "hi",
         metadata: { threadId: "t1" },
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts a well-formed payload with a durable idempotency key", () => {
+    expect(
+      isConnectorSendPayload({
+        target: "chat-123",
+        message: "hi",
+        idempotencyKey: "scheduling-message:v1:abc",
       }),
     ).toBe(true);
   });

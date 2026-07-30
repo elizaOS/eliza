@@ -230,7 +230,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
 
@@ -407,7 +407,7 @@ jobs:
               checkout --force --detach FETCH_HEAD \
             || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
 
@@ -863,7 +863,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
 
@@ -1067,7 +1067,7 @@ jobs:
               checkout --force --detach FETCH_HEAD \
             || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
 
@@ -1472,7 +1472,7 @@ jobs:
               checkout --force --detach FETCH_HEAD \
             || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "22"
 
@@ -1724,7 +1724,7 @@ jobs:
           show-progress: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
 

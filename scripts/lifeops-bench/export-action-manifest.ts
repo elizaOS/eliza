@@ -3,21 +3,24 @@
  * Exports the LifeOps planner action manifest as JSON for the LifeOps bench.
  *
  * Loads the personal-assistant plus its connector plugins (bluebubbles,
- * contacts, imessage, phone, todos), builds the planner tool definitions from
- * their actions, and emits each as a function-tool entry annotated with the
- * source plugin and planner metadata (tags, contexts, priority, surfaces,
- * risk/cost). The bench consumes the manifest to drive and score action selection.
+ * calendar, contacts, imessage, phone, todos), builds the planner tool
+ * definitions from their actions, and emits each as a function-tool entry
+ * annotated with the source plugin and planner metadata. The bench consumes
+ * the manifest to drive and score action selection.
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promoteSubactionsToActions } from "../../packages/core/src/actions/promote-subactions.ts";
 import { buildPlannerToolsFromActions } from "../../packages/core/src/actions/to-tool.ts";
 import type { Action } from "../../packages/core/src/types/components.ts";
 import type { Plugin } from "../../packages/core/src/types/plugin.ts";
 import blueBubblesPlugin from "../../plugins/plugin-bluebubbles/src/index.ts";
+import { calendarSourcesAction } from "../../plugins/plugin-calendar/src/actions/calendar-sources.ts";
 import { appContactsPlugin } from "../../plugins/plugin-contacts/src/plugin.ts";
 import imessagePlugin from "../../plugins/plugin-imessage/src/index.ts";
+import { ownerScreenTimeAction } from "../../plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts";
 import { personalAssistantPlugin } from "../../plugins/plugin-personal-assistant/src/plugin.ts";
 import { appPhonePlugin } from "../../plugins/plugin-phone/src/plugin.ts";
 import { todosPlugin } from "../../plugins/plugin-todos/src/index.ts";
@@ -441,9 +444,42 @@ function truncateForTable(value: string): string {
 
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
+  const calendarSourcePlugin: Plugin = {
+    name: "@elizaos/plugin-calendar",
+    description:
+      "Calendar source administration exported without the overlapping event action.",
+    actions: [calendarSourcesAction],
+  };
+  // The manifest is a HOST-INDEPENDENT catalog of the action surface, so it must
+  // not vary with the machine that generated it. personalAssistantPlugin gates
+  // the owner-screentime umbrella behind `isDarwin()` at module load (the native
+  // activity tracker is macOS-only), so exporting on Linux silently dropped all
+  // 11 OWNER_SCREENTIME* actions and the committed macOS-generated manifest could
+  // never match a Linux CI regeneration — `Verify lifeops action manifest is up
+  // to date` failed on every run, unfixably, because both sides were "correct"
+  // for their own host.
+  //
+  // Contribute the gated umbrella explicitly instead of touching the runtime
+  // gate: production planners on non-Darwin hosts must still never see these
+  // actions. Names already contributed by the plugin (i.e. when generating ON
+  // macOS) are skipped, so the output is identical on either host.
+  const screenTimeActions = promoteSubactionsToActions(ownerScreenTimeAction);
+  const pluginActionNames = new Set(
+    (personalAssistantPlugin.actions ?? []).map((action) => action.name),
+  );
+  const platformIndependentScreenTimePlugin: Plugin = {
+    name: "@elizaos/plugin-personal-assistant",
+    description:
+      "Platform-gated owner-screentime umbrella, exported regardless of the generating host.",
+    actions: screenTimeActions.filter(
+      (action) => !pluginActionNames.has(action.name),
+    ),
+  };
   const sourcePlugins = [
     appContactsPlugin,
+    calendarSourcePlugin,
     personalAssistantPlugin,
+    platformIndependentScreenTimePlugin,
     appPhonePlugin,
     blueBubblesPlugin,
     imessagePlugin,
@@ -453,7 +489,9 @@ function main(): void {
   const manifest: Manifest = {
     schemaVersion: 1,
     generator: "scripts/lifeops-bench/export-action-manifest.ts",
-    sourcePlugins: sourcePlugins.map((plugin) => plugin.name),
+    // Deduped: the platform-gated screentime contributor is the same package as
+    // personalAssistantPlugin, so it must not appear twice in the provenance list.
+    sourcePlugins: [...new Set(sourcePlugins.map((plugin) => plugin.name))],
     filters: {
       domains: options.domains,
       capabilities: options.capabilities,

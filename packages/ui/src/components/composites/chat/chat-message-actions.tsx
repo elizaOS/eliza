@@ -1,31 +1,24 @@
 /**
- * Per-message action controls (copy / play / edit / delete), in the two chromes
- * the chat surfaces use: `rail` — the hover `PagePanel.ActionRail` overlaying a
- * panel bubble (ChatView / detached windows) — and `glass-row` — the continuous
- * overlay's tap-revealed row of unframed icon buttons beneath a glass bubble
- * (#10713). Each control is opt-in via its `can*` flag; copy shows a transient
- * confirmed state; play toggles to stop on the bubble that is speaking
- * (`playing`, glass-row only). Wired by ChatMessage.
+ * Per-message reply, copy, playback, and edit controls. Panel chat groups the
+ * controls on a neutral liquid-glass plate; the continuous overlay renders a
+ * bare icon lane beneath each message so hover and touch affordances stay
+ * visually quiet. Copy and playback retain their compact state transitions.
+ * Wired by ChatMessage.
  */
-import {
-  Check,
-  Copy,
-  Pencil,
-  Reply,
-  Square,
-  Trash2,
-  Volume2,
-} from "lucide-react";
+import { Check, Copy, Pencil, Reply, Square, Volume2 } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import {
+  LIQUID_GLASS_EDGE_SHADOW,
+  LIQUID_GLASS_SHEEN,
+} from "../../shell/liquid-glass";
 import { Button } from "../../ui/button";
-import { PagePanel } from "../page-panel";
 import type { ChatMessageLabels } from "./chat-types";
 
 export interface ChatMessageActionsProps {
   appearance?: "rail" | "glass-row";
-  canDelete?: boolean;
   canEdit?: boolean;
   canPlay?: boolean;
   /** Show the Reply control — set the composer to reply to this message. */
@@ -33,31 +26,66 @@ export interface ChatMessageActionsProps {
   copied?: boolean;
   labels?: ChatMessageLabels;
   onCopy?: () => void;
-  onDelete?: () => void;
   onEdit?: () => void;
   onPlay?: () => void;
   onReply?: () => void;
   /** True while THIS message's audio is playing — flips play → stop (glass-row). */
   playing?: boolean;
+  /** Quiet live state placed after the icon controls in the same action rail. */
+  trailingAccessory?: React.ReactNode;
 }
 
 /**
- * One unframed icon-only control in the glass action row. The invisible square
- * remains a full hit target, while only icon color changes on hover or active
- * state. `stopPropagation` keeps a tap from re-toggling the row or ending text
- * selection.
+ * Shared action container for the material panel and the overlay's bare lane.
+ * Inline editor controls retain the notification-center glass stack, while
+ * message actions can opt out without duplicating their interaction wiring.
  */
-function GlassActionButton({
+export function ChatMessageActionSurface({
+  bare = false,
+  className,
+  style,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { bare?: boolean }) {
+  return (
+    <div
+      className={cn(
+        "inline-flex items-center text-white",
+        bare
+          ? "gap-0.5"
+          : "gap-0.5 rounded-xl border border-white/25 bg-black/55 p-0.5 transition-colors duration-150",
+        className,
+      )}
+      style={
+        bare
+          ? style
+          : {
+              backgroundImage: LIQUID_GLASS_SHEEN,
+              boxShadow: LIQUID_GLASS_EDGE_SHADOW,
+              ...style,
+            }
+      }
+      {...props}
+    />
+  );
+}
+
+/**
+ * One icon control with a full hit target and an unframed resting state. Taps
+ * stop at the control so the parent message does not re-toggle its reveal.
+ */
+function MessageActionButton({
   label,
   icon,
   onClick,
   active,
+  bare,
   testId,
 }: {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
   active?: boolean;
+  bare?: boolean;
   testId?: string;
 }) {
   return (
@@ -72,8 +100,12 @@ function GlassActionButton({
         onClick();
       }}
       className={cn(
-        "h-7 w-7 rounded-none bg-transparent p-0 text-white/70 transition-colors hover:bg-transparent hover:text-white",
-        active && "text-[rgb(255,148,84)] hover:text-[rgb(255,148,84)]",
+        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
+        bare
+          ? "h-5 w-5 rounded-none hover:bg-transparent active:bg-transparent"
+          : "h-6 w-6 rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
+        active &&
+          (bare ? "text-white" : "bg-white/10 text-white hover:bg-white/15"),
       )}
     >
       {icon}
@@ -83,154 +115,129 @@ function GlassActionButton({
 
 export function ChatMessageActions({
   appearance = "rail",
-  canDelete = false,
   canEdit = false,
   canPlay = false,
   canReply = false,
   copied = false,
   labels = {},
   onCopy,
-  onDelete,
   onEdit,
   onPlay,
   onReply,
   playing = false,
+  trailingAccessory,
 }: ChatMessageActionsProps) {
+  const reduceMotion = useReducedMotion() ?? false;
   const copyLabel = labels.copy ?? "Copy message";
   const copiedLabel = labels.copied ?? "Copied!";
   const copiedAriaLabel = labels.copiedAria ?? "Copied to clipboard";
   const replyLabel = labels.reply ?? "Reply";
-
-  if (appearance === "glass-row") {
-    return (
-      <>
-        {canReply && onReply ? (
-          <GlassActionButton
-            label={replyLabel}
-            testId="thread-line-reply"
-            icon={<Reply className="h-3.5 w-3.5" />}
-            onClick={onReply}
-          />
-        ) : null}
-        {onCopy ? (
-          <GlassActionButton
-            label={copied ? "Copied" : "Copy"}
-            testId="thread-line-copy"
-            icon={
-              copied ? (
-                <Check className="h-3.5 w-3.5" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )
-            }
-            onClick={onCopy}
-            active={copied}
-          />
-        ) : null}
-        {canPlay && onPlay ? (
-          <GlassActionButton
-            label={playing ? "Stop" : "Play audio"}
-            testId="thread-line-speak"
-            icon={
-              playing ? (
-                <Square className="h-3.5 w-3.5" />
-              ) : (
-                <Volume2 className="h-3.5 w-3.5" />
-              )
-            }
-            onClick={onPlay}
-            active={playing}
-          />
-        ) : null}
-        {canEdit && onEdit ? (
-          <GlassActionButton
-            label="Edit"
-            testId="thread-line-edit"
-            icon={<Pencil className="h-3.5 w-3.5" />}
-            onClick={onEdit}
-          />
-        ) : null}
-        {canDelete && onDelete ? (
-          <GlassActionButton
-            label={labels.delete ?? "Delete"}
-            testId="thread-line-delete"
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            onClick={onDelete}
-          />
-        ) : null}
-      </>
-    );
-  }
+  const editLabel = labels.edit ?? "Edit message";
+  const playLabel = labels.play ?? "Play message";
+  const glassRow = appearance === "glass-row";
 
   return (
-    <PagePanel.ActionRail className="top-1 rounded-sm p-1">
+    <ChatMessageActionSurface
+      bare={glassRow}
+      data-testid={
+        glassRow ? "thread-line-action-surface" : "chat-message-actions"
+      }
+    >
       {canReply && onReply ? (
-        <Button
-          variant="surface"
-          size="icon"
+        <MessageActionButton
+          label={replyLabel}
+          testId={glassRow ? "thread-line-reply" : "chat-message-reply"}
+          icon={<Reply className="h-3.5 w-3.5" />}
           onClick={onReply}
-          className="h-8 w-8 rounded-sm"
-          title={replyLabel}
-          aria-label={replyLabel}
-          data-testid="chat-message-reply"
-        >
-          <Reply className="h-3.5 w-3.5" />
-        </Button>
+          bare={glassRow}
+        />
       ) : null}
 
-      <Button
-        variant="surface"
-        size="icon"
-        onClick={onCopy}
-        className="h-8 w-8 rounded-sm"
-        title={copied ? copiedLabel : copyLabel}
-        aria-label={copied ? copiedAriaLabel : copyLabel}
-      >
-        {copied ? (
-          <Check className="h-3.5 w-3.5 text-ok" />
-        ) : (
-          <Copy className="h-3.5 w-3.5" />
-        )}
-      </Button>
+      {onCopy ? (
+        <MessageActionButton
+          label={
+            copied
+              ? glassRow
+                ? copiedLabel
+                : copiedAriaLabel
+              : glassRow
+                ? (labels.copy ?? "Copy")
+                : copyLabel
+          }
+          testId={glassRow ? "thread-line-copy" : undefined}
+          icon={
+            <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+              <AnimatePresence initial={false}>
+                <motion.span
+                  key={copied ? "copied" : "copy"}
+                  data-testid="copy-status-icon"
+                  data-state={copied ? "copied" : "idle"}
+                  initial={
+                    reduceMotion
+                      ? false
+                      : { opacity: 0, rotate: copied ? -8 : 8, scale: 0.76 }
+                  }
+                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                  exit={
+                    reduceMotion
+                      ? { opacity: 0 }
+                      : { opacity: 0, rotate: copied ? 8 : -8, scale: 0.76 }
+                  }
+                  transition={{
+                    duration: reduceMotion ? 0.08 : 0.16,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </motion.span>
+              </AnimatePresence>
+            </span>
+          }
+          onClick={onCopy}
+          bare={glassRow}
+        />
+      ) : null}
 
-      {canPlay ? (
-        <Button
-          variant="surface"
-          size="icon"
+      {canPlay && onPlay ? (
+        <MessageActionButton
+          label={playing ? "Stop" : glassRow ? "Play audio" : playLabel}
+          testId={glassRow ? "thread-line-speak" : undefined}
+          icon={
+            playing ? (
+              <Square className="h-3.5 w-3.5" />
+            ) : (
+              <Volume2 className="h-3.5 w-3.5" />
+            )
+          }
           onClick={onPlay}
-          className="h-8 w-8 rounded-sm"
-          title={labels.play ?? "Play message"}
-          aria-label={labels.play ?? "Play message"}
-        >
-          <Volume2 className="h-3.5 w-3.5" />
-        </Button>
+          active={playing}
+          bare={glassRow}
+        />
       ) : null}
 
-      {canEdit ? (
-        <Button
-          variant="surface"
-          size="icon"
+      {canEdit && onEdit ? (
+        <MessageActionButton
+          label={glassRow ? (labels.edit ?? "Edit") : editLabel}
+          testId={glassRow ? "thread-line-edit" : undefined}
+          icon={<Pencil className="h-3.5 w-3.5" />}
           onClick={onEdit}
-          className="h-8 w-8 rounded-sm"
-          title={labels.edit ?? "Edit message"}
-          aria-label={labels.edit ?? "Edit message"}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
+          bare={glassRow}
+        />
       ) : null}
 
-      {canDelete ? (
-        <Button
-          variant="surfaceDestructive"
-          size="icon"
-          onClick={onDelete}
-          className="h-8 w-8 rounded-sm"
-          title={labels.delete ?? "Delete message"}
-          aria-label={labels.delete ?? "Delete message"}
+      {trailingAccessory ? (
+        <div
+          data-testid="thread-line-action-accessory"
+          className="ml-1 min-w-0 shrink-0"
         >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+          {trailingAccessory}
+        </div>
       ) : null}
-    </PagePanel.ActionRail>
+    </ChatMessageActionSurface>
   );
 }

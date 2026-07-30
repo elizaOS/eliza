@@ -94,6 +94,115 @@ test("runtime provenance manifest name is exported for APK provenance embedding"
   );
 });
 
+test("runtime downloads retry transient transport failures and publish atomically", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-retry-"));
+  const target = path.join(tmp, "cache", "bun.zip");
+  const delays = [];
+  const logs = [];
+  let attempts = 0;
+  try {
+    await __testables.downloadFile(
+      "https://downloads.invalid/bun.zip",
+      target,
+      {
+        fetchImpl: async () => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw new TypeError("fetch failed", {
+              cause: Object.assign(new Error("other side closed"), {
+                code: "UND_ERR_SOCKET",
+              }),
+            });
+          }
+          if (attempts === 2) {
+            return new Response("temporarily unavailable", { status: 503 });
+          }
+          return new Response("verified artifact bytes", { status: 200 });
+        },
+        sleep: async (delayMs) => {
+          delays.push(delayMs);
+        },
+        log: (message) => {
+          logs.push(message);
+        },
+      },
+    );
+
+    assert.equal(attempts, 3);
+    assert.deepEqual(delays, [1_000, 2_000]);
+    assert.equal(fs.readFileSync(target, "utf8"), "verified artifact bytes");
+    assert.equal(
+      fs
+        .readdirSync(path.dirname(target))
+        .some((name) => name.startsWith("bun.zip.download-")),
+      false,
+    );
+    assert.equal(logs.length, 2);
+    assert.match(logs[0], /attempt 1\/3 failed/);
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
+test("runtime downloads do not retry permanent HTTP failures", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-http-"));
+  const target = path.join(tmp, "bun.zip");
+  let attempts = 0;
+  try {
+    await assert.rejects(
+      __testables.downloadFile(
+        "https://downloads.invalid/missing-bun.zip",
+        target,
+        {
+          fetchImpl: async () => {
+            attempts += 1;
+            return new Response("missing", { status: 404 });
+          },
+          sleep: async () => {
+            assert.fail("permanent HTTP failures must not sleep or retry");
+          },
+        },
+      ),
+      (error) => {
+        assert.match(error.message, /after 1 attempt$/);
+        assert.equal(error.cause?.name, "DownloadHttpError");
+        assert.match(error.cause?.message, /HTTP 404/);
+        return true;
+      },
+    );
+    assert.equal(attempts, 1);
+    assert.equal(fs.existsSync(target), false);
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
+test("runtime downloads exhaust bounded retries without publishing partial bytes", async () => {
+  const tmp = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-download-exhausted-"),
+  );
+  const target = path.join(tmp, "bun.zip");
+  let attempts = 0;
+  try {
+    await assert.rejects(
+      __testables.downloadFile("https://downloads.invalid/bun.zip", target, {
+        fetchImpl: async () => {
+          attempts += 1;
+          throw new TypeError("fetch failed");
+        },
+        sleep: async () => {},
+        maxAttempts: 2,
+      }),
+      /Failed to download .* after 2 attempts/,
+    );
+    assert.equal(attempts, 2);
+    assert.equal(fs.existsSync(target), false);
+    assert.deepEqual(fs.readdirSync(tmp), []);
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
 test("launch scripts record the real detached agent child status", () => {
   const script = __testables.LAUNCH_SCRIPT;
   const childScript = __testables.LAUNCH_CHILD_SCRIPT;

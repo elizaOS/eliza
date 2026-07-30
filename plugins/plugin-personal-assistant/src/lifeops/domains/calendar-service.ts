@@ -19,14 +19,18 @@ import { CalendarService } from "@elizaos/plugin-calendar";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
 } from "@elizaos/shared";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { LifeOpsServiceError } from "../service-types.js";
@@ -59,14 +63,8 @@ export class CalendarDomain {
 
   setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
-  ): Promise<LifeOpsCalendarSummary> {
+    request: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<SetLifeOpsCalendarIncludedResponse> {
     return resolveCalendarService(this.ctx.runtime).setCalendarIncluded(
       requestUrl,
       request,
@@ -97,6 +95,26 @@ export class CalendarDomain {
     );
   }
 
+  createCalendarEventMutation(
+    requestUrl: URL,
+    request: CreateLifeOpsCalendarEventRequest,
+    now?: Date,
+  ): Promise<CreateLifeOpsCalendarEventResponse> {
+    return resolveCalendarService(this.ctx.runtime).createCalendarEventMutation(
+      requestUrl,
+      request,
+      now,
+    );
+  }
+
+  getAppleCalendarCreateAccess(): ReturnType<
+    CalendarService["getAppleCalendarCreateAccess"]
+  > {
+    return resolveCalendarService(
+      this.ctx.runtime,
+    ).getAppleCalendarCreateAccess();
+  }
+
   updateCalendarEvent(
     requestUrl: URL,
     request: {
@@ -112,6 +130,12 @@ export class CalendarDomain {
       endAt?: string;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
     return resolveCalendarService(this.ctx.runtime).updateCalendarEvent(
@@ -128,10 +152,61 @@ export class CalendarDomain {
       grantId?: string;
       calendarId?: string | null;
       eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<void> {
     return resolveCalendarService(this.ctx.runtime).deleteCalendarEvent(
       requestUrl,
+      request,
+    );
+  }
+
+  getConditionalCalendarMutationTarget(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+    },
+  ): Promise<LifeOpsCalendarEvent> {
+    return resolveCalendarService(
+      this.ctx.runtime,
+    ).getConditionalCalendarMutationTarget(requestUrl, request);
+  }
+
+  respondToCalendarEvent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      responseStatus: "accepted" | "declined" | "tentative";
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion: string;
+    },
+  ): Promise<LifeOpsCalendarEvent> {
+    return resolveCalendarService(this.ctx.runtime).respondToCalendarEvent(
+      requestUrl,
+      request,
+    );
+  }
+
+  reserveTravelBuffer(request: {
+    eventId: string;
+    bufferMinutes: number;
+    method: string;
+  }): Promise<LifeOpsCalendarEvent> {
+    return resolveCalendarService(this.ctx.runtime).reserveTravelBuffer(
       request,
     );
   }

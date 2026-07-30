@@ -19,7 +19,10 @@ import {
 } from "../../db/schemas";
 import { shouldBlockDevnetBypass } from "../config/deployment-environment";
 import { logger } from "../utils/logger";
-import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
+import {
+  invalidateInferenceAuthContextsByKeyHashes,
+  invalidateInferenceSessionAuthContexts,
+} from "./inference-auth-cache";
 
 /**
  * Clear the inference auth-context cache (#9899) for every API key a user owns.
@@ -27,8 +30,17 @@ import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cac
  * fast-pathing inference immediately (bounded otherwise by the IAC TTL).
  */
 async function invalidateUserInferenceContext(userId: string): Promise<void> {
-  const keys = await apiKeysRepository.listByUser(userId);
-  await invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash));
+  const [keys, user] = await Promise.all([
+    apiKeysRepository.listByUser(userId),
+    dbRead.query.users.findFirst({
+      where: eq(users.id, userId),
+      columns: { steward_user_id: true },
+    }),
+  ]);
+  await Promise.all([
+    invalidateInferenceAuthContextsByKeyHashes(keys.map((k) => k.key_hash)),
+    invalidateInferenceSessionAuthContexts(user?.steward_user_id ? [user.steward_user_id] : []),
+  ]);
 }
 
 // Default anvil wallet - admin in devnet only

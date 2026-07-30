@@ -107,7 +107,15 @@ describe("screenshotsToAttachments (#8904)", () => {
 
 describe("deliverScreenshots (#8904)", () => {
   it("posts a media message with capped attachments and returns the count", async () => {
-    const send = vi.fn(async () => undefined);
+    const send = vi.fn(async () => ({
+      kind: "delivered" as const,
+      receipt: {
+        providerMessageIds: ["screenshot-message-1"] as [string],
+        acceptedAt: 1_780_000_000_000,
+        persistence: { status: "persisted" as const, memoryIds: [] },
+      },
+      memories: [],
+    }));
     const n = await deliverScreenshots(
       send,
       { source: "telegram", roomId: ROOM },
@@ -132,7 +140,15 @@ describe("deliverScreenshots (#8904)", () => {
 
   it("warns and trims when more screenshots are supplied than fit the budget", async () => {
     const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
-    const send = vi.fn(async () => undefined);
+    const send = vi.fn(async () => ({
+      kind: "delivered" as const,
+      receipt: {
+        providerMessageIds: ["screenshot-message-2"] as [string],
+        acceptedAt: 1_780_000_000_000,
+        persistence: { status: "persisted" as const, memoryIds: [] },
+      },
+      memories: [],
+    }));
     const many = Array.from({ length: 9 }, (_, i) => `/tmp/${i}.png`);
     const n = await deliverScreenshots(
       send,
@@ -162,5 +178,18 @@ describe("deliverScreenshots (#8904)", () => {
       ),
     ).toBe(0);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns zero when the connector supplies no delivery evidence", async () => {
+    const send = vi.fn(async () => undefined);
+    await expect(
+      deliverScreenshots(
+        send,
+        { source: "t", roomId: ROOM },
+        ["/tmp/a.png"],
+        undefined,
+        { getSize: () => 100 },
+      ),
+    ).resolves.toBe(0);
   });
 });

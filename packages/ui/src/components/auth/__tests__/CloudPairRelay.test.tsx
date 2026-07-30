@@ -20,12 +20,14 @@ import {
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,
   CloudPairRelay,
+  exchangeAuthenticatedNativeCloudPairToken,
   exchangeCloudPairToken,
   getCloudPairTokenFromLocation,
   isElizaCloudHostedLocation,
   persistCloudPairApiToken,
   resolveCloudHostedAgentUrl,
   resolveCloudPairExchangeUrl,
+  resolveNativeCloudPairExchangeUrl,
 } from "../CloudPairRelay";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -78,14 +80,23 @@ describe("CloudPairRelay", () => {
 
   it("resolves the Cloud pair exchange endpoint from site and API bases", () => {
     expect(resolveCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
-      "https://elizacloud.ai/api/auth/pair",
+      "https://api.elizacloud.ai/api/auth/pair",
     );
     expect(
       resolveCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
     ).toBe("https://api.elizacloud.ai/api/auth/pair");
     expect(resolveCloudPairExchangeUrl("https://www.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/api/auth/pair",
+      "https://api.elizacloud.ai/api/auth/pair",
     );
+    expect(resolveNativeCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
+      "https://api.elizacloud.ai/api/auth/pair/native",
+    );
+    expect(
+      resolveNativeCloudPairExchangeUrl("https://staging.elizacloud.ai"),
+    ).toBe("https://api-staging.elizacloud.ai/api/auth/pair/native");
+    expect(
+      resolveNativeCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
+    ).toBe("https://api.elizacloud.ai/api/auth/pair/native");
   });
 
   it("detects Eliza Cloud-hosted surfaces without matching localhost", () => {
@@ -127,6 +138,68 @@ describe("CloudPairRelay", () => {
         body: JSON.stringify({ token: "pair-token" }),
       }),
     );
+  });
+
+  it("uses the authenticated identity-bound endpoint only for native pairing", async () => {
+    const fetchFn = vi.fn(async () => jsonResponse({ apiKey: "native-key" }));
+
+    await expect(
+      exchangeAuthenticatedNativeCloudPairToken("pair-token", {
+        cloudToken: "steward.jwt.token",
+        agentId: "23766030-c096-4a14-932a-a4e43c562432",
+        expectedOrigin:
+          "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+        fetchFn: fetchFn as unknown as typeof fetch,
+        cloudApiBase: "https://api.elizacloud.ai/api/v1",
+      }),
+    ).resolves.toBe("native-key");
+
+    expect(fetchFn).toHaveBeenCalledWith(
+      "https://api.elizacloud.ai/api/auth/pair/native",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer steward.jwt.token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          token: "pair-token",
+          agentId: "23766030-c096-4a14-932a-a4e43c562432",
+          expectedOrigin:
+            "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+        }),
+      }),
+    );
+  });
+
+  it("preserves the native recovery code on exchange failures", async () => {
+    const fetchFn = vi.fn(async () =>
+      jsonResponse(
+        {
+          success: false,
+          error: "Cloud authentication required",
+          code: "cloud_auth_required",
+        },
+        401,
+      ),
+    );
+
+    const error = await exchangeAuthenticatedNativeCloudPairToken(
+      "pair-token",
+      {
+        cloudToken: "expired.steward.token",
+        agentId: "23766030-c096-4a14-932a-a4e43c562432",
+        expectedOrigin:
+          "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+        fetchFn: fetchFn as unknown as typeof fetch,
+      },
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(CloudPairExchangeError);
+    expect(error).toMatchObject({
+      status: 401,
+      code: "cloud_auth_required",
+    });
   });
 
   it("persists the paired API key into the app token channels", () => {

@@ -16,8 +16,11 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentButton, getViewRegistry } from "./agent-surface";
+import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { resetUiRegistryHostForTests } from "./registry-host";
 
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
@@ -76,7 +79,11 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
     }: {
       bundleUrl?: string;
       frameUrl?: string;
-      surface?: { capabilities?: string[]; isolation?: string };
+      surface?: {
+        capabilities?: string[];
+        header?: string;
+        isolation?: string;
+      };
       viewId: string;
       viewType?: string;
     }) => (
@@ -147,6 +154,17 @@ const calendarView = {
   viewType: "gui" as const,
 };
 
+const simpleCalendarView = {
+  id: "simple-calendar",
+  label: "Simple Calendar",
+  available: true,
+  pluginName: "@elizaos/plugin-simple-views",
+  path: "/simple-calendar",
+  bundleUrl: "/api/views/simple-calendar/bundle.js",
+  surface: { header: "fullscreen" as const },
+  viewType: "gui" as const,
+};
+
 const sharedCanvasView = {
   id: "shared-canvas",
   label: "Shared Canvas",
@@ -172,6 +190,16 @@ const documentsView = {
   pluginName: "@elizaos/plugin-documents",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
+  viewType: "gui" as const,
+};
+
+const walletMarketView = {
+  id: "wallet-market-test",
+  label: "Wallet Market Test",
+  available: true,
+  pluginName: "@local/plugin-wallet-market",
+  path: "/wallet-market-test",
+  bundleUrl: "/api/views/wallet-market-test/bundle.js",
   viewType: "gui" as const,
 };
 
@@ -510,6 +538,7 @@ describe("App navigate-view event wiring", () => {
 
   afterEach(() => {
     cleanup();
+    resetUiRegistryHostForTests();
     vi.unstubAllGlobals();
   });
 
@@ -656,6 +685,122 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("prefers an exact remote plugin route over its native wallet fallback", async () => {
+    mockAvailableViews.push(walletMarketView);
+    registerAppShellPage({
+      id: walletMarketView.id,
+      pluginId: walletMarketView.pluginName,
+      label: walletMarketView.label,
+      path: walletMarketView.path,
+      tabAffinity: "inventory",
+      Component: () => <div data-testid="native-wallet-fallback" />,
+    });
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", walletMarketView.path);
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(
+      getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
+    ).toBe(walletMarketView.id);
+    expect(queryByTestId("native-wallet-fallback")).toBeNull();
+  });
+
+  it("gives an in-process wallet page a live agent-surface registry", async () => {
+    registerAppShellPage({
+      id: "wallet.inventory",
+      pluginId: "@elizaos/plugin-wallet-ui",
+      label: "Wallet",
+      path: "/inventory",
+      tabAffinity: "inventory",
+      Component: () => (
+        <AgentButton agentId="wallet-refresh">Refresh wallet</AgentButton>
+      ),
+    });
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", "/inventory");
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getViewRegistry("wallet.inventory", "gui")?.size()).toBe(1);
+    });
+    expect(
+      getViewRegistry("wallet.inventory", "gui")?.describe("wallet-refresh")
+        ?.label,
+    ).toBe("Refresh wallet");
+  });
+
+  it.each(["/inventory", "/hyperliquid", "/polymarket"])(
+    "does not canonicalize a cold exact wallet-family route through tab affinity: %s",
+    async (path) => {
+      appState.tab = "views";
+      window.history.replaceState(null, "", path);
+      const registrations = [
+        {
+          id: "wallet.inventory",
+          pluginId: "@elizaos/plugin-wallet-ui",
+          label: "Wallet",
+          path: "/inventory",
+        },
+        {
+          id: "hyperliquid",
+          pluginId: "@elizaos/plugin-hyperliquid",
+          label: "Perps",
+          path: "/hyperliquid",
+        },
+        {
+          id: "polymarket",
+          pluginId: "@elizaos/plugin-polymarket",
+          label: "Predictions",
+          path: "/polymarket",
+        },
+      ];
+      const owningRegistration = registrations.find(
+        (registration) => registration.path === path,
+      );
+      if (!owningRegistration) {
+        throw new Error(`Missing test registration for ${path}`);
+      }
+
+      registerAppShellPage({
+        ...owningRegistration,
+        tabAffinity: "inventory",
+        Component: () => null,
+      });
+
+      render(<App />);
+
+      expect(window.location.pathname).toBe(path);
+      expect(appState.setTab).not.toHaveBeenCalled();
+    },
+  );
+
+  it("lets a fullscreen plugin view fill behind the floating composer", async () => {
+    mockAvailableViews.push(simpleCalendarView);
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/simple-calendar");
+
+    const { container, getByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pb-[var(--eliza-chat-clearance"),
+    ).toBe(false);
+    expect(
+      container
+        .querySelector('[data-shell-content-region="true"]')
+        ?.className.includes("pe-[var(--eliza-chat-side-clearance"),
+    ).toBe(false);
+    expect(
+      container.querySelector<HTMLElement>("[data-app-shell-root]")?.style
+        .paddingTop,
+    ).toBe("0px");
   });
 
   it("routes frame-only sandboxed views through DynamicViewLoader with frameUrl", async () => {

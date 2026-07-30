@@ -15,7 +15,7 @@ describe("ElizaClient agent streaming transport", () => {
         done: false,
         value: encoder.encode(
           'data: {"type":"token","text":"hi","fullText":"hi"}\n\n' +
-            'data: {"type":"done","fullText":"hi","agentName":"Eliza"}\n\n',
+            'data: {"type":"done","fullText":"hi","agentName":"Eliza","messageId":"assistant-db-id","userMessageId":"user-db-id"}\n\n',
         ),
       })
       .mockRejectedValueOnce(new Error("read after terminal event"));
@@ -43,10 +43,47 @@ describe("ElizaClient agent streaming transport", () => {
       text: "hi",
       agentName: "Eliza",
       completed: true,
+      messageId: "assistant-db-id",
+      userMessageId: "user-db-id",
     });
     expect(onToken).toHaveBeenCalledWith("hi", "hi");
     expect(read).toHaveBeenCalledTimes(1);
     expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
+  });
+
+  it("preserves the explicit no-DB-row marker for transient assistant replies", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"Try again.","agentName":"Eliza","assistantEphemeral":true,"userMessageId":"user-db-id"}\n\n',
+      ),
+    });
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      text: "Try again.",
+      completed: true,
+      assistantEphemeral: true,
+      userMessageId: "user-db-id",
+    });
+    expect(result).not.toHaveProperty("messageId");
   });
 
   it("surfaces the done event's thought as reasoning", async () => {
@@ -86,6 +123,36 @@ describe("ElizaClient agent streaming transport", () => {
       completed: true,
       reasoning: "User wants a yes/no; keep it short.",
     });
+  });
+
+  it("surfaces internal transcript visibility from the terminal done event", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"available_views:\\nviews[1]{id}: notes","agentName":"Eliza","transcriptVisibility":"internal"}\n\n',
+      ),
+    });
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "what views are available?",
+      vi.fn(),
+    );
+
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.text).toContain("available_views:");
   });
 
   it("surfaces done event action results for page handoffs", async () => {
@@ -513,51 +580,38 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     expect(onToken).toHaveBeenCalledWith("hi", "hi");
   });
 
-  it("marks a 60s idle stall as a retryable provider_issue, keeping partial text", async () => {
-    vi.useFakeTimers();
-    try {
-      const encoder = new TextEncoder();
-      const read = vi
-        .fn()
-        // First read delivers a partial token, then the provider hangs — the
-        // second read never resolves, so only the 60s idle timer can settle it.
-        .mockResolvedValueOnce({
-          done: false,
-          value: encoder.encode(
-            'data: {"type":"token","text":"par","fullText":"par"}\n\n',
-          ),
-        })
-        .mockReturnValueOnce(new Promise(() => {}));
-      const cancel = vi.fn(async () => {});
-      const request = vi.fn(
-        async () =>
-          ({
-            ok: true,
-            status: 200,
-            body: { getReader: () => ({ read, cancel }) },
-          }) as unknown as Response,
-      );
-      const client = new ElizaClient("http://agent.example:31337", "token");
-      client.setRequestTransport({ request });
+  it("keeps partial text when the stream transport rejects without fabricating a provider error", async () => {
+    const encoder = new TextEncoder();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode(
+          'data: {"type":"token","text":"par","fullText":"par"}\n\n',
+        ),
+      })
+      .mockRejectedValueOnce(new Error("socket reset"));
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          body: { getReader: () => ({ read, cancel }) },
+        }) as unknown as Response,
+    );
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
 
-      const resultPromise = client.streamChatEndpoint(
-        "/api/conversations/conversation-id/messages/stream",
-        "hello",
-        vi.fn(),
-      );
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      vi.fn(),
+    );
 
-      // Process the partial token, then trip the 60s idle timeout on the hang.
-      await vi.advanceTimersByTimeAsync(60_000);
-      const result = await resultPromise;
-
-      // The stall is now a retryable provider issue (renderer shows Retry)
-      // instead of an ambiguous interrupt, and the partial text is retained.
-      expect(result.completed).toBe(false);
-      expect(result.failureKind).toBe("provider_issue");
-      expect(result.text).toContain("par");
-      expect(cancel).toHaveBeenCalledWith("elizaos-sse-idle-timeout");
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(result.completed).toBe(false);
+    expect(result.failureKind).toBeUndefined();
+    expect(result.text).toContain("par");
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-read-failed");
   });
 });

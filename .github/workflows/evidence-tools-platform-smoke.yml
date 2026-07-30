@@ -1,0 +1,90 @@
+name: Evidence Tools Platform Smoke
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - ".github/workflows/evidence-tools-platform-smoke.yml"
+      - "scripts/evidence-doctor.mjs"
+      - "scripts/evidence-doctor.test.mjs"
+      - "scripts/evidence-install-tools.mjs"
+      - "scripts/evidence-install-tools.test.mjs"
+      - "packages/evidence/src/ffmpeg-binaries.ts"
+      - "CONTRIBUTING.md"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch: {}
+
+concurrency:
+  group: evidence-tools-platform-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-probe:
+    name: Real install + repeat + probe (${{ matrix.os }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
+      - name: Validate platform install plan
+        run: node scripts/evidence-install-tools.mjs --dry-run --github
+
+      - name: Record pre-install capability report
+        run: node scripts/evidence-doctor.mjs --json > evidence-tools-before.json
+
+      - name: Install repository tool packages
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Exercise real platform installer
+        run: node scripts/evidence-install-tools.mjs --skip-deps --github
+
+      - name: Record first-install capability report
+        run: node scripts/evidence-doctor.mjs --json > evidence-tools-after-first-run.json
+
+      - name: Require a fully resolved post-install plan
+        run: node scripts/evidence-install-tools.mjs --dry-run --strict --skip-deps --github
+
+      - name: Prove installer idempotence
+        run: node scripts/evidence-install-tools.mjs --skip-deps --github
+
+      - name: Require baseline capture capabilities
+        run: node scripts/evidence-doctor.mjs --strict --json > evidence-tools-after.json
+
+      - name: Prove the repeated run changed no capability
+        shell: bash
+        run: |
+          node -e 'const fs=require("node:fs");const first=JSON.parse(fs.readFileSync("evidence-tools-after-first-run.json","utf8"));const second=JSON.parse(fs.readFileSync("evidence-tools-after.json","utf8"));require("node:assert/strict").deepEqual(second,first);console.log("installer idempotence: normalized capability reports are identical");'
+
+      - name: Upload normalized capability reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: evidence-tools-${{ matrix.os }}
+          path: |
+            evidence-tools-*.json
+          if-no-files-found: error
+          retention-days: 14

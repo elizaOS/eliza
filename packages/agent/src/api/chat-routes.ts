@@ -13,14 +13,18 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { isDeepStrictEqual } from "node:util";
 import {
   type ActionResult,
   type AgentRuntime,
+  attestAuthenticatedApiDeliveryAudience,
   ChannelType,
   type Content,
   createMessageMemory,
+  ElizaError,
   EventType,
   emitInferenceTiming,
+  executePlannedToolCall,
   getInferenceTimer,
   getSwarmCoordinatorService,
   INFERENCE_MARKS,
@@ -40,7 +44,9 @@ import {
   runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
+  type TrustedApiPrincipal,
   timeInferenceSpan,
+  trackPostDeliveryTask,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -61,6 +67,7 @@ import {
   resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
   estimateTokenCount,
@@ -112,6 +119,10 @@ import {
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.ts";
+import {
+  isAuthorized,
+  isServerTokenAuthorized,
+} from "./server-helpers-auth.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
 
 export type { ChatImageAttachment, LogEntry };
@@ -192,21 +203,36 @@ const CLIENT_MESSAGE_ID_MAX_LENGTH = 128;
  *
  * Keyed by `${conversationOrUserScope}:${clientMessageId}` so a legitimately
  * identical message in a different conversation, or the same text re-sent after
- * the TTL, is NOT suppressed. The TTL must cover the full server generation
- * window plus the client's reconnect retry wait; otherwise a retry after a long
- * but successful turn can land after the arrival timestamp expires and start a
- * second billed LLM turn. The map stays bounded via an amortized sweep (at most
- * once per TTL window) — the same O(1)-check / amortized-eviction shape as the
- * WS cache.
+ * the retention window, is NOT suppressed. The map stays bounded via an
+ * amortized sweep (at most once per retention window) — the same O(1)-check /
+ * amortized-eviction shape as the WS cache. This window only retains keys; it
+ * never delays or aborts a response.
  */
-const chatSeenMessageIds = new Map<string, number>();
-const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
-const CHAT_DEDUPE_RECONNECT_WAIT_MS = 30_000;
-const CHAT_DEDUPE_SETTLE_BUFFER_MS = 30_000;
-const CHAT_DEDUPE_TTL_MS =
-  resolveChatGenerationTimeoutMs() +
-  CHAT_DEDUPE_RECONNECT_WAIT_MS +
-  CHAT_DEDUPE_SETTLE_BUFFER_MS;
+export interface ChatMessageIdOutcome {
+  text: string;
+  agentName: string;
+  messageId?: UUID;
+  userMessageId?: UUID;
+  assistantEphemeral?: boolean;
+  historyRefreshRequired?: boolean;
+  transcriptVisibility?: "internal";
+  thought?: string;
+  usage?: ChatGenerationResult["usage"];
+  actionResults?: ChatActionResultSummary[];
+  failureKind?: ChatFailureKind;
+  accountConnect?: AccountConnectRequest;
+  localInference?: LocalInferenceChatMetadata;
+  noResponseReason?: "ignored";
+}
+
+interface ChatMessageIdEntry {
+  firstSeenAt: number;
+  settledAt?: number;
+  outcome?: ChatMessageIdOutcome;
+}
+
+const chatSeenMessageIds = new Map<string, ChatMessageIdEntry>();
+const CHAT_SETTLED_OUTCOME_RETENTION_MS = 5 * 60_000;
 let chatSeenLastSweepAt = 0;
 
 /** Normalize a raw body value into a usable idempotency key, or `null` when
@@ -221,12 +247,10 @@ export function normalizeClientMessageId(value: unknown): string | null {
 }
 
 /**
- * TTL-aware O(1) duplicate check for an HTTP chat send. Returns `true` when this
- * `(scope, clientMessageId)` pair was already seen within the TTL window. When
- * `clientMessageId` is absent/invalid the result is ALWAYS `false`, so requests
- * without an idempotency key behave exactly as before (no dedupe). The first
- * sighting records the timestamp and returns `false`; a repeat within the window
- * returns `true`. After the TTL elapses the id is treated as new again.
+ * Lifecycle-aware O(1) duplicate check for an HTTP chat send. Active turns
+ * remain reserved until their owner either settles or explicitly releases the
+ * key; they must not become duplicate work merely because generation is slow.
+ * Settled outcomes remain replayable for a bounded retention period.
  *
  * `scope` is the conversation room id (dashboard chat) or the per-user room key
  * (agent-message API) so the key cannot collide across conversations/users.
@@ -238,16 +262,28 @@ export function isDuplicateChatMessage(
 ): boolean {
   if (!clientMessageId) return false;
   const key = `${scope}:${clientMessageId}`;
-  const seenAt = chatSeenMessageIds.get(key);
-  if (seenAt !== undefined && now - seenAt <= CHAT_DEDUPE_TTL_MS) return true;
-  chatSeenMessageIds.set(key, now);
-  // Amortized eviction: sweep expired entries at most once per TTL window
-  // rather than on every request, keeping the map bounded without a per-request
-  // O(n) scan.
-  if (now - chatSeenLastSweepAt > CHAT_DEDUPE_TTL_MS) {
+  const entry = chatSeenMessageIds.get(key);
+  if (entry !== undefined) {
+    if (
+      entry.settledAt === undefined ||
+      now - entry.settledAt <= CHAT_SETTLED_OUTCOME_RETENTION_MS
+    ) {
+      return true;
+    }
+    chatSeenMessageIds.delete(key);
+  }
+  chatSeenMessageIds.set(key, { firstSeenAt: now });
+  // Active entries have an explicit owner and may not be evicted. Only settled
+  // outcomes are swept, amortizing the O(n) scan across the retention window.
+  if (now - chatSeenLastSweepAt > CHAT_SETTLED_OUTCOME_RETENTION_MS) {
     chatSeenLastSweepAt = now;
-    for (const [seenKey, ts] of chatSeenMessageIds) {
-      if (now - ts > CHAT_DEDUPE_TTL_MS) chatSeenMessageIds.delete(seenKey);
+    for (const [seenKey, seenEntry] of chatSeenMessageIds) {
+      if (
+        seenEntry.settledAt !== undefined &&
+        now - seenEntry.settledAt > CHAT_SETTLED_OUTCOME_RETENTION_MS
+      ) {
+        chatSeenMessageIds.delete(seenKey);
+      }
     }
   }
   return false;
@@ -278,19 +314,49 @@ export function releaseChatMessageId(
 /**
  * Original arrival timestamp recorded for a `(scope, clientMessageId)` pair,
  * or `null` when the pair is unknown (never seen, expired and swept, or
- * released). Consulted by the duplicate-suppression branches AFTER
- * {@link isDuplicateChatMessage} returns `true`: the recorded arrival bounds
- * the "since" window for looking up the FIRST attempt's persisted assistant
- * reply, so a retry that lands after delivery can return that reply instead
- * of an empty ignored turn. A duplicate sighting never refreshes the stored
- * timestamp, so this is always the first attempt's arrival.
+ * released). A duplicate sighting never refreshes it, so diagnostics and
+ * focused cache tests can distinguish the first request from later retries.
  */
 export function getChatMessageIdFirstSeenAt(
   scope: string,
   clientMessageId: string | null,
 ): number | null {
   if (!clientMessageId) return null;
-  return chatSeenMessageIds.get(`${scope}:${clientMessageId}`) ?? null;
+  return (
+    chatSeenMessageIds.get(`${scope}:${clientMessageId}`)?.firstSeenAt ?? null
+  );
+}
+
+/**
+ * Bind the durable terminal result to the exact client idempotency key.
+ *
+ * A room-level "latest assistant memory" lookup cannot identify which of two
+ * concurrent turns produced a reply. The first request records its result only
+ * after that result is durable; a retry can then replay this exact outcome
+ * without starting another model turn or borrowing a neighboring turn.
+ */
+export function setChatMessageIdOutcome(
+  scope: string,
+  clientMessageId: string | null,
+  outcome: ChatMessageIdOutcome,
+): void {
+  if (!clientMessageId) return;
+  const key = `${scope}:${clientMessageId}`;
+  const entry = chatSeenMessageIds.get(key);
+  if (!entry) return;
+  entry.outcome = structuredClone(outcome);
+  entry.settledAt = Date.now();
+}
+
+/** Return the durable outcome bound to an exact idempotency key, if settled. */
+export function getChatMessageIdOutcome(
+  scope: string,
+  clientMessageId: string | null,
+): ChatMessageIdOutcome | null {
+  if (!clientMessageId) return null;
+  const outcome =
+    chatSeenMessageIds.get(`${scope}:${clientMessageId}`)?.outcome ?? null;
+  return outcome ? structuredClone(outcome) : null;
 }
 
 /** Test-only: clear the HTTP chat idempotency cache between cases. */
@@ -302,7 +368,7 @@ export function __resetChatDedupeForTests(): void {
 /** Test-only: expose the configured dedupe window without freezing env policy
  *  into the unit fixtures. */
 export function __getChatDedupeTtlMsForTests(): number {
-  return CHAT_DEDUPE_TTL_MS;
+  return CHAT_SETTLED_OUTCOME_RETENTION_MS;
 }
 
 const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
@@ -815,6 +881,8 @@ export interface AccountConnectRequest {
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
+  /** Machine-only final text that must not render as assistant prose. */
+  transcriptVisibility?: "internal";
   /** The agent's internal reasoning for this turn, when the model emitted one. */
   thought?: string;
   noResponseReason?: "ignored";
@@ -826,10 +894,9 @@ export interface ChatGenerationResult {
   actionCallbackHistory?: string[];
   actionResults?: ChatActionResultSummary[];
   responseContent?: Content | null;
-  responseMessages?: Array<{
-    id?: string;
-    content?: Content;
-  }>;
+  responseMessages?: Memory[];
+  /** Exact response IDs durably committed by the message service before return. */
+  persistedResponseMessageIds?: string[];
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -870,7 +937,6 @@ export interface ChatGenerateOptions {
    * `error`. Additive; a caller that omits it loses only the inline tool surface.
    */
   onToolEvent?: (event: ChatToolCallEvent) => void;
-  isAborted?: () => boolean;
   abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
@@ -1021,17 +1087,31 @@ export function chatEventsFromStructuredStreamPayload(
     const statusText = firstNonEmptyString(record.status, toolCall?.status);
     const failed = type === "tool_error" || statusText === "failed";
     const result = record.result ?? toolCall?.result;
+    const resultRecord = asRecord(result);
+    const transcriptVisibility =
+      resultRecord?.transcriptVisibility === "internal"
+        ? ("internal" as const)
+        : undefined;
     if (failed) {
       return {
         toolEvent: {
           phase: "error",
           callId,
           toolName,
+          ...(transcriptVisibility ? { transcriptVisibility } : {}),
           error: firstNonEmptyString(result, statusText) ?? "tool failed",
         },
       };
     }
-    return { toolEvent: { phase: "result", callId, toolName, result } };
+    return {
+      toolEvent: {
+        phase: "result",
+        callId,
+        toolName,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
+        result,
+      },
+    };
   }
 
   if (type === "evaluation") {
@@ -1075,6 +1155,9 @@ function getLatestVisibleResponseMessageText(
 
   for (let index = responseMessages.length - 1; index >= 0; index -= 1) {
     const content = responseMessages[index]?.content;
+    if (content?.transcriptVisibility === "internal") {
+      continue;
+    }
     const text =
       typeof extractCompatTextContent(content) === "string"
         ? extractCompatTextContent(content).trim()
@@ -1425,31 +1508,224 @@ function readRuntimeActionResults(
   }
 }
 
-function listExecutedRuntimeActions(
+function readActionResultName(result: unknown): string {
+  if (!result || typeof result !== "object") {
+    return "";
+  }
+  const record = result as Record<string, unknown>;
+  if (typeof record.actionName === "string") {
+    return normalizeActionName(record.actionName);
+  }
+  const data =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  return normalizeActionName(data?.actionName);
+}
+
+function listSuccessfulActionNames(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
+  turnActionResults: readonly unknown[] | undefined,
+  actionNameLookup: ReadonlyMap<string, string>,
 ): Set<string> {
-  return new Set(
-    readRuntimeActionResults(runtime, messageId)
-      .map((result) => {
-        if (typeof result === "string") {
-          return normalizeActionName(result);
-        }
-        if (!result || typeof result !== "object") {
-          return "";
-        }
-        const record = result as Record<string, unknown>;
-        if (typeof record.actionName === "string") {
-          return normalizeActionName(record.actionName);
-        }
-        const data =
-          record.data && typeof record.data === "object"
-            ? (record.data as Record<string, unknown>)
-            : null;
-        return normalizeActionName(data?.actionName);
-      })
-      .filter((name) => name.length > 0),
+  const successfulNames = new Set<string>();
+  for (const result of listSuccessfulActionResults(
+    runtime,
+    messageId,
+    turnActionResults,
+  )) {
+    const normalizedName = readActionResultName(result);
+    if (!normalizedName) {
+      continue;
+    }
+    successfulNames.add(actionNameLookup.get(normalizedName) ?? normalizedName);
+  }
+  return successfulNames;
+}
+
+function listSuccessfulActionResults(
+  runtime: AgentRuntime,
+  messageId: UUID | undefined,
+  turnActionResults: readonly unknown[] | undefined,
+): unknown[] {
+  return [
+    ...(turnActionResults ?? []),
+    ...readRuntimeActionResults(runtime, messageId),
+  ].filter((result) => {
+    if (
+      !result ||
+      typeof result !== "object" ||
+      (result as Record<string, unknown>).success !== true
+    ) {
+      return false;
+    }
+    return Boolean(readActionResultName(result));
+  });
+}
+
+function isProgressActionCallback(content: Content): boolean {
+  const status = normalizeActionName(
+    (content as Record<string, unknown>).actionStatus,
   );
+  return (
+    status === "PENDING" ||
+    status === "QUEUED" ||
+    status === "RUNNING" ||
+    status === "IN_PROGRESS" ||
+    status === "PROGRESS"
+  );
+}
+
+type WalletAttributedOperation =
+  | "APPROVE"
+  | "BALANCE"
+  | "BUY"
+  | "EXECUTE"
+  | "SELL"
+  | "SWAP"
+  | "TRADE"
+  | "TRANSFER";
+
+const WALLET_ROUTER_SUBACTION_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["TRANSFER", ["TRANSFER"]],
+  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["BRIDGE", ["TRANSFER"]],
+  ["GOV", []],
+  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
+  ["TOKEN_INFO", []],
+  ["SEARCH_ADDRESS", ["BALANCE"]],
+]);
+
+const WALLET_GOV_OP_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["PROPOSE", []],
+  ["VOTE", ["APPROVE"]],
+  ["QUEUE", []],
+  ["EXECUTE", ["EXECUTE"]],
+]);
+
+// This fail-closed boundary intentionally duplicates the wallet plugin's public
+// action names and similes so an unrelated action cannot gain wallet authority
+// merely by containing a financial verb.
+const WALLET_ACTION_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["EVM_TRANSFER", ["TRANSFER"]],
+  ["SOLANA_TRANSFER", ["TRANSFER"]],
+  ["CROSS_CHAIN_TRANSFER", ["TRANSFER"]],
+  ["TRANSFER", ["TRANSFER"]],
+  ["TRANSFER_TOKEN", ["TRANSFER"]],
+  ["TRANSFER_TOKENS", ["TRANSFER"]],
+  ["TRANSFER_SOL", ["TRANSFER"]],
+  ["WALLET_TRANSFER", ["TRANSFER"]],
+  ["SEND_TOKEN", ["TRANSFER"]],
+  ["SEND_TOKENS", ["TRANSFER"]],
+  ["SEND_SOL", ["TRANSFER"]],
+  ["PREPARE_TRANSFER", ["TRANSFER"]],
+  ["PAY", ["TRANSFER"]],
+  ["EVM_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SOLANA_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_SOL", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_SOLANA", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_TOKEN", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_TOKENS", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["WALLET_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["TOKEN_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["TRADE", ["TRADE", "BUY", "SELL"]],
+  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
+  ["PUMPFUN_BUY", ["BUY", "TRADE"]],
+  ["BUY_PUMP_FUN", ["BUY", "TRADE"]],
+  ["BUY_PUMPFUN", ["BUY", "TRADE"]],
+  ["CHECK_BALANCE", ["BALANCE"]],
+  ["WALLET_SEARCH_ADDRESS", ["BALANCE"]],
+  ["BIRDEYE_SEARCH", ["BALANCE"]],
+  ["BIRDEYE_LOOKUP", ["BALANCE"]],
+]);
+
+function walletActionMatchesIntent(
+  prompt: string,
+  successfulActionName: string,
+  result?: unknown,
+): boolean {
+  const actionName = normalizeActionName(successfulActionName);
+  if (!actionName) return false;
+  const record =
+    result && typeof result === "object"
+      ? (result as Record<string, unknown>)
+      : null;
+  const data =
+    record?.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  const values =
+    record?.values && typeof record.values === "object"
+      ? (record.values as Record<string, unknown>)
+      : null;
+  const metadata =
+    data?.metadata && typeof data.metadata === "object"
+      ? (data.metadata as Record<string, unknown>)
+      : null;
+  const walletSubaction = normalizeActionName(
+    data?.subaction ??
+      data?.walletSubaction ??
+      values?.walletSubaction ??
+      values?.subaction,
+  );
+  const walletGovOp = normalizeActionName(
+    data?.op ?? metadata?.op ?? values?.walletGovOp,
+  );
+  const tradeHasExecutionEvidence =
+    values?.tradeActionPrepared === true ||
+    values?.tradeActionSucceeded === true ||
+    normalizeActionName(values?.tradeOutcome) === "SUBMITTED" ||
+    normalizeActionName(data?.outcome) === "SUBMITTED";
+  const attributedOperations =
+    actionName === "WALLET"
+      ? walletSubaction === "GOV"
+        ? WALLET_GOV_OP_OPERATIONS.get(walletGovOp)
+        : WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
+      : actionName === "TRADE"
+        ? tradeHasExecutionEvidence
+          ? WALLET_ACTION_OPERATIONS.get(actionName)
+          : undefined
+        : WALLET_ACTION_OPERATIONS.get(actionName);
+  if (!attributedOperations) return false;
+  const matches = (operation: WalletAttributedOperation) =>
+    attributedOperations.includes(operation);
+
+  if (/\b(send|transfer)\b/i.test(prompt)) {
+    return matches("TRANSFER");
+  }
+  if (/\bswap\b/i.test(prompt)) {
+    return matches("SWAP");
+  }
+  if (/\btrade\b/i.test(prompt)) {
+    return matches("TRADE") || matches("BUY") || matches("SELL");
+  }
+  if (/\bbuy\b/i.test(prompt)) {
+    return matches("BUY");
+  }
+  if (/\bsell\b/i.test(prompt)) {
+    return matches("SELL");
+  }
+  if (/\bapprove\b/i.test(prompt)) {
+    return matches("APPROVE");
+  }
+  if (/\bexecute\b/i.test(prompt)) {
+    return matches("EXECUTE");
+  }
+  if (/\b(balance|portfolio|holdings|funds)\b/i.test(prompt)) {
+    return matches("BALANCE");
+  }
+  return attributedOperations.length > 0;
 }
 
 function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
@@ -1542,6 +1818,25 @@ function summarizeRuntimeActionResults(
     .slice(-8);
 }
 
+function resolveFinalTranscriptVisibility(
+  finalText: string,
+  actionResults: readonly ActionResult[] | undefined,
+  contents: readonly (Content | null | undefined)[] = [],
+): "internal" | undefined {
+  if (!finalText) return undefined;
+  return contents.some(
+    (content) =>
+      content?.transcriptVisibility === "internal" &&
+      extractCompatTextContent(content) === finalText,
+  ) ||
+    actionResults?.some(
+      (result) =>
+        result.transcriptVisibility === "internal" && result.text === finalText,
+    )
+    ? "internal"
+    : undefined;
+}
+
 function pickInsufficientCreditsChatReply(): string {
   return INSUFFICIENT_CREDITS_CHAT_REPLY;
 }
@@ -1586,11 +1881,11 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
   }
 
   const fromEnv = readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS");
-  if (!fromEnv) return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
+  if (!fromEnv) return 0;
 
   const parsed = Number.parseInt(fromEnv, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
+    return 0;
   }
 
   return Math.max(1_000, parsed);
@@ -1606,6 +1901,9 @@ async function withTimeout<T>(
   createError: () => Error,
   onTimeout?: () => void,
 ): Promise<T> {
+  if (timeoutMs <= 0) {
+    return promise;
+  }
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -2058,6 +2356,70 @@ export async function persistConversationMemory(
   return memory;
 }
 
+export async function persistExactConversationMemory(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+): Promise<ReturnType<typeof createMessageMemory>> {
+  if (!memory.id) {
+    throw new ElizaError(
+      "Exact conversation memory is missing its durable id",
+      {
+        code: "CONVERSATION_MEMORY_ID_MISSING",
+        context: { roomId: memory.roomId },
+      },
+    );
+  }
+
+  const loadExisting = async (): Promise<Memory | null> => {
+    const [existing] = await runtime.getMemoriesByIds(
+      [memory.id as UUID],
+      "messages",
+    );
+    return existing ?? null;
+  };
+  const assertExact = (
+    existing: Memory,
+  ): ReturnType<typeof createMessageMemory> => {
+    if (
+      existing.id === memory.id &&
+      existing.roomId === memory.roomId &&
+      existing.agentId === memory.agentId &&
+      existing.entityId === memory.entityId &&
+      isDeepStrictEqual(existing.content, memory.content)
+    ) {
+      return existing as ReturnType<typeof createMessageMemory>;
+    }
+    throw new ElizaError(
+      "Conversation memory id is already bound to different content",
+      {
+        code: "CONVERSATION_MEMORY_ID_CONFLICT",
+        context: {
+          memoryId: memory.id,
+          roomId: memory.roomId,
+          agentId: memory.agentId,
+          entityId: memory.entityId,
+        },
+      },
+    );
+  };
+
+  const existing = await loadExisting();
+  if (existing) return assertExact(existing);
+
+  try {
+    await runtime.createMemory(memory, "messages");
+    return memory;
+  } catch (cause) {
+    const raced = await loadExisting();
+    if (raced) return assertExact(raced);
+    throw new ElizaError("Failed to store exact conversation memory", {
+      code: "CONVERSATION_MEMORY_WRITE_FAILED",
+      cause,
+      context: { memoryId: memory.id, roomId: memory.roomId },
+    });
+  }
+}
+
 async function hasRecentAssistantMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2137,10 +2499,15 @@ export async function getRecentVisibleAssistantMemorySince(
 
     const persistedAssistantTurn = recent
       .filter((memory) => {
-        const contentText = (memory.content as { text?: string })?.text?.trim();
+        const content = memory.content as {
+          text?: string;
+          transcriptVisibility?: "internal";
+        };
+        const contentText = content.text?.trim();
         const createdAt = memory.createdAt ?? 0;
         return (
           memory.entityId === runtime.agentId &&
+          content.transcriptVisibility !== "internal" &&
           Boolean(contentText) &&
           createdAt >= sinceMs - slackMs
         );
@@ -2164,11 +2531,10 @@ export async function persistAssistantConversationMemory(
   content: string | Content,
   channelType: ChannelType,
   dedupeSinceMs?: number,
-  // Caller-supplied memory id. The streaming route pre-mints the id and stamps
-  // it on the SSE `done` frame BEFORE this (possibly deferred) persist runs,
-  // so the client can swap its optimistic temp-resp-* bubble to the durable id
-  // and the proactive-message WS echo reconciles by id instead of appending a
-  // duplicate bubble.
+  // Callers that need a deterministic retry key may supply the memory id. The
+  // returned Memory remains the authority for terminal transport metadata:
+  // callers emit `done` only after this write resolves and use its durable id
+  // to reconcile optimistic and proactive-message copies.
   memoryId?: UUID,
 ): Promise<Memory | null> {
   const persistedContent = markSyntheticChatFailureContent(
@@ -2194,7 +2560,7 @@ export async function persistAssistantConversationMemory(
   const trimmed = persistedContent.text.trim();
   if (!trimmed) return null;
 
-  if (typeof dedupeSinceMs === "number") {
+  if (typeof dedupeSinceMs === "number" && !memoryId) {
     const alreadyPersisted = await hasRecentAssistantMemory(
       runtime,
       roomId,
@@ -2204,16 +2570,16 @@ export async function persistAssistantConversationMemory(
     if (alreadyPersisted) return null;
   }
 
-  return await persistConversationMemory(
-    runtime,
-    createMessageMemory({
-      id: memoryId ?? (crypto.randomUUID() as UUID),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      roomId,
-      content: persistedContent,
-    }),
-  );
+  const memory = createMessageMemory({
+    id: memoryId ?? (crypto.randomUUID() as UUID),
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId,
+    content: persistedContent,
+  });
+  return memoryId
+    ? await persistExactConversationMemory(runtime, memory)
+    : await persistConversationMemory(runtime, memory);
 }
 
 // ---------------------------------------------------------------------------
@@ -2376,28 +2742,30 @@ function readMessageTrajectoryGrouping(
   });
 }
 
-async function persistMessageTrajectoryGrouping(
+function scheduleMessageTrajectoryGroupingPersistence(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
-): Promise<void> {
+): void {
   const stepId = readMessageTrajectoryStepId(message);
   if (!stepId) return;
 
   const grouping = readMessageTrajectoryGrouping(message);
   if (!grouping.scenarioId && !grouping.batchId) return;
 
-  await startTrajectoryStepInDatabase({
-    runtime,
-    stepId,
-    source:
-      typeof message.content.source === "string" &&
-      message.content.source.trim().length > 0
-        ? message.content.source
-        : undefined,
-    metadata: {
-      ...(grouping.scenarioId ? { scenarioId: grouping.scenarioId } : {}),
-      ...(grouping.batchId ? { batchId: grouping.batchId } : {}),
-    },
+  void trackPostDeliveryTask(runtime, "chat:trajectory-grouping", async () => {
+    await startTrajectoryStepInDatabase({
+      runtime,
+      stepId,
+      source:
+        typeof message.content.source === "string" &&
+        message.content.source.trim().length > 0
+          ? message.content.source
+          : undefined,
+      metadata: {
+        ...(grouping.scenarioId ? { scenarioId: grouping.scenarioId } : {}),
+        ...(grouping.batchId ? { batchId: grouping.batchId } : {}),
+      },
+    });
   });
 }
 
@@ -2457,10 +2825,6 @@ async function generateChatResponseWithTiming(
     opts?.timeoutDuration,
   );
   let generationTimedOut = false;
-  if (generationTimeoutMs <= 1) {
-    generationTimedOut = true;
-    throw createChatGenerationTimeoutError(generationTimeoutMs);
-  }
   const generationAbortController = new AbortController();
   const abortGeneration = (reason?: unknown): void => {
     if (!generationAbortController.signal.aborted) {
@@ -2486,7 +2850,11 @@ async function generateChatResponseWithTiming(
     let forcedWalletExecutionText = false;
     let blockedUnexecutedActionPayload = false;
     let activeStreamSource: StreamSource = "unset";
-    const actionCallbackHistory: string[] = [];
+    let visibleCallbackDeliveries = 0;
+    const deliveredActionCallbacks: Array<{
+      actionName: string;
+      text?: string;
+    }> = [];
     // Snapshot of `responseText` at the moment the first action callback runs.
     // WHY: LLM streaming genuinely appends token deltas. Action handlers that
     // call HandlerCallback multiple times (Discord "progressive message" pattern)
@@ -2548,29 +2916,30 @@ async function generateChatResponseWithTiming(
       }
       return activeStreamSource === source;
     };
-    const appendIncomingText = (incoming: string): void => {
-      const update = resolveStreamingUpdate(responseText, incoming);
-      if (update.kind === "unchanged") return;
-      if (update.kind === "append") {
-        emitChunk(update.emittedText);
+    const appendIncomingText = (chunk: string, accumulated?: string): void => {
+      // StreamChunkCallback defines `chunk` as a delta. Structured extractors
+      // additionally provide their authoritative accumulation, which lets this
+      // boundary recover an actual upstream rewrite without guessing from text
+      // overlap. Applying overlap deduplication to genuine deltas corrupts valid
+      // boundaries such as "Fast " + "streaming " and repeated tokens.
+      if (accumulated === undefined) {
+        emitChunk(chunk);
         return;
       }
-      emitSnapshot(update.nextText);
+      if (accumulated === responseText) return;
+      if (accumulated.startsWith(responseText)) {
+        emitChunk(accumulated.slice(responseText.length));
+        return;
+      }
+      emitSnapshot(accumulated);
     };
     const captureCallbackBaseline = (): void => {
       if (preCallbackText === null) {
         preCallbackText = responseText;
       }
     };
-    const recordActionCallbackText = (incoming: string): void => {
-      const normalized = normalizeActionCallbackText(incoming);
-      if (!normalized) return;
-      if (actionCallbackHistory.at(-1) === normalized) return;
-      actionCallbackHistory.push(normalized);
-    };
     /** Latest action callback wins: replaces prior callback text, keeps LLM prefix. */
     const replaceCallbackText = (incoming: string): void => {
-      recordActionCallbackText(incoming);
       captureCallbackBaseline();
       const baseline = preCallbackText ?? "";
       const separator = baseline.length > 0 ? "\n\n" : "";
@@ -2598,7 +2967,6 @@ async function generateChatResponseWithTiming(
     ): void => {
       captureCallbackBaseline();
       if (resolveCallbackMergeMode(content) === "append") {
-        recordActionCallbackText(incoming);
         appendIncomingText(incoming);
         return;
       }
@@ -2683,50 +3051,44 @@ async function generateChatResponseWithTiming(
         >
       | undefined;
     let capturedUsage: CapturedModelUsage | null = null;
-    let actionCallbacksSeen = 0;
-    const seenActionTags = new Set<string>();
     const recordActionCallback = (
       actionTag: string,
       hasText: boolean,
+      text?: string,
     ): void => {
-      actionCallbacksSeen += 1;
       const normalizedActionTag = normalizeActionName(actionTag);
-      if (normalizedActionTag) {
-        seenActionTags.add(normalizedActionTag);
+      if (!normalizedActionTag) {
+        return;
       }
-      // The reply is now coming from an action handler, not raw LLM streaming —
-      // surface it as `running_action`, carrying the concrete action name (when
-      // it is a real action rather than the generic VISIBLE_CALLBACK tag) so the
-      // status reads e.g. "Running SEND_MESSAGE" instead of generic "Working".
+      const normalizedText =
+        hasText && text ? normalizeActionCallbackText(text) : "";
+      if (
+        normalizedText &&
+        !deliveredActionCallbacks.some(
+          (entry) =>
+            entry.actionName === normalizedActionTag &&
+            entry.text === normalizedText,
+        )
+      ) {
+        deliveredActionCallbacks.push({
+          actionName: normalizedActionTag,
+          text: normalizedText,
+        });
+      }
       emitStatus({
         kind: "running_action",
-        ...(normalizedActionTag && normalizedActionTag !== "VISIBLE_CALLBACK"
-          ? { actionName: normalizedActionTag }
-          : {}),
+        actionName: normalizedActionTag,
       });
       runtime.logger.info(
         {
           src: "eliza-api",
-          action: normalizedActionTag || actionTag,
+          action: normalizedActionTag,
           hasText,
         },
-        `[eliza-api] Action callback fired: ${normalizedActionTag || actionTag}`,
+        `[eliza-api] Action callback fired: ${normalizedActionTag}`,
       );
     };
-    const extractCallbackActionTag = (content: Content): string => {
-      const record = content as Record<string, unknown>;
-      if (typeof record.action === "string" && record.action.length > 0) {
-        return record.action;
-      }
-      if (Array.isArray(record.actions)) {
-        const firstAction = record.actions.find(
-          (action): action is string =>
-            typeof action === "string" && action.trim().length > 0,
-        );
-        if (firstAction) return firstAction;
-      }
-      return "VISIBLE_CALLBACK";
-    };
+    const fallbackSuccessfulActionNames = new Set<string>();
 
     const generationCapture = await withModelUsageCapture(runtime, () =>
       withTimeout(
@@ -2780,35 +3142,70 @@ async function generateChatResponseWithTiming(
                     "[eliza-api] Direct dispatch START_CODING_TASK from UI intent",
                   );
                   let actionResponseText = "";
-                  await createTaskAction.handler(
+                  const declaredParameters = new Set(
+                    createTaskAction.parameters?.map(
+                      (parameter) => parameter.name,
+                    ) ?? [],
+                  );
+                  const directTaskParameters: Record<string, unknown> = {};
+                  if (declaredParameters.has("action")) {
+                    directTaskParameters.action = "create";
+                  } else if (declaredParameters.has("op")) {
+                    directTaskParameters.op = "create";
+                  }
+                  if (
+                    declaredParameters.has("task") &&
+                    typeof message.content.text === "string"
+                  ) {
+                    directTaskParameters.task = message.content.text;
+                  }
+                  if (
+                    declaredParameters.has("agentType") &&
+                    typeof contentMetadata.agentType === "string"
+                  ) {
+                    directTaskParameters.agentType = contentMetadata.agentType;
+                  }
+                  const directActionResult = await executePlannedToolCall(
                     runtime,
-                    message,
-                    undefined,
-                    {},
-                    async (content: Content) => {
-                      if (generationTimedOut || opts?.isAborted?.()) {
-                        throw createChatGenerationTimeoutError(
-                          generationTimeoutMs,
-                        );
-                      }
+                    {
+                      message,
+                      activeContexts: createTaskAction.contexts ?? [
+                        "code",
+                        "automation",
+                      ],
+                      callback: async (content: Content) => {
+                        if (generationTimedOut) {
+                          throw createChatGenerationTimeoutError(
+                            generationTimeoutMs,
+                          );
+                        }
 
-                      const chunk = extractCompatTextContent(content);
-                      if (chunk) {
-                        const voicedChunk =
-                          await rewriteDirectActionCallbackText({
-                            runtime,
-                            actionName: createTaskAction.name,
-                            text: chunk,
-                            content,
-                          });
-                        applyCallbackTextUpdate(content, voicedChunk);
-                        actionResponseText = responseText;
-                      }
-                      return [];
+                        const chunk = extractCompatTextContent(content);
+                        if (chunk) {
+                          const voicedChunk =
+                            await rewriteDirectActionCallbackText({
+                              runtime,
+                              actionName: createTaskAction.name,
+                              text: chunk,
+                              content,
+                            });
+                          applyCallbackTextUpdate(content, voicedChunk);
+                          actionResponseText = responseText;
+                        }
+                        return [];
+                      },
                     },
+                    {
+                      name: createTaskAction.name,
+                      params: directTaskParameters,
+                    },
+                    { actions: [createTaskAction] },
                   );
                   const finalText =
-                    actionResponseText || responseText || "Task created.";
+                    actionResponseText ||
+                    directActionResult.text ||
+                    responseText ||
+                    "Task created.";
                   result = {
                     didRespond: true,
                     responseContent: { text: finalText },
@@ -2882,28 +3279,52 @@ async function generateChatResponseWithTiming(
                 runtime.messageService?.handleMessage(
                   runtime,
                   generationMessage,
-                  async (content: Content) => {
-                    if (generationTimedOut || opts?.isAborted?.()) {
+                  async (content: Content, actionName?: string) => {
+                    if (generationTimedOut) {
                       throw createChatGenerationTimeoutError(
                         generationTimeoutMs,
                       );
+                    }
+                    if (content.transcriptVisibility === "internal") {
+                      return [];
                     }
 
                     const chunk = extractCompatTextContent(content);
                     const visibleChunk = isInternalStructuredStreamText(chunk)
                       ? ""
                       : chunk;
-                    recordActionCallback(
-                      extractCallbackActionTag(content),
-                      Boolean(visibleChunk),
-                    );
-                    if (!visibleChunk) return [];
-                    if (!claimStreamSource("callback")) return [];
+                    const attributedActionName =
+                      normalizeActionName(actionName);
+                    const progressCallback = isProgressActionCallback(content);
+                    if (!visibleChunk) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
+                      }
+                      return [];
+                    }
+                    if (!claimStreamSource("callback")) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
+                      }
+                      return [];
+                    }
+                    if (!progressCallback) {
+                      visibleCallbackDeliveries += 1;
+                    }
                     applyCallbackTextUpdate(content, visibleChunk);
+                    if (attributedActionName) {
+                      recordActionCallback(
+                        attributedActionName,
+                        !progressCallback,
+                        progressCallback ? undefined : visibleChunk,
+                      );
+                    }
                     return [];
                   },
                   {
-                    timeoutDuration: generationTimeoutMs,
+                    ...(generationTimeoutMs > 0
+                      ? { timeoutDuration: generationTimeoutMs }
+                      : {}),
                     abortSignal: generationAbortController.signal,
                     keepExistingResponses: true,
                     onStreamChunk: opts?.onChunk
@@ -2912,7 +3333,7 @@ async function generateChatResponseWithTiming(
                           _messageId?: string,
                           accumulated?: string,
                         ) => {
-                          if (generationTimedOut || opts?.isAborted?.()) {
+                          if (generationTimedOut) {
                             throw createChatGenerationTimeoutError(
                               generationTimeoutMs,
                             );
@@ -2931,11 +3352,7 @@ async function generateChatResponseWithTiming(
                             return;
                           }
                           if (!claimStreamSource("onStreamChunk")) return;
-                          // Structured extractors provide authoritative cumulative text.
-                          // Using it avoids mistaking repeated characters at adjacent chunk
-                          // boundaries for transport overlap; raw delta handlers still fall
-                          // back to the route's compatibility reconciler.
-                          appendIncomingText(accumulated ?? chunk);
+                          appendIncomingText(chunk, accumulated);
                         }
                       : undefined,
                   },
@@ -3036,18 +3453,13 @@ async function generateChatResponseWithTiming(
                 modelText,
               );
               const actionNameLookup = buildRuntimeActionNameLookup(runtime);
-              const executedRuntimeActions = listExecutedRuntimeActions(
+              const successfulActionNames = listSuccessfulActionNames(
                 runtime,
                 typeof message.id === "string" ? message.id : undefined,
-              );
-              const executedActionNames = new Set(
-                [...executedRuntimeActions, ...seenActionTags]
-                  .map((name) => actionNameLookup.get(name) ?? name)
-                  .filter((name) => name.length > 0),
+                result.actionResults,
+                actionNameLookup,
               );
 
-              // Only run fallback execution when the core did NOT dispatch actions itself.
-              const coreHandledActions = resultRecord?.mode === "actions";
               const executableFallbackActions = parsedFallbackActions.filter(
                 (action) => {
                   if (!isExecutableFallbackAction(action)) {
@@ -3056,10 +3468,10 @@ async function generateChatResponseWithTiming(
                   const canonicalName =
                     actionNameLookup.get(normalizeActionName(action.name)) ??
                     normalizeActionName(action.name);
-                  return !executedActionNames.has(canonicalName);
+                  return !successfulActionNames.has(canonicalName);
                 },
               );
-              if (!coreHandledActions && executableFallbackActions.length > 0) {
+              if (executableFallbackActions.length > 0) {
                 const selfControlFallbackActions =
                   executableFallbackActions.filter((action) => {
                     const canonicalName =
@@ -3067,10 +3479,10 @@ async function generateChatResponseWithTiming(
                       normalizeActionName(action.name);
                     return canonicalName === "BLOCK";
                   });
-                const callbacksBeforeFallback = actionCallbacksSeen;
+                let successfulFallbackActions = new Set<string>();
 
                 if (selfControlFallbackActions.length > 0) {
-                  await executeFallbackParsedActions(
+                  const fallbackExecutions = await executeFallbackParsedActions(
                     runtime,
                     message,
                     selfControlFallbackActions,
@@ -3080,17 +3492,31 @@ async function generateChatResponseWithTiming(
                       getCurrentText: () => responseText || modelText,
                     },
                   );
+                  successfulFallbackActions = new Set(
+                    fallbackExecutions
+                      .filter((execution) => execution.success)
+                      .map((execution) => {
+                        const normalizedName = normalizeActionName(
+                          execution.actionName,
+                        );
+                        return (
+                          actionNameLookup.get(normalizedName) ?? normalizedName
+                        );
+                      })
+                      .filter((name) => name.length > 0),
+                  );
+                  for (const actionName of successfulFallbackActions) {
+                    fallbackSuccessfulActionNames.add(actionName);
+                  }
                 }
 
-                const selfControlFallbackExecuted =
-                  actionCallbacksSeen > callbacksBeforeFallback;
                 const remainingExecutableFallbackActions =
                   executableFallbackActions.filter((action) => {
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
                     if (canonicalName === "BLOCK") {
-                      return !selfControlFallbackExecuted;
+                      return !successfulFallbackActions.has(canonicalName);
                     }
                     return true;
                   });
@@ -3146,32 +3572,58 @@ async function generateChatResponseWithTiming(
         phase: "post-model",
       },
     );
+    const actionNameLookup = buildRuntimeActionNameLookup(runtime);
+    const successfulActionNames = listSuccessfulActionNames(
+      runtime,
+      typeof message.id === "string" ? message.id : undefined,
+      result?.actionResults,
+      actionNameLookup,
+    );
+    for (const actionName of fallbackSuccessfulActionNames) {
+      successfulActionNames.add(actionName);
+    }
+    const successfulTurnActionResults = listSuccessfulActionResults(
+      runtime,
+      typeof message.id === "string" ? message.id : undefined,
+      result?.actionResults,
+    );
 
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
     );
+    const resultContentCandidates = [
+      result?.responseContent,
+      ...(result?.responseMessages ?? []).map((entry) => entry.content),
+    ];
     const resultText =
       responseMessageText ||
       extractCompatTextContent(result?.responseContent) ||
       "";
+    const resultTextVisibility = resolveFinalTranscriptVisibility(
+      resultText,
+      result?.actionResults,
+      resultContentCandidates,
+    );
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
-    if (!responseText && resultText) {
+    if (!responseText && resultText && resultTextVisibility !== "internal") {
       if (opts?.onSnapshot) {
         emitSnapshot(resultText);
       } else {
         emitChunk(resultText);
       }
     } else if (
-      actionCallbacksSeen === 0 &&
+      visibleCallbackDeliveries === 0 &&
       resultText &&
+      resultTextVisibility !== "internal" &&
       resultText !== responseText &&
       resultText.startsWith(responseText)
     ) {
       emitChunk(resultText.slice(responseText.length));
     } else if (
-      actionCallbacksSeen === 0 &&
+      visibleCallbackDeliveries === 0 &&
       resultText &&
+      resultTextVisibility !== "internal" &&
       resultText !== responseText &&
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
@@ -3184,8 +3636,17 @@ async function generateChatResponseWithTiming(
     }
 
     if (
-      actionCallbacksSeen === 0 &&
-      isWalletActionRequiredIntent(originalUserText)
+      isWalletActionRequiredIntent(originalUserText) &&
+      !successfulTurnActionResults.some((actionResult) => {
+        const normalizedName = readActionResultName(actionResult);
+        const canonicalName =
+          actionNameLookup.get(normalizedName) ?? normalizedName;
+        return walletActionMatchesIntent(
+          originalUserText,
+          canonicalName,
+          actionResult,
+        );
+      })
     ) {
       const failureText = buildWalletActionNotExecutedReply(
         runtime,
@@ -3216,21 +3677,40 @@ async function generateChatResponseWithTiming(
         ? (noResponseFallback ??
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
+    const transcriptVisibility = resolveFinalTranscriptVisibility(
+      finalText,
+      result?.actionResults,
+      resultContentCandidates,
+    );
 
     const responseMessages = Array.isArray(result?.responseMessages)
-      ? result.responseMessages.map((entry) => ({
-          ...(entry.id ? { id: entry.id } : {}),
-          ...(entry.content ? { content: entry.content } : {}),
-        }))
+      ? result.responseMessages
       : [];
-    const responseContent =
+    const persistedResponseMessageIds = Array.isArray(
+      result?.persistedResponseMessageIds,
+    )
+      ? result.persistedResponseMessageIds.filter(
+          (id): id is UUID => typeof id === "string" && id.length > 0,
+        )
+      : [];
+    const responseContent: Content | null =
       result?.responseContent && typeof result.responseContent === "object"
-        ? ({
-            ...result.responseContent,
-            text: finalText,
-          } satisfies Content)
+        ? (() => {
+            const content = {
+              ...result.responseContent,
+              text: finalText,
+            } satisfies Content;
+            delete content.transcriptVisibility;
+            if (transcriptVisibility) {
+              content.transcriptVisibility = transcriptVisibility;
+            }
+            return content;
+          })()
         : finalText
-          ? ({ text: finalText } satisfies Content)
+          ? ({
+              text: finalText,
+              ...(transcriptVisibility ? { transcriptVisibility } : {}),
+            } satisfies Content)
           : null;
     const responseRecord = responseContent as
       | (Record<string, unknown> & {
@@ -3258,7 +3738,8 @@ async function generateChatResponseWithTiming(
       rawFailureKind === "insufficient_credits" ||
       rawFailureKind === "local_inference" ||
       rawFailureKind === "no_provider" ||
-      rawFailureKind === "provider_issue"
+      rawFailureKind === "provider_issue" ||
+      rawFailureKind === "rate_limited"
         ? rawFailureKind
         : undefined;
 
@@ -3272,10 +3753,44 @@ async function generateChatResponseWithTiming(
       typeof message.id === "string" ? message.id : undefined,
       result?.actionResults,
     );
+    const successfulDeliveredActionCallbacks = deliveredActionCallbacks.filter(
+      (entry) => {
+        const canonicalName =
+          actionNameLookup.get(entry.actionName) ?? entry.actionName;
+        return successfulActionNames.has(canonicalName);
+      },
+    );
+    const actionCallbackHistory = successfulDeliveredActionCallbacks.reduce<
+      string[]
+    >((history, entry) => {
+      if (entry.text && history.at(-1) !== entry.text) {
+        history.push(entry.text);
+      }
+      return history;
+    }, []);
+    const declaredResultActionNames = new Set(
+      (Array.isArray(result?.responseContent?.actions)
+        ? result.responseContent.actions
+        : []
+      )
+        .map((actionName) => {
+          const normalizedName = normalizeActionName(actionName);
+          return actionNameLookup.get(normalizedName) ?? normalizedName;
+        })
+        .filter((actionName) => actionName.length > 0),
+    );
+    const successfulActionMode =
+      result?.mode === "actions" &&
+      [...declaredResultActionNames].some((actionName) =>
+        successfulActionNames.has(actionName),
+      );
+    const usedActionCallbacks =
+      successfulDeliveredActionCallbacks.length > 0 || successfulActionMode;
 
     return {
       text: finalText,
       agentName,
+      ...(transcriptVisibility ? { transcriptVisibility } : {}),
       ...(thought ? { thought } : {}),
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }
@@ -3283,7 +3798,7 @@ async function generateChatResponseWithTiming(
       ...(failureKind ? { failureKind } : {}),
       ...(accountConnect ? { accountConnect } : {}),
       ...(localInference ? { localInference } : {}),
-      ...(actionCallbacksSeen > 0 ? { usedActionCallbacks: true } : {}),
+      ...(usedActionCallbacks ? { usedActionCallbacks: true } : {}),
       ...(actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
         : {}),
@@ -3292,23 +3807,14 @@ async function generateChatResponseWithTiming(
         : {}),
       ...(responseContent ? { responseContent } : {}),
       ...(responseMessages.length > 0 ? { responseMessages } : {}),
+      ...(persistedResponseMessageIds.length > 0
+        ? { persistedResponseMessageIds }
+        : {}),
       usage: buildChatUsage(runtime, message, finalText, capturedUsage),
     };
   } finally {
     opts?.abortSignal?.removeEventListener("abort", onExternalAbort);
-    try {
-      await persistMessageTrajectoryGrouping(runtime, message);
-    } catch (err) {
-      runtime.logger.warn(
-        {
-          err,
-          src: "eliza-api",
-          messageId: message.id,
-          roomId: message.roomId,
-        },
-        "Failed to persist trajectory grouping metadata",
-      );
-    }
+    scheduleMessageTrajectoryGroupingPersistence(runtime, message);
     closeResponseFinalization?.();
   }
 }
@@ -3495,6 +4001,7 @@ export interface ChatRouteState {
 
 export interface ChatRouteContext extends RouteRequestContext {
   state: ChatRouteState;
+  callerAuthorization?: AgentHttpRequestAuthorization;
 }
 
 export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
@@ -3507,10 +4014,20 @@ async function ensureCompatChatConnection(
   agentName: string,
   channelIdPrefix: string,
   roomKey: string,
+  principal: TrustedApiPrincipal,
 ): Promise<{ userId: UUID; roomId: UUID; worldId: UUID }> {
-  const userId = ensureAdminEntityIdForChat(state);
+  const ownerPrincipal =
+    principal.kind === "owner_session" || principal.kind === "owner_api_token";
+  const userId = ownerPrincipal
+    ? ensureAdminEntityIdForChat(state)
+    : (stringToUuid(
+        `${agentName}:${channelIdPrefix}:external:${principal.principalId}`,
+      ) as UUID);
+  const principalScopedRoomKey = ownerPrincipal
+    ? roomKey
+    : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
-    `${agentName}-${channelIdPrefix}-room-${roomKey}`,
+    `${agentName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
   ) as UUID;
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
@@ -3521,13 +4038,17 @@ async function ensureCompatChatConnection(
     worldId,
     userName: resolveAppUserName(state.config),
     source: MESSAGE_SOURCE_CLIENT_CHAT,
-    channelId: `${channelIdPrefix}-${roomKey}`,
-    type: ChannelType.DM,
+    channelId: `${channelIdPrefix}-${principalScopedRoomKey}`,
+    type: ChannelType.API,
     messageServerId,
-    metadata: { ownership: { ownerId: userId } },
+    metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
 
-  // Ensure world ownership
+  if (!ownerPrincipal) {
+    return { userId, roomId, worldId };
+  }
+
+  // Ensure world ownership only for a directly authenticated owner principal.
   const world = await runtime.getWorld(worldId);
   if (world) {
     let needsUpdate = false;
@@ -3561,6 +4082,46 @@ function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
   return resolveChatAdminEntityId(state);
 }
 
+export function resolveTrustedApiPrincipal(
+  req: http.IncomingMessage,
+  authorization: AgentHttpRequestAuthorization | undefined,
+): TrustedApiPrincipal {
+  if (isServerTokenAuthorized(req)) {
+    return {
+      kind: "service_gateway",
+      principalId: authorization?.principal ?? "shared-server-gateway",
+    };
+  }
+  if (authorization?.ok && authorization.role === "OWNER") {
+    return {
+      kind: "owner_session",
+      principalId:
+        authorization.identityId ??
+        authorization.principal ??
+        "authenticated-owner-session",
+    };
+  }
+  if (authorization?.ok) {
+    return {
+      kind: "service_gateway",
+      principalId:
+        authorization.identityId ??
+        authorization.principal ??
+        "authenticated-external-session",
+    };
+  }
+  if (isAuthorized(req)) {
+    return {
+      kind: "owner_api_token",
+      principalId: "direct-owner-api",
+    };
+  }
+  return {
+    kind: "service_gateway",
+    principalId: "non-owner-api",
+  };
+}
+
 function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {
   if (!state.runtime || !state.config) {
     return;
@@ -3580,6 +4141,10 @@ export async function handleChatRoutes(
   ctx: ChatRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, state } = ctx;
+  const trustedApiPrincipal = resolveTrustedApiPrincipal(
+    req,
+    ctx.callerAuthorization,
+  );
 
   // ── GET /v1/models (OpenAI compatible) ─────────────────────────────────
   if (method === "GET" && pathname === "/v1/models") {
@@ -3680,9 +4245,9 @@ export async function handleChatRoutes(
 
     if (wantsStream) {
       initSse(res);
-      let aborted = false;
+      const disconnectController = new AbortController();
       req.on("close", () => {
-        aborted = true;
+        disconnectController.abort(new Error("Client disconnected"));
       });
 
       const sendChunk = (
@@ -3725,6 +4290,7 @@ export async function handleChatRoutes(
         sendChunk({ role: "assistant" }, null);
 
         let fullText = "";
+        let transcriptVisibility: "internal" | undefined;
 
         {
           const runtime = state.runtime;
@@ -3736,6 +4302,7 @@ export async function handleChatRoutes(
             agentName,
             "openai-compat",
             roomKey,
+            trustedApiPrincipal,
           );
 
           const message = createMessageMemory({
@@ -3749,13 +4316,18 @@ export async function handleChatRoutes(
               channelType: ChannelType.API,
             },
           });
+          await attestAuthenticatedApiDeliveryAudience(
+            runtime,
+            message,
+            trustedApiPrincipal,
+          );
 
           const result = await generateChatResponse(
             runtime,
             message,
             state.agentName,
             {
-              isAborted: () => aborted,
+              abortSignal: disconnectController.signal,
               onChunk: (chunk) => {
                 fullText += chunk;
                 if (chunk) sendChunk({ content: chunk }, null);
@@ -3764,9 +4336,13 @@ export async function handleChatRoutes(
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
           );
+          transcriptVisibility = result.transcriptVisibility;
           if (result.localInference && !fullText) {
-            fullText = result.text;
-            sendChunk({ content: result.text }, null);
+            fullText =
+              result.transcriptVisibility === "internal" ? "" : result.text;
+            if (fullText) {
+              sendChunk({ content: fullText }, null);
+            }
           }
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -3778,7 +4354,8 @@ export async function handleChatRoutes(
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
-          resolved.trim()
+          resolved.trim() &&
+          transcriptVisibility !== "internal"
         ) {
           sendChunk({ content: resolved }, null);
         }
@@ -3786,7 +4363,7 @@ export async function handleChatRoutes(
         sendChunk({}, "stop");
         writeSseData(res, "[DONE]");
       } catch (err) {
-        if (!aborted) {
+        if (!disconnectController.signal.aborted) {
           if (isLocalInferenceError(err)) {
             const { getLocalInferenceChatStatus } =
               await getLocalInferenceChatApi();
@@ -3839,6 +4416,7 @@ export async function handleChatRoutes(
       let responseText: string;
       let localInference: LocalInferenceChatMetadata | undefined;
       let failureKind: ChatFailureKind | undefined;
+      let transcriptVisibility: "internal" | undefined;
 
       {
         if (!state.runtime) {
@@ -3862,10 +4440,12 @@ export async function handleChatRoutes(
           agentName,
           "openai-compat",
           roomKey,
+          trustedApiPrincipal,
         );
         const message = createMessageMemory({
           id: crypto.randomUUID() as UUID,
           entityId: userId,
+          agentId: runtime.agentId,
           roomId,
           content: {
             text: prompt,
@@ -3873,6 +4453,11 @@ export async function handleChatRoutes(
             channelType: ChannelType.API,
           },
         });
+        await attestAuthenticatedApiDeliveryAudience(
+          runtime,
+          message,
+          trustedApiPrincipal,
+        );
         const result = await generateChatResponse(
           runtime,
           message,
@@ -3883,7 +4468,9 @@ export async function handleChatRoutes(
           },
         );
         syncRuntimeCharacterToChatStateConfig(state);
-        responseText = result.text;
+        transcriptVisibility = result.transcriptVisibility;
+        responseText =
+          result.transcriptVisibility === "internal" ? "" : result.text;
         localInference = result.localInference;
         failureKind = result.failureKind;
       }
@@ -3903,11 +4490,14 @@ export async function handleChatRoutes(
         return true;
       }
 
-      const resolvedText = normalizeChatResponseText(
-        responseText,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              responseText,
+              state.logBuffer,
+              state.runtime,
+            );
       json(res, {
         id,
         object: "chat.completion",
@@ -4018,9 +4608,9 @@ export async function handleChatRoutes(
 
     if (wantsStream) {
       initSse(res);
-      let aborted = false;
+      const disconnectController = new AbortController();
       req.on("close", () => {
-        aborted = true;
+        disconnectController.abort(new Error("Client disconnected"));
       });
 
       try {
@@ -4075,6 +4665,7 @@ export async function handleChatRoutes(
 
         let fullText = "";
         let outputTokens = 0;
+        let transcriptVisibility: "internal" | undefined;
 
         const onDelta = (chunk: string) => {
           if (!chunk) return;
@@ -4100,11 +4691,13 @@ export async function handleChatRoutes(
             agentName,
             "anthropic-compat",
             roomKey,
+            trustedApiPrincipal,
           );
 
           const message = createMessageMemory({
             id: crypto.randomUUID() as UUID,
             entityId: userId,
+            agentId: runtime.agentId,
             roomId,
             content: {
               text: prompt,
@@ -4112,18 +4705,24 @@ export async function handleChatRoutes(
               channelType: ChannelType.API,
             },
           });
+          await attestAuthenticatedApiDeliveryAudience(
+            runtime,
+            message,
+            trustedApiPrincipal,
+          );
 
           const generation = await generateChatResponse(
             runtime,
             message,
             state.agentName,
             {
-              isAborted: () => aborted,
+              abortSignal: disconnectController.signal,
               onChunk: onDelta,
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
           );
+          transcriptVisibility = generation.transcriptVisibility;
           outputTokens = generation.usage?.completionTokens ?? outputTokens;
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -4135,7 +4734,8 @@ export async function handleChatRoutes(
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
-          resolved.trim()
+          resolved.trim() &&
+          transcriptVisibility !== "internal"
         ) {
           onDelta(resolved);
         }
@@ -4159,7 +4759,7 @@ export async function handleChatRoutes(
         );
         writeSseJson(res, { type: "message_stop" }, "message_stop");
       } catch (err) {
-        if (!aborted) {
+        if (!disconnectController.signal.aborted) {
           if (isNoProviderError(err)) {
             writeSseJson(
               res,
@@ -4195,6 +4795,7 @@ export async function handleChatRoutes(
       let responseText: string;
       let inputTokens = estimateTokenCount(prompt);
       let outputTokens = 0;
+      let transcriptVisibility: "internal" | undefined;
 
       {
         if (!state.runtime) {
@@ -4218,10 +4819,12 @@ export async function handleChatRoutes(
           agentName,
           "anthropic-compat",
           roomKey,
+          trustedApiPrincipal,
         );
         const message = createMessageMemory({
           id: crypto.randomUUID() as UUID,
           entityId: userId,
+          agentId: runtime.agentId,
           roomId,
           content: {
             text: prompt,
@@ -4229,6 +4832,11 @@ export async function handleChatRoutes(
             channelType: ChannelType.API,
           },
         });
+        await attestAuthenticatedApiDeliveryAudience(
+          runtime,
+          message,
+          trustedApiPrincipal,
+        );
         const result = await generateChatResponse(
           runtime,
           message,
@@ -4239,18 +4847,23 @@ export async function handleChatRoutes(
           },
         );
         syncRuntimeCharacterToChatStateConfig(state);
-        responseText = result.text;
+        transcriptVisibility = result.transcriptVisibility;
+        responseText =
+          result.transcriptVisibility === "internal" ? "" : result.text;
         if (result.usage) {
           inputTokens = result.usage.promptTokens;
           outputTokens = result.usage.completionTokens;
         }
       }
 
-      const resolvedText = normalizeChatResponseText(
-        responseText,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              responseText,
+              state.logBuffer,
+              state.runtime,
+            );
       json(res, {
         id,
         type: "message",
@@ -4338,17 +4951,16 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const platformName =
-      typeof safeBody.platformName === "string" ? safeBody.platformName : null;
-    const channelType =
-      typeof safeBody.channelType === "string"
-        ? (safeBody.channelType as ChannelType)
-        : ChannelType.API;
-    const source = platformName || "agent_message_api";
-
     try {
       const runtime = state.runtime;
       const agentName = runtime.character.name ?? "Eliza";
+      const messagePrincipal: TrustedApiPrincipal =
+        trustedApiPrincipal.kind === "service_gateway"
+          ? {
+              kind: "service_gateway",
+              principalId: `${trustedApiPrincipal.principalId}:${userId}`,
+            }
+          : trustedApiPrincipal;
       // Per-user room key — matches cloud `handleMessage`'s
       // `stringToUuid(\`${agentId}:${userId}\`)` shape closely enough that
       // both surfaces produce stable, user-scoped conversation rooms.
@@ -4358,6 +4970,7 @@ export async function handleChatRoutes(
         agentName,
         "agent-message",
         `${agentIdParam}:${userId}`.slice(0, 120),
+        messagePrincipal,
       );
 
       const message = createMessageMemory({
@@ -4367,10 +4980,15 @@ export async function handleChatRoutes(
         roomId,
         content: {
           text,
-          source,
-          channelType,
+          source: "agent_message_api",
+          channelType: ChannelType.API,
         },
       });
+      await attestAuthenticatedApiDeliveryAudience(
+        runtime,
+        message,
+        messagePrincipal,
+      );
 
       const result = await generateChatResponse(
         runtime,
@@ -4383,11 +5001,14 @@ export async function handleChatRoutes(
       );
       syncRuntimeCharacterToChatStateConfig(state);
 
-      const resolvedText = normalizeChatResponseText(
-        result.text,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        result.transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              result.text,
+              state.logBuffer,
+              state.runtime,
+            );
 
       json(res, {
         response: resolvedText,

@@ -16,6 +16,11 @@ import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
+type AgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
 type PrivacySafeObservedTier =
   | "shared"
   | "dedicated-lazy"
@@ -30,8 +35,8 @@ const HEARTBEAT_MAX_AGE_MS = 120_000;
 const HEARTBEAT_FUTURE_SKEW_MS = 30_000;
 const CONTROL_REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 130_000;
-const READY_TIMEOUT_MS = 12 * 60_000;
-const CLEANUP_TIMEOUT_MS = 4 * 60_000;
+const READY_TIMEOUT_MS = 16 * 60_000;
+const CLEANUP_TIMEOUT_MS = 6 * 60_000;
 const MAX_ARTIFACT_TIMING_MS = 45 * 60_000;
 const POLL_INTERVAL_MS = 5_000;
 const CREATE_RECOVERY_TIMEOUT_MS = 30_000;
@@ -86,6 +91,7 @@ const PRIVACY_SAFE_FAILURE_PHASES = new Set([
 ]);
 const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "invalid_run_suffix",
+  "invalid_stale_canary_suffix",
   "error_event",
   "unexpected_error",
   "request_failed",
@@ -119,11 +125,13 @@ const PRIVACY_SAFE_FAILURE_CODES = new Set([
   "non_staging_target_refused",
   "missing_deploy_commit",
   "existing_canary_present",
+  "expected_stale_canary_missing",
+  "stale_canary_disappeared",
   "missing_agent_id",
 ]);
 
 export interface ManagedDedicatedCanaryEvidence {
-  schemaVersion: 1;
+  schemaVersion: 2;
   verdict: "pass" | "fail";
   deployedCommit: string | null;
   path: {
@@ -142,6 +150,12 @@ export interface ManagedDedicatedCanaryEvidence {
     createdAgents: number;
     maxChatRequests: number;
     chatRequests: number;
+  };
+  recovery: {
+    requested: boolean;
+    match: "not-checked" | "none" | "one" | "multiple";
+    performed: "not-attempted" | "accepted" | "ambiguous";
+    confirmed: boolean;
   };
   timingsMs: Partial<Record<TimingPhase, number>>;
   cleanup: {
@@ -167,6 +181,7 @@ export interface ManagedDedicatedCanaryOptions {
   pollIntervalMs?: number;
   createRecoveryTimeoutMs?: number;
   createRecoveryPollIntervalMs?: number;
+  staleCanarySuffix?: string;
 }
 
 class CanaryFailure extends Error {
@@ -195,6 +210,20 @@ function dataRecord(body: JsonObject): JsonObject | null {
 function stringField(record: JsonObject | null, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isAgentExecutionTier(
+  value: string | null,
+): value is AgentExecutionTier {
+  switch (value) {
+    case "shared":
+    case "dedicated-lazy":
+    case "dedicated-always":
+    case "custom":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function privacySafeObservedTier(
@@ -228,6 +257,14 @@ function sanitizeSuffix(value: string): string {
     throw new CanaryFailure("config", "invalid_run_suffix");
   }
   return normalized;
+}
+
+function validateStaleCanarySuffix(value: string | undefined): string | null {
+  if (value === undefined || value === "") return null;
+  if (!/^r[1-9]\d{7,19}a[1-9]\d{0,3}$/.test(value)) {
+    throw new CanaryFailure("config", "invalid_stale_canary_suffix");
+  }
+  return value;
 }
 
 function isStagingBaseUrl(value: string): boolean {
@@ -332,7 +369,7 @@ function sseText(event: string, data: JsonObject | null): string {
 
 function freshEvidence(): ManagedDedicatedCanaryEvidence {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     verdict: "fail",
     deployedCommit: null,
     path: {
@@ -351,6 +388,12 @@ function freshEvidence(): ManagedDedicatedCanaryEvidence {
       createdAgents: 0,
       maxChatRequests: MAX_CHAT_ATTEMPTS_PER_PATH * 2,
       chatRequests: 0,
+    },
+    recovery: {
+      requested: false,
+      match: "not-checked",
+      performed: "not-attempted",
+      confirmed: false,
     },
     timingsMs: {},
     cleanup: { status: "not-required", possibleOrphan: false },
@@ -420,6 +463,7 @@ export function validateManagedDedicatedCanaryArtifact(
       "deployedCommit",
       "path",
       "capacity",
+      "recovery",
       "timingsMs",
       "cleanup",
       "failure",
@@ -428,7 +472,7 @@ export function validateManagedDedicatedCanaryArtifact(
   );
   if (!evidence) return errors;
 
-  if (evidence.schemaVersion !== 1) errors.push("unsafe_schema_version");
+  if (evidence.schemaVersion !== 2) errors.push("unsafe_schema_version");
   if (evidence.verdict !== "pass" && evidence.verdict !== "fail") {
     errors.push("unsafe_verdict");
   }
@@ -511,6 +555,51 @@ export function validateManagedDedicatedCanaryArtifact(
       )
     ) {
       errors.push("unsafe_chat_requests");
+    }
+  }
+
+  const recovery = exactEvidenceRecord(
+    evidence.recovery,
+    "recovery",
+    ["requested", "match", "performed", "confirmed"],
+    errors,
+  );
+  if (recovery) {
+    if (typeof recovery.requested !== "boolean") {
+      errors.push("unsafe_recovery_requested");
+    }
+    if (
+      recovery.match !== "not-checked" &&
+      recovery.match !== "none" &&
+      recovery.match !== "one" &&
+      recovery.match !== "multiple"
+    ) {
+      errors.push("unsafe_recovery_match");
+    }
+    if (
+      recovery.performed !== "not-attempted" &&
+      recovery.performed !== "accepted" &&
+      recovery.performed !== "ambiguous"
+    ) {
+      errors.push("unsafe_recovery_performed");
+    }
+    if (typeof recovery.confirmed !== "boolean") {
+      errors.push("unsafe_recovery_confirmed");
+    }
+    if (
+      recovery.performed !== "not-attempted" &&
+      (recovery.requested !== true || recovery.match !== "one")
+    ) {
+      errors.push("unsafe_recovery_performed_without_exact_request");
+    }
+    if (recovery.confirmed === true && recovery.performed !== "accepted") {
+      errors.push("unsafe_recovery_confirmation_without_acceptance");
+    }
+    if (
+      recovery.match !== "one" &&
+      (recovery.performed !== "not-attempted" || recovery.confirmed !== false)
+    ) {
+      errors.push("unsafe_recovery_nonmatch_mutation");
     }
   }
 
@@ -613,7 +702,7 @@ export function validateManagedDedicatedCanaryEvidence(
   if (!isRecord(value)) return ["evidence_not_an_object"];
   const evidence = value as unknown as ManagedDedicatedCanaryEvidence;
   const errors: string[] = [];
-  if (evidence.schemaVersion !== 1) errors.push("wrong_schema_version");
+  if (evidence.schemaVersion !== 2) errors.push("wrong_schema_version");
   if (evidence.verdict !== "pass") errors.push("verdict_not_pass");
   if (!/^[a-f0-9]{40}$/.test(evidence.deployedCommit ?? "")) {
     errors.push("missing_deployed_commit");
@@ -644,6 +733,22 @@ export function validateManagedDedicatedCanaryEvidence(
     evidence.capacity?.createdAgents !== 1
   ) {
     errors.push("created_agent_count_invalid");
+  }
+  if (evidence.recovery?.requested === true) {
+    if (
+      evidence.recovery.match !== "one" ||
+      evidence.recovery.performed !== "accepted" ||
+      evidence.recovery.confirmed !== true
+    ) {
+      errors.push("stale_recovery_not_proven");
+    }
+  } else if (
+    evidence.recovery?.requested !== false ||
+    evidence.recovery?.match !== "none" ||
+    evidence.recovery?.performed !== "not-attempted" ||
+    evidence.recovery?.confirmed !== false
+  ) {
+    errors.push("unexpected_stale_recovery");
   }
   if (
     evidence.capacity?.maxChatRequests !== MAX_CHAT_ATTEMPTS_PER_PATH * 2 ||
@@ -751,9 +856,13 @@ export async function runManagedDedicatedCanary(
   const rawSuffix =
     options.suffix ??
     `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
+  const rawStaleCanarySuffix = options.staleCanarySuffix;
   let suffix = "";
   let expectedName = "";
+  let staleCanarySuffix: string | null = null;
   let agentId: string | null = null;
+  let provisionJobId: string | null = null;
+  let provisionJobCompleted = false;
   let possibleOrphan = false;
 
   async function request(
@@ -805,6 +914,106 @@ export async function runManagedDedicatedCanary(
       throw new CanaryFailure(phase, "invalid_agent_list");
     }
     return body.data;
+  }
+
+  async function deleteVerifiedStaleCanary(
+    staleAgent: JsonObject,
+  ): Promise<void> {
+    // Workflow serialization rules out a live sibling canary. The explicit
+    // run-derived suffix still binds recovery to the investigated row so a
+    // prefix collision can never authorize an arbitrary agent deletion.
+    if (!staleCanarySuffix) {
+      throw new CanaryFailure("capacity_guard", "existing_canary_present");
+    }
+    const staleAgentId = stringField(staleAgent, "id");
+    const staleAgentName = stringField(staleAgent, "agentName");
+    const expectedStaleName = `${CANARY_NAME_PREFIX}${staleCanarySuffix}`;
+    if (!staleAgentId) {
+      throw new CanaryFailure("capacity_guard", "missing_agent_id");
+    }
+    if (staleAgentName !== expectedStaleName) {
+      throw new CanaryFailure("capacity_guard", "identity_mismatch");
+    }
+
+    const cleanupDeadline = now() + cleanupTimeoutMs;
+    const current = await request(
+      "capacity_guard",
+      `/api/v1/eliza/agents/${encodeURIComponent(staleAgentId)}`,
+      {},
+      [200, 404],
+    );
+    if (current.status === 404) {
+      throw new CanaryFailure("capacity_guard", "stale_canary_disappeared");
+    }
+    const currentData = dataRecord(current.body);
+    const staleCreatedAt = stringField(currentData, "createdAt");
+    if (
+      !currentData ||
+      stringField(currentData, "id") !== staleAgentId ||
+      stringField(currentData, "agentName") !== expectedStaleName ||
+      stringField(currentData, "executionTier") !== EXPECTED_TIER ||
+      !staleCreatedAt
+    ) {
+      throw new CanaryFailure("capacity_guard", "identity_mismatch");
+    }
+
+    let deletion: { status: number; body: JsonObject };
+    try {
+      deletion = await request(
+        "capacity_guard",
+        `/api/v1/eliza/agents/${encodeURIComponent(staleAgentId)}`,
+        {
+          method: "DELETE",
+          body: JSON.stringify({
+            expectedAgentName: expectedStaleName,
+            expectedCreatedAt: staleCreatedAt,
+            expectedExecutionTier: EXPECTED_TIER,
+          }),
+        },
+        [200, 202, 404],
+      );
+    } catch (error) {
+      if (asFailure(error).code === "request_failed") {
+        evidence.recovery.performed = "ambiguous";
+      }
+      throw error;
+    }
+    if (deletion.status === 404) {
+      throw new CanaryFailure("capacity_guard", "stale_canary_disappeared");
+    }
+    evidence.recovery.performed = "accepted";
+    if (deletion.status === 202) {
+      const jobId = stringField(dataRecord(deletion.body), "jobId");
+      if (!jobId) {
+        throw new CanaryFailure("capacity_guard", "missing_delete_job");
+      }
+      await pollJob(
+        jobId,
+        "capacity_guard",
+        Math.max(1, cleanupDeadline - now()),
+      );
+    }
+    while (now() < cleanupDeadline) {
+      const confirmation = await request(
+        "capacity_guard",
+        `/api/v1/eliza/agents/${encodeURIComponent(staleAgentId)}`,
+        {},
+        [200, 404],
+      );
+      if (confirmation.status === 404) return;
+      const confirmationData = dataRecord(confirmation.body);
+      if (
+        !confirmationData ||
+        stringField(confirmationData, "id") !== staleAgentId ||
+        stringField(confirmationData, "agentName") !== expectedStaleName ||
+        stringField(confirmationData, "executionTier") !== EXPECTED_TIER ||
+        stringField(confirmationData, "createdAt") !== staleCreatedAt
+      ) {
+        throw new CanaryFailure("capacity_guard", "identity_mismatch");
+      }
+      await sleep(pollIntervalMs);
+    }
+    throw new CanaryFailure("capacity_guard", "delete_not_confirmed");
   }
 
   async function recoverCreatedAgent(): Promise<boolean> {
@@ -1094,31 +1303,46 @@ export async function runManagedDedicatedCanary(
         return;
       }
       const cleanupDeadline = now() + cleanupTimeoutMs;
-      while (now() < cleanupDeadline) {
-        const current = await getAgent("cleanup_verify", [200, 404]);
-        if (current.status === 404) {
-          agentId = null;
-          evidence.cleanup.status = "passed";
-          evidence.cleanup.possibleOrphan = false;
-          return;
-        }
-        if (!current.data) {
-          throw new CanaryFailure("cleanup", "missing_agent_data");
-        }
-        if (
-          stringField(current.data, "id") !== agentId ||
-          stringField(current.data, "agentName") !== expectedName
-        ) {
-          throw new CanaryFailure("cleanup", "identity_mismatch");
-        }
-        if (stringField(current.data, "status") !== "provisioning") break;
-        await sleep(pollIntervalMs);
+      if (provisionJobId && !provisionJobCompleted) {
+        await pollJob(
+          provisionJobId,
+          "cleanup_job",
+          Math.max(1, cleanupDeadline - now()),
+        );
+        provisionJobCompleted = true;
+      }
+      const current = await getAgent("cleanup_verify", [200, 404]);
+      if (current.status === 404) {
+        agentId = null;
+        evidence.cleanup.status = "passed";
+        evidence.cleanup.possibleOrphan = false;
+        return;
+      }
+      if (!current.data) {
+        throw new CanaryFailure("cleanup", "missing_agent_data");
+      }
+      const cleanupCreatedAt = stringField(current.data, "createdAt");
+      const cleanupExecutionTier = stringField(current.data, "executionTier");
+      if (
+        stringField(current.data, "id") !== agentId ||
+        stringField(current.data, "agentName") !== expectedName ||
+        !isAgentExecutionTier(cleanupExecutionTier) ||
+        !cleanupCreatedAt
+      ) {
+        throw new CanaryFailure("cleanup", "identity_mismatch");
       }
 
       const result = await request(
         "cleanup_delete",
         `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
-        { method: "DELETE" },
+        {
+          method: "DELETE",
+          body: JSON.stringify({
+            expectedAgentName: expectedName,
+            expectedCreatedAt: cleanupCreatedAt,
+            expectedExecutionTier: cleanupExecutionTier,
+          }),
+        },
         [200, 202, 404],
       );
       if (result.status === 202) {
@@ -1138,6 +1362,15 @@ export async function runManagedDedicatedCanary(
           evidence.cleanup.possibleOrphan = false;
           return;
         }
+        if (
+          !check.data ||
+          stringField(check.data, "id") !== agentId ||
+          stringField(check.data, "agentName") !== expectedName ||
+          stringField(check.data, "executionTier") !== cleanupExecutionTier ||
+          stringField(check.data, "createdAt") !== cleanupCreatedAt
+        ) {
+          throw new CanaryFailure("cleanup", "identity_mismatch");
+        }
         await sleep(pollIntervalMs);
       }
       throw new CanaryFailure("cleanup", "delete_not_confirmed");
@@ -1148,6 +1381,8 @@ export async function runManagedDedicatedCanary(
 
   try {
     suffix = sanitizeSuffix(rawSuffix);
+    staleCanarySuffix = validateStaleCanarySuffix(rawStaleCanarySuffix);
+    evidence.recovery.requested = staleCanarySuffix !== null;
     expectedName = `${CANARY_NAME_PREFIX}${suffix}`;
     if (!apiKey) {
       throw new CanaryFailure("config", "missing_cloud_credential");
@@ -1167,15 +1402,39 @@ export async function runManagedDedicatedCanary(
 
     await inTimedPhase(evidence, "capacityGuard", now, async () => {
       const before = await listAgents("capacity_guard");
+      const existingCanaries = before.filter((agent) =>
+        (stringField(agent, "agentName") ?? "").startsWith(CANARY_NAME_PREFIX),
+      );
+      if (existingCanaries.length === 0) {
+        evidence.recovery.match = "none";
+        if (staleCanarySuffix) {
+          throw new CanaryFailure(
+            "capacity_guard",
+            "expected_stale_canary_missing",
+          );
+        }
+        return;
+      }
+      if (existingCanaries.length > 1) {
+        evidence.recovery.match = "multiple";
+        throw new CanaryFailure("capacity_guard", "existing_canary_present");
+      }
+      evidence.recovery.match = "one";
+      if (!staleCanarySuffix) {
+        throw new CanaryFailure("capacity_guard", "existing_canary_present");
+      }
+      await deleteVerifiedStaleCanary(existingCanaries[0]);
+      const after = await listAgents("capacity_guard");
       if (
-        before.some((agent) =>
+        after.some((agent) =>
           (stringField(agent, "agentName") ?? "").startsWith(
             CANARY_NAME_PREFIX,
           ),
         )
       ) {
-        throw new CanaryFailure("capacity_guard", "existing_canary_present");
+        throw new CanaryFailure("capacity_guard", "delete_not_confirmed");
       }
+      evidence.recovery.confirmed = true;
     });
 
     const createDone = timedPhase(evidence, "create", now);
@@ -1217,14 +1476,15 @@ export async function runManagedDedicatedCanary(
       if (observedTier !== EXPECTED_TIER) {
         throw new CanaryFailure("create", "wrong_execution_tier");
       }
-      const jobId = stringField(data, "jobId");
+      provisionJobId = stringField(data, "jobId");
       readinessDeadline = now() + readyTimeoutMs;
-      if (jobId) {
+      if (provisionJobId) {
         await pollJob(
-          jobId,
+          provisionJobId,
           "provision",
           Math.max(1, readinessDeadline - now()),
         );
+        provisionJobCompleted = true;
       }
     } catch (error) {
       if (!agentId && createFailureMayHaveCommitted(error)) {
@@ -1281,6 +1541,9 @@ async function main(): Promise<void> {
       githubRunId && githubRunAttempt
         ? `r${githubRunId}a${githubRunAttempt}`
         : undefined,
+    staleCanarySuffix: workflowEnv(
+      "CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX",
+    ),
   });
   await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, {
     mode: 0o600,

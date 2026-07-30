@@ -15,7 +15,10 @@
 
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import { createApprovalQueue } from "./store.ts";
-import type { ApprovalQueue } from "./types.ts";
+import {
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
+  type ApprovalQueue,
+} from "./types.ts";
 
 export const APPROVAL_SERVICE = "eliza_approval";
 
@@ -38,6 +41,18 @@ export class ApprovalService extends Service {
    */
   getQueue(agentId: string = this.runtime.agentId): ApprovalQueue {
     return createApprovalQueue(this.runtime, { agentId });
+  }
+
+  getExecutionCapability(
+    version: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION,
+    agentId: string = this.runtime.agentId,
+  ): ApprovalQueue {
+    if (version !== APPROVAL_EXECUTION_PROTOCOL_VERSION) {
+      throw new Error(
+        `[ApprovalService] unsupported approval execution protocol version: ${version}`,
+      );
+    }
+    return this.getQueue(agentId);
   }
 }
 

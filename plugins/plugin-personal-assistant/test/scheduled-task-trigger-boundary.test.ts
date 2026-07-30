@@ -12,6 +12,13 @@
  * idempotencyKey. These tests pin the boundary: aliases normalize, incomplete
  * triggers keep teaching details in structured data instead of user copy, and
  * an identical active task is returned instead of duplicated.
+ *
+ * Creates here are AUTONOMY-sourced: owner-chat reminder creates now delegate
+ * to the OWNER_REMINDERS definition flow (#16941 — the raw surface has no
+ * consent preview and its records are invisible to OWNER_REMINDERS review),
+ * so the raw trigger boundary under test is the surface background
+ * automations schedule their own work through. The final test pins the
+ * owner-chat delegation itself.
  */
 
 import type { Memory, UUID } from "@elizaos/core";
@@ -22,7 +29,18 @@ import {
   type RealTestRuntimeResult,
 } from "./helpers/runtime.ts";
 
-function ownerMessage(agentId: UUID, text: string): Memory {
+function autonomyMessage(agentId: UUID, text: string): Memory {
+  return {
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
+    entityId: agentId,
+    roomId: agentId,
+    agentId,
+    content: { text, source: "autonomy" },
+    createdAt: Date.now(),
+  } as Memory;
+}
+
+function ownerChatMessage(agentId: UUID, text: string): Memory {
   return {
     id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: agentId,
@@ -41,7 +59,7 @@ async function runScheduledTaskAction(
 ) {
   return scheduledTaskAction.handler?.(
     runtime,
-    ownerMessage(runtime.agentId, "scheduled-task operation"),
+    autonomyMessage(runtime.agentId, "scheduled-task operation"),
     undefined,
     { parameters },
     undefined,
@@ -343,5 +361,43 @@ describe("SCHEDULED_TASKS create — trigger boundary", () => {
     const a = first.data?.task as { taskId: string };
     const b = second.data?.task as { taskId: string };
     expect(b.taskId).not.toBe(a.taskId);
+  });
+});
+
+describe("SCHEDULED_TASKS create — owner-chat delegation (#16941)", () => {
+  let runtimeResult: RealTestRuntimeResult | null = null;
+
+  afterEach(async () => {
+    if (runtimeResult) {
+      await runtimeResult.cleanup();
+      runtimeResult = null;
+    }
+  });
+
+  it("routes an owner-chat reminder create into the OWNER_REMINDERS flow, never the raw scheduler", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const result = (await scheduledTaskAction.handler?.(
+      runtime,
+      ownerChatMessage(
+        runtime.agentId,
+        "remind me about my science report, it's due monday",
+      ),
+      undefined,
+      {
+        parameters: {
+          subaction: "create",
+          kind: "reminder",
+          promptInstructions: "Remind the owner about the science report.",
+          trigger: { type: "datetime", datetime: "2026-07-27T09:00:00.000Z" },
+        },
+      },
+      undefined,
+      [],
+    )) as { success: boolean; data?: Record<string, unknown> };
+    // The delegated flow answers with the OWNER_REMINDERS surface — no raw
+    // ScheduledTask record is minted from an owner conversation.
+    expect(result.data?.actionName).toBe("OWNER_REMINDERS");
+    expect(result.data?.task).toBeUndefined();
   });
 });

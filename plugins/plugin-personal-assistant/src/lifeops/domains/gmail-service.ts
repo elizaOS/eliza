@@ -921,7 +921,7 @@ export class GmailDomain {
   async sendGmailMessage(
     requestUrl: URL,
     request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true }> {
+  ): Promise<{ ok: true; messageId: string; threadId: string | null }> {
     const confirmed =
       normalizeOptionalBoolean(request.confirmSend, "confirmSend") ?? false;
     if (!confirmed) {
@@ -934,7 +934,7 @@ export class GmailDomain {
       request.grantId,
     );
     const sendEmail = requireGoogleServiceMethod(this.ctx.runtime, "sendEmail");
-    await sendEmail(
+    const sent = await sendEmail(
       googleSendEmailInput({
         accountId: accountIdForGrant(grant),
         to: request.to,
@@ -944,7 +944,11 @@ export class GmailDomain {
         bodyText: normalizeGmailReplyBody(request.bodyText),
       }),
     );
-    return { ok: true };
+    return {
+      ok: true,
+      messageId: sent.id,
+      threadId: sent.threadId ?? null,
+    };
   }
 
   async sendGmailReplies(

@@ -162,6 +162,7 @@ function classifyInferenceSpan(name: string): InferenceFlowStage | null {
 		return "model-queue";
 	}
 	if (normalized.startsWith("model-routing:")) return "model-routing";
+	if (normalized === "message:stage1:preprocess") return "model-preprocess";
 	if (normalized.startsWith("model-preprocess:")) return "model-preprocess";
 	if (normalized.startsWith("model-postprocess:")) return "model-postprocess";
 	if (normalized.startsWith("model:") || normalized.startsWith("model-ttft:")) {

@@ -41,6 +41,7 @@ mock.module("../utils/logger", () => ({
 
 mock.module("./inference-auth-cache", () => ({
   invalidateInferenceAuthContextsByKeyHashes: mock(async () => undefined),
+  invalidateInferenceSessionAuthContexts: mock(async () => undefined),
 }));
 
 const { UsersService } = await import(`./users.ts?test=users-error-policy-${Date.now()}`);

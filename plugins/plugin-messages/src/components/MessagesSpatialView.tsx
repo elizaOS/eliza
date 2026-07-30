@@ -218,6 +218,8 @@ export function MessagesSpatialView({
         <Button
           grow={1}
           disabled={!canSend}
+          variant={canSend ? "solid" : "outline"}
+          tone={canSend ? "primary" : "default"}
           agent="send"
           onPress={dispatch("send")}
         >

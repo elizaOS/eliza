@@ -11,9 +11,8 @@
  */
 
 import {
-  CONNECT_EVENT,
   createNavigateViewEvent,
-  dispatchAppEvent,
+  dispatchConnectRequest,
   dispatchOpenNotificationCenter,
 } from "@elizaos/ui/events";
 import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
@@ -200,7 +199,7 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
       apiBase: validatedUrl.href,
       token: null,
     });
-    dispatchAppEvent(CONNECT_EVENT, {
+    dispatchConnectRequest({
       gatewayUrl: connection.apiBase,
       token: connection.token ?? undefined,
     });

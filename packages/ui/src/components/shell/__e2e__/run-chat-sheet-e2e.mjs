@@ -2268,39 +2268,43 @@ try {
     await p.close();
   }
 
-  // TRANSCRIBING while an inline reply is in flight (regression, #9880 path):
-  // the voice control is the MASTER off — labeled "stop transcription and mic"
-  // (distinct from the transcribe button's "stop transcription", which leaves
-  // the mic on) — and must END the session on tap even while `responding` is
-  // true; the OFF path was gated on the reply finishing, leaving a lit, dead
-  // mic button.
+  // TRANSCRIBING while an inline reply is in flight (#9880 path).
+  //
+  // #9880 was a LIT, DEAD mic button: mid-transcription the voice control stayed
+  // rendered but its off-path was gated on the reply finishing, so tapping it did
+  // nothing until `responding` cleared. The approved composer polish resolved that
+  // structurally rather than by ungating — active transcription now gives the
+  // activity meter the full lane and exposes exactly ONE control, the Stop. With
+  // no mic button rendered at all there is no lit-dead-control state to reach,
+  // and ChatOverlay.test.tsx ("gives active transcription the full lane plus one
+  // Stop control") pins that contract.
+  //
+  // So this case asserts the structural guarantee — one Stop, no mic — instead of
+  // the old two-control master-off. Asserting the mic here would re-require the
+  // very control the polish removed.
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    const logs = [];
-    p.on("console", (m) => logs.push(m.text()));
     await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
-    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForSelector('[data-testid="chat-composer-transcription-stop"]');
     await p.waitForTimeout(500);
     assert(
-      (await p.getByTestId("chat-composer-mic").getAttribute("aria-label")) ===
-        "stop transcription and mic",
-      "TRANSCRIBING+REPLY: voice control reads 'stop transcription and mic'",
+      (await p.getByTestId("chat-composer-mic").count()) === 0,
+      "TRANSCRIBING+REPLY: no mic control is rendered (no lit-dead button to tap)",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
+      "TRANSCRIBING+REPLY: exactly one Stop control owns the trailing slot",
+    );
+    // The Stop must be live mid-reply — the #9880 defect was an inert control
+    // while `responding` was true, so an enabled Stop is the real regression pin.
+    assert(
+      (await p
+        .getByTestId("chat-composer-transcription-stop")
+        .getAttribute("aria-disabled")) !== "true",
+      "TRANSCRIBING+REPLY: the Stop is enabled even while the reply is in flight",
     );
     await snap(p, "state-transcribing-inline-reply");
-    await p.getByTestId("chat-composer-mic").click();
-    await p.waitForTimeout(300);
-    assert(
-      logs.some((t) => t.includes("[fixture] stopTranscriptionAndMic")),
-      "TRANSCRIBING+REPLY: mic tap ends transcription even mid-reply (not gated on responding)",
-    );
-    // With the mic off and the (fixture-constant) reply still in flight the
-    // trailing control morphs mic → stop, exactly like the plain speaking state.
-    assert(
-      (await p.getByTestId("chat-composer-mic").count()) === 0 &&
-        (await p.getByTestId("chat-composer-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: after the tap the trailing control is the stop (mic off)",
-    );
     await p.close();
   }
 

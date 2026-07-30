@@ -31,6 +31,12 @@ export interface TrajectoryContext {
 	messageId?: string;
 	/** Sender role resolved for the active message, used for prompt identity and role-aware logging. */
 	userRole?: RoleGateRole;
+	/**
+	 * Shared promises for immutable reads repeated within one message turn.
+	 * The map follows AsyncLocalStorage scope, so it disappears at the turn
+	 * boundary without a TTL or cross-turn stale-data policy.
+	 */
+	turnMemo?: Map<string, Promise<unknown>>;
 	/** Pipeline stage purpose for trajectory logging (e.g. "should_respond", "response", "action", "evaluation"). */
 	purpose?: string;
 	/**
@@ -144,6 +150,35 @@ export function runWithTrajectoryContext<T>(
 
 export function getTrajectoryContext(): TrajectoryContext | undefined {
 	return getOrCreateContextManager().active();
+}
+
+export function memoizeTurnWork<T>(
+	key: string,
+	work: () => Promise<T>,
+): Promise<T> {
+	const memo = getTrajectoryContext()?.turnMemo;
+	if (!memo) return work();
+	const cached = memo.get(key);
+	if (cached) return cached as Promise<T>;
+
+	const promise = work();
+	memo.set(key, promise);
+	void promise.catch(() => {
+		if (memo.get(key) === promise) memo.delete(key);
+	});
+	return promise;
+}
+
+export function invalidateTurnMemo(key: string): void {
+	getTrajectoryContext()?.turnMemo?.delete(key);
+}
+
+export function invalidateTurnMemoPrefix(prefix: string): void {
+	const memo = getTrajectoryContext()?.turnMemo;
+	if (!memo) return;
+	for (const key of memo.keys()) {
+		if (key.startsWith(prefix)) memo.delete(key);
+	}
 }
 
 /**

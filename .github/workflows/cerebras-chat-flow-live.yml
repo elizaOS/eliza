@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24.15.0"
 
@@ -84,6 +84,7 @@ jobs:
         run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
       - name: Measure every provider in parallel and max-cached
+        id: provider_latency_live
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
@@ -91,6 +92,7 @@ jobs:
           bun run --cwd packages/core perf:providers > reports/provider-latency.log
 
       - name: Measure live Cerebras Gemma 4 production chat flow
+        id: cerebras_chat_flow_live
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: bun run --cwd packages/agent perf:cerebras-chat > reports/cerebras-gemma-4-chat-flow.log
@@ -133,11 +135,11 @@ jobs:
           );
           console.log("");
           console.log(
-            `Max-cached compose p50/p95: ${providers.maxCachedComposeWallMs.p50} / ${providers.maxCachedComposeWallMs.p95} ms`,
+            `Reused compose p50/p95: ${providers.reusedComposeWallMs.p50} / ${providers.reusedComposeWallMs.p95} ms`,
           );
           console.log("");
           console.log(
-            `Cached providers per sample: ${providers.cachedProvidersPerSample.p50}/${providers.providerCount}`,
+            `Reused provider results per sample: ${providers.reusedProviderResultsPerSample.p50}/${providers.providerCount}`,
           );
           NODE
 
@@ -198,7 +200,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24.15.0"
 
@@ -214,6 +216,7 @@ jobs:
         run: node packages/shared/scripts/generate-keywords.mjs
 
       - name: Run live plugin tool-call stream evidence
+        id: plugin_toolcall_stream_live
         env:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
           ELIZA_TOOLCALL_STREAM_LIVE: "1"

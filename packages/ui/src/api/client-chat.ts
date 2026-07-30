@@ -480,6 +480,7 @@ declare module "./client-base" {
     ): Promise<{
       text: string;
       agentName: string;
+      transcriptVisibility?: "internal";
       blocks?: ContentBlock[];
       noResponseReason?: "ignored";
       /**
@@ -513,6 +514,7 @@ declare module "./client-base" {
       text: string;
       agentName: string;
       completed: boolean;
+      transcriptVisibility?: "internal";
       /** Agent reasoning/thought for this turn, when the model emitted one. */
       reasoning?: string;
       /**
@@ -522,6 +524,12 @@ declare module "./client-base" {
        * duplicate bubble.
        */
       messageId?: string;
+      /** Persisted user-memory id from the same committed terminal turn. */
+      userMessageId?: string;
+      /** The assistant bubble is intentionally transient and has no DB row. */
+      assistantEphemeral?: boolean;
+      /** True only when action callbacks may have added extra transcript rows. */
+      historyRefreshRequired?: boolean;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */
@@ -1276,6 +1284,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
   const response = await this.fetch<{
     text: string;
     agentName: string;
+    transcriptVisibility?: "internal";
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
     failureKind?: ChatFailureKind;

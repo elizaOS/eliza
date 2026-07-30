@@ -74,6 +74,18 @@ interface ParsedEvaluatorObject {
 	parseError?: string;
 }
 
+const EVALUATOR_ENVELOPE_KEYS = new Set([
+	"success",
+	"decision",
+	"route",
+	"thought",
+	"nextTool",
+	"nextRecommendedTool",
+	"messageToUser",
+	"copyToClipboard",
+	"recommendedToolCallId",
+]);
+
 const DEFAULT_EVALUATOR_MAX_TOKENS = 1024;
 
 export async function runEvaluator(
@@ -235,6 +247,7 @@ async function recordEvaluationStage(args: {
 				messageToUser: args.output.messageToUser,
 				copyToClipboard: args.output.copyToClipboard,
 				recommendedToolCallId: args.output.recommendedToolCallId,
+				protocolFailure: args.output.protocolFailure,
 				parseError: args.output.parseError,
 			},
 			cache: {
@@ -337,12 +350,23 @@ export function parseEvaluatorOutput(
 			success: false,
 			decision: "CONTINUE",
 			thought: `Invalid evaluator output: ${parsedResult.parseError}. Replanning from recorded tool results.`,
+			protocolFailure: true,
 			parseError: parsedResult.parseError,
 			raw: {},
 		};
 	}
 
 	const parsed = parsedResult.object ?? {};
+	const protocolError = evaluatorEnvelopeProtocolError(parsed);
+	if (protocolError) {
+		return {
+			success: false,
+			decision: "CONTINUE",
+			thought: `Invalid evaluator output: ${protocolError}. Replanning from recorded tool results.`,
+			protocolFailure: true,
+			raw: { ...(parsed as Record<string, unknown>), protocolError },
+		};
+	}
 	const decision = normalizeEvaluatorRoute(parsed.decision ?? parsed.route);
 	return {
 		success: parsed.success === true,
@@ -361,6 +385,73 @@ export function parseEvaluatorOutput(
 				: undefined,
 		raw: parsed as Record<string, unknown>,
 	};
+}
+
+function evaluatorEnvelopeProtocolError(
+	output: RawEvaluatorOutput,
+): string | undefined {
+	const unknownKey = Object.keys(output).find(
+		(key) => !EVALUATOR_ENVELOPE_KEYS.has(key),
+	);
+	if (unknownKey)
+		return `field "${unknownKey}" is not allowed in evaluator output`;
+	if (typeof output.success !== "boolean")
+		return 'required field "success" must be a boolean';
+	const decision = output.decision ?? output.route;
+	if (!parseEvaluatorRoute(decision)) {
+		return 'required field "decision" must be FINISH, NEXT_RECOMMENDED, or CONTINUE';
+	}
+	if (
+		output.decision !== undefined &&
+		output.route !== undefined &&
+		parseEvaluatorRoute(output.decision) !== parseEvaluatorRoute(output.route)
+	)
+		return 'fields "decision" and legacy "route" must agree';
+	if (typeof output.thought !== "string")
+		return 'required field "thought" must be a string';
+	if (
+		Object.hasOwn(output, "messageToUser") &&
+		typeof output.messageToUser !== "string"
+	) {
+		return 'optional field "messageToUser" must be a string';
+	}
+	if (
+		Object.hasOwn(output, "recommendedToolCallId") &&
+		typeof output.recommendedToolCallId !== "string"
+	) {
+		return 'optional field "recommendedToolCallId" must be a string';
+	}
+	for (const key of ["nextTool", "nextRecommendedTool"] as const) {
+		if (Object.hasOwn(output, key) && !normalizeNextTool(output[key])) {
+			return `optional field "${key}" must declare a tool name and object parameters`;
+		}
+	}
+	if (Object.hasOwn(output, "copyToClipboard")) {
+		const value = output.copyToClipboard;
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			return 'optional field "copyToClipboard" must be an object';
+		}
+		const record = value as Record<string, unknown>;
+		const unknownClipboardKey = Object.keys(record).find(
+			(key) => key !== "title" && key !== "content" && key !== "tags",
+		);
+		if (unknownClipboardKey)
+			return `field "copyToClipboard.${unknownClipboardKey}" is not allowed`;
+		if (
+			typeof record.title !== "string" ||
+			typeof record.content !== "string"
+		) {
+			return 'fields "copyToClipboard.title" and "copyToClipboard.content" must be strings';
+		}
+		if (
+			record.tags !== undefined &&
+			(!Array.isArray(record.tags) ||
+				record.tags.some((tag) => typeof tag !== "string"))
+		) {
+			return 'optional field "copyToClipboard.tags" must be an array of strings';
+		}
+	}
+	return undefined;
 }
 
 /**
@@ -533,13 +624,16 @@ function recoverEvaluatorTextOutput(
 
 	if (
 		containsToolAttemptObject(text) ||
+		containsInvocationDsl(text) ||
 		invokesTrajectoryTool(text, trajectory)
 	) {
 		return {
+			...output,
 			success: false,
 			decision: "CONTINUE",
 			thought:
 				"Evaluator emitted tool/action syntax instead of evaluator JSON; replanning from recorded tool results.",
+			parseError: undefined,
 			raw: { recoverySource: "tool_attempt_text" },
 		};
 	}
@@ -559,8 +653,8 @@ function recoverEvaluatorTextOutput(
 	};
 }
 
-function looksLikeLeadingInvocationDsl(text: string): boolean {
-	return /^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i.test(
+function containsInvocationDsl(text: string): boolean {
+	return /(?:^|[^A-Za-z0-9_])(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/im.test(
 		text,
 	);
 }
@@ -570,7 +664,7 @@ function rejectEvaluatorInvocationMessage(
 ): EvaluatorOutput {
 	if (
 		typeof output.messageToUser !== "string" ||
-		!looksLikeLeadingInvocationDsl(output.messageToUser)
+		!containsInvocationDsl(output.messageToUser)
 	) {
 		return output;
 	}
@@ -578,6 +672,7 @@ function rejectEvaluatorInvocationMessage(
 		...output,
 		success: false,
 		decision: "CONTINUE",
+		protocolFailure: true,
 		thought:
 			"Evaluator emitted tool/action syntax instead of a user-facing answer; replanning from recorded tool results.",
 		messageToUser: undefined,
@@ -722,7 +817,7 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 	// syntax regardless of dialect. Providers may namespace the action with
 	// additional colon-delimited segments, and the argument block is rarely
 	// valid JSON, so the key-based guard above cannot see it.
-	if (looksLikeLeadingInvocationDsl(text)) {
+	if (containsInvocationDsl(text)) {
 		return false;
 	}
 	if (
@@ -839,6 +934,7 @@ export async function applyEvaluatorEffects(
 	output: EvaluatorOutput,
 	effects?: EvaluatorEffects,
 ): Promise<void> {
+	if (output.protocolFailure) return;
 	if (output.copyToClipboard && effects?.copyToClipboard) {
 		await effects.copyToClipboard(output.copyToClipboard);
 	}
@@ -848,6 +944,10 @@ export async function applyEvaluatorEffects(
 }
 
 export function normalizeEvaluatorRoute(route: unknown): EvaluatorRoute {
+	return parseEvaluatorRoute(route) ?? "CONTINUE";
+}
+
+function parseEvaluatorRoute(route: unknown): EvaluatorRoute | undefined {
 	const normalized = String(route ?? "")
 		.trim()
 		.toUpperCase();
@@ -858,7 +958,7 @@ export function normalizeEvaluatorRoute(route: unknown): EvaluatorRoute {
 	) {
 		return normalized;
 	}
-	return "CONTINUE";
+	return undefined;
 }
 
 function isEvaluatorShapedObject(value: unknown): value is RawEvaluatorOutput {

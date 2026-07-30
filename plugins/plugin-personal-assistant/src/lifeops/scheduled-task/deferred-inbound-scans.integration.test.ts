@@ -7,13 +7,7 @@
  * through `runtime.registerEvent` so the 1000ms sleep is real, not stubbed.
  */
 
-import {
-  EventType,
-  type IAgentRuntime,
-  type Memory,
-  type MessagePayload,
-  stringToUuid,
-} from "@elizaos/core";
+import { EventType, type Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
@@ -149,21 +143,6 @@ describe("deferred inbound scans — TTFT independence (#15255)", () => {
     runtimeResult = await createOwnerScopedRuntime();
     const { runtime } = runtimeResult;
 
-    // Mirror the core trajectories handler: stamp trajectoryStepId synchronously
-    // (no await) so message.ts can read it the instant emitEvent resolves.
-    const stampedStepId = stringToUuid("stamp-guard-step");
-    (runtime as IAgentRuntime).registerEvent(
-      EventType.MESSAGE_RECEIVED,
-      async (payload: MessagePayload) => {
-        const message = payload.message;
-        if (!message.metadata) {
-          message.metadata = { type: "message" };
-        }
-        (message.metadata as Record<string, unknown>).trajectoryStepId =
-          stampedStepId;
-      },
-    );
-
     let slowScanRan = false;
     runtime.registerEvent(
       EventType.MESSAGE_RECEIVED,
@@ -174,16 +153,30 @@ describe("deferred inbound scans — TTFT independence (#15255)", () => {
     );
 
     const message = ownerReply(runtime, "room-stamp-guard");
+    expect(
+      (message.metadata as Record<string, unknown> | undefined)
+        ?.trajectoryStepId,
+    ).toBeUndefined();
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { message });
 
-    // The stamp is present immediately after emitEvent resolves...
-    expect((message.metadata as Record<string, unknown>).trajectoryStepId).toBe(
-      stampedStepId,
+    // The REAL core trajectories handler (active in this DB-backed runtime)
+    // stamped the turn inside emitEvent's awaited Promise.all, so message.ts
+    // can read the authoritative trajectoryStepId the instant emitEvent
+    // resolves...
+    const stampAtEdge = (message.metadata as Record<string, unknown>)
+      .trajectoryStepId;
+    expect(stampAtEdge).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     // ...even though the deferred scan has not finished.
     expect(slowScanRan).toBe(false);
 
     await settleDeferredInboundScans();
     expect(slowScanRan).toBe(true);
+    // Draining deferred scans never moves or rewrites the stamp — trajectory
+    // stamping completes on the awaited edge, not in the deferred tail.
+    expect((message.metadata as Record<string, unknown>).trajectoryStepId).toBe(
+      stampAtEdge,
+    );
   }, 180_000);
 });

@@ -6,6 +6,7 @@
  * Discord gateway or live model.
  */
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
+import { ChannelType as DiscordChannelType } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import { transformCommandToDiscordApi } from "../discord-commands";
 import { getRegisteredCommands } from "../slash-commands";
@@ -70,7 +71,10 @@ describe("transformCommandToDiscordApi group-DM opt-in", () => {
 });
 
 describe("/ask command", () => {
-	function makeInteraction(text: string, opts: { inGuild?: boolean } = {}) {
+	function makeInteraction(
+		text: string,
+		opts: { inGuild?: boolean; channelType?: DiscordChannelType } = {},
+	) {
 		const followUps: string[] = [];
 		let editedReply: string | undefined;
 		let deferred = false;
@@ -89,6 +93,13 @@ describe("/ask command", () => {
 			interaction: {
 				id: "interaction-1",
 				channelId: "channel-1",
+				channel: {
+					type:
+						opts.channelType ??
+						(opts.inGuild
+							? DiscordChannelType.GuildText
+							: DiscordChannelType.DM),
+				},
 				guildId: opts.inGuild ? "guild-1" : null,
 				guild: opts.inGuild ? { name: "Guild One" } : null,
 				user: {
@@ -129,11 +140,15 @@ describe("/ask command", () => {
 			getSetting: vi.fn(() => undefined),
 			ensureConnection: vi.fn(async () => undefined),
 			messageService: { handleMessage: handle },
+			reportError: vi.fn(),
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		} as unknown as IAgentRuntime;
 	}
 
-	async function runAsk(text: string, opts: { inGuild?: boolean } = {}) {
+	async function runAsk(
+		text: string,
+		opts: { inGuild?: boolean; channelType?: DiscordChannelType } = {},
+	) {
 		const ask = getRegisteredCommands().get("ask");
 		if (!ask) throw new Error("ask command not registered");
 		const h = makeInteraction(text, opts);
@@ -158,10 +173,20 @@ describe("/ask command", () => {
 		expect(h.editedReply).toBe("The answer is 42.");
 	});
 
-	it("uses DM channel type outside a guild (the group-DM / DM path)", async () => {
+	it("uses DM channel type for a true 1:1 DM", async () => {
 		const { seenMessage } = await runAsk("hi", { inGuild: false });
-		// ChannelType.DM — the interaction-only path a group DM travels.
 		expect(seenMessage?.content?.channelType).toBe("DM");
+	});
+
+	it("uses GROUP channel type for a GroupDM interaction", async () => {
+		const { seenMessage, runtime } = await runAsk("hi everyone", {
+			inGuild: false,
+			channelType: DiscordChannelType.GroupDM,
+		});
+		expect(seenMessage?.content?.channelType).toBe("GROUP");
+		expect(runtime.ensureConnection).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "GROUP" }),
+		);
 	});
 
 	it("refuses a DM interaction when the connector DM policy is disabled", async () => {
@@ -195,6 +220,7 @@ describe("/ask command", () => {
 			character: { settings: { discord: { dmPolicy: "open" } } },
 			getSetting: vi.fn(() => undefined),
 			messageService: null,
+			reportError: vi.fn(),
 			logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 		} as unknown as IAgentRuntime;
 		await ask?.execute(h.interaction as never, runtime as never);

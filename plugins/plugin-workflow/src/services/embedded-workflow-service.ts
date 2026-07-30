@@ -2517,16 +2517,81 @@ export class EmbeddedWorkflowService extends Service {
    *  `workflow.run` / `workflow.webhook` task rows are deleted so the new
    *  `TRIGGER_DISPATCH` path is the single source of scheduled runs. */
   private async rehydrateSchedules(): Promise<void> {
-    await this.ensureSchema();
-    await this.deleteLegacyScheduleTasks();
-    const rows = await this.getDb()
-      .select()
-      .from(embeddedWorkflows)
-      .where(
-        and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.active, true))
+    try {
+      await this.ensureSchema();
+      await this.deleteLegacyScheduleTasks();
+      const rows = await this.getDb()
+        .select()
+        .from(embeddedWorkflows)
+        .where(
+          and(eq(embeddedWorkflows.agentId, this.tenantAgentId), eq(embeddedWorkflows.active, true))
+        );
+      await this.deleteOrphanScheduleTasks(new Set(rows.map((row) => row.id)));
+      for (const row of rows) {
+        await this.armSchedules(row.id);
+      }
+    } catch (cause) {
+      // error-policy:J2 context-adding rethrow; startup cannot claim scheduler
+      // readiness while stale or partially re-armed workflow tasks may fire.
+      const error =
+        cause instanceof ElizaError
+          ? cause
+          : new ElizaError('Failed to reconcile workflow schedule tasks', {
+              code: 'WORKFLOW_SCHEDULE_RECONCILIATION_FAILED',
+              cause,
+              context: { agentId: this.runtime.agentId },
+              severity: 'ephemeral',
+            });
+      this.runtime.reportError('EmbeddedWorkflowService.rehydrateSchedules', error, {
+        agentId: this.runtime.agentId,
+      });
+      throw error;
+    }
+  }
+
+  /** Remove workflow-backed `TRIGGER_DISPATCH` Tasks whose workflow no longer
+   *  resolves to an ACTIVE workflow in this tenant's store.
+   *
+   *  Tasks are derived scheduling state; the workflow store is the source of
+   *  truth. Normal delete/deactivate paths clear their own tasks, but a task
+   *  can be orphaned out-of-band — most notably by the agent-scope re-key
+   *  migration, which quarantines pre-existing workflow rows under the
+   *  `__legacy_unscoped__` sentinel while the already-armed dispatch tasks
+   *  keep firing against the live tenant. Each fire then fails with
+   *  `Workflow not found: <id>` and pushes a high-priority failure
+   *  notification EVERY interval, forever. Reconciling here (before
+   *  `armSchedules` recreates the valid task set) removes the orphans at the
+   *  same boot that created them. Scoped to this agent's tasks via
+   *  `getTasks({ agentIds })`, so co-tenant agents on a shared DB are
+   *  untouched. Reconciliation is part of service readiness: an unreadable
+   *  task store must fail startup instead of leaving a known notification
+   *  loop armed. */
+  private async deleteOrphanScheduleTasks(activeWorkflowIds: ReadonlySet<string>): Promise<void> {
+    const tasks = await this.runtime.getTasks({
+      tags: [WORKFLOW_TASK_TAG],
+      agentIds: [this.runtime.agentId],
+    });
+    let removed = 0;
+    for (const task of tasks) {
+      const metadata = task.metadata as Record<string, unknown> | undefined;
+      if (metadata?.kind !== WORKFLOW_TASK_KIND) continue;
+      if (!task.id) {
+        throw new ElizaError('Workflow schedule task is missing its persistent id', {
+          code: 'WORKFLOW_SCHEDULE_TASK_ID_REQUIRED',
+          context: { agentId: this.runtime.agentId, taskName: task.name },
+          severity: 'fatal',
+        });
+      }
+      const workflowId = metadata.workflowId;
+      if (typeof workflowId === 'string' && activeWorkflowIds.has(workflowId)) continue;
+      await this.runtime.deleteTask(task.id);
+      removed += 1;
+    }
+    if (removed > 0) {
+      logger.info(
+        { src: 'plugin:workflow:embedded', agentId: this.runtime.agentId, removed },
+        `Removed ${removed} orphaned workflow schedule task(s) whose workflow is no longer active in this tenant`
       );
-    for (const row of rows) {
-      await this.armSchedules(row.id);
     }
   }
 
@@ -2784,12 +2849,6 @@ export class EmbeddedWorkflowService extends Service {
    *  by earlier service versions. Returns the count so callers (and the
    *  migration log) can verify the cleanup. */
   private async deleteLegacyScheduleTasks(): Promise<number> {
-    if (
-      typeof this.runtime.getTasks !== 'function' ||
-      typeof this.runtime.deleteTask !== 'function'
-    ) {
-      return 0;
-    }
     const tasks = await this.runtime.getTasks({
       tags: [WORKFLOW_TASK_TAG],
       agentIds: [this.runtime.agentId],
@@ -2849,7 +2908,6 @@ export class EmbeddedWorkflowService extends Service {
    *  fires within the same minute deduplicate at dispatch. */
   private async armSchedules(workflowId: string): Promise<void> {
     await this.clearSchedules(workflowId);
-    if (typeof this.runtime.createTask !== 'function') return;
     const entry = await this.getStoredWorkflow(workflowId);
     const scheduleNodes = entry.workflow.nodes.filter(
       (node) => !node.disabled && node.type === 'workflows-nodes-base.scheduleTrigger'
@@ -2888,7 +2946,6 @@ export class EmbeddedWorkflowService extends Service {
 
   /** Remove every core Task tagged for this workflow. */
   private async clearSchedules(workflowId: string): Promise<void> {
-    if (typeof this.runtime.getTasks !== 'function') return;
     const tasks = await this.runtime.getTasks({
       tags: [WORKFLOW_TASK_TAG],
       agentIds: [this.runtime.agentId],

@@ -66,6 +66,74 @@ describe("buildUtcDateFromLocalParts", () => {
       expect(getZonedDateParts(utc, tz)).toEqual(local);
     }
   });
+
+  it("moves a skipped Santiago midnight forward by the one-hour gap", () => {
+    const utc = buildUtcDateFromLocalParts("America/Santiago", {
+      year: 2026,
+      month: 9,
+      day: 6,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+
+    expect(utc.toISOString()).toBe("2026-09-06T04:00:00.000Z");
+    expect(getZonedDateParts(utc, "America/Santiago")).toEqual({
+      year: 2026,
+      month: 9,
+      day: 6,
+      hour: 1,
+      minute: 0,
+      second: 0,
+    });
+  });
+
+  it("uses compatible disambiguation for repeated and skipped New York times", () => {
+    const repeated = buildUtcDateFromLocalParts("America/New_York", {
+      year: 2026,
+      month: 11,
+      day: 1,
+      hour: 1,
+      minute: 30,
+      second: 0,
+    });
+    const skipped = buildUtcDateFromLocalParts("America/New_York", {
+      year: 2026,
+      month: 3,
+      day: 8,
+      hour: 2,
+      minute: 30,
+      second: 0,
+    });
+
+    expect(repeated.toISOString()).toBe("2026-11-01T05:30:00.000Z");
+    expect(skipped.toISOString()).toBe("2026-03-08T07:30:00.000Z");
+    expect(getZonedDateParts(skipped, "America/New_York")).toMatchObject({
+      hour: 3,
+      minute: 30,
+    });
+  });
+
+  it("moves an Apia wall time on a skipped date to the next local date", () => {
+    const utc = buildUtcDateFromLocalParts("Pacific/Apia", {
+      year: 2011,
+      month: 12,
+      day: 30,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+
+    expect(utc.toISOString()).toBe("2011-12-30T10:00:00.000Z");
+    expect(getZonedDateParts(utc, "Pacific/Apia")).toEqual({
+      year: 2011,
+      month: 12,
+      day: 31,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+  });
 });
 
 describe("addDaysToLocalDate", () => {

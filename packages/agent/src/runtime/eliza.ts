@@ -124,6 +124,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Plugin,
   type Provider,
+  requireConfirmedSendHandlerDelivery,
   type ServiceClass,
   stringToUuid,
   subAgentCredentialsPlugin,
@@ -3562,7 +3563,12 @@ export const logToChatListener = (entry: LogEntry) => {
 
           isLog: "true",
         })
+        .then((result) => {
+          requireConfirmedSendHandlerDelivery(result);
+        })
         .catch((err: unknown) => {
+          // error-policy:J7 diagnostic log relay must not recursively kill the
+          // runtime; the failed or unconfirmed delivery is debug-observable.
           logger.debug(
             `[runtime] failed to send log message to target: ${err}`,
           );

@@ -24,7 +24,6 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -47,6 +46,10 @@ const EMPTY: ProviderResult = {
 
 const DEFAULT_INJECT_LIMIT = 5;
 const DEFAULT_PER_CHANNEL = 4;
+export const CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT = [
+  "# Cross-channel context unavailable",
+  "The requested prior-channel search failed for this turn. Do not infer that no prior message or commitment exists; say the search is temporarily unavailable and ask the owner to retry.",
+].join("\n");
 
 export type CrossChannelContextRequest = {
   query: string;
@@ -301,12 +304,20 @@ export const crossChannelContextProvider: Provider = {
         },
       };
     } catch (err) {
-      logger.warn(
-        `[crossChannelContext] Skipped injection after error: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      return EMPTY;
+      // error-policy:J4 explicit degrade — the planner asked for this context
+      // (the provider only runs on an explicit signal), so a failed search
+      // returns a distinguishable "unavailable" result rather than the
+      // designed-empty crossChannelHits: 0, which would read as "no prior
+      // signal exists"; reportError surfaces the failure in RECENT_ERRORS.
+      runtime.reportError("cross-channel-context.provider", err, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {
+        text: CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT,
+        values: { crossChannelUnavailable: true },
+        data: { crossChannelError: true },
+      };
     }
   },
 };

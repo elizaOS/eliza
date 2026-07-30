@@ -26,6 +26,7 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
+import { hasAppliedUserFacingEffectProof } from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -42,7 +43,7 @@ import {
 import { isModelProviderError } from "../utils/model-errors";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
-import { computePrefixHashes } from "./context-hash";
+import { computePrefixHashes, stableJsonStringify } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
 	buildStageChatMessages,
@@ -556,7 +557,10 @@ async function runPlannerLoopIterations(
 							status: "finished",
 							trajectory,
 							finalMessage: userSafeFinalMessage(
-								codingFinalMessage(trajectory, plannerOutput.messageToUser),
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									codingFinalMessage(trajectory, plannerOutput.messageToUser),
+								),
 								trajectory,
 							),
 						};
@@ -572,6 +576,22 @@ async function runPlannerLoopIterations(
 						iteration,
 						evaluator,
 					});
+					const protocolFailureRelay =
+						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
+					if (protocolFailureRelay) {
+						params.runtime.logger?.warn?.(
+							{ iteration, protocolFailure: true },
+							"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							finalMessage: userSafeFinalMessage(
+								protocolFailureRelay,
+								trajectory,
+							),
+						};
+					}
 
 					if (evaluator.decision === "FINISH") {
 						return {
@@ -579,9 +599,12 @@ async function runPlannerLoopIterations(
 							trajectory,
 							evaluator,
 							finalMessage: userSafeFinalMessage(
-								preferredFinalMessageFromToolOrModel(
+								terminalMessageWithFailureAuthority(
 									trajectory,
-									evaluator.messageToUser ?? plannerOutput.messageToUser,
+									preferredFinalMessageFromToolOrModel(
+										trajectory,
+										evaluator.messageToUser ?? plannerOutput.messageToUser,
+									),
 								),
 								trajectory,
 							),
@@ -617,7 +640,10 @@ async function runPlannerLoopIterations(
 							trajectory,
 							evaluator,
 							finalMessage: userSafeFinalMessage(
-								missingInputWidgetRelay,
+								terminalMessageWithFailureAuthority(
+									trajectory,
+									missingInputWidgetRelay,
+								),
 								trajectory,
 							),
 						};
@@ -641,7 +667,10 @@ async function runPlannerLoopIterations(
 								status: "finished",
 								trajectory,
 								evaluator,
-								finalMessage: userSafeFinalMessage(relay, trajectory),
+								finalMessage: userSafeFinalMessage(
+									terminalMessageWithFailureAuthority(trajectory, relay),
+									trajectory,
+								),
 							};
 						}
 					}
@@ -774,7 +803,24 @@ async function runPlannerLoopIterations(
 					terminalMessage: finalMessage,
 					terminalOnly: true,
 				});
-				const terminalEvaluator = terminalToolCallFinish(finalMessage);
+				const latestNonTerminalStep =
+					latestUnresolvedFailedNonTerminalToolStep(trajectory);
+				const pendingInteraction = latestNonTerminalStep
+					? latestActionablePendingInteractionAfter(
+							trajectory,
+							latestNonTerminalStep,
+						)
+					: undefined;
+				const terminalFollowsFailedTool =
+					latestNonTerminalStep !== undefined &&
+					pendingInteraction === undefined;
+				const terminalReplyMessage = hasReplyCall
+					? terminalMessageWithFailureAuthority(trajectory, finalMessage)
+					: undefined;
+				const terminalEvaluator = terminalToolCallFinish(
+					terminalReplyMessage,
+					!terminalFollowsFailedTool,
+				);
 				// Only record an evaluation stage when the trajectory already has
 				// prior evaluator outputs. A terminal-only iteration on the very
 				// first planner turn (e.g. REPLY) is purely terminal and should
@@ -798,7 +844,9 @@ async function runPlannerLoopIterations(
 						startedAt: terminalEvalStartedAt,
 						endedAt: Date.now(),
 						output: terminalEvaluator,
-						reason: "terminal_tool_call",
+						reason: terminalFollowsFailedTool
+							? "terminal_after_failed_tool"
+							: "terminal_tool_call",
 						logger: params.runtime.logger,
 					});
 				}
@@ -806,12 +854,21 @@ async function runPlannerLoopIterations(
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,
-					finalMessage: userSafeFinalMessage(
-						codingDrainQueue
-							? codingFinalMessage(trajectory, finalMessage)
-							: preferredFinalMessageFromToolOrModel(trajectory, finalMessage),
-						trajectory,
-					),
+					finalMessage: terminalFollowsFailedTool
+						? hasReplyCall
+							? userSafeFinalMessage(terminalReplyMessage, trajectory)
+							: undefined
+						: pendingInteraction && hasReplyCall
+							? userSafeFinalMessage(terminalReplyMessage, trajectory)
+							: userSafeFinalMessage(
+									codingDrainQueue
+										? codingFinalMessage(trajectory, finalMessage)
+										: preferredFinalMessageFromToolOrModel(
+												trajectory,
+												finalMessage,
+											),
+									trajectory,
+								),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
 					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
@@ -950,15 +1007,18 @@ async function runPlannerLoopIterations(
 				finalMessage: suppressReply
 					? ""
 					: userSafeFinalMessage(
-							// Coding mode: drop a junk/empty terminal reply and fall back to
-							// a synthesized "what I did" summary so the sub-agent never
-							// relays garbage or an empty reply after doing real work.
-							codingDrainQueue
-								? codingFinalMessage(trajectory, latestResult.text)
-								: preferredFinalMessageFromToolOrModel(
-										trajectory,
-										latestResult.text,
-									),
+							terminalMessageWithFailureAuthority(
+								trajectory,
+								// Coding mode: drop a junk/empty terminal reply and fall back to
+								// a synthesized "what I did" summary so the sub-agent never
+								// relays garbage or an empty reply after doing real work.
+								codingDrainQueue
+									? codingFinalMessage(trajectory, latestResult.text)
+									: preferredFinalMessageFromToolOrModel(
+											trajectory,
+											latestResult.text,
+										),
+							),
 							trajectory,
 						),
 			};
@@ -1032,7 +1092,13 @@ async function runPlannerLoopIterations(
 				trajectory,
 				evaluator: gated,
 				finalMessage: userSafeFinalMessage(
-					preferredFinalMessageFromToolOrModel(trajectory, gated.messageToUser),
+					terminalMessageWithFailureAuthority(
+						trajectory,
+						preferredFinalMessageFromToolOrModel(
+							trajectory,
+							gated.messageToUser,
+						),
+					),
 					trajectory,
 				),
 			};
@@ -1070,11 +1136,32 @@ async function runPlannerLoopIterations(
 			return {
 				status: "finished",
 				trajectory,
-				finalMessage: userSafeFinalMessage(relay, trajectory),
+				finalMessage: userSafeFinalMessage(
+					terminalMessageWithFailureAuthority(trajectory, relay),
+					trajectory,
+				),
 			};
 		}
 		trajectory.evaluatorOutputs.push(evaluator);
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
+			evaluator,
+			trajectory,
+		);
+		if (protocolFailureRelay) {
+			params.runtime.logger?.warn?.(
+				{ iteration, protocolFailure: true },
+				"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+			);
+			return {
+				status: "finished",
+				trajectory,
+				finalMessage: userSafeFinalMessage(
+					terminalMessageWithFailureAuthority(trajectory, protocolFailureRelay),
+					trajectory,
+				),
+			};
+		}
 
 		if (evaluator.decision === "FINISH") {
 			if (
@@ -1098,12 +1185,15 @@ async function runPlannerLoopIterations(
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					preferredFinalMessageFromToolOrModel(
+					terminalMessageWithFailureAuthority(
 						trajectory,
-						evaluator.messageToUser,
-						evaluator.success === false
-							? failedToolFallbackMessage(trajectory)
-							: undefined,
+						preferredFinalMessageFromToolOrModel(
+							trajectory,
+							evaluator.messageToUser,
+							evaluator.success === false
+								? failedToolFallbackMessage(trajectory)
+								: undefined,
+						),
 					),
 					trajectory,
 				),
@@ -2347,6 +2437,8 @@ function appendEvaluationEvent(args: {
 			thought: args.evaluator.thought,
 			messageToUser: args.evaluator.messageToUser,
 			recommendedToolCallId: args.evaluator.recommendedToolCallId,
+			protocolFailure: args.evaluator.protocolFailure,
+			parseError: args.evaluator.parseError,
 		},
 	});
 }
@@ -3039,6 +3131,117 @@ function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 	);
 }
 
+function latestUnresolvedFailedNonTerminalToolStep(
+	trajectory: PlannerTrajectory,
+): PlannerStep | undefined {
+	const unresolvedByOperation = new Map<string, PlannerStep>();
+	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
+		if (
+			step.toolCall === undefined ||
+			isTerminalToolCall(step.toolCall) ||
+			step.result === undefined
+		) {
+			continue;
+		}
+		// Input/confirmation pauses are deliberate partial completions, not failed
+		// operations. Their interaction payload remains the terminal authority.
+		if (
+			hasAwaitingUserInputMarker(step.result) ||
+			hasRequiresConfirmationMarker(step.result)
+		) {
+			continue;
+		}
+		const operationKey = plannerToolOperationKey(step.toolCall);
+		if (step.result.success === false || step.result.error != null) {
+			unresolvedByOperation.delete(operationKey);
+			unresolvedByOperation.set(operationKey, step);
+		} else if (step.result.success === true) {
+			unresolvedByOperation.delete(operationKey);
+		}
+	}
+	return [...unresolvedByOperation.values()].at(-1);
+}
+
+/**
+ * A terminal reply may summarize successful work only after every earlier
+ * failure has been retried with the same operation and succeeded. This keeps
+ * unrelated VIEWS/SHELL work from laundering an unhandled failure into a
+ * healthy-looking completion.
+ */
+function terminalMessageWithFailureAuthority(
+	trajectory: PlannerTrajectory,
+	candidate: string | undefined,
+): string | undefined {
+	const unresolvedFailure =
+		latestUnresolvedFailedNonTerminalToolStep(trajectory);
+	if (!unresolvedFailure) return candidate;
+
+	const pendingInteraction = latestActionablePendingInteractionAfter(
+		trajectory,
+		unresolvedFailure,
+	);
+	if (pendingInteraction) {
+		// Terminal planner output can carry a structured form that is richer than
+		// the action's fallback prose. Otherwise surface the action-owned prompt,
+		// not an evaluator summary that can conceal the pending confirmation.
+		if (
+			candidate === pendingInteraction ||
+			isStructuredInteractionPayload(candidate)
+		) {
+			return candidate;
+		}
+		return pendingInteraction;
+	}
+
+	return groundedFailedToolMessage(unresolvedFailure);
+}
+
+/**
+ * A pending interaction temporarily owns the terminal reply only when it is
+ * the latest non-terminal result after the unresolved failure. A later tool
+ * result means the pause has been superseded, so stale or hostile marker data
+ * cannot mask the newer operation's outcome.
+ */
+function latestActionablePendingInteractionAfter(
+	trajectory: PlannerTrajectory,
+	unresolvedFailure: PlannerStep,
+): string | undefined {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	const failureIndex = steps.lastIndexOf(unresolvedFailure);
+	if (failureIndex < 0) return undefined;
+
+	for (let index = steps.length - 1; index > failureIndex; index--) {
+		const step = steps[index];
+		if (!step?.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		if (
+			!hasAwaitingUserInputMarker(step.result) &&
+			!hasRequiresConfirmationMarker(step.result)
+		) {
+			return undefined;
+		}
+		const pendingMessage = sanitizePlannerMessage(
+			step.result.userFacingText ?? step.result.text,
+		);
+		return pendingMessage && !isUnsafeUserVisibleText(pendingMessage)
+			? pendingMessage
+			: undefined;
+	}
+
+	return undefined;
+}
+
+function isStructuredInteractionPayload(value: string | undefined): boolean {
+	return /^\s*\[(?:FORM|CHOICE)\]/i.test(value ?? "");
+}
+
+function plannerToolOperationKey(toolCall: PlannerToolCall): string {
+	// A successful sibling mutation must not erase an authoritative failure for
+	// another entity; key order is irrelevant, but every argument value matters.
+	return `${toolCall.name.toUpperCase()}|${stableJsonStringify(toolCall.params ?? {})}`;
+}
+
 function handleRequiredToolPlannerMiss(params: {
 	trajectory: PlannerTrajectory;
 	iteration: number;
@@ -3188,7 +3391,10 @@ async function finishWithForcedSynthesis(params: {
 	return {
 		status: "finished",
 		trajectory,
-		finalMessage: userSafeFinalMessage(finalMessage, trajectory),
+		finalMessage: userSafeFinalMessage(
+			terminalMessageWithFailureAuthority(trajectory, finalMessage),
+			trajectory,
+		),
 	};
 }
 
@@ -3211,7 +3417,10 @@ function finishWithCapturedRefusal(params: {
 	return {
 		status: "finished",
 		trajectory: params.trajectory,
-		finalMessage: userSafeFinalMessage(params.refusal, params.trajectory),
+		finalMessage: userSafeFinalMessage(
+			terminalMessageWithFailureAuthority(params.trajectory, params.refusal),
+			params.trajectory,
+		),
 	};
 }
 
@@ -3357,6 +3566,15 @@ function deterministicSuccessfulToolRelay(
 		if (candidate) return candidate;
 	}
 	return undefined;
+}
+
+function deterministicEvaluatorProtocolFailureRelay(
+	evaluator: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	if (evaluator.protocolFailure !== true) return undefined;
+	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return undefined;
+	return deterministicSuccessfulToolRelay(trajectory);
 }
 
 function deterministicTerminalContinuationLimitRelay(
@@ -3540,6 +3758,13 @@ export function singleVerifiedUserFacingToolResultText(
 	if (successfulToolSteps.length !== 1) return undefined;
 	const result = successfulToolSteps[0]?.result;
 	if (result?.verifiedUserFacing !== true) return undefined;
+	if (
+		(result.effectReceipts !== undefined ||
+			result.userFacingEffectReceiptIds !== undefined) &&
+		!hasAppliedUserFacingEffectProof(result)
+	) {
+		return undefined;
+	}
 	const text = result.userFacingText?.trim();
 	return text || undefined;
 }
@@ -3803,11 +4028,20 @@ function shouldRecoverSilentFailedFinish(args: {
 	return latestFailedToolStep(args.trajectory) !== undefined;
 }
 
+/**
+ * Generic last-resort reply for a turn that ends on a failed tool with no
+ * user-safe tool-owned text. Exported so the message service can recognize it
+ * and drop it as redundant when the failed tool's own callback already told
+ * the user what happened.
+ */
+export const FAILED_TOOL_FALLBACK_MESSAGE =
+	"I tried to complete that, but the available runtime step failed before it produced a usable result.";
+
 function failedToolFallbackMessage(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	if (!latestFailedToolStep(trajectory)) return undefined;
-	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
+	return FAILED_TOOL_FALLBACK_MESSAGE;
 }
 
 function exposedToolNameSet(
@@ -3961,6 +4195,9 @@ function tryGateEvaluator(args: {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) return null;
+	// #16983 allows a verified terminal action to skip the evaluator, but that
+	// success cannot complete an unrelated operation that remains failed.
+	if (latestUnresolvedFailedNonTerminalToolStep(args.trajectory)) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.failures.length > 0) return null;
 	// Precondition 6: respect the planner's own completion disclaimer.
@@ -4026,13 +4263,32 @@ export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
 const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";
 
+const TERMINAL_AFTER_FAILED_TOOL_THOUGHT =
+	"Terminal FINISH: planner ended the loop after a failed tool; the tool-owned failure remains authoritative.";
+
+function groundedFailedToolMessage(step: PlannerStep): string {
+	const result = step.result;
+	const toolOwnedText =
+		result &&
+		(hasRequiresConfirmationMarker(result) ||
+			hasAwaitingUserInputMarker(result))
+			? (result.userFacingText ?? result.text)
+			: result?.userFacingText;
+	const candidate = sanitizePlannerMessage(toolOwnedText);
+	if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
+	return FAILED_TOOL_FALLBACK_MESSAGE;
+}
+
 function terminalToolCallFinish(
 	finalMessage: string | undefined,
+	success = true,
 ): EvaluatorOutput {
 	const output: EvaluatorOutput = {
-		success: true,
+		success,
 		decision: "FINISH",
-		thought: TERMINAL_TOOL_CALL_FINISH_THOUGHT,
+		thought: success
+			? TERMINAL_TOOL_CALL_FINISH_THOUGHT
+			: TERMINAL_AFTER_FAILED_TOOL_THOUGHT,
 	};
 	if (finalMessage) {
 		output.messageToUser = finalMessage;
@@ -4322,8 +4578,11 @@ export function actionResultToPlannerToolResult(
 	const plannerResult: PlannerToolResult = {
 		success: result.success,
 		text: result.text,
+		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
+		effectReceipts: result.effectReceipts,
+		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
 		turnComplete: result.turnComplete,

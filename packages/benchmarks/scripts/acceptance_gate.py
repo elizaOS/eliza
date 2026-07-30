@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -104,16 +105,13 @@ GATE_PROVIDER = "cerebras"
 TIMEOUT_PRECHECK_S = 30
 TIMEOUT_CEREBRAS_SMOKE_S = 30
 TIMEOUT_AGENT_SMOKE_S = 120
-# Campaign policy: no artificial task budgets anywhere an agent may still be
-# working — a leg ends when its rollout concludes. Hang detection belongs to
-# the orchestrator's ProcessDeadlinePolicy (adapter wall caps for smoke
-# profiles, observed-progress silent timeouts for campaign profiles), one
-# layer below this guard. This constant only bounds a child that wedges
-# before that machinery arms: 4h is ~16x the slowest observed sanity leg
-# (~890s, openclaw on tblite broken-python) — far above any plausible
-# runtime without letting a dead process hold the gate for a day.
-TIMEOUT_BENCHMARK_RUN_S = 14400
+# The gate runs a bounded sanity slice, not a full campaign. The orchestrator
+# owns per-benchmark liveness; this outer deadline only contains failures in
+# the orchestrator boundary itself and leaves 2x headroom over the slowest
+# observed sanity leg (~890s).
+TIMEOUT_BENCHMARK_RUN_S = 1800
 TIMEOUT_RANDOM_RUN_S = 120
+PROCESS_TERMINATION_GRACE_S = 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +406,129 @@ def _applied_env(overrides: Mapping[str, str]) -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
+def _posix_process_groups(root_pid: int) -> list[int]:
+    """Return descendant process groups deepest-first, with the root last."""
+
+    result = subprocess.run(
+        ["ps", "-Ao", "pid=,ppid=,pgid="],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    children: dict[int, list[tuple[int, int]]] = {}
+    root_pgid = root_pid
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 3:
+            continue
+        pid, parent_pid, process_group = (int(field) for field in fields)
+        children.setdefault(parent_pid, []).append((pid, process_group))
+        if pid == root_pid:
+            root_pgid = process_group
+
+    ordered_groups: list[int] = []
+    stack = [(root_pid, root_pgid, False)]
+    while stack:
+        pid, process_group, visited = stack.pop()
+        if visited:
+            if pid != root_pid and process_group not in ordered_groups:
+                ordered_groups.append(process_group)
+            continue
+        stack.append((pid, process_group, True))
+        stack.extend(
+            (child_pid, child_group, False)
+            for child_pid, child_group in children.get(pid, ())
+        )
+
+    if root_pgid not in ordered_groups:
+        ordered_groups.append(root_pgid)
+    return ordered_groups
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    """Terminate every process owned by a timed-out orchestrator invocation."""
+
+    if os.name != "posix":
+        # error-policy:J6 Windows has no process groups that recursively include
+        # grandchildren; taskkill /T is the platform process-tree boundary.
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            check=False,
+        )
+        try:
+            process.wait(timeout=PROCESS_TERMINATION_GRACE_S)
+        except subprocess.TimeoutExpired:
+            # error-policy:J6 hard-stop the root if taskkill could not finish it.
+            process.kill()
+            process.wait()
+        return
+
+    try:
+        process_groups = _posix_process_groups(process.pid)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        # error-policy:J6 the isolated root session is still safe to terminate
+        # if process-table inspection fails during timeout teardown.
+        process_groups = [process.pid]
+
+    own_group = os.getpgrp()
+    process_groups = [group for group in process_groups if group != own_group]
+    for process_group in process_groups:
+        try:
+            os.killpg(process_group, signal.SIGTERM)
+        except ProcessLookupError:
+            # error-policy:J6 a descendant may exit during timeout teardown.
+            continue
+
+    try:
+        process.wait(timeout=PROCESS_TERMINATION_GRACE_S)
+    except subprocess.TimeoutExpired:
+        # error-policy:J6 hard-stop only the isolated groups that ignored TERM.
+        pass
+
+    for process_group in process_groups:
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            # error-policy:J6 the process group exited during the grace period.
+            continue
+    process.wait()
+
+
+def _run_subprocess_with_timeout(
+    command: list[str],
+    *,
+    cwd: str,
+    timeout_s: float,
+    env: dict[str, str] | None = None,
+) -> tuple[int, str, str]:
+    """Run an isolated subprocess tree and return a fail-closed timeout result."""
+
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+        creationflags=(
+            subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        ),
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        _terminate_process_tree(process)
+        stdout, stderr = process.communicate()
+        return -1, stdout or "", (
+            f"process timed out after {timeout_s:g}s\n"
+            f"stdout so far:\n{(stdout or '')[-2000:]}\n"
+            f"stderr so far:\n{(stderr or '')[-2000:]}"
+        )
+    return process.returncode, stdout or "", stderr or ""
+
+
 def _orchestrator_run(
     *,
     benchmark_id: str,
@@ -443,22 +564,12 @@ def _orchestrator_run(
     ]
     if verbose:
         print(f"  $ {' '.join(cmd)}", flush=True)
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=str(PACKAGES_ROOT),  # so ``benchmarks`` is importable as pkg
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            env={**os.environ, **env_overrides} if env_overrides else None,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return -1, (exc.stdout or ""), (
-            f"orchestrator timed out after {timeout_s}s\n"
-            f"stdout so far:\n{(exc.stdout or '')[-2000:]}\n"
-            f"stderr so far:\n{(exc.stderr or '')[-2000:]}"
-        )
-    return result.returncode, (result.stdout or ""), (result.stderr or "")
+    return _run_subprocess_with_timeout(
+        cmd,
+        cwd=str(PACKAGES_ROOT),  # so ``benchmarks`` is importable as pkg
+        timeout_s=timeout_s,
+        env={**os.environ, **env_overrides} if env_overrides else None,
+    )
 
 
 def _latest_run_for(
@@ -590,24 +701,13 @@ def _step_cerebras_smoke() -> GateStepResult:
     prompt = "Reply with the single word: PONG"
 
     request_start = _now_ms()
-    # The cloud proxy's billing-authorization cache goes cold between runs and
-    # answers the first request with a transient 503 "… warming. Retry
-    # shortly."; an immediate retry succeeds. Retrying only that exact shape
-    # keeps the smoke honest — any other failure still fails on attempt one.
-    attempts = 0
-    while True:
-        attempts += 1
-        status, parsed, raw = _cerebras_chat(
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            prompt=prompt,
-            timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
-        )
-        if status == 503 and "warming" in raw.lower() and attempts < 6:
-            time.sleep(5.0 * attempts)
-            continue
-        break
+    status, parsed, raw = _cerebras_chat(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        prompt=prompt,
+        timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
+    )
     request_ms = _now_ms() - request_start
 
     details: dict[str, Any] = {

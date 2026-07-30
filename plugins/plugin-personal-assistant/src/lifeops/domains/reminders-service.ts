@@ -19,6 +19,7 @@ import {
 } from "@elizaos/agent";
 import {
   type IAgentRuntime,
+  inspectSendHandlerResult,
   logger,
   ModelType,
   parseJsonModelRecord,
@@ -632,7 +633,6 @@ function normalizeOptionalScheduleObservationSnapshot(
 /** Delay between the first and second reminder-delivery attempt when the
  *  runtime returns a transient send failure. Keeps the dispatcher from
  *  hammering a flaky connector while still retrying within the same turn. */
-const REMINDER_DELIVERY_RETRY_DELAY_MS = 2_000;
 
 function isDeliveredReminderOutcome(
   outcome: LifeOpsReminderAttemptOutcome,
@@ -4333,30 +4333,59 @@ export class RemindersDomain {
             routeResolution: runtimeTarget.resolution,
           },
         };
+        const acceptRuntimeSendResult = (
+          result: Awaited<
+            ReturnType<typeof this.ctx.runtime.sendMessageToTarget>
+          >,
+        ): boolean => {
+          const disposition = inspectSendHandlerResult(result);
+          if (
+            disposition.kind === "delivered" &&
+            (!disposition.receipt ||
+              disposition.receipt.persistence.status === "persisted" ||
+              disposition.receipt.persistence.status === "not_attempted")
+          ) {
+            deliveryMetadata.responseMessageId =
+              disposition.providerMessageId ?? null;
+            deliveryMetadata.replayed = disposition.replayed;
+            return true;
+          }
+          outcome = "blocked_connector";
+          deliveryMetadata.reason =
+            disposition.kind === "partially_delivered"
+              ? "runtime_send_partially_delivered"
+              : disposition.kind === "delivered"
+                ? "runtime_send_persistence_failed"
+                : `runtime_send_${disposition.kind}`;
+          deliveryMetadata.error =
+            disposition.kind === "delivered"
+              ? `Provider acceptance was confirmed, but local persistence is ${disposition.receipt?.persistence.status ?? "unknown"}. Do not retry blindly.`
+              : disposition.message;
+          if (
+            disposition.kind === "partially_delivered" ||
+            disposition.kind === "delivered"
+          ) {
+            deliveryMetadata.providerMessageIds =
+              disposition.receipt?.providerMessageIds ?? [];
+            deliveryMetadata.persistenceStatus =
+              disposition.receipt?.persistence.status ?? null;
+          }
+          return false;
+        };
         try {
-          await this.ctx.runtime.sendMessageToTarget(
-            runtimeTarget.target,
-            sendPayload,
-          );
-        } catch (firstError) {
-          this.ctx.logLifeOpsWarn(
-            "reminder_dispatch",
-            `[lifeops] Reminder delivery failed for ${args.channel}, retrying in 2s`,
-            { error: lifeOpsErrorMessage(firstError) },
-          );
-          await new Promise((r) =>
-            setTimeout(r, REMINDER_DELIVERY_RETRY_DELAY_MS),
-          );
-          try {
+          acceptRuntimeSendResult(
             await this.ctx.runtime.sendMessageToTarget(
               runtimeTarget.target,
               sendPayload,
-            );
-          } catch (retryError) {
-            outcome = "blocked_connector";
-            deliveryMetadata.error = lifeOpsErrorMessage(retryError);
-            deliveryMetadata.reason = "runtime_send_failed";
-          }
+            ),
+          );
+        } catch (error) {
+          // error-policy:J1 reminder dispatch boundary treats a thrown
+          // connector result as acceptance-unknown. Retrying without an
+          // explicit zero-accept receipt can duplicate an external message.
+          outcome = "blocked_connector";
+          deliveryMetadata.error = `${lifeOpsErrorMessage(error)} Provider acceptance is unknown; do not retry blindly.`;
+          deliveryMetadata.reason = "runtime_send_acceptance_unknown";
         }
       } else {
         outcome = "blocked_connector";

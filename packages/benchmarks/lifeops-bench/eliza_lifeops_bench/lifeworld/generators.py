@@ -30,6 +30,7 @@ from .entities import (
     EntityKind,
     FinancialAccount,
     FinancialTransaction,
+    FocusBlock,
     HealthMetric,
     LocationPoint,
     Note,
@@ -37,6 +38,7 @@ from .entities import (
     ReminderList,
     ScheduledTask,
     Subscription,
+    TravelOffer,
     WorkoutRecord,
 )
 from .world import LifeWorld
@@ -135,37 +137,145 @@ SCALE_PRESETS: dict[Scale, dict[str, int]] = {
 # Inline name + content tables. Small enough to keep deterministic across
 # Python versions and avoid Faker as a dependency.
 GIVEN_NAMES = [
-    "Alice", "Bob", "Carol", "David", "Erin", "Frank", "Grace", "Henry",
-    "Iris", "Jack", "Kira", "Liam", "Maya", "Noah", "Olivia", "Priya",
-    "Quincy", "Rachel", "Sam", "Tara", "Uma", "Victor", "Wendy", "Xavier",
-    "Yara", "Zane", "Aiden", "Beatrice", "Caleb", "Diana", "Ethan", "Fiona",
-    "George", "Hannah", "Isaac", "Julia", "Kevin", "Luna", "Marco", "Nina",
-    "Oscar", "Penelope", "Quinn", "Rosa", "Silas", "Talia", "Uriel", "Vera",
-    "Walter", "Ximena",
+    "Alice",
+    "Bob",
+    "Carol",
+    "David",
+    "Erin",
+    "Frank",
+    "Grace",
+    "Henry",
+    "Iris",
+    "Jack",
+    "Kira",
+    "Liam",
+    "Maya",
+    "Noah",
+    "Olivia",
+    "Priya",
+    "Quincy",
+    "Rachel",
+    "Sam",
+    "Tara",
+    "Uma",
+    "Victor",
+    "Wendy",
+    "Xavier",
+    "Yara",
+    "Zane",
+    "Aiden",
+    "Beatrice",
+    "Caleb",
+    "Diana",
+    "Ethan",
+    "Fiona",
+    "George",
+    "Hannah",
+    "Isaac",
+    "Julia",
+    "Kevin",
+    "Luna",
+    "Marco",
+    "Nina",
+    "Oscar",
+    "Penelope",
+    "Quinn",
+    "Rosa",
+    "Silas",
+    "Talia",
+    "Uriel",
+    "Vera",
+    "Walter",
+    "Ximena",
 ]
 
 FAMILY_NAMES = [
-    "Nguyen", "Martinez", "Shah", "Alvarez", "Chen", "Patel", "Kim",
-    "Garcia", "Smith", "Johnson", "Williams", "Brown", "Davis", "Miller",
-    "Wilson", "Taylor", "Anderson", "Thomas", "Jackson", "White", "Harris",
-    "Clark", "Lewis", "Walker", "Hall", "Young", "King", "Wright", "Lopez",
-    "Hill", "Green", "Adams", "Baker", "Carter", "Mitchell", "Perez",
-    "Roberts", "Turner", "Phillips", "Campbell",
+    "Nguyen",
+    "Martinez",
+    "Shah",
+    "Alvarez",
+    "Chen",
+    "Patel",
+    "Kim",
+    "Garcia",
+    "Smith",
+    "Johnson",
+    "Williams",
+    "Brown",
+    "Davis",
+    "Miller",
+    "Wilson",
+    "Taylor",
+    "Anderson",
+    "Thomas",
+    "Jackson",
+    "White",
+    "Harris",
+    "Clark",
+    "Lewis",
+    "Walker",
+    "Hall",
+    "Young",
+    "King",
+    "Wright",
+    "Lopez",
+    "Hill",
+    "Green",
+    "Adams",
+    "Baker",
+    "Carter",
+    "Mitchell",
+    "Perez",
+    "Roberts",
+    "Turner",
+    "Phillips",
+    "Campbell",
 ]
 
 COMPANIES = [
-    "Acme Corp", "Globex", "Initech", "Hooli", "Pied Piper", "Dunder Mifflin",
-    "Stark Industries", "Wayne Enterprises", "Cyberdyne", "Tyrell Corp",
-    "Black Mesa", "Aperture Science", "Umbrella Corp", "Massive Dynamic",
-    "Gringotts", "Vandelay Industries", "Vehement Capital", "Soylent",
-    "Planet Express", "Rekall",
+    "Acme Corp",
+    "Globex",
+    "Initech",
+    "Hooli",
+    "Pied Piper",
+    "Dunder Mifflin",
+    "Stark Industries",
+    "Wayne Enterprises",
+    "Cyberdyne",
+    "Tyrell Corp",
+    "Black Mesa",
+    "Aperture Science",
+    "Umbrella Corp",
+    "Massive Dynamic",
+    "Gringotts",
+    "Vandelay Industries",
+    "Vehement Capital",
+    "Soylent",
+    "Planet Express",
+    "Rekall",
 ]
 
 ROLES = [
-    "Software Engineer", "Product Manager", "Designer", "Data Scientist",
-    "Founder", "CEO", "Recruiter", "Marketing Lead", "Operations",
-    "Investor", "Lawyer", "Accountant", "Teacher", "Doctor", "Nurse",
-    "Therapist", "Coach", "Consultant", "Writer", "Editor",
+    "Software Engineer",
+    "Product Manager",
+    "Designer",
+    "Data Scientist",
+    "Founder",
+    "CEO",
+    "Recruiter",
+    "Marketing Lead",
+    "Operations",
+    "Investor",
+    "Lawyer",
+    "Accountant",
+    "Teacher",
+    "Doctor",
+    "Nurse",
+    "Therapist",
+    "Coach",
+    "Consultant",
+    "Writer",
+    "Editor",
 ]
 
 EMAIL_SUBJECTS = [
@@ -187,12 +297,26 @@ EMAIL_SUBJECTS = [
 ]
 
 EMAIL_TOPICS = [
-    "Q3 planning", "the launch checklist", "the design review", "the contract",
-    "next week's offsite", "the budget", "the partnership deck", "onboarding",
-    "the customer escalation", "the security audit", "the migration plan",
-    "the hiring loop", "the pitch", "the team retro", "the roadmap",
-    "the analytics dashboard", "the demo script", "the press release",
-    "the API docs", "vendor selection",
+    "Q3 planning",
+    "the launch checklist",
+    "the design review",
+    "the contract",
+    "next week's offsite",
+    "the budget",
+    "the partnership deck",
+    "onboarding",
+    "the customer escalation",
+    "the security audit",
+    "the migration plan",
+    "the hiring loop",
+    "the pitch",
+    "the team retro",
+    "the roadmap",
+    "the analytics dashboard",
+    "the demo script",
+    "the press release",
+    "the API docs",
+    "vendor selection",
 ]
 
 EMAIL_BODY_LINES = [
@@ -244,11 +368,13 @@ MERCHANTS = [
 SUBSCRIPTION_NAMES = [
     ("Netflix", 1599),
     ("Spotify", 999),
-    ("Apple iCloud", 299),
-    ("New York Times", 1700),
     ("Disney+", 1399),
+    ("Amazon Prime", 1499),
+    ("Apple Music", 1099),
+    ("Apple iCloud", 299),
     ("YouTube Premium", 1399),
     ("Github Pro", 700),
+    ("New York Times", 1700),
     ("ChatGPT Plus", 2000),
     ("AWS", 5000),
     ("Notion", 1000),
@@ -260,23 +386,49 @@ SUBSCRIPTION_NAMES = [
 ]
 
 LOCATIONS = [
-    "Home", "Office", "Coffee shop", "Gym", "Conference room A",
-    "Conference room B", "Google Meet", "Zoom", "Phone call",
-    "Restaurant", "Park", "Airport",
+    "Home",
+    "Office",
+    "Coffee shop",
+    "Gym",
+    "Conference room A",
+    "Conference room B",
+    "Google Meet",
+    "Zoom",
+    "Phone call",
+    "Restaurant",
+    "Park",
+    "Airport",
 ]
 
 NOTE_TITLES = [
-    "Meeting notes", "Project ideas", "Reading list", "Recipe", "Workout plan",
-    "Books to read", "Travel itinerary", "Birthday gift ideas",
-    "Things to remember", "Weekly review", "Goals for the quarter",
-    "Brainstorm session", "Lessons learned", "Open questions",
+    "Meeting notes",
+    "Project ideas",
+    "Reading list",
+    "Recipe",
+    "Workout plan",
+    "Books to read",
+    "Travel itinerary",
+    "Birthday gift ideas",
+    "Things to remember",
+    "Weekly review",
+    "Goals for the quarter",
+    "Brainstorm session",
+    "Lessons learned",
+    "Open questions",
     "Follow-ups",
 ]
 
 CONVERSATION_TITLES = [
-    "Family chat", "Work team", "Project Atlas", "Lunch crew",
-    "Book club", "Climbing buddies", "Weekend plans", "Side project",
-    "College friends", "Neighborhood",
+    "Family chat",
+    "Work team",
+    "Project Atlas",
+    "Lunch crew",
+    "Book club",
+    "Climbing buddies",
+    "Weekend plans",
+    "Side project",
+    "College friends",
+    "Neighborhood",
 ]
 
 CHAT_MESSAGE_LINES = [
@@ -302,7 +454,15 @@ CHAT_MESSAGE_LINES = [
     "sure",
 ]
 
-CHAT_CHANNELS = ["imessage", "whatsapp", "signal", "telegram", "slack", "discord", "sms"]
+CHAT_CHANNELS = [
+    "imessage",
+    "whatsapp",
+    "signal",
+    "telegram",
+    "slack",
+    "discord",
+    "sms",
+]
 
 
 class WorldGenerator:
@@ -356,6 +516,9 @@ class WorldGenerator:
         self.generate_location_points(world, self.preset["location_points"])
         self.generate_workouts(world, self.preset["workouts"])
         self.generate_scheduled_tasks(world, self.preset["scheduled_tasks"])
+        self.generate_life_definitions(world)
+        self.generate_focus_blocks(world)
+        self.generate_travel_offers(world)
         return world
 
     # --------------------------------------------------------------- contacts
@@ -474,7 +637,9 @@ class WorldGenerator:
                 calendar_id=cal.id,
                 title=f"Sync: {topic}",
                 description=self.rng.choice(EMAIL_BODY_LINES),
-                location=self.rng.choice(LOCATIONS) if self.rng.random() > 0.3 else None,
+                location=(
+                    self.rng.choice(LOCATIONS) if self.rng.random() > 0.3 else None
+                ),
                 start=_iso(start_dt),
                 end=_iso(end_dt),
                 all_day=False,
@@ -538,9 +703,9 @@ class WorldGenerator:
             if folder in ("sent", "drafts"):
                 from_email = self.owner_email
                 # Recipients: the other thread participants.
-                to_emails = sorted([p for p in participants if p != self.owner_email]) or [
-                    self.rng.choice(contacts).primary_email
-                ]
+                to_emails = sorted(
+                    [p for p in participants if p != self.owner_email]
+                ) or [self.rng.choice(contacts).primary_email]
             else:
                 from_email = self.rng.choice(
                     [p for p in participants if p != self.owner_email]
@@ -630,18 +795,10 @@ class WorldGenerator:
         for i in range(n_conversations):
             channel = self.rng.choice(CHAT_CHANNELS)
             is_group = self.rng.random() > 0.6
-            n_participants = (
-                self.rng.randint(3, 6) if is_group else 2
-            )
-            picks = self.rng.sample(
-                contacts, k=min(n_participants - 1, len(contacts))
-            )
+            n_participants = self.rng.randint(3, 6) if is_group else 2
+            picks = self.rng.sample(contacts, k=min(n_participants - 1, len(contacts)))
             participants = sorted({c.primary_email for c in picks} | {self.owner_email})
-            title = (
-                self.rng.choice(CONVERSATION_TITLES)
-                if is_group
-                else None
-            )
+            title = self.rng.choice(CONVERSATION_TITLES) if is_group else None
             conv = Conversation(
                 id=f"conv_{i:04d}",
                 channel=channel,  # type: ignore[arg-type]
@@ -863,6 +1020,17 @@ class WorldGenerator:
                 ),
             )
             idx += 1
+            world.add(
+                EntityKind.HEALTH_METRIC,
+                HealthMetric(
+                    id=f"hm_{idx:06d}",
+                    metric_type="sleep_quality",
+                    value=round(self.rng.uniform(1.0, 5.0), 2),
+                    recorded_at=_iso(day_dt.replace(hour=7, minute=5, second=0)),
+                    source=self.rng.choice(sources),
+                ),
+            )
+            idx += 1
             # Heart rate samples — 4 per day.
             for h in (8, 12, 16, 20):
                 world.add(
@@ -900,7 +1068,15 @@ class WorldGenerator:
                 ),
             )
 
-    _WORKOUT_ACTIVITIES = ["running", "cycling", "swimming", "strength", "yoga", "hiking", "rowing"]
+    _WORKOUT_ACTIVITIES = [
+        "running",
+        "cycling",
+        "swimming",
+        "strength",
+        "yoga",
+        "hiking",
+        "rowing",
+    ]
 
     def generate_workouts(self, world: LifeWorld, n: int) -> list[WorkoutRecord]:
         out: list[WorkoutRecord] = []
@@ -909,7 +1085,11 @@ class WorldGenerator:
             duration = self.rng.randint(20, 90)
             calories = self.rng.randint(150, 800) if self.rng.random() > 0.2 else None
             recorded = self._now_dt - timedelta(days=self.rng.randint(0, 180))
-            distance = round(self.rng.uniform(1.0, 25.0), 2) if activity in ("running", "cycling", "hiking") else None
+            distance = (
+                round(self.rng.uniform(1.0, 25.0), 2)
+                if activity in ("running", "cycling", "hiking")
+                else None
+            )
             workout = WorkoutRecord(
                 id=f"workout_{i:05d}",
                 activity_type=activity,
@@ -922,7 +1102,13 @@ class WorldGenerator:
             out.append(workout)
         return out
 
-    _TASK_KINDS = ["send_message", "create_reminder", "create_event", "summarize", "lookup"]
+    _TASK_KINDS = [
+        "send_message",
+        "create_reminder",
+        "create_event",
+        "summarize",
+        "lookup",
+    ]
     _TASK_PROMPTS = [
         "Send a follow-up message to {contact} about the meeting.",
         "Create a reminder to review the Q4 report.",
@@ -937,9 +1123,13 @@ class WorldGenerator:
         for i in range(n):
             kind = self.rng.choice(self._TASK_KINDS)
             prompt_tmpl = self.rng.choice(self._TASK_PROMPTS)
-            contact_name = self.rng.choice(contacts).display_name if contacts else "Unknown"
+            contact_name = (
+                self.rng.choice(contacts).display_name if contacts else "Unknown"
+            )
             prompt = prompt_tmpl.format(contact=contact_name)
-            state = self.rng.choices(["active", "paused", "completed"], weights=[7, 2, 1], k=1)[0]
+            state = self.rng.choices(
+                ["active", "paused", "completed"], weights=[7, 2, 1], k=1
+            )[0]
             created = self._now_dt - timedelta(days=self.rng.randint(0, 30))
             task = ScheduledTask(
                 id=f"task_{i:05d}",
@@ -954,6 +1144,147 @@ class WorldGenerator:
             world.add(EntityKind.SCHEDULED_TASK, task)
             out.append(task)
         return out
+
+    def generate_life_definitions(self, world: LifeWorld) -> list[ScheduledTask]:
+        """Seed recurring alarm definitions exercised by update/skip/delete flows."""
+        definitions = [
+            ScheduledTask(
+                id="life_definition_bedtime",
+                kind="alarm",
+                prompt_instructions="Bedtime",
+                trigger={
+                    "kind": "recurring",
+                    "cadence": "daily",
+                    "timeOfDay": "22:00",
+                },
+                state="active",
+                metadata={"lifeDefinition": True, "version": 1, "skipDates": []},
+                created_at=self.now_iso,
+                updated_at=self.now_iso,
+            ),
+            ScheduledTask(
+                id="life_definition_all_sleep_alarms",
+                kind="alarm_group",
+                prompt_instructions="All Sleep Alarms",
+                trigger={"kind": "manual"},
+                state="active",
+                metadata={
+                    "lifeDefinition": True,
+                    "version": 1,
+                    "skipDates": [],
+                    "members": [
+                        "life_definition_bedtime",
+                        "life_definition_afternoon_nap",
+                    ],
+                },
+                created_at=self.now_iso,
+                updated_at=self.now_iso,
+            ),
+            ScheduledTask(
+                id="life_definition_afternoon_nap",
+                kind="alarm",
+                prompt_instructions="Afternoon Nap",
+                trigger={
+                    "kind": "recurring",
+                    "cadence": "daily",
+                    "timeOfDay": "14:00",
+                },
+                state="active",
+                metadata={"lifeDefinition": True, "version": 1, "skipDates": []},
+                created_at=self.now_iso,
+                updated_at=self.now_iso,
+            ),
+        ]
+        for definition in definitions:
+            world.add(EntityKind.SCHEDULED_TASK, definition)
+        return definitions
+
+    # ---------------------------------------------------- Focus enforcement
+
+    def generate_focus_blocks(self, world: LifeWorld) -> list[FocusBlock]:
+        """Seed active rules so unblock, release, status, and list are real operations."""
+        targets = [
+            ("focus_seed_candy", [], ["com.king.candycrushsaga"]),
+            ("focus_seed_facebook", ["facebook.com"], []),
+            ("focus_seed_twitter", ["twitter.com"], []),
+            ("focus_seed_instagram", ["instagram.com"], []),
+            ("focus_seed_reddit", ["reddit.com"], []),
+            ("focus_seed_youtube", [], ["com.google.android.youtube"]),
+            ("focus_seed_emergency_0", ["emergency-override-0.example.test"], []),
+            ("focus_seed_emergency_1", ["emergency-override-1.example.test"], []),
+            ("focus_seed_emergency_2", ["emergency-override-2.example.test"], []),
+        ]
+        created_at = _iso(self._now_dt - timedelta(days=1))
+        blocks: list[FocusBlock] = []
+        for block_id, hostnames, package_names in targets:
+            block = FocusBlock(
+                id=block_id,
+                hostnames=hostnames,
+                package_names=package_names,
+                status="active",
+                created_at=created_at,
+                updated_at=created_at,
+                policy="fixture_owner_policy",
+            )
+            world.add(EntityKind.FOCUS_BLOCK, block)
+            blocks.append(block)
+        return blocks
+
+    # ------------------------------------------------------- Travel catalog
+
+    def generate_travel_offers(self, world: LifeWorld) -> list[TravelOffer]:
+        """Seed a deterministic provider catalog used by searches and holds."""
+        flight_routes = [
+            ("SFO", "JFK", "2026-05-15", "2026-05-18"),
+            ("SFO", "JFK", "2026-05-16", "2026-05-19"),
+            ("SFO", "JFK", "2026-05-17", "2026-05-20"),
+            ("NYC", "LAX", "2026-05-16", "2026-05-20"),
+            ("BOS", "SFO", "2026-05-22", "2026-05-30"),
+            ("SFO", "NRT", "2026-05-13", "2026-05-22"),
+            ("JFK", "LHR", "2026-05-14", None),
+            ("ORD", "CDG", "2026-05-15", None),
+            ("SEA", "SIN", "2026-05-16", None),
+            ("LAX", "SYD", "2026-05-17", None),
+        ]
+        offers: list[TravelOffer] = []
+        for index, (origin, destination, departure, returning) in enumerate(
+            flight_routes
+        ):
+            offer = TravelOffer(
+                id=f"travel_offer_flight_{index:02d}",
+                kind="flight",
+                provider=("Northstar Air", "Meridian Air", "Pacific Air")[index % 3],
+                origin=origin,
+                destination=destination,
+                departure_date=departure,
+                return_date=returning,
+                price_cents=28_900 + index * 4_700,
+                currency="USD",
+                metadata={"cabin": "economy", "refundable": index % 2 == 0},
+            )
+            world.add(EntityKind.TRAVEL_OFFER, offer)
+            offers.append(offer)
+
+        for index, (destination, check_in) in enumerate(
+            (
+                ("NYC", "2026-05-15"),
+                ("BOS", "2026-05-16"),
+                ("CHI", "2026-05-17"),
+            )
+        ):
+            offer = TravelOffer(
+                id=f"travel_offer_hotel_{index:02d}",
+                kind="hotel",
+                provider=("Harbor Hotel", "Park House", "Central Suites")[index],
+                destination=destination,
+                hotel_check_in=check_in,
+                price_cents=18_500 + index * 2_500,
+                currency="USD",
+                metadata={"nightly": True, "refundable": True},
+            )
+            world.add(EntityKind.TRAVEL_OFFER, offer)
+            offers.append(offer)
+        return offers
 
 
 def _parse_iso(s: str) -> datetime:

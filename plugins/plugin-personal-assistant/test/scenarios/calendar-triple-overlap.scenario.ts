@@ -1,12 +1,14 @@
 /**
  * Live-model CONFLICT_DETECT over a triple overlap plus one declined invite. Four
  * real rows are seeded into the LifeOps calendar-event store and read back through
- * a repository-backed loader wired via the production `setConflictDetectLoader`
- * seam (all-day and owner-declined events excluded, as in production). Asserts the
- * real action result: scan 1 surfaces exactly the two genuine overlap pairs (A,B)
- * and (B,C) with checkedEvents=3, and after the owner reschedules the gym block a
- * re-scan leaves exactly one conflict (A,B).
+ * a repository-backed loader bound to the scenario runtime via the production
+ * `registerConflictDetectHostAdapter` registry (all-day and owner-declined events
+ * excluded, as in production). Asserts the real action result: scan 1 surfaces
+ * exactly the two genuine overlap pairs (A,B) and (B,C) with checkedEvents=3, and
+ * after the owner reschedules the gym block a re-scan leaves exactly one conflict
+ * (A,B).
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -15,7 +17,7 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   createCalendarFeedConflictLoader,
-  setConflictDetectLoader,
+  registerConflictDetectHostAdapter,
 } from "../../src/actions/conflict-detect.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -133,6 +135,7 @@ interface RuntimeLike {
 
 let seededRepository: RepositoryLike | null = null;
 let seededAgentId: string | null = null;
+let seededRuntime: IAgentRuntime | null = null;
 
 function buildEventRecord(spec: {
   externalId: string;
@@ -197,34 +200,39 @@ async function seedFeedAndLoader(
   }
   seededRepository = service.repository;
   seededAgentId = service.agentId();
+  seededRuntime = ctx.runtime as IAgentRuntime;
 
   for (const spec of Object.values(EVENTS)) {
     await service.repository.upsertCalendarEvent(buildEventRecord(spec));
   }
 
-  // Repository-backed loader through the production seam: real store rows,
-  // owner-committed-feed contract (no all-day, no owner-declined invites).
-  setConflictDetectLoader({
-    loadFeed: async ({ range }) => {
-      if (!seededRepository || !seededAgentId) {
-        throw new Error("scenario calendar store unavailable");
-      }
-      const rows = await seededRepository.listCalendarEvents(
-        seededAgentId,
-        "google",
-        range.start,
-        range.end,
-        "owner",
-      );
-      return rows
-        .filter((event) => !event.isAllDay)
-        .filter((event) => !ownerDeclined(event))
-        .map((event) => ({
-          id: event.externalId,
-          title: event.title,
-          startISO: event.startAt,
-          endISO: event.endAt,
-        }));
+  // Repository-backed loader bound to this scenario's runtime through the
+  // production host-adapter registry: real store rows, owner-committed-feed
+  // contract (no all-day, no owner-declined invites). Registrations merge, so
+  // the PA plugin's authorization/timezone bindings stay intact.
+  registerConflictDetectHostAdapter(seededRuntime, {
+    loader: {
+      loadFeed: async ({ range }) => {
+        if (!seededRepository || !seededAgentId) {
+          throw new Error("scenario calendar store unavailable");
+        }
+        const rows = await seededRepository.listCalendarEvents(
+          seededAgentId,
+          "google",
+          range.start,
+          range.end,
+          "owner",
+        );
+        return rows
+          .filter((event) => !event.isAllDay)
+          .filter((event) => !ownerDeclined(event))
+          .map((event) => ({
+            id: event.externalId,
+            title: event.title,
+            startISO: event.startAt,
+            endISO: event.endAt,
+          }));
+      },
     },
   });
   return undefined;
@@ -233,7 +241,11 @@ async function seedFeedAndLoader(
 async function cleanupFeedAndLoader(): Promise<string | undefined> {
   // Restore the production CalendarService-backed loader and remove the
   // seeded rows so subsequent scenarios in a shared runtime see a clean store.
-  setConflictDetectLoader(createCalendarFeedConflictLoader());
+  if (seededRuntime) {
+    registerConflictDetectHostAdapter(seededRuntime, {
+      loader: createCalendarFeedConflictLoader(),
+    });
+  }
   if (seededRepository && seededAgentId) {
     for (const spec of Object.values(EVENTS)) {
       await seededRepository.deleteCalendarEventByExternalId(

@@ -109,7 +109,10 @@ export async function ensureConnections(
 					: `World for room ${c.roomId}`,
 			agentId,
 			messageServerId: c.messageServerId,
-			metadata: c.metadata,
+			metadata: {
+				...(worldMap.get(worldId)?.metadata ?? {}),
+				...(c.metadata ?? {}),
+			},
 		};
 		worldMap.set(worldId, world);
 
@@ -164,10 +167,27 @@ export async function ensureConnections(
 	}
 	if (entities.length) await adapter.upsertEntities(entities);
 
-	const worlds = [...worldMap.values()].map((w) => ({
-		...w,
-		agentId,
-	}));
+	const worldIds = [...worldMap.keys()] as UUID[];
+	const existingWorlds =
+		worldIds.length > 0 ? await adapter.getWorldsByIds(worldIds) : [];
+	const existingWorldsById = new Map(
+		existingWorlds.map((world) => [world.id, world]),
+	);
+	const worlds = [...worldMap.values()].map((world) => {
+		const existing = existingWorldsById.get(world.id);
+		return {
+			...existing,
+			...world,
+			agentId,
+			// Connection establishment contributes metadata; it does not own the
+			// full world document. Replacing this object erases durable role grants
+			// every time another participant connects to the shared world.
+			metadata: {
+				...(existing?.metadata ?? {}),
+				...(world.metadata ?? {}),
+			},
+		};
+	});
 	if (worlds.length) await adapter.upsertWorlds(worlds);
 
 	const rooms = [...roomMap.values()].map((r) => ({

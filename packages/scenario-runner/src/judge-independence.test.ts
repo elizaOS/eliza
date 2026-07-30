@@ -26,6 +26,7 @@ function createJudgedRuntime(score = 0.9) {
   });
   return {
     actions: [],
+    plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
     getService: vi.fn(() => null),

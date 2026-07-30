@@ -7,6 +7,7 @@
   "main": "./src/server.ts",
   "scripts": {
     "benchmark:server": "TSX_TSCONFIG_PATH=../../tsconfig.json node --conditions=eliza-source --import tsx src/server.ts",
+    "trusted-runtime:server": "TSX_TSCONFIG_PATH=../../tsconfig.json node --conditions=eliza-source --import tsx src/trusted-runtime-server.ts",
     "normalize-capture": "node --import tsx scripts/normalize-eliza-capture.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -16,8 +17,11 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
+    "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-personal-assistant": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "dotenv": "^17.2.3",
     "zod": "^4.4.3"

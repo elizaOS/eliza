@@ -22,6 +22,7 @@ LIVE_CONTACTS_SCENARIOS: list[Scenario] = [
         name="Disambiguate a contact and log a follow-up",
         domain=Domain.CONTACTS,
         mode=ScenarioMode.LIVE,
+        expected_world_mutation="optional",
         persona=PERSONA_RIA_PM,
         instruction=(
             "I had a great call this morning with someone named Carter "

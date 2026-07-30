@@ -11,11 +11,12 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import type {
+  GoogleCalendarAttendee,
+  GoogleCalendarAttendeeInput,
   GoogleCalendarEvent,
   GoogleCalendarEventInput,
   GoogleCalendarEventPatchInput,
   GoogleCalendarListEntry,
-  GoogleEmailAddress,
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google";
 import type {
@@ -434,8 +435,20 @@ export function accountIdForGrant(grant: LifeOpsConnectorGrant): string {
   );
 }
 
-function dateTimeValue(value: string | undefined, fallback: string): string {
-  return value?.trim() ? value : fallback;
+function requireEventDateTime(
+  value: string | undefined,
+  field: "start" | "end",
+  eventId: string,
+): string {
+  const normalized = value?.trim();
+  if (normalized) {
+    return normalized;
+  }
+  fail(
+    502,
+    `Google Calendar event ${eventId} is missing its ${field} time.`,
+    "GOOGLE_CALENDAR_INVALID_EVENT_TIME",
+  );
 }
 
 export function lifeOpsCalendarEventFromGoogle(args: {
@@ -447,10 +460,17 @@ export function lifeOpsCalendarEventFromGoogle(args: {
   const { event, grant, agentId } = args;
   const syncedAt = args.syncedAt ?? new Date().toISOString();
   const externalId = event.id;
-  const startAt = dateTimeValue(event.start, syncedAt);
-  const endAt = dateTimeValue(event.end, startAt);
+  const startAt = requireEventDateTime(event.start, "start", externalId);
+  const endAt = requireEventDateTime(event.end, "end", externalId);
+  const connectorAccountId = accountIdForGrant(grant);
+  const providerUpdatedAt = event.metadata?.updatedAt;
+  const updatedAt =
+    typeof providerUpdatedAt === "string" &&
+    Number.isFinite(Date.parse(providerUpdatedAt))
+      ? new Date(providerUpdatedAt).toISOString()
+      : syncedAt;
   return {
-    id: `${agentId}:google:${grant.side}:calendar:${event.calendarId}:${externalId}`,
+    id: `${agentId}:google:${grant.side}:grant:${grant.id}:calendar:${event.calendarId}:${externalId}`,
     externalId,
     agentId,
     provider: "google",
@@ -471,27 +491,29 @@ export function lifeOpsCalendarEventFromGoogle(args: {
     recurrence: event.recurrence ?? null,
     recurringEventId: event.recurringEventId ?? null,
     metadata: {
-      googlePlugin: true,
       ...(event.metadata ?? {}),
+      googlePlugin: true,
+      transparency: event.transparency ?? "opaque",
+      visibility: event.visibility ?? "default",
     },
     syncedAt,
-    updatedAt: syncedAt,
-    connectorAccountId: grant.connectorAccountId ?? undefined,
+    updatedAt,
+    connectorAccountId,
     grantId: grant.id,
     accountEmail: grant.identityEmail ?? undefined,
   };
 }
 
 function lifeOpsCalendarAttendeeFromGoogle(
-  attendee: GoogleEmailAddress,
+  attendee: GoogleCalendarAttendee,
 ): LifeOpsCalendarEventAttendee {
   return {
     email: attendee.email,
     displayName: attendee.name ?? null,
-    responseStatus: null,
-    self: false,
-    organizer: false,
-    optional: false,
+    responseStatus: attendee.responseStatus,
+    self: attendee.self,
+    organizer: attendee.organizer,
+    optional: attendee.optional,
   };
 }
 
@@ -505,6 +527,7 @@ export function lifeOpsCalendarSummaryFromGoogle(args: {
     provider: "google",
     side: grant.side,
     grantId: grant.id,
+    connectorAccountId: accountIdForGrant(grant),
     accountEmail: grant.identityEmail ?? null,
     calendarId: entry.calendarId,
     summary: entry.summary,
@@ -516,6 +539,7 @@ export function lifeOpsCalendarSummaryFromGoogle(args: {
     timeZone: entry.timeZone,
     selected: entry.selected,
     includeInFeed: args.includeInFeed ?? true,
+    selectionVersion: 0,
   };
 }
 
@@ -529,9 +553,15 @@ export function googleCalendarEventInput(args: {
   description?: string | null;
   location?: string | null;
   attendees?:
-    | readonly { email?: string | null; displayName?: string | null }[]
+    | readonly {
+        email?: string | null;
+        displayName?: string | null;
+        optional?: boolean;
+      }[]
     | null;
   recurrence?: readonly string[] | null;
+  idempotencyKey?: string;
+  notifyAttendees?: boolean;
 }): GoogleCalendarEventInput {
   return {
     accountId: args.accountId,
@@ -542,11 +572,25 @@ export function googleCalendarEventInput(args: {
     timeZone: args.timeZone ?? undefined,
     description: args.description ?? undefined,
     location: args.location ?? undefined,
-    attendees: args.attendees
-      ?.map((attendee) => attendee.email?.trim())
-      .filter(Boolean)
-      .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
+    attendees: args.attendees?.flatMap(
+      (attendee): GoogleCalendarAttendeeInput[] => {
+        const email = attendee.email?.trim();
+        return email
+          ? [
+              {
+                email,
+                ...(attendee.displayName ? { name: attendee.displayName } : {}),
+                ...(attendee.optional !== undefined
+                  ? { optional: attendee.optional }
+                  : {}),
+              },
+            ]
+          : [];
+      },
+    ),
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
+    idempotencyKey: args.idempotencyKey,
+    sendUpdates: args.notifyAttendees ? "all" : "none",
   };
 }
 
@@ -561,9 +605,15 @@ export function googleCalendarEventPatchInput(args: {
   description?: string;
   location?: string;
   attendees?:
-    | readonly { email?: string | null; displayName?: string | null }[]
+    | readonly {
+        email?: string | null;
+        displayName?: string | null;
+        optional?: boolean;
+      }[]
     | null;
   recurrence?: readonly string[] | null;
+  notifyAttendees?: boolean;
+  expectedProviderVersion?: string;
 }): GoogleCalendarEventPatchInput {
   return {
     accountId: args.accountId,
@@ -575,10 +625,24 @@ export function googleCalendarEventPatchInput(args: {
     timeZone: args.timeZone ?? undefined,
     description: args.description,
     location: args.location,
-    attendees: args.attendees
-      ?.map((attendee) => attendee.email?.trim())
-      .filter(Boolean)
-      .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
+    attendees: args.attendees?.flatMap(
+      (attendee): GoogleCalendarAttendeeInput[] => {
+        const email = attendee.email?.trim();
+        return email
+          ? [
+              {
+                email,
+                ...(attendee.displayName ? { name: attendee.displayName } : {}),
+                ...(attendee.optional !== undefined
+                  ? { optional: attendee.optional }
+                  : {}),
+              },
+            ]
+          : [];
+      },
+    ),
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
+    sendUpdates: args.notifyAttendees ? "all" : "none",
+    expectedEtag: args.expectedProviderVersion,
   };
 }

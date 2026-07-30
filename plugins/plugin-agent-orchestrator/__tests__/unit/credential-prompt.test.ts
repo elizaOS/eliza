@@ -8,8 +8,24 @@ import {
   emitCredentialResolved,
 } from "../../src/api/credential-prompt.js";
 
-function makeRuntime(opts: { withSend?: boolean; appUrl?: string } = {}) {
-  const send = vi.fn(async () => undefined);
+function confirmedSendOutcome() {
+  return {
+    kind: "delivered" as const,
+    receipt: {
+      providerMessageIds: ["credential-prompt-message-1"] as [string],
+      acceptedAt: 1_780_000_000_000,
+      persistence: { status: "persisted" as const, memoryIds: [] },
+    },
+    memories: [],
+  };
+}
+
+function makeRuntime(
+  opts: { withSend?: boolean; appUrl?: string; unconfirmed?: boolean } = {},
+) {
+  const send = vi.fn(async () =>
+    opts.unconfirmed ? undefined : confirmedSendOutcome(),
+  );
   const runtime = {
     agentId: "agent-1",
     getSetting: (k: string) =>
@@ -93,6 +109,17 @@ describe("emitCredentialPrompt (#8907)", () => {
       credentialKeys: ["KEY"],
     });
     expect(ok).toBe(false);
+  });
+
+  it("returns false when the connector provides no delivery evidence", async () => {
+    const { runtime } = makeRuntime({ unconfirmed: true });
+    await expect(
+      emitCredentialPrompt({
+        runtime: runtime as never,
+        metadata: { roomId: ROOM, source: "telegram" },
+        credentialKeys: ["KEY"],
+      }),
+    ).resolves.toBe(false);
   });
 });
 

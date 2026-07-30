@@ -14,7 +14,19 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, isNotNull, ne, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -24,20 +36,23 @@ import {
   jobsRepository,
   type NewJob,
   prepareJobInsertData,
+  StaleJobExecutionError,
 } from "../../db/repositories/jobs";
 import {
+  type AgentExecutionTier,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
 } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
+import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import { jobs } from "../../db/schemas/jobs";
 import { ApiError } from "../api/cloud-worker-errors";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
-import { withTimeout } from "../utils/with-timeout";
+import { OperationTimeoutError, withTimeout } from "../utils/with-timeout";
 import {
   ADMIN_CANARY_MAX_RUNNING_JOBS,
   ADMIN_CANARY_MAX_TARGETS,
@@ -66,6 +81,9 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import {
+  COLD_BOOT_JOB_TYPES,
+  COLD_BOOT_STALE_JOB_THRESHOLD_MS,
+  DEFAULT_STALE_JOB_THRESHOLD_MS,
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   type ProvisioningJobType,
@@ -713,6 +731,9 @@ export interface EnqueueAgentSnapshotResult {
 
 interface LifecycleSandboxRow {
   id: string;
+  agent_name: string | null;
+  created_at: Date;
+  execution_tier: AgentExecutionTier;
   status: string;
   updated_at: Date | null;
   claimed_at: Date | null;
@@ -730,6 +751,7 @@ interface LifecycleSandboxRow {
   image_digest: string | null;
   previous_docker_image: string | null;
   previous_image_digest: string | null;
+  replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
 }
@@ -839,10 +861,10 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
 );
 
 /**
- * Stale-job recovery thresholds, by job type. `recoverStaleJobs` resets a job
- * stuck `in_progress` past this window back to `pending` — the backstop for a
- * crashed worker. The threshold MUST exceed the job's real worst-case
- * wall-clock, or it false-positives a still-running job and re-claims it.
+ * Stale-job thresholds, by job type. Generated provisioning attempts remain
+ * owned until their executor acknowledges quiescence; daemon startup recovery
+ * handles process replacement. These thresholds still govern legacy claims
+ * and size the execution watchdog, so they must exceed real worst-case runtime.
  *
  * The cold-boot job types (provision / resume / wake / restart / upgrade) run
  * the full image-pull + agent-boot path, which legitimately takes up to ~11 min
@@ -856,23 +878,16 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  * deliberately admits a `provisioning` row and defers to this as the time gate,
  * so this threshold is the single source of truth for "provision is stuck".)
  */
-const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
-const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
-const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
-  JOB_TYPES.AGENT_PROVISION,
-  JOB_TYPES.AGENT_RESUME,
-  JOB_TYPES.AGENT_WAKE,
-  JOB_TYPES.AGENT_RESTART,
-  JOB_TYPES.AGENT_UPGRADE,
-  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-  JOB_TYPES.AGENT_DOWNGRADE,
-]);
 /** Re-schedule delay for snapshot jobs claimed while the lane gate is off
  *  (#16639) — long enough not to spin, short enough to drain promptly once
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
 const WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS = 2 * 60 * 1000;
+const EXECUTION_LEASE_MS = 60_000;
+const EXECUTION_LEASE_HEARTBEAT_MS = 15_000;
+const SETTLEMENT_RETRY_BASE_MS = 250;
+const SETTLEMENT_RETRY_MAX_MS = 5_000;
 
 /**
  * Unreachable loopback bridge that E2E preload historically stamped onto
@@ -899,10 +914,9 @@ const UNREACHABLE_BRIDGE_SENTINEL = "http://127.0.0.1:65535";
  * force-removed the first still-booting container — provision flapping on the
  * exact cold-start path every new dedicated agent hits.
  *
- * Cold-boot job types therefore get the same 15-min budget `recoverStaleJobs`
- * already uses, so the per-job wrap can't fire before a legitimate cold boot
- * finishes (15 min > ~11 min). Fast ops keep the tight 300s. This is the wrap's
- * counterpart to the stale-recovery threshold — both are now cold-boot-aware.
+ * Cold-boot job types therefore get the same 15-min budget used for legacy
+ * stale claims, so the per-job wrap can't fire before a legitimate cold boot
+ * finishes (15 min > ~11 min). Fast ops keep the tight 300s.
  */
 export function resolvePerJobTimeoutMs(jobType: string): number {
   return COLD_BOOT_JOB_TYPES.has(jobType as ProvisioningJobType)
@@ -1017,6 +1031,37 @@ const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
 export class ProvisioningJobService {
+  private readonly executionOverride?: (job: Job) => Promise<void>;
+  private readonly executionTimeoutMs: (jobType: string) => number;
+  private readonly executionOwnerId: string;
+  private readonly executionLeaseMs: number;
+  private readonly executionLeaseHeartbeatMs: number;
+  private readonly settlementRetryBaseMs: number;
+
+  constructor(options?: {
+    executeJob?: (job: Job) => Promise<void>;
+    executionTimeoutMs?: (jobType: string) => number;
+    executionOwnerId?: string;
+    executionLeaseMs?: number;
+    executionLeaseHeartbeatMs?: number;
+    settlementRetryBaseMs?: number;
+  }) {
+    this.executionOverride = options?.executeJob;
+    this.executionTimeoutMs = options?.executionTimeoutMs ?? resolvePerJobTimeoutMs;
+    this.executionOwnerId = options?.executionOwnerId ?? crypto.randomUUID();
+    this.executionLeaseMs = options?.executionLeaseMs ?? EXECUTION_LEASE_MS;
+    this.executionLeaseHeartbeatMs =
+      options?.executionLeaseHeartbeatMs ?? EXECUTION_LEASE_HEARTBEAT_MS;
+    this.settlementRetryBaseMs = options?.settlementRetryBaseMs ?? SETTLEMENT_RETRY_BASE_MS;
+    if (
+      this.executionLeaseMs < 1 ||
+      this.executionLeaseHeartbeatMs < 1 ||
+      this.executionLeaseHeartbeatMs >= this.executionLeaseMs
+    ) {
+      throw new Error("Execution lease heartbeat must be positive and shorter than the lease");
+    }
+  }
+
   /**
    * Common path for the seven `enqueueAgent*Once` methods. Acquires the
    * per-(org,agent) advisory lock, verifies the sandbox exists, runs an
@@ -1071,6 +1116,9 @@ export class ProvisioningJobService {
     const [sandbox] = await tx
       .select({
         id: agentSandboxes.id,
+        agent_name: agentSandboxes.agent_name,
+        created_at: agentSandboxes.created_at,
+        execution_tier: agentSandboxes.execution_tier,
         status: agentSandboxes.status,
         updated_at: agentSandboxes.updated_at,
         claimed_at: agentSandboxes.claimed_at,
@@ -1335,7 +1383,17 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    expectedIdentity?: {
+      agentName: string;
+      createdAt: Date | string;
+      executionTier: AgentExecutionTier;
+    };
   }): Promise<EnqueueAgentDeleteResult> {
+    const expectedIdentity = params.expectedIdentity;
+    const expectedCreatedAt = expectedIdentity ? new Date(expectedIdentity.createdAt) : null;
+    if (expectedCreatedAt && !Number.isFinite(expectedCreatedAt.getTime())) {
+      throw new ApiError(400, "validation_error", "Expected agent creation timestamp is invalid");
+    }
     return this.enqueueLifecycleJob<AgentDeleteJobData>({
       jobType: JOB_TYPES.AGENT_DELETE,
       jobData: {
@@ -1353,6 +1411,21 @@ export class ProvisioningJobService {
       // sub-second. 30s matches docker-sandbox-provider.stop() timeout.
       estimatedDurationMs: 30_000,
       logName: "agent_delete",
+      validateSandbox: expectedIdentity
+        ? (sandbox) => {
+            if (
+              sandbox.agent_name !== expectedIdentity.agentName ||
+              sandbox.created_at.getTime() !== expectedCreatedAt?.getTime() ||
+              sandbox.execution_tier !== expectedIdentity.executionTier
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                "Agent identity changed before deletion",
+              );
+            }
+          }
+        : undefined,
       // Flip status so the UI shows "deleting" and concurrent mutations
       // bail. Actual row removal happens in executeAgentDelete once SSH
       // stop() succeeds.
@@ -1362,8 +1435,72 @@ export class ProvisioningJobService {
           (sandbox.warm_claim_credential_state === "pending" ||
             sandbox.warm_claim_credential_state === "attested")
         ) {
-          throw new Error("Warm-claim credential handoff is still in progress");
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            "Warm-claim credential handoff is still in progress",
+          );
         }
+        // A pending row is either unclaimed or was made retryable only after its
+        // prior execution acknowledged quiescence.
+        const cancelled = await tx
+          .update(jobs)
+          .set({ status: "cancelled", updated_at: new Date() })
+          .where(
+            and(
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
+              eq(jobs.status, "pending"),
+            ),
+          )
+          .returning({ id: jobs.id });
+
+        // Never overwrite an execution that has not durably acknowledged
+        // quiescence, regardless of its queue status.
+        const [conflict] = await tx
+          .select({
+            id: jobs.id,
+            type: jobs.type,
+            status: jobs.status,
+          })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
+              or(
+                eq(jobs.status, "in_progress"),
+                and(
+                  inArray(jobs.type, [...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+                  isNotNull(jobs.execution_generation),
+                  isNull(jobs.execution_quiesced_at),
+                  cancelled.length > 0
+                    ? notInArray(
+                        jobs.id,
+                        cancelled.map((job) => job.id),
+                      )
+                    : undefined,
+                ),
+              ),
+            ),
+          )
+          .orderBy(desc(jobs.updated_at))
+          .limit(1);
+        if (conflict) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${params.agentId} has non-quiescent ${conflict.type} job ${conflict.id}`,
+            {
+              conflictingJobId: conflict.id,
+              conflictingJobType: conflict.type,
+              conflictingJobStatus: conflict.status,
+            },
+          );
+        }
+
         // A genuine user-initiated delete (the row is not already in a deletion
         // state) starts the deletion-failure counter fresh — error_count may
         // carry a stale provisioning-error value, and a new delete should get a
@@ -1374,54 +1511,60 @@ export class ProvisioningJobService {
           Boolean(sandbox.deletion_attempt_id) ||
           sandbox.status === "deletion_pending" ||
           sandbox.status === "deletion_failed";
-        const deletionStartedAt =
-          isRecoveryReEnqueue && sandbox.deletion_started_at
-            ? sandbox.deletion_started_at
-            : new Date();
+        // Continuing an earlier deletion keeps the original start time by
+        // leaving the column alone. (`deletion_started_at IS NOT NULL` implies
+        // isRecoveryReEnqueue via agent_sandboxes_deletion_intent_pair_check.)
+        const continuesEarlierDeletion = sandbox.deletion_started_at !== null;
         const deletionAttemptId =
           isRecoveryReEnqueue && sandbox.deletion_attempt_id
             ? sandbox.deletion_attempt_id
             : crypto.randomUUID();
-        await tx
+        const identityPredicates =
+          expectedIdentity && expectedCreatedAt
+            ? [
+                eq(agentSandboxes.agent_name, expectedIdentity.agentName),
+                sql`${agentSandboxes.created_at} >= ${expectedCreatedAt}
+                AND ${agentSandboxes.created_at} < ${new Date(expectedCreatedAt.getTime() + 1)}`,
+                eq(agentSandboxes.execution_tier, expectedIdentity.executionTier),
+                isNull(agentSandboxes.deleted_at),
+                isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+                sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '')
+                NOT IN ('pending', 'attested')`,
+              ]
+            : [];
+        const owned = await tx
           .update(agentSandboxes)
           .set({
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
-            deletion_started_at: deletionStartedAt,
+            ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
             billing_status: "suspended" as const,
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
             ...(isRecoveryReEnqueue ? {} : { error_count: 0 }),
             updated_at: new Date(),
           })
-          .where(eq(agentSandboxes.id, params.agentId));
-
-        // Cancel any OTHER lifecycle jobs still queued for this agent. Delete
-        // wins: a pending restart/wake/resume/etc. that runs after the row is
-        // flipped to deletion_pending (or deleted) would either re-provision a
-        // container we are tearing down or fail noisily. Marking them
-        // `cancelled` (a terminal status claimPendingJobs/recoverStaleJobs
-        // never touch) drops them cleanly and keeps them auditable. The
-        // agent_delete row itself is inserted right after this and is excluded
-        // by type, so it is never self-cancelled.
-        const cancelled = await tx
-          .update(jobs)
-          .set({ status: "cancelled", updated_at: new Date() })
           .where(
             and(
-              eq(jobs.organization_id, params.organizationId),
-              eq(jobs.agent_id, params.agentId),
-              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
-              sql`${jobs.status} IN ('pending', 'in_progress')`,
+              eq(agentSandboxes.id, params.agentId),
+              eq(agentSandboxes.organization_id, params.organizationId),
+              ...identityPredicates,
             ),
           )
-          .returning({ id: jobs.id });
+          .returning({ id: agentSandboxes.id });
+        if (owned.length !== 1) {
+          throw new ApiError(409, "session_not_ready", "Agent identity changed before deletion");
+        }
+
         if (cancelled.length > 0) {
-          logger.info("[provisioning-jobs] Cancelled pending jobs superseded by agent_delete", {
-            agentId: params.agentId,
-            orgId: params.organizationId,
-            cancelledCount: cancelled.length,
-          });
+          logger.info(
+            "[provisioning-jobs] Cancelled quiescent pending jobs superseded by agent_delete",
+            {
+              agentId: params.agentId,
+              orgId: params.organizationId,
+              cancelledCount: cancelled.length,
+            },
+          );
         }
       },
     });
@@ -2485,6 +2628,129 @@ export class ProvisioningJobService {
   // Processing (called by cron)
   // ---------------------------------------------------------------------------
 
+  private startExecutionLeaseHeartbeat(job: Job): () => void {
+    let renewalInFlight = false;
+    const timer = setInterval(() => {
+      if (renewalInFlight) return;
+      renewalInFlight = true;
+      void jobsRepository
+        .renewExecutionLease(job, this.executionOwnerId, this.leaseDurationForJobType(job.type))
+        .then((renewed) => {
+          if (!renewed) {
+            clearInterval(timer);
+            logger.warn("[provisioning-jobs] Execution lease ownership was lost", {
+              jobId: job.id,
+              executionGeneration: job.execution_generation,
+              executionOwnerId: this.executionOwnerId,
+            });
+          }
+        })
+        .catch((error) => {
+          // error-policy:J7 lease diagnostics must not terminate the worker;
+          // mutation guards and settlement CAS fail closed if renewal cannot recover.
+          logger.warn("[provisioning-jobs] Execution lease renewal failed; retrying", {
+            jobId: job.id,
+            executionGeneration: job.execution_generation,
+            executionOwnerId: this.executionOwnerId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        })
+        .finally(() => {
+          renewalInFlight = false;
+        });
+    }, this.executionLeaseHeartbeatMs);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
+  private async waitForSettlementRetry(attempt: number): Promise<void> {
+    const delay = Math.min(
+      SETTLEMENT_RETRY_MAX_MS,
+      this.settlementRetryBaseMs * 2 ** Math.min(attempt - 1, 8),
+    );
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, delay);
+      timer.unref?.();
+    });
+  }
+
+  private async retryOwnedWrite<T>(
+    job: Job,
+    operation: string,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await write();
+      } catch (error) {
+        if (error instanceof StaleJobExecutionError) {
+          const renewed = await jobsRepository.renewExecutionLease(
+            job,
+            this.executionOwnerId,
+            this.leaseDurationForJobType(job.type),
+          );
+          if (!renewed) throw error;
+          continue;
+        }
+        attempt++;
+        logger.warn("[provisioning-jobs] Owned execution write failed; retrying", {
+          jobId: job.id,
+          executionGeneration: job.execution_generation,
+          executionOwnerId: this.executionOwnerId,
+          operation,
+          attempt,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await this.waitForSettlementRetry(attempt);
+      }
+    }
+  }
+
+  private async assertExecutionMutationLease(job: Job): Promise<void> {
+    try {
+      await jobsRepository.assertExecutionLease(job, this.executionOwnerId);
+    } catch (error) {
+      if (
+        !(error instanceof StaleJobExecutionError) ||
+        !(await jobsRepository.renewExecutionLease(
+          job,
+          this.executionOwnerId,
+          this.leaseDurationForJobType(job.type),
+        ))
+      ) {
+        throw error;
+      }
+      await jobsRepository.assertExecutionLease(job, this.executionOwnerId);
+    }
+  }
+
+  private leaseDurationForJobType(jobType: string): number {
+    // A provider mutation already in flight cannot be remotely cancelled, so
+    // takeover remains barred through the full local execution timeout. Regular
+    // heartbeats extend this window for legitimately detached work.
+    return Math.max(
+      this.executionLeaseMs,
+      this.executionTimeoutMs(jobType) + 2 * this.executionLeaseHeartbeatMs,
+    );
+  }
+
+  private async updateClaimedExecution(job: Job, updates: Partial<Job>): Promise<Job> {
+    return await this.retryOwnedWrite(job, "update", () =>
+      jobsRepository.updateForExecution(job, updates, this.executionOwnerId),
+    );
+  }
+
+  private async settleClaimedExecution(
+    job: Job,
+    status: "completed" | "cancelled",
+    updates?: Partial<Job>,
+  ): Promise<void> {
+    await this.retryOwnedWrite(job, "settle", () =>
+      jobsRepository.settleExecution(job, status, updates, this.executionOwnerId),
+    );
+  }
+
   /**
    * Claim and process pending provisioning jobs.
    * Designed to be called by a cron route every minute.
@@ -2526,8 +2792,9 @@ export class ProvisioningJobService {
       await this.processJobType(jobType, laneBatch, result);
     }
 
-    // Recover stale jobs (stuck in_progress for >5 minutes), scoped to the same
-    // lane so a lane-scoped daemon never resets the OTHER lane's stale rows.
+    // Recover legacy or already-quiesced stale claims, scoped to the same lane
+    // so a lane-scoped daemon never resets the OTHER lane's rows. Generated
+    // active attempts stay owned until settlement or daemon startup recovery.
     const recovered = await this.recoverStaleJobs(jobTypes);
     if (recovered > 0) {
       logger.info("[provisioning-jobs] Recovered stale jobs", { recovered });
@@ -2567,12 +2834,9 @@ export class ProvisioningJobService {
   }
 
   /**
-   * One-shot startup recovery for jobs claimed by a previous worker process.
-   * Normal stale recovery deliberately waits longer than a full cold boot; on
-   * daemon replacement, rows claimed before this process started cannot still
-   * be owned by this process, so the singleton worker may make them retryable
-   * immediately instead of leaving agents stuck in `provisioning` until the
-   * cold-boot stale threshold expires.
+   * One-shot scan for pre-start claims whose renewable owner lease has expired.
+   * A deployment may overlap two live workers, so process start time narrows the
+   * scan but never authorizes revocation by itself.
    */
   async recoverInterruptedJobsOnStartup(
     startedBefore: Date,
@@ -2612,109 +2876,160 @@ export class ProvisioningJobService {
           sharedTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
           maxRunning: ADMIN_CANARY_MAX_RUNNING_JOBS,
           limit: batchSize,
+          executionOwnerId: this.executionOwnerId,
+          executionLeaseMs: this.leaseDurationForJobType(jobType),
         })
       : await jobsRepository.claimPendingJobs({
           type: jobType,
           limit: batchSize,
+          executionOwnerId: this.executionOwnerId,
+          executionLeaseMs: this.leaseDurationForJobType(jobType),
         });
 
     for (const job of claimedJobs) {
       result.claimed++;
+      const stopLeaseHeartbeat = this.startExecutionLeaseHeartbeat(job);
+      const execution = this.executeJob(job);
 
       try {
-        // withTimeout frees the awaiter (this cycle's job slot), not the
-        // underlying SSH/headscale I/O — those are themselves bounded. On
-        // timeout this throws → the catch below runs incrementAttempt, which
-        // flips the row to error/deletion_failed once attempts exhaust;
-        // recoverStaleJobs is the backstop. The timeout is BY JOB TYPE
-        // (resolvePerJobTimeoutMs): cold-boot types get the full ~11-min boot
-        // budget so a slow cold provision is not rejected mid-boot → no
-        // premature incrementAttempt → no re-claim → no double-provision (#10919).
-        await withTimeout(
-          this.executeJob(job),
-          resolvePerJobTimeoutMs(job.type),
-          `job ${job.type}`,
-        );
+        await withTimeout(execution, this.executionTimeoutMs(job.type), `job ${job.type}`);
         result.succeeded++;
+        stopLeaseHeartbeat();
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        result.errors.push({ jobId: job.id, error: errorMsg });
-
-        if (
-          err instanceof RetryableProvisionTransportError ||
-          err instanceof RetryableReplacementCleanupError
-        ) {
-          const retrySnapshot =
-            err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
-          const requeued = await jobsRepository.retryLaterWithoutIncrementingAttempts(
-            retrySnapshot,
-            errorMsg,
-            PROVISION_TRANSPORT_RETRY_DELAY_MS,
+        if (err instanceof OperationTimeoutError) {
+          const errorMsg = err.message;
+          result.failed++;
+          result.errors.push({ jobId: job.id, error: errorMsg });
+          logger.warn(
+            "[provisioning-jobs] Execution timed out; retaining ownership until quiescent",
+            {
+              jobId: job.id,
+              executionGeneration: job.execution_generation,
+              timeoutMs: err.timeoutMs,
+            },
           );
-          if (requeued) {
-            result.retried++;
-            logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
-              jobId: job.id,
-              delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
-              error: errorMsg,
+          // error-policy:J5 the detached result and terminal supervisor rejection
+          // stay observed until settlement commits or a successor wins takeover.
+          void execution
+            .then(
+              () => stopLeaseHeartbeat(),
+              async (executionError) => {
+                try {
+                  await this.handleExecutionFailure(job, executionError);
+                } finally {
+                  stopLeaseHeartbeat();
+                }
+              },
+            )
+            .catch((settlementError) => {
+              logger.warn("[provisioning-jobs] Detached settlement supervisor stopped", {
+                jobId: job.id,
+                executionGeneration: job.execution_generation,
+                error:
+                  settlementError instanceof Error
+                    ? settlementError.message
+                    : String(settlementError),
+              });
             });
-          } else {
-            logger.info("[provisioning-jobs] Retryable failure lost its exact job-state claim", {
-              jobId: job.id,
-              error: errorMsg,
-            });
-          }
           continue;
         }
+        try {
+          await this.handleExecutionFailure(job, err, result);
+        } finally {
+          stopLeaseHeartbeat();
+        }
+      }
+    }
+  }
 
-        result.failed++;
+  private async handleExecutionFailure(
+    job: Job,
+    err: unknown,
+    result?: ProcessingResult,
+  ): Promise<void> {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    result?.errors.push({ jobId: job.id, error: errorMsg });
 
-        // When retries are exhausted (permanent failure) the dependent
-        // status row must flip too — and it must flip ATOMICALLY with the
-        // job-status `failed` write, not in a best-effort follow-up that can
-        // silently swallow. A separate write that fails leaves the sandbox
-        // stuck in "provisioning" until the 10-min stuck-recovery cron
-        // (markStuckProvisioningWithoutActiveJobAsError) catches it. Folding
-        // the dependent flip into incrementAttempt's transaction via
-        // `onFailedInTx` makes both commit together (or roll back together,
-        // so the recovery cron re-runs the whole thing). The cron stays as
-        // the backstop, never the primary signal.
-        // Rollback-safe classification only exists for AGENT_UPGRADE failures
-        // (thrown as UpgradeFailedError). For every other job type this is
-        // undefined and the writeback ignores it.
-        const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
-        const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
-        const updated = await jobsRepository.incrementAttempt(
-          job.id,
+    if (
+      err instanceof RetryableProvisionTransportError ||
+      err instanceof RetryableReplacementCleanupError
+    ) {
+      const retrySnapshot =
+        err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
+      const requeued = await this.retryOwnedWrite(job, "retry-later", () =>
+        jobsRepository.retryLaterWithoutIncrementingAttempts(
+          retrySnapshot,
           errorMsg,
-          job.max_attempts,
-          onFailedInTx,
-        );
+          PROVISION_TRANSPORT_RETRY_DELAY_MS,
+          this.executionOwnerId,
+        ),
+      );
+      if (requeued) {
+        if (result) result.retried++;
+        logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
+          jobId: job.id,
+          delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
+          error: errorMsg,
+        });
+      } else {
+        logger.info("[provisioning-jobs] Retryable failure lost its exact job-state claim", {
+          jobId: job.id,
+          error: errorMsg,
+        });
+      }
+      return;
+    }
 
-        // app_deploy keeps a post-commit cache invalidation (the apps read
-        // cache is invalidated outside the DB transaction); the row flip
-        // itself already committed atomically inside onFailedInTx above.
-        if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
-          const { appId } = readAppDeployJobData(job);
-          await appsService.invalidateCache(appId);
-        }
-        // container_provision flips apps.deployment_status with a raw in-tx
-        // update (bypassing the appsService cache), so evict the app read cache
-        // here too — otherwise the cache-backed deploy-status route keeps
-        // reporting `building` until the 5-min TTL. The in-tx writeback already
-        // org-scoped the flip; an appId that matched no app is a harmless evict.
-        if (updated?.status === "failed" && job.type === JOB_TYPES.CONTAINER_PROVISION) {
-          const { containerId } = readContainerProvisionJobData(job);
-          const [row] = await dbWrite
-            .select({ projectName: containers.project_name })
-            .from(containers)
-            .where(eq(containers.id, containerId))
-            .limit(1);
-          const appId = row?.projectName;
-          if (appId && isValidUUID(appId)) {
-            await appsService.invalidateCache(appId);
-          }
-        }
+    if (result) result.failed++;
+
+    // When retries are exhausted (permanent failure) the dependent
+    // status row must flip too — and it must flip ATOMICALLY with the
+    // job-status `failed` write, not in a best-effort follow-up that can
+    // silently swallow. A separate write that fails leaves the sandbox
+    // stuck in "provisioning" until the 10-min stuck-recovery cron
+    // (markStuckProvisioningWithoutActiveJobAsError) catches it. Folding
+    // the dependent flip into incrementAttempt's transaction via
+    // `onFailedInTx` makes both commit together (or roll back together,
+    // so the recovery cron re-runs the whole thing). The cron stays as
+    // the backstop, never the primary signal.
+    // Rollback-safe classification only exists for AGENT_UPGRADE failures
+    // (thrown as UpgradeFailedError). For every other job type this is
+    // undefined and the writeback ignores it.
+    const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
+    const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
+    const updated = await this.retryOwnedWrite(job, "increment-attempt", () =>
+      jobsRepository.incrementAttempt(
+        job.id,
+        errorMsg,
+        job.max_attempts,
+        onFailedInTx,
+        job.execution_generation ?? undefined,
+        this.executionOwnerId,
+      ),
+    );
+
+    // app_deploy keeps a post-commit cache invalidation (the apps read
+    // cache is invalidated outside the DB transaction); the row flip
+    // itself already committed atomically inside onFailedInTx above.
+    if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
+      const { appId } = readAppDeployJobData(job);
+      await appsService.invalidateCache(appId);
+    }
+    // container_provision flips apps.deployment_status with a raw in-tx
+    // update (bypassing the appsService cache), so evict the app read cache
+    // here too — otherwise the cache-backed deploy-status route keeps
+    // reporting `building` until the 5-min TTL. The in-tx writeback already
+    // org-scoped the flip; an appId that matched no app is a harmless evict.
+    if (updated?.status === "failed" && job.type === JOB_TYPES.CONTAINER_PROVISION) {
+      const { containerId } = readContainerProvisionJobData(job);
+      const [row] = await dbWrite
+        .select({ projectName: containers.project_name })
+        .from(containers)
+        .where(eq(containers.id, containerId))
+        .limit(1);
+      const appId = row?.projectName;
+      if (appId && isValidUUID(appId)) {
+        await appsService.invalidateCache(appId);
       }
     }
   }
@@ -2992,6 +3307,10 @@ export class ProvisioningJobService {
     ) {
       return;
     }
+    if (!job.execution_generation) {
+      throw new Error(`Claimed lifecycle job ${job.id} has no execution generation`);
+    }
+    await this.assertExecutionMutationLease(job);
     await dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaProvisionAdvisoryLockSql(job.organization_id, job.agent_id!));
@@ -3021,11 +3340,74 @@ export class ProvisioningJobService {
           },
         );
       }
+      const [currentJob] = await tx
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.id, job.id),
+            eq(jobs.status, "in_progress"),
+            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+            isNull(jobs.execution_quiesced_at),
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${job.id}
+                AND ${jobExecutionLeases.execution_generation} = ${job.execution_generation}
+                AND ${jobExecutionLeases.owner_id} = ${this.executionOwnerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
+          ),
+        )
+        .limit(1);
+      if (!currentJob) {
+        throw new Error(`Lifecycle execution generation is no longer current: ${job.id}`);
+      }
+
+      const [claimedSandbox] = await tx
+        .update(agentSandboxes)
+        .set({
+          lifecycle_job_id: job.id,
+          lifecycle_execution_generation: job.execution_generation,
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, job.agent_id!),
+            eq(agentSandboxes.organization_id, job.organization_id),
+            or(
+              isNull(agentSandboxes.lifecycle_execution_generation),
+              and(
+                eq(agentSandboxes.lifecycle_job_id, job.id),
+                sql`${agentSandboxes.lifecycle_execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+              ),
+            ),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!claimedSandbox) {
+        const [existingSandbox] = await tx
+          .select({ id: agentSandboxes.id })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.id, job.agent_id!),
+              eq(agentSandboxes.organization_id, job.organization_id),
+            ),
+          )
+          .limit(1);
+        if (existingSandbox) {
+          throw new Error(`Agent lifecycle resource generation is already owned: ${job.agent_id}`);
+        }
+      }
     });
   }
 
   private async executeJob(job: Job): Promise<void> {
     await this.assertNoConflictingLifecycleExecution(job);
+    if (this.executionOverride) {
+      await this.executionOverride(job);
+      return;
+    }
     switch (job.type) {
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
@@ -3082,8 +3464,9 @@ export class ProvisioningJobService {
       case JOB_TYPES.CONTAINER_RESTART:
       case JOB_TYPES.CONTAINER_UPGRADE:
       case JOB_TYPES.CONTAINER_LOGS:
+        await this.assertExecutionMutationLease(job);
         await dispatchContainerJob(job, getContainerExecutorDeps());
-        await jobsRepository.updateStatus(job.id, "completed", {
+        await this.settleClaimedExecution(job, "completed", {
           completed_at: new Date(),
         });
         break;
@@ -3097,8 +3480,9 @@ export class ProvisioningJobService {
       // is idempotent on a live container, but re-running after the row is gone
       // is pointless churn, and a completed row is the clean terminal state.
       case JOB_TYPES.CONTAINER_STOP: {
+        await this.assertExecutionMutationLease(job);
         const outcome = await dispatchContainerStopJob(job);
-        await jobsRepository.updateStatus(job.id, "completed", {
+        await this.settleClaimedExecution(job, "completed", {
           result: { stopped: outcome.stopped, reason: outcome.reason ?? null },
           completed_at: new Date(),
         });
@@ -3115,8 +3499,9 @@ export class ProvisioningJobService {
       // (a second container row + a second CONTAINER_PROVISION). A completed row
       // is the only thing that prevents the re-sweep.
       case JOB_TYPES.APP_DEPLOY:
+        await this.assertExecutionMutationLease(job);
         await dispatchAppDeployJob(job);
-        await jobsRepository.updateStatus(job.id, "completed", {
+        await this.settleClaimedExecution(job, "completed", {
           completed_at: new Date(),
         });
         break;
@@ -3124,6 +3509,7 @@ export class ProvisioningJobService {
       // The Worker enqueues this; the daemon runs the real DROP + slot release
       // via the injected deprovisioner (wired in apps-deploy-backend). (#8342)
       case JOB_TYPES.APP_DB_DEPROVISION: {
+        await this.assertExecutionMutationLease(job);
         const outcome = await dispatchAppDbDeprovisionJob(job);
         // Mark terminal so recoverStaleJobs() can't re-sweep this job back to
         // `pending` after the stale threshold. A re-run would call
@@ -3141,7 +3527,7 @@ export class ProvisioningJobService {
         // (needs a row-returning query seam on TenantDbSqlExecutor). That would
         // also close the micro-window where this updateStatus throws AFTER a
         // successful releaseSlot and the retry re-decrements.
-        await jobsRepository.updateStatus(job.id, "completed", {
+        await this.settleClaimedExecution(job, "completed", {
           result: {
             deprovisioned: outcome.deprovisioned,
             reason: outcome.reason ?? null,
@@ -3171,7 +3557,7 @@ export class ProvisioningJobService {
     agentId: string,
   ): Promise<boolean> {
     if (result.success || result.error !== "Agent not found") return false;
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: { cloudAgentId: agentId, skipped: true, reason: "Agent not found" },
       completed_at: new Date(),
     });
@@ -3197,12 +3583,13 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeSuspend(data.agentId, data.organizationId);
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentSuspendJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: result.containerStopped,
@@ -3217,7 +3604,7 @@ export class ProvisioningJobService {
       containerStopped: result.containerStopped,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentSuspendJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -3247,12 +3634,13 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeResume(data.agentId, data.organizationId);
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentResumeJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStarted: result.containerStarted,
@@ -3269,7 +3657,7 @@ export class ProvisioningJobService {
       reprovisioned: result.reprovisioned,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentResumeJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -3300,12 +3688,13 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeSleep(data.agentId, data.organizationId);
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentSleepJobResultToRecord({
           cloudAgentId: data.agentId,
           containerRemoved: result.containerRemoved,
@@ -3322,7 +3711,7 @@ export class ProvisioningJobService {
       backupId: result.backupId,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentSleepJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -3353,6 +3742,7 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId, {
       restoreBackupId: data.restoreBackupId,
       forceFreshBoot: data.forceFreshBoot,
@@ -3361,7 +3751,7 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentWakeJobResultToRecord({
           cloudAgentId: data.agentId,
           reprovisioned: result.reprovisioned,
@@ -3389,7 +3779,7 @@ export class ProvisioningJobService {
       freshBoot: result.freshBoot,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentWakeJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -3420,12 +3810,13 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeRestart(data.agentId, data.organizationId);
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentRestartJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: result.containerStopped,
@@ -3444,7 +3835,7 @@ export class ProvisioningJobService {
       healthUrl: result.healthUrl,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentRestartJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -3479,6 +3870,7 @@ export class ProvisioningJobService {
     });
 
     const startedAt = Date.now();
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeUpgrade(
       data.agentId,
       data.organizationId,
@@ -3518,7 +3910,7 @@ export class ProvisioningJobService {
       durationMs: Date.now() - startedAt,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentUpgradeJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -3633,6 +4025,7 @@ export class ProvisioningJobService {
           error_storage: "inline",
           error_key: null,
           completed_at: finishedAt,
+          execution_quiesced_at: finishedAt,
           updated_at: finishedAt,
         })
         .where(
@@ -3645,6 +4038,8 @@ export class ProvisioningJobService {
             eq(jobs.user_id, data.actorUserId),
             eq(jobs.attempts, snapshot.attempts),
             eq(jobs.max_attempts, snapshot.max_attempts),
+            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${snapshot.execution_generation}`,
+            isNull(jobs.execution_quiesced_at),
             sql`${jobs.started_at} IS NOT DISTINCT FROM ${
               snapshot.started_at ? new Date(jobAuditTimestamp(snapshot.started_at)) : null
             }`,
@@ -3671,6 +4066,25 @@ export class ProvisioningJobService {
           `Admin canary job ${snapshot.id} changed before cleanup completion`,
         );
       }
+      if (!snapshot.execution_generation) {
+        throw new AdminCanaryCleanupCommitError(
+          `Admin canary job ${snapshot.id} has no execution generation`,
+        );
+      }
+      await tx
+        .update(agentSandboxes)
+        .set({
+          lifecycle_job_id: null,
+          lifecycle_execution_generation: null,
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, data.agentId),
+            eq(agentSandboxes.organization_id, data.organizationId),
+            eq(agentSandboxes.lifecycle_job_id, snapshot.id),
+            eq(agentSandboxes.lifecycle_execution_generation, snapshot.execution_generation),
+          ),
+        );
       completedAudit = completion;
     };
     if (priorCutover) {
@@ -3788,6 +4202,8 @@ export class ProvisioningJobService {
             eq(jobs.user_id, data.actorUserId),
             eq(jobs.attempts, job.attempts),
             eq(jobs.max_attempts, job.max_attempts),
+            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}`,
+            isNull(jobs.execution_quiesced_at),
             sql`${jobs.started_at} IS NOT DISTINCT FROM ${
               job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
             }`,
@@ -3845,6 +4261,7 @@ export class ProvisioningJobService {
     });
 
     let result: Awaited<ReturnType<typeof elizaSandboxService.executeAdminCanaryUpgrade>>;
+    await this.assertExecutionMutationLease(job);
     try {
       result =
         data.operation === "upgrade"
@@ -3944,6 +4361,7 @@ export class ProvisioningJobService {
     });
 
     const startedAt = Date.now();
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeDowngrade(
       data.agentId,
       data.organizationId,
@@ -3969,7 +4387,7 @@ export class ProvisioningJobService {
       durationMs: Date.now() - startedAt,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentDowngradeJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -4012,7 +4430,7 @@ export class ProvisioningJobService {
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentLogsJobResultToRecord({
           cloudAgentId: data.agentId,
           status: result.status,
@@ -4032,7 +4450,7 @@ export class ProvisioningJobService {
       message: result.message,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentLogsJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -4071,6 +4489,7 @@ export class ProvisioningJobService {
       chars: data.text.length,
     });
 
+    await this.assertExecutionMutationLease(job);
     const response = await elizaSandboxService.bridge(data.agentId, data.organizationId, {
       jsonrpc: "2.0",
       method: "message.send",
@@ -4083,7 +4502,7 @@ export class ProvisioningJobService {
     });
 
     if (response.error) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentMessageJobResultToRecord({
           cloudAgentId: data.agentId,
           error: response.error.message,
@@ -4099,7 +4518,7 @@ export class ProvisioningJobService {
       reason: typeof result.reason === "string" ? result.reason : undefined,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentMessageJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -4132,10 +4551,13 @@ export class ProvisioningJobService {
         jobId: job.id,
         agentId: data.agentId,
       });
-      await jobsRepository.retryLaterWithoutIncrementingAttempts(
-        job,
-        "agent_snapshot lane disabled (ELIZA_SNAPSHOT_JOBS_ENABLED != true)",
-        SNAPSHOT_GATE_RETRY_DELAY_MS,
+      await this.retryOwnedWrite(job, "snapshot-gate-retry", () =>
+        jobsRepository.retryLaterWithoutIncrementingAttempts(
+          job,
+          "agent_snapshot lane disabled (ELIZA_SNAPSHOT_JOBS_ENABLED != true)",
+          SNAPSHOT_GATE_RETRY_DELAY_MS,
+          this.executionOwnerId,
+        ),
       );
       return;
     }
@@ -4146,6 +4568,7 @@ export class ProvisioningJobService {
       snapshotType: data.snapshotType,
     });
 
+    await this.assertExecutionMutationLease(job);
     const result = await elizaSandboxService.executeSnapshot(
       data.agentId,
       data.organizationId,
@@ -4167,7 +4590,7 @@ export class ProvisioningJobService {
       data.snapshotType === "auto" &&
       (result.error === "Sandbox is not running" || result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED)
     ) {
-      await jobsRepository.updateStatus(job.id, "completed", {
+      await this.settleClaimedExecution(job, "completed", {
         result: agentSnapshotJobResultToRecord({
           cloudAgentId: data.agentId,
           skipped: true,
@@ -4186,7 +4609,7 @@ export class ProvisioningJobService {
     }
 
     if (!result.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentSnapshotJobResultToRecord({
           cloudAgentId: data.agentId,
           error: result.error,
@@ -4205,7 +4628,7 @@ export class ProvisioningJobService {
         : undefined,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentSnapshotJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -4236,12 +4659,13 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const delResult = await elizaSandboxService.executeDeletion(data.agentId, data.organizationId);
 
     if (!delResult.success) {
       // Persist a partial result and rethrow so the jobs runner counts an
       // attempt and retries (or marks failed on exhaustion).
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentDeleteJobResultToRecord({
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
@@ -4258,7 +4682,7 @@ export class ProvisioningJobService {
       rowDeleted: true,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentDeleteJobResultToRecord(jobResult),
       completed_at: new Date(),
     });
@@ -4291,12 +4715,13 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
+    await this.assertExecutionMutationLease(job);
     const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
 
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
     if (!provResult.success) {
-      await jobsRepository.update(job.id, {
+      await this.updateClaimedExecution(job, {
         result: agentProvisionJobResultToRecord({
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
@@ -4316,7 +4741,7 @@ export class ProvisioningJobService {
       healthUrl: provResult.healthUrl,
     };
 
-    await jobsRepository.updateStatus(job.id, "completed", {
+    await this.settleClaimedExecution(job, "completed", {
       result: agentProvisionJobResultToRecord(jobResult),
       completed_at: new Date(),
     });

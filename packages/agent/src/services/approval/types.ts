@@ -11,13 +11,33 @@
  * to this contract when enqueuing through the runtime {@link ApprovalQueue}.
  */
 
+import type { TransactionalDb } from "./sql.ts";
+
 export type ApprovalRequestState =
   | "pending"
   | "approved"
   | "executing"
+  | "retryable"
+  | "reconciliation_required"
   | "done"
   | "rejected"
   | "expired";
+
+export const APPROVAL_EXECUTION_CAPABILITY = "eliza.approval-execution";
+export const APPROVAL_EXECUTION_PROTOCOL_VERSION = 2 as const;
+
+export interface ApprovalExecution {
+  readonly attemptId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+  readonly claimedAt: Date;
+  readonly dispatchStartedAt: Date | null;
+  readonly providerReceipt: Readonly<Record<string, unknown>> | null;
+  readonly error: string | null;
+  readonly reconciledAt: Date | null;
+  readonly reconciledBy: string | null;
+  readonly reconciliationReason: string | null;
+}
 
 export type ApprovalAction =
   | "send_message"
@@ -34,12 +54,17 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
+  | "signal"
+  | "whatsapp"
   | "slack"
   | "imessage"
   | "sms"
   | "x_dm"
   | "email"
   | "google_calendar"
+  | "microsoft_calendar"
+  | "apple_calendar"
+  | "ics_calendar"
   | "browser"
   | "phone"
   | "internal";
@@ -66,6 +91,21 @@ export interface ApprovalTravelCalendarSync {
   readonly timeZone?: string | null;
 }
 
+/** Calendar invitee metadata preserved from the authenticated editor. */
+export interface ApprovalCalendarAttendee {
+  readonly email: string;
+  readonly displayName?: string | null;
+  readonly optional?: boolean;
+}
+
+/** String entries remain readable for approvals persisted before metadata support. */
+export type ApprovalCalendarAttendeeInput = string | ApprovalCalendarAttendee;
+
+type ApprovalCalendarSourceBinding = {
+  readonly grantId?: string | null;
+  readonly side?: "owner" | "agent" | null;
+};
+
 export type ApprovalPayload =
   | {
       action: "send_message";
@@ -83,35 +123,87 @@ export type ApprovalPayload =
       threadId: string | null;
       replyToMessageId?: string | null;
     }
-  | {
+  | ({
       action: "schedule_event";
       calendarId: string;
       title: string;
       startsAtMs: number;
       endsAtMs: number;
-      attendees: ReadonlyArray<string>;
+      attendees: ReadonlyArray<ApprovalCalendarAttendeeInput>;
       location: string | null;
       description: string | null;
-    }
-  | {
+      timeZone?: string | null;
+      durationMinutes?: number | null;
+      windowPreset?:
+        | "tomorrow_morning"
+        | "tomorrow_afternoon"
+        | "tomorrow_evening"
+        | null;
+      recurrence?: ReadonlyArray<string> | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
+    } & ApprovalCalendarSourceBinding)
+  | ({
       action: "modify_event";
       calendarId: string;
       eventId: string;
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedProviderVersion?: string | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      seriesMaster?: {
+        readonly externalId: string;
+        readonly startAtMs: number;
+        readonly updatedAt: string;
+        readonly etag: string;
+      } | null;
+      recurrenceScope?: "instance" | "this_and_following" | "series" | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
       patch: {
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;
-        attendees: ReadonlyArray<string> | null;
+        attendees: ReadonlyArray<ApprovalCalendarAttendeeInput> | null;
         location: string | null;
         description: string | null;
+        timeZone?: string | null;
+        recurrence?: ReadonlyArray<string> | null;
       };
-    }
-  | {
+    } & ApprovalCalendarSourceBinding)
+  | ({
       action: "cancel_event";
       calendarId: string;
       eventId: string;
       notifyAttendees: boolean;
-    }
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedProviderVersion?: string | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      seriesMaster?: {
+        readonly externalId: string;
+        readonly startAtMs: number;
+        readonly updatedAt: string;
+        readonly etag: string;
+      } | null;
+      recurrenceScope?: "instance" | "this_and_following" | "series" | null;
+      cancellationMode?:
+        | "organizer_cancel"
+        | "decline_invitation"
+        | "remove_private_copy"
+        | null;
+      editorRequestSha256?: string;
+    } & ApprovalCalendarSourceBinding)
   | {
       action: "book_travel";
       kind: "flight" | "hotel" | "ground";
@@ -188,10 +280,22 @@ export interface ApprovalRequest {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  readonly idempotencyKey: string | null;
   readonly expiresAt: Date;
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
   readonly resolutionReason: string | null;
+  readonly execution: ApprovalExecution | null;
+}
+
+/**
+ * Atomic enqueue outcome. `reused` is decided by the same insert that owns the
+ * idempotency constraint, so callers never infer replay from request state or
+ * timestamps.
+ */
+export interface ApprovalEnqueueResult {
+  readonly request: ApprovalRequest;
+  readonly reused: boolean;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -202,7 +306,26 @@ export interface ApprovalEnqueueInput {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  /**
+   * Permanently binds one caller-defined intent to its immutable request,
+   * including terminal rejection. Reconsideration requires an explicit fresh
+   * revision/nonce key; implementations never resurrect a rejected row.
+   */
+  readonly idempotencyKey?: string | null;
   readonly expiresAt: Date;
+}
+
+/** A reused idempotency key must describe the same immutable approval. */
+export class ApprovalIdempotencyConflictError extends Error {
+  public readonly idempotencyKey: string;
+
+  constructor(idempotencyKey: string) {
+    super(
+      `[ApprovalQueue] idempotency key ${idempotencyKey} already identifies a different approval request`,
+    );
+    this.name = "ApprovalIdempotencyConflictError";
+    this.idempotencyKey = idempotencyKey;
+  }
 }
 
 /** Filter for `list`. All fields combine with AND. */
@@ -217,6 +340,36 @@ export interface ApprovalListFilter {
 export interface ApprovalResolution {
   readonly resolvedBy: string;
   readonly resolutionReason: string;
+}
+
+export interface ApprovalExecutionClaim {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+}
+
+export interface ApprovalExecutionMutation {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly attemptId: string;
+}
+
+export interface ApprovalExecutionFailure extends ApprovalExecutionMutation {
+  readonly error: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionCompletion extends ApprovalExecutionMutation {
+  readonly providerReceipt: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionReconciliation
+  extends ApprovalExecutionMutation {
+  readonly outcome: "delivered" | "not_delivered";
+  readonly reconciledBy: string;
+  readonly reconciliationReason: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
 }
 
 /** Thrown when a state transition is invalid. */
@@ -259,14 +412,65 @@ export class ApprovalNotFoundError extends Error {
  *  - Treat `purgeExpired` as idempotent.
  */
 export interface ApprovalQueue {
+  readonly capability: typeof APPROVAL_EXECUTION_CAPABILITY;
+  readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
+  /**
+   * Persist an owner gesture that is already confirmed at an authenticated
+   * boundary. Implementations must not emit a redundant approval prompt.
+   */
+  enqueueConfirmed(
+    input: ApprovalEnqueueInput,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  /**
+   * Insert (or reuse, under an idempotency key) inside the caller's
+   * transaction so a domain mutation and its owner gate commit together.
+   * Owner-facing side channels must run only after that commit.
+   */
+  enqueueTransactional(
+    input: ApprovalEnqueueInput,
+    tx: TransactionalDb,
+  ): Promise<ApprovalEnqueueResult>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
-  byId(id: string): Promise<ApprovalRequest | null>;
-  approve(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  reject(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  markExecuting(id: string): Promise<ApprovalRequest>;
-  markDone(id: string): Promise<ApprovalRequest>;
-  markExpired(id: string): Promise<ApprovalRequest>;
+  byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null>;
+  byIdempotencyKey(
+    idempotencyKey: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null>;
+  approve(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  reject(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  claimExecution(claim: ApprovalExecutionClaim): Promise<ApprovalRequest>;
+  markDispatchStarted(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  markDone(completion: ApprovalExecutionCompletion): Promise<ApprovalRequest>;
+  markRetryableFailure(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  markReconciliationRequired(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  recoverUnstartedExecution(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  reconcileExecution(
+    reconciliation: ApprovalExecutionReconciliation,
+  ): Promise<ApprovalRequest>;
+  /** Terminally invalidate a pending or approved request without dispatch. */
+  markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
+  removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }
 

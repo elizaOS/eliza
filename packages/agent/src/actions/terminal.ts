@@ -14,6 +14,7 @@
 import type {
   Action,
   ActionExample,
+  EffectReceipt,
   HandlerOptions,
   IAgentRuntime,
   JsonValue,
@@ -23,6 +24,7 @@ import type {
 import {
   buildStoreVariantBlockedMessage,
   ContentType,
+  ElizaError,
   isLocalCodeExecutionAllowed,
   logger,
   stringToUuid,
@@ -32,8 +34,6 @@ import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
-
-const FAIL = { success: false, text: "" } as const;
 
 type TerminalActionParameters = {
   arguments?: JsonValue;
@@ -47,7 +47,7 @@ type TerminalActionInput = {
 
 type CapturedTerminalRun = {
   command: string;
-  runId?: string;
+  runId: string;
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -81,7 +81,8 @@ function parseJsonArguments(
       return parsed;
     }
   } catch {
-    // Ignore invalid MCP-style argument payloads and fall back to NL parsing.
+    // error-policy:J3 planner arguments are untrusted input. Invalid JSON is
+    // treated as an absent wrapper so the explicit typed parameters still win.
   }
   return undefined;
 }
@@ -123,24 +124,47 @@ function normalizeCapturedRun(
   command: string,
   value: JsonValue,
 ): CapturedTerminalRun {
-  const data = isJsonRecord(value) ? value : {};
-  const exitCode =
-    typeof data.exitCode === "number" && Number.isFinite(data.exitCode)
-      ? data.exitCode
-      : Number(data.exitCode ?? 0) || 0;
+  if (!isJsonRecord(value)) {
+    throw new ElizaError("Terminal response was not an object", {
+      code: "TERMINAL_RESPONSE_INVALID",
+      severity: "fatal",
+    });
+  }
+  const runId = readStringValue(value.runId);
+  if (
+    value.ok !== true ||
+    !runId ||
+    typeof value.exitCode !== "number" ||
+    !Number.isInteger(value.exitCode) ||
+    typeof value.stdout !== "string" ||
+    typeof value.stderr !== "string" ||
+    typeof value.timedOut !== "boolean" ||
+    typeof value.truncated !== "boolean"
+  ) {
+    throw new ElizaError("Terminal response omitted required execution proof", {
+      code: "TERMINAL_RESPONSE_INVALID",
+      context: {
+        hasRunId: Boolean(runId),
+        hasExitCode:
+          typeof value.exitCode === "number" &&
+          Number.isInteger(value.exitCode),
+      },
+      severity: "fatal",
+    });
+  }
 
   return {
     command,
-    runId: readStringValue(data.runId),
-    exitCode,
-    stdout: typeof data.stdout === "string" ? data.stdout : "",
-    stderr: typeof data.stderr === "string" ? data.stderr : "",
-    timedOut: data.timedOut === true,
-    truncated: data.truncated === true,
+    runId,
+    exitCode: value.exitCode,
+    stdout: value.stdout,
+    stderr: value.stderr,
+    timedOut: value.timedOut,
+    truncated: value.truncated,
     maxDurationMs:
-      typeof data.maxDurationMs === "number" &&
-      Number.isFinite(data.maxDurationMs)
-        ? data.maxDurationMs
+      typeof value.maxDurationMs === "number" &&
+      Number.isFinite(value.maxDurationMs)
+        ? value.maxDurationMs
         : undefined,
   };
 }
@@ -190,7 +214,7 @@ async function createCommandOutputAttachment(
   }
 
   const attachmentId = stringToUuid(
-    `terminal-output:${message.id ?? message.roomId}:${result.runId ?? result.command}:${Date.now()}`,
+    `terminal-output:${message.id ?? message.roomId}:${result.runId}:${Date.now()}`,
   );
   const title = `Shell output: ${result.command}`;
   const attachment: Media = {
@@ -222,11 +246,73 @@ async function createCommandOutputAttachment(
 
     return { attachment, memoryId };
   } catch (error) {
+    // error-policy:J4 the execution result and inline output remain explicit
+    // while attachment persistence degrades to an unpersisted attachment.
     logger.warn(
       `[terminal] Failed to store shell output attachment (${error instanceof Error ? error.message : String(error)})`,
     );
     return { attachment };
   }
+}
+
+function terminalEffectReceipt(
+  result: CapturedTerminalRun,
+  outputAttachment: TerminalOutputAttachment | undefined,
+  observedAt: string,
+): EffectReceipt {
+  const base = {
+    receiptId: `terminal-run:${result.runId}`,
+    operation: "system.shell.execute",
+    resource: { kind: "terminal.run", id: result.runId },
+    artifacts: outputAttachment
+      ? [
+          {
+            kind: "terminal.output",
+            id: outputAttachment.attachment.id,
+            ...(outputAttachment.memoryId
+              ? { version: outputAttachment.memoryId }
+              : {}),
+          },
+        ]
+      : [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+  } as const;
+  if (result.exitCode === 0 && !result.timedOut) {
+    return {
+      ...base,
+      outcome: "applied",
+      commit: {
+        kind: "provider_accepted",
+        id: result.runId,
+        committedAt: observedAt,
+      },
+    };
+  }
+  return {
+    ...base,
+    outcome: "failed",
+    failure: {
+      code: result.timedOut
+        ? "TERMINAL_EXECUTION_TIMED_OUT"
+        : "TERMINAL_EXECUTION_FAILED",
+      retryable: false,
+      acceptance: result.timedOut ? "unknown" : "rejected",
+    },
+  };
+}
+
+function terminalUserFacingText(
+  result: CapturedTerminalRun,
+  cleanStdout: string,
+): string {
+  if (result.timedOut) {
+    return `The command timed out${typeof result.maxDurationMs === "number" ? ` after ${result.maxDurationMs} ms` : ""}; I can't verify that it completed.`;
+  }
+  if (result.exitCode !== 0) {
+    return `The command failed with exit code ${result.exitCode}.`;
+  }
+  return cleanStdout || "The command finished successfully with exit code 0.";
 }
 
 function buildCapturedResponseText(
@@ -273,7 +359,12 @@ export const terminalAction: Action = {
   // resolves shell-direct routing/termination off these tags first, so this
   // action can rename itself without breaking the pipeline; the legacy name/
   // simile list remains only as a covered compatibility fallback.
-  tags: ["domain:system", "resource:shell", "capability:execute"],
+  tags: [
+    "domain:system",
+    "resource:shell",
+    "capability:execute",
+    "effect:receipt-required",
+  ],
 
   similes: ["RUN_IN_TERMINAL", "EXECUTE_COMMAND", "TERMINAL", "RUN_SHELL"],
 
@@ -306,79 +397,107 @@ export const terminalAction: Action = {
     const command = input.command;
 
     if (!command) {
-      return FAIL;
-    }
-
-    try {
-      const terminalToken = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (terminalToken) {
-        headers["X-Eliza-Terminal-Token"] = terminalToken;
-      }
-
-      const response = await fetch(
-        `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            command,
-            clientId: "runtime-terminal-action",
-            captureOutput: true,
-            ...(terminalToken ? { terminalToken } : {}),
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        return FAIL;
-      }
-
-      const responseBody = (await response.json()) as JsonValue;
-      const capturedRun = normalizeCapturedRun(command, responseBody);
-      const boundedRun = {
-        ...capturedRun,
-        stdout: truncateForData(capturedRun.stdout),
-        stderr: truncateForData(capturedRun.stderr),
-      };
-      const outputAttachment = await createCommandOutputAttachment(
-        runtime,
-        message,
-        capturedRun,
-      );
-
-      // When the command succeeded cleanly (exit 0, no timeout, no
-      // truncation, empty stderr) the stdout *is* the answer. Mark it
-      // `verifiedUserFacing` so the planner echoes it verbatim instead of
-      // letting the evaluator meta-narrate ("Listed files as returned by
-      // grep") and drop the actual output. See elizaOS/eliza#7960.
-      const cleanStdout =
-        capturedRun.exitCode === 0 &&
-        !capturedRun.timedOut &&
-        !capturedRun.truncated &&
-        capturedRun.stderr.trim().length === 0
-          ? capturedRun.stdout.trim()
-          : "";
-
       return {
-        text: buildCapturedResponseText(capturedRun, outputAttachment),
-        success: true,
-        ...(cleanStdout
-          ? { userFacingText: cleanStdout, verifiedUserFacing: true }
-          : {}),
-        data: {
-          actionName: TERMINAL_ACTION_NAME,
-          ...boundedRun,
-          outputAttachment: outputAttachment?.attachment,
-          outputAttachmentMemoryId: outputAttachment?.memoryId,
-          suppressVisibleCallback: true,
-        },
+        success: false,
+        text: "A non-empty shell command is required.",
+        error: "TERMINAL_COMMAND_REQUIRED",
       };
-    } catch {
-      return FAIL;
     }
+
+    const terminalToken = readAliasedEnv("ELIZA_TERMINAL_RUN_TOKEN");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (terminalToken) {
+      headers["X-Eliza-Terminal-Token"] = terminalToken;
+    }
+
+    const response = await fetch(
+      `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          command,
+          clientId: "runtime-terminal-action",
+          captureOutput: true,
+          ...(terminalToken ? { terminalToken } : {}),
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new ElizaError("Terminal execution request was rejected", {
+        code: "TERMINAL_REQUEST_FAILED",
+        context: { status: response.status },
+        severity: "ephemeral",
+      });
+    }
+
+    let responseBody: JsonValue;
+    try {
+      responseBody = (await response.json()) as JsonValue;
+    } catch (error) {
+      // error-policy:J2 the terminal boundary requires a structured response;
+      // preserve the parser error for the runtime's action failure channel.
+      throw new ElizaError("Terminal execution response was not valid JSON", {
+        code: "TERMINAL_RESPONSE_INVALID",
+        cause: error,
+        severity: "fatal",
+      });
+    }
+    const capturedRun = normalizeCapturedRun(command, responseBody);
+    const boundedRun = {
+      ...capturedRun,
+      stdout: truncateForData(capturedRun.stdout),
+      stderr: truncateForData(capturedRun.stderr),
+    };
+    const outputAttachment = await createCommandOutputAttachment(
+      runtime,
+      message,
+      capturedRun,
+    );
+
+    const cleanStdout =
+      capturedRun.exitCode === 0 &&
+      !capturedRun.timedOut &&
+      !capturedRun.truncated &&
+      capturedRun.stderr.trim().length === 0
+        ? capturedRun.stdout.trim()
+        : "";
+    const observedAt = new Date().toISOString();
+    const effectReceipt = terminalEffectReceipt(
+      capturedRun,
+      outputAttachment,
+      observedAt,
+    );
+    const userFacingText = terminalUserFacingText(capturedRun, cleanStdout);
+    const succeeded =
+      effectReceipt.outcome === "applied" && capturedRun.exitCode === 0;
+
+    return {
+      text: buildCapturedResponseText(capturedRun, outputAttachment),
+      success: succeeded,
+      userFacingText,
+      verifiedUserFacing: true,
+      effectReceipts: [effectReceipt],
+      userFacingEffectReceiptIds: [effectReceipt.receiptId],
+      ...(succeeded
+        ? {}
+        : {
+            error:
+              effectReceipt.outcome === "failed"
+                ? effectReceipt.failure.code
+                : "TERMINAL_EXECUTION_FAILED",
+          }),
+      data: {
+        actionName: TERMINAL_ACTION_NAME,
+        ...boundedRun,
+        outputAttachment: outputAttachment?.attachment,
+        outputAttachmentMemoryId: outputAttachment?.memoryId,
+        suppressVisibleCallback: true,
+      },
+    };
   },
 
   parameters: [

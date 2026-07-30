@@ -35,11 +35,14 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { billFlatUsage } from "@/lib/services/ai-billing";
+import {
+  type BillingContext,
+  billFlatUsage,
+  reserveFlatUsageCredits,
+} from "@/lib/services/ai-billing";
 import { calculateVoiceCloneCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   type CreditReservation,
-  creditsService,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { usageService } from "@/lib/services/usage";
@@ -209,14 +212,20 @@ app.post("/", async (c) => {
     );
 
     cloneCost = await calculateVoiceCloneCostFromCatalog({ cloneType });
+    const billingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId,
+      model: `elevenlabs/${cloneType}`,
+      provider: "elevenlabs",
+      billingSource: "elevenlabs",
+      requestId: `voice-clone:${crypto.randomUUID()}`,
+      affiliateCode: c.req.header("X-Affiliate-Code") ?? null,
+      description: `Voice cloning (${cloneType}): ${voiceName}`,
+    };
 
     try {
-      reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
-        amount: cloneCost.totalCost,
-        userId: user.id,
-        description: `Voice cloning (${cloneType}): ${voiceName}`,
-      });
+      reservation = await reserveFlatUsageCredits(billingContext, cloneCost);
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
@@ -333,21 +342,7 @@ app.post("/", async (c) => {
       elevenlabsVoiceId,
     });
 
-    const billing = await billFlatUsage(
-      {
-        organizationId: user.organization_id,
-        userId: user.id,
-        apiKeyId,
-        model: `elevenlabs/${cloneType}`,
-        provider: "elevenlabs",
-        billingSource: "elevenlabs",
-        // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
-        affiliateCode: c.req.header("X-Affiliate-Code") ?? null,
-        description: `Voice cloning (${cloneType}): ${voiceName}`,
-      },
-      cloneCost,
-      reservation,
-    );
+    const billing = await billFlatUsage(billingContext, cloneCost, reservation);
 
     c.executionCtx.waitUntil(
       usageService

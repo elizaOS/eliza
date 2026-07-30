@@ -768,6 +768,28 @@ export interface XRViewOptions {
 	fullscreen?: boolean;
 }
 
+/** Primitive JSON Schema constraints for one view-capability parameter. */
+export interface ViewCapabilityParameter {
+	/** JSON value type accepted by the capability. */
+	type: string;
+	/** Human-readable description surfaced to the planner. */
+	description: string;
+	/** Whether the capability requires this parameter. */
+	required?: boolean;
+	/** Enumerated primitive values accepted by the capability. */
+	enum?: Array<string | number | boolean>;
+	/** Regular expression applied to string values. */
+	pattern?: string;
+	/** Minimum accepted string length. */
+	minLength?: number;
+	/** Maximum accepted string length. */
+	maxLength?: number;
+	/** Inclusive lower bound applied to numeric values. */
+	minimum?: number;
+	/** Inclusive upper bound applied to numeric values. */
+	maximum?: number;
+}
+
 /** A discrete capability the agent can exercise on a mounted view. */
 export interface ViewCapability {
 	/** Unique id within the view (e.g. "click-button", "fill-input"). */
@@ -775,10 +797,7 @@ export interface ViewCapability {
 	/** Human-readable description surfaced to the planner. */
 	description: string;
 	/** JSON Schema for any parameters this capability accepts. */
-	params?: Record<
-		string,
-		{ type: string; description: string; required?: boolean }
-	>;
+	params?: Record<string, ViewCapabilityParameter>;
 }
 
 /**

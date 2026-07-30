@@ -15,6 +15,12 @@
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { replyTemplate } from "../../../prompts.ts";
+import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
+import {
+	mergeEffectReceipts,
+	resolveUserFacingEffectReceipts,
+	tagsRequireEffectReceipts,
+} from "../../../types/effects.ts";
 import type {
 	Action,
 	ActionExample,
@@ -397,6 +403,76 @@ export const replyAction = {
 			plannerReplyFallback ||
 			(rawText.startsWith("<") ? "" : rawText);
 
+		// Planner-path twin of the Stage-1 `core.simple_completed_side_effect_claim`
+		// reroute: a REPLY that claims a completed scheduling/save side effect is
+		// fabricated unless some tool actually succeeded earlier in this turn
+		// (observed live, #16941: a bare REPLY shipped "Saved! ✅ Your book report
+		// plan is now set up as reminders" with zero tool calls). Failing the step
+		// BEFORE the callback keeps the fabricated text off the wire and feeds the
+		// violation back into the planner loop, where the model can run the real
+		// action or rephrase honestly.
+		const allTurnEffectReceipts = mergeEffectReceipts(
+			...previousResults.map((result) => result.effectReceipts),
+		);
+		const mutationResults = previousResults.filter((result) => {
+			const actionName =
+				typeof result.data?.actionName === "string"
+					? result.data.actionName.trim()
+					: "";
+			if (actionName.toUpperCase() === "REPLY") return false;
+			const registeredAction = runtime.actions.find(
+				(action) => action.name.toUpperCase() === actionName.toUpperCase(),
+			);
+			return (
+				result.effectReceipts !== undefined ||
+				result.userFacingEffectReceiptIds !== undefined ||
+				tagsRequireEffectReceipts(registeredAction?.tags)
+			);
+		});
+		let groundedEffectReceiptIds: readonly string[] | undefined;
+		for (const previousResult of previousResults) {
+			if (
+				(previousResult.data as { actionName?: string } | undefined)
+					?.actionName === "REPLY" ||
+				previousResult.userFacingText?.trim() !== text
+			) {
+				continue;
+			}
+			const boundReceipts = resolveUserFacingEffectReceipts(
+				previousResult,
+				allTurnEffectReceipts,
+			);
+			if (boundReceipts) {
+				groundedEffectReceiptIds = boundReceipts.map(
+					(receipt) => receipt.receiptId,
+				);
+				break;
+			}
+		}
+		if (
+			!groundedEffectReceiptIds &&
+			(mutationResults.length > 0 || replyClaimsCompletedSideEffect(text))
+		) {
+			const guidance =
+				mutationResults.length > 0
+					? "A mutation-capable action ran this turn, but REPLY text is not the action-owned canonical outcome bound to its effect receipts. Use the exact userFacingText from that action result."
+					: "REPLY text claims a completed save/schedule side effect, but no tool ran this turn. Call the action that actually performs it, or rephrase the reply without claiming it is done.";
+			return {
+				success: false,
+				text: guidance,
+				values: {
+					success: false,
+					error: "FABRICATED_SIDE_EFFECT_CLAIM",
+				},
+				data: {
+					actionName: "REPLY",
+					error: "FABRICATED_SIDE_EFFECT_CLAIM",
+					rejectedText: text,
+				},
+				error: new Error(guidance),
+			};
+		}
+
 		const responseContent = {
 			thought,
 			text,
@@ -430,6 +506,14 @@ export const replyAction = {
 				messageGenerated: true,
 			},
 			success: true,
+			...(groundedEffectReceiptIds
+				? {
+						userFacingText: text,
+						verifiedUserFacing: true,
+						effectReceipts: allTurnEffectReceipts,
+						userFacingEffectReceiptIds: groundedEffectReceiptIds,
+					}
+				: {}),
 		};
 	},
 	examples: (spec.examples ?? []) as ActionExample[][],

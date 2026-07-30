@@ -19,6 +19,7 @@ import {
 	logger,
 	resolveServerOnlyPort,
 } from "@elizaos/core";
+import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
@@ -362,6 +363,7 @@ async function navigateToView(
 	view: ViewSummary,
 	requestedViewType?: ViewType,
 	subview?: string,
+	navigationLabel = view.label,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -387,18 +389,19 @@ async function navigateToView(
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
-		const sectionSuffix = resolvedSubview ? ` → ${resolvedSubview}` : "";
+		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
+		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
 		if (resp.ok)
 			return {
 				ok: true,
-				text: `Navigated to ${view.label}${sectionSuffix} (${view.viewType ?? "gui"}).`,
+				text: openedText,
 				subview: resolvedSubview,
 			};
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
 		if (resp.status === 501 || resp.status === 404)
 			return {
 				ok: true,
-				text: `Opened ${view.label}${sectionSuffix}.`,
+				text: openedText,
 				subview: resolvedSubview,
 			};
 
@@ -415,7 +418,7 @@ async function navigateToView(
 	const pathHint = view.path ? ` at ${view.path}` : "";
 	return {
 		ok: false,
-		text: `Couldn't switch to ${view.label}${pathHint} — the shell did not confirm the change.`,
+		text: `Couldn't switch to ${navigationLabel}${pathHint} — the shell did not confirm the change.`,
 	};
 }
 
@@ -438,7 +441,8 @@ export async function runViewsShow({
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
-	const intentViewId = resolveIntentView(messageText);
+	const rigidIntentViewId = matchViewCommand(messageText);
+	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
 	let target = extractViewTarget(message, options) ?? intentViewId;
 	if (!target) {
 		const text =
@@ -493,7 +497,17 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const result = await navigateToView(view, viewType, subview ?? undefined);
+	const canonicalTarget = rigidIntentViewId
+		? SHARED_NAV_TARGETS[rigidIntentViewId]
+		: undefined;
+	const navigationLabel =
+		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
+	const result = await navigateToView(
+		view,
+		viewType,
+		subview ?? undefined,
+		navigationLabel,
+	);
 
 	// Record the switch so the compose hook injects the acknowledgement provider
 	// (and the provider phrases it) on this turn's reply and the immediate next.
@@ -506,11 +520,22 @@ export async function runViewsShow({
 	return {
 		success: result.ok,
 		text: result.text,
+		...(result.ok
+			? {
+					// The natural Stage 1 acknowledgement or the action callback is
+					// the visible response; the raw terminal receipt only closes the
+					// turn and must not persist as a second assistant row.
+					transcriptVisibility: "internal" as const,
+					userFacingText: result.text,
+					verifiedUserFacing: true,
+					turnComplete: true,
+				}
+			: {}),
 		values: {
 			mode: "show",
 			viewId: view.id,
 			viewType: view.viewType ?? viewType ?? "gui",
-			label: view.label,
+			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),
 		},
 		data: { view, ...(result.subview ? { subview: result.subview } : {}) },

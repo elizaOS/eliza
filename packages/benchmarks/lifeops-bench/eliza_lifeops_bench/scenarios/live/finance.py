@@ -25,6 +25,7 @@ LIVE_FINANCE_SCENARIOS: list[Scenario] = [
         name="Identify cuttable subscriptions",
         domain=Domain.FINANCE,
         mode=ScenarioMode.LIVE,
+        expected_world_mutation="optional",
         persona=PERSONA_DEV_FREELANCER,
         instruction=(
             "I think I'm bleeding money on subscriptions I don't use. "
@@ -55,6 +56,7 @@ LIVE_FINANCE_SCENARIOS: list[Scenario] = [
         name="Weekly spending review with anomaly callout",
         domain=Domain.FINANCE,
         mode=ScenarioMode.LIVE,
+        expected_world_mutation="unchanged",
         persona=PERSONA_LIN_OPS,
         instruction=(
             "Give me a weekly spending review. I want totals by category "

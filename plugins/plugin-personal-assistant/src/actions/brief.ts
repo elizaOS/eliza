@@ -697,6 +697,7 @@ export const briefAction: Action & {
   similes: SIMILE_NAMES.slice(),
   tags: [
     "domain:briefing",
+    "resource:tracked-work",
     "capability:read",
     "capability:compose",
     "surface:internal",
@@ -796,6 +797,9 @@ export const briefAction: Action & {
     return {
       success: true,
       text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      turnComplete: true,
       data: {
         subaction,
         optimizationTask,

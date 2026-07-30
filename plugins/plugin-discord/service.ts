@@ -29,6 +29,10 @@ import {
 	type MessageConnectorUserContext,
 	parseBooleanFromText,
 	type Room,
+	type SendHandlerOutcome,
+	type SendHandlerPersistence,
+	type SendHandlerPersistenceFailure,
+	type SendHandlerReceipt,
 	Service,
 	setConnectorAdminWhitelist,
 	stringToUuid,
@@ -228,6 +232,71 @@ function extractContentMetadata(
 	const meta = content?.metadata;
 	if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
 	return meta as Record<string, unknown>;
+}
+
+function deliveryErrorCode(error: unknown): string {
+	if (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		typeof error.code === "string" &&
+		error.code.trim().length > 0
+	) {
+		return error.code;
+	}
+	return "DISCORD_LOCAL_PERSISTENCE_FAILED";
+}
+
+function deliveryErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function providerMessageIds(
+	messages: readonly Message[],
+): [string, ...string[]] {
+	const ids = messages.map((message) => message.id);
+	const first = ids[0];
+	if (!first) {
+		throw new Error(
+			"Discord cannot build a provider receipt without an accepted message.",
+		);
+	}
+	return [first, ...ids.slice(1)];
+}
+
+function buildDiscordSendReceipt(input: {
+	messages: readonly Message[];
+	acceptedAt: number;
+	persistedMemories: readonly Memory[];
+	failures: readonly SendHandlerPersistenceFailure[];
+}): SendHandlerReceipt {
+	let persistence: SendHandlerPersistence;
+	if (input.failures.length === 0) {
+		persistence = {
+			status: "persisted",
+			memoryIds: input.persistedMemories.flatMap((memory) =>
+				memory.id ? [memory.id] : [],
+			),
+		};
+	} else if (input.persistedMemories.length > 0) {
+		persistence = {
+			status: "partial",
+			memoryIds: input.persistedMemories.flatMap((memory) =>
+				memory.id ? [memory.id] : [],
+			),
+			failures: input.failures,
+		};
+	} else {
+		persistence = {
+			status: "failed",
+			failures: input.failures,
+		};
+	}
+	return {
+		providerMessageIds: providerMessageIds(input.messages),
+		acceptedAt: input.acceptedAt,
+		persistence,
+	};
 }
 
 function isGuildTextBasedChannel(
@@ -1684,15 +1753,18 @@ export class DiscordService extends Service implements IDiscordService {
 	 * @param {IAgentRuntime} runtime - The runtime instance.
 	 * @param {TargetInfo} target - The target information for the message.
 	 * @param {Content} content - The content of the message to send.
-	 * @returns {Promise<void>} A promise that resolves when the message is sent or rejects on error.
+	 * @returns Provider acceptance plus exact local-persistence evidence.
 	 * @throws {Error} If the client is not ready, target is invalid, or sending fails.
 	 */
 	async handleSendMessage(
 		runtime: IAgentRuntime,
 		target: TargetInfo,
 		content: Content,
-	): Promise<Memory | undefined> {
+	): Promise<Memory | SendHandlerOutcome | undefined> {
 		let outboundReservation: DiscordOutboundDeliveryReservation | undefined;
+		let acceptedProviderMessages: Message[] = [];
+		let providerSendFailure: unknown;
+		let providerAcceptedAt: number | undefined;
 		// Resolve the connector account this outbound message must use.
 		// Priority: explicit target.accountId > this service instance's default.
 		// `Content.metadata` is intentionally NOT consulted because it may be
@@ -1712,6 +1784,14 @@ export class DiscordService extends Service implements IDiscordService {
 
 		let targetChannel: Channel | undefined | null = null;
 		let resolvedChannelId: string | null = null;
+		let dmRecipient:
+			| {
+					entityId: UUID;
+					discordUserId: string;
+					userName?: string;
+					name?: string;
+			  }
+			| undefined;
 
 		try {
 			if (target.channelId) {
@@ -1745,6 +1825,17 @@ export class DiscordService extends Service implements IDiscordService {
 				const user = await client.users.fetch(discordUserId);
 				if (user) {
 					targetChannel = user.dmChannel ?? (await user.createDM());
+					const recipientEntityId = normalizeDiscordTargetUserId(
+						target.entityId,
+					)
+						? this.resolveDiscordEntityId(discordUserId)
+						: (target.entityId as UUID);
+					dmRecipient = {
+						entityId: recipientEntityId,
+						discordUserId,
+						userName: user.username,
+						name: user.displayName || user.username,
+					};
 				}
 			} else {
 				throw new Error(
@@ -1783,7 +1874,11 @@ export class DiscordService extends Service implements IDiscordService {
 				runtime.logger.warn(
 					`Channel ${targetChannel.id}${resolvedFromText} not in allowed list, skipping send`,
 				);
-				return;
+				return {
+					kind: "not_delivered",
+					code: "DISCORD_CHANNEL_NOT_ALLOWED",
+					message: `Discord channel ${targetChannel.id} is not in the configured allowlist.`,
+				};
 			}
 
 			if (targetChannel.isTextBased() && !targetChannel.isVoiceBased()) {
@@ -1807,12 +1902,43 @@ export class DiscordService extends Service implements IDiscordService {
 					const channelType = await this.getChannelType(
 						targetChannel as Channel,
 					);
+					const targetChannelGuild =
+						"guild" in targetChannel ? targetChannel.guild : null;
+					const serverId = targetChannelGuild?.id
+						? targetChannelGuild.id
+						: targetChannel.id;
+					const worldId = createUniqueUuid(runtime, serverId) as UUID;
+					const worldName = targetChannelGuild?.name
+						? targetChannelGuild.name
+						: undefined;
 
 					const textContent = normalizeDiscordMessageText(content.text);
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
-						const outboundDedupe = beginDiscordOutboundDelivery({
+						if (dmRecipient) {
+							// Establish canonical recipient participation before the
+							// reservation. A waiting duplicate may inherit the first
+							// provider receipt, but it must never inherit a missing DM
+							// room relationship from an attempt that failed before send.
+							await this.runtime.ensureConnection({
+								entityId: dmRecipient.entityId,
+								roomId,
+								userName: dmRecipient.userName,
+								userId: dmRecipient.discordUserId as UUID,
+								name: dmRecipient.name,
+								source: "discord",
+								channelId: targetChannel.id,
+								messageServerId: stringToUuid(serverId),
+								type: channelType,
+								worldId,
+								worldName,
+								metadata: {
+									accountId,
+								},
+							});
+						}
+						const dedupeParams = {
 							accountId,
 							channelId: targetChannel.id,
 							replyToMessageId:
@@ -1824,7 +1950,19 @@ export class DiscordService extends Service implements IDiscordService {
 							attachmentUrls: content.attachments
 								?.map((media) => media.url)
 								.filter((url): url is string => typeof url === "string"),
-						});
+						};
+						let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
+						while (outboundDedupe.kind === "in_flight") {
+							const settled = await outboundDedupe.settlement;
+							if (settled.kind === "settled") {
+								return {
+									kind: "duplicate",
+									priorDelivery: settled.delivery,
+									receipt: settled.receipt,
+								};
+							}
+							outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
+						}
 						if (outboundDedupe.kind === "duplicate") {
 							runtime.logger.debug(
 								{
@@ -1839,16 +1977,36 @@ export class DiscordService extends Service implements IDiscordService {
 								},
 								"Suppressing duplicate Discord connector delivery",
 							);
-							return;
+							return {
+								kind: "duplicate",
+								priorDelivery: outboundDedupe.priorDelivery,
+								receipt: outboundDedupe.receipt,
+							};
 						}
 						outboundReservation = outboundDedupe.reservation;
-						if (textContent) {
-							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
-							if (chunks.length > 1) {
-								for (let i = 0; i < chunks.length - 1; i++) {
+						try {
+							if (textContent) {
+								const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
+								if (chunks.length > 1) {
+									for (let i = 0; i < chunks.length - 1; i++) {
+										const sent = await targetChannel.send({
+											content: chunks[i],
+											...(outboundReplyToMessageId && i === 0
+												? {
+														reply: {
+															messageReference: outboundReplyToMessageId,
+														},
+													}
+												: {}),
+										});
+										sentMessages.push(sent);
+										acceptedProviderMessages = [...sentMessages];
+										providerAcceptedAt ??= Date.now();
+									}
 									const sent = await targetChannel.send({
-										content: chunks[i],
-										...(outboundReplyToMessageId && i === 0
+										content: chunks[chunks.length - 1],
+										files: files.length > 0 ? files : undefined,
+										...(outboundReplyToMessageId && chunks.length === 1
 											? {
 													reply: {
 														messageReference: outboundReplyToMessageId,
@@ -1857,23 +2015,27 @@ export class DiscordService extends Service implements IDiscordService {
 											: {}),
 									});
 									sentMessages.push(sent);
+									acceptedProviderMessages = [...sentMessages];
+									providerAcceptedAt ??= Date.now();
+								} else {
+									const sent = await targetChannel.send({
+										content: chunks[0],
+										files: files.length > 0 ? files : undefined,
+										...(outboundReplyToMessageId
+											? {
+													reply: {
+														messageReference: outboundReplyToMessageId,
+													},
+												}
+											: {}),
+									});
+									sentMessages.push(sent);
+									acceptedProviderMessages = [...sentMessages];
+									providerAcceptedAt ??= Date.now();
 								}
-								const sent = await targetChannel.send({
-									content: chunks[chunks.length - 1],
-									files: files.length > 0 ? files : undefined,
-									...(outboundReplyToMessageId && chunks.length === 1
-										? {
-												reply: {
-													messageReference: outboundReplyToMessageId,
-												},
-											}
-										: {}),
-								});
-								sentMessages.push(sent);
 							} else {
 								const sent = await targetChannel.send({
-									content: chunks[0],
-									files: files.length > 0 ? files : undefined,
+									files,
 									...(outboundReplyToMessageId
 										? {
 												reply: {
@@ -1883,23 +2045,21 @@ export class DiscordService extends Service implements IDiscordService {
 										: {}),
 								});
 								sentMessages.push(sent);
+								acceptedProviderMessages = [...sentMessages];
+								providerAcceptedAt ??= Date.now();
 							}
-						} else {
-							const sent = await targetChannel.send({
-								files,
-								...(outboundReplyToMessageId
-									? {
-											reply: {
-												messageReference: outboundReplyToMessageId,
-											},
-										}
-									: {}),
+						} catch (error) {
+							// error-policy:J1 provider boundary translation preserves any
+							// accepted prefix as a partial delivery instead of retrying it.
+							providerSendFailure = error;
+							if (sentMessages.length === 0) {
+								throw error;
+							}
+							runtime.reportError("discord:outbound-partial-delivery", error, {
+								accountId,
+								channelId: targetChannel.id,
+								providerMessageIds: sentMessages.map((message) => message.id),
 							});
-							sentMessages.push(sent);
-						}
-						if (sentMessages.length > 0) {
-							outboundReservation.commit();
-							outboundReservation = undefined;
 						}
 					} else {
 						outboundReservation?.release();
@@ -1907,38 +2067,52 @@ export class DiscordService extends Service implements IDiscordService {
 						runtime.logger.warn("No text content or attachments provided");
 					}
 
-					const targetChannelGuild =
-						"guild" in targetChannel ? targetChannel.guild : null;
-					const serverId = targetChannelGuild?.id
-						? targetChannelGuild.id
-						: targetChannel.id;
-					const worldId = createUniqueUuid(runtime, serverId) as UUID;
-					const worldName = targetChannelGuild?.name
-						? targetChannelGuild.name
-						: undefined;
-
+					const persistenceFailures: SendHandlerPersistenceFailure[] = [];
+					const persistedMemories: Memory[] = [];
 					const clientUser = client.user;
-					await this.runtime.ensureConnection({
-						entityId: runtime.agentId,
-						roomId,
-						roomName:
-							"name" in targetChannel && typeof targetChannel.name === "string"
-								? targetChannel.name
-								: clientUser.displayName || clientUser.username || undefined,
-						userName: clientUser.username ? clientUser.username : undefined,
-						name: clientUser.displayName || clientUser.username || undefined,
-						source: "discord",
-						channelId: targetChannel.id,
-						messageServerId: stringToUuid(serverId),
-						type: channelType,
-						worldId,
-						worldName,
-						metadata: {
-							accountId,
-						},
-					});
+					try {
+						await this.runtime.ensureConnection({
+							entityId: runtime.agentId,
+							roomId,
+							roomName:
+								"name" in targetChannel &&
+								typeof targetChannel.name === "string"
+									? targetChannel.name
+									: clientUser.displayName || clientUser.username || undefined,
+							userName: clientUser.username ? clientUser.username : undefined,
+							name: clientUser.displayName || clientUser.username || undefined,
+							source: "discord",
+							channelId: targetChannel.id,
+							messageServerId: stringToUuid(serverId),
+							type: channelType,
+							worldId,
+							worldName,
+							metadata: {
+								accountId,
+							},
+						});
+					} catch (error) {
+						// error-policy:J1 local persistence boundary keeps provider
+						// acceptance successful while exposing failed connection evidence.
+						for (const sentMsg of sentMessages) {
+							persistenceFailures.push({
+								providerMessageId: sentMsg.id,
+								stage: "connection",
+								code: deliveryErrorCode(error),
+								message: deliveryErrorMessage(error),
+							});
+						}
+						runtime.reportError(
+							"discord:outbound-connection-persistence",
+							error,
+							{
+								accountId,
+								channelId: targetChannel.id,
+								providerMessageIds: sentMessages.map((message) => message.id),
+							},
+						);
+					}
 
-					let lastPersistedMemory: Memory | undefined;
 					for (const sentMsg of sentMessages) {
 						try {
 							const hasAttachments = sentMsg.attachments.size > 0;
@@ -1973,12 +2147,20 @@ export class DiscordService extends Service implements IDiscordService {
 								},
 								createdAt: sentMsg.createdTimestamp || Date.now(),
 							};
-
-							await createDiscordMessageMemoryOnce(runtime, memory, {
-								operation: "discord-connector-send",
-								platformMessageId: sentMsg.id,
-							});
-							lastPersistedMemory = memory;
+							const persisted = await createDiscordMessageMemoryOnce(
+								runtime,
+								memory,
+								{
+									operation: "discord-connector-send",
+									platformMessageId: sentMsg.id,
+								},
+							);
+							if (!persisted) {
+								throw new Error(
+									"Discord memory persistence returned no stored record.",
+								);
+							}
+							persistedMemories.push(persisted);
 							runtime.logger.debug(
 								{
 									src: "plugin:discord",
@@ -1988,12 +2170,57 @@ export class DiscordService extends Service implements IDiscordService {
 								"Saved sent message to memory",
 							);
 						} catch (error) {
-							runtime.logger.warn(
-								`Failed to save sent message ${sentMsg.id} to memory: ${error instanceof Error ? error.message : String(error)}`,
+							// error-policy:J1 local persistence boundary records the
+							// failed provider-id binding without fabricating a stored memory.
+							persistenceFailures.push({
+								providerMessageId: sentMsg.id,
+								stage: "memory",
+								code: deliveryErrorCode(error),
+								message: deliveryErrorMessage(error),
+							});
+							runtime.reportError(
+								"discord:outbound-memory-persistence",
+								error,
+								{
+									accountId,
+									channelId: targetChannel.id,
+									providerMessageId: sentMsg.id,
+								},
 							);
 						}
 					}
-					return lastPersistedMemory;
+					if (sentMessages.length === 0) {
+						return {
+							kind: "not_delivered",
+							code: "DISCORD_EMPTY_MESSAGE",
+							message: "Discord received no text or attachment to send.",
+						};
+					}
+					const receipt = buildDiscordSendReceipt({
+						messages: sentMessages,
+						acceptedAt: providerAcceptedAt ?? Date.now(),
+						persistedMemories,
+						failures: persistenceFailures,
+					});
+					const deliveryKind = providerSendFailure
+						? "partially_delivered"
+						: "delivered";
+					outboundReservation?.commit(deliveryKind, receipt);
+					outboundReservation = undefined;
+					if (providerSendFailure) {
+						return {
+							kind: "partially_delivered",
+							receipt,
+							memories: persistedMemories,
+							code: "DISCORD_PROVIDER_PARTIAL_DELIVERY",
+							message: `Discord accepted ${sentMessages.length} message chunk${sentMessages.length === 1 ? "" : "s"} before a later provider send failed: ${deliveryErrorMessage(providerSendFailure)}`,
+						};
+					}
+					return {
+						kind: "delivered",
+						receipt,
+						memories: persistedMemories,
+					};
 				} else {
 					throw new Error(
 						`Target channel ${targetChannel.id} does not have a send method.`,
@@ -2005,6 +2232,45 @@ export class DiscordService extends Service implements IDiscordService {
 				);
 			}
 		} catch (error) {
+			// error-policy:J1 connector boundary returns provider acceptance with
+			// failed local evidence, or releases an unaccepted reservation and throws.
+			if (outboundReservation && acceptedProviderMessages.length > 0) {
+				const receipt: SendHandlerReceipt = {
+					providerMessageIds: providerMessageIds(acceptedProviderMessages),
+					acceptedAt: Date.now(),
+					persistence: {
+						status: "failed",
+						failures: acceptedProviderMessages.map((message) => ({
+							providerMessageId: message.id,
+							stage: "memory",
+							code: deliveryErrorCode(error),
+							message: deliveryErrorMessage(error),
+						})),
+					},
+				};
+				const deliveryKind = providerSendFailure
+					? "partially_delivered"
+					: "delivered";
+				outboundReservation.commit(deliveryKind, receipt);
+				outboundReservation = undefined;
+				runtime.reportError("discord:outbound-finalization", error, {
+					accountId,
+					providerMessageIds: receipt.providerMessageIds,
+				});
+				return providerSendFailure
+					? {
+							kind: "partially_delivered",
+							receipt,
+							memories: [],
+							code: "DISCORD_PROVIDER_PARTIAL_DELIVERY",
+							message: `Discord accepted ${acceptedProviderMessages.length} message chunk${acceptedProviderMessages.length === 1 ? "" : "s"} before a later provider send failed: ${deliveryErrorMessage(providerSendFailure)}`,
+						}
+					: {
+							kind: "delivered",
+							receipt,
+							memories: [],
+						};
+			}
 			outboundReservation?.release();
 			runtime.logger.error(
 				`Error sending message to ${JSON.stringify(target)}: ${error instanceof Error ? error.message : String(error)}`,
@@ -3813,7 +4079,7 @@ export class DiscordService extends Service implements IDiscordService {
 				return ChannelType.DM;
 
 			case DiscordChannelType.GroupDM:
-				return ChannelType.DM;
+				return ChannelType.GROUP;
 
 			case DiscordChannelType.GuildText:
 			case DiscordChannelType.GuildNews:

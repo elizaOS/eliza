@@ -6,7 +6,7 @@
  */
 import type { StreamChunkCallback } from "./components";
 import type { AgentContext } from "./contexts";
-import type { JsonValue } from "./primitives";
+import type { ContentValue, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 
 /**
@@ -338,7 +338,7 @@ export interface ToolCall {
 	params?: Record<string, JsonValue> | string;
 	toolCallId?: string;
 	type?: "function" | "tool" | (string & {});
-	result?: JsonValue;
+	result?: ContentValue;
 	status?: "pending" | "completed" | "failed" | (string & {});
 }
 
@@ -677,10 +677,11 @@ export interface GenerateTextParams {
 	/**
 	 * When true the call streams its result and is parsed incrementally with
 	 * per-field start/done events ({@link import("./streaming").StructuredFieldEventCallbacks}).
-	 * The runtime wires the field events to TTS handoff (W9) and the
-	 * forced-skeleton emitter (W8). Adapters that can't stream ignore the flag
-	 * (the result is still returned whole). Distinct from `stream` (raw token
-	 * stream) — `streamStructured` is "stream + structured field tracking".
+	 * The runtime wires safe fields to downstream consumers and the
+	 * forced-skeleton emitter (W8). Stage-1 `replyText` is deliberately held
+	 * until routing and effect validation complete; adapters that cannot stream
+	 * ignore the flag and return the result whole. Distinct from `stream` (raw
+	 * token stream) — `streamStructured` is "stream + structured field tracking".
 	 *
 	 * Producer: `@elizaos/core` message service (Stage-1 call).
 	 * Consumer: local-inference engine (W4) + the runtime's field-event plumbing.

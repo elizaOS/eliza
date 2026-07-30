@@ -96,6 +96,16 @@ export interface Content {
 	text?: string;
 
 	/**
+	 * Core-validated effect receipts grounding this exact visible text. Plugins
+	 * cannot establish proof by setting this field alone; the delivery boundary
+	 * also requires non-serialized core binding metadata.
+	 */
+	effectReceiptIds?: string[];
+
+	/** Excludes machine-only content from user-facing conversation transcripts. */
+	transcriptVisibility?: "internal";
+
+	/**
 	 * Optional callback merge hint for streaming UIs.
 	 * `replace` keeps the pre-callback prefix and swaps the callback suffix;
 	 * `append` adds new callback text to the current visible reply.

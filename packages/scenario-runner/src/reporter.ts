@@ -15,7 +15,886 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import type { AggregateReport, ScenarioReport } from "./types.ts";
+import {
+  isScenarioExecutionProfile,
+  type ScenarioExecutionProfile,
+} from "@elizaos/scenario-runner/schema";
+import type {
+  AggregateReport,
+  ScenarioEvidenceObservationKind,
+  ScenarioReport,
+} from "./types.ts";
+
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const OBSERVER_KINDS = new Set([
+  "provider-api",
+  "provider-webhook",
+  "durable-database",
+  "scheduler-runner",
+]);
+const APPROVAL_STATES = new Set([
+  "pending",
+  "approved",
+  "executing",
+  "done",
+  "rejected",
+  "expired",
+]);
+const DRAFT_STATES = new Set(["draft", "queued", "approved", "discarded"]);
+const SCHEDULED_TASK_STATES = new Set([
+  "persisted",
+  "claimed",
+  "executing",
+  "completed",
+  "failed",
+  "canceled",
+]);
+
+function evidenceFailure(
+  scenarioId: string,
+  path: string,
+  detail: string,
+): never {
+  throw new Error(
+    `scenario "${scenarioId}" has invalid evidence at ${path}: ${detail}`,
+  );
+}
+
+function requireEvidenceRecord(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    evidenceFailure(scenarioId, path, "expected an object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function requireEvidenceString(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    evidenceFailure(scenarioId, path, "expected a non-empty string");
+  }
+  return value;
+}
+
+function requireSha256(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+): string {
+  const hash = requireEvidenceString(scenarioId, path, value);
+  if (!SHA256_PATTERN.test(hash)) {
+    evidenceFailure(
+      scenarioId,
+      path,
+      "expected exactly 64 lowercase hexadecimal characters",
+    );
+  }
+  return hash;
+}
+
+function requireIsoTimestamp(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+): string {
+  const timestamp = requireEvidenceString(scenarioId, path, value);
+  if (
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
+      timestamp,
+    ) ||
+    !Number.isFinite(Date.parse(timestamp))
+  ) {
+    evidenceFailure(scenarioId, path, "expected an ISO-8601 timestamp");
+  }
+  return timestamp;
+}
+
+function requireEvidenceArray(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+): unknown[] {
+  if (!Array.isArray(value)) {
+    evidenceFailure(scenarioId, path, "expected an array");
+  }
+  return value;
+}
+
+function requireStringList(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+  minimumLength: number,
+): string[] {
+  const values = requireEvidenceArray(scenarioId, path, value);
+  if (values.length < minimumLength) {
+    evidenceFailure(
+      scenarioId,
+      path,
+      `expected at least ${minimumLength} item(s)`,
+    );
+  }
+  return values.map((item, index) =>
+    requireEvidenceString(scenarioId, `${path}[${index}]`, item),
+  );
+}
+
+function validateTrajectoryHashes(
+  scenarioId: string,
+  value: unknown,
+): Map<string, string> {
+  const hashes = requireEvidenceArray(
+    scenarioId,
+    "evidence.trajectoryHashes",
+    value,
+  );
+  const trajectoryHashes = new Map<string, string>();
+  hashes.forEach((item, index) => {
+    const path = `evidence.trajectoryHashes[${index}]`;
+    const hash = requireEvidenceRecord(scenarioId, path, item);
+    const trajectoryId = requireEvidenceString(
+      scenarioId,
+      `${path}.trajectoryId`,
+      hash.trajectoryId,
+    );
+    if (trajectoryHashes.has(trajectoryId)) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.trajectoryId`,
+        `duplicate trajectoryId "${trajectoryId}"`,
+      );
+    }
+    requireEvidenceString(
+      scenarioId,
+      `${path}.relativePath`,
+      hash.relativePath,
+    );
+    const sha256 = requireSha256(scenarioId, `${path}.sha256`, hash.sha256);
+    const recorder = requireEvidenceRecord(
+      scenarioId,
+      `${path}.recorder`,
+      hash.recorder,
+    );
+    requireEvidenceString(
+      scenarioId,
+      `${path}.recorder.implementation`,
+      recorder.implementation,
+    );
+    requireEvidenceString(
+      scenarioId,
+      `${path}.recorder.version`,
+      recorder.version,
+    );
+    requireEvidenceString(
+      scenarioId,
+      `${path}.recorder.environment`,
+      recorder.environment,
+    );
+    trajectoryHashes.set(trajectoryId, sha256);
+  });
+  return trajectoryHashes;
+}
+
+function validateObserverProvenance(
+  scenarioId: string,
+  value: unknown,
+): Map<string, string> {
+  const observers = requireEvidenceArray(
+    scenarioId,
+    "evidence.observerProvenance",
+    value,
+  );
+  const observerKinds = new Map<string, string>();
+  observers.forEach((item, index) => {
+    const path = `evidence.observerProvenance[${index}]`;
+    const observer = requireEvidenceRecord(scenarioId, path, item);
+    const observerId = requireEvidenceString(
+      scenarioId,
+      `${path}.observerId`,
+      observer.observerId,
+    );
+    if (observerKinds.has(observerId)) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.observerId`,
+        `duplicate observerId "${observerId}"`,
+      );
+    }
+    const kind = requireEvidenceString(
+      scenarioId,
+      `${path}.kind`,
+      observer.kind,
+    );
+    if (!OBSERVER_KINDS.has(kind)) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.kind`,
+        `unsupported trusted observer kind "${kind}"`,
+      );
+    }
+    requireEvidenceString(
+      scenarioId,
+      `${path}.implementation`,
+      observer.implementation,
+    );
+    requireEvidenceString(scenarioId, `${path}.version`, observer.version);
+    requireEvidenceString(
+      scenarioId,
+      `${path}.environment`,
+      observer.environment,
+    );
+    requireSha256(
+      scenarioId,
+      `${path}.configurationSha256`,
+      observer.configurationSha256,
+    );
+    observerKinds.set(observerId, kind);
+  });
+  return observerKinds;
+}
+
+function validateObservationSource(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+  allowedKinds: readonly string[],
+): string {
+  const source = requireEvidenceRecord(scenarioId, path, value);
+  const kind = requireEvidenceString(scenarioId, `${path}.kind`, source.kind);
+  if (!allowedKinds.includes(kind)) {
+    evidenceFailure(
+      scenarioId,
+      `${path}.kind`,
+      `expected one of ${allowedKinds.join(", ")}; action-result/model-prose sources are not trusted evidence`,
+    );
+  }
+  requireEvidenceString(scenarioId, `${path}.system`, source.system);
+  requireEvidenceString(scenarioId, `${path}.environment`, source.environment);
+  requireSha256(scenarioId, `${path}.recordIdSha256`, source.recordIdSha256);
+  if (source.accountRefSha256 !== undefined) {
+    requireSha256(
+      scenarioId,
+      `${path}.accountRefSha256`,
+      source.accountRefSha256,
+    );
+  }
+  return kind;
+}
+
+function validateTrajectoryReferences(
+  scenarioId: string,
+  path: string,
+  value: unknown,
+  trajectoryHashes: ReadonlyMap<string, string>,
+): void {
+  const references = requireEvidenceArray(scenarioId, path, value);
+  if (references.length === 0) {
+    evidenceFailure(
+      scenarioId,
+      path,
+      "every trusted observation must reference at least one trajectory stage",
+    );
+  }
+  references.forEach((item, index) => {
+    const itemPath = `${path}[${index}]`;
+    const reference = requireEvidenceRecord(scenarioId, itemPath, item);
+    const trajectoryId = requireEvidenceString(
+      scenarioId,
+      `${itemPath}.trajectoryId`,
+      reference.trajectoryId,
+    );
+    requireEvidenceString(scenarioId, `${itemPath}.stageId`, reference.stageId);
+    const sha256 = requireSha256(
+      scenarioId,
+      `${itemPath}.sha256`,
+      reference.sha256,
+    );
+    const expectedHash = trajectoryHashes.get(trajectoryId);
+    if (!expectedHash) {
+      evidenceFailure(
+        scenarioId,
+        `${itemPath}.trajectoryId`,
+        `references unreported trajectory "${trajectoryId}"`,
+      );
+    }
+    if (sha256 !== expectedHash) {
+      evidenceFailure(
+        scenarioId,
+        `${itemPath}.sha256`,
+        `does not match evidence.trajectoryHashes for "${trajectoryId}"`,
+      );
+    }
+  });
+}
+
+function validateObservationHashFields(
+  scenarioId: string,
+  path: string,
+  observation: Record<string, unknown>,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    if (observation[field] !== undefined) {
+      requireSha256(scenarioId, `${path}.${field}`, observation[field]);
+    }
+  }
+}
+
+function validateEvidenceObservations(
+  scenarioId: string,
+  value: unknown,
+  observerKinds: ReadonlyMap<string, string>,
+  trajectoryHashes: ReadonlyMap<string, string>,
+): ScenarioEvidenceObservationKind[] {
+  const observations = requireEvidenceArray(
+    scenarioId,
+    "evidence.observations",
+    value,
+  );
+  const observationIds = new Set<string>();
+  return observations.map((item, index) => {
+    const path = `evidence.observations[${index}]`;
+    const observation = requireEvidenceRecord(scenarioId, path, item);
+    const observationId = requireEvidenceString(
+      scenarioId,
+      `${path}.observationId`,
+      observation.observationId,
+    );
+    if (observationIds.has(observationId)) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.observationId`,
+        `duplicate observationId "${observationId}"`,
+      );
+    }
+    observationIds.add(observationId);
+    requireIsoTimestamp(
+      scenarioId,
+      `${path}.observedAtIso`,
+      observation.observedAtIso,
+    );
+    const observerId = requireEvidenceString(
+      scenarioId,
+      `${path}.observerId`,
+      observation.observerId,
+    );
+    const kind = requireEvidenceString(
+      scenarioId,
+      `${path}.kind`,
+      observation.kind,
+    );
+    const allowedSourceKinds =
+      kind === "durable-approval" || kind === "durable-draft"
+        ? ["durable-database"]
+        : kind === "provider-effect"
+          ? ["provider-api", "provider-webhook"]
+          : kind === "provider-no-effect"
+            ? ["provider-api"]
+            : kind === "scheduled-task"
+              ? ["durable-database", "scheduler-runner"]
+              : null;
+    if (!allowedSourceKinds) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.kind`,
+        `unsupported observation kind "${kind}"; action results and model prose cannot qualify`,
+      );
+    }
+    const sourceKind = validateObservationSource(
+      scenarioId,
+      `${path}.source`,
+      observation.source,
+      allowedSourceKinds,
+    );
+    const observerKind = observerKinds.get(observerId);
+    if (!observerKind) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.observerId`,
+        `references unreported observer "${observerId}"`,
+      );
+    }
+    if (sourceKind !== observerKind) {
+      evidenceFailure(
+        scenarioId,
+        `${path}.source.kind`,
+        `does not match observer "${observerId}" kind "${observerKind}"`,
+      );
+    }
+    requireSha256(
+      scenarioId,
+      `${path}.payloadSha256`,
+      observation.payloadSha256,
+    );
+    validateTrajectoryReferences(
+      scenarioId,
+      `${path}.trajectoryRefs`,
+      observation.trajectoryRefs,
+      trajectoryHashes,
+    );
+
+    if (kind === "durable-approval") {
+      requireEvidenceString(
+        scenarioId,
+        `${path}.actionName`,
+        observation.actionName,
+      );
+      const state = requireEvidenceString(
+        scenarioId,
+        `${path}.state`,
+        observation.state,
+      );
+      if (!APPROVAL_STATES.has(state)) {
+        evidenceFailure(
+          scenarioId,
+          `${path}.state`,
+          `unsupported approval state "${state}"`,
+        );
+      }
+      validateObservationHashFields(scenarioId, path, observation, [
+        "approvalIdSha256",
+        "requestPayloadSha256",
+        "decisionPayloadSha256",
+      ]);
+      requireSha256(
+        scenarioId,
+        `${path}.approvalIdSha256`,
+        observation.approvalIdSha256,
+      );
+      requireSha256(
+        scenarioId,
+        `${path}.requestPayloadSha256`,
+        observation.requestPayloadSha256,
+      );
+    } else if (kind === "durable-draft") {
+      requireEvidenceString(scenarioId, `${path}.channel`, observation.channel);
+      const state = requireEvidenceString(
+        scenarioId,
+        `${path}.state`,
+        observation.state,
+      );
+      if (!DRAFT_STATES.has(state)) {
+        evidenceFailure(
+          scenarioId,
+          `${path}.state`,
+          `unsupported draft state "${state}"`,
+        );
+      }
+      for (const field of [
+        "draftIdSha256",
+        "recipientSetSha256",
+        "contentSha256",
+      ]) {
+        requireSha256(scenarioId, `${path}.${field}`, observation[field]);
+      }
+    } else if (kind === "provider-effect") {
+      requireEvidenceString(
+        scenarioId,
+        `${path}.provider`,
+        observation.provider,
+      );
+      requireEvidenceString(
+        scenarioId,
+        `${path}.operation`,
+        observation.operation,
+      );
+      for (const field of [
+        "accountRefSha256",
+        "requestSha256",
+        "responseSha256",
+        "providerReceiptIdSha256",
+      ]) {
+        requireSha256(scenarioId, `${path}.${field}`, observation[field]);
+      }
+      if (observation.readbackSha256 !== undefined) {
+        requireSha256(
+          scenarioId,
+          `${path}.readbackSha256`,
+          observation.readbackSha256,
+        );
+      }
+    } else if (kind === "provider-no-effect") {
+      requireEvidenceString(
+        scenarioId,
+        `${path}.provider`,
+        observation.provider,
+      );
+      requireStringList(
+        scenarioId,
+        `${path}.effectKinds`,
+        observation.effectKinds,
+        1,
+      );
+      for (const field of [
+        "accountRefSha256",
+        "scopeSha256",
+        "beforeSnapshotSha256",
+        "afterSnapshotSha256",
+      ]) {
+        requireSha256(scenarioId, `${path}.${field}`, observation[field]);
+      }
+      if (
+        observation.beforeSnapshotSha256 !== observation.afterSnapshotSha256
+      ) {
+        evidenceFailure(
+          scenarioId,
+          `${path}.afterSnapshotSha256`,
+          "must equal beforeSnapshotSha256 for a provider-no-effect observation",
+        );
+      }
+      const started = requireIsoTimestamp(
+        scenarioId,
+        `${path}.observationStartedAtIso`,
+        observation.observationStartedAtIso,
+      );
+      const ended = requireIsoTimestamp(
+        scenarioId,
+        `${path}.observationEndedAtIso`,
+        observation.observationEndedAtIso,
+      );
+      if (Date.parse(ended) < Date.parse(started)) {
+        evidenceFailure(
+          scenarioId,
+          `${path}.observationEndedAtIso`,
+          "must not precede observationStartedAtIso",
+        );
+      }
+    } else {
+      const state = requireEvidenceString(
+        scenarioId,
+        `${path}.state`,
+        observation.state,
+      );
+      if (!SCHEDULED_TASK_STATES.has(state)) {
+        evidenceFailure(
+          scenarioId,
+          `${path}.state`,
+          `unsupported scheduled-task state "${state}"`,
+        );
+      }
+      requireIsoTimestamp(
+        scenarioId,
+        `${path}.scheduledForIso`,
+        observation.scheduledForIso,
+      );
+      requireSha256(
+        scenarioId,
+        `${path}.taskIdSha256`,
+        observation.taskIdSha256,
+      );
+      requireSha256(
+        scenarioId,
+        `${path}.scheduleSha256`,
+        observation.scheduleSha256,
+      );
+      validateObservationHashFields(scenarioId, path, observation, [
+        "executionIdSha256",
+        "resultSha256",
+        "providerReceiptIdSha256",
+      ]);
+    }
+    return kind as ScenarioEvidenceObservationKind;
+  });
+}
+
+/**
+ * Validate the evidence trust boundary before aggregation or serialization.
+ * Legacy reports may omit both profile and evidence; they remain explicitly
+ * unreported rather than receiving a fabricated simulated qualification.
+ */
+export function validateScenarioEvidenceReport(report: ScenarioReport): void {
+  if (
+    report.executionProfile !== undefined &&
+    !isScenarioExecutionProfile(report.executionProfile)
+  ) {
+    evidenceFailure(
+      report.id,
+      "executionProfile",
+      `unsupported profile "${String(report.executionProfile)}"`,
+    );
+  }
+  if (report.evidence === undefined) {
+    return;
+  }
+  if (report.executionProfile === undefined) {
+    evidenceFailure(
+      report.id,
+      "executionProfile",
+      "must be reported when evidence is present",
+    );
+  }
+
+  const evidence = requireEvidenceRecord(
+    report.id,
+    "evidence",
+    report.evidence,
+  );
+  if (evidence.schemaVersion !== 1) {
+    evidenceFailure(report.id, "evidence.schemaVersion", "expected 1");
+  }
+  if (evidence.executionProfile !== report.executionProfile) {
+    evidenceFailure(
+      report.id,
+      "evidence.executionProfile",
+      `does not match scenario executionProfile "${report.executionProfile}"`,
+    );
+  }
+  const qualification = requireEvidenceRecord(
+    report.id,
+    "evidence.qualification",
+    evidence.qualification,
+  );
+  const qualificationStatus = requireEvidenceString(
+    report.id,
+    "evidence.qualification.status",
+    qualification.status,
+  );
+
+  if (report.executionProfile === "simulated") {
+    if (
+      qualificationStatus !== "ineligible" ||
+      qualification.publishable !== false
+    ) {
+      evidenceFailure(
+        report.id,
+        "evidence.qualification",
+        "simulated evidence must be ineligible and publishable=false",
+      );
+    }
+    requireStringList(
+      report.id,
+      "evidence.qualification.reasons",
+      qualification.reasons,
+      1,
+    );
+    if (
+      Object.hasOwn(evidence, "observerProvenance") ||
+      Object.hasOwn(evidence, "observations")
+    ) {
+      evidenceFailure(
+        report.id,
+        "evidence",
+        "simulated evidence cannot carry trusted observer provenance or observations",
+      );
+    }
+    if (evidence.trajectoryHashes !== undefined) {
+      validateTrajectoryHashes(report.id, evidence.trajectoryHashes);
+    }
+    return;
+  }
+
+  if (
+    qualificationStatus !== "qualified" &&
+    qualificationStatus !== "unqualified"
+  ) {
+    evidenceFailure(
+      report.id,
+      "evidence.qualification.status",
+      'provider-qualified evidence must report "qualified" or "unqualified"',
+    );
+  }
+  const qualified = qualificationStatus === "qualified";
+  if (qualification.publishable !== qualified) {
+    evidenceFailure(
+      report.id,
+      "evidence.qualification.publishable",
+      qualified
+        ? "qualified evidence must be publishable=true"
+        : "unqualified evidence must be publishable=false",
+    );
+  }
+  requireStringList(
+    report.id,
+    "evidence.qualification.reasons",
+    qualification.reasons,
+    qualified ? 0 : 1,
+  );
+  if (
+    qualified &&
+    requireEvidenceArray(
+      report.id,
+      "evidence.qualification.reasons",
+      qualification.reasons,
+    ).length !== 0
+  ) {
+    evidenceFailure(
+      report.id,
+      "evidence.qualification.reasons",
+      "qualified evidence cannot carry unresolved reasons",
+    );
+  }
+
+  const observerKinds = validateObserverProvenance(
+    report.id,
+    evidence.observerProvenance,
+  );
+  const trajectoryHashes = validateTrajectoryHashes(
+    report.id,
+    evidence.trajectoryHashes,
+  );
+  const observationKinds = validateEvidenceObservations(
+    report.id,
+    evidence.observations,
+    observerKinds,
+    trajectoryHashes,
+  );
+
+  if (qualified) {
+    if (
+      observerKinds.size === 0 ||
+      trajectoryHashes.size === 0 ||
+      observationKinds.length === 0
+    ) {
+      evidenceFailure(
+        report.id,
+        "evidence",
+        "qualified evidence requires non-empty observers, trajectories, and observations",
+      );
+    }
+    if (
+      !observationKinds.some(
+        (kind) => kind === "provider-effect" || kind === "provider-no-effect",
+      )
+    ) {
+      evidenceFailure(
+        report.id,
+        "evidence.observations",
+        "qualification requires provider-effect or provider-no-effect evidence",
+      );
+    }
+    if (report.status !== "passed") {
+      evidenceFailure(
+        report.id,
+        "evidence.qualification.status",
+        "a failed or skipped scenario cannot be qualified",
+      );
+    }
+    if (report.judgeSelfGraded) {
+      evidenceFailure(
+        report.id,
+        "judgeSelfGraded",
+        "a self-graded scenario cannot be provider-qualified",
+      );
+    }
+    if (report.finalChecks.some((check) => check.status === "skipped")) {
+      evidenceFailure(
+        report.id,
+        "finalChecks",
+        "a scenario with skipped final checks cannot be provider-qualified",
+      );
+    }
+  }
+}
+
+function aggregateExecutionProfile(
+  scenarios: readonly ScenarioReport[],
+): ScenarioExecutionProfile | "mixed" | null {
+  const profiles = new Set(
+    scenarios.flatMap((scenario) =>
+      scenario.executionProfile === undefined
+        ? []
+        : [scenario.executionProfile],
+    ),
+  );
+  if (profiles.size === 0) return null;
+  if (profiles.size > 1) return "mixed";
+  return [...profiles][0] ?? null;
+}
+
+function aggregateEvidence(
+  scenarios: readonly ScenarioReport[],
+): AggregateReport["evidenceSummary"] {
+  const summary: AggregateReport["evidenceSummary"] = {
+    reportedScenarioCount: 0,
+    unreportedScenarioCount: 0,
+    qualificationCounts: {
+      qualified: 0,
+      unqualified: 0,
+      ineligible: 0,
+    },
+    publishableScenarioCount: 0,
+    observationCounts: {
+      "durable-approval": 0,
+      "durable-draft": 0,
+      "provider-effect": 0,
+      "provider-no-effect": 0,
+      "scheduled-task": 0,
+    },
+  };
+  for (const scenario of scenarios) {
+    const evidence = scenario.evidence;
+    if (!evidence) {
+      summary.unreportedScenarioCount += 1;
+      continue;
+    }
+    summary.reportedScenarioCount += 1;
+    summary.qualificationCounts[evidence.qualification.status] += 1;
+    if (evidence.qualification.publishable) {
+      summary.publishableScenarioCount += 1;
+    }
+    if (evidence.executionProfile === "provider-qualified") {
+      for (const observation of evidence.observations) {
+        summary.observationCounts[observation.kind] += 1;
+      }
+    }
+  }
+  return summary;
+}
+
+function evidenceSummaryMatches(
+  actual: AggregateReport["evidenceSummary"],
+  expected: AggregateReport["evidenceSummary"],
+): boolean {
+  return (
+    actual.reportedScenarioCount === expected.reportedScenarioCount &&
+    actual.unreportedScenarioCount === expected.unreportedScenarioCount &&
+    actual.qualificationCounts.qualified ===
+      expected.qualificationCounts.qualified &&
+    actual.qualificationCounts.unqualified ===
+      expected.qualificationCounts.unqualified &&
+    actual.qualificationCounts.ineligible ===
+      expected.qualificationCounts.ineligible &&
+    actual.publishableScenarioCount === expected.publishableScenarioCount &&
+    actual.observationCounts["durable-approval"] ===
+      expected.observationCounts["durable-approval"] &&
+    actual.observationCounts["durable-draft"] ===
+      expected.observationCounts["durable-draft"] &&
+    actual.observationCounts["provider-effect"] ===
+      expected.observationCounts["provider-effect"] &&
+    actual.observationCounts["provider-no-effect"] ===
+      expected.observationCounts["provider-no-effect"] &&
+    actual.observationCounts["scheduled-task"] ===
+      expected.observationCounts["scheduled-task"]
+  );
+}
+
+/**
+ * Protect every serialization path from a hand-built aggregate whose profile
+ * or publishability summary disagrees with its per-scenario evidence.
+ */
+export function validateAggregateEvidenceReport(report: AggregateReport): void {
+  for (const scenario of report.scenarios) {
+    validateScenarioEvidenceReport(scenario);
+  }
+  const expectedProfile = aggregateExecutionProfile(report.scenarios);
+  if (report.executionProfile !== expectedProfile) {
+    throw new Error(
+      `aggregate executionProfile "${report.executionProfile}" does not match scenario reports "${expectedProfile}"`,
+    );
+  }
+  const expectedSummary = aggregateEvidence(report.scenarios);
+  if (!evidenceSummaryMatches(report.evidenceSummary, expectedSummary)) {
+    throw new Error(
+      "aggregate evidenceSummary does not match validated scenario evidence",
+    );
+  }
+}
 
 /**
  * Walk `<runDir>/trajectories/**\/*.json` and sum the real per-trajectory LLM
@@ -70,6 +949,7 @@ export function buildAggregate(
     finalChecksSkipped: 0,
   };
   for (const s of scenarios) {
+    validateScenarioEvidenceReport(s);
     if (s.status === "passed") totals.passed += 1;
     else if (s.status === "failed") totals.failed += 1;
     else totals.skipped += 1;
@@ -78,12 +958,16 @@ export function buildAggregate(
     }
   }
   totals.costUsd = sumTrajectoryCostUsd(runDir);
+  const executionProfile = aggregateExecutionProfile(scenarios);
+  const evidenceSummary = aggregateEvidence(scenarios);
   return {
     runId,
     startedAtIso,
     completedAtIso,
     providerName,
+    executionProfile,
     scenarios,
+    evidenceSummary,
     totals,
     totalCount: scenarios.length,
     passedCount: totals.passed,
@@ -94,6 +978,7 @@ export function buildAggregate(
 }
 
 export function writeReport(report: AggregateReport, filePath: string): void {
+  validateAggregateEvidenceReport(report);
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileAtomic(filePath, `${JSON.stringify(report, null, 2)}\n`);
   logger.info(`[scenario-runner] wrote report → ${filePath}`);
@@ -118,6 +1003,7 @@ export function writeReportBundle(
   report: AggregateReport,
   reportDir: string,
 ): void {
+  validateAggregateEvidenceReport(report);
   mkdirSync(reportDir, { recursive: true });
 
   const matrixPath = path.join(reportDir, "matrix.json");
@@ -171,7 +1057,7 @@ function collectFiles(rootDir: string, maxFiles = 500): string[] {
     if (out.length >= maxFiles) return;
     for (const name of readdirSync(dir).sort()) {
       const full = path.join(dir, name);
-      let stat;
+      let stat: ReturnType<typeof statSync>;
       try {
         stat = statSync(full);
       } catch {
@@ -510,6 +1396,7 @@ export function writeScenarioRunViewer(
   runDir: string,
   options: { nativeJsonlPath?: string } = {},
 ): { viewerIndex: string; viewerData: string; nativeManifest?: string } {
+  validateAggregateEvidenceReport(report);
   const viewerDir = path.join(runDir, "viewer");
   mkdirSync(viewerDir, { recursive: true });
   const viewerIndex = path.join(viewerDir, "index.html");
@@ -533,10 +1420,11 @@ export function writeScenarioRunViewer(
 }
 
 export function printStdoutSummary(report: AggregateReport): void {
+  validateAggregateEvidenceReport(report);
   const lines: string[] = [];
   lines.push("");
   lines.push(
-    `Scenario run ${report.runId} | provider=${report.providerName ?? "(none)"} | ${report.startedAtIso} → ${report.completedAtIso}`,
+    `Scenario run ${report.runId} | provider=${report.providerName ?? "(none)"} | profile=${report.executionProfile ?? "(unreported)"} | ${report.startedAtIso} → ${report.completedAtIso}`,
   );
   lines.push("| id | status | duration | failures |");
   lines.push("| --- | --- | --- | --- |");
@@ -553,6 +1441,9 @@ export function printStdoutSummary(report: AggregateReport): void {
   lines.push("");
   lines.push(
     `Totals: ${report.totals.passed} passed, ${report.totals.failed} failed, ${report.totals.skipped} skipped of ${report.totalCount}`,
+  );
+  lines.push(
+    `Evidence: ${report.evidenceSummary.qualificationCounts.qualified} qualified, ${report.evidenceSummary.qualificationCounts.unqualified} unqualified, ${report.evidenceSummary.qualificationCounts.ineligible} ineligible, ${report.evidenceSummary.unreportedScenarioCount} unreported; ${report.evidenceSummary.publishableScenarioCount} publishable`,
   );
   if (report.totals.finalChecksSkipped > 0) {
     lines.push(

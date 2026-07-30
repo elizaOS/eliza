@@ -243,6 +243,7 @@ TRAVELER_TIMEZONE_SCENARIOS: list[Scenario] = [
             Action(
                 name="BOOK_TRAVEL",
                 kwargs={
+                    "subaction": "prepare",
                     "origin": "SFO",
                     "destination": "NRT",
                     "departureDate": "2026-05-13",
@@ -310,11 +311,13 @@ _TIER_BY_ID = {
 
 # Tier tags are applied after construction so the verbatim exemplar block stays intact.
 TRAVELER_TIMEZONE_SCENARIOS = [
-    replace(
-        scenario,
-        description=f"[{_TIER_BY_ID[scenario.id]}] {scenario.description}",
+    (
+        replace(
+            scenario,
+            description=f"[{_TIER_BY_ID[scenario.id]}] {scenario.description}",
+        )
+        if scenario.id in _TIER_BY_ID
+        else scenario
     )
-    if scenario.id in _TIER_BY_ID
-    else scenario
     for scenario in TRAVELER_TIMEZONE_SCENARIOS
 ]

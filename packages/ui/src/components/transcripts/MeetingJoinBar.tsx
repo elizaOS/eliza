@@ -15,6 +15,7 @@ import {
 } from "@elizaos/shared";
 import { Video } from "lucide-react";
 import * as React from "react";
+import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -54,6 +55,29 @@ export function MeetingJoinBar({
     [url],
   );
   const showInvalid = url.trim().length > 0 && parsed === null;
+  const meetingUrlAgent = useAgentElement<HTMLInputElement>({
+    id: "meeting-url",
+    role: "text-input",
+    label: "Meeting URL",
+    group: "meeting-join",
+    getValue: () => url,
+    onFill: setUrl,
+  });
+  const botNameAgent = useAgentElement<HTMLInputElement>({
+    id: "meeting-bot-name",
+    role: "text-input",
+    label: "Bot name",
+    group: "meeting-join",
+    getValue: () => botName,
+    onFill: setBotName,
+  });
+  const joinMeetingAgent = useAgentElement<HTMLButtonElement>({
+    id: "meeting-join",
+    role: "button",
+    label: "Join meeting",
+    group: "meeting-join",
+    status: joining ? "joining" : parsed ? "ready" : "disabled",
+  });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +100,8 @@ export function MeetingJoinBar({
       >
         <div className="relative min-w-48 flex-1">
           <Input
+            ref={meetingUrlAgent.ref}
+            {...meetingUrlAgent.agentProps}
             data-testid="meeting-url-input"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
@@ -95,6 +121,8 @@ export function MeetingJoinBar({
           ) : null}
         </div>
         <Input
+          ref={botNameAgent.ref}
+          {...botNameAgent.agentProps}
           data-testid="meeting-bot-name"
           value={botName}
           onChange={(e) => setBotName(e.target.value)}
@@ -103,8 +131,11 @@ export function MeetingJoinBar({
           className="w-48"
         />
         <Button
+          ref={joinMeetingAgent.ref}
+          {...joinMeetingAgent.agentProps}
           type="submit"
           size="sm"
+          variant={parsed && !joining ? "default" : "secondary"}
           data-testid="meeting-join-submit"
           disabled={!parsed || joining}
         >

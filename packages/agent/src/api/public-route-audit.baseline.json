@@ -19,6 +19,7 @@
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/companions/sessions/:id/complete",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/packages",
   "plugins/plugin-browser/src/plugin.ts::/api/browser-bridge/sessions/:id/progress",
+  "plugins/plugin-calendar/src/routes/plugin-routes.ts::/api/lifeops/calendar/google/webhook",
   "plugins/plugin-computeruse/src/index.ts::/api/computer-use/approvals/stream",
   "plugins/plugin-music/src/routes.ts::(no-path)",
   "plugins/plugin-music/src/routes.ts::/now-playing",

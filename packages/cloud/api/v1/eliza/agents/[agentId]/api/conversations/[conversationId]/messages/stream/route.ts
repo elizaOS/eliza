@@ -1,9 +1,11 @@
-// Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages stream route traffic with route-local auth expectations.
+/**
+ * Serves shared-agent conversation turns as Cloudflare-native SSE.
+ *
+ * Scope authorization and turn execution are cache-only on the response path;
+ * cold hydration is scheduled under waitUntil and surfaced as retryable 503.
+ */
 import { Hono } from "hono";
-import {
-  type AgentSandbox,
-  agentSandboxesRepository,
-} from "@/db/repositories/agent-sandboxes";
+import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
@@ -16,7 +18,10 @@ import {
   type CanonicalScopedStreamRequest,
   handleCanonicalScopedAgentStream,
 } from "@/lib/services/shared-runtime/canonical-scoped-stream";
-import { resolveSharedAgent } from "@/lib/services/shared-runtime/resolve-shared-agent";
+import {
+  resolveSharedAgent,
+  resolveSharedRuntimeWorkerRequestContext,
+} from "@/lib/services/shared-runtime/resolve-shared-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -29,22 +34,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * and only falls back to the non-stream `POST .../messages` if it 404s. A shared
  * agent runs in-Worker with no agent server, so there is no upstream SSE socket to
  * proxy — instead we run the SAME billed in-Worker turn the non-stream send uses
- * (`elizaSandboxService.bridgeStream` → shared-tier branch → bridgeSharedMessageSend)
- * and emit its reply as SSE. `bridge()` (non-stream) and `bridgeStream()` share the
- * identical findRunningSandbox gate + bridgeSharedMessageSend handler, so any shared
- * agent that serves the non-stream send also serves this.
+ * through the conversation Durable Object and emit its reply as SSE. The object
+ * owns warm history and cache-only turn execution; cold authoritative hydration
+ * is registered with waitUntil and reported as a retryable 503.
  *
- * Body shape — NOT token-by-token for the shared tier. bridgeSharedMessageSend
- * produces a fully-materialized reply string, which bridgeStream wraps in a SINGLE
- * SSE frame (one `chunk` + one `done`) via createBridgeSseTextResponse. So a shared
- * reply arrives as one buffered frame, not incrementally. DEDICATED (container)
- * agents are different: their bridgeStream branch proxies a live upstream SSE socket
- * and forwards real token-by-token frames.
- *
- * This route is a true pass-through either way: it returns the `bridgeStream`
- * Response body as-is and never awaits/reads it, so whatever the body yields
- * (single shared frame, or a dedicated agent's token stream) flushes to the
- * Cloudflare edge incrementally without buffering here.
+ * The route returns the conversation coordinator's response body without
+ * reading it, preserving incremental flushes from the Durable Object to the
+ * Cloudflare edge.
  * Shared-tier + org-scoped (resolveSharedAgent gates auth, org-scope, tier).
  */
 const CORS_METHODS = "POST, OPTIONS";
@@ -65,7 +61,7 @@ function elapsedMs(startedAt: number): number {
 
 async function resolveAgentScope(
   c: Parameters<typeof resolveSharedAgent>[0],
-  executionCtx?: BridgeExecutionContext,
+  executionCtx: BridgeExecutionContext,
 ) {
   const configured = c.env?.VOICE_REALTIME_ELIZA_AUTHORIZATION;
   const presented = c.req.header("authorization");
@@ -97,59 +93,79 @@ async function resolveAgentScope(
     // (mismatched user, dedicated tier, not found) would otherwise loop the
     // retryable 503 forever. This route serves the SHARED tier only, so a
     // known-negative is a definitive 404.
-    const cachedScope = await cache.get<
-      CachedAgentSandbox | { unresolvable: true }
-    >(cacheKey);
+    let cachedScope: CachedAgentSandbox | { unresolvable: true } | null;
+    try {
+      cachedScope = await cache.get<
+        CachedAgentSandbox | { unresolvable: true }
+      >(cacheKey);
+    } catch {
+      // error-policy:J4 a cache dependency failure remains distinguishable
+      // from a missing agent and never falls through to Postgres inline.
+      return {
+        error: "Agent authorization cache is unavailable. Retry shortly.",
+        code: "agent_cache_unavailable",
+        status: 503 as const,
+      };
+    }
     const knownNegative =
       cachedScope != null &&
       (cachedScope as { unresolvable?: boolean }).unresolvable === true;
-    let agent: AgentSandbox | null =
-      cachedScope && !knownNegative
-        ? // Restore the Date contract lost to the cache's JSON round-trip
-          // before any consumer reads a timestamp column.
-          rehydrateCachedAgentDates(cachedScope as CachedAgentSandbox)
-        : null;
-    if (!agent && !knownNegative) {
-      const hydrate = async () => {
-        const authoritative = orgId
-          ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
-          : undefined;
-        const eligible =
-          authoritative != null &&
-          authoritative.user_id === userId &&
-          authoritative.execution_tier === "shared";
-        await cache.set(
-          cacheKey,
-          eligible ? authoritative : { unresolvable: true },
-          CacheTTL.sharedAgentScope.resolve,
-        );
-        // The DO-mode cache stores only shared-tier rows; the inline path
-        // keeps the legacy permissive return (the user gate below still 404s
-        // a mismatched caller, and the bridge routes tiers itself).
-        return authoritative;
+    if (knownNegative) {
+      return {
+        error: "Agent not found",
+        code: "agent_not_found",
+        status: 404 as const,
       };
-      if (c.env?.SHARED_RUNTIME_CONVERSATIONS) {
-        const hydration = hydrate()
-          .then(() => undefined)
-          .catch((error) => {
-            // error-policy:J7 the cold fill is deliberately off the response
-            // path; the retry stays fail-closed until a fill lands.
-            logger.warn("[voice-scope] background hydration failed", {
-              agentId,
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-        if (executionCtx) executionCtx.waitUntil(hydration);
-        else void hydration;
-        return {
-          error: "Agent authorization cache is warming. Retry shortly.",
-          code: "agent_cache_warming",
-          status: 503 as const,
-        };
-      }
-      agent = (await hydrate()) ?? null;
     }
-    if (!agent || !userId || agent.user_id !== userId) {
+    const agent: AgentSandbox | null = cachedScope
+      ? // Restore the Date contract lost to the cache's JSON round-trip before
+        // any consumer reads a timestamp column.
+        rehydrateCachedAgentDates(cachedScope as CachedAgentSandbox)
+      : null;
+    if (!agent) {
+      const hydration = import(
+        "@/api/v1/voice/session/lib/voice-agent-scope-hydration"
+      )
+        .then(async ({ hydrateVoiceSharedAgentScope }) => {
+          await hydrateVoiceSharedAgentScope(c.env, {
+            agentId,
+            conversationId,
+            organizationId: orgId,
+            userId,
+          });
+          const hydrated = await cache.get<
+            CachedAgentSandbox | { unresolvable: true }
+          >(cacheKey);
+          if (!hydrated) {
+            await cache.set(
+              cacheKey,
+              { unresolvable: true },
+              CacheTTL.sharedAgentScope.resolve,
+            );
+          }
+        })
+        .catch((error) => {
+          // error-policy:J7 the request remains a retryable cache miss while
+          // diagnostics record why its authoritative background fill failed.
+          logger.warn("[shared-runtime REST] voice scope hydration failed", {
+            agentId,
+            conversationId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      executionCtx.waitUntil(hydration);
+      return {
+        error: "Agent authorization cache is warming. Retry shortly.",
+        code: "agent_cache_warming",
+        status: 503 as const,
+      };
+    }
+    if (
+      agent.id !== agentId ||
+      agent.organization_id !== orgId ||
+      agent.user_id !== userId ||
+      agent.execution_tier !== "shared"
+    ) {
       return {
         error: "Agent not found",
         code: "agent_not_found",
@@ -165,7 +181,7 @@ async function resolveAgentScope(
     };
   }
   return resolveSharedAgent(c, {
-    cacheOnly: Boolean(c.env?.SHARED_RUNTIME_CONVERSATIONS),
+    cacheOnly: true,
     executionCtx,
   });
 }
@@ -176,17 +192,29 @@ app.options("/", (c) =>
 
 app.post("/", async (c) => {
   const origin = c.req.header("origin");
-  let executionCtx: BridgeExecutionContext | undefined;
-  try {
-    executionCtx = c.executionCtx;
-  } catch {
-    executionCtx = undefined;
+  const worker = resolveSharedRuntimeWorkerRequestContext(c);
+  if ("error" in worker) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          error: worker.error,
+          code: worker.code,
+          retryable: worker.retryable,
+        },
+        { status: worker.status },
+      ),
+      CORS_METHODS,
+      origin,
+    );
   }
   const scopeStartedAt = nowMs();
-  const scopePromise = resolveAgentScope(c, executionCtx).then((result) => ({
-    result,
-    durationMs: elapsedMs(scopeStartedAt),
-  }));
+  const scopePromise = resolveAgentScope(c, worker.executionCtx).then(
+    (result) => ({
+      result,
+      durationMs: elapsedMs(scopeStartedAt),
+    }),
+  );
   const bodyStartedAt = nowMs();
   const bodyPromise = c.req
     .json()
@@ -212,6 +240,7 @@ app.post("/", async (c) => {
           success: false,
           error: r.error,
           ...("code" in r ? { code: r.code } : {}),
+          ...(r.status === 503 ? { retryable: true } : {}),
         },
         { status: r.status },
       ),
@@ -229,10 +258,10 @@ app.post("/", async (c) => {
     ...("userId" in r ? { userId: r.userId } : {}),
     body: raw,
     origin,
-    namespace: c.env?.SHARED_RUNTIME_CONVERSATIONS,
-    // The executionCtx derived for resolveAgentScope above also carries the
-    // shared turn's deferred billing tail (#16976).
-    executionCtx,
+    namespace: worker.namespace,
+    // The Worker context carries both cold hydration and the shared turn's
+    // deferred billing tail without putting either on the response path.
+    executionCtx: worker.executionCtx,
     timings: {
       scope: scopeMs,
       body: bodyMs,

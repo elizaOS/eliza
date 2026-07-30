@@ -17,14 +17,18 @@
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
 } from "@elizaos/shared";
 
 export interface LifeOpsCalendarService {
@@ -34,14 +38,8 @@ export interface LifeOpsCalendarService {
   ): Promise<LifeOpsCalendarSummary[]>;
   setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
-  ): Promise<LifeOpsCalendarSummary>;
+    request: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<SetLifeOpsCalendarIncludedResponse>;
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
@@ -52,6 +50,17 @@ export interface LifeOpsCalendarService {
     request: CreateLifeOpsCalendarEventRequest,
     now?: Date,
   ): Promise<LifeOpsCalendarEvent>;
+  createCalendarEventMutation(
+    requestUrl: URL,
+    request: CreateLifeOpsCalendarEventRequest,
+    now?: Date,
+  ): Promise<CreateLifeOpsCalendarEventResponse>;
+  getAppleCalendarCreateAccess(): Promise<{
+    provider: "apple_calendar";
+    grantId: "apple-calendar";
+    accessLevel: "full_access" | "write_only";
+    readBackAvailable: boolean;
+  }>;
   updateCalendarEvent(
     requestUrl: URL,
     request: {
@@ -67,6 +76,12 @@ export interface LifeOpsCalendarService {
       endAt?: string;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent>;
   deleteCalendarEvent(
@@ -77,8 +92,43 @@ export interface LifeOpsCalendarService {
       grantId?: string;
       calendarId?: string | null;
       eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<void>;
+  getConditionalCalendarMutationTarget(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+    },
+  ): Promise<LifeOpsCalendarEvent>;
+  respondToCalendarEvent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      responseStatus: "accepted" | "declined" | "tentative";
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion: string;
+    },
+  ): Promise<LifeOpsCalendarEvent>;
+  reserveTravelBuffer(request: {
+    eventId: string;
+    bufferMinutes: number;
+    method: string;
+  }): Promise<LifeOpsCalendarEvent>;
   getNextCalendarEventContext(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,

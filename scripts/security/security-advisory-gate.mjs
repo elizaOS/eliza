@@ -26,6 +26,13 @@ const TERMINAL = new Set([
   "action_required",
   "stale",
 ]);
+const ACTIVE = new Set([
+  "queued",
+  "in_progress",
+  "pending",
+  "requested",
+  "waiting",
+]);
 
 export function classify({ labels = [], files = [] }) {
   const normalized = labels.map((label) => label.toLowerCase());
@@ -51,10 +58,7 @@ export function classify({ labels = [], files = [] }) {
 export function evaluate(checks) {
   // GitHub returns newest check runs first. Preserve the newest rerun for each
   // context instead of allowing an older success to mask a pending rerun.
-  const byName = new Map();
-  for (const check of checks) {
-    if (!byName.has(check.name)) byName.set(check.name, check);
-  }
+  const byName = newestChecksByName(checks);
   const waiting = REQUIRED_CHECKS.filter((name) => {
     const check = byName.get(name);
     return !check || !TERMINAL.has(check.conclusion);
@@ -65,11 +69,107 @@ export function evaluate(checks) {
       check && TERMINAL.has(check.conclusion) && !SUCCESS.has(check.conclusion)
     );
   });
+  const active = REQUIRED_CHECKS.filter((name) => {
+    const check = byName.get(name);
+    return check && !TERMINAL.has(check.conclusion) && ACTIVE.has(check.status);
+  });
   return {
     waiting,
     failed,
+    active,
     passed: waiting.length === 0 && failed.length === 0,
   };
+}
+
+function newestChecksByName(checks) {
+  const byName = new Map();
+  for (const check of checks) {
+    if (!byName.has(check.name)) byName.set(check.name, check);
+  }
+  return byName;
+}
+
+function timestampAtOrBefore(value, deadline) {
+  const timestamp =
+    typeof value === "number" ? value : Date.parse(value ?? "invalid");
+  return Number.isFinite(timestamp) && timestamp <= deadline;
+}
+
+function requiredChecksStartedBy(checks, deadline) {
+  const byName = newestChecksByName(checks);
+  return REQUIRED_CHECKS.every((name) =>
+    timestampAtOrBefore(byName.get(name)?.started_at, deadline),
+  );
+}
+
+function requiredChecksCompletedBy(checks, deadline) {
+  const byName = newestChecksByName(checks);
+  return REQUIRED_CHECKS.every((name) => {
+    const check = byName.get(name);
+    return (
+      check &&
+      SUCCESS.has(check.conclusion) &&
+      timestampAtOrBefore(check.completed_at, deadline)
+    );
+  });
+}
+
+export async function waitForRequiredChecks({
+  loadChecks,
+  timeoutMs,
+  completionGraceMs,
+  intervalMs,
+  now = Date.now,
+  sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+  onWait = () => {},
+}) {
+  const approvalDeadline = now() + timeoutMs;
+  const completionDeadline = approvalDeadline + completionGraceMs;
+  let completionGraceUsed = false;
+
+  for (;;) {
+    const checks = await loadChecks();
+    const state = evaluate(checks);
+    if (state.failed.length) {
+      throw new Error(
+        `deterministic security checks failed: ${state.failed.join(", ")}`,
+      );
+    }
+
+    const currentTime = now();
+    if (currentTime < approvalDeadline) {
+      if (state.passed) return;
+    } else {
+      if (!completionGraceUsed) {
+        if (
+          completionGraceMs <= 0 ||
+          !requiredChecksStartedBy(checks, approvalDeadline)
+        ) {
+          throw new Error("timed out waiting for security advisory checks");
+        }
+        completionGraceUsed = true;
+        onWait(
+          `required checks started before the approval deadline; allowing bounded completion grace: ${REQUIRED_CHECKS.join(", ")}`,
+        );
+      }
+
+      if (state.passed) {
+        if (requiredChecksCompletedBy(checks, completionDeadline)) return;
+        throw new Error("timed out waiting for security advisory checks");
+      }
+      if (currentTime >= completionDeadline) {
+        throw new Error("timed out waiting for security advisory checks");
+      }
+    }
+
+    onWait(
+      `waiting for deterministic security checks: ${state.waiting.join(", ")}`,
+    );
+    const deadline = completionGraceUsed
+      ? completionDeadline
+      : approvalDeadline;
+    await sleep(Math.min(intervalMs, Math.max(1, deadline - now())));
+  }
 }
 
 async function api(path, token) {
@@ -104,6 +204,9 @@ async function live() {
   const token = process.env.GITHUB_TOKEN;
   const timeout = Number(process.env.POLL_TIMEOUT_SECONDS || 1200);
   const interval = Number(process.env.POLL_INTERVAL_SECONDS || 30);
+  const completionGrace = Number(
+    process.env.POLL_COMPLETION_GRACE_SECONDS || 240,
+  );
   const pull = await api(`/repos/${owner}/${repo}/pulls/${pr}`, token);
   const files = await paged(`/repos/${owner}/${repo}/pulls/${pr}/files`, token);
   const decision = classify({
@@ -112,28 +215,26 @@ async function live() {
   });
   console.log(decision.reason);
   if (!decision.protected) return;
-  const deadline = Date.now() + timeout * 1000;
-  while (Date.now() < deadline) {
-    const checkRuns = [];
-    for (let page = 1; ; page += 1) {
-      const data = await api(
-        `/repos/${owner}/${repo}/commits/${pull.head.sha}/check-runs?per_page=100&page=${page}`,
-        token,
-      );
-      checkRuns.push(...data.check_runs);
-      if (data.check_runs.length < 100) break;
-    }
-    const state = evaluate(checkRuns);
-    if (state.failed.length)
-      throw new Error(`deterministic security checks failed: ${state.failed.join(", ")}`);
-    if (state.passed) {
-      console.log("deterministic security checks completed successfully");
-      return;
-    }
-    console.log(`waiting for deterministic security checks: ${state.waiting.join(", ")}`);
-    await new Promise((resolve) => setTimeout(resolve, interval * 1000));
-  }
-  throw new Error("timed out waiting for security advisory checks");
+
+  await waitForRequiredChecks({
+    timeoutMs: timeout * 1000,
+    completionGraceMs: completionGrace * 1000,
+    intervalMs: interval * 1000,
+    onWait: (message) => console.log(message),
+    loadChecks: async () => {
+      const checkRuns = [];
+      for (let page = 1; ; page += 1) {
+        const data = await api(
+          `/repos/${owner}/${repo}/commits/${pull.head.sha}/check-runs?per_page=100&page=${page}`,
+          token,
+        );
+        checkRuns.push(...data.check_runs);
+        if (data.check_runs.length < 100) break;
+      }
+      return checkRuns;
+    },
+  });
+  console.log("deterministic security checks completed successfully");
 }
 
 export async function canary(name) {
@@ -143,15 +244,14 @@ export async function canary(name) {
       classify({ labels: [], files: ["packages/core/src/foo.ts"] })
         .protected === false,
     protected: () => classify(protectedInput).protected === true,
-    waiting: () =>
-      evaluate([]).waiting.includes("gitleaks"),
+    waiting: () => evaluate([]).waiting.includes("gitleaks"),
     success: () =>
       evaluate(REQUIRED_CHECKS.map((x) => ({ name: x, conclusion: "success" })))
         .passed,
     failure: () =>
-      evaluate([
-        { name: "gitleaks", conclusion: "failure" },
-      ]).failed.includes("gitleaks"),
+      evaluate([{ name: "gitleaks", conclusion: "failure" }]).failed.includes(
+        "gitleaks",
+      ),
   };
   if (!cases[name] || !cases[name]()) throw new Error(`canary failed: ${name}`);
   console.log(`canary passed: ${name}`);

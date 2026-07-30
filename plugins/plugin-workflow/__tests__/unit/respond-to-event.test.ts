@@ -43,7 +43,16 @@ interface RuntimeMockOptions {
 
 type RespondToEventRuntime = Pick<
   IAgentRuntime,
-  'agentId' | 'db' | 'getSetting' | 'getService' | 'createMemory' | 'logger'
+  | 'agentId'
+  | 'db'
+  | 'getSetting'
+  | 'getService'
+  | 'createMemory'
+  | 'logger'
+  | 'getTasks'
+  | 'createTask'
+  | 'deleteTask'
+  | 'reportError'
 >;
 
 function buildRuntime(options: RuntimeMockOptions = {}): {
@@ -63,6 +72,10 @@ function buildRuntime(options: RuntimeMockOptions = {}): {
     db: options.db,
     getSetting: () => null,
     getService: (type: string) => services[type] ?? services[type.toLowerCase()] ?? null,
+    getTasks: async () => [],
+    createTask: async () => '00000000-0000-4000-8000-000000000001' as UUID,
+    deleteTask: async () => {},
+    reportError: () => {},
     createMemory: mock(async (memory: CapturedMemory, _table: string) => {
       capturedMemories.push(memory);
       return memory;

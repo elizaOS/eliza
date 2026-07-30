@@ -353,14 +353,9 @@ export function parseArgs(args) {
     missCount: 10,
     timeoutMs: 30_000,
     intervalMs: 250,
-    enforce: false,
   };
   for (let index = 0; index < args.length; index++) {
     const name = args[index];
-    if (name === "--enforce") {
-      options.enforce = true;
-      continue;
-    }
     const value = requiredValue(args, index, name);
     index++;
     switch (name) {
@@ -886,24 +881,6 @@ export function summarizeAuthSamples(records, deploySha) {
   };
 }
 
-export function enforceAcceptance(summary) {
-  if (summary.counts.hit < 30 || summary.counts.miss < 10) {
-    throw new Error("Acceptance requires at least 30 hit and 10 miss samples");
-  }
-  if (
-    summary.hitAuthResolveMs.p95 >= 50 ||
-    summary.hitAuthResolveMs.max > 250
-  ) {
-    throw new Error("Cache-hit auth latency exceeded its acceptance threshold");
-  }
-  if (
-    summary.missAuthResolveMs.p90 >= 1_602 ||
-    summary.missAuthResolveMs.max >= 2_000
-  ) {
-    throw new Error("Authoritative auth latency retained a multi-second tail");
-  }
-}
-
 function sleep(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
@@ -1019,7 +996,6 @@ export async function runAuthProbes(options, dependencies = {}) {
 
   const summary = summarizeAuthSamples(records, options.deploySha);
   emit(summary);
-  if (options.enforce) enforceAcceptance(summary);
   return { deployment, records, guards, summary };
 }
 

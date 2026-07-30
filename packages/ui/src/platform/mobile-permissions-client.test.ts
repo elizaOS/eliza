@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   AppleCalendarPermissionStatus,
   AppleCalendarPluginLike,
+  CameraPluginLike,
   ContactsPluginLike,
   MobileSignalsPermissionStatus,
   MobileSignalsPluginLike,
@@ -243,7 +244,7 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     const calendar = appleCalendarPlugin({
       calendar: "restricted",
       canRequest: false,
-      reason: "Write-only calendar access is not enough for LifeOps.",
+      reason: "Calendar access is blocked by device policy.",
     });
     const registry = createMobileSignalsPermissionsRegistry(
       native,
@@ -258,6 +259,94 @@ describe("createMobileSignalsPermissionsRegistry", () => {
       status: "restricted",
       canRequest: false,
       restrictedReason: "os_policy",
+    });
+  });
+
+  it("keeps write-only Apple Calendar distinct from full access", async () => {
+    const native = plugin();
+    const calendar = appleCalendarPlugin({
+      calendar: "write_only",
+      canRequest: true,
+      reason: null,
+    });
+    const registry = createMobileSignalsPermissionsRegistry(
+      native,
+      undefined,
+      calendar,
+    );
+
+    const state = await registry.check("calendar");
+
+    expect(state).toMatchObject({
+      id: "calendar",
+      status: "limited",
+      canRequest: true,
+      reason:
+        "Add-only access can create events on the default calendar, but cannot read or change existing events.",
+    });
+    expect(state.status).not.toBe("granted");
+  });
+
+  it("upgrades write-only Apple Calendar through the existing full-access request", async () => {
+    const native = plugin();
+    let calendarStatus: AppleCalendarPermissionStatus = {
+      calendar: "write_only",
+      canRequest: true,
+      reason: "Add-only access.",
+    };
+    const calendar: AppleCalendarPluginLike = {
+      checkPermissions: vi.fn(async () => calendarStatus),
+      requestPermissions: vi.fn(async () => {
+        calendarStatus = {
+          calendar: "granted",
+          canRequest: false,
+          reason: null,
+        };
+        return calendarStatus;
+      }),
+    };
+    const registry = createMobileSignalsPermissionsRegistry(
+      native,
+      undefined,
+      calendar,
+    );
+
+    const state = await registry.request("calendar", {
+      reason: "Read schedule conflicts.",
+      feature: { app: "lifeops", action: "calendar.read" },
+    });
+
+    expect(calendar.requestPermissions).toHaveBeenCalledWith();
+    expect(state).toMatchObject({
+      id: "calendar",
+      status: "granted",
+    });
+  });
+
+  it("does not normalize selected-photo access into a full grant", async () => {
+    const camera = {
+      checkPermissions: vi.fn(async () => ({
+        camera: "granted" as const,
+        microphone: "granted" as const,
+        photos: "limited" as const,
+      })),
+    } as unknown as CameraPluginLike;
+    const registry = createMobileSignalsPermissionsRegistry(
+      plugin(),
+      undefined,
+      appleCalendarPlugin(),
+      pushNotificationsPlugin(),
+      { camera },
+    );
+
+    const state = await registry.check("photos");
+
+    expect(state).toMatchObject({
+      id: "photos",
+      status: "limited",
+      canRequest: false,
+      reason:
+        "Limited access is enabled; manage selected items in system settings.",
     });
   });
 

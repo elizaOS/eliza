@@ -14,28 +14,10 @@ from ..types import (
     Action,
     Domain,
     FirstQuestionFallback,
-    Persona,
     Scenario,
     ScenarioMode,
 )
-
-_PERSONA_ALEX = Persona(
-    id="alex",
-    name="Alex",
-    traits=["concise", "no-nonsense"],
-    background="Software engineer who treats the assistant like a CLI.",
-    communication_style="terse, lowercase, expects bullet points",
-    patience_turns=20,
-)
-
-_PERSONA_RIA = Persona(
-    id="ria",
-    name="Ria",
-    traits=["friendly", "explanatory"],
-    background="PM who narrates context and asks follow-up questions.",
-    communication_style="conversational, polite, gives reasons",
-    patience_turns=30,
-)
+from ._personas import PERSONA_ALEX_ENG, PERSONA_RIA_PM
 
 
 SMOKE_STATIC = Scenario(
@@ -43,7 +25,7 @@ SMOKE_STATIC = Scenario(
     name="Smoke - schedule a 30-minute focus block tomorrow at 10am",
     domain=Domain.CALENDAR,
     mode=ScenarioMode.STATIC,
-    persona=_PERSONA_ALEX,
+    persona=PERSONA_ALEX_ENG,
     instruction="schedule a 30-minute focus block tomorrow at 10am UTC called 'deep work'",
     ground_truth_actions=[
         Action(
@@ -76,7 +58,7 @@ SMOKE_LIVE = Scenario(
     name="Smoke - find unread email from a sender and draft a reply",
     domain=Domain.MAIL,
     mode=ScenarioMode.LIVE,
-    persona=_PERSONA_RIA,
+    persona=PERSONA_RIA_PM,
     instruction=(
         "find any unread email from uma.wright180@example.test this month and "
         "draft a polite reply confirming I will deliver the report by Friday"

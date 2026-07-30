@@ -130,14 +130,22 @@ function WeatherTile(): React.JSX.Element {
               widths. No letter-space tightening on numerals: it crammed the
               digits into the degree unit; tabular-nums already keeps the
               width stable across minute ticks. */}
-          <div className="flex items-center gap-2 whitespace-nowrap">
+          <div
+            data-home-weather-reading=""
+            className="flex items-center gap-2 whitespace-nowrap"
+          >
             <Icon
+              data-home-weather-icon=""
               className={cn("h-8 w-8 shrink-0", WALLPAPER_TEXT.primary)}
               aria-hidden
             />
-            <div className="flex items-start text-5xl font-semibold leading-none tabular-nums">
+            <div
+              data-home-weather-temperature=""
+              className="flex items-start text-5xl font-semibold leading-none tabular-nums"
+            >
               <span>{weather.temp}</span>
               <span
+                data-home-weather-unit=""
                 className={cn(
                   "ml-0.5 mt-0.5 text-base font-medium leading-none",
                   WALLPAPER_TEXT.muted,
@@ -148,6 +156,7 @@ function WeatherTile(): React.JSX.Element {
             </div>
           </div>
           <div
+            data-home-weather-condition=""
             className={cn("mt-1.5 text-sm font-medium", WALLPAPER_TEXT.primary)}
           >
             {weather.condition}
@@ -184,16 +193,29 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
   const displayHour = CLOCK_24H ? hours : hours % 12 || 12;
   const ampm = CLOCK_24H ? "" : hours < 12 ? "AM" : "PM";
   const time = `${displayHour}:${String(minutes).padStart(2, "0")}`;
-  const dateLabel = `${WEEKDAYS_LONG[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  const weekdayLabel = `${WEEKDAYS_LONG[d.getDay()]},`;
+  const calendarDateLabel = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  const dateLabel = `${weekdayLabel} ${calendarDateLabel}`;
+  const compactDateLabel = `${WEEKDAYS_LONG[d.getDay()].slice(0, 3)}, ${MONTHS[
+    d.getMonth()
+  ].slice(0, 3)} ${d.getDate()}`;
+  const dateTime = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(d.getDate()).padStart(2, "0")}`;
 
   return (
     <div className={cn("flex flex-col", !timeReady && "invisible")}>
       <div className="flex items-baseline gap-1.5">
-        <span className="text-6xl font-semibold leading-[0.9] tabular-nums tracking-tighter">
+        <span
+          data-home-clock-time=""
+          className="text-6xl font-semibold leading-[0.9] tabular-nums tracking-tighter"
+        >
           {time}
         </span>
         {ampm ? (
           <span
+            data-home-clock-suffix=""
             className={cn(
               "text-base font-semibold uppercase tracking-wide",
               WALLPAPER_TEXT.muted,
@@ -203,15 +225,22 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
           </span>
         ) : null}
       </div>
-      <div
-        className={cn(
-          "mt-3 truncate text-base font-medium",
-          WALLPAPER_TEXT.primary,
-        )}
+      <time
+        data-home-clock-date=""
+        className={cn("mt-3 max-w-full font-medium", WALLPAPER_TEXT.primary)}
+        dateTime={dateTime}
         title={dateLabel}
       >
-        {dateLabel}
-      </div>
+        <span className="sr-only" data-home-clock-date-accessible="">
+          {dateLabel}
+        </span>
+        <span aria-hidden="true" data-home-clock-date-full="">
+          {dateLabel}
+        </span>
+        <span aria-hidden="true" data-home-clock-date-compact="">
+          {compactDateLabel}
+        </span>
+      </time>
     </div>
   );
 });
@@ -232,6 +261,7 @@ export function DefaultHomeWidgets(): React.JSX.Element | null {
   return (
     <div
       data-testid="default-home-widgets"
+      data-home-editorial-header=""
       className="grid grid-cols-4 items-start gap-x-4 gap-y-2"
     >
       {/* Time, the editorial header. Big, left-aligned, with a tight tracking

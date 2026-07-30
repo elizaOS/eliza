@@ -102,6 +102,9 @@ describe("ModelTesterView — unified GUI wrapper", () => {
     expect(screen.getByText("Text")).toBeTruthy();
     expect(screen.getByText("Activity")).toBeTruthy();
     expect(screen.getByText("Run all")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Refresh model status" }),
+    ).toBeTruthy();
   });
 
   it("fetches status once on mount and again on refresh-status", async () => {
@@ -145,6 +148,19 @@ describe("ModelTesterView — unified GUI wrapper", () => {
     expect(run?.body?.prompt).toBe(
       "Describe the attached image in one compact sentence.",
     );
+  });
+
+  it("marks only the selected prompt preset as pressed", async () => {
+    render(React.createElement(ModelTesterView));
+    await screen.findByText("6 ready");
+
+    expect(button("preset-smoke").getAttribute("aria-pressed")).toBe("true");
+    expect(button("preset-vision").getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(button("preset-vision"));
+
+    expect(button("preset-smoke").getAttribute("aria-pressed")).toBe("false");
+    expect(button("preset-vision").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("Back invokes the provided exitToApps callback", async () => {

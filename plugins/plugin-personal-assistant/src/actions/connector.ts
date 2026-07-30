@@ -1,6 +1,8 @@
 /**
  * CONNECTOR action — owner-facing facade for personal-assistant connector
  * status and control (list, status, enable/disable, mode and side selection).
+ * Verification is read-only: external test messages must use the ordinary
+ * draft and owner-approval path so a diagnostic can never bypass send policy.
  * The actual connector clients live in their own plugins; this action only
  * projects and toggles their normalized status through the ConnectorRegistry.
  */
@@ -69,8 +71,7 @@ type ConnectorActionParams = {
   // Connector-specific params (passed through to underlying service methods).
   recentLimit?: number;
   query?: string;
-  sendTarget?: string;
-  sendMessage?: string;
+  channelId?: string;
   browser?: "chrome" | "safari";
   profileId?: string;
   profileLabel?: string;
@@ -87,10 +88,6 @@ type GmailTriageResult = Awaited<ReturnType<LifeOpsService["getGmailTriage"]>>;
 type CalendarFeedResult = Awaited<
   ReturnType<LifeOpsService["getCalendarFeed"]>
 >;
-type RegistrySendVerificationResult = NonNullable<
-  Awaited<ReturnType<typeof sendVerificationThroughRegistry>>
->;
-
 type GoogleVerifyProbeSkipped = {
   ok: false;
   skipped: true;
@@ -262,7 +259,7 @@ function getRuntimeMessageConnector(
   );
 }
 
-function registryStatusResult(
+export function registryStatusResult(
   runtime: IAgentRuntime,
   connector: string,
   subaction: ConnectorSubaction,
@@ -271,9 +268,19 @@ function registryStatusResult(
   if (!registration) {
     return null;
   }
+  // Registration alone is not deliverability: a connector with no linked
+  // chat context and no routable target kinds cannot actually reach the
+  // owner. Reporting connected:true for a bare registration made the model
+  // promise "Telegram is live" on a fresh install with nothing linked
+  // (#16941 live, first-run channel-fallback).
+  const deliverable =
+    registration.contexts.length > 0 ||
+    registration.supportedTargetKinds.length > 0;
   return {
     success: true,
-    text: `${registration.label} is registered in the core message connector registry. Detailed chat/user context is exposed by platform providers.`,
+    text: deliverable
+      ? `${registration.label} is registered and has linked chat/user context. Detailed chat/user context is exposed by platform providers.`
+      : `${registration.label} is registered, but no chat or delivery route is linked yet — messages cannot reach the owner there until it is connected. Offer in-app delivery meanwhile.`,
     data: {
       actionName: ACTION_NAME,
       connector,
@@ -283,7 +290,7 @@ function registryStatusResult(
         provider: connector,
         source: registration.source,
         label: registration.label,
-        connected: true,
+        connected: deliverable,
         registered: true,
         capabilities: registration.capabilities,
         supportedTargetKinds: registration.supportedTargetKinds,
@@ -293,67 +300,6 @@ function registryStatusResult(
       },
     },
   };
-}
-
-async function sendVerificationThroughRegistry(args: {
-  runtime: IAgentRuntime;
-  connector: string;
-  target: string | undefined;
-  text: string;
-}): Promise<
-  | {
-      ok: true;
-      routedBy: "core_message_connector_registry";
-      source: string;
-      target: string;
-    }
-  | {
-      ok: false;
-      routedBy: "core_message_connector_registry";
-      source: string;
-      target: string;
-      error: string;
-    }
-  | null
-> {
-  const target = args.target?.trim();
-  if (!target) {
-    return null;
-  }
-  const registration = getRuntimeMessageConnector(args.runtime, args.connector);
-  if (!registration) {
-    return null;
-  }
-  try {
-    await args.runtime.sendMessageToTarget(
-      {
-        source: registration.source,
-        channelId: target,
-      } as Parameters<typeof args.runtime.sendMessageToTarget>[0],
-      {
-        text: args.text,
-        source: registration.source,
-        metadata: {
-          actionName: ACTION_NAME,
-          verification: true,
-        },
-      },
-    );
-    return {
-      ok: true,
-      routedBy: "core_message_connector_registry",
-      source: registration.source,
-      target,
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      routedBy: "core_message_connector_registry",
-      source: registration.source,
-      target,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -556,28 +502,15 @@ async function dispatchGoogleVerify(
   }
   const read: GoogleVerifyRead = { gmail: gmailRead, calendar: calendarRead };
 
-  const send = params.sendTarget
-    ? await service.sendGmailMessage(INTERNAL_URL, {
-        mode: params.mode,
-        side,
-        to: [params.sendTarget],
-        subject: "LifeOps Google connector verification",
-        bodyText:
-          params.sendMessage ?? "LifeOps Google connector verification ping.",
-        confirmSend: true,
-      })
-    : null;
-
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `Google verify: status=${status.connected ? "connected" : "disconnected"}, gmail=${read.gmail.ok ? "ok" : "skipped"}, calendar=${read.calendar.ok ? "ok" : "skipped"}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected,
+    text: `Google verify: status=${status.connected ? "connected" : "disconnected"}, gmail=${read.gmail.ok ? "ok" : "skipped"}, calendar=${read.calendar.ok ? "ok" : "skipped"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "google",
       subaction: "verify",
       status,
       read,
-      send,
     },
   };
 }
@@ -621,12 +554,11 @@ async function dispatchX(
       };
     }
     case "verify":
-      return await dispatchXVerify(runtime, service, side, params);
+      return await dispatchXVerify(service, side, params);
   }
 }
 
 async function dispatchXVerify(
-  runtime: IAgentRuntime,
   service: LifeOpsService,
   side: "owner" | "agent",
   params: ConnectorActionParams,
@@ -652,24 +584,6 @@ async function dispatchXVerify(
   const inbound = status.dmInbound
     ? await service.readXInboundDms({ limit })
     : [];
-  const sendText =
-    params.sendMessage ?? "LifeOps X connector verification ping.";
-  const send =
-    (await sendVerificationThroughRegistry({
-      runtime,
-      connector: "x",
-      target: params.sendTarget,
-      text: sendText,
-    })) ??
-    (params.sendTarget
-      ? await service.sendXDirectMessage({
-          participantId: params.sendTarget,
-          text: sendText,
-          mode: params.mode,
-          side,
-          confirmSend: true,
-        })
-      : null);
   let searchSummary = "skipped";
   const searchItems =
     search && "items" in search && Array.isArray(search.items)
@@ -680,8 +594,8 @@ async function dispatchXVerify(
     searchSummary = `${hitCount} hit${hitCount === 1 ? "" : "s"}`;
   }
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `X verify: status=${status.connected ? "connected" : "disconnected"}, read=${inbound.length} inbound DM${inbound.length === 1 ? "" : "s"}, search=${searchSummary}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected,
+    text: `X verify: status=${status.connected ? "connected" : "disconnected"}, read=${inbound.length} inbound DM${inbound.length === 1 ? "" : "s"}, search=${searchSummary}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "x",
@@ -689,7 +603,6 @@ async function dispatchXVerify(
       status,
       read: { ok: status.dmInbound, count: inbound.length, messages: inbound },
       search,
-      send,
     },
   };
 }
@@ -796,28 +709,18 @@ async function dispatchTelegram(
       };
     }
     case "verify": {
-      const registrySend = await sendVerificationThroughRegistry({
-        runtime,
-        connector: "telegram",
-        target: params.sendTarget,
-        text:
-          params.sendMessage ?? "LifeOps Telegram connector verification ping.",
-      });
       const response = await service.verifyTelegramConnector({
         side,
         recentLimit: params.recentLimit,
-        sendTarget: registrySend ? undefined : params.sendTarget,
-        sendMessage: registrySend ? undefined : params.sendMessage,
       });
-      const send = registrySend ?? response.send;
       return {
-        success: response.read.ok && send.ok,
-        text: `Telegram verify: read=${response.read.ok ? "ok" : "fail"}, send=${send.ok ? "ok" : "fail"}.`,
+        success: response.read.ok,
+        text: `Telegram verify: read=${response.read.ok ? "ok" : "fail"}.`,
         data: {
           actionName: ACTION_NAME,
           connector: "telegram",
           subaction,
-          response: { ...response, send },
+          response,
         },
       };
     }
@@ -903,12 +806,11 @@ async function dispatchSignal(
       };
     }
     case "verify":
-      return await dispatchSignalVerify(runtime, service, side, params);
+      return await dispatchSignalVerify(service, side, params);
   }
 }
 
 async function dispatchSignalVerify(
-  runtime: IAgentRuntime,
   service: LifeOpsService,
   side: "owner" | "agent",
   params: ConnectorActionParams,
@@ -926,45 +828,16 @@ async function dispatchSignalVerify(
   } else {
     readError = "Signal plugin inbound read is unavailable.";
   }
-  const sendText =
-    params.sendMessage ?? "LifeOps Signal connector verification ping.";
-  let send:
-    | Awaited<ReturnType<LifeOpsService["sendSignalMessage"]>>
-    | RegistrySendVerificationResult
-    | null = null;
-  let sendError: string | null = null;
-  if (params.sendTarget) {
-    try {
-      send =
-        (await sendVerificationThroughRegistry({
-          runtime,
-          connector: "signal",
-          target: params.sendTarget,
-          text: sendText,
-        })) ??
-        (await service.sendSignalMessage({
-          side,
-          recipient: params.sendTarget,
-          text: sendText,
-        }));
-    } catch (error) {
-      sendError = error instanceof Error ? error.message : String(error);
-    }
-  }
   const readOk = readError === null;
-  const sendOk = !params.sendTarget || send?.ok === true;
   return {
-    success: status.connected && readOk && sendOk,
-    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${readOk ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : "failed"}, send=${params.sendTarget ? (sendOk ? "ok" : "failed") : "skipped"}.`,
+    success: status.connected && readOk,
+    text: `Signal verify: status=${status.connected ? "connected" : "disconnected"}, read=${readOk ? `${messages.length} message${messages.length === 1 ? "" : "s"}` : "failed"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "signal",
       subaction: "verify",
       status,
       read: { ok: readOk, error: readError, count: messages.length, messages },
-      send: send
-        ? { ...send, error: sendError }
-        : { ok: !params.sendTarget, error: sendError },
     },
   };
 }
@@ -1030,12 +903,11 @@ async function dispatchDiscord(
       };
     }
     case "verify":
-      return await dispatchDiscordVerify(runtime, service, side, params);
+      return await dispatchDiscordVerify(service, side, params);
   }
 }
 
 async function dispatchDiscordVerify(
-  runtime: IAgentRuntime,
   service: LifeOpsService,
   side: "owner" | "agent",
   params: ConnectorActionParams,
@@ -1046,34 +918,18 @@ async function dispatchDiscordVerify(
     ? await service.searchDiscordMessages({
         side,
         query,
-        channelId: params.sendTarget,
+        channelId: params.channelId,
       })
     : [];
-  const sendText =
-    params.sendMessage ?? "LifeOps Discord connector verification ping.";
-  const send =
-    (await sendVerificationThroughRegistry({
-      runtime,
-      connector: "discord",
-      target: params.sendTarget,
-      text: sendText,
-    })) ??
-    (params.sendTarget
-      ? await service.sendDiscordMessage({
-          channelId: params.sendTarget,
-          text: sendText,
-        })
-      : null);
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `Discord verify: status=${status.connected ? "connected" : "disconnected"}, search=${query ? `${hits.length} hit${hits.length === 1 ? "" : "s"}` : "skipped"}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected,
+    text: `Discord verify: status=${status.connected ? "connected" : "disconnected"}, search=${query ? `${hits.length} hit${hits.length === 1 ? "" : "s"}` : "skipped"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "discord",
       subaction: "verify",
       status,
       search: query ? { ok: true, query, count: hits.length, hits } : null,
-      send,
     },
   };
 }
@@ -1139,12 +995,11 @@ async function dispatchIMessage(
         "iMessage disconnect is not exposed by LifeOpsService.",
       );
     case "verify":
-      return await dispatchIMessageVerify(runtime, service, params);
+      return await dispatchIMessageVerify(service, params);
   }
 }
 
 async function dispatchIMessageVerify(
-  runtime: IAgentRuntime,
   service: LifeOpsService,
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
@@ -1153,31 +1008,15 @@ async function dispatchIMessageVerify(
     service.getIMessageConnectorStatus(),
     service.readIMessages({ limit }),
   ]);
-  const sendText =
-    params.sendMessage ?? "LifeOps iMessage connector verification ping.";
-  const send =
-    (await sendVerificationThroughRegistry({
-      runtime,
-      connector: "imessage",
-      target: params.sendTarget,
-      text: sendText,
-    })) ??
-    (params.sendTarget
-      ? await service.sendIMessage({
-          to: params.sendTarget,
-          text: sendText,
-        })
-      : null);
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `iMessage verify: status=${status.connected ? "connected" : "disconnected"}, read=${messages.length} message${messages.length === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected,
+    text: `iMessage verify: status=${status.connected ? "connected" : "disconnected"}, read=${messages.length} message${messages.length === 1 ? "" : "s"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "imessage",
       subaction: "verify",
       status,
       read: { ok: true, count: messages.length, messages },
-      send,
     },
   };
 }
@@ -1239,43 +1078,26 @@ async function dispatchWhatsApp(
         "WhatsApp disconnect is not exposed by LifeOpsService.",
       );
     case "verify":
-      return await dispatchWhatsAppVerify(runtime, service, params);
+      return await dispatchWhatsAppVerify(service, params);
   }
 }
 
 async function dispatchWhatsAppVerify(
-  runtime: IAgentRuntime,
   service: LifeOpsService,
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
   const limit = params.recentLimit ?? 10;
   const status = await service.getWhatsAppConnectorStatus();
   const recent = await service.pullWhatsAppRecent(limit);
-  const sendText =
-    params.sendMessage ?? "LifeOps WhatsApp connector verification ping.";
-  const send =
-    (await sendVerificationThroughRegistry({
-      runtime,
-      connector: "whatsapp",
-      target: params.sendTarget,
-      text: sendText,
-    })) ??
-    (params.sendTarget
-      ? await service.sendWhatsAppMessage({
-          to: params.sendTarget,
-          text: sendText,
-        })
-      : null);
   return {
-    success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `WhatsApp verify: status=${status.connected ? "connected" : "disconnected"}, read=${recent.count} message${recent.count === 1 ? "" : "s"}, send=${send ? "ok" : "skipped"}.`,
+    success: status.connected,
+    text: `WhatsApp verify: status=${status.connected ? "connected" : "disconnected"}, read=${recent.count} message${recent.count === 1 ? "" : "s"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "whatsapp",
       subaction: "verify",
       status,
       read: { ok: true, count: recent.count, messages: recent.messages },
-      send,
     },
   };
 }
@@ -1463,7 +1285,7 @@ const VERBOSE_DISPATCHERS: Record<VerboseConnectorKind, ConnectorDispatcher> = {
 async function dispatchGenericRegistry(
   context: ConnectorDispatchContext,
   subaction: ConnectorSubaction,
-  params: ConnectorActionParams,
+  _params: ConnectorActionParams,
   connectorKind: string,
 ): Promise<ActionResult> {
   const registry = getConnectorRegistry(context.runtime);
@@ -1506,23 +1328,14 @@ async function dispatchGenericRegistry(
     }
     case "verify": {
       const verified = await contribution.verify();
-      const sendResult = params.sendTarget
-        ? await contribution.send?.({
-            target: params.sendTarget,
-            message:
-              params.sendMessage ??
-              `LifeOps ${contribution.describe.label} verification ping.`,
-          })
-        : null;
       return {
-        success: verified && (!params.sendTarget || sendResult?.ok === true),
-        text: `${contribution.describe.label} verify: connected=${verified}, send=${sendResult ? (sendResult.ok ? "ok" : "fail") : "skipped"}.`,
+        success: verified,
+        text: `${contribution.describe.label} verify: connected=${verified}.`,
         data: {
           actionName: ACTION_NAME,
           connector: connectorKind,
           subaction,
           verified,
-          send: sendResult,
         },
       };
     }
@@ -1638,7 +1451,27 @@ export const connectorAction: Action & {
         },
       };
     }
-
+    const legacyVerifySend = params as ConnectorActionParams & {
+      sendTarget?: unknown;
+      sendMessage?: unknown;
+    };
+    if (
+      subaction === "verify" &&
+      (legacyVerifySend.sendTarget !== undefined ||
+        legacyVerifySend.sendMessage !== undefined)
+    ) {
+      return {
+        success: false,
+        text:
+          `[${ACTION_NAME}] connector verification is read-only. ` +
+          "Draft an ordinary message and obtain owner approval before testing outbound delivery.",
+        data: {
+          actionName: ACTION_NAME,
+          subaction,
+          error: "VERIFY_SEND_REQUIRES_APPROVAL",
+        },
+      };
+    }
     const service = new LifeOpsService(runtime);
     const dispatchContext = { runtime, service };
 
@@ -1726,7 +1559,7 @@ export const connectorAction: Action & {
     {
       name: "action",
       description:
-        "connect auth/pairing; disconnect revoke+clear grant; verify active read/send probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
+        "connect auth/pairing; disconnect revoke+clear grant; verify active read-only upstream probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
@@ -1760,15 +1593,9 @@ export const connectorAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "sendTarget",
+      name: "channelId",
       description:
-        "verify only: destination chat/recipient/channel for self-test send.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "sendMessage",
-      description: "verify only: self-test send body.",
+        "Discord verify only: optional channel scope for the read-only search.",
       required: false,
       schema: { type: "string" as const },
     },

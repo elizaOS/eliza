@@ -12,6 +12,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 // #9143 — the home launcher mounts <WidgetHost slot="home"> and ranks the
@@ -739,17 +740,14 @@ test.describe("home widget priority (#9143)", () => {
     });
     await screenshot(page, "mobile");
 
-    // Launcher capture — the widgets and the launcher tiles share ONE combined
-    // home surface (HomeScreen with the embedded LauncherSurface grid under the
-    // "Apps" region; there is no home↔launcher rail). Scroll the grid into
-    // view the way a user would and capture the consolidated pair.
-    const surface = page.getByTestId("home-launcher-surface");
-    await expect(surface).toHaveAttribute("data-page", "home");
-    const appsRegion = page.getByTestId("home-apps-scroll");
-    await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-    const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-    await settingsTile.scrollIntoViewIfNeeded();
-    await expect(settingsTile).toBeVisible({ timeout: 15_000 });
+    // Home and Launcher are paired rail pages. Exercise the real rail before
+    // capturing the launcher half at the mobile viewport.
+    const grid = await navigateHomeLauncher(page, "launcher", {
+      input: "mouse",
+    });
+    await expect(grid.getByTestId("launcher-tile-settings")).toBeVisible({
+      timeout: 15_000,
+    });
     await screenshot(page, "launcher");
   });
 });

@@ -15,21 +15,21 @@ import {
   completeCloudOnboardingToHome,
   completeOnboardingToHome,
   completeOtherProviderSettingsHandoff,
-  expectInlineLauncher,
   injectCloudAuthToken,
   injectFullCapabilityHost,
   installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
+  openPostOnboardingLauncher,
   settleHomeEntrance,
 } from "./onboarding-to-home.shared";
 
 // Mobile-viewport counterpart of onboarding-to-home.spec.ts. Same keyless flow —
 // fresh device → real Local/on-device onboarding → completeFirstRun("chat") →
-// home with seeded widgets and the embedded launcher grid — but driven through
-// a Pixel-class Chromium context with `hasTouch: true, isMobile: true` and a
-// touch viewport, so the onboarding cards are TAPPED at the exact WebView
-// viewport size that ships on Capacitor iOS/Android. This is the
+// home with seeded widgets → swipe-left → launcher — but driven through a
+// Pixel-class Chromium context with `hasTouch: true, isMobile: true` and a touch
+// viewport, so the onboarding cards and launcher rail use real touch at the
+// exact WebView viewport size that ships on Capacitor iOS/Android. This is the
 // desktop-Chromium-with-mobile-emulation lane; the real installed Capacitor
 // WebView lane lives in test/android/onboarding-to-home.android.spec.ts
 // (driven by mobile-e2e.yml).
@@ -57,9 +57,7 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("first-run → home → inline launcher grid with touch", async ({
-    page,
-  }) => {
+  test("first-run → home → Launcher pager with touch", async ({ page }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
     await injectFullCapabilityHost(page);
     const state = await installHomeRoutes(page);
@@ -84,16 +82,14 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     // WebView, inside the same floating ChatOverlay. The shared flow
     // also asserts the onboarding lock (disabled composer, Escape gated) and
     // the auto-collapse on completion.
-    const { surface } = await completeOnboardingToHome(
-      page,
-      (locator: Locator) => locator.tap(),
-      { state, tutorial: "skip" },
-    );
+    await completeOnboardingToHome(page, (locator: Locator) => locator.tap(), {
+      state,
+      tutorial: "skip",
+    });
 
     // Restated at the spec level: completion settled the sheet to the HALF
     // detent (open, home revealed behind the top half — #15339) and unlocked the
-    // composer. expectInlineLauncher collapses the open sheet before asserting
-    // the embedded launcher grid.
+    // composer. The launcher helper collapses the open sheet before swiping.
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
       "half",
@@ -108,8 +104,7 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    // The launcher grid is embedded on the combined home surface (no rail).
-    await expectInlineLauncher(page, surface);
+    await openPostOnboardingLauncher(page, { input: "touch" });
     await screenshot(page, "launcher");
   });
 

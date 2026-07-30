@@ -6,15 +6,14 @@
  * (`message.send`) + the SSE stream. The mobile/web chat client, however, speaks
  * the agent-server REST conversation contract (`/api/conversations`,
  * `/api/conversations/:id/messages`, …). This use-case maps that REST contract
- * onto the existing, proven shared-runtime primitives (the bridge engine, its
- * billing, and its KV turn-history) so a REST client can chat with a shared
- * agent unchanged. The cloud-api route at
+ * onto the conversation Durable Object, which owns cache-local execution,
+ * billing coordination, and ordered history so a REST client can chat with a
+ * shared agent unchanged. The cloud-api route at
  * `.../agents/:agentId/api/[...path]` is a thin caller of these functions.
  *
- * Launch model: ONE canonical conversation per agent (conversationId === agentId,
- * bridge roomId === conversationId). The list always has exactly one item, so no
- * conversation index is needed — every turn lands in the same KV channel the
- * bridge already writes.
+ * Launch model: one canonical conversation per agent (conversationId ===
+ * agentId, bridge roomId === conversationId). The list always has exactly one
+ * item, so no conversation index is needed.
  */
 
 import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
@@ -154,6 +153,14 @@ export function sharedRestFirstRunSubmit(): { ok: true } {
   return { ok: true };
 }
 
+/**
+ * Route of the one view this tier serves. Hoisted out of the registry entry
+ * because `SharedRestViewRegistration.path` is optional, while the navigate ack
+ * below must return a definite path — sharing the constant keeps the registry
+ * entry and the ack from drifting apart.
+ */
+const SHARED_CHAT_VIEW_PATH = "/chat";
+
 /** The single builtin chat view a shared agent exposes (a `gui` view). */
 const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   id: "chat",
@@ -161,7 +168,7 @@ const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   viewType: "gui",
   description: "Conversations with your agent, inbound messages from every connector",
   icon: "MessageSquare",
-  path: "/chat",
+  path: SHARED_CHAT_VIEW_PATH,
   available: true,
   pluginName: "@elizaos/builtin",
   tags: ["messaging", "conversation", "agent"],
@@ -193,6 +200,158 @@ export function sharedRestViews(viewType?: string): {
 }
 
 /**
+ * POST .../api/views/:viewId/navigate — the shell's navigation ack. Navigation
+ * is client-side routing; the agent-server route only echoes the resolved view
+ * so the client can confirm the target exists. A shared agent owns exactly one
+ * view (`chat`), so navigating to it acks and anything else is honestly absent
+ * — the caller gets `null` and the route 404s, matching `sharedRestViews()`
+ * rather than acking a view this tier does not serve.
+ */
+export function sharedRestViewNavigate(viewId: string): {
+  ok: true;
+  viewId: string;
+  viewPath: string;
+  viewType: string;
+} | null {
+  if (viewId.trim() !== SHARED_CHAT_VIEW.id) return null;
+  return {
+    ok: true,
+    viewId: SHARED_CHAT_VIEW.id,
+    viewPath: SHARED_CHAT_VIEW_PATH,
+    viewType: SHARED_CHAT_VIEW.viewType,
+  };
+}
+
+/**
+ * POST .../api/conversations/:id/greeting — the opening agent line the chat view
+ * requests for an empty conversation.
+ *
+ * This tier does not generate one. Producing a greeting means running a billed
+ * model turn, and inventing static text would put words in the agent's mouth
+ * that its character never authored — so neither happens here. The empty-text,
+ * `generated: false` shape is NOT a fabricated success: it is the agent server's
+ * own representation of "no greeting available", returned verbatim by
+ * `ensureConversationGreetingStoredUnlocked()` when no runtime is attached
+ * (conversation-routes.ts). The client guards on `if (data.text)` before
+ * appending, so an empty greeting renders nothing rather than a blank bubble.
+ *
+ * Only the canonical conversation (id === agentId) answers; any other id is
+ * genuinely absent on this tier and stays a 404 rather than acking a
+ * conversation that does not exist.
+ */
+export function sharedRestGreeting(
+  agentId: string,
+  agentName: string,
+  conversationId: string,
+): {
+  text: "";
+  agentName: string;
+  generated: false;
+  persisted: false;
+} | null {
+  if (conversationId.trim() !== canonicalConversationId(agentId)) return null;
+  return {
+    text: "",
+    agentName: agentName || "Eliza",
+    generated: false,
+    persisted: false,
+  };
+}
+
+/**
+ * GET .../api/runtime/mode — the client's runtime-mode snapshot
+ * (ui/src/api/runtime-mode-client.ts → useRuntimeMode()). A Tier-0 agent runs
+ * in-Worker in Eliza Cloud, so the honest answer is `cloud`, and it is not a
+ * controller for some other remote runtime.
+ *
+ * This is a correctness fix, not just 404 suppression: the client treats the
+ * snapshot as advisory and resolves `null` (any non-2xx) by falling back to
+ * LOCAL heuristics — so while this path 404s, a cloud-hosted shared agent's UI
+ * reasons about itself as if it were a local runtime. Both values are validated
+ * client-side against its `RuntimeMode` / `RuntimeDeploymentRuntime` unions.
+ */
+export function sharedRestRuntimeMode(): {
+  mode: "cloud";
+  deploymentRuntime: "cloud";
+  isRemoteController: false;
+  remoteApiBaseConfigured: false;
+} {
+  return {
+    mode: "cloud",
+    deploymentRuntime: "cloud",
+    isRemoteController: false,
+    remoteApiBaseConfigured: false,
+  };
+}
+
+/**
+ * GET .../api/commands — the universal slash-command catalog
+ * (`CommandsCatalogResponse` in @elizaos/shared; read by
+ * ui/src/api/client-skills.ts `listCommands`). A Tier-0 agent has no agent
+ * server and therefore no command registry to enumerate: the builtin catalog is
+ * assembled by the runtime from registered plugin commands, and none of those
+ * targets exist here. An empty catalog is the truthful answer for this tier, not
+ * a masked load failure — offering commands the shared runtime cannot dispatch
+ * would be strictly worse than offering none.
+ *
+ * Without this the client's `listCommands` rejects on the 404 and logs
+ * "Failed to load the slash-command catalog; slash menu will be empty" — the
+ * same empty menu, reached through an error path.
+ */
+export function sharedRestCommands(): { commands: [] } {
+  return { commands: [] };
+}
+
+/**
+ * GET .../api/custom-actions — user-defined custom actions
+ * (ui/src/api/client-skills.ts `listCustomActions`, shape
+ * `{ actions: CustomActionDef[] }`). Custom actions are persisted per agent
+ * runtime; a shared agent has no such store, so the honest answer is none. The
+ * full-runtime route returns exactly `{ actions: [] }` when nothing is defined,
+ * so this matches the contract the client already handles.
+ */
+export function sharedRestCustomActions(): { actions: [] } {
+  return { actions: [] };
+}
+
+/**
+ * GET .../api/agent/events — the agent event log the shell's activity surfaces
+ * poll (ui/src/api/client-agent.ts). A Tier-0 agent runs stateless per-request
+ * in a Worker and keeps no event ring buffer, so there is nothing to report.
+ * Mirrors the iOS local-agent kernel's synthesis of this same probe
+ * (`ui/src/api/ios-local-agent-kernel.ts` → `{ events: [] }`).
+ */
+export function sharedRestAgentEvents(): { events: [] } {
+  return { events: [] };
+}
+
+/**
+ * GET .../api/stream/settings — streaming/avatar settings for the stream view.
+ * A shared agent exposes no stream configuration; `{}` is the empty-settings
+ * shape the full runtime returns, and the iOS kernel synthesizes the same.
+ * `ok: true` matches the agent-server envelope so the client's avatar probe
+ * reads "no avatar configured" instead of warning on a failed load.
+ */
+export function sharedRestStreamSettings(): {
+  ok: true;
+  settings: Record<string, never>;
+} {
+  return { ok: true, settings: {} };
+}
+
+/**
+ * POST .../api/apps/overlay-presence — the app shell reporting which overlay is
+ * on screen. Pure presence telemetry consumed by the app-manager runtime to
+ * track the foreground app; a shared agent runs no app manager, so there is no
+ * presence to record and no app to name. Acks with the agent-server shape
+ * (`{ ok: true, appName: null }`) — `appName: null` states plainly that no
+ * overlay app was resolved rather than inventing one.
+ */
+export function sharedRestOverlayPresence(): { ok: true; appName: null } {
+  return { ok: true, appName: null };
+}
+
+/**
  * GET .../api/config — the dashboard's open-ended agent config. A shared agent
  * exposes no editable config through this adapter, but it DOES declare its
  * transport capabilities so the client adapts by negotiation instead of
@@ -204,7 +363,7 @@ export function sharedRestViews(viewType?: string): {
  *  - `streaming: false` — kept conservative. A shared agent runs its turn in a
  *    single in-Worker call (no token-by-token generation), so even though
  *    `/messages/stream` IS now reachable (it emits the full reply as one SSE
- *    chunk via bridgeStream — see the messages/stream route), there is no
+ *    chunk through the conversation coordinator), there is no
  *    incremental token stream to gain. Declaring `false` keeps the client on the
  *    non-stream `POST .../messages` (which returns the full reply) cleanly; flip
  *    to `true` only once the shared turn emits real token chunks.
@@ -249,25 +408,18 @@ export function sharedRestAuthMe(
 }
 
 /**
- * GET .../api/character — the character the app reads (getCharacter() →
- * `{ character, agentName }`, character-routes.ts GET /api/character). Reuse the
- * EXACT character the shared turn answers as: getSharedRuntimeCharacter resolves
- * the same `SharedAgentCharacter` buildSharedRuntimeCharacter feeds into
- * message.send. Falls back to an empty character object (the agent server's
- * "no runtime" branch shape) if the sandbox can't be resolved.
+ * GET .../api/character — the character the app reads. Reuse the same cache-only
+ * character resolver as the shared turn; a linked-character cache miss schedules
+ * authoritative hydration under waitUntil and fails retryably instead of reading
+ * Postgres in the request.
  */
 export async function sharedRestCharacter(
-  agentId: string,
-  orgId: string,
+  agent: AgentSandbox,
   agentName: string,
-  agent?: AgentSandbox,
-): Promise<{ character: SharedAgentCharacter | Record<string, never>; agentName: string }> {
-  const character = agent
-    ? await sharedRuntimeChatService.getCharacter(agent)
-    : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
-        elizaSandboxService.getSharedRuntimeCharacter(agentId, orgId),
-      );
-  return { character: character ?? {}, agentName: agentName || "Eliza" };
+  executionCtx: BridgeExecutionContext,
+): Promise<{ character: SharedAgentCharacter; agentName: string }> {
+  const character = await sharedRuntimeChatService.getCharacter(agent, executionCtx);
+  return { character, agentName: agentName || "Eliza" };
 }
 
 /** GET .../api/conversations — always the one canonical conversation. */
@@ -335,7 +487,7 @@ function sharedRestMessageTimestamp(
 export async function sharedRestMessagesGet(
   agentId: string,
   conversationId: string,
-  namespace?: RuntimeDurableObjectNamespace,
+  namespace: RuntimeDurableObjectNamespace,
 ): Promise<{ messages: SharedRestMessage[] }> {
   const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
   const messages = history.map((turn, index) => ({
@@ -353,14 +505,12 @@ export async function sharedRestMessagesGet(
  * return the assistant reply in the REST send-result shape.
  */
 export async function sharedRestMessageSend(
-  agentId: string,
-  orgId: string,
+  agent: AgentSandbox,
   conversationId: string,
   text: string,
   agentName: string,
-  executionCtx?: BridgeExecutionContext,
-  agent?: AgentSandbox,
-  namespace?: RuntimeDurableObjectNamespace,
+  executionCtx: BridgeExecutionContext,
+  namespace: RuntimeDurableObjectNamespace,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -368,13 +518,9 @@ export async function sharedRestMessageSend(
     method: "message.send",
     params: { text, roomId: conversationId },
   };
-  // executionCtx (Workers only) lets the bridge defer the post-reply billing
-  // tail off the response path; without it the turn settles inline as before.
-  const response = agent
-    ? await coordinateSharedBridge(agent, rpc, { executionCtx, namespace })
-    : await import("../eliza-sandbox").then(({ elizaSandboxService }) =>
-        elizaSandboxService.bridge(agentId, orgId, rpc, executionCtx),
-      );
+  // The production coordinator and Worker lifetime are required together so a
+  // missing binding cannot select an inline legacy bridge or billing path.
+  const response = await coordinateSharedBridge(agent, rpc, { executionCtx, namespace });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
     // transient bridge failure — surface it typed so the route boundary can

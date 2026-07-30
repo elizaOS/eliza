@@ -32,4 +32,24 @@ describe("cloudSafeMainActivityJava", () => {
     expect(bridgeCreation).toBeGreaterThanOrEqual(0);
     expect(safeRegistration).toBeGreaterThan(bridgeCreation);
   });
+
+  it("captures cold and warm deep links before Capacitor dispatches them", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app");
+    const coldCapture = source.indexOf(
+      "DeepLinkBufferPlugin.captureIntent(this, getIntent());",
+    );
+    const bridgeCreation = source.indexOf(
+      "super.onCreate(savedInstanceState);",
+    );
+    const warmCapture = source.indexOf(
+      "DeepLinkBufferPlugin.captureIntent(this, intent);",
+    );
+    const warmDispatch = source.indexOf("super.onNewIntent(intent);");
+
+    expect(source).toContain("registerPlugin(DeepLinkBufferPlugin.class);");
+    expect(coldCapture).toBeGreaterThanOrEqual(0);
+    expect(coldCapture).toBeLessThan(bridgeCreation);
+    expect(warmCapture).toBeGreaterThanOrEqual(0);
+    expect(warmCapture).toBeLessThan(warmDispatch);
+  });
 });

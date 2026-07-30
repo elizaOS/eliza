@@ -36,6 +36,32 @@ function makeToolEvent(callId: string): NativeToolCallEvent {
 }
 
 describe("ChatTranscript memoization", () => {
+  it("preserves the mounted row when an optimistic id becomes durable", () => {
+    const optimistic: ChatMessageData = {
+      ...makeMessage("temp-resp-1", "assistant", "done"),
+      clientRenderId: "temp-resp-1",
+    };
+    const renderMessageContent = (message: ChatMessageData) => (
+      <span data-testid={`content-${message.id}`}>{message.text}</span>
+    );
+    const rendered = render(
+      <ChatTranscript
+        messages={[optimistic]}
+        renderMessageContent={renderMessageContent}
+      />,
+    );
+    const mountedNode = screen.getByTestId("content-temp-resp-1");
+
+    rendered.rerender(
+      <ChatTranscript
+        messages={[{ ...optimistic, id: "server-assistant-1" }]}
+        renderMessageContent={renderMessageContent}
+      />,
+    );
+
+    expect(screen.getByTestId("content-server-assistant-1")).toBe(mountedNode);
+  });
+
   it("does not re-render unchanged historical rows during streamed updates", () => {
     const first = makeMessage("msg-1", "user", "hello");
     const second = makeMessage("msg-2", "assistant", "thinking");

@@ -18,6 +18,7 @@ import {
   type RuntimeCharacterLike,
   recordCharacterHistory,
 } from "../services/character-history.ts";
+import { invalidateConversationConnectionTopology } from "./conversation-connection-readiness.ts";
 
 interface CharacterGenerateContext {
   name?: string;
@@ -421,13 +422,16 @@ export async function handleCharacterRoutes(
       return true;
     }
 
-    if (state.runtime) {
-      const character = state.runtime.character;
+    const runtime = state.runtime;
+    if (runtime) {
+      const character = runtime.character;
       const previousCharacter = buildCharacterHistorySnapshot(
         character as RuntimeCharacterLike,
       );
       const previousCharacterName =
         typeof character.name === "string" ? character.name : undefined;
+      const nextStoredCharacterName =
+        body.name != null ? String(body.name) : previousCharacterName;
       const nextCharacterName =
         typeof body.name === "string" && body.name.trim()
           ? body.name.trim()
@@ -435,6 +439,12 @@ export async function handleCharacterRoutes(
             ? character.name.trim()
             : state.agentName;
 
+      if (
+        nextStoredCharacterName !== undefined &&
+        nextStoredCharacterName !== previousCharacterName
+      ) {
+        invalidateConversationConnectionTopology(runtime);
+      }
       if (body.name != null) character.name = String(body.name);
       if (body.username != null) character.username = String(body.username);
       if (body.bio != null) {
@@ -478,15 +488,15 @@ export async function handleCharacterRoutes(
       const charData = buildCharacterHistorySnapshot(
         character as RuntimeCharacterLike,
       );
-      await state.runtime.updateAgent(state.runtime.agentId, {
+      await runtime.updateAgent(runtime.agentId, {
         name: character.name,
         metadata: {
-          ...(state.runtime.character as { metadata?: Record<string, unknown> })
+          ...(runtime.character as { metadata?: Record<string, unknown> })
             .metadata,
           character: charData,
         },
       });
-      await recordCharacterHistory(state.runtime, {
+      await recordCharacterHistory(runtime, {
         previousCharacter,
         nextCharacter: character as RuntimeCharacterLike,
         source: "manual",

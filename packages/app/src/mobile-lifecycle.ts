@@ -27,6 +27,14 @@ export interface MobileLifecycleContext {
   isAndroid: boolean;
   logPrefix: string;
   handleDeepLink: (url: string) => void;
+  androidDeepLinkBuffer?: AndroidDeepLinkBuffer;
+}
+
+export interface AndroidDeepLinkBuffer {
+  peekPendingUrl: () => Promise<{ url?: string | null }>;
+  acknowledgePendingUrl: (options: {
+    url: string;
+  }) => Promise<{ cleared: boolean }>;
 }
 
 // There is one document/window, so there is one visibilitychange→lifecycle and
@@ -49,8 +57,12 @@ function shouldBridgeVisibilityLifecycle(ctx: MobileLifecycleContext): boolean {
 
 export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let keyboardListenersRegistered = false;
+  let deepLinkListenerRegistered = false;
+  let deepLinkHandlingReady = false;
   let lifecycleListenersRegistered = false;
   let networkStatusListenerRegistered = false;
+  const handledDeepLinks = new Set<string>();
+  const pendingDeepLinks = new Map<string, Array<() => void>>();
 
   function logNativePluginUnavailable(
     pluginName: string,
@@ -110,7 +122,115 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     }
   }
 
+  function initializeDeepLinks(): void {
+    if (deepLinkListenerRegistered) return;
+    deepLinkListenerRegistered = true;
+
+    const acknowledgeBufferedUrl = (url: string): (() => void) | undefined => {
+      if (!ctx.androidDeepLinkBuffer) return undefined;
+      return () => {
+        void ctx.androidDeepLinkBuffer
+          ?.acknowledgePendingUrl({ url })
+          .catch((error) => {
+            // error-policy:J4 native replay remains pending for the next
+            // renderer when acknowledgement cannot reach the optional plugin
+            logNativePluginUnavailable("DeepLinkBuffer", error);
+          });
+      };
+    };
+
+    const captureDeepLinkOnce = (
+      url: string | null | undefined,
+      acknowledge?: () => void,
+    ): boolean => {
+      const trimmed = url?.trim();
+      if (!trimmed) return false;
+      if (handledDeepLinks.has(trimmed)) {
+        if (deepLinkHandlingReady) {
+          acknowledge?.();
+        } else if (acknowledge) {
+          pendingDeepLinks.get(trimmed)?.push(acknowledge);
+        }
+        return false;
+      }
+      handledDeepLinks.add(trimmed);
+      if (deepLinkHandlingReady) {
+        ctx.handleDeepLink(trimmed);
+        acknowledge?.();
+      } else {
+        pendingDeepLinks.set(trimmed, acknowledge ? [acknowledge] : []);
+      }
+      return true;
+    };
+
+    // Warm intents can arrive while the renderer is reloading. main.tsx arms
+    // this during module evaluation, before DOMContentLoaded, so Capacitor never
+    // dispatches a URL only into the previous document's dead callback registry.
+    void Promise.resolve(
+      CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+        captureDeepLinkOnce(url);
+      }),
+      // error-policy:J4 App plugin unavailable — deep links degrade to the
+      // cold-launch replay below / web routing
+    ).catch((error) => {
+      logNativePluginUnavailable("App", error);
+    });
+
+    let replayTimer: ReturnType<typeof setInterval> | null = null;
+    const replayStartedAt = Date.now();
+    const stopReplay = (): void => {
+      if (!replayTimer) return;
+      clearInterval(replayTimer);
+      replayTimer = null;
+    };
+    const readLaunchUrls = (): void => {
+      void CapacitorApp.getLaunchUrl()
+        .then((result) => {
+          captureDeepLinkOnce(result?.url);
+        })
+        // error-policy:J4 App plugin unavailable — native replay may still work
+        .catch((error) => {
+          logNativePluginUnavailable("App", error);
+        });
+      if (ctx.androidDeepLinkBuffer) {
+        void ctx.androidDeepLinkBuffer
+          .peekPendingUrl()
+          .then((result) => {
+            const url = result?.url;
+            captureDeepLinkOnce(
+              url,
+              url ? acknowledgeBufferedUrl(url) : undefined,
+            );
+          })
+          // error-policy:J4 optional Android replay bridge — Capacitor App
+          // remains the ordinary cold/warm deep-link path
+          .catch((error) => {
+            logNativePluginUnavailable("DeepLinkBuffer", error);
+          });
+      }
+    };
+    readLaunchUrls();
+    replayTimer = setInterval(() => {
+      if (Date.now() - replayStartedAt >= COLD_LAUNCH_URL_REPLAY_MS) {
+        stopReplay();
+        return;
+      }
+      readLaunchUrls();
+    }, COLD_LAUNCH_URL_REPLAY_INTERVAL_MS);
+    unrefTimer(replayTimer);
+  }
+
   function initializeAppLifecycle(): void {
+    initializeDeepLinks();
+    if (!deepLinkHandlingReady) {
+      deepLinkHandlingReady = true;
+      for (const [url, acknowledgements] of pendingDeepLinks) {
+        ctx.handleDeepLink(url);
+        for (const acknowledge of acknowledgements) acknowledge();
+      }
+      pendingDeepLinks.clear();
+    }
+
     // Each Capacitor listener fires its handler N times if added N times;
     // guard against duplicate registrations from HMR / repeated init.
     if (lifecycleListenersRegistered) return;
@@ -120,18 +240,10 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     // Capacitor `appStateChange` listener and the `visibilitychange` fallback
     // below never double-dispatch — each only fires on an actual transition.
     let lastActive: boolean | null = null;
-    const handledDeepLinks = new Set<string>();
     const setAppActive = (active: boolean): void => {
       if (lastActive === active) return;
       lastActive = active;
       dispatchAppEvent(active ? APP_RESUME_EVENT : APP_PAUSE_EVENT);
-    };
-    const handleDeepLinkOnce = (url: string | null | undefined): boolean => {
-      const trimmed = url?.trim();
-      if (!trimmed || handledDeepLinks.has(trimmed)) return false;
-      handledDeepLinks.add(trimmed);
-      ctx.handleDeepLink(trimmed);
-      return true;
     };
 
     void Promise.resolve(
@@ -185,44 +297,6 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     ).catch((error) => {
       logNativePluginUnavailable("App", error);
     });
-
-    void Promise.resolve(
-      CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-        handleDeepLinkOnce(url);
-      }),
-      // error-policy:J4 App plugin unavailable — deep links degrade to the
-      // cold-launch replay below / web routing
-    ).catch((error) => {
-      logNativePluginUnavailable("App", error);
-    });
-
-    let replayTimer: ReturnType<typeof setInterval> | null = null;
-    const replayStartedAt = Date.now();
-    const stopReplay = (): void => {
-      if (!replayTimer) return;
-      clearInterval(replayTimer);
-      replayTimer = null;
-    };
-    const readLaunchUrl = (): void => {
-      void CapacitorApp.getLaunchUrl()
-        .then((result) => {
-          if (handleDeepLinkOnce(result?.url)) stopReplay();
-        })
-        // error-policy:J4 App plugin unavailable — stop the replay loop
-        .catch((error) => {
-          stopReplay();
-          logNativePluginUnavailable("App", error);
-        });
-    };
-    readLaunchUrl();
-    replayTimer = setInterval(() => {
-      if (Date.now() - replayStartedAt >= COLD_LAUNCH_URL_REPLAY_MS) {
-        stopReplay();
-        return;
-      }
-      readLaunchUrl();
-    }, COLD_LAUNCH_URL_REPLAY_INTERVAL_MS);
-    unrefTimer(replayTimer);
   }
 
   async function initializeNetworkListener(): Promise<void> {
@@ -272,6 +346,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   return {
     initializeStatusBar,
     initializeKeyboard,
+    initializeDeepLinks,
     initializeAppLifecycle,
     initializeNetworkListener,
     logNativePluginUnavailable,

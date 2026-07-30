@@ -16,7 +16,6 @@ import type {
   ActionResult,
   AgentRuntime,
   Memory,
-  Plugin,
   RouteBodyValue,
   RouteRequest,
   RouteResponse,
@@ -32,8 +31,10 @@ import {
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import {
   type CapturedAction,
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioContext,
   type ScenarioDefinition,
+  type ScenarioExecutionProfile,
   type ScenarioFinalCheck,
   type ScenarioJudgeRubric,
   type ScenarioLane,
@@ -51,6 +52,12 @@ import {
   judgeIndependenceRequired,
 } from "./judge-independence.ts";
 import { redactForScenarioReport } from "./redaction.ts";
+import {
+  assertProviderQualifiedPluginPackages,
+  loadScenarioRequiredPlugin,
+  pluginPackageIsRegistered,
+  resolveRequiredPluginPackages,
+} from "./required-plugins.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -64,6 +71,8 @@ export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
   turnTimeoutMs: number;
+  executionProfile?: ScenarioExecutionProfile;
+  runDir?: string;
 }
 
 /**
@@ -76,11 +85,147 @@ export interface ExecutorOptions {
 export function skippedFinalCheckFailure(
   lane: ScenarioLane,
   result: Pick<FinalCheckReport, "status" | "label" | "detail">,
+  executionProfile: ScenarioExecutionProfile = "simulated",
 ): string | null {
-  if (result.status !== "skipped" || lane !== "pr-deterministic") {
+  if (
+    result.status !== "skipped" ||
+    (lane !== "pr-deterministic" && executionProfile !== "provider-qualified")
+  ) {
     return null;
   }
-  return `finalCheck "${result.label}" skipped (${result.detail}) — a missing dependency is a failure in the pr-deterministic lane`;
+  return `finalCheck "${result.label}" skipped (${result.detail}) — a missing dependency is a failure in ${executionProfile === "provider-qualified" ? "provider-qualified execution" : "the pr-deterministic lane"}`;
+}
+
+const TRUSTED_PROVIDER_CHECK_TYPES = new Set([
+  "providerEffectObserved",
+  "providerNoEffectObserved",
+]);
+const PROVIDER_QUALIFIED_FINAL_CHECK_TYPES = new Set([
+  "durableApprovalObserved",
+  "durableDraftObserved",
+  "judgeRubric",
+  "providerEffectObserved",
+  "providerNoEffectObserved",
+  "scheduledTaskObserved",
+]);
+const PROVIDER_QUALIFIED_TURN_KEYS = new Set([
+  "kind",
+  "name",
+  "text",
+  "timeoutMs",
+  "responseIncludesAny",
+  "responseIncludesAll",
+  "responseExcludes",
+  "responseJudge",
+]);
+
+function scenarioHasIndependentJudgeWork(
+  scenario: ScenarioDefinition,
+): boolean {
+  if (
+    scenario.turns.some(
+      (turn) =>
+        turn.responseJudge !== undefined &&
+        typeof turn.responseJudge.rubric === "string" &&
+        turn.responseJudge.rubric.trim().length > 0,
+    )
+  ) {
+    return true;
+  }
+  return (scenario.finalChecks ?? []).some(
+    (check) =>
+      check.type === "judgeRubric" &&
+      typeof check.rubric === "string" &&
+      check.rubric.trim().length > 0,
+  );
+}
+
+/**
+ * Provider-qualified execution is deliberately a small, production-shaped
+ * subset. Every rejected construct either injects state, bypasses the model,
+ * advances the scheduler artificially, or relies on a mock-only cleanup.
+ */
+export function providerQualifiedScenarioProblems(
+  scenario: ScenarioDefinition,
+): string[] {
+  const problems: string[] = [];
+  const requiredPlugins = resolveRequiredPluginPackages(scenario);
+  try {
+    assertProviderQualifiedPluginPackages(requiredPlugins);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if ((scenario.seed?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified scenarios cannot declare seed steps; observe production state instead of injecting fixtures or logical time",
+    );
+  }
+  if (scenario.isolation !== "per-scenario") {
+    problems.push(
+      "provider-qualified scenarios must declare isolation=per-scenario",
+    );
+  }
+  if (scenario.deferred !== undefined) {
+    problems.push(
+      "provider-qualified scenarios cannot be deferred while claiming executable evidence",
+    );
+  }
+  if ((scenario.mockoon?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified scenarios cannot declare Mockoon services",
+    );
+  }
+  if ((scenario.rooms?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified target principals, rooms, and ingress belong in the operator-signed run manifest, not scenario-authored rooms",
+    );
+  }
+  const forbiddenTurns = scenario.turns
+    .filter((turn) => turn.kind !== "message")
+    .map((turn) => `${turn.name}:${turn.kind ?? "implicit-message"}`);
+  if (forbiddenTurns.length > 0) {
+    problems.push(
+      `provider-qualified scenarios accept only explicit message turns through authenticated production ingress (${forbiddenTurns.join(", ")})`,
+    );
+  }
+  const executableTurnKeys = scenario.turns.flatMap((turn) =>
+    Object.keys(turn)
+      .filter((key) => !PROVIDER_QUALIFIED_TURN_KEYS.has(key))
+      .map((key) => `${turn.name}.${key}`),
+  );
+  if (executableTurnKeys.length > 0) {
+    problems.push(
+      `provider-qualified message turns contain fields outside the data-only ingress contract (${executableTurnKeys.join(", ")})`,
+    );
+  }
+  if ((scenario.cleanup?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified cleanup must run after signed evidence finalization through the external operator, not scenario callbacks",
+    );
+  }
+  const untrustedChecks = (scenario.finalChecks ?? [])
+    .filter((check) => !PROVIDER_QUALIFIED_FINAL_CHECK_TYPES.has(check.type))
+    .map((check) => check.type);
+  if (untrustedChecks.length > 0) {
+    problems.push(
+      `provider-qualified final checks must be independent semantic or trusted-observer checks (${untrustedChecks.join(", ")})`,
+    );
+  }
+  if (!scenarioHasIndependentJudgeWork(scenario)) {
+    problems.push(
+      "provider-qualified scenarios require at least one responseJudge or judgeRubric evaluated by the independent judge",
+    );
+  }
+  if (
+    !(scenario.finalChecks ?? []).some((check) =>
+      TRUSTED_PROVIDER_CHECK_TYPES.has(check.type),
+    )
+  ) {
+    problems.push(
+      "provider-qualified scenarios require providerEffectObserved or providerNoEffectObserved as a final check",
+    );
+  }
+  return problems;
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
@@ -306,7 +451,9 @@ function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
 async function resetSharedSchedulingState(
   runtime: AgentRuntime,
 ): Promise<void> {
-  if (!pluginIsRegistered(runtime, "@elizaos/plugin-personal-assistant")) {
+  if (
+    !pluginPackageIsRegistered(runtime, "@elizaos/plugin-personal-assistant")
+  ) {
     return;
   }
   const { resetLifeOpsScenarioState } = (await import(
@@ -508,83 +655,6 @@ function withTimeout<T>(
       },
     );
   });
-}
-
-function resolveRequiredPlugins(scenario: ScenarioDefinition): string[] {
-  const requires = (scenario as { requires?: { plugins?: unknown } }).requires;
-  const plugins = requires?.plugins;
-  if (!Array.isArray(plugins)) return [];
-  return plugins.filter((p): p is string => typeof p === "string");
-}
-
-function pluginIsRegistered(runtime: AgentRuntime, name: string): boolean {
-  const plugins =
-    (runtime as { plugins?: Array<{ name?: unknown }> }).plugins ?? [];
-  const normalized = name.replace(/^@elizaos\/plugin-/, "");
-  return plugins.some((p) => {
-    const pn = typeof p.name === "string" ? p.name : "";
-    return pn === name || pn === normalized;
-  });
-}
-
-async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
-  if (pkg === "@elizaos/plugin-app-control") {
-    const mod = (await import("@elizaos/plugin-app-control")) as {
-      appAction?: Action;
-      appControlPlugin?: Plugin;
-      backgroundAction?: Action;
-      viewsAction?: Action;
-      settingsAction?: Action;
-    };
-    // settingsAction is load-bearing for the app-permissions / semantic-SETTINGS
-    // scenarios (#14622): without it the polymorphic SETTINGS action is never
-    // registered here, so chat can never route a permission grant/revoke to it —
-    // required, not optional, for the same reason app/background/views are.
-    if (
-      !mod.appAction ||
-      !mod.backgroundAction ||
-      !mod.viewsAction ||
-      !mod.settingsAction
-    )
-      return null;
-    return {
-      name: "app-control",
-      description: "App control deterministic scenario actions",
-      actions: [
-        mod.appAction,
-        mod.backgroundAction,
-        mod.viewsAction,
-        mod.settingsAction,
-      ],
-      responseHandlerEvaluators:
-        mod.appControlPlugin?.responseHandlerEvaluators,
-    };
-  }
-  const mod = (await import(pkg)) as Record<string, unknown>;
-  const isPlugin = (value: unknown): value is Plugin => {
-    if (value === null || typeof value !== "object") return false;
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.name !== "string") return false;
-    // A Plugin carries at least one registrable surface; this distinguishes it
-    // from unrelated named exports that merely happen to have a `name` field.
-    return (
-      Array.isArray(obj.actions) ||
-      Array.isArray(obj.providers) ||
-      Array.isArray(obj.services) ||
-      Array.isArray(obj.evaluators) ||
-      Array.isArray(obj.routes) ||
-      typeof obj.init === "function" ||
-      typeof obj.models === "object"
-    );
-  };
-  // Known export names first, then any Plugin-shaped named export: roughly half
-  // of first-party plugins export only `const <name>Plugin` with no default,
-  // which the fixed-name lookup alone would fail to resolve.
-  const candidate =
-    [mod.default, mod.elizaPlugin, mod.plugin, mod.schedulingPlugin].find(
-      isPlugin,
-    ) ?? Object.values(mod).find(isPlugin);
-  return candidate ? (candidate as Plugin) : null;
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -2152,6 +2222,8 @@ export async function runScenario(
   opts: ExecutorOptions,
 ): Promise<ScenarioReport> {
   const startedAt = Date.now();
+  const executionProfile =
+    opts.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
   let logicalNow = new Date();
   const ctx: RunnerContext = {
     scenarioId: scenario.id,
@@ -2183,7 +2255,82 @@ export async function runScenario(
     actionsCalled: [],
     failedAssertions: [],
     providerName: opts.providerName,
+    executionProfile,
+    evidence:
+      executionProfile === "simulated"
+        ? {
+            schemaVersion: 1,
+            executionProfile: "simulated",
+            qualification: {
+              status: "ineligible",
+              publishable: false,
+              reasons: [
+                "simulated execution is diagnostic-only and cannot produce publishable provider evidence",
+              ],
+            },
+          }
+        : {
+            schemaVersion: 1,
+            executionProfile: "provider-qualified",
+            qualification: {
+              status: "unqualified",
+              publishable: false,
+              reasons: [
+                "provider evidence observation has not completed successfully",
+              ],
+            },
+            observerProvenance: [],
+            trajectoryHashes: [],
+            observations: [],
+          },
   };
+  if (
+    scenario.executionProfile !== undefined &&
+    scenario.executionProfile !== executionProfile
+  ) {
+    report.status = "failed";
+    report.error = `scenario declares executionProfile=${scenario.executionProfile} but executor received ${executionProfile}`;
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  if (executionProfile === "provider-qualified") {
+    const preflightProblems = providerQualifiedScenarioProblems(scenario);
+    preflightProblems.push(
+      "the in-process scenario executor cannot establish authenticated production ingress or an independent signed observer boundary; use the provider-qualified controller rather than relabeling this runtime",
+    );
+    const missingPlugins = resolveRequiredPluginPackages(scenario).filter(
+      (packageName) => !pluginPackageIsRegistered(runtime, packageName),
+    );
+    if (missingPlugins.length > 0) {
+      preflightProblems.push(
+        `declared production plugin(s) not registered before execution: ${missingPlugins.join(", ")}`,
+      );
+    }
+    if (
+      runtime.getService("lifeops_scheduled_task_runner") === null ||
+      runtime.getService("lifeops_scheduled_task_runner") === undefined
+    ) {
+      preflightProblems.push(
+        "production scheduled-task runner service is not registered and active",
+      );
+    }
+    if (!(await isJudgeIndependent())) {
+      preflightProblems.push(
+        "independent judge is unavailable; configure its dedicated provider credentials",
+      );
+    }
+    if (!opts.runDir) {
+      preflightProblems.push(
+        "provider-qualified execution requires runDir so exact trajectory files can be hashed",
+      );
+    }
+    if (preflightProblems.length > 0) {
+      report.status = "failed";
+      report.error = `provider-qualified preflight failed: ${preflightProblems.join("; ")}`;
+      report.durationMs = Date.now() - startedAt;
+      return report;
+    }
+  }
   // Every numeric LLM-judge score produced while running this scenario (turn
   // responseJudge + judgeRubric final checks). The minimum — the binding
   // quality constraint — is serialized as report.judgeScore (#8795).
@@ -2252,7 +2399,7 @@ export async function runScenario(
 
     // Seeds may register fixture plugins, so check declared plugin requirements
     // after seeding and try to load package-named requirements that are present.
-    const requiredPlugins = resolveRequiredPlugins(scenario);
+    const requiredPlugins = resolveRequiredPluginPackages(scenario);
     // Track packages we successfully auto-loaded: a plugin's internal
     // `plugin.name` often differs from its package name (e.g. "plugin-health",
     // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
@@ -2260,9 +2407,9 @@ export async function runScenario(
     const autoLoaded = new Set<string>();
     for (const pkg of requiredPlugins) {
       if (!pkg.startsWith("@")) continue;
-      if (pluginIsRegistered(runtime, pkg)) continue;
+      if (pluginPackageIsRegistered(runtime, pkg)) continue;
       try {
-        const candidate = await loadRequiredPlugin(pkg);
+        const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
           await runtime.registerPlugin(candidate);
           autoLoaded.add(pkg);
@@ -2274,7 +2421,7 @@ export async function runScenario(
       }
     }
     const missing = requiredPlugins.filter(
-      (p) => !pluginIsRegistered(runtime, p) && !autoLoaded.has(p),
+      (p) => !pluginPackageIsRegistered(runtime, p) && !autoLoaded.has(p),
     );
     if (missing.length > 0) {
       report.status = "skipped";
@@ -2383,6 +2530,7 @@ export async function runScenario(
       // without this, ~30% of cross-cutting scenarios fail on provider-quirk
       // rather than semantic regression.
       if (
+        executionProfile === "simulated" &&
         kind === "message" &&
         actionsThisTurn.length === 0 &&
         typeof execution.responseText === "string" &&
@@ -2479,6 +2627,7 @@ export async function runScenario(
         const failure = skippedFinalCheckFailure(
           scenarioLane(scenario),
           result,
+          executionProfile,
         );
         if (failure) {
           report.status = "failed";

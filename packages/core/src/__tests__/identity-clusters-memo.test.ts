@@ -1,14 +1,15 @@
 /**
  * Cluster-resolution memo: getRelatedEntityIds collapses the duplicate
  * union-find BFS that FACTS + RECENT_MESSAGES + the planner recompose run every
- * turn. Verifies in-flight sharing, TTL reuse, explicit invalidation, and
+ * turn. Verifies in-flight sharing, turn isolation, explicit invalidation, and
  * rejection eviction against a counting fake resolver — no DB, no model.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
 	getRelatedEntityIds,
 	invalidateRelatedEntityIds,
 } from "../identity-clusters";
+import { runWithTrajectoryContext } from "../trajectory-context.ts";
 import type { IAgentRuntime, UUID } from "../types/index.ts";
 
 const AGENT = "00000000-0000-0000-0000-0000000000aa" as UUID;
@@ -30,10 +31,9 @@ function runtimeWith(
 	return runtimeWithResolver({ getMemberEntityIds });
 }
 
-afterEach(() => {
-	invalidateRelatedEntityIds({ agentId: AGENT } as IAgentRuntime);
-	vi.useRealTimers();
-});
+function inTurn<T>(work: () => Promise<T>): Promise<T> {
+	return runWithTrajectoryContext({ turnMemo: new Map() }, work) as Promise<T>;
+}
 
 describe("getRelatedEntityIds memo", () => {
 	it("preserves the relationship service receiver while memoizing", async () => {
@@ -54,32 +54,32 @@ describe("getRelatedEntityIds memo", () => {
 			calls += 1;
 			return [ALIAS];
 		});
-		const [a, b, c] = await Promise.all([
-			getRelatedEntityIds(runtime, SENDER),
-			getRelatedEntityIds(runtime, SENDER),
-			getRelatedEntityIds(runtime, SENDER),
-		]);
+		const [a, b, c] = await inTurn(() =>
+			Promise.all([
+				getRelatedEntityIds(runtime, SENDER),
+				getRelatedEntityIds(runtime, SENDER),
+				getRelatedEntityIds(runtime, SENDER),
+			]),
+		);
 		expect(calls).toBe(1);
 		expect(a).toEqual([SENDER, ALIAS]);
 		expect(b).toEqual([SENDER, ALIAS]);
 		expect(c).toEqual([SENDER, ALIAS]);
 	});
 
-	it("reuses the memo within the TTL and re-queries after it lapses", async () => {
-		vi.useFakeTimers();
+	it("reuses within one turn and re-queries in the next turn", async () => {
 		let calls = 0;
 		const runtime = runtimeWith(async () => {
 			calls += 1;
 			return [ALIAS];
 		});
-		await getRelatedEntityIds(runtime, SENDER);
-		vi.advanceTimersByTime(10_000);
-		await getRelatedEntityIds(runtime, SENDER);
-		expect(calls).toBe(1); // within 30s TTL — no re-query
-
-		vi.advanceTimersByTime(30_001);
-		await getRelatedEntityIds(runtime, SENDER);
-		expect(calls).toBe(2); // TTL lapsed — re-queried
+		await inTurn(async () => {
+			await getRelatedEntityIds(runtime, SENDER);
+			await getRelatedEntityIds(runtime, SENDER);
+		});
+		expect(calls).toBe(1);
+		await inTurn(() => getRelatedEntityIds(runtime, SENDER));
+		expect(calls).toBe(2);
 	});
 
 	it("re-queries immediately after explicit invalidation (post-merge)", async () => {
@@ -88,9 +88,11 @@ describe("getRelatedEntityIds memo", () => {
 			calls += 1;
 			return [ALIAS];
 		});
-		await getRelatedEntityIds(runtime, SENDER);
-		invalidateRelatedEntityIds(runtime, SENDER);
-		await getRelatedEntityIds(runtime, SENDER);
+		await inTurn(async () => {
+			await getRelatedEntityIds(runtime, SENDER);
+			invalidateRelatedEntityIds(runtime, SENDER);
+			await getRelatedEntityIds(runtime, SENDER);
+		});
 		expect(calls).toBe(2);
 	});
 
@@ -101,11 +103,12 @@ describe("getRelatedEntityIds memo", () => {
 			if (calls === 1) throw new Error("db unavailable");
 			return [ALIAS];
 		});
-		await expect(getRelatedEntityIds(runtime, SENDER)).rejects.toThrow(
-			"db unavailable",
-		);
-		// A subsequent call re-runs (rejection was not memoized).
-		const retry = await getRelatedEntityIds(runtime, SENDER);
+		const retry = await inTurn(async () => {
+			await expect(getRelatedEntityIds(runtime, SENDER)).rejects.toThrow(
+				"db unavailable",
+			);
+			return getRelatedEntityIds(runtime, SENDER);
+		});
 		expect(calls).toBe(2);
 		expect(retry).toEqual([SENDER, ALIAS]);
 	});

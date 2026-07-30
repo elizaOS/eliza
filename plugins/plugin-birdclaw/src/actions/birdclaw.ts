@@ -64,6 +64,23 @@ function getService(runtime: IAgentRuntime): BirdclawService | null {
   );
 }
 
+async function getReadyService(
+  runtime: IAgentRuntime,
+): Promise<BirdclawService | null> {
+  const existing = getService(runtime);
+  if (existing) return existing;
+  if (!runtime.hasService(BirdclawService.serviceType)) return null;
+
+  try {
+    return (await runtime.getServiceLoadPromise(
+      BirdclawService.serviceType,
+    )) as BirdclawService;
+  } catch {
+    // error-policy:J4 validation hides the unavailable archive capability; the runtime reports the service-start failure.
+    return null;
+  }
+}
+
 function getParams(options: unknown): BirdclawActionParameters {
   if (typeof options !== "object" || options === null) return {};
   const record = options as Record<string, unknown>;
@@ -312,7 +329,7 @@ export const birdclawAction = {
   contexts: ["social", "archive", "twitter"],
   roleGate: { minRole: "OWNER" as const },
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    const service = getService(runtime);
+    const service = await getReadyService(runtime);
     if (!service) return false;
     return service.isAvailable();
   },

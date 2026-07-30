@@ -172,9 +172,13 @@ export function PermissionCard({
   const isRestrictedUnavailable =
     state.status === "restricted" && !isRestrictedEntitlement;
 
+  const isLimited = state.status === "limited";
+
   const canOpenSettingsInstead =
     state.canRequest === false &&
-    (state.status === "denied" || state.status === "not-determined");
+    (state.status === "denied" ||
+      state.status === "not-determined" ||
+      isLimited);
 
   const title = getPermissionLabel(permission);
   const guidance = permissionGuidance(permission, state, appName);
@@ -244,7 +248,9 @@ export function PermissionCard({
           >
             {requesting
               ? (labels.granting ?? "Requesting…")
-              : (labels.grantAccess ?? "Grant access")}
+              : isLimited
+                ? (labels.upgradeAccess ?? "Upgrade access")
+                : (labels.grantAccess ?? "Grant access")}
           </Button>
         )}
         {registry ? (
@@ -308,6 +314,21 @@ function permissionGuidance(
 ): { primary: string; secondary: string } {
   const title = getPermissionLabel(permission);
   const settings = platformSettingsLabel(state.platform, appName);
+
+  if (state.status === "limited") {
+    if (permission === "calendar") {
+      return {
+        primary:
+          "Apple Calendar has add-only access: new events can go to the default calendar.",
+        secondary:
+          "Existing calendars and events remain private. Upgrade to full access only if this feature must read, update, or delete them.",
+      };
+    }
+    return {
+      primary: `${title} has limited access.`,
+      secondary: `Manage the allowed items in ${settings}, or upgrade access if this feature needs more.`,
+    };
+  }
 
   if (state.status === "denied" || state.canRequest === false) {
     return {

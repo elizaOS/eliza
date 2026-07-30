@@ -181,6 +181,8 @@ interface SettleOutcome {
   debited: boolean;
   uncollected: boolean;
   newBalance?: number;
+  /** `credit_transactions.id` of the committed debit row, when one was inserted. */
+  transactionId?: string;
 }
 
 interface ClaimRow {
@@ -189,6 +191,7 @@ interface ClaimRow {
 interface DebitRow {
   debited: boolean | "t" | "f" | null;
   new_balance: string | number | null;
+  transaction_id: string | null;
 }
 
 /**
@@ -269,7 +272,10 @@ async function settleLedgerCharge(
             WHERE EXISTS (SELECT 1 FROM upd)
             RETURNING id
           )
-          SELECT EXISTS(SELECT 1 FROM upd) AS debited, (SELECT new_balance FROM upd) AS new_balance
+          SELECT
+            EXISTS(SELECT 1 FROM upd) AS debited,
+            (SELECT new_balance FROM upd) AS new_balance,
+            (SELECT id FROM ins) AS transaction_id
         `,
       );
       const debited = isPgTrue(debit[0]?.debited);
@@ -285,6 +291,7 @@ async function settleLedgerCharge(
         debited: true,
         uncollected: false,
         newBalance: nb === null || nb === undefined ? undefined : Number(nb),
+        ...(debit[0]?.transaction_id && { transactionId: debit[0].transaction_id }),
       };
     });
   } catch (error) {
@@ -351,8 +358,23 @@ export function createLedgerDebitSettler(
   ctx: LedgerChargeContext,
 ): (actualCostUsd: number) => Promise<CreditReconciliationResult | null> {
   return async (actualCostUsd: number) => {
-    await settleLedgerCharge(ctx, actualCostUsd, "inline");
-    return null;
+    const amount = Math.max(actualCostUsd, 0);
+    const outcome = await settleLedgerCharge(ctx, amount, "inline");
+    if (!outcome.claimed) return null;
+    if (outcome.uncollected) {
+      return {
+        reservedAmount: 0,
+        actualCost: amount,
+        settlementTransactionIds: [],
+        adjustmentType: "uncollected_overage",
+      };
+    }
+    return {
+      reservedAmount: amount,
+      actualCost: amount,
+      settlementTransactionIds: outcome.transactionId ? [outcome.transactionId] : [],
+      adjustmentType: "none",
+    };
   };
 }
 

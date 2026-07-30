@@ -18,6 +18,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_CODING_AGENT,
   type Media,
+  requireConfirmedSendHandlerDelivery,
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
   stringToUuid,
@@ -732,25 +733,27 @@ async function routeSynthesisToConnector(
   if (!sourceRoomId) return false;
   const room = await runtime.getRoom(sourceRoomId as UUID);
   if (!room?.source) return false;
-  await runtime.sendMessageToTarget(
-    {
-      source: room.source,
-      roomId: room.id,
-      channelId: room.channelId ?? room.id,
-      serverId: room.serverId,
-    } as Parameters<typeof runtime.sendMessageToTarget>[0],
-    {
-      text: resultText,
-      source: "swarm_synthesis",
-      // voice-policy:V3 swarm synthesis text is already composed by the model
-      // in the agent's voice; it must not be re-voiced (double-voicing risks
-      // truncating or altering the synthesized result's exact values).
-      agentVoiced: true,
-      ...(attachments.length > 0 ? { attachments } : {}),
-      ...(replyToExternalMessageId
-        ? { inReplyTo: replyToExternalMessageId }
-        : {}),
-    },
+  requireConfirmedSendHandlerDelivery(
+    await runtime.sendMessageToTarget(
+      {
+        source: room.source,
+        roomId: room.id,
+        channelId: room.channelId ?? room.id,
+        serverId: room.serverId,
+      } as Parameters<typeof runtime.sendMessageToTarget>[0],
+      {
+        text: resultText,
+        source: "swarm_synthesis",
+        // voice-policy:V3 swarm synthesis text is already composed by the model
+        // in the agent's voice; it must not be re-voiced (double-voicing risks
+        // truncating or altering the synthesized result's exact values).
+        agentVoiced: true,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(replyToExternalMessageId
+          ? { inReplyTo: replyToExternalMessageId }
+          : {}),
+      },
+    ),
   );
   logger.info(
     `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,

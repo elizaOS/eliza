@@ -2,8 +2,19 @@
  * Unit tests for the pendingApprovals provider that grounds approval decisions
  * before Stage-1 action routing. Deterministic mocks assert owner scoping,
  * payload redaction, and the reject/hold routing text.
+ *
+ * The provider reads private context, so the mock runtime serves a real owner
+ * DM room with the owner and the agent as its only participants. Whether a
+ * destination is owner-private at all is the runtime disclosure gate's job
+ * (`ownerPrivateProvider`), covered against a real database in
+ * `src/lifeops/delivery-audience-membership-mutation.pglite.integration.test.ts`.
  */
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApprovalRequest } from "../src/lifeops/approval-queue.types.js";
 
@@ -30,6 +41,7 @@ import {
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const OWNER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
+const ROOM_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 
 function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return {
@@ -60,13 +72,20 @@ function runtime(): IAgentRuntime {
   return {
     agentId: AGENT_ID,
     reportError: vi.fn(),
+    getRoom: vi.fn(async () => ({ id: ROOM_ID, type: ChannelType.DM })),
+    getParticipantsForRoom: vi.fn(async () => [OWNER_ID, AGENT_ID]),
+    getAgent: vi.fn(async () => ({ id: AGENT_ID })),
   } as unknown as IAgentRuntime;
 }
 
 function message(): Memory {
   return {
     entityId: OWNER_ID,
-    content: { text: "don't send it, reject that for now" },
+    roomId: ROOM_ID,
+    content: {
+      text: "don't send it, reject that for now",
+      channelType: ChannelType.DM,
+    },
   } as Memory;
 }
 

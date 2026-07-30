@@ -14,6 +14,7 @@ import {
   createMessageMemory,
   type IAgentRuntime,
   MESSAGE_SOURCE_CLIENT_CHAT,
+  type Memory,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
@@ -135,7 +136,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
       _rt: IAgentRuntime,
       target: TargetInfo,
       content: Content,
-    ): Promise<undefined> => {
+    ): Promise<Memory> => {
       const conv = resolveConversation(
         state,
         target.roomId as UUID | undefined,
@@ -177,7 +178,7 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
           source: MESSAGE_SOURCE_CLIENT_CHAT,
         },
       });
-      return undefined;
+      return agentMessage;
     };
 }
 
@@ -210,7 +211,7 @@ function installDashboardFallbackSend(
     rt: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ) => Promise<undefined>,
+  ) => Promise<Memory>,
 ): void {
   if (typeof runtime.sendMessageToTarget !== "function") return;
   const tagged = runtime as RuntimeWithFallbackMarker;
@@ -219,13 +220,9 @@ function installDashboardFallbackSend(
   const originalSend = runtime.sendMessageToTarget.bind(runtime);
   const hasRegisteredHandler = (source: string): boolean => {
     if (typeof runtime.getMessageConnectors !== "function") return false;
-    try {
-      return runtime
-        .getMessageConnectors()
-        .some((connector) => connector.source === source);
-    } catch {
-      return false;
-    }
+    return runtime
+      .getMessageConnectors()
+      .some((connector) => connector.source === source);
   };
 
   runtime.sendMessageToTarget = async (target, content) => {

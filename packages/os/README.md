@@ -19,10 +19,11 @@ docs/              Internal engineering notes
 
 ## Linux
 
-The active Linux build ships directly under `linux/`: one multi-arch
-live-build selected via `ELIZAOS_ARCH`. It is the canonical elizaOS Debian
-fork. There are no distro variants in this repo; amd64/arm64/riscv64 are
-architecture targets of the same build.
+The active Linux build ships directly under `linux/`. Its canonical
+Tails-derived release ISO is currently amd64-only because the inherited
+live-build fork cannot assemble a bootable arm64 or riscv64 ISO. Non-amd64
+package and GUI work remains an experimental static contract and must not be
+published as an equivalent release artifact.
 
 The upstream-derived source remains in `linux/tails/` because inherited
 Tails live-OS plumbing, AppArmor policy, Greeter code, Persistent Storage,

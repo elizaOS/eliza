@@ -448,6 +448,7 @@ async def test_openai_compat_agent_attaches_per_turn_cost_and_latency(
     # number that was actually recorded.
     assert turn.latency_ms is not None
     assert turn.latency_ms >= 0
+    assert turn.model_name == "gpt-oss-120b"
     # Token counts also land on the dataclass.
     assert turn.input_tokens == 1024
     assert turn.output_tokens == 256
@@ -550,4 +551,5 @@ def test_message_turn_json_shape_via_dataclasses_asdict() -> None:
         "latency_ms": 412.0,
         "input_tokens": 1024,
         "output_tokens": 256,
+        "model_name": None,
     }

@@ -76,6 +76,7 @@ export {
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
+export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./env-utils";
@@ -104,6 +105,10 @@ export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
 export type {
+	DeferredMessageScheduleCommit,
+	DeferredMessageScheduleRequest,
+	DeferredMessageScheduleResult,
+	DeferredMessageScheduler,
 	DraftRecord,
 	DraftRequest,
 	ListOptions,
@@ -132,6 +137,7 @@ export {
 	draftReplyAction,
 	getDefaultMessageRefStore,
 	getDefaultTriageService,
+	getDeferredMessageScheduler,
 	getSendPolicy,
 	listInboxAction,
 	MessageRefStore,
@@ -139,6 +145,7 @@ export {
 	messagingTriageActions,
 	NotYetImplementedError,
 	rankScored,
+	registerDeferredMessageScheduler,
 	registerSendPolicy,
 	resetMissingServiceWarning,
 	resolveContactWeight,
@@ -160,6 +167,7 @@ export {
 export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
+	isSerializedSecretHandle,
 	SECRETS_SERVICE_TYPE,
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,
@@ -225,6 +233,12 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
+export {
+	__resetDirectActionRoutingRulesForTests,
+	type DirectActionRoutingRule,
+	getDirectActionRoutingRules,
+	registerDirectActionRoutingRule,
+} from "./runtime/direct-action-routing";
 export * from "./runtime/execute-planned-tool-call";
 export {
 	detectLocaleFromText,
@@ -336,6 +350,10 @@ export * from "./services/setup-cli";
 export * from "./services/setup-rpc";
 // Export setup services
 export * from "./services/setup-state";
+// TaskService is exported so hosts and tests can `instanceof`-check the
+// runtime-registered instance; a relative src import would create a second
+// class identity against the built package and always fail that check.
+export { TaskService } from "./services/task";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,

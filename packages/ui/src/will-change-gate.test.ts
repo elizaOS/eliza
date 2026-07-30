@@ -25,6 +25,11 @@ const ALLOWED = new Set<string>([
   // glass composites instead of repainting each frame (the installed-PWA
   // micro-stutter) — exactly the justified, non-permanent case.
   "components/shell/ChatOverlay.tsx",
+  // A notification row promotes transform+opacity only after its horizontal
+  // swipe has axis-locked or while the dismiss settle is running. Idle and
+  // vertical-scroll rows leave the hint unset, so the shade does not retain a
+  // compositor layer for every card.
+  "components/shell/notification-shade-content.tsx",
   // The horizontal home pager rail: the same drag-scoped playbook (#14501) on
   // the horizontal axis — `will-change: transform` set on pointerdown, cleared
   // on settle — so the paged rail transform composites without repainting the

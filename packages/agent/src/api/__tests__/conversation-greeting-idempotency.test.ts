@@ -120,6 +120,7 @@ function greetingRequest(state: ConversationRouteState): Promise<Captured> {
       req: {
         url: `/api/conversations/${CONV_ID}/greeting`,
         headers: { host: "localhost" },
+        socket: { remoteAddress: "127.0.0.1" },
       },
       res: {},
       method: "POST",

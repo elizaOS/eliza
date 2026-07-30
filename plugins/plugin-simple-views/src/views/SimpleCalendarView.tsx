@@ -7,7 +7,6 @@
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -38,7 +37,6 @@ import {
   LABEL_STYLE,
   SECONDARY_TEXT_STYLE,
   VIEW_ROOT_STYLE,
-  ViewHeader,
   ViewState,
 } from "./viewPrimitives.js";
 
@@ -488,13 +486,12 @@ export function SimpleCalendarView() {
   );
 
   return (
-    <main data-testid="simple-calendar-view" style={VIEW_ROOT_STYLE}>
-      <ViewHeader
-        icon={<CalendarDays size={19} />}
-        title="Calendar"
-        detail={headerDetail}
-      />
-
+    <main
+      aria-busy={loading || busy}
+      aria-label={`Calendar. ${headerDetail}`}
+      data-testid="simple-calendar-view"
+      style={VIEW_ROOT_STYLE}
+    >
       <ViewState
         loading={loading && !snapshot}
         error={!snapshot ? error : null}
@@ -748,9 +745,11 @@ export function SimpleCalendarView() {
                 />
               </label>
               <div
+                data-testid="calendar-event-schedule-fields"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
                   gap: 10,
                 }}
               >

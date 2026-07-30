@@ -422,6 +422,69 @@ jobs:
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));
   });
 
+  test("records Bun child and JUnit evidence exits independently", () => {
+    const file = "packages/scripts/example.test.ts";
+    const synthetic = inventory([file]);
+    const reports: Array<{
+      execution: {
+        childExitCode?: number | null;
+        evidenceExitCode?: number | null;
+        exitCode?: number;
+        junit?: { status: string };
+        status: string;
+      };
+    }> = [];
+    const status = runScriptTests({
+      inventory: synthetic,
+      junitPath: "reports/script-tests/separate-exits.xml",
+      reportPath: "reports/script-tests/separate-exits.json",
+      spawn: () => ({ error: undefined, signal: null, status: 0 }),
+      readJunit: () =>
+        `<testsuites tests="1" assertions="1" failures="0" skipped="0">
+          <testsuite name="${file}" file="${file}" tests="1" assertions="1" failures="0" skipped="0">
+            <unsupported />
+            <testcase name="works" file="${file}" assertions="1" />
+          </testsuite>
+        </testsuites>`,
+      writeReport: (_path: string, report: (typeof reports)[number]) => {
+        reports.push(report);
+      },
+    });
+    expect(status).toBe(1);
+    expect(reports.at(-1)?.execution).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      childExitCode: 0,
+      evidenceExitCode: 1,
+      junit: { status: "invalid" },
+    });
+
+    reports.length = 0;
+    const childFailure = runScriptTests({
+      inventory: synthetic,
+      junitPath: "reports/script-tests/child-failure.xml",
+      reportPath: "reports/script-tests/child-failure.json",
+      spawn: () => ({ error: undefined, signal: null, status: 19 }),
+      readJunit: () =>
+        `<testsuites tests="1" assertions="1" failures="0" skipped="0">
+          <testsuite name="${file}" file="${file}" tests="1" assertions="1" failures="0" skipped="0">
+            <testcase name="works" file="${file}" assertions="1" />
+          </testsuite>
+        </testsuites>`,
+      writeReport: (_path: string, report: (typeof reports)[number]) => {
+        reports.push(report);
+      },
+    });
+    expect(childFailure).toBe(19);
+    expect(reports.at(-1)?.execution).toMatchObject({
+      status: "failed",
+      exitCode: 19,
+      childExitCode: 19,
+      evidenceExitCode: 0,
+      junit: { status: "valid" },
+    });
+  });
+
   test("contains generated evidence under canonical reports paths", () => {
     expect(
       resolveReportArtifactPath(
@@ -683,6 +746,120 @@ jobs:
         "reports/junit.xml",
       ),
     ).toThrow("unexpected CDATA");
+  });
+
+  test("accepts exact Bun CI properties and rejects metadata smuggling", () => {
+    const file = "packages/scripts/example.test.ts";
+    const base = `<?xml version="1.0" encoding="UTF-8"?>
+      <testsuites name="bun test" tests="1" assertions="2" failures="0" skipped="0" time="0.1">
+        <testsuite name="${file}" file="${file}" tests="1" assertions="2" failures="0" skipped="0" time="0.1" hostname="runnervmvrwv9">
+          METADATA
+          <testcase name="works" classname="" time="0.01" file="${file}" line="1" assertions="2" />
+        </testsuite>
+      </testsuites>`;
+    const exactBunCiMetadata = `<properties>
+      <property name="ci" value="https://github.com/elizaOS/eliza/actions/runs/30391860793" />
+      <property name="commit" value="5276c1b2ba32a51a938e8489b87a8c92e5ca03d8" />
+    </properties>`;
+    const documentWith = (metadata: string) =>
+      base.replace("METADATA", metadata);
+
+    expect(
+      validateJunitEvidence(
+        documentWith(exactBunCiMetadata),
+        [file],
+        "reports/junit.xml",
+      ),
+    ).toMatchObject({
+      status: "valid",
+      tests: 1,
+      assertions: 2,
+      suiteFileCount: 1,
+    });
+
+    const invalidMetadata = [
+      {
+        name: "root location",
+        xml: documentWith("").replace(
+          "<testsuites ",
+          `${exactBunCiMetadata}<testsuites `,
+        ),
+      },
+      {
+        name: "property outside its container",
+        xml: documentWith('<property name="ci" value="run" />'),
+      },
+      {
+        name: "duplicate container",
+        xml: documentWith(`${exactBunCiMetadata}${exactBunCiMetadata}`),
+      },
+      {
+        name: "duplicate property name",
+        xml: documentWith(
+          '<properties><property name="ci" value="run" /><property name="ci" value="other" /></properties>',
+        ),
+      },
+      {
+        name: "missing name",
+        xml: documentWith('<properties><property value="run" /></properties>'),
+      },
+      {
+        name: "blank name",
+        xml: documentWith(
+          '<properties><property name="  " value="run" /></properties>',
+        ),
+      },
+      {
+        name: "missing value",
+        xml: documentWith('<properties><property name="ci" /></properties>'),
+      },
+      {
+        name: "blank value",
+        xml: documentWith(
+          '<properties><property name="ci" value="  " /></properties>',
+        ),
+      },
+      {
+        name: "extra property attribute",
+        xml: documentWith(
+          '<properties><property name="ci" value="run" file="smuggled.test.ts" /></properties>',
+        ),
+      },
+      {
+        name: "container attribute",
+        xml: documentWith(
+          '<properties tests="1"><property name="ci" value="run" /></properties>',
+        ),
+      },
+      {
+        name: "text content",
+        xml: documentWith(
+          '<properties>smuggled<property name="ci" value="run" /></properties>',
+        ),
+      },
+      {
+        name: "nested properties",
+        xml: documentWith(
+          '<properties><properties><property name="ci" value="run" /></properties></properties>',
+        ),
+      },
+      {
+        name: "testcase smuggling",
+        xml: documentWith(
+          `<properties><property name="ci" value="run"><testcase name="hidden" file="${file}" assertions="99" /></property></properties>`,
+        ),
+      },
+    ];
+    expect(
+      invalidMetadata.map(({ name, xml }) => {
+        try {
+          validateJunitEvidence(xml, [file], "reports/junit.xml");
+          return { name, rejected: false };
+        } catch {
+          return { name, rejected: true };
+        }
+      }),
+    ).toEqual(invalidMetadata.map(({ name }) => ({ name, rejected: true })));
   });
 
   test("binds JUnit skip evidence to the real conditional-skip classifier", () => {

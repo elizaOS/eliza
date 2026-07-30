@@ -282,9 +282,6 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
                 true,
               );
             }
-            for (const [key, value] of Object.entries(args.seed)) {
-              localStorage.setItem(key, value);
-            }
             const preferences = (
               window as Window & {
                 Capacitor?: {
@@ -309,39 +306,35 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           },
           { seed: storageSeed, allowFirstRun: ALLOW_FIRST_RUN },
         );
-        // Native localStorage is proxied to Capacitor Preferences on a later
-        // task. Let those writes land before the reload that rehydrates startup
-        // state from Preferences.
+        // Let native preference writes land before the reload that rehydrates
+        // startup state. The init script seeds WebView storage in the new
+        // document before any surface realm can install its reserved-key guard.
         await delay(750);
         if (ALLOW_FIRST_RUN) {
           await use(page);
           return;
         }
-        if (!(await isShellReady(page)) || (await isFirstRunShowing(page))) {
-          await page
-            .goto(`${ORIGIN}/`, {
-              waitUntil: "domcontentloaded",
-              timeout: 20_000,
-            })
-            .catch(() => {});
-          await waitForShellReady(page);
-          await page
-            .evaluate(() => {
-              (
-                window as Window & {
-                  __ELIZAOS_UI_APP_STORE__?: {
-                    value?: {
-                      setState?: (key: string, value: unknown) => void;
-                    } | null;
-                  };
-                }
-              ).__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
-                "firstRunComplete",
-                true,
-              );
-            })
-            .catch(() => {});
-        }
+        await page.goto(`${ORIGIN}/`, {
+          waitUntil: "domcontentloaded",
+          timeout: 20_000,
+        });
+        await waitForShellReady(page);
+        await page
+          .evaluate(() => {
+            (
+              window as Window & {
+                __ELIZAOS_UI_APP_STORE__?: {
+                  value?: {
+                    setState?: (key: string, value: unknown) => void;
+                  } | null;
+                };
+              }
+            ).__ELIZAOS_UI_APP_STORE__?.value?.setState?.(
+              "firstRunComplete",
+              true,
+            );
+          })
+          .catch(() => {});
         await use(page);
       } finally {
         await cdpBrowser?.close().catch(() => {});

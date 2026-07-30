@@ -29,6 +29,7 @@ export const ANDROID_LP3_PRIVATE_ACTIONS = Object.freeze([
 
 export const ANDROID_LP3_POLICY_CLASSES = Object.freeze([
   "Lp3ColorPolicy",
+  "Lp3ColorPolicyInitializer",
   "Lp3ColorPolicyService",
   "Lp3ColorPolicyBootReceiver",
 ]);
@@ -116,11 +117,27 @@ function isSafeModuleName(moduleName) {
   );
 }
 
-function qualifyComponent(appId, component) {
-  const normalized = component.replace(/\.java$/, "");
-  if (normalized.startsWith(".")) return `${appId}${normalized}`;
-  if (normalized.includes(".")) return normalized;
-  return `${appId}.${normalized}`;
+function androidClassBasename(className) {
+  let normalized = requireNonEmptyString(
+    className,
+    "stripped Android class name",
+  ).replace(/\.java$/, "");
+  if (normalized.startsWith("L") && normalized.endsWith(";")) {
+    normalized = normalized.slice(1, -1);
+  }
+  const separatorIndex = Math.max(
+    normalized.lastIndexOf("."),
+    normalized.lastIndexOf("/"),
+  );
+  return normalized.slice(separatorIndex + 1);
+}
+
+function matchesAndroidClassBasename(candidate, classBasename) {
+  return (
+    candidate === classBasename ||
+    candidate.endsWith(`.${classBasename}`) ||
+    candidate.endsWith(`/${classBasename}`)
+  );
 }
 
 function qualifyPermission(permission) {
@@ -718,10 +735,8 @@ export function assertAabManifestPolicy({
     );
   }
 
-  const forbiddenComponents = uniqueSorted(
-    strippedComponents.map((component) =>
-      qualifyComponent(resolvedAppId, component),
-    ),
+  const forbiddenComponentClasses = uniqueSorted(
+    strippedComponents.map(androidClassBasename),
   );
   const forbiddenPermissions = uniqueSorted([
     ...strippedPermissions.map(qualifyPermission),
@@ -771,28 +786,43 @@ export function assertAabManifestPolicy({
         );
       }
     }
-    const manifestComponents = androidAttributeValues(
-      MANIFEST_COMPONENT_ELEMENTS,
-      "name",
+    const componentTags = tags.filter((tag) =>
+      MANIFEST_COMPONENT_ELEMENTS.includes(tag.name),
     );
-    const qualifiedManifestComponents = manifestComponents.map((component) =>
-      qualifyComponent(resolvedAppId, component),
-    );
-    for (const component of forbiddenComponents) {
-      if (qualifiedManifestComponents.includes(component)) {
+    for (const tag of componentTags) {
+      for (const attributeName of [
+        "permission",
+        "readPermission",
+        "writePermission",
+      ]) {
+        const permission = readXmlAttribute(
+          tag,
+          ANDROID_XML_NAMESPACE,
+          attributeName,
+        );
+        if (permission && forbiddenPermissions.includes(permission)) {
+          findings.push(
+            `android-cloud AAB module ${moduleName} contains forbidden component ${attributeName}: ${permission}`,
+          );
+        }
+      }
+    }
+    const manifestComponents = componentTags
+      .map((tag) => readXmlAttribute(tag, ANDROID_XML_NAMESPACE, "name"))
+      .filter(Boolean);
+    for (const component of manifestComponents) {
+      const forbiddenClass = forbiddenComponentClasses.find((className) =>
+        matchesAndroidClassBasename(component, className),
+      );
+      if (forbiddenClass) {
         findings.push(
           `android-cloud AAB module ${moduleName} contains forbidden component: ${component}`,
         );
       }
-    }
-    for (const component of manifestComponents) {
-      const privateClass = ANDROID_LP3_POLICY_CLASSES.find(
-        (className) =>
-          component === className ||
-          component.endsWith(`.${className}`) ||
-          component.endsWith(`/${className}`),
+      const privateClass = ANDROID_LP3_POLICY_CLASSES.find((className) =>
+        matchesAndroidClassBasename(component, className),
       );
-      if (privateClass) {
+      if (!forbiddenClass && privateClass) {
         findings.push(
           `android-cloud AAB module ${moduleName} contains forbidden LP3 component: ${component}`,
         );
@@ -854,31 +884,46 @@ function normalizeDexBuffers(dexEntries, dexBuffers) {
 }
 
 /**
- * Scans all module DEX files for private LP3 implementation and control-plane
- * markers, including features that a universal APK can omit.
+ * Scans every DEX payload for stripped repo-owned classes and private LP3
+ * control-plane markers, including features that a universal APK can omit.
  */
-export function assertAabDexPolicy({ appId, dexEntries, dexBuffers }) {
-  const resolvedAppId = requireNonEmptyString(appId, "Android application ID");
+export function assertAabDexPolicy({
+  appId,
+  dexEntries,
+  dexBuffers,
+  strippedComponents,
+}) {
+  requireNonEmptyString(appId, "Android application ID");
   requireStringArray(dexEntries, "Android App Bundle DEX entries");
+  requireStringArray(strippedComponents, "stripped Android components");
   const buffers = normalizeDexBuffers(dexEntries, dexBuffers);
-  const packagePath = resolvedAppId.replaceAll(".", "/");
-  const forbiddenMarkers = uniqueSorted(
-    [
-      ...ANDROID_LP3_POLICY_CLASSES.flatMap((className) => [
-        `${packagePath}/${className}`,
-        `${resolvedAppId}.${className}`,
-        `/${className};`,
-        `L${className};`,
-      ]),
-      ...ANDROID_LP3_PRIVATE_ACTIONS,
-      ...ANDROID_LP3_POLICY_MARKERS,
-    ],
-    (left, right) => right.length - left.length || left.localeCompare(right),
+  const forbiddenClasses = uniqueSorted(
+    [...strippedComponents, ...ANDROID_LP3_POLICY_CLASSES].map(
+      androidClassBasename,
+    ),
   );
+  const forbiddenClassDescriptors = forbiddenClasses.flatMap((className) => [
+    { className, marker: Buffer.from(`/${className};`, "utf8") },
+    { className, marker: Buffer.from(`L${className};`, "utf8") },
+  ]);
+  const forbiddenLp3Markers = uniqueSorted([
+    ...ANDROID_LP3_PRIVATE_ACTIONS,
+    ...ANDROID_LP3_POLICY_MARKERS,
+  ]).map((marker) => ({
+    marker,
+    payload: Buffer.from(marker, "utf8"),
+  }));
 
   for (let index = 0; index < buffers.length; index += 1) {
-    for (const marker of forbiddenMarkers) {
-      if (buffers[index].includes(Buffer.from(marker, "utf8"))) {
+    for (const { className, marker } of forbiddenClassDescriptors) {
+      if (buffers[index].includes(marker)) {
+        throw androidAabAuditError(
+          `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden stripped component class: ${className}`,
+        );
+      }
+    }
+    for (const { marker, payload } of forbiddenLp3Markers) {
+      if (buffers[index].includes(payload)) {
         throw androidAabAuditError(
           `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden LP3 marker: ${marker}`,
         );
@@ -1053,7 +1098,12 @@ export function inspectAndroidAppBundle(
     artifact: resolvedArtifact,
     javaHome,
   });
-  assertAabDexPolicy({ appId, dexEntries, dexBuffers });
+  assertAabDexPolicy({
+    appId,
+    dexEntries,
+    dexBuffers,
+    strippedComponents,
+  });
 
   return {
     appId: requireNonEmptyString(appId, "Android application ID"),

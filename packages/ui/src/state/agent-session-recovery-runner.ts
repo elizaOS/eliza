@@ -14,12 +14,14 @@
  *
  * SECURITY NOTE (auth-adjacent): no auth is bypassed or weakened. The pairing
  * token is minted server-side ONLY for a caller holding a valid cloud session;
- * an unauthenticated caller gets a 401/403 here and falls through to the
- * password wall exactly as before.
+ * a 401 becomes Cloud reauthentication, while forbidden/account/agent failures
+ * preserve Cloud auth and route to management. Self-hosted callers retain their
+ * owner-password boundary.
  */
 
 import {
-  exchangeCloudPairToken,
+  CloudPairExchangeError,
+  exchangeAuthenticatedNativeCloudPairToken,
   persistCloudPairApiToken,
 } from "../components/auth/CloudPairRelay";
 
@@ -40,7 +42,7 @@ export type AgentSessionRecoveryResult =
   | { ok: true; redirectUrl: string; mode: "navigate" | "in-process" }
   | {
       ok: false;
-      reason: "not-ready" | "unauthorized" | "error";
+      reason: "not-ready" | "unauthorized" | "manage-required" | "error";
       message: string;
     };
 
@@ -65,19 +67,25 @@ export interface RunAgentSessionRecoveryDeps {
    * WebViews, where remote-origin navigation loses the native bridge.
    */
   consumeRedirectInProcess?: boolean;
-  /** Injected pair-token exchange (tests). Defaults to CloudPairRelay's exchange. */
-  exchangePairToken?: (token: string) => Promise<string>;
+  /** Injected authenticated native pair-token exchange (tests). */
+  exchangePairToken?: (
+    token: string,
+    binding: {
+      cloudToken: string;
+      agentId: string;
+      expectedOrigin: string;
+    },
+  ) => Promise<string>;
   /** Injected API-key persistence (tests). Defaults to CloudPairRelay's persistence. */
   persistPairApiToken?: (apiToken: string) => void;
   /**
-   * OPT-IN purge invoked when the pairing mint answers 401/403 (#16666). The
-   * mint is authorized by the Steward JWT — its refusal proves nothing about
-   * the durable pair token — so there is deliberately NO default: only a
-   * caller that has independently observed the adopted dedicated-agent bearer
-   * rejected (e.g. `/api/auth/me` 401 `remote_auth_required`) may supply a
-   * purge, and it should be `clearStalePairCredentialsForAgent(agentId)` so
-   * the deletion stays scoped to the proven credential. Generic pairing
-   * callers (first-run) omit it and never destroy persisted credentials.
+   * OPT-IN purge for terminal mint/exchange outcomes (#16666). Those outcomes
+   * alone prove nothing about the durable agent bearer, so there is
+   * deliberately NO default: only a caller that independently observed the
+   * adopted dedicated-agent bearer rejected (for example `/api/auth/me` 401
+   * `remote_auth_required`) may supply a purge. It should be
+   * `clearStalePairCredentialsForAgent(agentId)` so deletion stays scoped to
+   * the proven credential. Generic pairing callers omit it.
    */
   clearStalePairCredentials?: () => void;
   /** Optional callback after an in-process pair succeeds. */
@@ -93,6 +101,7 @@ function isSafeRedirectUrl(value: string): boolean {
     const parsed = new URL(value);
     return parsed.protocol === "https:" || parsed.protocol === "http:";
   } catch {
+    // error-policy:J3 malformed dependency URLs fail the navigation allowlist.
     return false;
   }
 }
@@ -113,17 +122,44 @@ function pairTokenFromRedirectUrl(redirectUrl: string): string | null {
     if (parsed.pathname.replace(/\/+$/, "") !== "/pair") return null;
     return parsed.searchParams.get("token")?.trim() || null;
   } catch {
+    // error-policy:J3 malformed dependency URLs cannot yield a pairing token.
     return null;
   }
 }
 
+function classifyNativePairExchangeError(
+  error: unknown,
+): Extract<AgentSessionRecoveryResult, { ok: false }> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!(error instanceof CloudPairExchangeError)) {
+    return { ok: false, reason: "error", message };
+  }
+
+  if (
+    error.code === "cloud_auth_required" ||
+    error.code === "authentication_required" ||
+    (!error.code && error.status === 401)
+  ) {
+    return { ok: false, reason: "unauthorized", message };
+  }
+
+  if (
+    error.code === "sandbox_credential_unavailable" ||
+    error.code === "access_denied" ||
+    (!error.code && error.status === 403)
+  ) {
+    return { ok: false, reason: "manage-required", message };
+  }
+
+  return { ok: false, reason: "error", message };
+}
+
 /**
- * Poll the cloud pairing-token endpoint until it returns a `/pair` redirect,
- * then navigate the current window there. The `/pair` relay pins the fresh
- * credential and redirects to `/`, so a successful run does not return control
- * to the caller, it hands off to a full-page navigation. Returns a failure
- * result (without navigating) when the agent never becomes ready, the caller is
- * unauthorized, or the request errors, so the caller can fall back to the wall.
+ * Poll the cloud pairing-token endpoint until it returns a redirect. Browsers
+ * navigate through `/pair`; native callers consume its one-time token
+ * in-process, install the bearer, and re-probe auth. Returns a classified
+ * failure when the agent never becomes ready, Cloud rejects authentication,
+ * management is required, or a transient request fails.
  */
 export async function runAgentSessionRecovery(
   deps: RunAgentSessionRecoveryDeps,
@@ -134,8 +170,11 @@ export async function runAgentSessionRecovery(
     cloudToken,
     navigate,
     consumeRedirectInProcess = false,
-    exchangePairToken = (token: string) =>
-      exchangeCloudPairToken(token, { cloudApiBase }),
+    exchangePairToken = (token, binding) =>
+      exchangeAuthenticatedNativeCloudPairToken(token, {
+        ...binding,
+        cloudApiBase,
+      }),
     persistPairApiToken = persistCloudPairApiToken,
     clearStalePairCredentials,
     onPairedInProcess,
@@ -158,6 +197,8 @@ export async function runAgentSessionRecovery(
         headers: { Authorization: `Bearer ${cloudToken}` },
       });
     } catch (err) {
+      // error-policy:J4 a transient control-plane request failure becomes a
+      // non-destructive retry result; the valid Cloud token is preserved.
       return {
         ok: false,
         reason: "error",
@@ -165,6 +206,8 @@ export async function runAgentSessionRecovery(
       };
     }
 
+    // error-policy:J3 malformed dependency JSON is converted to the route's
+    // explicit unknown-error result rather than escaping the recovery runner.
     const data = (await res
       .json()
       .catch(() => ({ error: "Unknown error" }))) as PairingTokenResponse;
@@ -174,20 +217,38 @@ export async function runAgentSessionRecovery(
       continue;
     }
 
-    if (res.status === 401 || res.status === 403) {
-      // No valid cloud session after all, let the wall stand. The purge is the
-      // caller's call: this response only proves the STEWARD credential was
-      // refused, so the runner purges nothing on its own — a caller that has
-      // separately watched the agent origin reject the adopted pair bearer
-      // opts in here so the next boot cannot re-adopt the dead credential
-      // (#16666). Network-shaped failures (fetch throw, timeout, 5xx)
-      // deliberately do NOT reach this branch: an offline PWA relaunch must
-      // keep its still-valid token.
+    if (res.status === 401) {
+      // Cloud rejected the credential, so the caller may require a fresh login.
+      // The purge remains opt-in: this response proves only the STEWARD
+      // credential was refused; callers that separately observed the adopted
+      // agent bearer fail may remove that scoped credential (#16666).
+      // Network-shaped failures deliberately do not reach this branch.
       clearStalePairCredentials?.();
       return {
         ok: false,
         reason: "unauthorized",
         message: data.error || `Unauthorized (HTTP ${res.status})`,
+      };
+    }
+
+    const requiresCloudManagement =
+      res.status === 402 ||
+      res.status === 403 ||
+      res.status === 404 ||
+      data.data?.status === "error";
+    if (requiresCloudManagement) {
+      // These responses prove the account/agent needs attention, not that the
+      // Cloud bearer is invalid. Preserve Cloud auth and route the user to the
+      // management surface. The opt-in agent-bearer purge is still safe because
+      // the caller independently observed that dedicated bearer rejected.
+      clearStalePairCredentials?.();
+      return {
+        ok: false,
+        reason: "manage-required",
+        message:
+          data.error ||
+          data.data?.message ||
+          `Cloud agent requires attention (HTTP ${res.status})`,
       };
     }
 
@@ -216,23 +277,37 @@ export async function runAgentSessionRecovery(
       if (consumeRedirectInProcess) {
         const pairToken = pairTokenFromRedirectUrl(redirectUrl);
         if (!pairToken) {
+          // A managed URL without a pair token means the sandbox has no usable
+          // ELIZA_API_TOKEN. Reloading cannot repair that configuration; keep
+          // Cloud auth and send the user to the management recovery surface.
+          clearStalePairCredentials?.();
           return {
             ok: false,
-            reason: "error",
+            reason: "manage-required",
             message: "Pairing token returned a redirect without a pair token",
           };
         }
         try {
-          const apiToken = await exchangePairToken(pairToken);
+          const apiToken = await exchangePairToken(pairToken, {
+            cloudToken,
+            agentId,
+            expectedOrigin: new URL(redirectUrl).origin,
+          });
           persistPairApiToken(apiToken);
           await onPairedInProcess?.(apiToken);
           return { ok: true, redirectUrl, mode: "in-process" };
         } catch (err) {
-          return {
-            ok: false,
-            reason: "error",
-            message: err instanceof Error ? err.message : String(err),
-          };
+          // error-policy:J4 native exchange failures retain the server's typed
+          // recovery category. Unknown/network/storage failures stay retryable
+          // and cannot invalidate the Cloud credential.
+          const failure = classifyNativePairExchangeError(err);
+          if (
+            failure.reason === "unauthorized" ||
+            failure.reason === "manage-required"
+          ) {
+            clearStalePairCredentials?.();
+          }
+          return failure;
         }
       }
 

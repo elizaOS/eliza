@@ -468,7 +468,7 @@
   "devDependencies": {
     "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/haptics": "8.0.2",
-    "@capacitor/keyboard": "8.0.3",
+    "@capacitor/keyboard": "8.0.5",
     "@capacitor/preferences": "^8.0.1",
     "@pixiv/three-vrm": "^3.5.3",
     "@storybook/addon-a11y": "^10.0.0",
