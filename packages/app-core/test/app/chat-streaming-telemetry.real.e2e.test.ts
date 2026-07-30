@@ -1,6 +1,10 @@
 /**
- * Real chat streaming telemetry through a PGLite runtime, the production HTTP
+ * Real chat delivery telemetry through a PGLite runtime, the production HTTP
  * route and SSE parser, `useChatSend`, and the memoized React transcript.
+ *
+ * Stage-1 provider output streams into the runtime, but its structured envelope
+ * is held until routing and side-effect validation finish. The browser therefore
+ * receives one validated reply rather than unsafe partial `replyText`.
  */
 
 import { existsSync } from "node:fs";
@@ -330,7 +334,7 @@ function elapsedSeries(values: number[], base: number): number[] {
 const suite = CHROME_AVAILABLE ? describe : describe.skip;
 let state: HarnessState | null = null;
 
-suite("chat streaming telemetry real e2e", () => {
+suite("chat delivery telemetry real e2e", () => {
   beforeAll(async () => {
     inferenceTimingRegistry.reset();
     const harness = await listenHarness();
@@ -597,7 +601,7 @@ suite("chat streaming telemetry real e2e", () => {
     state = null;
   }, 180_000);
 
-  it("proves provider → SSE → React state → PGLite → pixels are identical", async () => {
+  it("proves streamed provider output is validated before SSE → React state → PGLite → pixels", async () => {
     if (!state) throw new Error("harness not initialized");
     if (process.env.ELIZA_CHAT_TELEMETRY_BEFORE_SCREENSHOT) {
       await state.page.screenshot({
@@ -678,40 +682,17 @@ suite("chat streaming telemetry real e2e", () => {
           value.find((message) => message.role === "assistant")?.text ?? "",
       )
       .filter((text, index, values) => text && text !== values[index - 1]);
-    const expectedAssistantStates = REPLY_TOKENS.map((_, index) =>
-      REPLY_TOKENS.slice(0, index + 1).join(""),
+    expect(assistantStates).toEqual([REPLY_TEXT]);
+    const assistantMutations = browserTelemetry.mutations.filter(({ value }) =>
+      value.includes(REPLY_TEXT),
     );
-    const stateProgression = assistantStates.map((text) =>
-      expectedAssistantStates.indexOf(text),
-    );
-    expect(stateProgression.every((index) => index >= 0)).toBe(true);
+    expect(assistantMutations).toHaveLength(1);
+    expect(assistantMutations[0]?.value).toContain(REPLY_TEXT);
     expect(
-      stateProgression.every(
-        (value, index) => index === 0 || value > stateProgression[index - 1],
-      ),
-    ).toBe(true);
-    expect(assistantStates.some((text) => text !== REPLY_TEXT)).toBe(true);
-    expect(assistantStates.at(-1)).toBe(REPLY_TEXT);
-
-    const mutationProgression = browserTelemetry.mutations
-      .map(({ value }) =>
-        expectedAssistantStates.findLastIndex((text) => value.includes(text)),
-      )
-      .filter(
-        (value, index, values) =>
-          value >= 0 && (index === 0 || value !== values[index - 1]),
-      );
-    expect(
-      mutationProgression.every(
-        (value, index) => index === 0 || value > mutationProgression[index - 1],
-      ),
-    ).toBe(true);
-    expect(
-      mutationProgression.some(
-        (index) => expectedAssistantStates[index] !== REPLY_TEXT,
-      ),
-    ).toBe(true);
-    expect(mutationProgression.at(-1)).toBe(expectedAssistantStates.length - 1);
+      browserTelemetry.sseFrames
+        .filter(({ value }) => value.type === "token")
+        .map(({ value }) => value.text),
+    ).toEqual([REPLY_TEXT]);
 
     const finalUserState = finalSnapshot.find(
       (message) => message.role === "user",
