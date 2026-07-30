@@ -52,22 +52,15 @@ afterEach(() => {
 });
 
 describe("plugin-embeddings handleTextEmbedding", () => {
-  it("returns an EMBEDDING_DIMENSIONS-wide vector for the null init-probe", async () => {
+  it("rejects null instead of fabricating an init-probe vector", async () => {
     const fetchMock = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
 
-    const probe = await handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "768" }), null);
+    await expect(
+      handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "768" }), null)
+    ).rejects.toThrow("requires real input");
 
-    expect(probe).toHaveLength(768);
-    expect(probe[0]).toBeCloseTo(0.1);
-    // The null probe must never hit the network — it only reports the width.
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("defaults the probe width to 1536 when EMBEDDING_DIMENSIONS is unset", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn() as typeof fetch);
-    const probe = await handleTextEmbedding(createRuntime(), null);
-    expect(probe).toHaveLength(1536);
   });
 
   it("returns the parsed vector from a wire-mocked /embeddings response", async () => {

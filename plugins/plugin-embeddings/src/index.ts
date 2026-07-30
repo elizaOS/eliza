@@ -119,6 +119,12 @@ export const embeddingsPlugin: Plugin = {
       params: BatchTextEmbeddingParams
     ): Promise<number[][]> => handleBatchTextEmbedding(runtime, params.texts),
   },
+  modelMetadata: {
+    [ModelType.TEXT_EMBEDDING]: {
+      embeddingDimensionSettings: ["EMBEDDING_DIMENSIONS", "EMBEDDING_DIMENSION"],
+      embeddingDimensionDefault: 1536,
+    },
+  },
 };
 
 export { handleBatchTextEmbedding, handleTextEmbedding } from "./models/embedding";
