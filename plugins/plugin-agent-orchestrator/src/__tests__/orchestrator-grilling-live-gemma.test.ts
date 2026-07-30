@@ -8,18 +8,27 @@
  * `CEREBRAS_API_KEY`; skipped in keyless CI. The deterministic evidence-bundle
  * assertion (capturing model, no live judge) lives ONLY in
  * `orchestrator-scenario-logic.test.ts` — it is not duplicated here under a
- * "live" banner.
+ * "live" banner. A credential being present is not an instruction to spend it:
+ * this test requires `RUN_LIVE_ORCHESTRATOR_GEMMA=1` and fails if that explicit
+ * live lane is requested without a key.
  *
- * Run: CEREBRAS_API_KEY=csk-... bunx vitest run orchestrator-grilling-live-gemma
+ * Run: RUN_LIVE_ORCHESTRATOR_GEMMA=1 CEREBRAS_API_KEY=csk-... bunx vitest run orchestrator-grilling-live-gemma
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runGrillingHappyPathCheck } from "../../test/scenarios/_helpers/grilling-scenario.ts";
 
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY?.trim() ?? "";
+const RUN_LIVE = process.env.RUN_LIVE_ORCHESTRATOR_GEMMA === "1";
 const MODEL = process.env.GEMMA_MODEL?.trim() || "gemma-4-31b";
 const BASE_URL =
   process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+
+if (RUN_LIVE && !CEREBRAS_KEY) {
+  throw new Error(
+    "RUN_LIVE_ORCHESTRATOR_GEMMA=1 requires CEREBRAS_API_KEY",
+  );
+}
 
 /** Faithful verifier: forwards the orchestrator's judge prompt to the live
  * model and returns its RAW output, so the real `parseJudgeResponse` /
@@ -94,7 +103,7 @@ afterEach(() => {
   }
 });
 
-describe.skipIf(!CEREBRAS_KEY)(
+describe.skipIf(!RUN_LIVE)(
   `orchestrator grilling loop — LIVE ${MODEL} (Cerebras)`,
   () => {
     it("grills a no-evidence completion, then verifies done once real Gemma reads pasted passing tests", async () => {
