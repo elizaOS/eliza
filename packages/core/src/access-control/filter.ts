@@ -1,8 +1,8 @@
 /**
- * Read-side access-control filter for memories: maps an {@link AccessContext}
- * to a scope-ladder actor, decides whether that actor may read a memory of a
- * given {@link MemoryScope}, and subtractively filters a memory array down to
- * the readable set.
+ * Read-side access-control filter for memory-shaped retrieval records: maps an
+ * {@link AccessContext} to a scope-ladder actor, decides whether that actor may
+ * read a record of a given {@link MemoryScope}, and subtractively filters a
+ * result array down to the readable set.
  *
  * Composes with — never duplicates — Postgres RLS: RLS gates on
  * `entity_id`/`server_id`, this gates on `metadata.scope`. For the four
@@ -12,7 +12,31 @@
  * least-privileged `USER` tier.
  */
 import { isAdminRank, type RoleName } from "../roles";
-import type { AccessContext, Memory, MemoryScope, UUID } from "../types";
+import type { AccessContext, MemoryScope, UUID } from "../types";
+
+interface AccessScopedRecord {
+	entityId?: UUID;
+	metadata?: {
+		scope?: unknown;
+		scopedToEntityId?: unknown;
+		addedBy?: unknown;
+	};
+}
+
+function isMemoryScope(value: unknown): value is MemoryScope {
+	switch (value) {
+		case "shared":
+		case "private":
+		case "room":
+		case "global":
+		case "owner-private":
+		case "user-private":
+		case "agent-private":
+			return true;
+		default:
+			return false;
+	}
+}
 
 /**
  * Read-side actor role: the core {@link RoleName} widened with the machine
@@ -91,22 +115,27 @@ export function canReadScope(
 }
 
 /**
- * Filter memories down to those `ctx`'s requester may read. A pure, strictly
- * subtractive `.filter()`: it composes with (never duplicates) Postgres RLS,
- * which gates on `entity_id`/`server_id` while this gates on `metadata.scope`.
- * Scope defaults to `global` when absent; the owning entity is taken from
- * `metadata.scopedToEntityId`, else `metadata.addedBy`, else `memory.entityId`
+ * Filter retrieval records down to those `ctx`'s requester may read. A pure,
+ * strictly subtractive `.filter()`: it composes with (never duplicates)
+ * Postgres RLS, which gates on `entity_id`/`server_id` while this gates on
+ * `metadata.scope`. Scope defaults to `global` only when absent; malformed
+ * scopes fail closed. The owning entity is taken from
+ * `metadata.scopedToEntityId`, else `metadata.addedBy`, else `entityId`
  * (mirroring the documents plugin).
  */
-export function filterByAccessContext(
-	memories: Memory[],
+export function filterByAccessContext<T extends AccessScopedRecord>(
+	memories: T[],
 	ctx: AccessContext,
 	agentId: UUID,
-): Memory[] {
+): T[] {
 	const actor = actorFromAccessContext(ctx, agentId);
 	return memories.filter((memory) => {
-		const scope = memory.metadata?.scope ?? "global";
-		const meta = memory.metadata as Record<string, unknown> | undefined;
+		const rawScope = memory.metadata?.scope;
+		if (rawScope !== undefined && !isMemoryScope(rawScope)) {
+			return false;
+		}
+		const scope = rawScope ?? "global";
+		const meta = memory.metadata;
 		const scopedTo = meta?.scopedToEntityId;
 		const addedBy = meta?.addedBy;
 		const scopedEntityId =

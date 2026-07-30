@@ -118,7 +118,14 @@ function makeRuntime(fragments: Memory[]): {
     // turn on role and document scope, not on room membership.
     getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
     getSetting: vi.fn(() => undefined),
-    // documents search backing
+    // documents search backing. The service's keyword path reads fragments
+    // through the adapter contract (runtime.adapter.queryDocumentFragments);
+    // returning EVERY fragment regardless of requester keeps the suite's
+    // point sharp — access control must come from the service's own
+    // AccessContext post-filter, never from the storage query.
+    adapter: {
+      queryDocumentFragments: vi.fn(async () => fragments),
+    },
     getModel: vi.fn(() => undefined),
     getMemories: vi.fn(async () => fragments),
     adapter: {

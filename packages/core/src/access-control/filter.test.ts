@@ -259,4 +259,33 @@ describe("filterByAccessContext", () => {
 		const ctx: AccessContext = { requesterEntityId: SELF, role: "USER" };
 		expect(filterByAccessContext([noScope], ctx, AGENT)).toHaveLength(1);
 	});
+
+	it("preserves the concrete shape of document-search results", () => {
+		const result = {
+			entityId: SELF,
+			content: { text: "private result" },
+			metadata: { scope: "user-private", scopedToEntityId: SELF },
+			similarity: 0.91,
+		};
+		const [visible] = filterByAccessContext(
+			[result],
+			{ requesterEntityId: SELF, role: "USER" },
+			AGENT,
+		);
+		expect(visible?.similarity).toBe(0.91);
+	});
+
+	it("fails closed on a malformed runtime scope", () => {
+		const malformed = {
+			entityId: SELF,
+			metadata: { scope: "not-a-scope" },
+		};
+		expect(
+			filterByAccessContext(
+				[malformed],
+				{ requesterEntityId: SELF, role: "USER" },
+				AGENT,
+			),
+		).toEqual([]);
+	});
 });
