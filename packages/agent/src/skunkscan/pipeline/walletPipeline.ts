@@ -260,6 +260,7 @@ export async function runWalletPipeline(
       risk,
       whale,
       trust,
+      input.chain,
     );
 
   const evidenceRecords =
