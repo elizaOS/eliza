@@ -15,7 +15,7 @@ import {
 	applyBackgroundInferenceBudget,
 	clampBackgroundPrompt,
 	getInferencePriorityGate,
-	InferenceBackgroundWaitTimeoutError,
+	InferenceLaneBusyError,
 	InferencePriorityGate,
 	inferenceRamClassFromEnv,
 	resolveBackgroundInferenceBudget,
@@ -32,7 +32,6 @@ function tracked(
 	opts: {
 		priority: "interactive" | "background";
 		holdMs: number;
-		waitMs?: number;
 		signal?: AbortSignal;
 	},
 ): Promise<void> {
@@ -40,7 +39,6 @@ function tracked(
 		{
 			priority: opts.priority,
 			label: name,
-			...(opts.waitMs !== undefined ? { waitMs: opts.waitMs } : {}),
 			...(opts.signal ? { signal: opts.signal } : {}),
 		},
 		async () => {
@@ -52,7 +50,7 @@ function tracked(
 }
 
 describe("InferencePriorityGate — lock priority", () => {
-	it("an interactive turn completes within its envelope while a background job is mid-flight and more background jobs are queued", async () => {
+	it("rejects overlapping background work so an interactive turn runs next", async () => {
 		const gate = new InferencePriorityGate();
 		const log: string[] = [];
 
@@ -63,12 +61,12 @@ describe("InferencePriorityGate — lock priority", () => {
 		});
 		await sleep(10); // bg1 is mid-flight
 
-		// Another background firing queues behind it…
+		// Another background firing is coalesced by failing admission immediately.
 		const bg2 = tracked(gate, log, "bg2", {
 			priority: "background",
 			holdMs: 120,
-			waitMs: 5_000,
 		});
+		await expect(bg2).rejects.toBeInstanceOf(InferenceLaneBusyError);
 		await sleep(5);
 
 		// …then an interactive chat turn arrives.
@@ -80,20 +78,13 @@ describe("InferencePriorityGate — lock priority", () => {
 		await chat;
 		const interactiveTotalMs = Date.now() - interactiveStartedAt;
 
-		await Promise.all([bg1, bg2]);
+		await bg1;
 
 		// The interactive turn ran immediately after the in-flight holder —
-		// AHEAD of the earlier-queued background job.
-		expect(log).toEqual([
-			"start:bg1",
-			"end:bg1",
-			"start:chat",
-			"end:chat",
-			"start:bg2",
-			"end:bg2",
-		]);
+		// The overlapping background firing never entered the native lane.
+		expect(log).toEqual(["start:bg1", "end:bg1", "start:chat", "end:chat"]);
 		// Envelope: holder remainder (~105ms) + own runtime (~20ms), NOT
-		// remainder + bg2 (~120ms) + own runtime. Generous ceiling for CI jitter.
+		// remainder + another background decode. Generous ceiling for CI jitter.
 		expect(interactiveTotalMs).toBeLessThan(120 + 20 + 60);
 	});
 
@@ -121,12 +112,11 @@ describe("InferencePriorityGate — lock priority", () => {
 		await tracked(gate, log, "bg", {
 			priority: "background",
 			holdMs: 5,
-			waitMs: 1_000,
 		});
 		expect(log).toEqual(["start:bg", "end:bg"]);
 	});
 
-	it("bounded background wait: a background job that cannot start within waitMs fails typed and never runs", async () => {
+	it("busy background admission fails immediately and never runs", async () => {
 		const gate = new InferencePriorityGate();
 		const log: string[] = [];
 		const holder = tracked(gate, log, "holder", {
@@ -138,14 +128,12 @@ describe("InferencePriorityGate — lock priority", () => {
 		const bg = tracked(gate, log, "bg", {
 			priority: "background",
 			holdMs: 10,
-			waitMs: 40,
 		});
-		await expect(bg).rejects.toBeInstanceOf(
-			InferenceBackgroundWaitTimeoutError,
-		);
+		await expect(bg).rejects.toBeInstanceOf(InferenceLaneBusyError);
 		await expect(bg).rejects.toMatchObject({
-			code: "INFERENCE_BACKGROUND_WAIT_TIMEOUT",
+			code: "INFERENCE_LANE_BUSY",
 		});
+		expect(gate.snapshot().backgroundWaiting).toBe(0);
 
 		await holder;
 		// The timed-out background job never touched the lane.
@@ -243,12 +231,11 @@ describe("device-class background budget (#11760 seam)", () => {
 		).toBeNull();
 	});
 
-	it("constrained budget is tighter than standard on every axis", () => {
+	it("constrained budget is tighter than standard on prompt and output size", () => {
 		const constrained = resolveBackgroundInferenceBudget("constrained");
 		const standard = resolveBackgroundInferenceBudget("standard");
 		expect(constrained.maxTokens).toBeLessThan(standard.maxTokens);
 		expect(constrained.maxPromptChars).toBeLessThan(standard.maxPromptChars);
-		expect(constrained.lockWaitMs).toBeLessThan(standard.lockWaitMs);
 	});
 
 	it("clamps the observed poison job (11k-char prompt, maxTokens 8192) on a constrained device", () => {
