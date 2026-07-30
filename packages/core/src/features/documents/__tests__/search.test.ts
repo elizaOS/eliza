@@ -489,10 +489,11 @@ describe("DocumentService.searchDocuments", () => {
 		});
 
 		it.each([
-			{ role: "ADMIN", isOwner: false },
-			{ role: "OWNER", isOwner: true },
+			{ label: "ADMIN role", role: "ADMIN", isOwner: false },
+			{ label: "OWNER role", role: "OWNER", isOwner: true },
+			{ label: "isOwner flag", role: undefined, isOwner: true },
 		] as const)(
-			"requires a world for an elevated $role context",
+			"requires a world for an elevated $label context",
 			async ({ role, isOwner }) => {
 				const rt = buildRuntime({ hasEmbedding: false });
 				const svc = buildService(rt);

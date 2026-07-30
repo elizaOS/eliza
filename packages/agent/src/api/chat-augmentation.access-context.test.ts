@@ -15,6 +15,7 @@ import {
   InMemoryDatabaseAdapter,
   type Memory,
   MemoryType,
+  ModelType,
   Role,
   type UUID,
 } from "@elizaos/core";
@@ -77,11 +78,51 @@ function ownerPrivateFragment(
   };
 }
 
+function indexedUuid(index: number): UUID {
+  return `00000000-0000-0000-0000-${index.toString().padStart(12, "0")}` as UUID;
+}
+
+function documentWithScope(
+  documentId: UUID,
+  scope: DocumentMemoryMetadata["scope"],
+): Memory {
+  const metadata: DocumentMemoryMetadata = {
+    ...(ownerPrivateDocument().metadata as DocumentMemoryMetadata),
+    documentId,
+    scope,
+  };
+  return {
+    ...ownerPrivateDocument(),
+    id: documentId,
+    metadata,
+  };
+}
+
+function fragmentForDocument(
+  fragmentId: UUID,
+  documentId: UUID,
+  embedding: number[],
+): Memory {
+  return {
+    ...ownerPrivateFragment("global"),
+    id: fragmentId,
+    embedding,
+    metadata: {
+      ...(ownerPrivateFragment("global")
+        .metadata as DocumentFragmentMemoryMetadata),
+      documentId,
+    },
+  };
+}
+
 /**
  * Persists the authorization-bearing parent and fragment through the same
  * adapter capability production document search requires.
  */
-async function makeRuntime(fragments: Memory[]): Promise<{
+async function makeRuntime(
+  fragments: Memory[],
+  documentsToStore: Memory[] = [ownerPrivateDocument()],
+): Promise<{
   runtime: AgentRuntime;
   documents: DocumentService;
 }> {
@@ -125,7 +166,10 @@ async function makeRuntime(fragments: Memory[]): Promise<{
     ROOM_ID,
   );
   await runtime.createMemories([
-    { memory: ownerPrivateDocument(), tableName: "documents" },
+    ...documentsToStore.map((memory) => ({
+      memory,
+      tableName: "documents",
+    })),
     ...fragments.map((memory) => ({
       memory,
       tableName: "document_fragments",
@@ -227,6 +271,54 @@ describe("chat augmentation derives document access from the requester", () => {
     );
     expect(ownerHits.map((hit) => hit.content.text)).toContain(SECRET_TEXT);
   });
+
+  it.each(["vector", "hybrid"] as const)(
+    "authorizes through the real adapter before the %s top-K limit",
+    async (mode) => {
+      const hiddenDocuments = Array.from({ length: 45 }, (_, index) =>
+        documentWithScope(indexedUuid(1000 + index), "owner-private"),
+      );
+      const hiddenFragments = hiddenDocuments.map((document, index) =>
+        fragmentForDocument(
+          indexedUuid(2000 + index),
+          document.id as UUID,
+          [1, 0],
+        ),
+      );
+      const visibleDocument = documentWithScope(indexedUuid(3000), "global");
+      const visibleFragment = fragmentForDocument(
+        indexedUuid(3001),
+        visibleDocument.id as UUID,
+        [0.2, 0.98],
+      );
+      const { runtime, documents } = await makeRuntime(
+        [...hiddenFragments, visibleFragment],
+        [...hiddenDocuments, visibleDocument],
+      );
+      runtime.getModel = vi.fn((modelType) =>
+        modelType === ModelType.TEXT_EMBEDDING ? vi.fn() : undefined,
+      );
+      runtime.useModel = vi.fn(async () => [1, 0]) as typeof runtime.useModel;
+      const agentMessage = {
+        ...chatMessage(USER_ENTITY),
+        entityId: AGENT_ID,
+      } as unknown as Memory;
+
+      const hits = await documents.searchDocuments(
+        agentMessage,
+        { roomId: ROOM_ID },
+        mode,
+        {
+          requesterEntityId: USER_ENTITY,
+          worldId: WORLD_ID,
+          role: "USER",
+          isOwner: false,
+        },
+      );
+
+      expect(hits.map((hit) => hit.id)).toEqual([visibleFragment.id]);
+    },
+  );
 
   it.each(["", "   "])(
     "fails closed for an unauthenticated requester %j",
