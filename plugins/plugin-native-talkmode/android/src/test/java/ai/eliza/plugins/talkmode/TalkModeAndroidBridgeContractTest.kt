@@ -11,12 +11,14 @@ class TalkModeAndroidBridgeContractTest {
     fun `local inference TTS request targets app IPC route instead of loopback TCP`() {
         val payload = TalkModeAndroidBridgeContract.localInferenceRequestPayload(
             body = "{\"text\":\"hello\"}",
-            authorization = "Bearer secret"
+            authorization = "Bearer secret",
+            requestId = "tts-1"
         )
 
         assertEquals("POST", payload["method"])
         assertEquals("/api/tts/local-inference", payload["path"])
-        assertEquals(180_000, payload["timeoutMs"])
+        assertEquals("tts-1", payload["requestId"])
+        assertFalse(payload.containsKey("timeoutMs"))
         assertEquals(
             mapOf(
                 "Content-Type" to "application/json",

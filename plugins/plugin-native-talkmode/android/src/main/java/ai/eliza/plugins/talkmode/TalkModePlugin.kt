@@ -32,19 +32,15 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import kotlinx.coroutines.*
-import android.net.LocalSocket
-import android.net.LocalSocketAddress
 import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.io.ByteArrayInputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 import org.json.JSONObject
@@ -60,10 +56,6 @@ class TalkModePlugin : Plugin() {
         private const val TAG = "TalkMode"
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
-        // Abstract-namespace UDS of ElizaBionicInferenceServer (the bionic app
-        // process that has libelizainference loaded). Kept in sync with
-        // BIONIC_INFERENCE_SOCKET_NAME in ElizaAgentService.
-        private const val BIONIC_INFER_SOCKET = "eliza_bionic_infer_v1"
         // 16 kHz mono is the rate VAD / diarizer / wake-word models expect; 20 ms
         // (320 samples) is the standard VAD frame size.
         private const val DEFAULT_FRAME_SAMPLE_RATE = 16000
@@ -112,6 +104,10 @@ class TalkModePlugin : Plugin() {
     private var speakStartTimeMs: Long = 0
     private var lastInterruptedAtSeconds: Double? = null
     @Volatile private var activePcmConnection: HttpURLConnection? = null
+    @Volatile private var activeLocalAgentStreamId: String? = null
+    @Volatile private var activeLocalAgentServiceClass: Class<*>? = null
+    @Volatile private var activePlaybackDrain: CountDownLatch? = null
+    private val localAgentStreamLock = Any()
 
     // Voice audio session (communication-mode routing + focus, mirrors the iOS
     // .playAndRecord/.voiceChat/.defaultToSpeaker session). Held for the whole
@@ -355,6 +351,7 @@ class TalkModePlugin : Plugin() {
                     put("started", true)
                 })
             } catch (e: Exception) {
+                // error-policy:J1 Capacitor start is the native session boundary.
                 Log.e(TAG, "Failed to start", e)
                 // Recognizer creation failed AFTER the audio session was
                 // configured — release it so the earcon streams aren't left
@@ -538,6 +535,7 @@ class TalkModePlugin : Plugin() {
         val record = try {
             openAudioRecord(requestedRate)
         } catch (e: Exception) {
+            // error-policy:J1 Frame capture start translates failure for Capacitor.
             Log.e(TAG, "AudioRecord open failed", e)
             if (sttSuspendedForFrames) resumeSpeechRecognizerAfterFrames()
             call.resolve(JSObject().apply {
@@ -556,6 +554,7 @@ class TalkModePlugin : Plugin() {
         try {
             record.startRecording()
         } catch (e: Exception) {
+            // error-policy:J1 Frame capture start translates failure for Capacitor.
             Log.e(TAG, "AudioRecord startRecording failed", e)
             releaseAudioRecord()
             if (sttSuspendedForFrames) resumeSpeechRecognizerAfterFrames()
@@ -635,6 +634,7 @@ class TalkModePlugin : Plugin() {
                 record.release()
                 lastError = IllegalStateException("AudioRecord uninitialized for source $source")
             } catch (e: Exception) {
+                // error-policy:J4 Device-specific audio sources are probed in order.
                 lastError = e
             }
         }
@@ -690,6 +690,7 @@ class TalkModePlugin : Plugin() {
                     })
                 }
             } catch (e: Throwable) {
+                // error-policy:J1 This coroutine is the audio-frame loop boundary.
                 Log.e(TAG, "Audio frame loop error", e)
                 notifyListeners("error", JSObject().apply {
                     put("message", "Audio frame capture stopped: ${e.message}")
@@ -718,11 +719,15 @@ class TalkModePlugin : Plugin() {
             if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
                 record.stop()
             }
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            // error-policy:J6 AudioRecord is already being released.
+            Log.w(TAG, "AudioRecord stop during teardown failed", error)
         }
         try {
             record.release()
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            // error-policy:J6 AudioRecord is already being released.
+            Log.w(TAG, "AudioRecord release failed", error)
         }
     }
 
@@ -737,7 +742,9 @@ class TalkModePlugin : Plugin() {
             try {
                 recognizer?.cancel()
                 recognizer?.destroy()
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
+                // error-policy:J6 The recognizer is being replaced for frame capture.
+                Log.w(TAG, "SpeechRecognizer teardown for frame capture failed", error)
             }
             recognizer = null
         }
@@ -756,6 +763,7 @@ class TalkModePlugin : Plugin() {
                 startListeningInternal(markListening = true)
                 startSilenceMonitor()
             } catch (e: Exception) {
+                // error-policy:J4 Frame capture can end while the owning session stops.
                 Log.e(TAG, "Failed to resume STT after frames", e)
             }
         }
@@ -833,6 +841,7 @@ class TalkModePlugin : Plugin() {
         try {
             r.startListening(intent)
         } catch (e: Exception) {
+            // error-policy:J4 SpeechRecognizer reports recoverable failures to the session.
             Log.e(TAG, "Failed to start listening", e)
         }
     }
@@ -872,8 +881,9 @@ class TalkModePlugin : Plugin() {
                     val shouldInterrupt = isSpeaking && interruptOnSpeech
                     if (!shouldListen && !shouldInterrupt) return@post
                     startListeningInternal(markListening = shouldListen)
-                } catch (_: Throwable) {
-                    // Will be picked up by onError and retry again
+                } catch (error: Throwable) {
+                    // error-policy:J7 A failed restart is observed by the recognizer loop.
+                    Log.w(TAG, "SpeechRecognizer restart failed", error)
                 }
             }
         }
@@ -991,7 +1001,10 @@ class TalkModePlugin : Plugin() {
                 }
                 recognizer?.cancel()
                 startListeningInternal(markListening = false)
-            } catch (_: Throwable) {}
+            } catch (error: Throwable) {
+                // error-policy:J4 Barge-in remains optional when an OEM recognizer rejects overlap.
+                Log.w(TAG, "Could not start interruption recognizer", error)
+            }
         }
     }
 
@@ -1037,6 +1050,7 @@ class TalkModePlugin : Plugin() {
         // the earpiece. Re-route here so replies are audible out the speaker.
         audioManager?.let { routeVoiceOutput(it) }
 
+        var terminalError: String? = null
         try {
             val canUseLocalInference = useLocalInferenceTts && !forceSystemTts
             val canUseElevenLabs = !canUseLocalInference &&
@@ -1063,6 +1077,7 @@ class TalkModePlugin : Plugin() {
                         })
                     }
                 } catch (e: Exception) {
+                    // error-policy:J1 The speak call translates cancellation and errors for Capacitor.
                     if (pcmStopRequested.get()) {
                         call.resolve(JSObject().apply {
                             put("completed", false)
@@ -1070,13 +1085,7 @@ class TalkModePlugin : Plugin() {
                             put("usedSystemTts", false)
                         })
                     } else {
-                        // The on-device OmniVoice TTS assets aren't always staged
-                        // (it 502s "TEXT_TO_SPEECH not available"). Rather than go
-                        // silent — the JS browser-SpeechSynthesis fallback doesn't
-                        // exist in the Android WebView — fall back to the platform
-                        // TextToSpeech so replies are always spoken aloud.
-                        Log.w(TAG, "Local inference TTS failed, falling back to system TTS", e)
-                        speakWithSystemTts(text, call)
+                        throw e
                     }
                 }
             } else if (canUseElevenLabs) {
@@ -1103,6 +1112,7 @@ class TalkModePlugin : Plugin() {
                         })
                     }
                 } catch (e: Exception) {
+                    // error-policy:J1 The speak call translates cancellation and errors for Capacitor.
                     if (pcmStopRequested.get()) {
                         call.resolve(JSObject().apply {
                             put("completed", false)
@@ -1110,21 +1120,31 @@ class TalkModePlugin : Plugin() {
                             put("usedSystemTts", false)
                         })
                     } else {
-                        Log.w(TAG, "ElevenLabs TTS failed, falling back to system", e)
-                        speakWithSystemTts(text, call)
+                        throw e
                     }
                 }
             } else {
                 speakWithSystemTts(text, call)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Speak failed", e)
-            call.resolve(JSObject().apply {
-                put("completed", false)
-                put("interrupted", false)
-                put("usedSystemTts", usedSystemTts)
-                put("error", e.message ?: "Speak failed")
-            })
+            // error-policy:J1 Capacitor speak is the native TTS boundary.
+            if (pcmStopRequested.get()) {
+                call.resolve(JSObject().apply {
+                    put("completed", false)
+                    put("interrupted", true)
+                    put("usedSystemTts", usedSystemTts)
+                    lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
+                })
+            } else {
+                Log.e(TAG, "Speak failed", e)
+                terminalError = e.message ?: "Speak failed"
+                call.resolve(JSObject().apply {
+                    put("completed", false)
+                    put("interrupted", false)
+                    put("usedSystemTts", usedSystemTts)
+                    put("error", terminalError)
+                })
+            }
         } finally {
             val wasInterrupted = pcmStopRequested.get()
             val interruptedAt = lastInterruptedAtSeconds
@@ -1132,10 +1152,11 @@ class TalkModePlugin : Plugin() {
             pcmStopRequested.set(false)
 
             notifyListeners("speakComplete", JSObject().apply {
-                put("completed", !wasInterrupted)
+                put("completed", !wasInterrupted && terminalError == null)
                 if (wasInterrupted) {
                     interruptedAt?.let { put("interruptedAt", it) }
                 }
+                terminalError?.let { put("error", it) }
             })
 
             if (enabled) {
@@ -1228,178 +1249,249 @@ class TalkModePlugin : Plugin() {
 
     /**
      * Stream local-inference TTS from the embedded agent and play it natively.
-     *
-     * The agent currently returns a buffered WAV, but keeping playback in
-     * AudioTrack means this path is ready for a chunked PCM/WAV response without
-     * going back through WebView decodeAudioData.
      */
     private suspend fun streamAndPlayLocalInferenceTts(
         text: String,
         directive: JSObject?
     ) = withContext(Dispatchers.IO) {
         pcmStopRequested.set(false)
-        // Prefer the in-process fused Kokoro voice via the bionic inference host.
-        // Only if that host is unreachable (e.g. desktop/Electrobun, or a build
-        // without it) do we fall through to the HTTP agent endpoint.
-        if (streamAndPlayBionicKokoroTts(text, directive)) {
-            return@withContext
-        }
-        val response = requestLocalInferenceTts(buildLocalInferenceTtsPayload(text, directive))
         try {
-            BufferedInputStream(ByteArrayInputStream(response)).use { input ->
-                val format = readWavPcmFormat(input)
-                val track = createPcmAudioTrack(format)
-                pcmTrack = track
-                track.play()
-
-                Log.d(
-                    TAG,
-                    "Local inference PCM play start sampleRate=${format.sampleRate} channels=${format.channels}"
-                )
-                notifyListeners("playbackStart", JSObject().apply {
-                    put("provider", "local-inference")
-                    put("sampleRate", format.sampleRate)
-                    put("channels", format.channels)
-                })
-                val framesWritten = writePcmStreamToTrack(
-                    input,
-                    track,
-                    format,
-                    "local-inference"
-                )
-                drainPcmTrack(track, framesWritten, format.sampleRate)
-                if (!pcmStopRequested.get()) {
-                    track.stop()
-                }
-                Log.d(TAG, "Local inference PCM play done frames=$framesWritten")
-            }
+            streamLocalInferenceTts(buildLocalInferenceTtsPayload(text, directive))
         } finally {
             cleanupPcmTrack()
         }
     }
 
     /**
-     * Synthesize + play with the fused Kokoro-82M head in the bionic inference
-     * host (ElizaBionicInferenceServer, op "tts") over its abstract-namespace
-     * UDS. The host loads the same libelizainference that runs GPU text and
-     * synthesizes Kokoro PCM in-process — no musl agent, no HTTP, no 502 → no
-     * fallback to the platform TextToSpeech (the bug this fixes: the app was
-     * speaking with the Android system voice). Returns true on success; false if
-     * the host is unreachable so the caller can fall through.
+     * Consume the local-agent HTTP stream directly into AudioTrack. The agent
+     * owns text sanitization and cached phonemization, then delegates IPA to the
+     * bionic Kokoro host; TalkMode owns only transport and playback. The UDS is
+     * closed by [stopSpeakingInternal], which propagates cancellation to the
+     * route AbortSignal without a read deadline.
      */
-    private suspend fun streamAndPlayBionicKokoroTts(
-        text: String,
-        directive: JSObject?
-    ): Boolean = withContext(Dispatchers.IO) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return@withContext false
-        val speed = (directive?.optDouble("speed", 1.0) ?: 1.0).toFloat()
-        val sock = LocalSocket()
-        try {
-            sock.connect(
-                LocalSocketAddress(BIONIC_INFER_SOCKET, LocalSocketAddress.Namespace.ABSTRACT)
-            )
-        } catch (e: Exception) {
-            Log.d(TAG, "bionic Kokoro TTS host unreachable: ${e.message}")
-            try { sock.close() } catch (_: Exception) {}
-            return@withContext false
-        }
-        try {
-            val req = JSONObject().apply {
-                put("op", "tts")
-                put("text", trimmed)
-                put("speed", speed.toDouble())
-            }.toString().toByteArray(Charsets.UTF_8)
-            DataOutputStream(sock.outputStream).apply {
-                writeInt(req.size) // big-endian length prefix
-                write(req)
-                flush()
-            }
-            val din = DataInputStream(sock.inputStream)
-            val len = din.readInt()
-            if (len <= 0 || len > 64 * 1024 * 1024) {
-                throw IllegalStateException("bionic TTS bad frame length $len")
-            }
-            val respBytes = ByteArray(len)
-            din.readFully(respBytes)
-            val resp = JSONObject(String(respBytes, Charsets.UTF_8))
-            if (!resp.optBoolean("ok", false)) {
-                throw IllegalStateException("bionic TTS error: ${resp.optString("error")}")
-            }
-            val sampleRate = resp.optInt("sampleRate", 24000)
-            val pcmF32 = Base64.decode(resp.getString("pcmBase64"), Base64.NO_WRAP)
-            // fp32 LE → int16 PCM (the play path is ENCODING_PCM_16BIT).
-            val fb = ByteBuffer.wrap(pcmF32).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
-            val nSamples = fb.remaining()
-            if (nSamples == 0) {
-                throw IllegalStateException("bionic TTS returned 0 samples")
-            }
-            val pcm16 = ByteArray(nSamples * 2)
-            val ob = ByteBuffer.wrap(pcm16).order(ByteOrder.LITTLE_ENDIAN)
-            for (i in 0 until nSamples) {
-                val s = (fb.get(i) * 32767f).coerceIn(-32768f, 32767f).toInt().toShort()
-                ob.putShort(s)
-            }
-            val format = PcmStreamFormat(sampleRate, 1, 16, pcm16.size)
-            val track = createPcmAudioTrack(format)
-            pcmTrack = track
-            track.play()
-            notifyListeners("playbackStart", JSObject().apply {
-                put("provider", "local-inference")
-                put("sampleRate", sampleRate)
-                put("channels", 1)
-            })
-            val framesWritten = writePcmStreamToTrack(
-                BufferedInputStream(ByteArrayInputStream(pcm16)),
-                track,
-                format,
-                "local-inference"
-            )
-            drainPcmTrack(track, framesWritten, sampleRate)
-            if (!pcmStopRequested.get()) track.stop()
-            Log.d(TAG, "bionic Kokoro TTS played $nSamples samples @ $sampleRate Hz")
-            true
-        } finally {
-            cleanupPcmTrack()
-            try { sock.close() } catch (_: Exception) {}
-        }
-    }
-
-    /**
-     * Route the fallback Kokoro request through the app-owned local-agent IPC
-     * boundary. Production Android does not expose the embedded agent on TCP;
-     * ElizaAgentService translates this request to its abstract UDS protocol.
-     */
-    private fun requestLocalInferenceTts(body: String): ByteArray {
+    private fun streamLocalInferenceTts(body: String) {
         val tokenFile = File(context.filesDir, "auth/local-agent-token")
         val token = tokenFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
         if (token.isEmpty()) {
             throw IllegalStateException("Local agent auth token is missing")
         }
+        val requestId = "talkmode-tts-${UUID.randomUUID()}"
         val serviceClassName = resolveAgentServiceClassName()
             ?: throw IllegalStateException("ElizaAgentService is not registered")
         val request = JSONObject(
             TalkModeAndroidBridgeContract.localInferenceRequestPayload(
                 body = body,
-                authorization = "Bearer $token"
+                authorization = "Bearer $token",
+                requestId = requestId
             )
         )
         val serviceClass = Class.forName(serviceClassName)
-        val bridge = serviceClass.getMethod("requestLocalAgent", String::class.java)
-        val raw = bridge.invoke(null, request.toString()) as? String
-            ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
-        val response = JSONObject(raw)
-        val status = response.optInt("status", 0)
-        if (status !in 200..299) {
+        val bridge = serviceClass.getMethod(
+            "requestLocalAgentStream",
+            String::class.java,
+            java.util.function.Consumer::class.java
+        )
+        val register = serviceClass.getMethod(
+            "registerLocalAgentStream",
+            String::class.java
+        )
+        val headerBuffer = ByteArrayOutputStream()
+        var format: PcmStreamFormat? = null
+        var track: AudioTrack? = null
+        var remainingDataBytes = 0L
+        var pendingPcm = ByteArray(0)
+        var framesWritten = 0L
+        var responseStatus: Int? = null
+        var completed = false
+        var failure: Throwable? = null
+
+        fun writePcm(bytes: ByteArray) {
+            val currentFormat = format
+                ?: throw IllegalStateException("PCM arrived before WAV format")
+            val currentTrack = track
+                ?: throw IllegalStateException("PCM arrived before AudioTrack")
+            val bytesPerFrame = currentFormat.channels * (currentFormat.bitsPerSample / 8)
+            val capacity = (remainingDataBytes - pendingPcm.size)
+                .coerceAtLeast(0L)
+                .coerceAtMost(bytes.size.toLong())
+                .toInt()
+            val combined = ByteArray(pendingPcm.size + capacity)
+            pendingPcm.copyInto(combined)
+            bytes.copyInto(combined, pendingPcm.size, 0, capacity)
+            val writable = combined.size - combined.size % bytesPerFrame
+            var offset = 0
+            while (offset < writable && !pcmStopRequested.get()) {
+                val wrote = currentTrack.write(combined, offset, writable - offset)
+                if (wrote <= 0) {
+                    throw IllegalStateException("AudioTrack write failed: $wrote")
+                }
+                emitPlaybackFrame(
+                    "local-inference",
+                    combined,
+                    offset,
+                    wrote,
+                    currentFormat,
+                    bytesPerFrame
+                )
+                offset += wrote
+                framesWritten += wrote / bytesPerFrame
+                remainingDataBytes -= wrote
+            }
+            pendingPcm = combined.copyOfRange(offset, combined.size)
+        }
+
+        fun consumeAudioChunk(bytes: ByteArray) {
+            if (format != null) {
+                writePcm(bytes)
+                return
+            }
+            headerBuffer.write(bytes)
+            if (headerBuffer.size() < 44) return
+            val buffered = headerBuffer.toByteArray()
+            val input = BufferedInputStream(ByteArrayInputStream(buffered))
+            val parsed = try {
+                readWavPcmFormat(input)
+            } catch (error: IllegalStateException) {
+                // error-policy:J3 A partial WAV header is explicitly incomplete input.
+                if (
+                    error.message?.startsWith("Unexpected end of WAV stream") == true &&
+                    headerBuffer.size() < 64 * 1024
+                ) {
+                    return
+                }
+                throw error
+            }
+            format = parsed
+            remainingDataBytes = parsed.dataBytes.toLong()
+            val audioTrack = createPcmAudioTrack(parsed)
+            track = audioTrack
+            pcmTrack = audioTrack
+            playbackFrameIndex = 0L
+            audioTrack.play()
+            Log.d(
+                TAG,
+                "Local inference PCM first byte sampleRate=${parsed.sampleRate} channels=${parsed.channels}"
+            )
+            notifyListeners("playbackStart", JSObject().apply {
+                put("provider", "local-inference")
+                put("sampleRate", parsed.sampleRate)
+                put("channels", parsed.channels)
+            })
+            val headerBytes = buffered.size - input.available()
+            headerBuffer.reset()
+            if (headerBytes < buffered.size) {
+                writePcm(buffered.copyOfRange(headerBytes, buffered.size))
+            }
+        }
+
+        val onEvent = java.util.function.Consumer<String> { eventJson ->
+            if (failure != null) return@Consumer
+            try {
+                val event = JSONObject(eventJson)
+                if (completed) {
+                    throw IllegalStateException(
+                        "Local inference TTS emitted ${event.optString("type")} after completion"
+                    )
+                }
+                when (event.optString("type")) {
+                    "response" -> {
+                        if (responseStatus != null) {
+                            throw IllegalStateException(
+                                "Local inference TTS emitted more than one response frame"
+                            )
+                        }
+                        responseStatus = event.optInt("status", 0)
+                        if (responseStatus !in 200..299) {
+                            failure = IllegalStateException(
+                                "Local inference TTS returned HTTP $responseStatus"
+                            )
+                            cancelLocalAgentStream(serviceClass, requestId)
+                        }
+                    }
+                    "chunk" -> {
+                        if (responseStatus?.let { it in 200..299 } != true) {
+                            throw IllegalStateException(
+                                "Local inference TTS chunk arrived before a successful response"
+                            )
+                        }
+                        consumeAudioChunk(
+                            Base64.decode(event.getString("dataBase64"), Base64.DEFAULT)
+                        )
+                    }
+                    "complete" -> {
+                        if (responseStatus == null) {
+                            throw IllegalStateException(
+                                "Local inference TTS completed before its response frame"
+                            )
+                        }
+                        event.stringOrNull("error")?.let {
+                            failure = IllegalStateException("Local inference TTS error: $it")
+                        }
+                        completed = true
+                    }
+                    else -> throw IllegalStateException(
+                        "Local inference TTS emitted an unknown stream frame"
+                    )
+                }
+            } catch (error: Throwable) {
+                // error-policy:J1 The reflected stream callback is the transport boundary.
+                failure = error
+                cancelLocalAgentStream(serviceClass, requestId)
+            }
+        }
+
+        synchronized(localAgentStreamLock) {
+            if (pcmStopRequested.get()) return
+            val reserved = register.invoke(null, requestId) as? Boolean
+            if (reserved != true) {
+                throw IllegalStateException(
+                    "Local inference TTS request id is already active: $requestId"
+                )
+            }
+            activeLocalAgentServiceClass = serviceClass
+            activeLocalAgentStreamId = requestId
+        }
+        try {
+            bridge.invoke(null, request.toString(), onEvent)
+        } finally {
+            synchronized(localAgentStreamLock) {
+                if (activeLocalAgentStreamId == requestId) {
+                    activeLocalAgentStreamId = null
+                }
+                if (activeLocalAgentServiceClass === serviceClass) {
+                    activeLocalAgentServiceClass = null
+                }
+            }
+        }
+        if (pcmStopRequested.get()) return
+        failure?.let { throw it }
+        if (!completed) {
+            throw IllegalStateException("Local inference TTS stream ended without completion")
+        }
+        val currentFormat = format
+            ?: throw IllegalStateException("Local inference TTS returned no WAV audio")
+        val currentTrack = track
+            ?: throw IllegalStateException("Local inference TTS did not initialize playback")
+        if (remainingDataBytes != 0L || pendingPcm.isNotEmpty()) {
             throw IllegalStateException(
-                "Local inference TTS error: $status ${response.optString("body", "")}".trim()
+                "Local inference TTS ended with $remainingDataBytes PCM bytes missing"
             )
         }
-        val encoded = response.optString("bodyBase64", "")
-        if (response.optString("bodyEncoding", "") != "base64" || encoded.isEmpty()) {
-            throw IllegalStateException("Local inference TTS returned no binary audio body")
+        drainPcmTrack(currentTrack, framesWritten, currentFormat.sampleRate)
+        if (!pcmStopRequested.get()) currentTrack.stop()
+        Log.d(TAG, "Local inference PCM play done frames=$framesWritten")
+    }
+
+    private fun cancelLocalAgentStream(serviceClass: Class<*>, requestId: String) {
+        try {
+            serviceClass.getMethod(
+                "cancelLocalAgentStream",
+                String::class.java
+            ).invoke(null, requestId)
+        } catch (error: ReflectiveOperationException) {
+            // error-policy:J6 The owner is already tearing down this stream.
+            Log.w(TAG, "Failed to cancel local-agent TTS stream $requestId", error)
         }
-        return Base64.decode(encoded, Base64.DEFAULT)
     }
 
     private fun resolveAgentServiceClassName(): String? {
@@ -1621,14 +1713,31 @@ class TalkModePlugin : Plugin() {
 
     private fun drainPcmTrack(track: AudioTrack, framesWritten: Long, sampleRate: Int) {
         if (framesWritten <= 0L || sampleRate <= 0) return
-        val maxDrainMs = (framesWritten * 1000L / sampleRate).coerceAtMost(30_000L) + 1_000L
-        val deadline = SystemClock.elapsedRealtime() + maxDrainMs
-        while (
-            !pcmStopRequested.get() &&
-            track.playbackHeadPosition.toLong() < framesWritten &&
-            SystemClock.elapsedRealtime() < deadline
-        ) {
-            SystemClock.sleep(20)
+        if (track.playbackHeadPosition.toLong() >= framesWritten) return
+        if (framesWritten > Int.MAX_VALUE) {
+            throw IllegalStateException("PCM playback exceeds AudioTrack marker capacity")
+        }
+        val drained = CountDownLatch(1)
+        activePlaybackDrain = drained
+        track.setPlaybackPositionUpdateListener(
+            object : AudioTrack.OnPlaybackPositionUpdateListener {
+                override fun onMarkerReached(audioTrack: AudioTrack?) {
+                    drained.countDown()
+                }
+
+                override fun onPeriodicNotification(audioTrack: AudioTrack?) = Unit
+            },
+            mainHandler
+        )
+        track.notificationMarkerPosition = framesWritten.toInt()
+        if (track.playbackHeadPosition.toLong() >= framesWritten) {
+            drained.countDown()
+        }
+        try {
+            drained.await()
+        } finally {
+            if (activePlaybackDrain === drained) activePlaybackDrain = null
+            track.setPlaybackPositionUpdateListener(null)
         }
     }
 
@@ -1675,6 +1784,7 @@ class TalkModePlugin : Plugin() {
         track.play()
         val format = PcmStreamFormat(sampleRate, 1, 16, Int.MAX_VALUE)
         val bytesPerFrame = format.channels * (format.bitsPerSample / 8)
+        var framesWritten = 0L
         playbackFrameIndex = 0L
 
         Log.d(TAG, "PCM play start sampleRate=$sampleRate bufferSize=$bufferSize")
@@ -1704,6 +1814,7 @@ class TalkModePlugin : Plugin() {
                         val wrote = try {
                             track.write(buffer, offset, bytesRead - offset)
                         } catch (e: Throwable) {
+                            // error-policy:J4 Owner cancellation intentionally closes AudioTrack.
                             if (pcmStopRequested.get()) return@withContext
                             throw e
                         }
@@ -1720,12 +1831,13 @@ class TalkModePlugin : Plugin() {
                             bytesPerFrame
                         )
                         offset += wrote
+                        framesWritten += wrote / bytesPerFrame
                     }
                 }
             }
 
-            // Wait for playback buffer to drain
             if (!pcmStopRequested.get()) {
+                drainPcmTrack(track, framesWritten, sampleRate)
                 track.stop()
             }
             Log.d(TAG, "PCM play done")
@@ -1756,8 +1868,11 @@ class TalkModePlugin : Plugin() {
 
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
-        conn.connectTimeout = 30_000
-        conn.readTimeout = 30_000
+        // Connection lifetime belongs to the speaking session. stopSpeaking()
+        // disconnects the active socket; a guessed wall-clock deadline would
+        // truncate valid long-form synthesis and cannot detect real progress.
+        conn.connectTimeout = 0
+        conn.readTimeout = 0
         conn.setRequestProperty("Content-Type", "application/json")
         conn.setRequestProperty("Accept", ElevenLabsPayload.resolveAcceptHeader(request.outputFormat))
         conn.setRequestProperty("xi-api-key", apiKey)
@@ -1770,13 +1885,7 @@ class TalkModePlugin : Plugin() {
         setState("speaking", "Speaking (System)")
 
         if (!systemTtsReady || systemTts == null) {
-            call.resolve(JSObject().apply {
-                put("completed", false)
-                put("interrupted", false)
-                put("usedSystemTts", true)
-                put("error", "System TTS not available")
-            })
-            return
+            throw IllegalStateException("System TTS not available")
         }
 
         val utteranceId = "talkmode-${UUID.randomUUID()}"
@@ -1790,23 +1899,16 @@ class TalkModePlugin : Plugin() {
             systemTts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, utteranceId)
         }
 
-        try {
-            withContext(Dispatchers.IO) {
-                kotlinx.coroutines.withTimeout(180_000) { deferred.await() }
-            }
-            call.resolve(JSObject().apply {
-                put("completed", true)
-                put("interrupted", false)
-                put("usedSystemTts", true)
-            })
-        } catch (e: Exception) {
-            call.resolve(JSObject().apply {
-                put("completed", false)
-                put("interrupted", false)
-                put("usedSystemTts", true)
-                put("error", e.message ?: "System TTS error")
-            })
-        }
+        // Android reports the terminal utterance state through
+        // UtteranceProgressListener. A wall-clock deadline cannot
+        // distinguish long speech from a stalled engine; stopSpeaking()
+        // cancels this deferred when the owning session is abandoned.
+        deferred.await()
+        call.resolve(JSObject().apply {
+            put("completed", true)
+            put("interrupted", false)
+            put("usedSystemTts", true)
+        })
     }
 
     // ── Voice audio session ─────────────────────────────────────────────
@@ -1862,8 +1964,10 @@ class TalkModePlugin : Plugin() {
         for (stream in earconStreams) {
             try {
                 am.adjustStreamVolume(stream, AudioManager.ADJUST_MUTE, 0)
-            } catch (_: Throwable) {
+            } catch (error: Throwable) {
+                // error-policy:J4 Some OEMs require DND access for earcon streams.
                 // Some OEMs disallow muting certain streams without DND access.
+                Log.w(TAG, "Could not mute recognizer earcon stream $stream", error)
             }
         }
         earconStreamsMuted = true
@@ -1874,7 +1978,10 @@ class TalkModePlugin : Plugin() {
         for (stream in earconStreams) {
             try {
                 am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
-            } catch (_: Throwable) {}
+            } catch (error: Throwable) {
+                // error-policy:J6 Voice-session teardown continues across OEM audio quirks.
+                Log.w(TAG, "Could not unmute recognizer earcon stream $stream", error)
+            }
         }
         earconStreamsMuted = false
     }
@@ -1925,6 +2032,22 @@ class TalkModePlugin : Plugin() {
 
     private fun stopSpeakingInternal() {
         pcmStopRequested.set(true)
+        activePlaybackDrain?.countDown()
+        activePlaybackDrain = null
+        val streamToCancel = synchronized(localAgentStreamLock) {
+            val requestId = activeLocalAgentStreamId
+            val serviceClass = activeLocalAgentServiceClass
+            activeLocalAgentStreamId = null
+            activeLocalAgentServiceClass = null
+            if (requestId != null && serviceClass != null) {
+                serviceClass to requestId
+            } else {
+                null
+            }
+        }
+        streamToCancel?.let { (serviceClass, requestId) ->
+            cancelLocalAgentStream(serviceClass, requestId)
+        }
         val conn = activePcmConnection
         activePcmConnection = null
         conn?.disconnect()
@@ -1943,8 +2066,9 @@ class TalkModePlugin : Plugin() {
             track.pause()
             track.flush()
             track.stop()
-        } catch (_: Throwable) {
-            // ignore cleanup errors
+        } catch (error: Throwable) {
+            // error-policy:J6 AudioTrack is already being torn down.
+            Log.w(TAG, "AudioTrack cleanup failed", error)
         } finally {
             track.release()
         }
