@@ -136,6 +136,7 @@
       "default": "./dist/runtime/*.js"
     },
     "./services/app-session-gate": {
+      "types": "./dist/services/app-session-gate.d.ts",
       "eliza-source": {
         "types": "./src/services/app-session-gate.ts",
         "import": "./src/services/app-session-gate.ts",
@@ -147,8 +148,7 @@
         "default": "./src/services/app-session-gate.ts"
       },
       "import": "./dist/services/app-session-gate.js",
-      "default": "./dist/services/app-session-gate.js",
-      "types": "./src/services/app-session-gate.d.ts"
+      "default": "./dist/services/app-session-gate.js"
     },
     "./services/tee-evidence": {
       "types": "./src/services/tee-evidence.ts",

@@ -189,6 +189,7 @@ function createRuntime(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
