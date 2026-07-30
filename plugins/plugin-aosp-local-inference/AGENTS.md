@@ -69,8 +69,8 @@ All env vars are read at call time (no module-load side effects).
 | `ELIZA_LLAMA_KV_TYPE_K` / `ELIZA_LLAMA_KV_TYPE_V` | No | KV-cache type: `f16`, `q8_0`, `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`. Chat defaults: K=`q8_0`, V=`f16`. |
 | `ELIZA_LLAMA_DEFAULT_MAX_TOKENS` | No | Default max output tokens (default 512). |
 | `ELIZA_LLAMA_MAX_OUTPUT_TOKENS` | No | Hard cap on output tokens (default 256; capped against context). |
-| `ELIZA_LOCAL_EMBEDDING_ENABLED` | No | Set to `"1"` to load the embedding GGUF. Default: disabled (zero-vector returned). |
-| `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | No | Zero-vector dimension when embeddings are disabled (default 384). |
+| `ELIZA_LOCAL_EMBEDDING_ENABLED` | No | Set to `"1"` to load and register the embedding GGUF. Default: disabled (`TEXT_EMBEDDING` remains unregistered). |
+| `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | No | Override the declared embedding output width (published default: 1024). |
 | `ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD` | No | Set to `"1"` to disable auto-download of recommended models from HuggingFace. |
 | `ELIZA_MTP` | No | Boolean — enable in-process MTP speculative decoding. |
 | `ELIZA_MTP_REQUIRED` | No | Boolean — require MTP; fail if unavailable. |
