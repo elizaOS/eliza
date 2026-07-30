@@ -11,6 +11,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  resolveAliasedEnvValue,
   Service,
   type ServiceTypeName,
   withStandaloneTrajectory,
@@ -85,7 +86,7 @@ const SCENE_DESCRIPTION_FACE_LIMIT = 10;
 
 function configuredMobilePlatform(): string | undefined {
   for (const value of [
-    process.env.ELIZA_PLATFORM,
+    resolveAliasedEnvValue("ELIZA_PLATFORM"),
     process.env.ELIZA_MOBILE_PLATFORM,
   ]) {
     const platform = value?.trim().toLowerCase();
