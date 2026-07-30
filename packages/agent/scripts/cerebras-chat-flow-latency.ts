@@ -16,14 +16,15 @@ import {
   drainPostDeliveryTasks,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
+  type InferenceTurnSummary,
   InferenceTurnTimer,
   inferenceTimingRegistry,
   type Memory,
   runWithInferenceTiming,
+  runWithTrajectoryContext,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
-import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 
 const DEFAULT_MODEL = "gemma-4-31b";
@@ -86,6 +87,91 @@ export function verifyProofResponse(response: string, proof: string): void {
   }
 }
 
+type ProviderTelemetry = ReturnType<
+  typeof buildInferenceTimingDevPayload
+>["providers"][number];
+
+export function verifyProviderSweepTelemetry(
+  providerNames: readonly string[],
+  fresh: readonly ProviderTelemetry[],
+  reused: readonly ProviderTelemetry[],
+  samples: number,
+): void {
+  const freshByName = new Map(
+    fresh.map((provider) => [provider.providerName, provider]),
+  );
+  const reusedByName = new Map(
+    reused.map((provider) => [provider.providerName, provider]),
+  );
+  const failures: string[] = [];
+
+  for (const providerName of providerNames) {
+    const freshProvider = freshByName.get(providerName);
+    if (!freshProvider) {
+      failures.push(`${providerName}: missing fresh telemetry`);
+    } else if (
+      freshProvider.execution.count !== samples ||
+      freshProvider.successes !== samples ||
+      freshProvider.cacheHits !== 0 ||
+      freshProvider.errors !== 0 ||
+      freshProvider.aborted !== 0 ||
+      freshProvider.deadlineExceeded !== 0 ||
+      freshProvider.unknown !== 0
+    ) {
+      failures.push(
+        `${providerName}: invalid fresh telemetry ${JSON.stringify(freshProvider)}`,
+      );
+    }
+
+    const reusedProvider = reusedByName.get(providerName);
+    if (!reusedProvider) {
+      failures.push(`${providerName}: missing maximum-reuse telemetry`);
+    } else if (
+      reusedProvider.cacheHits !== samples ||
+      reusedProvider.execution.count !== 0 ||
+      reusedProvider.successes !== 0 ||
+      reusedProvider.errors !== 0 ||
+      reusedProvider.aborted !== 0 ||
+      reusedProvider.deadlineExceeded !== 0 ||
+      reusedProvider.unknown !== 0
+    ) {
+      failures.push(
+        `${providerName}: invalid maximum-reuse telemetry ${JSON.stringify(reusedProvider)}`,
+      );
+    }
+  }
+
+  if (
+    freshByName.size !== providerNames.length ||
+    reusedByName.size !== providerNames.length
+  ) {
+    failures.push(
+      `provider cardinality mismatch: registered=${providerNames.length}, fresh=${freshByName.size}, maximumReuse=${reusedByName.size}`,
+    );
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Provider sweep verification failed:\n${failures.join("\n")}`,
+    );
+  }
+}
+
+export function providerParallelismRatio(
+  summary: InferenceTurnSummary,
+): number {
+  if (summary.totalMs === null || summary.totalMs <= 0) {
+    throw new Error(`Provider sweep turn ${summary.turnId} has no wall time`);
+  }
+  const providerWorkMs = summary.spans
+    .filter(
+      (span) =>
+        span.name.startsWith("provider:") && span.meta?.outcome === "success",
+    )
+    .reduce((total, span) => total + span.durationMs, 0);
+  return rounded(providerWorkMs / summary.totalMs);
+}
+
 function positiveIntegerSetting(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
@@ -141,11 +227,18 @@ async function main(): Promise<void> {
   );
   configuredModelEnvironment(model);
 
+  const { default: openaiPlugin } = await import(
+    "../../../plugins/plugin-openai/index.ts"
+  );
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
     plugins: [openaiPlugin],
   });
   try {
+    const agentName = runtime.character.name;
+    if (!agentName) {
+      throw new Error("Latency runtime character must have a name");
+    }
     const worldId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
     const entityId = randomUUID() as UUID;
@@ -185,7 +278,7 @@ async function main(): Promise<void> {
       const result = await generateChatResponse(
         runtime,
         message as Memory,
-        runtime.character.name,
+        agentName,
         {
           onChunk: (chunk) => {
             streamed.push(chunk);
@@ -229,7 +322,7 @@ async function main(): Promise<void> {
         `Expected ${sampleCount} timed turns, observed ${chatTelemetry.turns.length}`,
       );
     }
-    if (turns.some((turn) => turn.usage.llmCalls !== 1)) {
+    if (turns.some((turn) => turn.usage?.llmCalls !== 1)) {
       throw new Error(
         "Every benchmark turn must make exactly one live LLM call",
       );
@@ -239,7 +332,10 @@ async function main(): Promise<void> {
       (provider) => provider.name,
     );
     inferenceTimingRegistry.reset();
-    const providerSweepWallMs: number[] = [];
+    const providerSweepFreshWallMs: number[] = [];
+    const providerSweepReusedWallMs: number[] = [];
+    const providerSweepFreshSummaries: InferenceTurnSummary[] = [];
+    const providerSweepReusedSummaries: InferenceTurnSummary[] = [];
     for (let index = 0; index < sampleCount; index += 1) {
       const message = createMessageMemory({
         id: randomUUID() as UUID,
@@ -252,24 +348,62 @@ async function main(): Promise<void> {
         },
       });
       const timer = new InferenceTurnTimer({
-        turnId: `provider-sweep-${index}`,
-        label: "all-provider-sweep",
+        turnId: `provider-sweep-fresh-${index}`,
+        label: "all-provider-sweep-fresh",
         roomId,
       });
-      const startedAt = performance.now();
-      await runWithInferenceTiming(timer, () =>
-        runtime.composeState(
-          message as Memory,
-          registeredProviderNames,
-          true,
-          true,
-        ),
+      const reusedTimer = new InferenceTurnTimer({
+        turnId: `provider-sweep-reused-${index}`,
+        label: "all-provider-sweep-reused",
+        roomId,
+      });
+      await runWithTrajectoryContext(
+        { turnMemo: new Map<string, Promise<unknown>>() },
+        async () => {
+          const freshStartedAt = performance.now();
+          await runWithInferenceTiming(timer, () =>
+            runtime.composeState(
+              message as Memory,
+              registeredProviderNames,
+              true,
+            ),
+          );
+          providerSweepFreshWallMs.push(performance.now() - freshStartedAt);
+
+          const reusedStartedAt = performance.now();
+          await runWithInferenceTiming(reusedTimer, () =>
+            runtime.composeState(
+              message as Memory,
+              registeredProviderNames,
+              true,
+              false,
+              [],
+            ),
+          );
+          providerSweepReusedWallMs.push(performance.now() - reusedStartedAt);
+        },
       );
-      providerSweepWallMs.push(performance.now() - startedAt);
-      inferenceTimingRegistry.record(timer.close());
+      providerSweepFreshSummaries.push(timer.close());
+      providerSweepReusedSummaries.push(reusedTimer.close());
       await drainPostDeliveryTasks(runtime);
     }
-    const providerSweepTelemetry = buildInferenceTimingDevPayload(sampleCount);
+    for (const summary of providerSweepFreshSummaries) {
+      inferenceTimingRegistry.record(summary);
+    }
+    const providerSweepFreshTelemetry =
+      buildInferenceTimingDevPayload(sampleCount);
+    inferenceTimingRegistry.reset();
+    for (const summary of providerSweepReusedSummaries) {
+      inferenceTimingRegistry.record(summary);
+    }
+    const providerSweepReusedTelemetry =
+      buildInferenceTimingDevPayload(sampleCount);
+    verifyProviderSweepTelemetry(
+      registeredProviderNames,
+      providerSweepFreshTelemetry.providers,
+      providerSweepReusedTelemetry.providers,
+      sampleCount,
+    );
 
     const report = {
       generatedAt: new Date().toISOString(),
@@ -300,11 +434,21 @@ async function main(): Promise<void> {
       providerTelemetry: chatTelemetry.providers,
       allProviderSweep: {
         execution:
-          "every registered provider explicitly selected and executed concurrently by AgentRuntime.composeState",
+          "every registered provider explicitly selected; fresh providers execute concurrently, then the identical message composes again with maximum same-turn reuse",
         samples: sampleCount,
-        wallMs: distribution(providerSweepWallMs),
-        providerTelemetry: providerSweepTelemetry.providers,
-        turns: providerSweepTelemetry.turns,
+        fresh: {
+          wallMs: distribution(providerSweepFreshWallMs),
+          parallelismRatio: distribution(
+            providerSweepFreshSummaries.map(providerParallelismRatio),
+          ),
+          providerTelemetry: providerSweepFreshTelemetry.providers,
+          turns: providerSweepFreshTelemetry.turns,
+        },
+        maximumReuse: {
+          wallMs: distribution(providerSweepReusedWallMs),
+          providerTelemetry: providerSweepReusedTelemetry.providers,
+          turns: providerSweepReusedTelemetry.turns,
+        },
       },
       turns,
       inferenceTurns: chatTelemetry.turns,
