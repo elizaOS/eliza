@@ -85,6 +85,7 @@ type AgentInbound =
       correlationId: string;
       messages: { role: string; content: string }[];
     }
+  | { type: "cancel"; correlationId: string }
   | { type: "ping"; at: number };
 
 type DeviceOutbound =
@@ -220,6 +221,8 @@ export class DeviceBridgeClient {
   private reconnectAttempt = 0;
   private stopped = false;
   private readonly config: DeviceBridgeClientConfig;
+  private activeGenerationCorrelationId: string | null = null;
+  private readonly cancelledGenerations = new Set<string>();
 
   constructor(config: DeviceBridgeClientConfig) {
     this.config = config;
@@ -458,6 +461,23 @@ export class DeviceBridgeClient {
       return;
     }
 
+    if (msg.type === "cancel") {
+      if (this.activeGenerationCorrelationId !== msg.correlationId) return;
+      this.cancelledGenerations.add(msg.correlationId);
+      try {
+        const capacitorLlama = await loadCapacitorLlama();
+        await capacitorLlama.cancelGenerate();
+      } catch (err) {
+        // error-policy:J1 RPC boundary: cancellation failed on the native
+        // side, so surface the bridge error instead of leaking a rejection.
+        this.config.onStateChange?.(
+          "error",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
+      return;
+    }
+
     if (msg.type === "load") {
       try {
         const capacitorLlama = await loadCapacitorLlama();
@@ -518,14 +538,26 @@ export class DeviceBridgeClient {
     }
 
     if (msg.type === "generate") {
+      if (this.activeGenerationCorrelationId !== null) {
+        this.send(ws, {
+          type: "generateResult",
+          correlationId: msg.correlationId,
+          ok: false,
+          error: `DEVICE_BUSY: generation ${this.activeGenerationCorrelationId} already owns the native context`,
+        });
+        return;
+      }
+      this.activeGenerationCorrelationId = msg.correlationId;
       try {
         const capacitorLlama = await loadCapacitorLlama();
+        if (this.cancelledGenerations.has(msg.correlationId)) return;
         const result = await capacitorLlama.generate({
           prompt: msg.prompt,
           stopSequences: msg.stopSequences,
           maxTokens: msg.maxTokens,
           temperature: msg.temperature,
         });
+        if (this.cancelledGenerations.has(msg.correlationId)) return;
         this.send(ws, {
           type: "generateResult",
           correlationId: msg.correlationId,
@@ -539,6 +571,7 @@ export class DeviceBridgeClient {
             : {}),
         });
       } catch (err) {
+        if (this.cancelledGenerations.has(msg.correlationId)) return;
         // error-policy:J1 RPC boundary: relay the failure to the agent as a
         // structured {ok:false,error} result over the bridge.
         this.send(ws, {
@@ -547,6 +580,11 @@ export class DeviceBridgeClient {
           ok: false,
           error: err instanceof Error ? err.message : String(err),
         });
+      } finally {
+        this.cancelledGenerations.delete(msg.correlationId);
+        if (this.activeGenerationCorrelationId === msg.correlationId) {
+          this.activeGenerationCorrelationId = null;
+        }
       }
       return;
     }
