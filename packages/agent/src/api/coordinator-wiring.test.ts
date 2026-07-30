@@ -55,11 +55,16 @@ describe("wireCoordinatorBridgesWhenReady", () => {
     });
     const started: string[] = [];
     let release: (() => void) | undefined;
+    let resolveAllStarted: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    const allStarted = new Promise<void>((resolve) => {
+      resolveAllStarted = resolve;
+    });
     const bridge = (name: string) => async () => {
       started.push(name);
+      if (started.length === 4) resolveAllStarted?.();
       await gate;
       return true;
     };
@@ -75,8 +80,7 @@ describe("wireCoordinatorBridgesWhenReady", () => {
         logger: { warn: vi.fn(), debug: vi.fn() },
       },
     );
-    await Promise.resolve();
-    await Promise.resolve();
+    await allStarted;
 
     expect(started).toEqual(["chat", "ws", "eventRouting", "swarmSynthesis"]);
     release?.();
