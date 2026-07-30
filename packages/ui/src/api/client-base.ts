@@ -1090,10 +1090,13 @@ export class ElizaClient {
       });
     }
 
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      abortController.abort();
-    }, timeoutMs);
+    const timeoutId =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            timedOut = true;
+            abortController.abort();
+          }, timeoutMs);
     if (init?.signal) {
       abortListener = () => abortController.abort();
       init.signal.addEventListener("abort", abortListener, { once: true });
@@ -1119,7 +1122,7 @@ export class ElizaClient {
         abortController,
       );
     } finally {
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       if (init?.signal && abortListener) {
         init.signal.removeEventListener("abort", abortListener);
       }
@@ -1176,11 +1179,16 @@ export class ElizaClient {
   private throwRawRequestError(
     err: unknown,
     path: string,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     timedOut: boolean,
     abortController: AbortController,
   ): never {
     if (timedOut) {
+      if (timeoutMs === undefined) {
+        throw new Error(
+          `[ElizaClient] internal timeout state without a deadline for ${path}`,
+        );
+      }
       throw new ApiError({
         kind: "timeout",
         path,
@@ -1207,26 +1215,17 @@ export class ElizaClient {
     });
   }
 
-  /**
-   * Reads a response body with the same budget the request itself had. The
-   * per-request abort timer in {@link rawRequestOnce} is cleared the moment
-   * HEADERS arrive, so without this a response whose body stream stalls
-   * (proxies, USB/adb relays, dropped radios) pends forever — JSON consumers
-   * must never await an unbounded body. Streaming consumers (SSE) keep their
-   * own idle timeout and do not go through here.
-   */
+  /** Reads a response body with the same lifecycle policy as its request. */
   private async readBodyText(
     res: Response,
     path: string,
     timeoutMs?: number,
     init?: RequestInit,
   ): Promise<string> {
-    // Must mirror the request phase's budget (rawRequestOnce uses
-    // defaultFetchTimeoutMs(path, init)). Passing `undefined` here forced the
-    // GET branch -> 10s for every route, so the body read of a long POST
-    // (chat 600s, ASR/TTS 180s, reset 60s) would spuriously time out on slow
-    // on-device builds that emit headers early then take >10s to finish.
     const budgetMs = timeoutMs ?? defaultFetchTimeoutMs(path, init);
+    if (budgetMs === undefined) {
+      return res.text();
+    }
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -1245,7 +1244,7 @@ export class ElizaClient {
         }),
       ]);
     } finally {
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 

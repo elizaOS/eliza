@@ -1,25 +1,32 @@
 /**
- * Unit coverage for the per-request fetch-timeout budgets (including the long
- * local-inference TTS/ASR budgets). Pure function, no harness.
+ * Unit coverage for short-request deadlines and unbounded model operations.
  */
 import { describe, expect, it } from "vitest";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 
 describe("defaultFetchTimeoutMs", () => {
-  it("allows local neural TTS enough time for mobile CPU generation", () => {
+  it("does not impose a wall-clock cutoff on local neural TTS", () => {
     expect(
       defaultFetchTimeoutMs("http://127.0.0.1:31337/api/tts/local-inference", {
         method: "POST",
       }),
-    ).toBe(180_000);
+    ).toBeUndefined();
   });
 
-  it("gives the in-process agent reset time to stop the runtime", () => {
+  it("does not cut off in-process runtime shutdown", () => {
     expect(
       defaultFetchTimeoutMs("/api/agent/reset", {
         method: "POST",
       }),
-    ).toBe(60_000);
+    ).toBeUndefined();
+  });
+
+  it("leaves local-inference discovery under request ownership", () => {
+    expect(
+      defaultFetchTimeoutMs(
+        "http://127.0.0.1:31337/api/local-inference/hub?refresh=1",
+      ),
+    ).toBeUndefined();
   });
 
   it("keeps ordinary API calls on the short default timeout", () => {

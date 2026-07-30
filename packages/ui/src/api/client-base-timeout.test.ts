@@ -1,6 +1,6 @@
 /**
- * Unit coverage for per-request timeout selection on the base client (including
- * local-inference budgets). Transport stubbed, no live model.
+ * Unit coverage for short-request deadlines and owner-controlled operations.
+ * Transport stubbed, no live model.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setBootConfig } from "../config/boot-config";
@@ -35,7 +35,7 @@ describe("ElizaClient request timeout policy", () => {
     setBootConfig({ branding: {} });
   });
 
-  it("allows chat message requests to wait for slower agent responses", async () => {
+  it("leaves chat message lifetime under request ownership", async () => {
     const { client, request } = makeClientWithTransport();
 
     await client.sendConversationMessage("conversation-id", "hello");
@@ -43,11 +43,11 @@ describe("ElizaClient request timeout policy", () => {
     expect(request).toHaveBeenCalledWith(
       "http://agent.example:2138/api/conversations/conversation-id/messages",
       expect.any(Object),
-      { timeoutMs: 600_000 },
+      { timeoutMs: undefined },
     );
   });
 
-  it("keeps the chat timeout for message paths with query strings", async () => {
+  it("recognizes owner-controlled message paths with query strings", async () => {
     const { client, request } = makeClientWithTransport();
 
     await client.fetch(
@@ -60,7 +60,7 @@ describe("ElizaClient request timeout policy", () => {
     expect(request).toHaveBeenCalledWith(
       "http://agent.example:2138/api/conversations/conversation-id/messages?agentId=agent",
       expect.any(Object),
-      { timeoutMs: 600_000 },
+      { timeoutMs: undefined },
     );
   });
 
@@ -76,7 +76,7 @@ describe("ElizaClient request timeout policy", () => {
     );
   });
 
-  it("coalesces concurrent local inference hub reads with a longer timeout", async () => {
+  it("coalesces concurrent local inference hub reads without a deadline", async () => {
     const response = makeDeferredResponse();
     const request = vi.fn<AgentRequestTransport["request"]>(
       async () => response.promise,
@@ -92,7 +92,7 @@ describe("ElizaClient request timeout policy", () => {
     expect(request).toHaveBeenCalledWith(
       "http://agent.example:2138/api/local-inference/hub",
       expect.any(Object),
-      { timeoutMs: 30_000 },
+      { timeoutMs: undefined },
     );
 
     response.resolve(
