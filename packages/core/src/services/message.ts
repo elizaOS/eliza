@@ -8429,6 +8429,40 @@ export async function runV5MessageRuntimeStage1(args: {
 				);
 			},
 		);
+		// Substantive-remainder counterpart of the suppression above, #7960 kept
+		// intact: combinedVerifiedToolTextAndProse deterministically composes
+		// `<verified block>\n\n<evaluator prose>` (fencing a multiline verified
+		// text), so when the verified block was already callback-delivered the
+		// planned reply re-sends a verbatim copy of a message the user has and
+		// the prose is the only content they have not seen. Strip the block ONLY
+		// in that code-composed leading position, matched byte-exactly (fenced
+		// form first, then bare) against the delivered userFacingText. A
+		// paraphrased re-render or a mid-prose mention is never touched — the
+		// strip must not remove anything it cannot prove was already delivered,
+		// and cutting inside flowing prose could mutilate a sentence.
+		let strippedPlannedReplyText = effectiveReplyText;
+		for (const result of actionResults) {
+			if (result.verifiedUserFacing !== true) continue;
+			if (typeof result.userFacingText !== "string") continue;
+			const rawVerified = result.userFacingText.trim();
+			if (
+				rawVerified.length === 0 ||
+				!deliveredVisibleTexts.has(
+					normalizeVisibleTextForDuplicateCheck(rawVerified),
+				)
+			) {
+				continue;
+			}
+			const fencedVerified = `\`\`\`\n${rawVerified}\n\`\`\``;
+			const source = strippedPlannedReplyText;
+			if (source.startsWith(`${fencedVerified}\n\n`)) {
+				strippedPlannedReplyText = source.slice(fencedVerified.length).trim();
+			} else if (source.startsWith(`${rawVerified}\n\n`)) {
+				strippedPlannedReplyText = source.slice(rawVerified.length).trim();
+			}
+		}
+		const effectiveDeliveredReplyText =
+			strippedPlannedReplyText || effectiveReplyText;
 		const shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
@@ -8461,7 +8495,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						...createV5ReplyStrategyResult({
 							...args,
 							state: finalPlannerState,
-							text: effectiveReplyText,
+							text: effectiveDeliveredReplyText,
 							thought:
 								plannerResult.evaluator?.thought ??
 								plannerResult.trajectory.steps.at(-1)?.thought ??
