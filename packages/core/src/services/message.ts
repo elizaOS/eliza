@@ -8404,17 +8404,17 @@ export async function runV5MessageRuntimeStage1(args: {
 					return normalized.length > 0 && deliveredVisibleTexts.has(normalized);
 				});
 			});
-		// The planned ⊇ delivered direction of the suppression above, keyed on
-		// provenance instead of fuzzy text comparison: a verifiedUserFacing action
-		// whose userFacingText already went out through its own callback makes any
-		// planned reply still embedding that text a re-render of a message the
-		// user already has — precedence rung 1 re-selects it verbatim, alone or
-		// fenced with evaluator prose appended, a strict superset the
-		// one-directional guard cannot match, and independent render passes defeat
-		// equality. The returned userFacingText is the RECORD of the callback's
-		// delivery, not an input to a second one. Verified actions that never
-		// invoked the callback fail the delivered-set membership, so finalMessage
-		// remains their sole delivery.
+		// The planned ⊇ delivered direction of the suppression above, gated on
+		// callback-delivery provenance (the delivered-set membership) not text
+		// equality: when a verifiedUserFacing action already sent its userFacingText
+		// through its own callback, a planned reply that merely re-renders that block
+		// verbatim duplicates a message the user already has. Only a TRIVIAL
+		// re-render collapses, though — if the planner appended substantive prose to
+		// the verbatim block (the evaluator's grounded answer, #7960: a `df -h` mount
+		// table followed by "still 95%, 22G free"), that prose was never
+		// callback-delivered and still ships; the remainder check below enforces
+		// that. Verified actions that never invoked the callback fail delivered-set
+		// membership, so finalMessage remains their sole delivery.
 		const plannedTextRepeatsVerifiedActionDelivery = actionResults.some(
 			(result) => {
 				if (result.verifiedUserFacing !== true) return false;
@@ -8422,11 +8422,21 @@ export async function runV5MessageRuntimeStage1(args: {
 					typeof result.userFacingText === "string"
 						? normalizeVisibleTextForDuplicateCheck(result.userFacingText)
 						: "";
-				return (
-					verified.length > 0 &&
-					deliveredVisibleTexts.has(verified) &&
-					normalizedPlannedReply.includes(verified)
-				);
+				if (verified.length === 0 || !deliveredVisibleTexts.has(verified)) {
+					return false;
+				}
+				if (!normalizedPlannedReply.includes(verified)) return false;
+				// Collapse ONLY a trivial re-render. If, after removing the already
+				// callback-delivered verified block (and fence markers), the planned
+				// reply still carries substantive content, that content was never
+				// delivered and must ship — e.g. the evaluator's grounded prose
+				// appended to a verbatim tool block (#7960: `df -h` output followed by
+				// the "still 95%, 22G free" answer). Suppress only when nothing
+				// substantive remains beyond the duplicate block.
+				const remainder = normalizedPlannedReply
+					.replace(verified, " ")
+					.replace(/```/g, " ");
+				return !/[a-z0-9]/.test(remainder);
 			},
 		);
 		// Substantive-remainder counterpart of the suppression above, #7960 kept
