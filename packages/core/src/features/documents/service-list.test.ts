@@ -378,6 +378,48 @@ describe("DocumentService list semantics", () => {
 		]);
 	});
 
+	it("does not expose foreign-agent or non-document rows through delete errors", async () => {
+		const { runtime, service } = await makeHarness();
+		const hiddenDocument = documentMemory(20, {
+			entityId: OTHER_USER_ID,
+			metadata: { scope: "owner-private" },
+		});
+		const foreignDocument = documentMemory(21, {
+			agentId: OTHER_AGENT_ID,
+		});
+		const nonDocument = documentMemory(22, {
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId: hiddenDocument.id,
+				position: 0,
+			},
+		});
+		await seedDocuments(runtime, [
+			hiddenDocument,
+			foreignDocument,
+			nonDocument,
+		]);
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
+
+		await expect(
+			service.deleteDocument(hiddenDocument.id as UUID, userMessage()),
+		).rejects.toMatchObject({ code: "DOCUMENT_MUTATION_FORBIDDEN" });
+		for (const memory of [foreignDocument, nonDocument]) {
+			await expect(
+				service.deleteDocument(memory.id as UUID, userMessage()),
+			).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
+		}
+	});
+
 	it("rejects offsets and query inputs outside the bounded contract", async () => {
 		const { service } = await makeHarness();
 

@@ -629,14 +629,14 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 		});
 		if (!document) {
-			// The read above is scoped to the requester, so a document the caller
-			// cannot READ is indistinguishable from one that does not exist — and
-			// reporting NOT_FOUND here made the adapter's `forbidden` verdict
-			// unreachable for exactly the case it exists for (a non-owner trying to
-			// delete a global / owner-private document). Distinguish the two with an
-			// unscoped existence probe so the mutation wall renders the real reason.
-			const existsUnscoped = await this.runtime.getMemoryById(documentId);
-			if (existsUnscoped) {
+			// A hidden document owned by this runtime is a forbidden mutation, while
+			// foreign-agent and non-document rows remain indistinguishable from a
+			// missing UUID. This preserves tenant isolation across the unscoped probe.
+			const existingUnscoped = await this.runtime.getMemoryById(documentId);
+			if (
+				existingUnscoped?.agentId === this.runtime.agentId &&
+				readDocumentMutationSnapshot(existingUnscoped)
+			) {
 				throw new ElizaError(
 					`Document ${documentId} cannot be deleted by this requester`,
 					{
