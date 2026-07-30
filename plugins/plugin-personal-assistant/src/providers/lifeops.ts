@@ -27,11 +27,7 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
-import {
-  authorizeLifeOpsPrivateContext,
-  type LifeOpsAudienceGateResult,
-  type LifeOpsAudienceSource,
-} from "../lifeops/audience-policy.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
@@ -60,22 +56,6 @@ const INTERNAL_URL = new URL("http://127.0.0.1/");
 const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
 const MAX_ACCOUNT_LINES = 5;
-
-function lifeOpsPrivateContextSources(): LifeOpsAudienceSource[] {
-  return [
-    { kind: "private_memory", id: "lifeops.owner_profile" },
-    { kind: "calendar", id: "lifeops.calendar" },
-    { kind: "gmail", id: "lifeops.gmail" },
-  ];
-}
-
-export async function resolveLifeOpsProviderAudienceGate(
-  runtime: IAgentRuntime,
-  message: Memory,
-  sources: readonly LifeOpsAudienceSource[] = lifeOpsPrivateContextSources(),
-): Promise<LifeOpsAudienceGateResult> {
-  return authorizeLifeOpsPrivateContext({ runtime, message, sources });
-}
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -380,25 +360,13 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    // Single audience authority for this provider. The runtime already refused
-    // to invoke it unless the OWNER_EXCLUSIVE_DISCLOSURE_GATE stamp cleared
-    // (plugin.ts wraps it in `ownerPrivateProvider`); this gate is the LifeOps
-    // boundary on top of that, and it is the one that compares audience
-    // classes, so an API- or VOICE_DM-stamped turn in the owner's DM room still
-    // resolves as private. Re-deriving the audience here from anything else
-    // would give the same question two answers.
-    const audienceGate = await resolveLifeOpsProviderAudienceGate(
-      runtime,
-      message,
-    );
-    if (!audienceGate.canLoadPrivateContext) {
-      return {
-        text: "",
-        values: {},
-        data: {
-          lifeOpsAudienceReceipts: audienceGate.receipts,
-        },
-      };
+    // The runtime already refused to invoke this provider unless the
+    // OWNER_EXCLUSIVE_DISCLOSURE_GATE stamp cleared (plugin.ts wraps it in
+    // `ownerPrivateProvider`); this owner check is the LifeOps boundary on top
+    // of that.
+    const isOwner = await hasLifeOpsAccess(runtime, message);
+    if (!isOwner) {
+      return { text: "", values: {}, data: {} };
     }
     // Past the gate the destination is proven owner-private, so the per-account
     // privacy filters below all evaluate against the owner audience.
@@ -789,7 +757,6 @@ export const lifeOpsProvider: Provider = {
           agentActiveGoals: overview.agentOps.summary.activeGoalCount,
         },
         data: {
-          lifeOpsAudienceReceipts: audienceGate.receipts,
           ownerProfile,
           overview: {
             ...overview,
@@ -809,17 +776,19 @@ export const lifeOpsProvider: Provider = {
       };
     } catch (error) {
       // error-policy:J4 provider boundary — the owner sees an explicit
-      // "unavailable" block instead of fabricated zero counts ("not loaded"
-      // must never read as "zero"), and reportError surfaces the failure in
-      // RECENT_ERRORS so the agent can react to a broken overview pipeline.
+      // "LifeOps overview unavailable." block rather than a healthy-looking
+      // overview, and reportError surfaces the failure in RECENT_ERRORS so the
+      // agent can react to a broken overview pipeline.
       runtime.reportError("LifeOpsProvider.get", error, {
         roomId: message.roomId,
         entityId: message.entityId,
       });
       return {
         text: "LifeOps overview unavailable.",
-        values: { lifeOpsUnavailable: true },
-        data: { lifeOpsError: true },
+        values: { ownerOpenOccurrences: 0, ownerActiveGoals: 0 },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+        },
       };
     }
   },
