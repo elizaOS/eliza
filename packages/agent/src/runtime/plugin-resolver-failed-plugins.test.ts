@@ -9,11 +9,38 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { ElizaConfig } from "../config/config.ts";
+import {
+  CORE_PLUGINS,
+  ELIZAOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+  MOBILE_CORE_PLUGINS,
+  MOBILE_VIEW_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "./core-plugins.ts";
 import {
   getLastFailedPluginDetails,
   getLastFailedPluginNames,
   resolvePlugins,
 } from "./plugin-resolver";
+
+function fixtureOnlyConfig(): ElizaConfig {
+  return {
+    plugins: {
+      allow: [],
+      deny: [
+        ...new Set([
+          ...CORE_PLUGINS,
+          ...MOBILE_CORE_PLUGINS,
+          ...MOBILE_VIEW_PLUGINS,
+          ...ELIZAOS_ANDROID_CORE_PLUGINS,
+          ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+          ...OPTIONAL_CORE_PLUGINS,
+        ]),
+      ],
+    },
+  };
+}
 
 // Symbols the resolver USED to stash failures on (agent-wide globalThis).
 // The seam is now module-owned per-resolve state read via the typed accessors;
@@ -68,7 +95,7 @@ describe("plugin-load failure reporting", () => {
 
       process.env.BROKEN_PLUGIN_ENABLE = "1";
       process.chdir(workspace);
-      const config = { plugins: { allow: [], entries: {} } };
+      const config = fixtureOnlyConfig();
       await resolvePlugins(config, { quiet: true });
 
       const details = getLastFailedPluginDetails();

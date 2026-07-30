@@ -10,6 +10,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { ElizaConfig } from "../config/config.ts";
+import {
+  CORE_PLUGINS,
+  ELIZAOS_ANDROID_CORE_PLUGINS,
+  ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+  MOBILE_CORE_PLUGINS,
+  MOBILE_VIEW_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "./core-plugins.ts";
 import {
   resolvePlugins,
   resolveRuntimePluginImportSpecifier,
@@ -18,6 +27,28 @@ import {
   STATIC_ELIZA_PLUGIN_LOADERS,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types";
+
+function configWithOnlyPlugins(
+  allow: string[],
+  extra: Partial<NonNullable<ElizaConfig["plugins"]>> = {},
+): ElizaConfig & { plugins: NonNullable<ElizaConfig["plugins"]> } {
+  const deny = new Set([
+    ...CORE_PLUGINS,
+    ...MOBILE_CORE_PLUGINS,
+    ...MOBILE_VIEW_PLUGINS,
+    ...ELIZAOS_ANDROID_CORE_PLUGINS,
+    ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+    ...OPTIONAL_CORE_PLUGINS,
+  ]);
+  for (const name of allow) deny.delete(name);
+  return {
+    plugins: {
+      ...extra,
+      allow,
+      deny: [...deny],
+    },
+  };
+}
 
 describe("resolveRuntimePluginImportSpecifier", () => {
   it("uses app plugin runtime entrypoints for core app plugins", () => {
@@ -85,7 +116,7 @@ describe("resolvePlugins manifest discovery", () => {
 
       process.env.THIRD_PARTY_PLUGIN_ENABLE = "1";
       process.chdir(workspace);
-      const config = { plugins: { allow: [], entries: {} } };
+      const config = configWithOnlyPlugins([]);
       const resolved = await resolvePlugins(config, { quiet: true });
 
       expect(config.plugins.allow).toContain("@thirdparty/plugin-tinyplace");
@@ -141,13 +172,9 @@ describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
       await writeDropIn("nearai", "@elizaos/plugin-nearai");
       await writeDropIn("plain", "@dropins/plugin-plainfixture");
       process.chdir(workspace);
-      const config = {
-        plugins: {
-          allow: [],
-          entries: {},
-          load: { paths: [dropinsDir] },
-        },
-      };
+      const config = configWithOnlyPlugins([], {
+        load: { paths: [dropinsDir] },
+      });
 
       const blocking = await resolvePlugins(config, {
         quiet: true,
@@ -213,10 +240,7 @@ describe("resolvePlugins mobile blocking-phase loadability gate (#14039)", () =>
     else process.env.ANTHROPIC_API_KEY = previousApiKey;
   });
 
-  const config = () =>
-    ({
-      plugins: { allow: [PROVIDER], entries: {} },
-    }) as unknown as import("../config/config.ts").ElizaConfig;
+  const config = () => configWithOnlyPlugins([PROVIDER]);
 
   it("does NOT claim a force-included provider absent from the static bundle at blocking time, so readiness does not deadlock and the deferred pass (once the static wave registers it) still owns it", async () => {
     // No static registration for the provider at BLOCKING time — mirrors
