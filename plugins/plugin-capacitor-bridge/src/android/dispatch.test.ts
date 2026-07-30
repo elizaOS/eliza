@@ -100,6 +100,40 @@ function coreDeps(overrides: Partial<AndroidCoreRouteDeps> = {}): {
 }
 
 describe("dispatchBufferedRequest", () => {
+	it("labels desktop stdio health without claiming the Android bridge", async () => {
+		const { route, calls } = fixedRoute(null);
+		const response = await dispatchBufferedRequest(
+			runtime,
+			route,
+			{ method: "GET", path: "/api/health" },
+			undefined,
+			undefined,
+			"desktop",
+		);
+
+		expect(JSON.parse(response.body)).toMatchObject({
+			ready: true,
+			desktopBridge: "stdio",
+		});
+		expect(JSON.parse(response.body)).not.toHaveProperty("androidBridge");
+		expect(calls).toHaveLength(0);
+	});
+
+	it("forwards transport ownership to the route cancellation signal", async () => {
+		const { route, calls } = fixedRoute({ status: 204 });
+		const owner = new AbortController();
+
+		await dispatchBufferedRequest(
+			runtime,
+			route,
+			{ method: "GET", path: "/api/owned" },
+			undefined,
+			owner.signal,
+		);
+
+		expect(calls[0]?.abortSignal).toBe(owner.signal);
+	});
+
 	it("serves Android local startup app-core routes before dispatchRoute", async () => {
 		const { route, calls } = fixedRoute(null);
 		const { deps } = coreDeps({

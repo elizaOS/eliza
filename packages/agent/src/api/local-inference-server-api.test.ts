@@ -55,4 +55,21 @@ describe("local-inference-server-api loader (single subpath owner)", () => {
       );
     }
   });
+
+  it("mounts one idempotent route set for port-free transports", () => {
+    const runtime = { routes: [] } as never;
+    loader.registerLocalInferenceTransportRoutes(runtime);
+    const firstCount = (runtime as { routes: unknown[] }).routes.length;
+    loader.registerLocalInferenceTransportRoutes(runtime);
+
+    expect(firstCount).toBeGreaterThan(0);
+    expect((runtime as { routes: unknown[] }).routes).toHaveLength(firstCount);
+    expect((runtime as { routes: Array<{ path: string }> }).routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: "/api/local-inference/:path*" }),
+        expect.objectContaining({ path: "/api/tts/local-inference" }),
+        expect.objectContaining({ path: "/api/asr/local-inference" }),
+      ]),
+    );
+  });
 });
