@@ -20,7 +20,7 @@ The plugin surface is primarily views and slot-registry fills, plus one slash co
 
 The plugin's `init()` calls `registerOrchestratorCommands(runtime.agentId)`, which registers the command into the per-runtime `@elizaos/plugin-commands` registry. Being `views`-scoped, it appears in `GET /api/commands` only while the orchestrator view is the active surface; the registered `orchestratorStatusCommandAction` is its deterministic, slash-only handler. This proves a non-core, view-owning plugin can light up the universal slash-command surface end to end (#8790).
 
-### Views registered (`src/index.ts`)
+### Views registered (`src/plugin.ts`)
 
 Three GUI views.
 
@@ -51,13 +51,14 @@ Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 - **`import "./register-slots.js"`** — activates the slot-registry fills below (the `@elizaos/ui` empty-slot defaults). Without this import the UI renders empty slots.
 
-The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) reach the app shell through the standard **view manifest** in `src/index.ts` (`bundlePath` + `componentExport`), NOT via `registerAppShellPage` — this plugin registers no app-shell pages.
+The three GUI views (`task-coordinator`, `orchestrator`, `cockpit`) reach the app shell through the standard **view manifest** in `src/plugin.ts` (`bundlePath` + `componentExport`), NOT via `registerAppShellPage` — this plugin registers no app-shell pages. Headless agents import `@elizaos/plugin-task-coordinator/plugin`; the package root adds React UI exports for app hosts.
 
 ## Layout
 
 ```
 src/
-  index.ts                         Plugin definition — views + capabilities, init() command registration, handler action
+  index.ts                         Public package barrel — UI exports plus plugin re-export
+  plugin.ts                        Runtime-only plugin definition — views, capabilities, command action
   orchestrator-command.ts          /orchestrator-status slash command def + deterministic handler action (#8790)
   register.ts                      Slot import side effect
   register-slots.ts                Slot registry fills for ui empty-slot defaults
@@ -137,7 +138,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 
 ### Add a new orchestrator capability
 
-1. Add an entry to `ORCHESTRATOR_CAPABILITIES` in `src/index.ts` with a unique `id`, a `description`, and typed `params`.
+1. Add an entry to `ORCHESTRATOR_CAPABILITIES` in `src/plugin.ts` with a unique `id`, a `description`, and typed `params`.
 2. Handle the capability dispatch in `src/orchestrator-capabilities.ts` inside the capability dispatch map.
 
 ### Add a new agent framework tab
@@ -150,7 +151,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 ### Add a new view component
 
 1. Create the React component file in `src/`.
-2. Register it in `src/index.ts` as a new entry in the `views` array with a unique `id`, `path`, and `componentExport`.
+2. Register it in `src/plugin.ts` as a new entry in the `views` array with a unique `id`, `path`, and `componentExport`.
 3. If it needs app-shell registration, add it in `src/register.ts`.
 4. If it fills a slot, add it in `src/register-slots.ts` and update `registerTaskCoordinatorSlots` call.
 
