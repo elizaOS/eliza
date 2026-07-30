@@ -10312,7 +10312,7 @@ export class DefaultMessageService implements IMessageService {
 		if (
 			!(typeof trajectoryStepId === "string" && trajectoryStepId.trim() !== "")
 		) {
-			try {
+			await timeInferenceSpan("message:ingress:received-hooks", async () => {
 				await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
 					runtime,
 					message,
@@ -10333,18 +10333,7 @@ export class DefaultMessageService implements IMessageService {
 						mode: "ALWAYS_DURING",
 					}),
 				);
-			} catch (error) {
-				runtime.logger.warn(
-					{
-						src: "service:message",
-						agentId: runtime.agentId,
-						entityId: message.entityId,
-						roomId: message.roomId,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Failed to emit MESSAGE_RECEIVED before handling message",
-				);
-			}
+			});
 
 			trajectoryStepId =
 				typeof message.metadata === "object" &&
