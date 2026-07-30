@@ -68,22 +68,7 @@ describe("renderer API proxy", () => {
     expect(shouldProxyToApiBase("not a url")).toBe(false);
   });
 
-  it("keeps the renderer proxy idle timeout within Bun.serve limits", () => {
-    expect(
-      resolveRendererProxyIdleTimeoutSeconds({
-        ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS: "660",
-      }),
-    ).toBe(255);
-    expect(
-      resolveRendererProxyIdleTimeoutSeconds({
-        ELIZA_HTTP_REQUEST_TIMEOUT_MS: "660000",
-      }),
-    ).toBe(255);
-    expect(
-      resolveRendererProxyIdleTimeoutSeconds({
-        ELIZA_CHAT_GENERATION_TIMEOUT_MS: "120000",
-      }),
-    ).toBe(180);
-    expect(resolveRendererProxyIdleTimeoutSeconds({})).toBe(255);
+  it("uses Bun's maximum idle window without model-derived deadlines", () => {
+    expect(resolveRendererProxyIdleTimeoutSeconds()).toBe(255);
   });
 });

@@ -871,7 +871,7 @@ async function startRendererServer(): Promise<string> {
   };
 
   const rendererProxyIdleTimeoutSeconds =
-    resolveRendererProxyIdleTimeoutSeconds(process.env);
+    resolveRendererProxyIdleTimeoutSeconds();
 
   Bun.serve({
     port,
