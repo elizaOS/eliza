@@ -116,6 +116,7 @@ function makeFragment(
 		id: id as UUID,
 		agentId: "agent-1" as UUID,
 		roomId: "room-1" as UUID,
+		worldId: "world-1" as UUID,
 		content: { text },
 		metadata: {
 			type: MemoryType.FRAGMENT,
@@ -137,9 +138,14 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 			limit: number;
 			requesterEntityId: UUID;
 			requesterRole: "OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME";
+			roomId?: UUID;
+			worldId?: UUID;
 		}) =>
 			fragments
 				.filter((fragment) => {
+					if (params.roomId && fragment.roomId !== params.roomId) return false;
+					if (params.worldId && fragment.worldId !== params.worldId)
+						return false;
 					const metadata = fragment.metadata as
 						| Record<string, unknown>
 						| undefined;
@@ -179,11 +185,17 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 		}),
 		searchMemories: vi.fn(async (_params: unknown) => fragments),
 		getMemories: vi.fn(async (_params: unknown) => fragments),
-		getRoomsForParticipants: vi.fn(async () => ["room-1" as UUID]),
-		getRoom: vi.fn(async () => ({
-			id: "room-1" as UUID,
+		getRoomsForParticipants: vi.fn(async () => [
+			"room-1" as UUID,
+			"room-2" as UUID,
+		]),
+		getRoom: vi.fn(async (roomId: UUID) => ({
+			id: roomId,
 			agentId,
-			worldId: "world-1" as UUID,
+			worldId:
+				roomId === ("room-2" as UUID)
+					? ("world-2" as UUID)
+					: ("world-1" as UUID),
 		})),
 		getWorld: vi.fn(async () => ({
 			id: "world-1" as UUID,
@@ -425,24 +437,53 @@ describe("DocumentService.searchDocuments", () => {
 			);
 		});
 
-		it("rejects conflicting non-agent requester identities", async () => {
+		it.each([
+			{ role: "USER", isOwner: false },
+			{ role: "ADMIN", isOwner: false },
+			{ role: "OWNER", isOwner: true },
+		] as const)(
+			"rejects a conflicting $role human requester identity",
+			async ({ role, isOwner }) => {
+				const rt = buildRuntime({ hasEmbedding: false });
+				const svc = buildService(rt);
+
+				await expect(
+					svc.searchDocuments(
+						makeMessage("launch", "user-1" as UUID),
+						{ roomId: "room-1" as UUID },
+						"keyword",
+						{
+							requesterEntityId: "user-2" as UUID,
+							worldId: "world-1" as UUID,
+							role,
+							isOwner,
+						},
+					),
+				).rejects.toMatchObject({
+					code: "DOCUMENT_REQUESTER_CONTEXT_CONFLICT",
+				});
+				expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
+			},
+		);
+
+		it("rejects an elevated context outside its granting world", async () => {
 			const rt = buildRuntime({ hasEmbedding: false });
 			const svc = buildService(rt);
 
 			await expect(
 				svc.searchDocuments(
-					makeMessage("launch", "user-1" as UUID),
-					{ roomId: "room-1" as UUID },
+					makeMessage("launch", rt.agentId),
+					{ roomId: "room-2" as UUID },
 					"keyword",
 					{
-						requesterEntityId: "user-2" as UUID,
+						requesterEntityId: "admin-1" as UUID,
 						worldId: "world-1" as UUID,
-						role: "USER",
+						role: "ADMIN",
 						isOwner: false,
 					},
 				),
 			).rejects.toMatchObject({
-				code: "DOCUMENT_REQUESTER_CONTEXT_CONFLICT",
+				code: "DOCUMENT_REQUESTER_WORLD_CONFLICT",
 			});
 			expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
 		});

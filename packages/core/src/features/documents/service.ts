@@ -271,17 +271,20 @@ function intersectDocumentRequesters(
 	contextRequester: DocumentRequester,
 	roomId?: UUID,
 ): DocumentRequester {
-	// One adapter principal exactly represents the intersection when either side
-	// has global visibility or both sides name the same entity. Two different
-	// room-scoped identities require a multi-principal storage capability, so
-	// reject them instead of approximating an authorization boundary.
-	if (documentRoleHasGlobalVisibility(messageRequester.role)) {
-		return contextRequester;
-	}
-	if (documentRoleHasGlobalVisibility(contextRequester.role)) {
-		return messageRequester;
-	}
 	if (messageRequester.entityId !== contextRequester.entityId) {
+		const messageIsProxy =
+			messageRequester.entityId === runtime.agentId &&
+			(messageRequester.role === "AGENT" ||
+				messageRequester.role === "RUNTIME");
+		if (messageIsProxy) return contextRequester;
+		const contextIsProxy =
+			contextRequester.entityId === runtime.agentId &&
+			(contextRequester.role === "AGENT" ||
+				contextRequester.role === "RUNTIME");
+		if (contextIsProxy) return messageRequester;
+
+		// Two human identities require a multi-principal storage capability.
+		// Privilege on either side cannot stand in for identity intersection.
 		const error = new ElizaError(
 			"Document search requester identities conflict",
 			{
@@ -304,15 +307,82 @@ function intersectDocumentRequesters(
 		throw error;
 	}
 
+	const role: DocumentListRequesterRole =
+		messageRequester.role === "USER" || contextRequester.role === "USER"
+			? "USER"
+			: messageRequester.role === "ADMIN" || contextRequester.role === "ADMIN"
+				? "ADMIN"
+				: messageRequester.role === "OWNER" || contextRequester.role === "OWNER"
+					? "OWNER"
+					: messageRequester.role === "AGENT" ||
+							contextRequester.role === "AGENT"
+						? "AGENT"
+						: "RUNTIME";
+	if (documentRoleHasGlobalVisibility(role)) {
+		return { entityId: messageRequester.entityId, role, roomIds: [] };
+	}
 	const contextRoomIds = new Set(contextRequester.roomIds);
 	return {
 		entityId: messageRequester.entityId,
-		role:
-			messageRequester.role === "USER" || contextRequester.role === "USER"
-				? "USER"
-				: "ADMIN",
+		role,
 		roomIds: messageRequester.roomIds.filter((id) => contextRoomIds.has(id)),
 	};
+}
+
+async function assertAccessContextWorld(
+	runtime: IAgentRuntime,
+	accessContext: AccessContext,
+	message: Memory,
+	scope?: { roomId?: UUID; worldId?: UUID },
+): Promise<void> {
+	if (!accessContext.worldId) return;
+
+	const roomId = scope?.roomId ?? message.roomId;
+	let targetWorldId = scope?.worldId ?? message.worldId;
+	if (roomId) {
+		try {
+			const room = await runtime.getRoom(roomId);
+			targetWorldId = room?.worldId ?? targetWorldId;
+		} catch (cause) {
+			const error = new ElizaError("Document search room lookup failed", {
+				code: "DOCUMENT_SEARCH_ROOM_LOOKUP_FAILED",
+				cause,
+				context: {
+					agentId: runtime.agentId,
+					requesterEntityId: accessContext.requesterEntityId,
+					roomId,
+				},
+				severity: "ephemeral",
+			});
+			runtime.reportError("DocumentService.searchRequesterWorld", error, {
+				agentId: runtime.agentId,
+				requesterEntityId: accessContext.requesterEntityId,
+				roomId,
+			});
+			throw error;
+		}
+	}
+	if (!targetWorldId || targetWorldId === accessContext.worldId) return;
+
+	const error = new ElizaError("Document search requester world conflicts", {
+		code: "DOCUMENT_REQUESTER_WORLD_CONFLICT",
+		context: {
+			accessWorldId: accessContext.worldId,
+			agentId: runtime.agentId,
+			requesterEntityId: accessContext.requesterEntityId,
+			roomId,
+			targetWorldId,
+		},
+		severity: "ephemeral",
+	});
+	runtime.reportError("DocumentService.searchRequesterWorld", error, {
+		accessWorldId: accessContext.worldId,
+		agentId: runtime.agentId,
+		requesterEntityId: accessContext.requesterEntityId,
+		roomId,
+		targetWorldId,
+	});
+	throw error;
 }
 
 function normalizeDocumentScope(
@@ -1144,6 +1214,22 @@ export class DocumentService extends Service {
 		}
 
 		const queryText = message.content.text;
+		if (accessContext) {
+			await assertAccessContextWorld(
+				this.runtime,
+				accessContext,
+				message,
+				scope,
+			);
+		}
+		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
+		if (scope?.roomId) filterScope.roomId = scope.roomId;
+		if (scope?.worldId) {
+			filterScope.worldId = scope.worldId;
+		} else if (accessContext?.worldId) {
+			filterScope.worldId = accessContext.worldId;
+		}
+		if (scope?.entityId) filterScope.entityId = scope.entityId;
 		const messageRequester = await resolveDocumentRequester(
 			this.runtime,
 			message,
@@ -1160,10 +1246,6 @@ export class DocumentService extends Service {
 					scope?.roomId ?? message.roomId,
 				)
 			: messageRequester;
-		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
-		if (scope?.roomId) filterScope.roomId = scope.roomId;
-		if (scope?.worldId) filterScope.worldId = scope.worldId;
-		if (scope?.entityId) filterScope.entityId = scope.entityId;
 
 		// Determine effective mode, falling back to keyword when no embedding model
 		const hasEmbeddingModel = Boolean(
