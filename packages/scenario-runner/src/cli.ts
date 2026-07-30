@@ -87,9 +87,40 @@ export function providerQualifiedRunFailure(
 const CLI_EXTERNAL_QUALIFICATION_REASON =
   "external-controller-decision:missing" as const;
 
+/**
+ * Drop keys whose value is literally `undefined`, recursively.
+ *
+ * `canonicalJsonValue` rejects `undefined` on purpose: a canonical encoding must
+ * be unambiguous, and `{ text: undefined }` and `{}` hash differently as objects
+ * while serializing identically as JSON. The report builders, though, assign
+ * `undefined` to absent optional fields (`text`, `error`, `screenshot`, …) — the
+ * ordinary TypeScript way to say "not present" — so a perfectly well-formed
+ * report aborted the run with "contains executable or non-JSON data (undefined)".
+ *
+ * Omitting those keys is semantically lossless: absent and undefined mean the
+ * same thing here, and `JSON.stringify` already erases the distinction. This
+ * deliberately does NOT touch functions, symbols, bigints, or cycles — those
+ * still reach the validator and still fail the run, which is the guard's actual
+ * purpose. Normalizing them away would hide executable data leaking into an
+ * attestable artifact.
+ */
+function omitUndefinedDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(omitUndefinedDeep);
+  if (value === null || typeof value !== "object") return value;
+  // Only plain objects: a class instance's prototype is itself a signal the
+  // validator should see, not something to quietly rebuild into a bare object.
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (item === undefined) continue;
+    out[key] = omitUndefinedDeep(item);
+  }
+  return out;
+}
+
 function snapshotScenarioReport(report: ScenarioReport): ScenarioReport {
   return canonicalJsonValue(
-    report,
+    omitUndefinedDeep(report),
     "scenarioReport",
   ) as unknown as ScenarioReport;
 }
@@ -243,7 +274,7 @@ function writeScenarioEvidence(params: {
 }): void {
   const { aggregate, reports, paths, finalize, dependencies } = params;
   const persistedAggregate = redactForScenarioReport(
-    canonicalJsonValue(aggregate, "aggregateReport"),
+    canonicalJsonValue(omitUndefinedDeep(aggregate), "aggregateReport"),
   ) as AggregateReport;
 
   // Checkpoints deliberately write only the bounded evidence needed for crash

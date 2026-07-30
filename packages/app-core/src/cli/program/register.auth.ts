@@ -275,10 +275,30 @@ export async function runElizaAuthReset(
 const DEFAULT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 
 /**
- * Rewrite any elizacloud.ai web host to the API host, mirroring the app's
- * `resolveDirectCloudAuthApiBase`. Keeps a non-elizacloud (self-hosted) base as-is.
+ * Web host → API host for each Eliza Cloud deployment, mirroring the app's
+ * `resolveDirectCloudAuthApiBase` (`ui/src/api/client-cloud.ts`).
+ *
+ * An explicit map, not a pattern rewrite: a blanket "any *.elizacloud.ai →
+ * api.elizacloud.ai" rule silently redirected `api-staging`/`staging` to
+ * PRODUCTION, so `dev-login --cloud https://api-staging.elizacloud.ai` minted a
+ * prod key while reporting success — making it impossible to obtain a staging
+ * credential and easy to believe you had one. Each environment's hosts map only
+ * within that environment; an unlisted host (self-hosted, loopback) is left
+ * exactly as given.
  */
-function resolveCloudApiBase(input?: string): string {
+const CLOUD_API_BASE_BY_WEB_HOST = new Map<string, string>([
+  ["elizacloud.ai", "api.elizacloud.ai"],
+  ["www.elizacloud.ai", "api.elizacloud.ai"],
+  ["app.elizacloud.ai", "api.elizacloud.ai"],
+  ["dev.elizacloud.ai", "api.elizacloud.ai"],
+  ["api.elizacloud.ai", "api.elizacloud.ai"],
+  ["staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+  ["app-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+  ["api-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+]);
+
+/** @internal Exported for testing. */
+export function resolveCloudApiBase(input?: string): string {
   const raw = (
     input ||
     process.env.ELIZAOS_CLOUD_BASE_URL ||
@@ -286,12 +306,8 @@ function resolveCloudApiBase(input?: string): string {
   ).trim();
   try {
     const u = new URL(raw);
-    if (
-      /(^|\.)elizacloud\.ai$/.test(u.hostname) &&
-      u.hostname !== "api.elizacloud.ai"
-    ) {
-      u.hostname = "api.elizacloud.ai";
-    }
+    const mapped = CLOUD_API_BASE_BY_WEB_HOST.get(u.hostname.toLowerCase());
+    if (mapped) u.hostname = mapped;
     // Strip a trailing /api/v1 etc. — the SIWE endpoints live at the origin.
     return `${u.protocol}//${u.host}`;
   } catch {

@@ -15,7 +15,7 @@ import {
 	resolveActionArgs,
 	type SubactionsMap,
 } from "../../actions/resolve-action-args";
-import { isElizaError } from "../../errors";
+import { ElizaError, isElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
@@ -714,7 +714,33 @@ async function handleDelete(
 		return result(false, text, "delete", { values: { error: "invalid_id" } });
 	}
 
-	await service.deleteDocument(documentId, message);
+	// error-policy:J1 boundary translation — the action IS the boundary between
+	// the document service's typed errors and the model-visible ActionResult. An
+	// escaping ElizaError aborts the whole turn, so the two outcomes a caller can
+	// legitimately provoke (no such document, not allowed to delete it) become
+	// structured refusals the planner can read. Anything else still propagates:
+	// an adapter/transport fault is not a refusal and must not be reported as one.
+	try {
+		await service.deleteDocument(documentId, message);
+	} catch (error) {
+		const code = error instanceof ElizaError ? error.code : undefined;
+		if (code === "DOCUMENT_MUTATION_FORBIDDEN") {
+			const text =
+				"Only the owner can edit or delete global and owner-private documents.";
+			await emit(callback, { text });
+			return result(false, text, "delete", {
+				values: { error: "forbidden", documentId },
+			});
+		}
+		if (code === "DOCUMENT_NOT_FOUND") {
+			const text = `No document ${documentId} to delete.`;
+			await emit(callback, { text });
+			return result(false, text, "delete", {
+				values: { error: "not_found", documentId },
+			});
+		}
+		throw error;
+	}
 	const text = `Deleted document ${documentId}.`;
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "delete", { values: { documentId } });

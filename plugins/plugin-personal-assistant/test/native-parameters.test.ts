@@ -31,8 +31,14 @@ const mocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@elizaos/agent", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@elizaos/agent")>()),
+// Layer the hasOwnerAccess override on the shared agent stub rather than
+// replacing the module with a one-key object: `approval-queue.types.ts` is in
+// this test's module graph and SUBCLASSES `ApprovalStateTransitionError`, so a
+// narrow mock leaves it extending `undefined` and the whole suite fails to LOAD
+// ("no tests"). The stub re-exports the real class, keeping `instanceof` genuine
+// for the subclass — same pattern as first-run-provider.test.ts.
+vi.mock("@elizaos/agent", async () => ({
+  ...(await import("./stubs/agent.ts")),
   hasOwnerAccess: mocks.hasOwnerAccess,
 }));
 
@@ -162,6 +168,8 @@ describe("LifeOps native options.parameters migration", () => {
       success: true,
       data: { requestId: "req-1", state: "rejected" },
     });
+    // reject(requestId, subjectUserId, resolution) — the subject is passed
+    // explicitly so the store scopes the transition to that owner.
     expect(mocks.queue.reject).toHaveBeenCalledWith("req-1", "owner-1", {
       resolvedBy: "owner-1",
       resolutionReason: "not now",

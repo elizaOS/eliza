@@ -1212,7 +1212,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
-		for (const { memory, tableName } of memories) {
+		for (const { memory, tableName, unique } of memories) {
 			const gen =
 				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
 					? crypto.randomUUID()
@@ -1221,6 +1221,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			const stored: Memory = {
 				...memory,
 				id: asUuid(id),
+				unique: unique ?? memory.unique ?? true,
 			};
 			this.memoriesById.set(id, stored);
 			const roomId = memory.roomId;
