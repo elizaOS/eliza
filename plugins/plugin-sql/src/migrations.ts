@@ -343,6 +343,13 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
             'worlds',               -- already handled above
             'rooms',                -- already handled above
             'server_agents',        -- server_id is part of composite key
+            -- Discord coordination tables declare server_id in their plugin
+            -- schema and use it in primary keys / RLS. Dropping it on restart
+            -- destroys the shared lease ledger before RuntimeMigrator runs.
+            'discord_coordination_trust_members',
+            'discord_coordination_human_edges',
+            'discord_coordination_reply_slots',
+            'discord_coordination_receipts',
             'drizzle_migrations',
             '__drizzle_migrations'
           )
