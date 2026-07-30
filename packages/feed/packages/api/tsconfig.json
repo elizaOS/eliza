@@ -4,7 +4,6 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
-    "baseUrl": ".",
     "types": ["bun-types"],
     "paths": {
       "@feed/core": ["../core/markets/index.ts"],

@@ -1,55 +1,47 @@
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  mock,
-} from "bun:test";
+/**
+ * Verifies server-action telemetry and sanitization through an injected
+ * observer, independent of Bun's global module-mock registry.
+ */
 
-const startSpanMock = mock(
-  async (
-    _spanConfig: Record<string, unknown>,
-    callback: () => Promise<unknown>,
-  ) => callback(),
-);
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { wrapServerActionWithSentry } from "../../../../apps/web/src/lib/sentry/server-actions";
+
+const startSpanMock = mock((_spanConfig: Record<string, unknown>) => {});
 const setTagMock = mock((_key: string, _value: string) => {});
 const setContextMock = mock(
   (_key: string, _value: Record<string, unknown>) => {},
 );
 
-let wrapServerActionWithSentry: <T extends unknown[], R>(
-  actionName: string,
-  action: (...args: T) => Promise<R>,
-) => (...args: T) => Promise<R>;
+const telemetry = {
+  async startSpan<R>(
+    spanConfig: Record<string, unknown>,
+    callback: () => Promise<R>,
+  ): Promise<R> {
+    startSpanMock(spanConfig);
+    return callback();
+  },
+  setTag(key: string, value: string) {
+    setTagMock(key, value);
+  },
+  setContext(key: string, value: Record<string, unknown>) {
+    setContextMock(key, value);
+  },
+};
 
 describe("wrapServerActionWithSentry", () => {
-  beforeAll(async () => {
-    mock.module("@sentry/nextjs", () => ({
-      startSpan: startSpanMock,
-      setTag: setTagMock,
-      setContext: setContextMock,
-    }));
-
-    ({ wrapServerActionWithSentry } = await import(
-      "../../../../apps/web/src/lib/sentry/server-actions"
-    ));
-  });
-
   beforeEach(() => {
     startSpanMock.mockClear();
     setTagMock.mockClear();
     setContextMock.mockClear();
   });
 
-  afterAll(() => {
-    mock.restore();
-  });
-
   it("returns action result and creates a span on success", async () => {
     const action = mock(async (input: { value: number }) => input.value * 2);
-    const wrapped = wrapServerActionWithSentry("doubleValue", action);
+    const wrapped = wrapServerActionWithSentry(
+      "doubleValue",
+      action,
+      telemetry,
+    );
 
     const result = await wrapped({ value: 21 });
 
@@ -72,7 +64,11 @@ describe("wrapServerActionWithSentry", () => {
         throw actionError;
       },
     );
-    const wrapped = wrapServerActionWithSentry("failingAction", action);
+    const wrapped = wrapServerActionWithSentry(
+      "failingAction",
+      action,
+      telemetry,
+    );
 
     await expect(
       wrapped({ token: "secret-token", amount: 10 }, "hello"),

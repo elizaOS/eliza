@@ -35,7 +35,10 @@ mock.module("@/lib/services/notification-digest-service", () => ({
   listDigestCandidates: mockListDigestCandidates,
 }));
 
-const { GET, shouldProcessUser } = await import(
+const { shouldProcessUser } = await import(
+  "../../../../apps/web/src/app/api/cron/notifications-digest/partition"
+);
+const { GET } = await import(
   "../../../../apps/web/src/app/api/cron/notifications-digest/route"
 );
 
@@ -86,8 +89,8 @@ describe("notifications-digest cron fan-out", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(shouldProcessUser("a", true)).toBe(false);
-    expect(shouldProcessUser("b", true)).toBe(true);
+    expect(shouldProcessUser("a", true, true)).toBe(false);
+    expect(shouldProcessUser("b", true, true)).toBe(true);
     expect(mockDeliverDigestForUser).toHaveBeenCalledTimes(1);
     expect(mockDeliverDigestForUser.mock.calls[0]?.[0]?.candidate.id).toBe("b");
     expect(data).toMatchObject({
@@ -131,8 +134,8 @@ describe("notifications-digest cron fan-out", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(shouldProcessUser("a", true)).toBe(true);
-    expect(shouldProcessUser("b", true)).toBe(false);
+    expect(shouldProcessUser("a", true, false)).toBe(true);
+    expect(shouldProcessUser("b", true, false)).toBe(false);
     expect(mockDeliverDigestForUser).toHaveBeenCalledTimes(1);
     expect(mockDeliverDigestForUser.mock.calls[0]?.[0]?.candidate.id).toBe("a");
     expect(data).toMatchObject({

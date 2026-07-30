@@ -11,7 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "ignoreDeprecations": "6.0",
     "types": ["bun-types"],
-    "baseUrl": ".",
     "paths": {
       "@feed/a2a": ["../../a2a/src/index.ts"],
       "@feed/a2a/*": ["../../a2a/src/*"],

@@ -213,11 +213,11 @@ import {
   logger,
   MarkNotificationsReadSchema,
   NotificationsQuerySchema,
-  toISO,
 } from "@feed/shared";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { getMissingNotificationSchemaErrorCode } from "./schema-compat";
+import { serializeNotificationForApi } from "./serialization";
 
 const ClearNotificationsSchema = z
   .object({
@@ -230,62 +230,6 @@ const ClearNotificationsSchema = z
       message: "Provide notificationIds or clearAll=true",
     },
   );
-
-export function serializeNotificationForApi(
-  n: Record<string, unknown> & {
-    actor?: Record<string, unknown> | null;
-  },
-) {
-  // Helper to safely convert any value to string (handles cached data)
-  const toSafeString = (value: unknown): string => {
-    if (value === null || value === undefined) return "";
-    if (typeof value === "string") return value;
-    if (typeof value === "number") return String(value);
-    if (typeof value === "boolean") return String(value);
-    if (typeof value === "object" && "toString" in value) {
-      return (value as { toString: () => string }).toString();
-    }
-    return String(value);
-  };
-
-  // Handle createdAt safely - it could be Date (from DB/memory cache) or string (from Redis cache)
-  let createdAtISO: string;
-  if (n.createdAt instanceof Date) {
-    createdAtISO = toISO(n.createdAt);
-  } else if (typeof n.createdAt === "string") {
-    createdAtISO = n.createdAt;
-  } else {
-    const dateValue = n.createdAt as string | number | Date;
-    createdAtISO = new Date(dateValue).toISOString();
-  }
-
-  return {
-    id: toSafeString(n.id),
-    type: toSafeString(n.type),
-    title: toSafeString(n.title),
-    actorId: toSafeString(n.actorId),
-    actor: n.actor
-      ? {
-          id: toSafeString(n.actor.id),
-          displayName: toSafeString(n.actor.displayName),
-          username: toSafeString(n.actor.username),
-          profileImageUrl: toSafeString(n.actor.profileImageUrl),
-        }
-      : null,
-    postId: n.postId ? toSafeString(n.postId) : null,
-    commentId: n.commentId ? toSafeString(n.commentId) : null,
-    chatId: n.chatId ? toSafeString(n.chatId) : null,
-    groupId: n.groupId ? toSafeString(n.groupId) : null,
-    inviteId: n.inviteId ? toSafeString(n.inviteId) : null,
-    message: toSafeString(n.message),
-    data:
-      n.data && typeof n.data === "object"
-        ? (n.data as Record<string, unknown>)
-        : null,
-    read: Boolean(n.read),
-    createdAt: createdAtISO,
-  };
-}
 
 type NotificationReadPayload = {
   notificationsList: Array<
