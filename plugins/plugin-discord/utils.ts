@@ -42,12 +42,12 @@ export interface MessagingAPI {
 	handleMessage?: (
 		agentId: string,
 		message: unknown,
-		options?: { onResponse?: unknown },
+		options?: { onResponse?: unknown; abortSignal?: AbortSignal },
 	) => Promise<unknown>;
 	sendMessage?: (
 		agentId: string,
 		message: unknown,
-		options?: { onResponse?: unknown },
+		options?: { onResponse?: unknown; abortSignal?: AbortSignal },
 	) => Promise<unknown>;
 }
 

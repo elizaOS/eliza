@@ -172,41 +172,6 @@ export function isSubsetOrEqual(a: Set<string>, b: Set<string>): boolean {
 	return true;
 }
 
-export function resolveGenerationTimeoutMs(
-	timeoutSetting: unknown,
-	fallbackSetting: unknown,
-	mediaGenerationTimeoutSetting?: unknown,
-): number | null {
-	const hasExplicitDiscordTimeout =
-		timeoutSetting !== undefined &&
-		timeoutSetting !== null &&
-		String(timeoutSetting).trim() !== "";
-
-	const parsed = Number.parseInt(
-		String(timeoutSetting ?? fallbackSetting ?? "120000"),
-		10,
-	);
-	let base: number | null;
-	if (!Number.isFinite(parsed)) {
-		base = 120_000;
-	} else {
-		base = parsed > 0 ? Math.max(30_000, parsed) : null;
-	}
-
-	if (hasExplicitDiscordTimeout || base === null) {
-		return base;
-	}
-
-	const mediaParsed = Number.parseInt(
-		String(mediaGenerationTimeoutSetting ?? ""),
-		10,
-	);
-	if (!Number.isFinite(mediaParsed) || mediaParsed <= 0) {
-		return base;
-	}
-	return Math.max(base, Math.max(30_000, mediaParsed));
-}
-
 function isJsonValue(value: unknown): value is JsonValue {
 	if (
 		value === null ||
@@ -272,11 +237,6 @@ function webpageAttachmentId(url: string): string {
 	return `webpage-${createHash("sha256").update(url).digest("hex").slice(0, 24)}`;
 }
 
-const ACTIVE_TASK_AGENT_STATUSES = new Set([
-	"active",
-	"blocked",
-	"tool_running",
-]);
 const DISCORD_OUTBOUND_DEDUPE_WINDOW_MS = 2000;
 const DISCORD_OUTBOUND_DEDUPE_MAX_KEYS = 512;
 
@@ -305,61 +265,6 @@ const recentOutboundDiscordDeliveries = new Map<
 	string,
 	DiscordOutboundDeliveryState
 >();
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
-
-function stringField(
-	record: Record<string, unknown> | null,
-	field: string,
-): string | undefined {
-	const value = record?.[field];
-	return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-export function hasActiveTaskAgentWorkForMessage(
-	runtime: Pick<IAgentRuntime, "getService">,
-	messageId: string,
-): boolean {
-	try {
-		const coordinator = asRecord(runtime.getService("SWARM_COORDINATOR"));
-		const tasks = coordinator?.tasks;
-		if (!(tasks instanceof Map)) {
-			return false;
-		}
-
-		for (const taskValue of tasks.values()) {
-			const task = asRecord(taskValue);
-			const status = stringField(task, "status");
-			if (!status || !ACTIVE_TASK_AGENT_STATUSES.has(status)) {
-				continue;
-			}
-
-			const metadata = asRecord(task?.originMetadata);
-			const originMessageId = stringField(metadata, "messageId");
-			if (originMessageId === messageId) {
-				return true;
-			}
-		}
-	} catch {
-		return false;
-	}
-
-	return false;
-}
-
-export function shouldSuppressTimeoutForInFlightDispatchForTests({
-	generationTimedOut,
-	responseDispatchInFlight,
-}: {
-	generationTimedOut: boolean;
-	responseDispatchInFlight: boolean;
-}): boolean {
-	return generationTimedOut && responseDispatchInFlight;
-}
 
 export interface DiscordOutboundDeliveryReservation {
 	commit(
@@ -582,122 +487,6 @@ function callbackDeliveryReceipt(input: {
 	};
 }
 
-/**
- * Outcome of {@link runGenerationWithAbortableTimeout}.
- *
- * - `timedOut`   — the timeout won the race; the abort signal was fired.
- * - `settled`    — the generation promise fulfilled or rejected before the
- *                  timeout. When `timedOut` is true, `settled` reflects
- *                  whether the orphaned generation had ALREADY completed at
- *                  the moment the timeout fired (almost always `false`).
- * - `error`      — the rejection value when generation rejected on its own
- *                  (not a timeout). `undefined` on success or timeout.
- */
-export interface AbortableTimeoutResult {
-	timedOut: boolean;
-	settled: boolean;
-	error?: unknown;
-}
-
-/**
- * Runs a single generation attempt against a wall-clock timeout, wiring an
- * {@link AbortController} so that a timeout ACTUALLY CANCELS the underlying
- * work instead of leaving it running as an orphan.
- *
- * Why this exists (the bug):
- * The previous Discord dispatch did `Promise.race([generationPromise,
- * timeoutPromise])` where `generationPromise` called
- * `messageService.handleMessage(runtime, message, callback)` with NO abort
- * signal. When the timeout won the race we set a `generationTimedOut` flag
- * and sent the "I timed out" reply — but the model call kept running,
- * burning tokens and (worse) racing to emit a late response into the same
- * room. The alternating "timeout / then instant" pattern is the classic
- * signature of an orphaned run that resolves late and poisons the next slot.
- *
- * The core message service ALREADY threads
- * `MessageProcessingOptions.abortSignal` → `StreamingContext.abortSignal` →
- * `runtime.useModel` (`params.signal ??= abortSignal`) → provider fetch
- * (see packages/core/src/services/message.ts and
- * message-handler-abort.test.ts). The only missing link was the connector
- * never CREATING a controller and never PASSING the signal down. This helper
- * closes that gap.
- *
- * Contract:
- * - `generate(signal)` MUST forward `signal` into the generation call so the
- *   abort actually propagates. The helper cannot enforce this — the call
- *   site is responsible for plumbing `{ abortSignal: signal }` through.
- * - On timeout: `controller.abort()` fires, `timedOut` is `true`, and the
- *   orphaned promise's eventual rejection is swallowed so it never surfaces
- *   as an unhandled rejection.
- * - `timeoutMs === null` disables the timeout entirely (media / long jobs);
- *   the generation is awaited to completion and no controller races it.
- *
- * @param generate  Callback receiving the abort signal; returns the
- *                  generation promise. Must forward the signal downstream.
- * @param timeoutMs Wall-clock budget in ms, or `null` to disable the timeout.
- * @returns         {@link AbortableTimeoutResult} describing how the race
- *                  resolved.
- */
-export async function runGenerationWithAbortableTimeout(
-	generate: (signal: AbortSignal) => Promise<unknown>,
-	timeoutMs: number | null,
-): Promise<AbortableTimeoutResult> {
-	const controller = new AbortController();
-	let settled = false;
-
-	const generationPromise = Promise.resolve()
-		.then(() => generate(controller.signal))
-		.then(
-			() => {
-				settled = true;
-				return { kind: "ok" as const };
-			},
-			(error: unknown) => {
-				settled = true;
-				return { kind: "error" as const, error };
-			},
-		);
-
-	// Never let the orphaned generation surface as an unhandled rejection.
-	// The `.then(onRejected)` above already converts rejection into a value,
-	// but attach a defensive catch in case `generate` throws synchronously
-	// off the microtask edge.
-	void generationPromise.catch(() => {});
-
-	if (timeoutMs === null) {
-		const outcome = await generationPromise;
-		return {
-			timedOut: false,
-			settled: true,
-			...(outcome.kind === "error" ? { error: outcome.error } : {}),
-		};
-	}
-
-	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-	const timeoutPromise = new Promise<"timeout">((resolve) => {
-		timeoutHandle = setTimeout(() => resolve("timeout"), timeoutMs);
-	});
-
-	try {
-		const winner = await Promise.race([generationPromise, timeoutPromise]);
-		if (winner === "timeout") {
-			// Timeout won: abort the underlying work so the orphaned run stops
-			// burning tokens and cannot race a late response into the room.
-			controller.abort();
-			return { timedOut: true, settled };
-		}
-		return {
-			timedOut: false,
-			settled: true,
-			...(winner.kind === "error" ? { error: winner.error } : {}),
-		};
-	} finally {
-		if (timeoutHandle) {
-			clearTimeout(timeoutHandle);
-		}
-	}
-}
-
 export async function createDiscordMessageMemoryOnce(
 	runtime: Pick<
 		IAgentRuntime,
@@ -808,6 +597,11 @@ export class MessageManager {
 	private draftStreamingEnabled: boolean;
 	private stalenessConfig: DiscordStalenessConfig;
 	private recentlyProcessedMessageIds = new Map<string, number>();
+	private activeGenerations = new Set<{
+		controller: AbortController;
+		promise: Promise<void>;
+	}>();
+	private stopped = false;
 	private static readonly PROCESSED_MESSAGE_TTL_MS = 2 * 60 * 1000;
 	/**
 	 * Constructor for a new instance of MessageManager.
@@ -1007,7 +801,49 @@ export class MessageManager {
 	 *
 	 * @param {DiscordMessage} message - The Discord message to be handled
 	 */
-	async handleMessage(message: DiscordMessage) {
+	async handleMessage(message: DiscordMessage): Promise<void> {
+		if (this.stopped) {
+			return;
+		}
+
+		const controller = new AbortController();
+		const promise = this.handleMessageOwned(message, controller.signal).catch(
+			(error: unknown) => {
+				if (controller.signal.aborted) {
+					return;
+				}
+				throw error;
+			},
+		);
+		const generation = { controller, promise };
+		this.activeGenerations.add(generation);
+		try {
+			await promise;
+		} finally {
+			this.activeGenerations.delete(generation);
+		}
+	}
+
+	async stop(): Promise<void> {
+		if (this.stopped) {
+			return;
+		}
+		this.stopped = true;
+
+		const active = [...this.activeGenerations];
+		for (const generation of active) {
+			generation.controller.abort(
+				new DOMException("Discord message manager stopped", "AbortError"),
+			);
+		}
+		await Promise.all(active.map((generation) => generation.promise));
+	}
+
+	private async handleMessageOwned(
+		message: DiscordMessage,
+		abortSignal: AbortSignal,
+	): Promise<void> {
+		abortSignal.throwIfAborted();
 		// this filtering is already done in setupEventListeners
 		/*
     if (
@@ -1059,6 +895,7 @@ export class MessageManager {
 			}
 
 			const accessCheck = await this.checkDmAccess(message);
+			abortSignal.throwIfAborted();
 			if (!accessCheck.allowed) {
 				// If a reply message was generated (new pairing request), send it
 				if (accessCheck.replyMessage) {
@@ -1162,6 +999,7 @@ export class MessageManager {
 			// the cached object.
 			const guild = message.guild;
 			type = await this.getChannelType(message.channel as Channel);
+			abortSignal.throwIfAborted();
 			if (type === null) {
 				// usually a forum type post
 				this.runtime.logger.warn(
@@ -1529,16 +1367,6 @@ export class MessageManager {
 				: null;
 			let typingStarted = false;
 			let responseEmitted = false;
-			let responseDispatchInFlight = false;
-			let generationTimedOut = false;
-			const generationTimeoutMs = resolveGenerationTimeoutMs(
-				this.runtime.getSetting("DISCORD_GENERATION_TIMEOUT_MS") ??
-					process.env.DISCORD_GENERATION_TIMEOUT_MS,
-				this.runtime.getSetting("MESSAGE_TIMEOUT_MS") ??
-					process.env.MESSAGE_TIMEOUT_MS,
-				this.runtime.getSetting("ZEROLLAMA_VIDEO_TIMEOUT_MS") ??
-					process.env.ZEROLLAMA_VIDEO_TIMEOUT_MS,
-			);
 
 			const finalizePendingDraft = async () => {
 				if (draftStream?.isStarted() && !draftStream.isDone()) {
@@ -1555,6 +1383,7 @@ export class MessageManager {
 			};
 
 			const sendFailureReply = async (text: string) => {
+				abortSignal.throwIfAborted();
 				try {
 					await channel.send({
 						content: text,
@@ -1582,17 +1411,6 @@ export class MessageManager {
 				}
 			};
 
-			const runResponseDispatch = async <T>(
-				dispatch: () => Promise<T>,
-			): Promise<T> => {
-				responseDispatchInFlight = true;
-				try {
-					return await dispatch();
-				} finally {
-					responseDispatchInFlight = false;
-				}
-			};
-
 			if (draftStream) {
 				await draftStream.start(channel, outboundReplyToMessageId, replyToMode);
 			}
@@ -1612,14 +1430,7 @@ export class MessageManager {
 				let deliveredReplyDedupKey: string | undefined;
 				let deliveredFactSignature: Set<string> | null = null;
 				try {
-					const pendingAttachmentCount = Array.isArray(content.attachments)
-						? content.attachments.filter((media) => Boolean(media?.url)).length
-						: 0;
-					// Long-running media (e.g. Wan video ~10 min) can outlive the Discord
-					// generation timeout. Still deliver attachments when the job finishes.
-					if (generationTimedOut && pendingAttachmentCount === 0) {
-						return [];
-					}
+					abortSignal.throwIfAborted();
 					// target is set but not addressed to us handling
 					if (
 						content.target &&
@@ -1804,6 +1615,7 @@ export class MessageManager {
 					const files: AttachmentBuilder[] = [];
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
+							abortSignal.throwIfAborted();
 							if (media.url) {
 								files.push(
 									await buildOutboundDiscordAttachment(media, this.runtime),
@@ -1824,13 +1636,15 @@ export class MessageManager {
 					}
 
 					let messages: DiscordMessage[] = [];
+					abortSignal.throwIfAborted();
 					if (draftStream?.isStarted() && !draftStream.isDone()) {
 						if (hasText || files.length === 0) {
 							const draftComponents = hasComponents
 								? buildDiscordComponents(rendered.components)
 								: undefined;
-							messages = await runResponseDispatch(() =>
-								draftStream.finalize(textContent, draftComponents),
+							messages = await draftStream.finalize(
+								textContent,
+								draftComponents,
 							);
 						} else {
 							await finalizePendingDraft();
@@ -1838,19 +1652,18 @@ export class MessageManager {
 
 						if (files.length > 0) {
 							try {
-								const attachmentMessage = await runResponseDispatch(() =>
-									channel.send({
-										files,
-										...(outboundReplyToMessageId &&
-										(replyToMode === "all" || !hasText)
-											? {
-													reply: {
-														messageReference: outboundReplyToMessageId,
-													},
-												}
-											: {}),
-									}),
-								);
+								abortSignal.throwIfAborted();
+								const attachmentMessage = await channel.send({
+									files,
+									...(outboundReplyToMessageId &&
+									(replyToMode === "all" || !hasText)
+										? {
+												reply: {
+													messageReference: outboundReplyToMessageId,
+												},
+											}
+										: {}),
+								});
 								messages.push(attachmentMessage);
 							} catch (error) {
 								// error-policy:J1 provider boundary retains the
@@ -1867,6 +1680,7 @@ export class MessageManager {
 							}
 						}
 					} else if (content && content.channelType === "DM") {
+						abortSignal.throwIfAborted();
 						const user = await this.client.users.fetch(message.author.id);
 						if (!user) {
 							this.runtime.logger.warn(
@@ -1885,8 +1699,9 @@ export class MessageManager {
 						const dmComponents = hasComponents
 							? buildDiscordComponents(rendered.components)
 							: undefined;
-						const dmMessage = await runResponseDispatch(() =>
-							user.send(buildDmSendOptions(textContent, files, dmComponents)),
+						abortSignal.throwIfAborted();
+						const dmMessage = await user.send(
+							buildDmSendOptions(textContent, files, dmComponents),
 						);
 						messages = [dmMessage];
 					} else {
@@ -1899,19 +1714,18 @@ export class MessageManager {
 							outboundReservation = undefined;
 							return [];
 						}
-						messages = await runResponseDispatch(() =>
-							sendMessageInChunks(
-								channel,
-								textContent,
-								outboundReplyToMessageId ?? "",
-								files,
-								hasComponents ? rendered.components : undefined,
-								this.runtime,
-								replyToMode,
-								(outcome) => {
-									providerSendFailure = outcome.failure;
-								},
-							),
+						abortSignal.throwIfAborted();
+						messages = await sendMessageInChunks(
+							channel,
+							textContent,
+							outboundReplyToMessageId ?? "",
+							files,
+							hasComponents ? rendered.components : undefined,
+							this.runtime,
+							replyToMode,
+							(outcome) => {
+								providerSendFailure = outcome.failure;
+							},
 						);
 					}
 					acceptedMessages = [...messages];
@@ -2075,6 +1889,12 @@ export class MessageManager {
 						return [];
 					}
 					outboundReservation?.release();
+					if (abortSignal.aborted) {
+						typingController.stop();
+						draftStream?.cancel();
+						await statusReactions?.cancel();
+						throw abortSignal.reason;
+					}
 					this.runtime.logger.error(
 						{
 							src: "plugin:discord",
@@ -2099,159 +1919,96 @@ export class MessageManager {
 			if (turnRecord) {
 				turnRecord = await markDiscordTurnDispatched(this.runtime, turnRecord);
 			}
-			// AbortController for the whole generation attempt. On timeout we fire
-			// this so the underlying model call ACTUALLY cancels instead of running
-			// on as an orphan (the root cause of the alternating timeout / instant
-			// pattern). The signal threads into `messageService.handleMessage`
-			// options → StreamingContext → runtime.useModel → provider fetch. See
-			// runGenerationWithAbortableTimeout above and __tests__/generation-abort.
-			const generationAbortController = new AbortController();
-			const generationSignal = generationAbortController.signal;
-			let generationTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
 			try {
-				const generationPromise = (async () => {
-					if (messageService) {
-						this.runtime.logger.debug(
-							{ src: "plugin:discord", agentId: this.runtime.agentId },
-							"Using messageService API",
-						);
-						await messageService.handleMessage(
-							this.runtime,
-							newMessage,
-							callback,
-							{ abortSignal: generationSignal },
-						);
-					} else if (messagingAPI?.handleMessage) {
-						this.runtime.logger.debug(
-							{ src: "plugin:discord", agentId: this.runtime.agentId },
-							"Using messaging API handleMessage",
-						);
-						await messagingAPI.handleMessage(this.runtime.agentId, newMessage, {
-							onResponse: callback,
-						});
-					} else if (messagingAPI?.sendMessage) {
-						this.runtime.logger.debug(
-							{ src: "plugin:discord", agentId: this.runtime.agentId },
-							"Using messaging API sendMessage",
-						);
-						await messagingAPI.sendMessage(this.runtime.agentId, newMessage, {
-							onResponse: callback,
-						});
-					} else {
-						this.runtime.logger.debug(
-							{ src: "plugin:discord", agentId: this.runtime.agentId },
-							"Using event-based message handling",
-						);
-						const payload: EventPayload & {
-							message: Memory;
-							callback: HandlerCallback;
-							accountId: string;
-						} = {
-							runtime: this.runtime,
-							message: newMessage,
-							callback,
-							source: "discord",
-							accountId: this.accountId,
-						};
-						await this.runtime.emitEvent(
-							[
-								DiscordEventTypes.MESSAGE_RECEIVED,
-								EventType.MESSAGE_RECEIVED,
-							] as string[],
-							payload,
-						);
-					}
-				})();
-
-				// Never let the orphaned generation surface as an unhandled
-				// rejection once we stop awaiting it on timeout.
-				generationPromise.catch(() => {});
-				if (generationTimeoutMs === null) {
-					await generationPromise;
-				} else {
-					const timeoutPromise = new Promise<never>((_, reject) => {
-						generationTimeoutHandle = setTimeout(() => {
-							generationTimedOut = true;
-							// Abort the underlying generation BEFORE rejecting so the
-							// orphaned model call stops burning tokens and cannot race a
-							// late response into this room. Without this the run stayed
-							// live and poisoned the next message slot.
-							generationAbortController.abort();
-							reject(
-								new Error(
-									`Discord generation timeout after ${generationTimeoutMs}ms`,
-								),
-							);
-						}, generationTimeoutMs);
+				if (messageService) {
+					this.runtime.logger.debug(
+						{ src: "plugin:discord", agentId: this.runtime.agentId },
+						"Using messageService API",
+					);
+					await messageService.handleMessage(
+						this.runtime,
+						newMessage,
+						callback,
+						{ abortSignal },
+					);
+				} else if (messagingAPI?.handleMessage) {
+					this.runtime.logger.debug(
+						{ src: "plugin:discord", agentId: this.runtime.agentId },
+						"Using messaging API handleMessage",
+					);
+					await messagingAPI.handleMessage(this.runtime.agentId, newMessage, {
+						onResponse: callback,
+						abortSignal,
 					});
-
-					await Promise.race([generationPromise, timeoutPromise]);
+				} else if (messagingAPI?.sendMessage) {
+					this.runtime.logger.debug(
+						{ src: "plugin:discord", agentId: this.runtime.agentId },
+						"Using messaging API sendMessage",
+					);
+					await messagingAPI.sendMessage(this.runtime.agentId, newMessage, {
+						onResponse: callback,
+						abortSignal,
+					});
+				} else {
+					this.runtime.logger.debug(
+						{ src: "plugin:discord", agentId: this.runtime.agentId },
+						"Using event-based message handling",
+					);
+					const payload: EventPayload & {
+						message: Memory;
+						callback: HandlerCallback;
+						accountId: string;
+						abortSignal: AbortSignal;
+					} = {
+						runtime: this.runtime,
+						message: newMessage,
+						callback,
+						source: "discord",
+						accountId: this.accountId,
+						abortSignal,
+					};
+					await this.runtime.emitEvent(
+						[
+							DiscordEventTypes.MESSAGE_RECEIVED,
+							EventType.MESSAGE_RECEIVED,
+						] as string[],
+						payload,
+					);
 				}
+				abortSignal.throwIfAborted();
 			} catch (generationError) {
-				const activeTaskAgentWork =
-					generationTimedOut &&
-					!!messageId &&
-					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
+				if (abortSignal.aborted) {
+					typingController.stop();
+					draftStream?.cancel();
+					await statusReactions?.cancel();
+					if (!inboundMemoryCommitted) {
+						inboundMemoryCommitted =
+							await this.releaseMessageProcessingIfInboundNotPersisted(
+								message.id,
+								inboundMemoryId,
+							);
+					}
+					return;
+				}
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",
 						agentId: this.runtime.agentId,
 						messageId: message.id,
-						timeoutMs: generationTimeoutMs,
-						activeTaskAgentWork,
 						error:
 							generationError instanceof Error
 								? generationError.message
 								: String(generationError),
 					},
-					"Discord generation failed or timed out",
+					"Discord generation failed",
 				);
 				typingController.stop();
-				if (activeTaskAgentWork) {
-					statusReactions?.setDone();
-					await abortPendingDraft();
-					this.runtime.logger.warn(
-						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
-							messageId: message.id,
-							memoryId: messageId,
-							roomId,
-							timeoutMs: generationTimeoutMs,
-						},
-						"Suppressing Discord timeout reply while task-agent work is still active",
-					);
-					return;
-				}
-
-				if (
-					shouldSuppressTimeoutForInFlightDispatchForTests({
-						generationTimedOut,
-						responseDispatchInFlight,
-					})
-				) {
-					this.runtime.logger.warn(
-						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
-							messageId: message.id,
-							memoryId: messageId,
-							roomId,
-							timeoutMs: generationTimeoutMs,
-						},
-						"Suppressing Discord timeout handling while response dispatch is in flight",
-					);
-					return;
-				}
-
 				statusReactions?.setError();
 				await abortPendingDraft();
 
 				if (!responseEmitted) {
 					await sendFailureReply(
-						generationTimedOut
-							? "I timed out while generating that reply. Please retry."
-							: "I hit a provider issue while generating the reply. Please retry.",
+						"I hit a provider issue while generating the reply. Please retry.",
 					);
 				}
 				if (!inboundMemoryCommitted) {
@@ -2262,10 +2019,6 @@ export class MessageManager {
 						);
 				}
 				return;
-			} finally {
-				if (generationTimeoutHandle) {
-					clearTimeout(generationTimeoutHandle);
-				}
 			}
 
 			if (!responseEmitted) {
@@ -2273,6 +2026,7 @@ export class MessageManager {
 				statusReactions?.setDone();
 				await finalizePendingDraft();
 			}
+			await statusReactions?.settled();
 
 			// Generation completed without throwing. Whether the agent emitted a
 			// reply or deliberately produced none (IGNORE/empty), the turn is done:
@@ -2290,6 +2044,9 @@ export class MessageManager {
 						message.id,
 						inboundMemoryId,
 					);
+			}
+			if (abortSignal.aborted) {
+				return;
 			}
 			this.runtime.logger.error(
 				{

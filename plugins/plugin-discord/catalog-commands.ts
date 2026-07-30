@@ -65,9 +65,6 @@ import {
 } from "./slash-commands";
 import { getMessageService, getMessagingAPI } from "./utils";
 
-/** How long to wait for the agent to produce a reply before giving up. */
-const AGENT_REPLY_TIMEOUT_MS = 60_000;
-
 /** The catalog surface this bridge serves. */
 const DISCORD_SURFACE = "discord";
 const DISCORD_EMBED_COMMAND = "app";
@@ -265,19 +262,7 @@ async function routeCommandToAgent(
 		}
 	};
 
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const timeout = new Promise<never>((_, reject) => {
-		timer = setTimeout(
-			() => reject(new Error("agent reply timed out")),
-			AGENT_REPLY_TIMEOUT_MS,
-		);
-	});
-
-	try {
-		await Promise.race([dispatch(), timeout]);
-	} finally {
-		if (timer) clearTimeout(timer);
-	}
+	await dispatch();
 
 	const content =
 		replied.trim().length > 0

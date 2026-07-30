@@ -78,20 +78,6 @@ DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES=true
 # If true, only respond when explicitly @mentioned (default: true)
 DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS=true
 
-# Generation Timeout (Optional)
-# Wall-clock budget for generating a single reply before the bot gives up and
-# posts "I timed out while generating that reply." On timeout the underlying
-# model call is ABORTED (the abort signal threads through to runtime.useModel /
-# the provider fetch), so an orphaned run cannot keep burning tokens or race a
-# late response into the same channel.
-#   Default: 120000 (2 min). Minimum: 30000 (values below the floor are raised).
-#   Set to 0 to DISABLE the timeout entirely (await generation to completion —
-#   useful for long media jobs like video). Falls back to MESSAGE_TIMEOUT_MS,
-#   then to the media-generation timeout, when unset.
-# For heavy-context / multi-step agentic turns on cloud models, raise this
-# (e.g. 240000) rather than leaving replies to hit the 2-min cap.
-DISCORD_GENERATION_TIMEOUT_MS=120000
-
 # Testing (Optional)
 DISCORD_TEST_CHANNEL_ID=123456789012345678
 

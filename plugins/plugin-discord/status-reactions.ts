@@ -13,6 +13,8 @@ export interface StatusReactionController {
 	setThinking: () => void;
 	setDone: () => void;
 	setError: () => void;
+	cancel: () => Promise<void>;
+	settled: () => Promise<void>;
 }
 
 const EMOJI_QUEUED = "⏳";
@@ -114,5 +116,12 @@ export function createStatusReactionController(
 		setThinking: () => transition(EMOJI_THINKING),
 		setDone: () => finishWithoutSuccessReaction(),
 		setError: () => transition(EMOJI_ERROR, true),
+		cancel: async () => {
+			finished = true;
+			await chain;
+		},
+		settled: async () => {
+			await chain;
+		},
 	};
 }
