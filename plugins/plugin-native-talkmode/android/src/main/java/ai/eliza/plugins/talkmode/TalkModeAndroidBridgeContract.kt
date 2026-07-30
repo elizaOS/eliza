@@ -4,11 +4,11 @@ import com.getcapacitor.JSObject
 
 internal object TalkModeAndroidBridgeContract {
     const val FINAL_TRANSCRIPT_DEDUP_WINDOW_MS = 2000L
-    const val LOCAL_INFERENCE_TIMEOUT_MS = 180_000
 
     fun localInferenceRequestPayload(
         body: String,
-        authorization: String?
+        authorization: String?,
+        requestId: String
     ): Map<String, Any?> {
         val headers = linkedMapOf(
             "Content-Type" to "application/json",
@@ -22,7 +22,7 @@ internal object TalkModeAndroidBridgeContract {
             "path" to "/api/tts/local-inference",
             "headers" to headers,
             "body" to body,
-            "timeoutMs" to LOCAL_INFERENCE_TIMEOUT_MS
+            "requestId" to requestId
         )
     }
 
