@@ -334,14 +334,14 @@ export type WalletRecentTransaction = {
 };
 
 export type WalletTokenHolding = {
-  mint: string;
+  tokenId: string;
   amount: number;
   decimals: number;
   rawAmount: string;
 };
 
 export type WalletPortfolioToken = {
-  mint: string;
+  tokenId: string;
   amount: number;
   decimals: number;
   rawAmount: string;
