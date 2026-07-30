@@ -31,9 +31,10 @@
       "gzipBudgetBytes": 2500
     },
     "plugin-calendar": {
-      "measuredRawBytes": 13708,
-      "measuredGzipBytes": 4350,
-      "gzipBudgetBytes": 5000
+      "measuredRawBytes": 32164,
+      "measuredGzipBytes": 8861,
+      "gzipBudgetBytes": 9900,
+      "baselineReason": "#17206 grew the calendar view from one Google-only agenda into the shipped multi-provider surface: Microsoft Graph calendars, watch-channel state, conflict detection, and travel-reservation events. The old 4350-byte baseline predates all of it, so the overshoot is delivered functionality rather than drift — the total gzip budget still passes with ~33 kB of headroom. Ratchet back down if the provider surfaces are code-split."
     },
     "plugin-contacts": {
       "measuredRawBytes": 33859,
