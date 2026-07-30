@@ -729,6 +729,10 @@ export async function executeRoleplayEpisode(
     };
 
     const callbackContents: Content[] = [];
+    const abortSignal =
+      options.timeoutMs === undefined
+        ? undefined
+        : AbortSignal.timeout(options.timeoutMs);
     const result = await runtime.messageService.handleMessage(
       runtime,
       message,
@@ -736,7 +740,7 @@ export async function executeRoleplayEpisode(
         callbackContents.push(content);
         return [];
       },
-      options.timeoutMs ? { timeoutDuration: options.timeoutMs } : undefined,
+      abortSignal ? { abortSignal } : undefined,
     );
 
     const trajectory = await waitForTrajectoryDetail(logger, trajectoryId);
