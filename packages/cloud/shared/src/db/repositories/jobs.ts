@@ -32,6 +32,11 @@ export type { Job, NewJob };
 export const DEFAULT_JOB_EXECUTION_LEASE_MS = 60_000;
 export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
 
+/** Atomic result of attempting to renew one claimed execution generation. */
+export type ExecutionLeaseRenewal = "renewed" | "settled" | "lost";
+
+const SETTLED_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
+
 function executionLeaseDuration(filters: { executionLeaseMs?: number }): number {
   const duration = filters.executionLeaseMs ?? DEFAULT_JOB_EXECUTION_LEASE_MS;
   if (!Number.isFinite(duration) || duration < 1) {
@@ -781,31 +786,41 @@ export class JobsRepository {
   }
 
   /**
-   * Renews the exact process claim while the job generation is still active.
-   * Locking the jobs row serializes renewal with expired-lease recovery.
+   * Renews the exact process claim and atomically classifies a refusal.
+   *
+   * Locking the jobs row serializes renewal with settlement and recovery, so
+   * callers never need a race-prone follow-up read to distinguish a normally
+   * settled execution from ownership loss.
    */
   async renewExecutionLease(
     claimedJob: Job,
     ownerId: string,
     executionLeaseMs = DEFAULT_JOB_EXECUTION_LEASE_MS,
-  ): Promise<boolean> {
+  ): Promise<ExecutionLeaseRenewal> {
     const generation = requireExecutionGeneration(claimedJob);
     const leaseMs = executionLeaseDuration({ executionLeaseMs });
     return await dbWrite.transaction(async (tx) => {
       const [current] = await tx
-        .select({ id: jobs.id })
+        .select({
+          status: jobs.status,
+          executionGeneration: jobs.execution_generation,
+          executionQuiescedAt: jobs.execution_quiesced_at,
+        })
         .from(jobs)
-        .where(
-          and(
-            eq(jobs.id, claimedJob.id),
-            eq(jobs.status, "in_progress"),
-            eq(jobs.execution_generation, generation),
-            sql`${jobs.execution_quiesced_at} IS NULL`,
-          ),
-        )
+        .where(eq(jobs.id, claimedJob.id))
         .for("update")
         .limit(1);
-      if (!current) return false;
+      if (!current) return "lost";
+      if (
+        current.status !== "in_progress" ||
+        current.executionGeneration !== generation ||
+        current.executionQuiescedAt !== null
+      ) {
+        return current.executionGeneration === generation &&
+          SETTLED_JOB_STATUSES.has(current.status)
+          ? "settled"
+          : "lost";
+      }
       const [renewed] = await tx
         .update(jobExecutionLeases)
         .set({
@@ -820,7 +835,7 @@ export class JobsRepository {
           ),
         )
         .returning({ jobId: jobExecutionLeases.job_id });
-      return Boolean(renewed);
+      return renewed ? "renewed" : "lost";
     });
   }
 

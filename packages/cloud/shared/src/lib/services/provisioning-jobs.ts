@@ -2635,16 +2635,10 @@ export class ProvisioningJobService {
       renewalInFlight = true;
       void jobsRepository
         .renewExecutionLease(job, this.executionOwnerId, this.leaseDurationForJobType(job.type))
-        .then(async (renewed) => {
-          if (!renewed) {
+        .then((outcome) => {
+          if (outcome !== "renewed") {
             clearInterval(timer);
-            // A failed renewal has two very different meanings: the executor
-            // self-settled the row a moment ago (normal on every success —
-            // renewExecutionLease guards on status='in_progress'), or the
-            // lease was genuinely taken. One read tells them apart; only the
-            // second deserves a WARN.
-            const current = await jobsRepository.findById(job.id).catch(() => undefined);
-            if (current && current.status === "in_progress") {
+            if (outcome === "lost") {
               logger.warn("[provisioning-jobs] Execution lease ownership was lost", {
                 jobId: job.id,
                 executionGeneration: job.execution_generation,
@@ -2653,7 +2647,6 @@ export class ProvisioningJobService {
             } else {
               logger.debug("[provisioning-jobs] Lease heartbeat stopped after settlement", {
                 jobId: job.id,
-                status: current?.status,
               });
             }
           }
@@ -2703,7 +2696,7 @@ export class ProvisioningJobService {
             this.executionOwnerId,
             this.leaseDurationForJobType(job.type),
           );
-          if (!renewed) throw error;
+          if (renewed !== "renewed") throw error;
           continue;
         }
         attempt++;
@@ -2726,11 +2719,11 @@ export class ProvisioningJobService {
     } catch (error) {
       if (
         !(error instanceof StaleJobExecutionError) ||
-        !(await jobsRepository.renewExecutionLease(
+        (await jobsRepository.renewExecutionLease(
           job,
           this.executionOwnerId,
           this.leaseDurationForJobType(job.type),
-        ))
+        )) !== "renewed"
       ) {
         throw error;
       }
@@ -2743,10 +2736,9 @@ export class ProvisioningJobService {
     // takeover remains barred through the full local execution timeout. Regular
     // heartbeats extend this window for legitimately detached work.
     //
-    // Post-CRASH recovery latency is this duration plus the 30s takeover
-    // grace: with the 900s cold-boot execution timeout that is 930s + 30s =
-    // 960s (16 min) before a dead worker's cold-boot job becomes claimable
-    // again. Deliberate — the cost of never reclaiming a live provision.
+    // A crashed worker's claim remains protected for this duration plus the
+    // 30-second takeover grace. The 16-minute cold-boot window prevents a
+    // replacement from reclaiming work that may still be mutating a provider.
     return Math.max(
       this.executionLeaseMs,
       this.executionTimeoutMs(jobType) + 2 * this.executionLeaseHeartbeatMs,
@@ -2912,9 +2904,6 @@ export class ProvisioningJobService {
       try {
         await withTimeout(execution, this.executionTimeoutMs(job.type), `job ${job.type}`);
         result.succeeded++;
-        // NOTE: the detached-timeout and failure paths stop the heartbeat in
-        // their own finally blocks; this success path must too, or a throw in
-        // the bookkeeping above would leak the interval.
         stopLeaseHeartbeat();
       } catch (err) {
         if (err instanceof OperationTimeoutError) {

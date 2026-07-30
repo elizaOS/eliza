@@ -1,12 +1,6 @@
 /**
- * Pins for the execution-lease heartbeat layer (#17266 / audit #17253 §2).
- *
- * The repository layer (claim CTE, renew, recovery guards) is covered by
- * jobs-recovery.test.ts against real PGlite; what was UNpinned is the service
- * layer that makes the lease renewable in practice: the heartbeat interval,
- * its teardown, the per-type lease arithmetic that keeps a cold boot claimable
- * longer than its worst case, and the settlement/lost distinction in the
- * renewal-failed path (a fully successful provision must not WARN).
+ * Exercises lease renewal through the public provisioning-worker loop while
+ * the repository suite proves transactional renewal outcomes against PGlite.
  */
 
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
@@ -16,123 +10,150 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
 
 import { jobsRepository } from "../../db/repositories/jobs";
-import { COLD_BOOT_STALE_JOB_THRESHOLD_MS } from "./provisioning-job-types";
+import type { Job } from "../../db/schemas/jobs";
+import {
+  COLD_BOOT_STALE_JOB_THRESHOLD_MS,
+  JOB_TYPES,
+  type ProvisioningJobType,
+} from "./provisioning-job-types";
 import { ProvisioningJobService } from "./provisioning-jobs";
 
-type LeaseInternals = {
-  leaseDurationForJobType: (jobType: string) => number;
-  startExecutionLeaseHeartbeat: (job: {
-    id: string;
-    type: string;
-    execution_generation: string | null;
-  }) => () => void;
-};
+const JOB_ID = "00000000-0000-4000-8000-000000000001";
+const GENERATION_ID = "00000000-0000-4000-8000-000000000002";
+const ORG_ID = "00000000-0000-4000-8000-000000000003";
+
+function claimedJob(type: ProvisioningJobType = JOB_TYPES.AGENT_LOGS): Job {
+  const now = new Date("2026-07-29T00:00:00.000Z");
+  return {
+    id: JOB_ID,
+    type,
+    status: "in_progress",
+    data: {},
+    data_storage: "inline",
+    data_key: null,
+    agent_id: null,
+    character_id: null,
+    result: null,
+    result_storage: "inline",
+    result_key: null,
+    error: null,
+    error_storage: "inline",
+    error_key: null,
+    attempts: 0,
+    max_attempts: 3,
+    execution_generation: GENERATION_ID,
+    execution_quiesced_at: null,
+    organization_id: ORG_ID,
+    user_id: null,
+    api_key_id: null,
+    generation_id: null,
+    webhook_url: null,
+    webhook_status: null,
+    estimated_completion_at: null,
+    scheduled_for: now,
+    started_at: now,
+    completed_at: null,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function stubLaneClaim(job: Job | undefined) {
+  const claim = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue(job ? [job] : []);
+  spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  return claim;
+}
+
+async function wait(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 afterEach(() => {
   mock.restore();
 });
 
-describe("execution-lease heartbeat (service layer)", () => {
-  test("cold-boot lease outlives both the execution timeout and the stale threshold", () => {
-    const svc = new ProvisioningJobService() as unknown as LeaseInternals;
-    const lease = svc.leaseDurationForJobType("agent_provision");
-    // 900s execution timeout + 2 heartbeats of headroom.
-    expect(lease).toBe(930_000);
-    // The property #17253 §2 was about: a live cold boot can never be
-    // out-lived by the sweep window that would re-claim it.
-    expect(lease).toBeGreaterThan(COLD_BOOT_STALE_JOB_THRESHOLD_MS);
+describe("execution-lease heartbeat", () => {
+  test("cold-boot claims outlive both execution and stale-recovery windows", async () => {
+    const claim = stubLaneClaim(undefined);
+    const service = new ProvisioningJobService();
+
+    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_PROVISION] });
+
+    expect(claim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: JOB_TYPES.AGENT_PROVISION,
+        executionLeaseMs: 930_000,
+      }),
+    );
+    expect(930_000).toBeGreaterThan(COLD_BOOT_STALE_JOB_THRESHOLD_MS);
   });
 
-  test("the heartbeat<lease constructor invariant throws", () => {
+  test("rejects a heartbeat interval that cannot renew before expiry", () => {
     expect(
       () =>
         new ProvisioningJobService({
           executionLeaseMs: 1_000,
           executionLeaseHeartbeatMs: 1_000,
         }),
-    ).toThrow();
+    ).toThrow("Execution lease heartbeat must be positive and shorter than the lease");
   });
 
-  test("the heartbeat renews on its interval and stops renewing once cleared", async () => {
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue(true);
-    const svc = new ProvisioningJobService({
+  test("renews while execution is active and stops after success", async () => {
+    const job = claimedJob();
+    stubLaneClaim(job);
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("renewed");
+    const service = new ProvisioningJobService({
+      executeJob: async () => wait(90),
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
-    }) as unknown as LeaseInternals;
-
-    const stop = svc.startExecutionLeaseHeartbeat({
-      id: "00000000-0000-4000-8000-000000000001",
-      type: "agent_provision",
-      execution_generation: "00000000-0000-4000-8000-000000000002",
     });
-    await new Promise((r) => setTimeout(r, 90));
-    stop();
-    const renewsWhileRunning = renew.mock.calls.length;
-    expect(renewsWhileRunning).toBeGreaterThanOrEqual(2);
 
-    await new Promise((r) => setTimeout(r, 60));
-    // Cleared means CLEARED: not one more renewal after stop().
-    expect(renew.mock.calls.length).toBe(renewsWhileRunning);
+    const result = await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    const renewalsBeforeReturn = renew.mock.calls.length;
+
+    expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
+    expect(renewalsBeforeReturn).toBeGreaterThanOrEqual(2);
+    await wait(60);
+    expect(renew.mock.calls).toHaveLength(renewalsBeforeReturn);
   });
 
-  test("a renewal refused AFTER settlement logs no ownership-lost WARN", async () => {
-    // renewExecutionLease guards on status='in_progress', so it returns false
-    // on every fully successful job the moment the executor self-settles.
-    // That is not a lost lease — the follow-up read tells them apart.
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue(false);
-    const findById = spyOn(jobsRepository, "findById").mockResolvedValue({
-      id: "00000000-0000-4000-8000-000000000001",
-      status: "completed",
-    } as never);
+  test("stops quietly when the transaction observes normal settlement", async () => {
+    const job = claimedJob();
+    stubLaneClaim(job);
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("settled");
     const { logger } = await import("../utils/logger");
     const warn = spyOn(logger, "warn");
-
-    const svc = new ProvisioningJobService({
+    const service = new ProvisioningJobService({
+      executeJob: async () => wait(90),
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
-    }) as unknown as LeaseInternals;
-    const stop = svc.startExecutionLeaseHeartbeat({
-      id: "00000000-0000-4000-8000-000000000001",
-      type: "agent_provision",
-      execution_generation: "00000000-0000-4000-8000-000000000002",
     });
-    await new Promise((r) => setTimeout(r, 90));
-    stop();
 
-    expect(renew.mock.calls.length).toBeGreaterThanOrEqual(1);
-    expect(findById).toHaveBeenCalled();
-    const ownershipWarns = warn.mock.calls.filter(([msg]) =>
-      String(msg).includes("ownership was lost"),
-    );
-    expect(ownershipWarns).toHaveLength(0);
+    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+
+    expect(renew.mock.calls).toHaveLength(1);
+    expect(
+      warn.mock.calls.filter(([message]) => String(message).includes("ownership was lost")),
+    ).toHaveLength(0);
   });
 
-  test("a renewal refused while the job is STILL in_progress warns exactly once", async () => {
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue(false);
-    spyOn(jobsRepository, "findById").mockResolvedValue({
-      id: "00000000-0000-4000-8000-000000000001",
-      status: "in_progress",
-    } as never);
+  test("warns exactly once when the transaction observes ownership loss", async () => {
+    const job = claimedJob();
+    stubLaneClaim(job);
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
     const { logger } = await import("../utils/logger");
     const warn = spyOn(logger, "warn");
-
-    const svc = new ProvisioningJobService({
+    const service = new ProvisioningJobService({
+      executeJob: async () => wait(90),
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
-    }) as unknown as LeaseInternals;
-    const stop = svc.startExecutionLeaseHeartbeat({
-      id: "00000000-0000-4000-8000-000000000001",
-      type: "agent_provision",
-      execution_generation: "00000000-0000-4000-8000-000000000002",
     });
-    await new Promise((r) => setTimeout(r, 90));
-    stop();
 
-    expect(renew.mock.calls.length).toBeGreaterThanOrEqual(1);
-    const ownershipWarns = warn.mock.calls.filter(([msg]) =>
-      String(msg).includes("ownership was lost"),
-    );
-    // The interval self-clears on the first refusal, so exactly one WARN.
-    expect(ownershipWarns).toHaveLength(1);
+    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+
+    expect(renew.mock.calls).toHaveLength(1);
+    expect(
+      warn.mock.calls.filter(([message]) => String(message).includes("ownership was lost")),
+    ).toHaveLength(1);
   });
 });

@@ -225,8 +225,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
           jobsRepository.claimPendingJobs({
             type,
             limit: batchSize,
-            // A stable owner so the mock CAN renew its own leases; without it
-            // every claim minted a random owner that could never renew.
+            // Stable ownership lets the mock renew claims across control-plane
+            // requests without inventing a new worker identity each time.
             executionOwnerId: MOCK_EXECUTION_OWNER_ID,
           });
         // Provision/delete are reimplemented against the Hetzner mock; the
