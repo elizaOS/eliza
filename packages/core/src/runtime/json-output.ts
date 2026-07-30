@@ -251,6 +251,21 @@ export function stripJsonStructuralJunkReply(value: string): string {
 			/<tool_call\b[^>]*>\s*(?=[A-Z][A-Z0-9_]{2,}|[\s\S]*?<arg_(?:key|value)\b)[\s\S]*$/g,
 			"",
 		)
+		// Invented pseudo-tool-invocation tags: a weak model reaching for a
+		// capability it cannot call structurally emits a bare `<UPPER_SNAKE>`
+		// tag block instead (observed on cerebras zai/gemma:
+		// `<BROWSE_PAGE><url>…</url></BROWSE_PAGE>`). Uppercase-snake XML tags are
+		// never legitimate reply prose, so strip the paired block and any
+		// truncated-open tail. Case-SENSITIVE + `_`-bearing OR ≥4-char to avoid
+		// touching real acronyms a user might quote (`<AI>` stays).
+		.replace(
+			/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*?<\/\1>/g,
+			"",
+		)
+		.replace(
+			/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*$/g,
+			"",
+		)
 		.trim();
 	if (!cleaned) return "";
 	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
