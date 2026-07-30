@@ -43,7 +43,10 @@ import {
   getMobileCameraSource,
   registerMobileCameraSource,
 } from "./mobile/capacitor-camera";
-import { FileBridgeCameraSource } from "./mobile/file-bridge-camera";
+import {
+  FileBridgeCameraSource,
+  isTerminalCameraBridgeError,
+} from "./mobile/file-bridge-camera";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
 import { getTestImage } from "./test-input";
@@ -79,6 +82,35 @@ const SCENE_DESCRIPTION_OCR_LINE_LIMIT = 40;
 const SCENE_DESCRIPTION_OCR_TEXT_LIMIT = 2000;
 const SCENE_DESCRIPTION_OBJECT_LIMIT = 20;
 const SCENE_DESCRIPTION_FACE_LIMIT = 10;
+
+function configuredMobilePlatform(): string | undefined {
+  for (const value of [
+    process.env.ELIZA_PLATFORM,
+    process.env.ELIZA_MOBILE_PLATFORM,
+  ]) {
+    const platform = value?.trim().toLowerCase();
+    if (platform === "android" || platform === "ios") return platform;
+  }
+  return undefined;
+}
+
+export function resolveInitialVisionMode(
+  configuredMode: unknown,
+  mobilePlatform = configuredMobilePlatform(),
+): VisionMode {
+  if (
+    configuredMode === VisionMode.OFF ||
+    configuredMode === VisionMode.CAMERA ||
+    configuredMode === VisionMode.SCREEN ||
+    configuredMode === VisionMode.BOTH
+  ) {
+    return configuredMode;
+  }
+  const platform = mobilePlatform?.trim().toLowerCase();
+  return platform === "android" || platform === "ios"
+    ? VisionMode.OFF
+    : VisionMode.CAMERA;
+}
 
 export interface VisionContextSnapshot {
   openApps: string[];
@@ -394,9 +426,7 @@ export class VisionService extends Service {
           runtime.getSetting("VLM_CHANGE_THRESHOLD") ||
             runtime.getSetting("VISION_VLM_CHANGE_THRESHOLD"),
         ) || this.DEFAULT_CONFIG.vlmChangeThreshold,
-      visionMode:
-        (getSettingString("VISION_MODE") as VisionMode) ||
-        this.DEFAULT_CONFIG.visionMode,
+      visionMode: resolveInitialVisionMode(getSettingString("VISION_MODE")),
       screenCaptureInterval:
         Number(
           runtime.getSetting("SCREEN_CAPTURE_INTERVAL") ||
@@ -795,6 +825,11 @@ export class VisionService extends Service {
       return;
     }
 
+    const mobileSource = getMobileCameraSource();
+    const intervalMs = mobileSource?.capabilities?.().supportsContinuousFrames
+      ? this.visionConfig.updateInterval || 100
+      : Math.max(this.visionConfig.updateInterval || 100, 2000);
+
     this.frameProcessingInterval = setInterval(async () => {
       if (!this.isProcessing && this.camera) {
         this.isProcessing = true;
@@ -805,7 +840,7 @@ export class VisionService extends Service {
         }
         this.isProcessing = false;
       }
-    }, this.visionConfig.updateInterval || 100);
+    }, intervalMs);
 
     logger.debug("[VisionService] Started frame processing loop");
   }
@@ -845,6 +880,25 @@ export class VisionService extends Service {
 
       this.lastFrame = frame;
     } catch (error) {
+      // error-policy:J7 Frame-loop failures degrade but remain agent-visible.
+      this.runtime.reportError("VisionService.captureFrame", error, {
+        visionMode: this.visionConfig.visionMode,
+      });
+      if (isTerminalCameraBridgeError(error)) {
+        if (this.frameProcessingInterval) {
+          clearInterval(this.frameProcessingInterval);
+          this.frameProcessingInterval = null;
+        }
+        this.visionConfig.visionMode =
+          this.visionConfig.visionMode === VisionMode.BOTH
+            ? VisionMode.SCREEN
+            : VisionMode.OFF;
+        logger.warn(
+          { error },
+          "[VisionService] Camera capture disabled until the user enables it again",
+        );
+        return;
+      }
       logger.error({ error }, "[VisionService] Error capturing frame:");
     }
   }
@@ -2074,6 +2128,8 @@ export class VisionService extends Service {
       await this.workerManager.stop();
       this.workerManager = null;
     }
+
+    await getMobileCameraSource()?.close();
 
     this.camera = null;
     this.lastFrame = null;
