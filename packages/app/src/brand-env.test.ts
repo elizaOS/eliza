@@ -47,9 +47,6 @@ describe("buildBrandEnvAliases", () => {
     expect(aliases.get("ACME_CLOUD_MANAGED_AGENTS_API_SEGMENT")).toBe(
       "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
     );
-    expect(aliases.get("ACME_CHAT_GENERATION_TIMEOUT_MS")).toBe(
-      "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
-    );
     expect(aliases.get("ACME_SKIP_LOCAL_PLUGIN_ROLES")).toBe(
       "ELIZA_SKIP_LOCAL_PLUGIN_ROLES",
     );
