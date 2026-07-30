@@ -1888,7 +1888,10 @@ function callIosHost(
 					// error-policy:J6 best-effort teardown: the owner-facing
 					// promise still rejects with AbortError; stderr preserves a
 					// failed native cancellation signal for diagnosis.
-					console.error("[ios-bridge] failed to signal llama cancellation", error);
+					console.error(
+						"[ios-bridge] failed to signal llama cancellation",
+						error,
+					);
 				}
 			}
 			reject(
@@ -4421,7 +4424,9 @@ async function dispatchBridgeRequest(
 					? streamPayload.streamId.trim()
 					: `ios-stream-${crypto.randomUUID()}`;
 			if (activeConversationStreams.has(streamId)) {
-				throw new Error(`iOS conversation stream id is already active: ${streamId}`);
+				throw new Error(
+					`iOS conversation stream id is already active: ${streamId}`,
+				);
 			}
 			const controller = new AbortController();
 			activeConversationStreams.set(streamId, controller);

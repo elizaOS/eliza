@@ -4,10 +4,10 @@
  * context through runtime shutdown. Native calls use an in-memory FFI seam.
  */
 
-import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
