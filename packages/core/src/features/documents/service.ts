@@ -15,6 +15,7 @@
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
 import { existsSync, statSync } from "node:fs";
+import { filterByAccessContext } from "../../access-control/filter";
 import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
@@ -1057,7 +1058,7 @@ export class DocumentService extends Service {
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
-		_accessContext?: AccessContext,
+		accessContext?: AccessContext,
 		options?: { turnMessageId?: UUID; signal?: AbortSignal },
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
@@ -1084,12 +1085,20 @@ export class DocumentService extends Service {
 			effectiveMode = "keyword";
 		}
 
+		let results: StoredDocument[];
 		if (effectiveMode === "keyword") {
-			return this._keywordSearch(queryText, filterScope, requester);
-		}
-
-		if (effectiveMode === "vector") {
-			return this._vectorSearch(
+			results = await this._keywordSearch(queryText, filterScope, requester);
+		} else if (effectiveMode === "vector") {
+			results = await this._vectorSearch(
+				queryText,
+				filterScope,
+				requester,
+				options?.turnMessageId,
+				options?.signal,
+			);
+		} else {
+			// hybrid: vector + BM25 combined
+			results = await this._hybridSearch(
 				queryText,
 				filterScope,
 				requester,
@@ -1098,14 +1107,16 @@ export class DocumentService extends Service {
 			);
 		}
 
-		// hybrid: vector + BM25 combined
-		return this._hybridSearch(
-			queryText,
-			filterScope,
-			requester,
-			options?.turnMessageId,
-			options?.signal,
-		);
+		// The caller-supplied AccessContext stays a second, strictly-subtractive
+		// gate on top of the adapter-level requester filtering. The adapter query
+		// filters by who the MESSAGE says is asking; a caller whose identity
+		// differs from the message identity (an agent-initiated search on behalf
+		// of a user) must still be narrowed to ITS view, and no caller can widen
+		// its view by threading a context. Fragments missing an entityId fall to
+		// the deny side of scoped reads (fail closed). Pinned by
+		// packages/agent/src/api/chat-augmentation.access-context.test.ts.
+		if (!accessContext) return results;
+		return filterByAccessContext(results, accessContext, this.runtime.agentId);
 	}
 
 	/** Pure vector (cosine-similarity) search. */
@@ -1144,6 +1155,7 @@ export class DocumentService extends Service {
 			.filter((fragment) => fragment.id !== undefined)
 			.map((fragment) => ({
 				id: fragment.id as UUID,
+				entityId: fragment.entityId,
 				content: fragment.content as Content,
 				similarity: fragment.similarity,
 				metadata: fragment.metadata,
@@ -1185,6 +1197,7 @@ export class DocumentService extends Service {
 		return valid
 			.map((fragment) => ({
 				id: fragment.id as UUID,
+				entityId: fragment.entityId,
 				content: fragment.content as Content,
 				similarity: scoreMap.get(fragment.id as string) ?? 0,
 				metadata: fragment.metadata,
@@ -1271,6 +1284,7 @@ export class DocumentService extends Service {
 					HYBRID_VECTOR_WEIGHT * vectorNorm + HYBRID_BM25_WEIGHT * bm25Norm;
 				return {
 					id: fragment.id as UUID,
+					entityId: fragment.entityId,
 					content: fragment.content as Content,
 					similarity: combined,
 					metadata: fragment.metadata,
