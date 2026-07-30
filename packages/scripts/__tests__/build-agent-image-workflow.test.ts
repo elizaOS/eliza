@@ -2,6 +2,7 @@
  * Static and executable contracts for managed-agent image publication.
  */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -18,9 +19,18 @@ const workflowText = readFileSync(
   new URL("../../../.github/workflows/build-agent-image.yml", import.meta.url),
   "utf8",
 );
+const SETUP_CRANE_SHA = "feee3b6bb0d4c68370f256a4502498c9227e5c6b";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractActionPins(action: string): string[] {
+  const actionPattern = new RegExp(
+    `^\\s*uses:\\s*${escapeRegExp(action)}@([^\\s#]+)\\s*$`,
+    "gm",
+  );
+  return [...workflowText.matchAll(actionPattern)].map((match) => match[1]);
 }
 
 function githubExpression(value: string): string {
@@ -63,6 +73,28 @@ function extractTurboFilters(runBlock: string): string[] {
     .sort();
 }
 
+function runBashWithCapturedStderr(
+  script: string,
+  env: NodeJS.ProcessEnv,
+  stderrPath: string,
+): { exitCode: number; stderr: string } {
+  const result = spawnSync(
+    "bash",
+    ["-c", `exec 2>"$ELIZA_TEST_STDERR"\n${script}`],
+    {
+      env: {
+        ...env,
+        ELIZA_TEST_STDERR: stderrPath,
+      },
+      encoding: "utf8",
+    },
+  );
+  return {
+    exitCode: result.status ?? -1,
+    stderr: existsSync(stderrPath) ? readFileSync(stderrPath, "utf8") : "",
+  };
+}
+
 function runPublicationResolver(
   eventName: string,
   requestedTarget: string,
@@ -75,21 +107,18 @@ function runPublicationResolver(
     join(tmpdir(), "eliza-image-publication-"),
   );
   const githubOutput = join(temporaryDirectory, "github-output");
-  const result = Bun.spawnSync(
-    ["bash", "-c", extractStepRunBlock("Resolve publication repository")],
+  const result = runBashWithCapturedStderr(
+    extractStepRunBlock("Resolve publication repository"),
     {
-      env: {
-        ...process.env,
-        DEMO_IMAGE_REPOSITORY: "ghcr.io/elizaos/eliza-demo",
-        EVENT_NAME: eventName,
-        GITHUB_OUTPUT: githubOutput,
-        IMAGE_NAME: "elizaOS/eliza",
-        REGISTRY: "ghcr.io",
-        REQUESTED_TARGET: requestedTarget,
-      },
-      stderr: "pipe",
-      stdout: "pipe",
+      ...process.env,
+      DEMO_IMAGE_REPOSITORY: "ghcr.io/elizaos/eliza-demo",
+      EVENT_NAME: eventName,
+      GITHUB_OUTPUT: githubOutput,
+      IMAGE_NAME: "elizaOS/eliza",
+      REGISTRY: "ghcr.io",
+      REQUESTED_TARGET: requestedTarget,
     },
+    join(temporaryDirectory, "stderr"),
   );
   const output = new Map<string, string>();
   if (existsSync(githubOutput)) {
@@ -105,7 +134,7 @@ function runPublicationResolver(
   return {
     exitCode: result.exitCode,
     output,
-    stderr: result.stderr.toString(),
+    stderr: result.stderr,
   };
 }
 
@@ -140,34 +169,27 @@ exit 91
   );
   chmodSync(cranePath, 0o755);
   const sourceDigest = `sha256:${"a".repeat(64)}`;
-  const result = Bun.spawnSync(
-    [
-      "bash",
-      "-c",
-      extractStepRunBlock("Promote exact canonical digest to demo"),
-    ],
+  const result = runBashWithCapturedStderr(
+    extractStepRunBlock("Promote exact canonical digest to demo"),
     {
-      env: {
-        ...process.env,
-        CRANE_LOG: craneLog,
-        DESTINATION_REPOSITORY: "ghcr.io/elizaos/eliza-demo",
-        GITHUB_OUTPUT: githubOutput,
-        MOCK_CRANE_DIGEST: sourceDigest,
-        PATH: `${binaryDirectory}:${process.env.PATH}`,
-        SOURCE_DIGEST: sourceDigest,
-        SOURCE_IMMUTABLE_TAG: "ghcr.io/elizaos/eliza:sha-abcdef0",
-        SOURCE_REPOSITORY: "ghcr.io/elizaos/eliza",
-        ...overrides,
-      },
-      stderr: "pipe",
-      stdout: "pipe",
+      ...process.env,
+      CRANE_LOG: craneLog,
+      DESTINATION_REPOSITORY: "ghcr.io/elizaos/eliza-demo",
+      GITHUB_OUTPUT: githubOutput,
+      MOCK_CRANE_DIGEST: sourceDigest,
+      PATH: `${binaryDirectory}:${process.env.PATH}`,
+      SOURCE_DIGEST: sourceDigest,
+      SOURCE_IMMUTABLE_TAG: "ghcr.io/elizaos/eliza:sha-abcdef0",
+      SOURCE_REPOSITORY: "ghcr.io/elizaos/eliza",
+      ...overrides,
     },
+    join(temporaryDirectory, "stderr"),
   );
   const response = {
     craneLog: existsSync(craneLog) ? readFileSync(craneLog, "utf8") : "",
     exitCode: result.exitCode,
     output: existsSync(githubOutput) ? readFileSync(githubOutput, "utf8") : "",
-    stderr: result.stderr.toString(),
+    stderr: result.stderr,
   };
   rmSync(temporaryDirectory, { recursive: true, force: true });
   return response;
@@ -290,9 +312,10 @@ describe("build-agent-image workflow", () => {
     expect(workflowText).toContain(
       `subject-name: ${githubExpression("steps.image.outputs.name")}`,
     );
-    expect(workflowText).toContain(
-      "uses: imjasonh/setup-crane@59c71e96a00b28651f10369ba3359a6d730740a0",
-    );
+    expect(extractActionPins("imjasonh/setup-crane")).toEqual([
+      SETUP_CRANE_SHA,
+    ]);
+    expect(SETUP_CRANE_SHA).toMatch(/^[0-9a-f]{40}$/);
     expect(workflowText).toContain("version: v0.20.6");
 
     const promotionBlock = extractStepRunBlock(
