@@ -13,7 +13,7 @@ This package does not register elizaOS actions, providers, evaluators, or routes
 - **`CapacitorLlamaAdapter`** — class implementing `LlamaAdapter`. One instance per native context (chat and embedding run as separate instances). Core methods: `load`, `unload`, `generate`, `generateStream`, `embed`, `formatChat`, `getHardwareInfo`, `cancelGenerate`, `setCacheType`, `setSpecType`, `setDrafter`, `trimMemory`, `onToken`, `dispose`.
 - **`capacitorLlama`** — default singleton `LlamaAdapter` (back-compat; new code should use `registerCapacitorLlamaLoader` which creates per-role instances).
 - **`registerCapacitorLlamaLoader(runtime)`** — registers the `localInferenceLoader` service on the elizaOS runtime; creates separate chat and embedding adapter instances to avoid native context ID collisions (fix for eliza#7681).
-- **`DeviceBridgeClient`** / **`startDeviceBridgeClient`** — WebSocket client that runs inside the mobile app; relays `load`/`generate`/`embed`/`formatChat` RPC from the agent container to the device over the `device-bridge` WebSocket protocol.
+- **`DeviceBridgeClient`** / **`startDeviceBridgeClient`** — WebSocket client that runs inside the mobile app; relays `load`/`generate`/`cancel`/`embed`/`formatChat` RPC from the agent container to the device over the `device-bridge` WebSocket protocol.
 - **`serializeTokenTree`** / **`deserializeTokenTree`** — binary codec for `TokenTreeDescriptor` payloads used by the native speculative-decode sampler hook (wire format: little-endian, magic `0x544B5452`, version 1).
 
 ## Layout
@@ -90,6 +90,7 @@ Add a new variant to the `SamplerStage` union in `src/definitions.ts`. The nativ
 - **`llama-cpp-capacitor` is dynamically imported** inside `loadPlugin()` so the adapter can be bundled into desktop builds without import-resolution errors. The native plugin is feature-detected at call time; missing methods warn and skip the unsupported operation.
 - **`buun-llama-cpp` fork** exposes `setCacheType`, `setSpecType`, and `getNativeKernels` methods not present in stock builds. The adapter feature-detects all three; stock builds silently skip them.
 - **`generateStream`** is the canonical generation path. `generate()` is a wrapper that drains the stream into a single `GenerateResult`.
+- **One bridge generation owns the native context at a time.** Owner cancellation calls native `cancelGenerate()` and suppresses the abandoned result. A concurrent request fails immediately with `DEVICE_BUSY` instead of racing two decodes through one context.
 - **Mobile token cap:** `resolveMobileMaxTokens` clamps `maxTokens` to 256 on mobile to avoid OOM. Adjust `MOBILE_MAX_TOKENS_CAP` in `capacitor-llama-adapter.ts` if the cap needs to change.
 - **Token tree codec:** `serializeTokenTree` / `deserializeTokenTree` must stay in sync with the native C++ sampler. The wire format is versioned (version 1); bump `VERSION` in `token-tree-codec.ts` and update the native side together.
 - **No elizaOS plugin manifest:** This package does not export an elizaOS `Plugin` object and is not loaded via the normal plugin auto-enable path. It is wired manually via `registerCapacitorLlamaLoader` in the Capacitor bootstrap.

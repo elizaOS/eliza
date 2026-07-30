@@ -21,7 +21,7 @@ so the `ActiveModelCoordinator` in `@elizaos/ui`
   by `llama_chat_apply_template`).
 - Fans the native `@LlamaCpp_onToken` stream out to elizaOS token listeners.
 - Provides `DeviceBridgeClient` — a WebSocket relay that lets an agent
-  container reach a paired mobile device for inference (load, generate, embed,
+  container reach a paired mobile device for inference (load, generate, cancel, embed,
   formatChat over a JSON RPC protocol).
 - Provides `serializeTokenTree` / `deserializeTokenTree` — binary codec for
   the native speculative-decode sampler-hook wire format.
