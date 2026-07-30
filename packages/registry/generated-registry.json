@@ -1040,14 +1040,14 @@
         "repo": "elizaos-plugin-yieldsignal",
         "v0": null,
         "v1": null,
-        "v2": "0.2.0"
+        "v2": "0.2.2"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification and schema validation.",
+      "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted ETH liquid staking APY plus USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification, schema validation and partial-reading disclosure.",
       "homepage": "https://yieldsignal.vercel.app",
       "topics": [
         "defi",
