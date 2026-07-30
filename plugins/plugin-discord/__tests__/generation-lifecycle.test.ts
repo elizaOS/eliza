@@ -105,6 +105,7 @@ function makeRuntime(
 		getSetting: (key: string) =>
 			key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
 		getService: () => null,
+		reportError: vi.fn(),
 		ensureConnection: async () => {},
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,
