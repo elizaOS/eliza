@@ -1,4 +1,5 @@
 import {
+  SupportedChain,
   WalletActivitySummary,
   WalletAgeSummary,
   WalletDeFiSummary,
@@ -23,7 +24,14 @@ export function analyzeInvestigationReplay(
   risk: WalletRiskSummary,
   whale: WalletWhaleSummary,
   trust: WalletTrustSummary,
+  chain: SupportedChain,
 ): WalletInvestigationReplayStep[] {
+  // chain isn't used in this step's description yet - the chain is
+  // already stated once at the top level of WalletInvestigationResult,
+  // so repeating it here would be redundant. Kept as a parameter so
+  // future replay steps can reference it without a second migration.
+  void chain;
+
   return [
     {
       step: 1,
@@ -31,7 +39,7 @@ export function analyzeInvestigationReplay(
       status: "completed",
       title: "Wallet validated",
       description:
-        "The wallet address was accepted for Solana investigation.",
+        "The wallet address was accepted for investigation.",
     },
     {
       step: 2,
