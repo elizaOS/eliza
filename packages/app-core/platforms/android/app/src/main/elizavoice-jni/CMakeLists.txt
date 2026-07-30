@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Phase 3a JNI host: a tiny bionic .so (built by the app module's NDK
 # externalNativeBuild) that links the prebuilt, self-contained
 # `libelizainference.so` (the fused fork omnivoice `elizainference` target,
-# ABI v7, all four voice runtimes) and exposes a couple of native methods to
+# ABI v15, all four voice runtimes) and exposes native methods to
 # the ai.elizaos.app Capacitor process. This proves the fused voice .so loads
 # + runs IN-PROCESS in the normal APK (bionic), replacing the musl bun-agent
 # path for the voice runtimes.
@@ -72,6 +72,11 @@ set_target_properties(elizainference PROPERTIES
 # static-fused libelizainference.so has none of these siblings, so each import
 # is guarded on the file existing — both variants build from this one list.
 set(ELIZAVOICE_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}")
+# Variant staging can add or remove shared Vulkan siblings between builds.
+# Register the directory contents as a configure dependency so Ninja never
+# retains IMPORTED targets for files removed by a later CPU-static staging run.
+file(GLOB ELIZAVOICE_STAGED_LIBRARIES CONFIGURE_DEPENDS
+    "${ELIZAVOICE_LIB_DIR}/lib*.so")
 set(ELIZAVOICE_DEP_TARGETS "")
 foreach(dep ggml ggml-base ggml-cpu ggml-vulkan llama llama-common mtmd)
     if(EXISTS "${ELIZAVOICE_LIB_DIR}/lib${dep}.so")

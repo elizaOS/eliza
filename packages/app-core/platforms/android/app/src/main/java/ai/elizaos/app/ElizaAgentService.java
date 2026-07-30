@@ -101,6 +101,7 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_STAMP_NAME = ".apk-stamp";
     private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
+    private static final String AGENT_CMU_DICTIONARY_NAME = "cmudict.tsv";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
     private static final String AGENT_LAUNCH_CHILD_SCRIPT = "launch-child.sh";
     private static final String BUN_BINARY = "bun";
@@ -181,12 +182,6 @@ public class ElizaAgentService extends Service {
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
-    // How long after a detached launch we treat a not-yet-listening agent as
-    // "still cold-booting" and refuse to relaunch it (the boot — plugin
-    // resolution + first model load — runs ~60-90s on an emulated CPU). Past
-    // this the boot is considered failed and a relaunch is allowed.
-    private static final long AGENT_BOOT_GRACE_MS = 120_000L;
-
     private final Object processLock = new Object();
     private Process agentProcess;
     private Thread stdoutPump;
@@ -263,8 +258,7 @@ public class ElizaAgentService extends Service {
             result.put("reason", status);
         } else if (hasStartWorker
                 || "starting".equals(status)
-                || (detached && ageMs >= 0L && ageMs < AGENT_BOOT_GRACE_MS)
-                || (ageMs >= 0L && ageMs < AGENT_BOOT_GRACE_MS)) {
+                || (detached && ageMs >= 0L)) {
             result.put("state", "booting");
             result.put("reason", status);
         } else {
@@ -1256,6 +1250,8 @@ public class ElizaAgentService extends Service {
             new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
+        copyAssetIfPresent(assets, "agent/" + AGENT_CMU_DICTIONARY_NAME,
+            new File(stagingRoot, AGENT_CMU_DICTIONARY_NAME));
 
         // ABI-specific binaries: bun + musl loader + libstdc++ + libgcc.
         String abiAssetDir = "agent/" + abi;
@@ -1586,6 +1582,18 @@ public class ElizaAgentService extends Service {
         return new File(nativeLibraryDir(), soname);
     }
 
+    /**
+     * The fused inference library is an Android/bionic binary regardless of
+     * whether its optional Vulkan backend is packaged. The musl Bun child must
+     * therefore use the in-process JNI host for CPU and GPU builds alike.
+     */
+    static boolean shouldDelegateFusedInference(
+        boolean fusedInferenceBundled,
+        boolean bionicJniBridgeBundled
+    ) {
+        return fusedInferenceBundled && bionicJniBridgeBundled;
+    }
+
     private boolean linkPackagedRuntimeLibrary(
         File abiDir,
         String soname,
@@ -1718,10 +1726,9 @@ public class ElizaAgentService extends Service {
      * from {@code libelizainference} + the staged bundle and needs no LLM, so its
      * lifecycle is decoupled from agent inference here.
      *
-     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and never throws
-     * (it logs + returns on lib-load / socket-bind failure), so this is purely
-     * additive: worst case the host stays down and TalkMode falls back to system
-     * TTS exactly as before — it cannot affect agent startup.
+     * <p>{@link ElizaBionicInferenceServer#start()} is idempotent and reports
+     * whether the native engine and socket are ready. Voice callers retain their
+     * explicit system-TTS fallback when the host cannot start.
      */
     private synchronized void ensureBionicVoiceHost() {
         if (bionicInferenceServer != null) {
@@ -1739,10 +1746,11 @@ public class ElizaAgentService extends Service {
             String defaultBundleDir =
                 new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
             ElizaBionicInferenceServer host = newBionicInferenceServer(defaultBundleDir);
-            host.start();
-            bionicInferenceServer = host;
-            Log.i(TAG, "ensureBionicVoiceHost: local voice host started"
-                + " (kokoro bundle present, independent of LLM mode)");
+            if (host.start()) {
+                bionicInferenceServer = host;
+                Log.i(TAG, "ensureBionicVoiceHost: local voice host started"
+                    + " (kokoro bundle present, independent of LLM mode)");
+            }
         } catch (Throwable t) {
             Log.w(TAG, "ensureBionicVoiceHost: could not start local voice host", t);
         }
@@ -1819,33 +1827,15 @@ public class ElizaAgentService extends Service {
                 return;
             }
 
-            // The agent may have been launched moments ago and still be in its
-            // (slow) cold boot — plugin resolution + first model load can take
-            // 60-90s on an emulated CPU before bun binds the socket. During that
-            // window isLocalAgentSocketListening() is false, so without this guard a
-            // recreated Activity/FGS (onStartCommand fires repeatedly as the e2e
-            // foregrounds/navigates) would relaunch.sh-pkill the booting bun and
-            // restart the whole boot — an endless churn that never reaches ready.
-            // If we launched within the boot grace window, assume it is still
-            // coming up and leave it alone rather than kill + restart it.
-            // The launch timestamp must survive service-instance churn: a new
-            // instance created while a prior instance's agent is still cold
-            // booting (port not yet bound) would otherwise see 0, skip this
-            // guard, and launch.sh-pkill the booting bun. Fall back to the
-            // persisted stamp written at launch (cleared on explicit stop).
+            // A detached child can outlive the service while it is still booting.
+            // The persisted launch stamp identifies which journal entry to inspect;
+            // it is not itself evidence that anything remains alive. Only a matching
+            // live child may suppress relaunch, so reboots, force-stops, and LMK
+            // cannot strand startup behind an arbitrary grace period.
             long launchStartedAt = detachedLaunchStartedAtMs > 0L
                 ? detachedLaunchStartedAtMs
                 : readPersistedDetachedLaunchTimestamp();
-            if (launchStartedAt > 0L
-                    && (System.currentTimeMillis() - launchStartedAt)
-                        < AGENT_BOOT_GRACE_MS) {
-                // The stamp alone can outlive the boot it describes: a force-stop
-                // or LMK kill takes down bun AND launch-child.sh in one sweep, so
-                // no agent-child-exited line is ever journaled, and a successor
-                // service instance would shepherd a corpse for the rest of the
-                // grace window (#15189). Before trusting the stamp, check that
-                // the journaled child of THIS launch still has a live /proc
-                // entry that looks like our runtime.
+            if (launchStartedAt > 0L) {
                 AgentChildStart childStart = readLatestAgentChildStart(launchStartedAt);
                 if (coldBootStampTrustworthy(
                         childStart != null,
@@ -1854,7 +1844,6 @@ public class ElizaAgentService extends Service {
                     detachedLaunchStartedAtMs = launchStartedAt;
                     Map<String, String> details = new LinkedHashMap<>();
                     details.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
-                    details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
                     appendDiagnosticEvent("detached-agent-cold-boot-guard", details);
                     Log.i(TAG, "Detached agent still in cold boot (launched "
                         + (System.currentTimeMillis() - launchStartedAt)
@@ -1871,12 +1860,13 @@ public class ElizaAgentService extends Service {
                 }
                 Map<String, String> staleDetails = new LinkedHashMap<>();
                 staleDetails.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
-                staleDetails.put("childPid", childStart.childPid);
+                staleDetails.put("childPid", childStart != null ? childStart.childPid : "");
                 appendDiagnosticEvent("detached-agent-cold-boot-guard-stale", staleDetails);
-                Log.w(TAG, "Detached agent launch stamp is "
-                    + (System.currentTimeMillis() - launchStartedAt)
-                    + "ms old but child pid " + childStart.childPid
-                    + " is gone with no journaled exit; relaunching instead of trusting the stamp.");
+                Log.w(TAG, "Detached agent launch has no live matching child"
+                    + (childStart != null ? " (pid=" + childStart.childPid + ")" : "")
+                    + "; relaunching instead of trusting its timestamp.");
+                detachedLaunchStartedAtMs = 0L;
+                persistDetachedLaunchTimestamp(0L);
             }
 
             String abi = resolveRuntimeAbi();
@@ -2039,6 +2029,19 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
             agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
+            File cmuDictionary = new File(root, AGENT_CMU_DICTIONARY_NAME);
+            if (cmuDictionary.isFile()) {
+                agentEnv.put("ELIZA_CMU_DICTIONARY_PATH", cmuDictionary.getAbsolutePath());
+            }
+            // A new 51 MB packaged bundle supersedes the prior bundle after
+            // each app update. Bun's runtime transpiler cache would retain a
+            // 74 MB .pile for every superseded bundle, even though none can be
+            // reused once the APK asset is replaced. Mobile has one bundled
+            // entrypoint, so avoiding those persistent writes is cheaper than
+            // accumulating an unbounded app-private cache.
+            if (!env.containsKey("BUN_RUNTIME_TRANSPILER_CACHE_PATH")) {
+                agentEnv.put("BUN_RUNTIME_TRANSPILER_CACHE_PATH", "0");
+            }
             agentEnv.put("ELIZA_STARTUP_TRACE_ID", ElizaStartupTrace.currentId());
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("AGENT_COMMAND", "android-bridge");
@@ -2079,25 +2082,6 @@ public class ElizaAgentService extends Service {
             // user picks the local runtime mode in onboarding.
             agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
             agentEnv.put("ELIZA_DEVICE_PAIRING_TOKEN", token);
-            // CPU-only inference on a stock-Android Capacitor APK runs the
-            // same on-device chat path as the AOSP variant — Snapdragon
-            // 4 Gen 1 / Tensor G1 class hardware lands at 3–7 tok/s and a
-            // ~4.5 k-token system prompt + 256-token reply needs the
-            // same 600 s native/chat budget the bridge uses by default.
-            // The upstream gate that previously bumped these (under
-            // `BuildConfig.AOSP_BUILD && isBrandedDevice()` further down)
-            // only fires for branded AOSP builds; stock-Android sideloads
-            // get the defaults and time out on every first turn with
-            // "Chat generation failed with no streamed text
-            // (err=Chat generation timed out after 180000ms)". Set the
-            // same 10 min budget here unconditionally so both build
-            // types finish their cold first turn.
-            if (!env.containsKey("ELIZA_CHAT_GENERATION_TIMEOUT_MS")) {
-                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "600000");
-            }
-            if (!env.containsKey("ELIZA_DEVICE_GENERATE_TIMEOUT_MS")) {
-                agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "600000");
-            }
             // The mobile bridge ships the bge embedding GGUF disabled
             // by default (`ELIZA_LOCAL_EMBEDDING_ENABLED!="1"`) because
             // mmapping it alongside the chat GGUF would OOM a 4 GB
@@ -2176,14 +2160,12 @@ public class ElizaAgentService extends Service {
             boolean legacyLibllamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
             boolean nativeLlamaBundled = fusedInferenceBundled || legacyLibllamaBundled;
             boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
-            // When the dynamic-Vulkan fused lib is staged (libelizainference.so +
-            // libggml-vulkan.so), the GPU is only reachable from THIS bionic app
-            // process — the musl agent's ld can't load libvulkan's HIDL closure
-            // (project_android_gpu_vulkan_wall). So instead of pointing the musl
-            // agent at the bun:ffi AOSP loader (ELIZA_LOCAL_LLAMA=1 → the wall),
-            // delegate inference over an abstract-namespace UDS to the in-process
-            // ElizaBionicInferenceServer, which runs libelizainference on the Mali
-            // GPU. The musl agent never tries to load the native lib itself.
+            // libelizainference.so is an Android/bionic binary in both its CPU
+            // and Vulkan variants. The musl Bun child cannot load either one;
+            // Vulkan merely adds another incompatible dependency closure.
+            // Delegate every fused build over an abstract-namespace UDS to the
+            // in-process ElizaBionicInferenceServer. The musl agent never tries
+            // to load the native lib itself.
             // The bionic host is served through the fused-voice JNI bridge
             // (libelizavoicejni.so, ElizaVoiceNative → ElizaBionicInferenceServer).
             // That bridge is only built by the app's externalNativeBuild when the
@@ -2196,8 +2178,8 @@ public class ElizaAgentService extends Service {
             // would fail with a cryptic "bionic socket error: connect ENOENT".
             boolean bionicJniBridgeBundled =
                 resolveBundledNativeLib(abiDir, "libelizavoicejni.so").isFile();
-            boolean delegateToBionicHost =
-                fusedInferenceBundled && abiGgmlVulkan.isFile() && bionicJniBridgeBundled;
+            boolean delegateToBionicHost = shouldDelegateFusedInference(
+                fusedInferenceBundled, bionicJniBridgeBundled);
             // #11760: export the device RAM class + idle-unload default so the
             // bun agent's in-process loader (plugin-aosp-local-inference) applies
             // the same inference memory policy as the bionic host. Operator env
@@ -2211,10 +2193,10 @@ public class ElizaAgentService extends Service {
                     "ELIZA_LOCAL_IDLE_UNLOAD_MS",
                     String.valueOf(inferenceIdleUnloadMs(inferenceRamClass)));
             }
-            if (fusedInferenceBundled && abiGgmlVulkan.isFile() && !bionicJniBridgeBundled) {
+            if (fusedInferenceBundled && !bionicJniBridgeBundled) {
                 Log.w(TAG, "agent/" + abiDir.getName()
-                    + ": fused Vulkan libs are staged but libelizavoicejni.so is absent "
-                    + "(this build skipped the fused-voice JNI bridge); on-device GPU "
+                    + ": fused inference is staged but libelizavoicejni.so is absent "
+                    + "(this build skipped the fused JNI bridge); on-device "
                     + "inference via the bionic host is UNAVAILABLE. Rebuild with "
                     + "stage-elizavoice-lib.mjs to re-enable. Falling back to the "
                     + "non-delegated inference path.");
@@ -2223,8 +2205,8 @@ public class ElizaAgentService extends Service {
                 agentEnv.put("ELIZA_BIONIC_HOST_DELEGATED", "1");
                 agentEnv.put("ELIZA_BIONIC_INFERENCE_SOCK", BIONIC_INFERENCE_SOCKET_NAME);
                 Log.i(TAG, "agent/" + abiDir.getName()
-                    + "/libggml-vulkan.so present; delegating inference to the in-process"
-                    + " bionic Vulkan host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
+                    + "/libelizainference.so present; delegating inference to the in-process"
+                    + " bionic host over UDS \"" + BIONIC_INFERENCE_SOCKET_NAME
                     + "\" (NOT taking the musl bun:ffi AOSP path)");
                 // Stand up the in-process GPU inference server BEFORE the agent
                 // spawns so the abstract socket is already bound when the agent's
@@ -2242,7 +2224,10 @@ public class ElizaAgentService extends Service {
                 // the non-delegated inference path below. UnsatisfiedLinkError is
                 // an Error, not an Exception, so catch Throwable here.
                 try {
-                    bionicInferenceServer.start();
+                    if (!bionicInferenceServer.start()) {
+                        throw new IllegalStateException(
+                            "native engine load or abstract socket bind failed");
+                    }
                 } catch (Throwable startError) {
                     Log.e(TAG, "ElizaBionicInferenceServer.start() failed; disabling "
                         + "bionic-host delegation for this launch: " + startError.getMessage(),
@@ -2388,28 +2373,8 @@ public class ElizaAgentService extends Service {
                         + ": branded AOSP set ELIZA_LOCAL_LLAMA=1 but no native inference lib is bundled "
                         + "(libelizainference.so absent, libllama.so + shim absent); local inference WILL fail.");
                 }
-                // CPU-only inference of a 12k-token prompt on cuttlefish
-                // x86_64 / Eliza-1 lands well past the 180 s default
-                // chat-generation timeout (chat-routes.ts). On cvd a
-                // single chat turn fires the planner (9k-token prefill
-                // ≈ 10 min on 4 vCPUs at 16 tok/s) plus an action
-                // runner plus a reply, and the planner's structured-
-                // output parser sometimes triggers a retry round.
-                // Empirically end-to-end runs land at 25–45 min on cvd.
-                // 60 min budget gives the smoke a full cycle to
-                // complete with retries; real phone hardware
-                // (Tensor / Adreno) finishes in seconds, so this only
-                // matters for AOSP cvd runs.
-                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
-                // Device bridge is unused on AOSP (ELIZA_LOCAL_LLAMA=1 routes
-                // inference through the fused libelizainference.so loader
-                // instead). Set the same 1h budget explicitly so the intent is clear and
-                // operator overrides above are not inadvertently in effect.
-                agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "3600000");
-
                 // Native llama.cpp ctx/thread/batch defaults are applied above
-                // whenever the fork libs are bundled. Full AOSP only needs
-                // its longer timeout budget here.
+                // whenever the fork libraries are bundled.
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             if (!env.containsKey("TMPDIR")) {
@@ -2708,7 +2673,6 @@ public class ElizaAgentService extends Service {
                         "localAgentSocketListening",
                         String.valueOf(localAgentSocketListening)
                     );
-                    exitDetails.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
                     exitDetails.put(
                         "launcherCompletedBeforeSocketReady",
                         String.valueOf(!localAgentSocketListening)
@@ -2911,18 +2875,13 @@ public class ElizaAgentService extends Service {
 
     /**
      * Whether the cold-boot guard may trust the persisted launch stamp. The
-     * stamp says a boot STARTED recently; only the journaled child's /proc
-     * liveness says it is still going. No journaled start yet means the
-     * launcher is inside its first second — trust the stamp rather than
-     * relaunch-churn over it. A journaled child that is gone from /proc with
-     * no exit record is the force-stop/LMK signature (#15189): the kill took
-     * launch-child.sh down with bun, so no agent-child-exited line was ever
-     * written, and trusting the stamp would shepherd a corpse for the rest of
-     * the grace window.
+     * stamp says a boot started; only the journaled child's /proc liveness says
+     * it is still going. A missing record or dead child is not ambiguous state:
+     * neither can serve requests, so startup must launch a new child.
      */
     static boolean coldBootStampTrustworthy(
             boolean childStartJournaled, boolean childProcessAlive) {
-        return !childStartJournaled || childProcessAlive;
+        return childStartJournaled && childProcessAlive;
     }
 
     /**

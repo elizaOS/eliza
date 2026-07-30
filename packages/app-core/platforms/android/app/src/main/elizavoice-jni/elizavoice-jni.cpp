@@ -44,6 +44,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -1523,20 +1524,69 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesize(JNIEnv* env, jclass,
         throw_runtime(env, "kokoro_load failed", err);
         return nullptr;
     }
-    // Cap at 30 s @ 24 kHz — far longer than any single reply phrase.
-    const size_t cap = 24000u * 30u;
-    std::vector<float> pcm(cap);
+    float* pcm = nullptr;
+    size_t samples = 0;
     err = nullptr;
-    int n = eliza_inference_kokoro_synthesize(
-        ctx, text.c_str(), text.size(), speed, pcm.data(), cap, &err);
-    if (n < 0) {
+    const int rc = eliza_inference_kokoro_synthesize_alloc(
+        ctx, text.c_str(), text.size(), speed, &pcm, &samples, &err);
+    std::unique_ptr<float, decltype(&eliza_inference_free_pcm)> owned(
+        pcm, eliza_inference_free_pcm);
+    if (rc != ELIZA_OK) {
         throw_runtime(env, "kokoro_synthesize failed", err);
         return nullptr;
     }
-    jfloatArray out = env->NewFloatArray(n);
+    if (samples > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        throw_runtime(env, "kokoro_synthesize result exceeds Java array capacity", nullptr);
+        return nullptr;
+    }
+    const jsize count = static_cast<jsize>(samples);
+    jfloatArray out = env->NewFloatArray(count);
     if (!out) return nullptr;
-    env->SetFloatArrayRegion(out, 0, n, pcm.data());
-    LOGI("nativeKokoroSynthesize: %zu chars -> %d samples", text.size(), n);
+    if (count > 0) env->SetFloatArrayRegion(out, 0, count, pcm);
+    LOGI("nativeKokoroSynthesize: %zu chars -> %zu samples", text.size(), samples);
+    return out;
+}
+
+JNIEXPORT jfloatArray JNICALL
+Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesizeIpa(JNIEnv* env, jclass,
+                                                               jlong ctxHandle,
+                                                               jstring jGguf,
+                                                               jstring jVoiceBin,
+                                                               jstring jIpa,
+                                                               jfloat speed) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    if (!ctx) {
+        throw_runtime(env, "kokoroSynthesizeIpa: null context", nullptr);
+        return nullptr;
+    }
+    const std::string gguf = from_jstring(env, jGguf);
+    const std::string voiceBin = from_jstring(env, jVoiceBin);
+    const std::string ipa = from_jstring(env, jIpa);
+    char* err = nullptr;
+    if (eliza_inference_kokoro_load(ctx, gguf.c_str(), voiceBin.c_str(), 256, &err) != 0) {
+        throw_runtime(env, "kokoro_load failed", err);
+        return nullptr;
+    }
+    float* pcm = nullptr;
+    size_t samples = 0;
+    err = nullptr;
+    const int rc = eliza_inference_kokoro_synthesize_ipa_alloc(
+        ctx, ipa.c_str(), ipa.size(), speed, &pcm, &samples, &err);
+    std::unique_ptr<float, decltype(&eliza_inference_free_pcm)> owned(
+        pcm, eliza_inference_free_pcm);
+    if (rc != ELIZA_OK) {
+        throw_runtime(env, "kokoro_synthesize_ipa failed", err);
+        return nullptr;
+    }
+    if (samples > static_cast<size_t>(std::numeric_limits<jsize>::max())) {
+        throw_runtime(env, "kokoro_synthesize_ipa result exceeds Java array capacity", nullptr);
+        return nullptr;
+    }
+    const jsize count = static_cast<jsize>(samples);
+    jfloatArray out = env->NewFloatArray(count);
+    if (!out) return nullptr;
+    if (count > 0) env->SetFloatArrayRegion(out, 0, count, pcm);
+    LOGI("nativeKokoroSynthesizeIpa: %zu chars -> %zu samples", ipa.size(), samples);
     return out;
 }
 

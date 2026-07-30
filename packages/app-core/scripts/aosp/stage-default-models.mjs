@@ -43,6 +43,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import {
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+} from "@elizaos/shared/local-inference";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   loadAospVariantConfig,
@@ -50,6 +54,29 @@ import {
 } from "./lib/load-variant-config.mjs";
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+
+function requireCatalogComponent(modelId, role) {
+  const model = findCatalogModel(modelId);
+  const component = model?.sourceModel?.components?.[role];
+  if (!model || !component) {
+    throw new Error(
+      `[stage-default-models] Catalog model ${modelId} has no ${role} component`,
+    );
+  }
+  const match = /^bundles\/[^/]+\/(.+)$/.exec(component.file);
+  if (!match) {
+    throw new Error(
+      `[stage-default-models] Catalog ${role} path is not bundle-relative: ${component.file}`,
+    );
+  }
+  return { model, component, localPath: match[1] };
+}
+
+const mobileText = requireCatalogComponent(FIRST_RUN_DEFAULT_MODEL_ID, "text");
+const mobileVoice = requireCatalogComponent(
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  "voice",
+);
 
 /**
  * Models to bundle. IDs match `MODEL_CATALOG` entries in
@@ -64,11 +91,11 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * staging step fails loudly rather than shipping a broken APK.
  */
 const CHAT_MODEL_ELIZA_1_MOBILE = {
-  id: "eliza-1-2b",
-  displayName: "eliza-1-2B",
-  hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/2b/text/eliza-1-2b-128k.gguf",
-  ggufFile: "text/eliza-1-2b-128k.gguf",
+  id: mobileText.model.id,
+  displayName: mobileText.model.displayName,
+  hfRepo: mobileText.component.repo,
+  hfPath: mobileText.component.file,
+  ggufFile: mobileText.localPath,
   expectedMinBytes: 900 * 1024 * 1024,
   expectedMaxBytes: 1700 * 1024 * 1024,
   role: "chat",
@@ -84,9 +111,9 @@ const CHAT_MODEL_ELIZA_1_MOBILE = {
 const VOICE_MODEL_KOKORO = {
   id: "eliza-1-kokoro",
   displayName: "Eliza-1 Voice (Kokoro)",
-  hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/2b/tts/kokoro/kokoro-82m-v1_0.gguf",
-  ggufFile: "tts/kokoro/kokoro-82m-v1_0.gguf",
+  hfRepo: mobileVoice.component.repo,
+  hfPath: mobileVoice.component.file,
+  ggufFile: mobileVoice.localPath,
   expectedMinBytes: 150 * 1024 * 1024,
   expectedMaxBytes: 200 * 1024 * 1024,
   role: "tts",

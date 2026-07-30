@@ -86,10 +86,13 @@ const VOICE_MODELS = (() => {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
   const asrDir =
     process.env.ELIZA_ANDROID_ASR_MODEL_DIR ??
-    path.join(home, ".cache/eliza/asr-model");
+    path.join(SMOKE_MODEL.cacheDir, "aux", "asr");
   const ttsDir =
     process.env.ELIZA_ANDROID_TTS_MODEL_DIR ??
-    path.join(home, ".local/state/eliza/local-inference/models/omnivoice");
+    path.join(
+      process.env.ELIZA_STATE_DIR ?? path.join(home, ".eliza"),
+      "local-inference/models/kokoro",
+    );
   const dev = "/data/data/ai.elizaos.app/files/.eliza/local-inference/models";
   return [
     {
@@ -101,12 +104,12 @@ const VOICE_MODELS = (() => {
       dev: `${dev}/asr/eliza-1-asr-mmproj.gguf`,
     },
     {
-      host: path.join(ttsDir, "omnivoice-base-q4_k_m.gguf"),
-      dev: `${dev}/tts/omnivoice-base-q4_k_m.gguf`,
+      host: path.join(ttsDir, "kokoro-82m-v1_0.gguf"),
+      dev: `${dev}/kokoro/kokoro-82m-v1_0.gguf`,
     },
     {
-      host: path.join(ttsDir, "omnivoice-tokenizer-q4_k_m.gguf"),
-      dev: `${dev}/tts/omnivoice-tokenizer-q4_k_m.gguf`,
+      host: path.join(ttsDir, "voices/af_bella.bin"),
+      dev: `${dev}/kokoro/voices/af_bella.bin`,
     },
   ];
 })();
@@ -153,7 +156,7 @@ function stageVoiceModels(adb, serial) {
       "mkdir",
       "-p",
       `${devModels}/asr`,
-      `${devModels}/tts`,
+      `${devModels}/kokoro/voices`,
     ],
     {
       stdio: "ignore",
@@ -178,7 +181,7 @@ function stageVoiceModels(adb, serial) {
       "-R",
       "755",
       `${devModels}/asr`,
-      `${devModels}/tts`,
+      `${devModels}/kokoro`,
     ],
     {
       stdio: "ignore",

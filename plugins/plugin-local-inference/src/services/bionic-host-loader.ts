@@ -9,11 +9,11 @@
  * `libggml-vulkan.so` and offloads the model to the Mali GPU.
  *
  * This loader implements the standard {@link LocalInferenceLoader} contract, so
- * the TEXT_SMALL / TEXT_LARGE handlers in `ensure-local-inference-handler.ts`
- * route through it transparently. `generate()` sends the prompt to the bionic
- * host over an abstract-namespace `AF_UNIX` socket and gets the GPU completion
- * back — the whole decode loop runs server-side, so there is no per-token
- * two-process round trip.
+ * text generation and speech synthesis route through it transparently.
+ * `generate()` sends prompts to the bionic host; `synthesizeSpeech()` performs
+ * cached mobile phonemization in the agent and sends IPA to native Kokoro. The
+ * model loops remain server-side, avoiding per-token or per-sample process
+ * round trips.
  *
  * Two generate shapes share the framing (#11913):
  *   - buffered (no `onTextChunk`): one GENERATE request → one full completion;
@@ -23,17 +23,9 @@
  *     arrives at token cadence and TTFT decouples from full-turn latency.
  */
 
-import {
-	existsSync,
-	linkSync,
-	mkdirSync,
-	statSync,
-	symlinkSync,
-	unlinkSync,
-} from "node:fs";
 import net from "node:net";
-import path from "node:path";
 import { logger } from "@elizaos/core";
+import { deriveBionicBundleDir } from "@elizaos/shared/bionic-bundle-view";
 import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
@@ -42,13 +34,10 @@ import {
 	bundleHasAsrModelFiles,
 	readBundleAsrProvenanceBlockers,
 } from "./asr-provenance";
+import { resolvePhonemizer } from "./voice/kokoro/phonemizer";
 
-/** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
-const REQUEST_TIMEOUT_MS = 120_000;
 /** Defensive ceiling on a single response frame (a full completion). */
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
-const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
-const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
 
 interface BionicGenerateResponse {
 	ok: boolean;
@@ -81,6 +70,27 @@ interface BionicTextResponse {
 	error?: string;
 }
 
+interface BionicTtsResponse {
+	ok: boolean;
+	sampleRate?: number;
+	wavBase64?: string;
+	error?: string;
+	timings?: {
+		lockWaitMs?: number;
+		contextMs?: number;
+		synthesisMs?: number;
+		encodeMs?: number;
+		totalMs?: number;
+	};
+}
+
+interface BionicEmbedResponse {
+	ok: boolean;
+	embedding?: unknown;
+	dim?: number;
+	error?: string;
+}
+
 /**
  * Derive the fused-bundle root from a model GGUF path. The host's
  * `eliza_inference_create(bundleDir)` expects the directory that contains
@@ -90,38 +100,8 @@ interface BionicTextResponse {
  * hardlink/symlink bundle view without copying the multi-GB model bytes.
  */
 export function deriveBundleDir(modelPath: string): string {
-	if (!modelPath) return "";
-	const dir = path.dirname(modelPath);
-	if (path.basename(dir) === "text") return path.dirname(dir);
-	if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
-	if (!existsSync(modelPath)) return "";
-
-	const modelName = path.basename(modelPath);
-	const bundleRoot = path.join(
-		dir,
-		BIONIC_FLAT_BUNDLE_DIR,
-		path.basename(modelName, path.extname(modelName)),
-	);
-	const textDir = path.join(bundleRoot, "text");
-	const stagedPath = path.join(textDir, modelName);
 	try {
-		mkdirSync(textDir, { recursive: true });
-		if (existsSync(stagedPath)) {
-			try {
-				const source = statSync(modelPath);
-				const staged = statSync(stagedPath);
-				if (source.size === staged.size) return bundleRoot;
-			} catch {
-				// Recreate stale or broken aliases below.
-			}
-			unlinkSync(stagedPath);
-		}
-		try {
-			linkSync(modelPath, stagedPath);
-		} catch {
-			symlinkSync(modelPath, stagedPath);
-		}
-		return bundleRoot;
+		return deriveBionicBundleDir(modelPath);
 	} catch (err) {
 		logger.warn(
 			`[BionicHostLoader] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
@@ -133,6 +113,7 @@ export function deriveBundleDir(modelPath: string): string {
 export class BionicHostLoader implements LocalInferenceLoader {
 	private modelPath: string | null = null;
 	private bundleDir = "";
+	private phonemizerPromise: ReturnType<typeof resolvePhonemizer> | null = null;
 
 	/** @param socketName abstract-namespace socket name (no leading NUL). */
 	constructor(private readonly socketName: string) {}
@@ -153,11 +134,98 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		return this.modelPath;
 	}
 
+	/** Embed text through the same resident fused context used for generation. */
+	async embed(args: {
+		input: string;
+		signal?: AbortSignal;
+	}): Promise<{ embedding: number[]; tokens?: number }> {
+		const res = await this.roundTrip<BionicEmbedResponse>(
+			{
+				op: "embed",
+				bundleDir: this.bundleDir,
+				text: args.input,
+			},
+			{ signal: args.signal },
+		);
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host embed failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		if (
+			!Array.isArray(res.embedding) ||
+			res.embedding.length === 0 ||
+			res.embedding.some(
+				(value) => typeof value !== "number" || !Number.isFinite(value),
+			) ||
+			(typeof res.dim === "number" && res.dim !== res.embedding.length)
+		) {
+			throw new Error(
+				"[BionicHostLoader] host embed returned an invalid embedding",
+			);
+		}
+		return { embedding: res.embedding as number[] };
+	}
+
+	/**
+	 * Synthesize intelligible Android speech through the bionic host. The musl
+	 * agent owns fast cached English phonemization; the Android fused library
+	 * receives IPA through its ABI-v15 entry because that build deliberately
+	 * omits espeak-ng. The request socket is tied to the caller's AbortSignal so
+	 * barge-in closes IPC immediately instead of waiting for a timeout.
+	 */
+	async synthesizeSpeech(
+		text: string,
+		signal?: AbortSignal,
+	): Promise<Uint8Array> {
+		signal?.throwIfAborted();
+		const startedAt = performance.now();
+		this.phonemizerPromise ??= resolvePhonemizer();
+		const phonemizer = await this.phonemizerPromise;
+		const phonemizerReadyAt = performance.now();
+		const phonemes = await phonemizer.phonemize(text, "a");
+		const phonemizedAt = performance.now();
+		signal?.throwIfAborted();
+		const res = await this.roundTrip<BionicTtsResponse>(
+			{
+				op: "tts",
+				bundleDir: this.bundleDir,
+				text,
+				ipa: phonemes.phonemes,
+				speed: 1,
+			},
+			{ signal },
+		);
+		const hostReturnedAt = performance.now();
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host TTS failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		if (
+			typeof res.sampleRate !== "number" ||
+			res.sampleRate <= 0 ||
+			typeof res.wavBase64 !== "string" ||
+			res.wavBase64.length === 0
+		) {
+			throw new Error("[BionicHostLoader] host TTS returned malformed WAV");
+		}
+		const wav = Buffer.from(res.wavBase64, "base64");
+		if (wav.length < 44 || wav.subarray(0, 4).toString("ascii") !== "RIFF") {
+			throw new Error("[BionicHostLoader] host TTS returned invalid WAV bytes");
+		}
+		logger.info(
+			`[BionicHostLoader] TTS telemetry phonemizer=${phonemizer.id} resolve=${Math.round(phonemizerReadyAt - startedAt)}ms phonemize=${Math.round(phonemizedAt - phonemizerReadyAt)}ms hostRoundTrip=${Math.round(hostReturnedAt - phonemizedAt)}ms host=${JSON.stringify(res.timings ?? {})} total=${Math.round(hostReturnedAt - startedAt)}ms`,
+		);
+		return wav;
+	}
+
 	async generate(args: {
 		prompt: string;
 		stopSequences?: string[];
 		maxTokens?: number;
 		temperature?: number;
+		signal?: AbortSignal;
 		cacheKey?: string;
 		onTextChunk?: (chunk: string) => void | Promise<void>;
 		maxTokensPerStep?: number;
@@ -171,7 +239,14 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		// Streaming shape when the runtime wired a chunk callback (chat SSE /
 		// voice): the host pushes one frame per bounded decode step, so the
 		// first chunk lands at token cadence instead of after the whole reply.
-		const res = args.onTextChunk
+		// A buffered native decode cannot observe that its client disconnected
+		// until the entire reply finishes. When cancellation is owned by a
+		// caller, use the framed streaming operation even if that caller does
+		// not consume chunks: each bounded host write becomes a disconnect
+		// checkpoint and stops orphaned native work after at most one step.
+		const chunkConsumer =
+			args.onTextChunk ?? (args.signal ? () => undefined : undefined);
+		const res = chunkConsumer
 			? await this.streamRoundTrip(
 					typeof args.maxTokensPerStep === "number" && args.maxTokensPerStep > 0
 						? {
@@ -180,12 +255,16 @@ export class BionicHostLoader implements LocalInferenceLoader {
 								streamStep: Math.floor(args.maxTokensPerStep),
 							}
 						: { op: "generateStream", ...request },
-					args.onTextChunk,
+					chunkConsumer,
+					args.signal,
 				)
-			: await this.roundTrip<BionicGenerateResponse>({
-					op: "generate",
-					...request,
-				});
+			: await this.roundTrip<BionicGenerateResponse>(
+					{
+						op: "generate",
+						...request,
+					},
+					{ signal: args.signal },
+				);
 		if (!res.ok) {
 			throw new Error(
 				`[BionicHostLoader] host generate failed: ${res.error ?? "unknown error"}`,
@@ -264,32 +343,43 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	 * One request → one response over a fresh connection. Length-prefixed frames:
 	 * `[int32 BE byte length][UTF-8 JSON]` in each direction.
 	 */
-	private roundTrip<T>(request: Record<string, unknown>): Promise<T> {
+	private roundTrip<T>(
+		request: Record<string, unknown>,
+		options: { signal?: AbortSignal } = {},
+	): Promise<T> {
 		const payload = Buffer.from(JSON.stringify(request), "utf8");
 		const frame = Buffer.allocUnsafe(4 + payload.length);
 		frame.writeUInt32BE(payload.length, 0);
 		payload.copy(frame, 4);
 
 		return new Promise<T>((resolve, reject) => {
+			if (options.signal?.aborted) {
+				reject(options.signal.reason);
+				return;
+			}
 			// Abstract-namespace socket: a leading NUL byte in the path.
 			const sock = net.connect({ path: `\0${this.socketName}` });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
 			let expected = -1;
+			let abort = () => {};
 
 			const finish = (err: Error | null, value?: T) => {
 				if (settled) return;
 				settled = true;
-				clearTimeout(timer);
+				options.signal?.removeEventListener("abort", abort);
 				sock.destroy();
 				if (err) reject(err);
 				else resolve(value as T);
 			};
 
-			const timer = setTimeout(
-				() => finish(new Error("[BionicHostLoader] request timed out")),
-				REQUEST_TIMEOUT_MS,
-			);
+			abort = () =>
+				finish(
+					options.signal?.reason instanceof Error
+						? options.signal.reason
+						: new DOMException("The operation was aborted", "AbortError"),
+				);
+			options.signal?.addEventListener("abort", abort, { once: true });
 
 			sock.on("connect", () => sock.write(frame));
 			sock.on("data", (d: Buffer) => {
@@ -337,13 +427,14 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	 * (op="generateStream"): each {type:"token",text} frame is forwarded to
 	 * `onTextChunk` in arrival order (async callbacks are chained so ordering
 	 * holds), and the terminal {type:"done",…} frame resolves with the
-	 * buffered-response shape. The timeout is per-frame idle, not whole-turn:
-	 * a healthy decode emits a frame every few hundred ms, so a long reply
-	 * never times out while frames keep flowing.
+	 * buffered-response shape. Cancellation belongs to the caller because model
+	 * size, device load, and reply length make a transport-level wall-clock
+	 * deadline arbitrary; socket failures still reject the request directly.
 	 */
 	private streamRoundTrip(
 		request: Record<string, unknown>,
 		onTextChunk: (chunk: string) => void | Promise<void>,
+		signal?: AbortSignal,
 	): Promise<BionicGenerateResponse> {
 		const payload = Buffer.from(JSON.stringify(request), "utf8");
 		const frame = Buffer.allocUnsafe(4 + payload.length);
@@ -351,6 +442,14 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		payload.copy(frame, 4);
 
 		return new Promise<BionicGenerateResponse>((resolve, reject) => {
+			if (signal?.aborted) {
+				reject(
+					signal.reason instanceof Error
+						? signal.reason
+						: new DOMException("The operation was aborted", "AbortError"),
+				);
+				return;
+			}
 			const sock = net.connect({ path: `\0${this.socketName}` });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
@@ -361,11 +460,12 @@ export class BionicHostLoader implements LocalInferenceLoader {
 			// rejects the turn without ever leaving an unhandled rejection.
 			let chunkChain: Promise<void> = Promise.resolve();
 			let chunkFailure: Error | null = null;
+			let abort = () => {};
 
 			const finish = (err: Error | null, value?: BionicGenerateResponse) => {
 				if (settled) return;
 				settled = true;
-				clearTimeout(timer);
+				signal?.removeEventListener("abort", abort);
 				sock.destroy();
 				if (err) {
 					reject(err);
@@ -384,18 +484,13 @@ export class BionicHostLoader implements LocalInferenceLoader {
 				});
 			};
 
-			let timer = setTimeout(
-				() => finish(new Error("[BionicHostLoader] stream request timed out")),
-				REQUEST_TIMEOUT_MS,
-			);
-			const bumpIdleTimer = () => {
-				clearTimeout(timer);
-				timer = setTimeout(
-					() =>
-						finish(new Error("[BionicHostLoader] stream stalled (no frames)")),
-					REQUEST_TIMEOUT_MS,
+			abort = () =>
+				finish(
+					signal?.reason instanceof Error
+						? signal.reason
+						: new DOMException("The operation was aborted", "AbortError"),
 				);
-			};
+			signal?.addEventListener("abort", abort, { once: true });
 
 			sock.on("connect", () => sock.write(frame));
 			sock.on("data", (d: Buffer) => {
@@ -413,7 +508,6 @@ export class BionicHostLoader implements LocalInferenceLoader {
 					if (chunks.length < 4 + expected) break;
 					const json = chunks.subarray(4, 4 + expected).toString("utf8");
 					chunks = chunks.subarray(4 + expected);
-					bumpIdleTimer();
 					let msg: BionicStreamFrame;
 					try {
 						msg = JSON.parse(json) as BionicStreamFrame;
@@ -436,6 +530,11 @@ export class BionicHostLoader implements LocalInferenceLoader {
 											chunkErr instanceof Error
 												? chunkErr
 												: new Error(String(chunkErr));
+										finish(
+											new Error(
+												`[BionicHostLoader] onTextChunk failed: ${chunkFailure.message}`,
+											),
+										);
 									}
 								});
 						}

@@ -1,8 +1,8 @@
 /**
  * In-process Kokoro-82M runtime over the fused `libelizainference` FFI
  * (the `eliza_inference_kokoro_*` exports — introduced at ABI v10; ABI v14 adds
- * the IPA-input entry + G2P-kind query — see `ELIZA_INFERENCE_ABI_VERSION` in
- * ffi-bindings.ts).
+ * IPA input and ABI v15 adds exact-size PCM ownership — see
+ * `ELIZA_INFERENCE_ABI_VERSION` in ffi-bindings.ts).
  *
  * G2P routing (#11776): the fused build only links libespeak-ng on some hosts
  * and never on Android/iOS. Where it does (`kokoroG2pKind() === "espeak"`) the
@@ -63,14 +63,6 @@ const GGUF_TYPE_FLOAT32 = 6;
 const GGUF_TYPE_BOOL = 7;
 const GGUF_TYPE_STRING = 8;
 const GGML_TYPE_F32 = 0;
-
-/**
- * Per-synthesis output ceiling. Kokoro v1.0 emits 24 kHz fp32 PCM; 30 s of
- * headroom (720 000 samples) bounds a single phrase synthesis well past the
- * longest chunk the phrase chunker will hand us. The library returns the real
- * sample count, which we slice to — this is only the allocation cap.
- */
-const MAX_OUTPUT_SAMPLES = 30 * 24_000;
 
 function isPackagedVoicePreset(bytes: Uint8Array): boolean {
 	if (bytes.byteLength < 4) return false;
@@ -497,8 +489,7 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 			return { cancelled: true };
 		}
 
-		const maxSamples = args.maxSamples ?? MAX_OUTPUT_SAMPLES;
-		const pcm = this.synthesizePcm(args, maxSamples);
+		const pcm = this.synthesizePcm(args, args.maxSamples);
 
 		let cancelled = false;
 		if (args.cancelSignal.cancelled) {
@@ -582,7 +573,7 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 	 */
 	private synthesizePcm(
 		args: KokoroRuntimeInputs,
-		maxSamples: number,
+		maxSamples: number | undefined,
 	): Float32Array {
 		if (this.g2pKind === "ascii") {
 			const ipa = args.phonemes.phonemes;
@@ -622,7 +613,10 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 		return this.kokoroSynthesize(args.text, maxSamples);
 	}
 
-	private kokoroSynthesize(text: string, maxSamples: number): Float32Array {
+	private kokoroSynthesize(
+		text: string,
+		maxSamples: number | undefined,
+	): Float32Array {
 		if (typeof this.ffi.kokoroSynthesize !== "function") {
 			throw new VoiceLifecycleError(
 				"kernel-missing",
@@ -632,7 +626,10 @@ export class KokoroFfiRuntime implements KokoroRuntime {
 		return this.ffi.kokoroSynthesize({ ctx: this.ctx, text, maxSamples });
 	}
 
-	private kokoroSynthesizeIpa(ipa: string, maxSamples: number): Float32Array {
+	private kokoroSynthesizeIpa(
+		ipa: string,
+		maxSamples: number | undefined,
+	): Float32Array {
 		if (typeof this.ffi.kokoroSynthesizeIpa !== "function") {
 			// g2pKind === "ascii" is only reachable when the v14 symbols bound, so
 			// this is an invariant breach rather than an old-lib case.

@@ -41,6 +41,12 @@ export default defineConfig({
 			"@elizaos/plugin-computeruse": fileURLToPath(
 				new URL("../plugin-computeruse/src/index.ts", import.meta.url),
 			),
+			"@elizaos/shared/bionic-bundle-view": fileURLToPath(
+				new URL(
+					"../../packages/shared/src/local-inference/bionic-bundle-view.ts",
+					import.meta.url,
+				),
+			),
 			"@elizaos/shared/local-inference/routing-preferences": fileURLToPath(
 				new URL(
 					"../../packages/shared/src/local-inference/routing-preferences.ts",

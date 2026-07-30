@@ -106,6 +106,11 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     degraded capability: its voice/ASR/VAD/LLM/text surface is unchanged and
  *     Kokoro just probes unsupported on it.
  *
+ * v15: Kokoro synthesis gains exact-size, library-owned PCM results. The
+ *     runtime copies those samples once and releases them with
+ *     `eliza_inference_free_pcm`, removing guessed duration ceilings from the
+ *     batch interface.
+ *
  * v14: Kokoro IPA input + G2P-kind capability query. The fused handle gains
  *     `eliza_inference_kokoro_g2p_kind` (does the linked kokoro_lib phonemize
  *     raw text with real espeak-ng, or only the lossy ASCII grapheme fallback?)
@@ -121,7 +126,7 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     lineage advances 12 -> 14 for the Kokoro IPA surface (fork-sync #11386)
  *     so the two independent bumps stay collision-free.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 14 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 15 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -801,14 +806,14 @@ export interface ElizaInferenceFfi {
 	/**
 	 * Synthesize `text` through the loaded Kokoro model+voice at the model's
 	 * native rate (24 kHz for v1.0). `speed` scales predicted durations
-	 * (default 1.0). Allocates an output buffer of `maxSamples` fp32 samples,
-	 * reads back the count the library wrote, and returns that slice.
+	 * (default 1.0). ABI v15 returns an exact-size library-owned buffer; an
+	 * explicit `maxSamples` remains a caller policy and fails if exceeded.
 	 */
 	kokoroSynthesize?(args: {
 		ctx: ElizaInferenceContextHandle;
 		text: string;
 		speed?: number;
-		maxSamples: number;
+		maxSamples?: number;
 	}): Float32Array;
 	/** The loaded Kokoro model's audio sample rate (24000 for v1.0). */
 	kokoroSampleRate?(ctx: ElizaInferenceContextHandle): number;
@@ -832,7 +837,7 @@ export interface ElizaInferenceFfi {
 		ctx: ElizaInferenceContextHandle;
 		ipa: string;
 		speed?: number;
-		maxSamples: number;
+		maxSamples?: number;
 	}): Float32Array;
 
 	/** Best-effort dispose for the binding itself (closes the dlopen handle). */
@@ -1189,6 +1194,26 @@ interface BunFfiSymbols {
 		maxSamples: bigint | number,
 		outErr: unknown,
 	) => number;
+	// Exact-size Kokoro PCM ownership (ABI v15). Optional on <=v14 builds.
+	eliza_inference_kokoro_synthesize_alloc?: (
+		ctx: bigint,
+		text: unknown,
+		textLen: bigint | number,
+		speed: number,
+		outPcm: unknown,
+		outSamples: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_kokoro_synthesize_ipa_alloc?: (
+		ctx: bigint,
+		ipa: unknown,
+		ipaLen: bigint | number,
+		speed: number,
+		outPcm: unknown,
+		outSamples: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_free_pcm?: (pcm: bigint | number) => void;
 }
 
 interface BunFfiLib {
@@ -1493,6 +1518,23 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			returns: T.i32,
 		},
 	};
+	// Exact-size Kokoro PCM ownership (ABI v15). The library allocates the
+	// completed result and the binding copies then frees it, so no duration
+	// estimate sits between text length and valid speech.
+	let kokoroOwnedPcmSymbolsAvailable = true;
+	const kokoroOwnedPcmDefs = {
+		eliza_inference_kokoro_synthesize_alloc: {
+			// ctx, text, text_len, speed, out_pcm (float**), out_samples, out_error
+			args: [T.ptr, T.ptr, T.usize, T.f32, T.ptr, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_kokoro_synthesize_ipa_alloc: {
+			// ctx, ipa, ipa_len, speed, out_pcm (float**), out_samples, out_error
+			args: [T.ptr, T.ptr, T.usize, T.f32, T.ptr, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_free_pcm: { args: [T.usize], returns: T.void },
+	};
 	// End-of-turn scoring (ABI v11): a single causal forward pass over a
 	// pre-tokenized partial transcript returns P(end-of-turn token). Layered on
 	// top of the v10 surface; the cascade peels it when a v10 library is loaded
@@ -1621,6 +1663,73 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	const classifierDefs = { ...speakerDefs, ...diarizDefs };
 	const attempts = [
 		{
+			// Full v15 surface (v14 + exact-size Kokoro PCM ownership).
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...kokoroG2pDefs,
+				...kokoroOwnedPcmDefs,
+				...eotDefs,
+				...timedAsrDefs,
+				...visionStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			kokoroG2p: true,
+			kokoroOwnedPcm: true,
+			eot: true,
+			timedAsr: true,
+			visionStream: true,
+		},
+		{
+			// Develop-pinned fork lineage: v12 + Kokoro IPA + owned PCM (v15)
+			// WITHOUT the
+			// main-lineage vision-stream (v13) symbols. The fork advanced
+			// 12 -> 14 for Kokoro IPA (fork-sync #11386), so this lib reports
+			// v14 + kokoro-g2p but has no vision-stream. Accepted via the
+			// exact-version clause; visionStreamSupported() reports false.
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...wakewordDefs,
+				...classifierDefs,
+				...llmStreamDefs,
+				...llmCapabilityDefs,
+				...textModalitiesDefs,
+				...kokoroDefs,
+				...kokoroG2pDefs,
+				...kokoroOwnedPcmDefs,
+				...eotDefs,
+				...timedAsrDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			wakeword: true,
+			classifiers: true,
+			llmStream: true,
+			llmCapability: true,
+			textModalities: true,
+			kokoro: true,
+			kokoroG2p: true,
+			kokoroOwnedPcm: true,
+			eot: true,
+			timedAsr: true,
+		},
+		{
 			// Full v14 surface (v13 + Kokoro IPA input + G2P-kind query).
 			defs: {
 				...coreDefs,
@@ -1651,11 +1760,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			visionStream: true,
 		},
 		{
-			// Develop-pinned fork lineage: v12 + Kokoro IPA (v14) WITHOUT the
-			// main-lineage vision-stream (v13) symbols. The fork advanced
-			// 12 -> 14 for Kokoro IPA (fork-sync #11386), so this lib reports
-			// v14 + kokoro-g2p but has no vision-stream. Accepted via the
-			// exact-version clause; visionStreamSupported() reports false.
+			// Fork v14 surface without main-lineage vision-stream symbols.
 			defs: {
 				...coreDefs,
 				...referenceEncodeDefs,
@@ -1948,6 +2053,8 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				(attempt as { kokoro?: boolean }).kokoro ?? false;
 			kokoroG2pSymbolsAvailable =
 				(attempt as { kokoroG2p?: boolean }).kokoroG2p ?? false;
+			kokoroOwnedPcmSymbolsAvailable =
+				(attempt as { kokoroOwnedPcm?: boolean }).kokoroOwnedPcm ?? false;
 			eotSymbolsAvailable = (attempt as { eot?: boolean }).eot ?? false;
 			timedAsrSymbolsAvailable =
 				(attempt as { timedAsr?: boolean }).timedAsr ?? false;
@@ -1996,8 +2103,12 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
-		(reported === "13" && !kokoroG2pSymbolsAvailable) ||
+		(reported === "14" && !kokoroOwnedPcmSymbolsAvailable) ||
+		(reported === "13" &&
+			!kokoroOwnedPcmSymbolsAvailable &&
+			!kokoroG2pSymbolsAvailable) ||
 		(reported === "12" &&
+			!kokoroOwnedPcmSymbolsAvailable &&
 			!kokoroG2pSymbolsAvailable &&
 			!visionStreamSymbolsAvailable) ||
 		(reported === "11" && !timedAsrSymbolsAvailable) ||
@@ -2084,6 +2195,92 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
 	function isNullPointer(value: unknown): boolean {
 		return value === null || value === undefined || value === 0n || value === 0;
+	}
+
+	function synthesizeOwnedKokoro(
+		synth: (
+			ctx: bigint,
+			input: unknown,
+			inputLen: bigint | number,
+			speed: number,
+			outPcm: unknown,
+			outSamples: unknown,
+			outErr: unknown,
+		) => number,
+		ctx: ElizaInferenceContextHandle,
+		input: string,
+		speed: number | undefined,
+		maxSamples: number | undefined,
+		operation: string,
+	): Float32Array {
+		const freePcm = loadedLib.symbols.eliza_inference_free_pcm;
+		if (typeof freePcm !== "function") {
+			throw new VoiceLifecycleError(
+				"kernel-missing",
+				"[ffi-bindings] eliza_inference_free_pcm is not exported by this build",
+			);
+		}
+		const err = makeOutErr();
+		const inputArg = cstr(input);
+		const outPcmPtr = new BigUint64Array(1);
+		const outSamples = new BigUint64Array(1);
+		const rc = synth(
+			ctx,
+			inputArg.ptr,
+			BigInt(inputArg.bytes),
+			speed ?? 1.0,
+			ffi.ptr(outPcmPtr),
+			ffi.ptr(outSamples),
+			err.ptr,
+		);
+		if (rc !== ELIZA_OK) {
+			const message =
+				takeError(err.buf) ?? `[ffi-bindings] ${operation} rc=${rc}`;
+			throw new VoiceLifecycleError(failureCode(rc), message);
+		}
+
+		const samplesRaw = outSamples[0] ?? 0n;
+		const pcmRaw = outPcmPtr[0] ?? 0n;
+		if (samplesRaw === 0n) {
+			if (pcmRaw !== 0n) freePcm(pcmRaw);
+			return new Float32Array(0);
+		}
+		if (pcmRaw === 0n) {
+			throw new VoiceLifecycleError(
+				"kernel-missing",
+				`[ffi-bindings] ${operation} returned ${samplesRaw.toString()} samples with a null PCM pointer`,
+			);
+		}
+
+		try {
+			if (samplesRaw > BigInt(Math.floor(Number.MAX_SAFE_INTEGER / 4))) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] ${operation} returned an unreadable sample count ${samplesRaw.toString()}`,
+				);
+			}
+			const sampleCount = Number(samplesRaw);
+			if (maxSamples !== undefined && sampleCount > maxSamples) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] ${operation} produced ${sampleCount} samples, exceeding caller maxSamples=${maxSamples}`,
+				);
+			}
+			const pcmPtr = Number(pcmRaw);
+			if (!Number.isSafeInteger(pcmPtr)) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] ${operation} PCM pointer ${pcmRaw.toString()} exceeds JS safe integer range`,
+				);
+			}
+			const bytes = sampleCount * 4;
+			const nativeView = ffi.toArrayBuffer(pcmPtr, 0, bytes);
+			return new Float32Array(
+				new Uint8Array(nativeView).slice(0, bytes).buffer,
+			);
+		} finally {
+			freePcm(pcmRaw);
+		}
 	}
 
 	return {
@@ -3341,11 +3538,29 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		kokoroSynthesize({ ctx, text, speed, maxSamples }) {
+			const ownedSynth =
+				loadedLib.symbols.eliza_inference_kokoro_synthesize_alloc;
+			if (kokoroOwnedPcmSymbolsAvailable && typeof ownedSynth === "function") {
+				return synthesizeOwnedKokoro(
+					ownedSynth,
+					ctx,
+					text,
+					speed,
+					maxSamples,
+					"eliza_inference_kokoro_synthesize_alloc",
+				);
+			}
 			const synth = loadedLib.symbols.eliza_inference_kokoro_synthesize;
 			if (!kokoroSymbolsAvailable || typeof synth !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
 					"[ffi-bindings] eliza_inference_kokoro_synthesize is not exported by this build",
+				);
+			}
+			if (maxSamples === undefined) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] unbounded Kokoro synthesis requires ABI v15 exact-size PCM ownership",
 				);
 			}
 			const err = makeOutErr();
@@ -3366,7 +3581,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					`[ffi-bindings] eliza_inference_kokoro_synthesize rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
-			return outPcm.slice(0, Math.min(rc, maxSamples));
+			if (rc > maxSamples) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] eliza_inference_kokoro_synthesize wrote ${rc} samples into capacity ${maxSamples}`,
+				);
+			}
+			return outPcm.slice(0, rc);
 		},
 
 		kokoroSampleRate(ctx): number {
@@ -3403,11 +3624,29 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		kokoroSynthesizeIpa({ ctx, ipa, speed, maxSamples }) {
+			const ownedSynth =
+				loadedLib.symbols.eliza_inference_kokoro_synthesize_ipa_alloc;
+			if (kokoroOwnedPcmSymbolsAvailable && typeof ownedSynth === "function") {
+				return synthesizeOwnedKokoro(
+					ownedSynth,
+					ctx,
+					ipa,
+					speed,
+					maxSamples,
+					"eliza_inference_kokoro_synthesize_ipa_alloc",
+				);
+			}
 			const synth = loadedLib.symbols.eliza_inference_kokoro_synthesize_ipa;
 			if (!kokoroG2pSymbolsAvailable || typeof synth !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
 					"[ffi-bindings] eliza_inference_kokoro_synthesize_ipa is not exported by this build (pre-v14)",
+				);
+			}
+			if (maxSamples === undefined) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					"[ffi-bindings] unbounded Kokoro IPA synthesis requires ABI v15 exact-size PCM ownership",
 				);
 			}
 			const err = makeOutErr();
@@ -3428,7 +3667,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					`[ffi-bindings] eliza_inference_kokoro_synthesize_ipa rc=${rc}`;
 				throw new VoiceLifecycleError(failureCode(rc), message);
 			}
-			return outPcm.slice(0, Math.min(rc, maxSamples));
+			if (rc > maxSamples) {
+				throw new VoiceLifecycleError(
+					"kernel-missing",
+					`[ffi-bindings] eliza_inference_kokoro_synthesize_ipa wrote ${rc} samples into capacity ${maxSamples}`,
+				);
+			}
+			return outPcm.slice(0, rc);
 		},
 
 		close(): void {
