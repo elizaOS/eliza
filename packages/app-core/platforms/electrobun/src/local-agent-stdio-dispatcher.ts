@@ -11,8 +11,9 @@
  * error-frame-to-rejection translation, so a failed dispatch surfaces as a
  * thrown RPC error rather than a fabricated 200.
  *
- * Buffered request/response only — the streaming leg
- * (`localAgentStreamRequest`) is added with its child-side consumer.
+ * Buffered and streaming requests share the same child pipe. Streams enforce
+ * response → chunk* → complete ordering so a malformed child cannot fabricate
+ * a successful head or leave the renderer waiting forever.
  */
 
 import { Buffer } from "node:buffer";
@@ -240,7 +241,14 @@ export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
     const pending = this.pendingStreams.get(streamId);
     if (!pending) return;
     if (frame.stream === "response") {
-      if (pending.headSettled || typeof frame.status !== "number") return;
+      if (pending.headSettled) {
+        this.failStream(streamId, pending, "duplicate response frame");
+        return;
+      }
+      if (typeof frame.status !== "number") {
+        this.failStream(streamId, pending, "response frame missing status");
+        return;
+      }
       pending.headSettled = true;
       pending.resolveHead({
         streamId,
@@ -254,22 +262,59 @@ export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
       });
       return;
     }
-    if (frame.stream === "chunk" && typeof frame.dataBase64 === "string") {
-      pending.onChunk(Buffer.from(frame.dataBase64, "base64").toString("utf8"));
+    if (frame.stream === "chunk") {
+      if (!pending.headSettled) {
+        this.failStream(streamId, pending, "chunk arrived before response");
+        return;
+      }
+      if (typeof frame.dataBase64 !== "string") {
+        this.failStream(streamId, pending, "chunk frame missing dataBase64");
+        return;
+      }
+      try {
+        pending.onChunk(
+          Buffer.from(frame.dataBase64, "base64").toString("utf8"),
+        );
+      } catch (error) {
+        this.failStream(
+          streamId,
+          pending,
+          `chunk consumer failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
       return;
     }
-    if (frame.stream !== "complete") return;
+    if (frame.stream !== "complete") {
+      this.failStream(
+        streamId,
+        pending,
+        `unknown stream frame ${frame.stream}`,
+      );
+      return;
+    }
     this.pendingStreams.delete(streamId);
     const error = typeof frame.error === "string" ? frame.error : undefined;
-    if (!pending.headSettled && error) {
-      pending.rejectHead(new Error(error));
+    if (!pending.headSettled) {
+      pending.rejectHead(
+        new Error(
+          error ??
+            "local-agent stream completed before sending an HTTP response frame",
+        ),
+      );
       return;
     }
-    if (!pending.headSettled) {
-      pending.headSettled = true;
-      pending.resolveHead({ streamId, status: 200 });
-    }
     pending.onEnd(error);
+  }
+
+  private failStream(
+    streamId: string,
+    pending: PendingStream,
+    detail: string,
+  ): void {
+    this.pendingStreams.delete(streamId);
+    const message = `local-agent stream protocol error: ${detail}`;
+    if (pending.headSettled) pending.onEnd(message);
+    else pending.rejectHead(new Error(message));
   }
 
   private settleResult(id: number, result: LocalAgentRequestResult): void {
