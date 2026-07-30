@@ -1,11 +1,11 @@
 import { WalletAgeSummary } from "../types";
 
 export function analyzeWalletAge(
-  firstKnownTransactionSignature: string | null,
+  firstKnownTransactionId: string | null,
   firstKnownTransactionTime: number | null,
 ): WalletAgeSummary {
   if (
-    !firstKnownTransactionSignature ||
+    !firstKnownTransactionId ||
     firstKnownTransactionTime === null
   ) {
     return {
@@ -34,7 +34,7 @@ export function analyzeWalletAge(
   }
 
   return {
-    firstKnownTransaction: firstKnownTransactionSignature,
+    firstKnownTransaction: firstKnownTransactionId,
     firstKnownTransactionAt: firstKnownTransactionTime,
     ageInDays,
     ageInMonths,
