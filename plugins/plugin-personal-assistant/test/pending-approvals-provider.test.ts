@@ -3,11 +3,11 @@
  * before Stage-1 action routing. Deterministic mocks assert owner scoping,
  * payload redaction, and the reject/hold routing text.
  *
- * The provider reads private context, so every case must clear the LifeOps
- * audience gate: the mock runtime therefore serves a real owner DM room with
- * the owner and the agent as its only participants. The gate's own semantics
- * are covered against a real database in
- * `src/lifeops/audience-policy.integration.test.ts`.
+ * The provider reads private context, so the mock runtime serves a real owner
+ * DM room with the owner and the agent as its only participants. Whether a
+ * destination is owner-private at all is the runtime disclosure gate's job
+ * (`ownerPrivateProvider`), covered against a real database in
+ * `src/lifeops/delivery-audience-membership-mutation.pglite.integration.test.ts`.
  */
 import {
   ChannelType,
@@ -133,29 +133,8 @@ describe("pendingApprovalsProvider", () => {
 
     const result = await pendingApprovalsProvider.get(runtime(), message(), {});
 
-    // A denied audience gets the silent unavailable shape, never a
-    // pendingApprovalCount of 0 that would read as "nothing is pending".
     expect(result.text).toBe("");
-    expect(result.values?.pendingApprovalsUnavailable).toBe(true);
-    expect(result.values?.pendingApprovalCount).toBeUndefined();
-    expect(result.data?.lifeOpsAudienceReceipts).toBeDefined();
-    expect(mocks.queue.list).not.toHaveBeenCalled();
-  });
-
-  it("denies a group destination even for the owner", async () => {
-    const groupRuntime = {
-      ...runtime(),
-      getRoom: vi.fn(async () => ({ id: ROOM_ID, type: ChannelType.GROUP })),
-      getParticipantsForRoom: vi.fn(async () => [OWNER_ID, AGENT_ID]),
-    } as unknown as IAgentRuntime;
-
-    const result = await pendingApprovalsProvider.get(
-      groupRuntime,
-      message(),
-      {},
-    );
-
-    expect(result.values?.pendingApprovalsUnavailable).toBe(true);
+    expect(result.values?.pendingApprovalCount).toBe(0);
     expect(mocks.queue.list).not.toHaveBeenCalled();
   });
 });

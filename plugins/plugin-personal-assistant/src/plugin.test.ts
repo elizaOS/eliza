@@ -48,10 +48,9 @@ describe("LifeOps Google plugin registration", () => {
   });
 
   it("does not infer a private LifeOps audience from sender-role metadata", async () => {
-    // A DM-stamped message carrying self-declared owner metadata, from a
-    // runtime that can produce no room and no participants. The audience gate
-    // reads the destination, never the sender's claim about itself, so this
-    // stays denied.
+    // A DM-stamped message carrying self-declared owner metadata, and no
+    // delivery-audience attestation. The provider reads the attested
+    // destination, never the sender's claim about itself, so this stays denied.
     const result = await lifeOpsProvider.get(
       { agentId: "agent", reportError: vi.fn() } as unknown as IAgentRuntime,
       {
@@ -67,13 +66,7 @@ describe("LifeOps Google plugin registration", () => {
       { values: {}, data: {}, text: "" },
     );
 
-    expect(result.text).toBe("");
-    expect(result.values).toEqual({});
-    expect(result.data?.lifeOpsAudienceReceipts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ decision: "exclude" }),
-      ]),
-    );
+    expect(result).toEqual({ text: "", values: {}, data: {} });
   });
 
   it("exposes the owner todo action for todos-routed planner turns", () => {

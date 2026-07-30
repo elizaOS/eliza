@@ -13,6 +13,7 @@
 
 import {
   ElizaError,
+  evaluateOwnerExclusiveDisclosure,
   getAccountPrivacy,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -360,17 +361,21 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    // The runtime already refused to invoke this provider unless the
-    // OWNER_EXCLUSIVE_DISCLOSURE_GATE stamp cleared (plugin.ts wraps it in
-    // `ownerPrivateProvider`); this owner check is the LifeOps boundary on top
-    // of that.
+    // The destination decides the audience, never the sender's claim about
+    // itself: an unattested turn (or one attested to a shared room) reads as
+    // public here even when its own metadata says "OWNER". `plugin.ts` stamps
+    // this provider with OWNER_EXCLUSIVE_DISCLOSURE_GATE via
+    // `ownerPrivateProvider`, and this check is the same evidence read inside
+    // the provider so a direct call cannot bypass it.
+    const disclosure = evaluateOwnerExclusiveDisclosure(message);
+    const audience: LifeOpsAudience = disclosure.allowed ? "owner" : "public";
+    if (audience !== "owner") {
+      return { text: "", values: {}, data: {} };
+    }
     const isOwner = await hasLifeOpsAccess(runtime, message);
     if (!isOwner) {
       return { text: "", values: {}, data: {} };
     }
-    // Past the gate the destination is proven owner-private, so the per-account
-    // privacy filters below all evaluate against the owner audience.
-    const audience: LifeOpsAudience = "owner";
 
     try {
       const service = new LifeOpsService(runtime);
