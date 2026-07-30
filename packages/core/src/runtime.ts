@@ -17,11 +17,12 @@
  * - `getSetting()` resolves per-agent config and DELIBERATELY never reads
  *   `process.env` — in a multi-tenant process that would leak a host secret into
  *   every agent; hosts fold dotenv into the constructor `settings` map instead.
- * - Embedding width is pinned to whichever TEXT_EMBEDDING provider answered the
- *   boot dimension probe; a later embedding from a different provider can emit a
- *   width the SQL adapter silently drops (#8769). If every provider fails the
- *   probe, `initialize()` catches `EmbeddingDimensionProbeError` non-fatally and
- *   disables embedding generation instead of crashing boot.
+ * - Embedding width is pinned to the TEXT_EMBEDDING provider whose declared
+ *   metadata (or real fallback probe) configured vector storage; a later
+ *   embedding from a different provider can emit a width the SQL adapter
+ *   silently drops (#8769). If every provider fails discovery, `initialize()`
+ *   catches `EmbeddingDimensionProbeError` non-fatally and disables embedding
+ *   generation instead of crashing boot.
  * - Without a database adapter, `initialize()` falls back to the in-memory
  *   adapter only when `ALLOW_NO_DATABASE` is set.
  */
@@ -242,6 +243,7 @@ import {
 	type Room,
 	type Route,
 	type RuntimeEventStorage,
+	type RuntimeServiceInstance,
 	type RuntimeSettings,
 	type RuntimeStopOptions,
 	type SendHandlerFunction,
@@ -458,7 +460,7 @@ export interface EmbeddingProbeAttempt {
 
 /**
  * Thrown by `AgentRuntime.ensureEmbeddingDimension` when EVERY registered
- * TEXT_EMBEDDING provider failed the null dimension probe. Carries the
+ * TEXT_EMBEDDING provider failed dimension discovery. Carries the
  * per-provider failure list so callers (and logs) can show exactly which
  * providers were tried and why each one failed.
  *
@@ -1048,8 +1050,8 @@ export class AgentRuntime implements IAgentRuntime {
 	models = new Map<string, ModelHandler[]>();
 	routes: Route[] = [];
 	/**
-	 * Provider that answered the boot-time TEXT_EMBEDDING dimension probe. The
-	 * SQL adapter's vector column is sized from that provider's output, so all
+	 * Provider selected by boot-time TEXT_EMBEDDING dimension discovery. The SQL
+	 * adapter's vector column is sized from its metadata or measured output, so all
 	 * later embedding calls without an explicit provider are pinned to it —
 	 * letting a different registration serve an embedding call can emit a
 	 * different-width vector that the adapter silently drops on dimension
@@ -1137,6 +1139,7 @@ export class AgentRuntime implements IAgentRuntime {
 	private currentRunId?: UUID; // Track the current run ID
 	private currentRoomId?: UUID; // Track the current room for logging
 	public messageService: IMessageService | null = null; // Lazily initialized
+	private initialized = false;
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
 	private stopped = false;
@@ -2500,6 +2503,10 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	isInitialized(): boolean {
+		return this.initialized;
+	}
+
 	private async _initializeCore(options?: {
 		skipMigrations?: boolean;
 		allowNoDatabase?: boolean;
@@ -2851,6 +2858,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Resolve init promise to allow services to start
+		this.initialized = true;
 		if (this.initResolver) {
 			this.initResolver();
 			this.initResolver = undefined;
@@ -5102,7 +5110,9 @@ export class AgentRuntime implements IAgentRuntime {
 	 * @returns Array of registered service type names
 	 */
 	getRegisteredServiceTypes(): ServiceTypeName[] {
-		return Array.from(this.serviceTypes.keys());
+		return Array.from(
+			new Set([...this.serviceTypes.keys(), ...this.services.keys()]),
+		);
 	}
 
 	/**
@@ -5117,7 +5127,11 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		const classes = this.serviceTypes.get(key);
-		return classes !== undefined && classes.length > 0;
+		const instances = this.services.get(key);
+		return (
+			(classes !== undefined && classes.length > 0) ||
+			(instances !== undefined && instances.length > 0)
+		);
 	}
 
 	/**
@@ -5207,6 +5221,71 @@ export class AgentRuntime implements IAgentRuntime {
 			return;
 		}
 		serviceClassList.push(serviceDef);
+	}
+
+	/**
+	 * Register a host-created service instance without pretending it is a
+	 * ServiceClass. This path is for native/device adapters whose connection is
+	 * already alive before plugin initialization. It deliberately rejects
+	 * replacement: backend precedence must be decided before registration, not
+	 * by whichever asynchronous bootstrap happens to finish last.
+	 */
+	registerServiceInstance(
+		serviceType: ServiceTypeName | string,
+		service: RuntimeServiceInstance,
+	): void {
+		if (this.stopped) {
+			throw new Error(
+				`Cannot register service instance ${String(serviceType)} after runtime stop`,
+			);
+		}
+		if (!this.isNativeFeatureServiceEnabled(serviceType)) {
+			throw new Error(
+				`Cannot register disabled native service ${String(serviceType)}`,
+			);
+		}
+		if (
+			!service ||
+			typeof service !== "object" ||
+			typeof service.stop !== "function" ||
+			typeof service.capabilityDescription !== "string" ||
+			service.capabilityDescription.trim().length === 0
+		) {
+			throw new TypeError(
+				`Service instance ${String(serviceType)} must provide capabilityDescription and stop()`,
+			);
+		}
+
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+		const existingInstances = this.services.get(key);
+		const existingClasses = this.serviceTypes.get(key);
+		if (
+			(existingInstances && existingInstances.length > 0) ||
+			(existingClasses && existingClasses.length > 0)
+		) {
+			throw new Error(`Service ${String(serviceType)} is already registered`);
+		}
+
+		// RuntimeServiceInstance is the actual lifecycle contract used by
+		// shutdown. Service remains the historical registry element type.
+		const registeredService = service as Service;
+		this.services.set(key, [registeredService]);
+		this.serviceRegistrationStatus.set(key, "registered");
+
+		const handler = this.servicePromiseHandlers.get(key);
+		if (handler) {
+			handler.resolve(registeredService);
+			this.servicePromiseHandlers.delete(key);
+		}
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				serviceType: key,
+				capabilityDescription: service.capabilityDescription,
+			},
+			"Registered started service instance",
+		);
 	}
 
 	/// ensures servicePromises & servicePromiseHandlers for a serviceType
@@ -9266,14 +9345,11 @@ ${section_end}`;
 			throw new Error("No TEXT_EMBEDDING model registered");
 		}
 
-		// Probe every registered TEXT_EMBEDDING provider in the same priority
-		// order useModel resolves them. The probe passes null; handlers return a
-		// zero-filled vector of their real output width. A provider that cannot
-		// answer the null probe cannot produce usable vectors either, so ANY
-		// probe failure — not just a rate limit — advances to the next
-		// registration. First success wins: it sizes the adapter's vector column
-		// and pins that provider for subsequent embedding calls, so the column
-		// width and the vectors written to it always come from the same provider.
+		// Resolve every registered TEXT_EMBEDDING provider in the same priority
+		// order useModel uses. Providers should declare their output width as
+		// registration metadata, which makes boot a zero-inference operation.
+		// Older providers are measured with one real embedding request; a null
+		// request must never be answered with a fabricated marker vector.
 		const attempts: EmbeddingProbeAttempt[] = [];
 		const probedProviders = new Set<string>();
 		let allFailuresBenign = true;
@@ -9283,52 +9359,58 @@ ${section_end}`;
 			}
 			probedProviders.add(registration.provider);
 
-			let embedding: unknown;
-			try {
-				embedding = await this.useModel(
-					ModelType.TEXT_EMBEDDING,
-					null,
-					registration.provider,
-				);
-			} catch (error) {
-				if (!(error instanceof NoModelProviderConfiguredError)) {
-					allFailuresBenign = false;
-				}
-				attempts.push({
-					provider: registration.provider,
-					modelKey: registration.modelKey,
-					error: error instanceof Error ? error.message : String(error),
-				});
-				this.logger.warn(
-					{
-						src: "agent",
-						agentId: this.agentId,
+			let dimension = this.resolveDeclaredEmbeddingDimension(
+				registration.metadata,
+			);
+			if (dimension === null) {
+				let embedding: unknown;
+				try {
+					embedding = await this.useModel(
+						ModelType.TEXT_EMBEDDING,
+						"elizaOS embedding dimension probe",
+						registration.provider,
+					);
+				} catch (error) {
+					if (!(error instanceof NoModelProviderConfiguredError)) {
+						allFailuresBenign = false;
+					}
+					attempts.push({
 						provider: registration.provider,
+						modelKey: registration.modelKey,
 						error: error instanceof Error ? error.message : String(error),
-					},
-					"TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
-				);
-				continue;
-			}
-			if (!Array.isArray(embedding) || embedding.length === 0) {
-				allFailuresBenign = false;
-				attempts.push({
-					provider: registration.provider,
-					modelKey: registration.modelKey,
-					error: `Invalid embedding received (${Array.isArray(embedding) ? "empty array" : typeof embedding})`,
-				});
-				this.logger.warn(
-					{
-						src: "agent",
-						agentId: this.agentId,
+					});
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							provider: registration.provider,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
+					);
+					continue;
+				}
+				if (!Array.isArray(embedding) || embedding.length === 0) {
+					allFailuresBenign = false;
+					attempts.push({
 						provider: registration.provider,
-					},
-					"TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
-				);
-				continue;
+						modelKey: registration.modelKey,
+						error: `Invalid embedding received (${Array.isArray(embedding) ? "empty array" : typeof embedding})`,
+					});
+					this.logger.warn(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							provider: registration.provider,
+						},
+						"TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
+					);
+					continue;
+				}
+				dimension = embedding.length;
 			}
 
-			await this.adapter.ensureEmbeddingDimension(embedding.length);
+			await this.adapter.ensureEmbeddingDimension(dimension);
 			this.pinnedEmbeddingProvider = registration.provider;
 			this.enableEmbeddingGeneration();
 			// Reclaim any vectors left in a different dimension column — e.g. cloud
@@ -9347,7 +9429,7 @@ ${section_end}`;
 							src: "agent",
 							agentId: this.agentId,
 							count: staleMemoryIds.length,
-							dimension: embedding.length,
+							dimension,
 						},
 						"Reclaimed stale-dimension embeddings; re-embedding at active width",
 					);
@@ -9363,7 +9445,7 @@ ${section_end}`;
 				{
 					src: "agent",
 					agentId: this.agentId,
-					dimension: embedding.length,
+					dimension,
 					provider: registration.provider,
 					failedProviders: attempts.map((attempt) => attempt.provider),
 				},
@@ -9390,6 +9472,31 @@ ${section_end}`;
 		const probeError = new EmbeddingDimensionProbeError(attempts);
 		this.disableEmbeddingGeneration(probeError.message);
 		throw probeError;
+	}
+
+	private resolveDeclaredEmbeddingDimension(
+		metadata: ModelRegistrationMetadata | undefined,
+	): number | null {
+		const direct = metadata?.embeddingDimension;
+		if (typeof direct === "number" && Number.isInteger(direct) && direct > 0) {
+			return direct;
+		}
+		for (const key of metadata?.embeddingDimensionSettings ?? []) {
+			const raw = this.getSetting(key);
+			const parsed =
+				typeof raw === "number"
+					? raw
+					: typeof raw === "string"
+						? Number.parseInt(raw, 10)
+						: Number.NaN;
+			if (Number.isInteger(parsed) && parsed > 0) return parsed;
+		}
+		const fallback = metadata?.embeddingDimensionDefault;
+		return typeof fallback === "number" &&
+			Number.isInteger(fallback) &&
+			fallback > 0
+			? fallback
+			: null;
 	}
 
 	registerTaskWorker(taskHandler: TaskWorker): void {
