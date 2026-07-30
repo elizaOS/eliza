@@ -143,8 +143,8 @@ describe("stripJsonStructuralJunkReply — leaked pseudo-tool markup", () => {
 	});
 
 	it("does not touch short quoted acronyms", () => {
-		expect(stripJsonStructuralJunkReply("the <AI> label means artificial")).toBe(
-			"the <AI> label means artificial",
-		);
+		expect(
+			stripJsonStructuralJunkReply("the <AI> label means artificial"),
+		).toBe("the <AI> label means artificial");
 	});
 });

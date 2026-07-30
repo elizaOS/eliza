@@ -8426,13 +8426,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					return false;
 				}
 				if (!normalizedPlannedReply.includes(verified)) return false;
-				// Collapse ONLY a trivial re-render. If, after removing the already
-				// callback-delivered verified block (and fence markers), the planned
-				// reply still carries substantive content, that content was never
-				// delivered and must ship — e.g. the evaluator's grounded prose
-				// appended to a verbatim tool block (#7960: `df -h` output followed by
-				// the "still 95%, 22G free" answer). Suppress only when nothing
-				// substantive remains beyond the duplicate block.
+				// Trivial-re-render check the block comment above promises (#7960).
 				const remainder = normalizedPlannedReply
 					.replace(verified, " ")
 					.replace(/```/g, " ");

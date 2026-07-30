@@ -262,10 +262,7 @@ export function stripJsonStructuralJunkReply(value: string): string {
 			/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*?<\/\1>/g,
 			"",
 		)
-		.replace(
-			/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*$/g,
-			"",
-		)
+		.replace(/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{3,})>[\s\S]*$/g, "")
 		.trim();
 	if (!cleaned) return "";
 	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
