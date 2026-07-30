@@ -191,16 +191,16 @@ const tokenHoldings: WalletTokenHolding[] =
       }
 
       return {
-        mint,
+        tokenId: mint,
         amount,
         decimals,
         rawAmount: tokenBalance.rawAmount,
       };
     },
   );
-      
+
         const tokenPrices = await getSolanaTokenPrices([
-  ...tokenHoldings.map((token) => token.mint),
+  ...tokenHoldings.map((token) => token.tokenId),
   WRAPPED_SOL_MINT,
 ]);
 

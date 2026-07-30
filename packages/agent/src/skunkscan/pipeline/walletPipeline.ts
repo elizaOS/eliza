@@ -62,6 +62,7 @@ export async function runWalletPipeline(
     input.balance,
     input.tokenHoldings,
     input.tokenPrices,
+    input.chain,
   );
 
   const nftHoldings =
