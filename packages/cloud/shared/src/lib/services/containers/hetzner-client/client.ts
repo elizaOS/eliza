@@ -36,6 +36,7 @@ import {
 } from "./bootstrap";
 import { DEFAULT_NODE_NETWORK, DEFAULT_VOLUME_MOUNT_PATH } from "./constants";
 import { parseDockerStats } from "./docker-stats";
+import { resolveStewardConfigFromEnv, sealContainerEnvToVault } from "./env-vault-refs";
 import { readMetadata, rowToSummary } from "./metadata";
 import {
   deriveContainerName,
@@ -102,6 +103,24 @@ export class HetznerContainersClient {
     }
     const volumeMountPath = validateContainerMountPath(input.volumeMountPath);
 
+    // Vault-ref sealing (CONTAINERS_ENV_VAULT_REFS, default OFF): move secret
+    // values into the Steward vault BEFORE anything is persisted or shipped to
+    // the node, so the DB row, the SSH `docker create -e` command line, and
+    // `docker inspect` only ever see `vault://` sentinels. Fail closed: a vault
+    // failure aborts the provision instead of degrading to plaintext.
+    let effectiveEnvVars = input.environmentVars;
+    if (effectiveEnvVars && containersEnv.envVaultRefsEnabled()) {
+      const sealed = await sealContainerEnvToVault(
+        {
+          organizationId: input.organizationId,
+          projectName: input.projectName,
+          environmentVars: effectiveEnvVars,
+        },
+        resolveStewardConfigFromEnv(),
+      );
+      effectiveEnvVars = sealed.env;
+    }
+
     // 1. Pre-create the DB row in `pending` so the rest of the flow has an id.
     const newRow: NewContainer = {
       name: input.name,
@@ -115,7 +134,7 @@ export class HetznerContainersClient {
       desired_count: 1,
       cpu: input.cpu,
       memory: input.memoryMb,
-      environment_vars: input.environmentVars ?? {},
+      environment_vars: effectiveEnvVars ?? {},
       health_check_path: input.healthCheckPath ?? "/health",
       status: "pending",
       metadata: { provider: "hetzner-docker", image: input.image },
@@ -253,7 +272,7 @@ export class HetznerContainersClient {
         bootstrapStats = await hydrateBootstrapSource(ssh, volumePath, input.bootstrapSource);
       }
 
-      const envFlags = Object.entries(input.environmentVars ?? {})
+      const envFlags = Object.entries(effectiveEnvVars ?? {})
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
@@ -634,6 +653,21 @@ export class HetznerContainersClient {
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
 
+    // Same sealing gate as createContainer: PATCHed env secrets must not reach
+    // the node (or the stored row) in plaintext when the flag is on.
+    let effectiveEnvVars = environmentVars;
+    if (containersEnv.envVaultRefsEnabled()) {
+      const sealed = await sealContainerEnvToVault(
+        {
+          organizationId,
+          projectName: row.row.project_name,
+          environmentVars,
+        },
+        resolveStewardConfigFromEnv(),
+      );
+      effectiveEnvVars = sealed.env;
+    }
+
     await this.execOnNode(meta, async (ssh) => {
       // error-policy:J6 best-effort stop before the authoritative rm -f below;
       // a stop failure is logged, not thrown, because rm -f performs the real
@@ -647,7 +681,7 @@ export class HetznerContainersClient {
         );
       await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
 
-      const envFlags = Object.entries(environmentVars)
+      const envFlags = Object.entries(effectiveEnvVars)
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
@@ -678,7 +712,7 @@ export class HetznerContainersClient {
     });
 
     const updated = await containersRepository.update(containerId, organizationId, {
-      environment_vars: environmentVars,
+      environment_vars: effectiveEnvVars,
       status: "deploying",
       deployment_log: "Env vars updated; container recreated. Waiting for health check...",
     });

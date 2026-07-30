@@ -326,6 +326,25 @@ export const containersEnv = {
   },
 
   /**
+   * Seal secret-bearing container env vars into the Steward vault at
+   * provision time and inject only `vault://` reference sentinels into the
+   * container (`docker create -e`). Closes the plaintext `environment_vars`
+   * injection path (secrets otherwise land in the stored jsonb row, the SSH
+   * command line, and `docker inspect` on the node).
+   *
+   * OPT-IN, DEFAULT OFF — existing deployments keep exact legacy behavior
+   * until the operator configures `STEWARD_API_URL` + tenant credentials on
+   * the control-plane sidecar and flips this on. When ON, a vault write
+   * failure FAILS the provision (fail closed; no plaintext fallback).
+   * Read via `CONTAINERS_ENV_VAULT_REFS` (with `ELIZA_` fallback); only the
+   * literal string `"true"` enables it.
+   */
+  envVaultRefsEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_ENV_VAULT_REFS, env.ELIZA_CONTAINERS_ENV_VAULT_REFS) === "true";
+  },
+
+  /**
    * Auto-recover a node whose dockerd image-pull coordinator has wedged: after
    * repeated failed pre-pulls the provisioning worker restarts docker on the
    * node itself (rate-limited) instead of requiring a manual `systemctl
