@@ -8,16 +8,20 @@
  * extracted signals (small text it would otherwise misread, object identity,
  * presence of people) instead of guessing.
  *
- * This is the *provider* half of the seam. plugin-local-inference owns the
- * registry (`registerVisionContextAugmenter`); this class is registered into it
- * at boot via a best-effort dynamic import (see `index.ts`), mirroring the
- * coord-OCR bridge into plugin-computeruse. Every detector is optional and
- * best-effort: an unavailable or failing detector contributes nothing rather
- * than failing the describe.
+ * This is the provider half of the seam. plugin-local-inference discovers the
+ * augmenter as a runtime service, avoiding a package dependency and
+ * process-global registry. Every detector is optional and best-effort: an
+ * unavailable or failing detector contributes nothing rather than failing the
+ * describe.
  */
 
 import { Buffer } from "node:buffer";
-import { logger } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  Service,
+  ServiceType,
+} from "@elizaos/core";
 import {
   getOcrWithCoordsService,
   type OcrWithCoordsService,
@@ -59,6 +63,11 @@ export interface VisionAugmenterDetectors {
     imageBytes: Buffer,
   ) => Promise<ReadonlyArray<{ type: string; confidence: number }>>;
   detectFaces?: (imageBytes: Buffer) => Promise<number>;
+  reportError?: (
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ) => void;
 }
 
 const DEFAULT_DESCRIBE_PROMPT = "Describe what is in this image.";
@@ -114,7 +123,7 @@ export class FusedVisionContextAugmenter {
           fused.ocrText = lines.map((t) => `"${t}"`).join(", ");
         }
       } catch (err) {
-        logger.debug(`[vision-augment] OCR skipped: ${messageOf(err)}`);
+        this.reportDetectorFailure("ocr", err);
       }
     }
 
@@ -128,9 +137,7 @@ export class FusedVisionContextAugmenter {
             .join(", ");
         }
       } catch (err) {
-        logger.debug(
-          `[vision-augment] object detection skipped: ${messageOf(err)}`,
-        );
+        this.reportDetectorFailure("objects", err);
       }
     }
 
@@ -139,9 +146,7 @@ export class FusedVisionContextAugmenter {
         const n = await this.deps.detectFaces(bytes);
         if (n > 0) fused.faces = `${n} ${n === 1 ? "face" : "faces"}`;
       } catch (err) {
-        logger.debug(
-          `[vision-augment] face detection skipped: ${messageOf(err)}`,
-        );
+        this.reportDetectorFailure("faces", err);
       }
     }
 
@@ -150,6 +155,52 @@ export class FusedVisionContextAugmenter {
       prompt: buildAugmentedPrompt(input.basePrompt, fused),
       fused,
     };
+  }
+
+  private reportDetectorFailure(detector: string, error: unknown): void {
+    if (this.deps.reportError) {
+      // error-policy:J7 Optional detector failure degrades but remains observable.
+      this.deps.reportError("VisionContextAugmenter.detector", error, {
+        detector,
+      });
+      return;
+    }
+    logger.debug(`[vision-augment] ${detector} skipped: ${messageOf(error)}`);
+  }
+}
+
+/**
+ * Runtime-scoped bridge consumed structurally by local inference. The service
+ * registry is the cross-plugin seam, so registration does not depend on
+ * package resolution or module-singleton identity.
+ */
+export class VisionContextAugmenterService extends Service {
+  static serviceType = ServiceType.VISION_CONTEXT_AUGMENTER;
+  readonly capabilityDescription =
+    "Adds OCR, object, and face signals to image-description prompts.";
+  readonly name = "vision-fused-context";
+  private readonly augmenter: FusedVisionContextAugmenter;
+
+  constructor(
+    runtime?: IAgentRuntime,
+    augmenter?: FusedVisionContextAugmenter,
+  ) {
+    super(runtime);
+    this.augmenter = augmenter ?? createDefaultVisionAugmenter(runtime);
+  }
+
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<VisionContextAugmenterService> {
+    return new VisionContextAugmenterService(runtime);
+  }
+
+  async stop(): Promise<void> {}
+
+  async augmentImagePrompt(
+    input: VisionAugmentInput,
+  ): Promise<VisionAugmentOutput | null> {
+    return this.augmenter.augmentImagePrompt(input);
   }
 }
 
@@ -214,10 +265,21 @@ function messageOf(err: unknown): string {
  * and they contribute nothing — OCR alone augments the prompt. When the
  * artifacts land the same fusion point activates them with no further wiring.
  */
-export function createDefaultVisionAugmenter(): FusedVisionContextAugmenter {
+export function createDefaultVisionAugmenter(
+  runtime?: IAgentRuntime,
+): FusedVisionContextAugmenter {
   return new FusedVisionContextAugmenter({
     detectObjects: lazyObjectDetector(),
     detectFaces: lazyFaceDetector(),
+    ...(runtime
+      ? {
+          reportError: (
+            scope: string,
+            error: unknown,
+            context?: Record<string, unknown>,
+          ) => runtime.reportError(scope, error, context),
+        }
+      : {}),
   });
 }
 

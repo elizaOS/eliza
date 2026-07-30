@@ -51,6 +51,7 @@ export interface ServiceTypeRegistry {
 	COMMANDS: "commands";
 	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge";
 	SCREEN_CAPTURE: "screen_capture";
+	VISION_CONTEXT_AUGMENTER: "vision_context_augmenter";
 	DOCUMENTS: "documents";
 	RELATIONSHIPS: "relationships";
 	FOLLOW_UP: "follow_up";
@@ -158,6 +159,7 @@ export const ServiceType = {
 	COMMANDS: "commands",
 	MOBILE_DEVICE_BRIDGE: "mobile_device_bridge",
 	SCREEN_CAPTURE: "screen_capture",
+	VISION_CONTEXT_AUGMENTER: "vision_context_augmenter",
 	DOCUMENTS: "documents",
 	RELATIONSHIPS: "relationships",
 	FOLLOW_UP: "follow_up",
