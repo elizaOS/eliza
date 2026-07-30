@@ -155,6 +155,7 @@ async function ensureHouseholdEntity(
     preferredName: string;
     role: "child" | "current_partner";
     subjectEntityIds: readonly string[];
+    householdId?: string;
     attributes?: Record<string, EntityAttribute>;
   },
 ): Promise<void> {
@@ -188,6 +189,7 @@ async function ensureHouseholdEntity(
     toEntityId: input.entityId,
     type: input.role === "child" ? "parent_of" : "partner_of",
     metadata: {
+      ...(input.householdId ? { householdId: input.householdId } : {}),
       householdRole: input.role,
       householdSubjectEntityIds: [...input.subjectEntityIds],
     },
@@ -371,6 +373,7 @@ async function prepareG30(runtime: AgentRuntime): Promise<void> {
     preferredName: "Lee",
     role: "child",
     subjectEntityIds: [G30_CHILD_ENTITY_ID],
+    householdId: G30_HOUSEHOLD_ID,
   });
   const operations = getHouseholdOperationsService(runtime);
   if (!operations) {
@@ -476,6 +479,7 @@ async function prepareG38(runtime: AgentRuntime): Promise<void> {
     preferredName: "Household partner",
     role: "current_partner",
     subjectEntityIds: [],
+    householdId: G38_HOUSEHOLD_ID,
   });
   const operations = getHouseholdOperationsService(runtime);
   if (!operations) {

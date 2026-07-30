@@ -1,6 +1,5 @@
 /**
- * Guards the Benchmark Bridge command against resolving its Vitest config
- * twice beneath the package root before any benchmark tests can run.
+ * Guards the Benchmark Bridge lane's package root and complete workspace build boundary.
  */
 
 import { expect, test } from "bun:test";
@@ -10,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WORKFLOW_PATH = `${REPOSITORY_ROOT}/.github/workflows/benchmark-tests.yml`;
 
-test("benchmark Vitest config is relative to its declared root", () => {
+test("benchmark lane builds its dependency closure and uses its package root", () => {
   const workflow = readFileSync(WORKFLOW_PATH, "utf8");
 
   expect(workflow).toContain(
@@ -21,5 +20,9 @@ test("benchmark Vitest config is relative to its declared root", () => {
   );
   expect(workflow).toContain(
     "node packages/app-core/scripts/ensure-shared-i18n-data.mjs",
+  );
+  expect(workflow).toMatch(/if: \$\{\{ matrix\.lane == 'benchmark-tests' \}\}/);
+  expect(workflow).toContain(
+    "bunx turbo run build --filter=@elizaos/lifeops-bench...",
   );
 });

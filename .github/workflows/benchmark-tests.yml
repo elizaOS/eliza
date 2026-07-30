@@ -35,7 +35,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -66,6 +66,10 @@ jobs:
 
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
+
+      - name: Build benchmark workspace dependency closure
+        if: ${{ matrix.lane == 'benchmark-tests' }}
+        run: bunx turbo run build --filter=@elizaos/lifeops-bench...
 
       - name: Run ${{ matrix.lane }} lane
         env:
