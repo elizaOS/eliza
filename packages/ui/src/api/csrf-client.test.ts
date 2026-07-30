@@ -216,7 +216,7 @@ describe("fetchWithCsrf", () => {
     ).toHaveBeenCalledWith("http://127.0.0.1:41337/api/auth/me");
   });
 
-  it("passes the long message timeout through CSRF desktop transport calls", async () => {
+  it("leaves message completion under the caller's cancellation ownership", async () => {
     bootConfigMock.getBootConfig.mockReturnValue({ apiToken: null });
     const transport = {
       request: vi.fn().mockResolvedValue(new Response("{}", { status: 200 })),
@@ -231,7 +231,7 @@ describe("fetchWithCsrf", () => {
     expect(transport.request).toHaveBeenCalledWith(
       "http://147.93.44.246:2138/api/conversations/id/messages?agentId=agent",
       expect.objectContaining({ method: "POST" }),
-      { timeoutMs: 600_000 },
+      { timeoutMs: undefined },
     );
   });
 
@@ -287,7 +287,7 @@ describe("fetchWithCsrf", () => {
     expect(fallbackTransport.request).not.toHaveBeenCalled();
   });
 
-  it("falls back to fetch transport with the computed timeout and forwards responseType", async () => {
+  it("falls back to fetch transport without a synthetic deadline and forwards responseType", async () => {
     fetchTransportMock.fetchAgentTransport.request.mockResolvedValueOnce(
       new Response("ok"),
     );
@@ -301,7 +301,7 @@ describe("fetchWithCsrf", () => {
     expect(fetchTransportMock.fetchAgentTransport.request).toHaveBeenCalledWith(
       "/api/tts/local-inference",
       { method: "POST" },
-      { responseType: "arraybuffer", timeoutMs: 180_000 },
+      { responseType: "arraybuffer", timeoutMs: undefined },
     );
   });
 });
