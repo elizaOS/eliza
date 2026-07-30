@@ -16,6 +16,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import { EventEmitter } from "node:events";
 import type {
   IncomingHttpHeaders,
   IncomingMessage,
@@ -182,6 +183,8 @@ export interface DispatchRouteArgs {
    * the sink. Unset over HTTP, where the socket already flushes incrementally.
    */
   onChunk?: (chunk: Buffer) => void;
+  /** Owner cancellation propagated by an in-process transport. */
+  abortSignal?: AbortSignal;
 }
 
 /** Lowercase normalize a header map. */
@@ -263,8 +266,15 @@ function buildLegacyShim(args: {
   params: Record<string, string>;
   body: unknown;
   rawBody?: string;
+  inProcess: boolean;
   onChunk?: (chunk: Buffer) => void;
-}): { req: IncomingMessage; res: ServerResponse; captured: CapturedResponse } {
+  abortSignal?: AbortSignal;
+}): {
+  req: IncomingMessage;
+  res: ServerResponse;
+  captured: CapturedResponse;
+  releaseAbort: () => void;
+} {
   const incomingHeaders = toIncomingHttpHeaders(args.headers);
   // Provide a readable stream body so handlers that call req.on('data') still work.
   const bodyText = (() => {
@@ -314,6 +324,14 @@ function buildLegacyShim(args: {
     const v = incomingHeaders[name.toLowerCase()];
     return Array.isArray(v) ? v[0] : v;
   };
+  Object.defineProperty(req, "socket", {
+    value: { remoteAddress: args.inProcess ? "127.0.0.1" : undefined },
+    configurable: true,
+  });
+  const onAbort = (): void => {
+    req.emit("close");
+  };
+  args.abortSignal?.addEventListener("abort", onAbort, { once: true });
 
   const captured: CapturedResponse = {
     statusCode: 200,
@@ -348,11 +366,7 @@ function buildLegacyShim(args: {
   // Build a minimal ServerResponse-ish object. Plugin handlers only reach for
   // this subset (status/json/send/setHeader/end/write/headersSent), so the
   // structural boundary is isolated in asCapturedServerResponse().
-  const res = {
-    statusCode: 200,
-    get headersSent() {
-      return captured.ended;
-    },
+  const res = Object.assign(new EventEmitter(), {
     setHeader,
     getHeader: (name: string) => captured.headers[name.toLowerCase()],
     removeHeader: (name: string) => {
@@ -362,13 +376,31 @@ function buildLegacyShim(args: {
       writeChunk(chunk);
       return true;
     },
+    writeHead(
+      code: number,
+      statusMessageOrHeaders?:
+        | string
+        | Record<string, string | number | string[]>,
+      maybeHeaders?: Record<string, string | number | string[]>,
+    ) {
+      captured.statusCode = code;
+      const headers =
+        typeof statusMessageOrHeaders === "string"
+          ? maybeHeaders
+          : statusMessageOrHeaders;
+      if (headers) {
+        for (const [name, value] of Object.entries(headers)) {
+          setHeader(name, value);
+        }
+      }
+      return asCapturedServerResponse(this);
+    },
     end: (chunk?: unknown) => {
       if (chunk != null) writeChunk(chunk);
       captured.ended = true;
       return asCapturedServerResponse(res);
     },
     status(code: number) {
-      this.statusCode = code;
       captured.statusCode = code;
       return {
         json(data: unknown) {
@@ -413,22 +445,42 @@ function buildLegacyShim(args: {
       captured.ended = true;
       return res;
     },
-  };
-  // Mirror statusCode writes from the handler onto the captured value.
-  Object.defineProperty(res, "statusCode", {
-    get() {
-      return captured.statusCode;
+  });
+  Object.defineProperties(res, {
+    statusCode: {
+      get() {
+        return captured.statusCode;
+      },
+      set(v: number) {
+        captured.statusCode = v;
+      },
+      configurable: true,
     },
-    set(v: number) {
-      captured.statusCode = v;
+    headersSent: {
+      get() {
+        return captured.ended;
+      },
+      configurable: true,
     },
-    configurable: true,
+    destroyed: {
+      get() {
+        return false;
+      },
+      configurable: true,
+    },
+    writableEnded: {
+      get() {
+        return captured.ended;
+      },
+      configurable: true,
+    },
   });
 
   return {
     req,
     res: asCapturedServerResponse(res),
     captured,
+    releaseAbort: () => args.abortSignal?.removeEventListener("abort", onAbort),
   };
 }
 
@@ -537,6 +589,7 @@ export async function dispatchRoute(
   if (!runtime?.routes?.length) return null;
 
   const method = args.method.toUpperCase();
+  args.abortSignal?.throwIfAborted();
   const headers = normalizeHeaders(args.headers);
   const query = args.query ?? {};
 
@@ -575,9 +628,12 @@ export async function dispatchRoute(
           runtime: runtime as IAgentRuntime,
           inProcess: args.inProcess,
           isTrustedLocal: args.isTrustedLocal?.() ?? false,
+          ...(args.abortSignal ? { abortSignal: args.abortSignal } : {}),
           ...(args.accessContext ? { accessContext: args.accessContext } : {}),
         };
-        return await route.routeHandler(ctx);
+        const result = await route.routeHandler(ctx);
+        args.abortSignal?.throwIfAborted();
+        return result;
       }
 
       // Legacy Express-shaped handler — run through the synthetic shim so we
@@ -597,7 +653,8 @@ export async function dispatchRoute(
         effectiveHandler = selectX402Handler(x402, route, legacyHandler);
       }
 
-      const { req, res, captured } = buildLegacyShim({
+      args.abortSignal?.throwIfAborted();
+      const { req, res, captured, releaseAbort } = buildLegacyShim({
         method,
         path: args.path,
         headers,
@@ -605,7 +662,9 @@ export async function dispatchRoute(
         params,
         body: args.body,
         rawBody: args.rawBody,
+        inProcess: args.inProcess,
         onChunk: args.onChunk,
+        abortSignal: args.abortSignal,
       });
 
       try {
@@ -615,6 +674,11 @@ export async function dispatchRoute(
           runtime as IAgentRuntime,
         );
       } catch (err) {
+        if (args.abortSignal?.aborted) {
+          throw args.abortSignal.reason instanceof Error
+            ? args.abortSignal.reason
+            : new DOMException("Route dispatch cancelled", "AbortError");
+        }
         // error-policy:J1 route-dispatch failure translation: a handler that
         // throws before producing any observable output becomes the structured
         // 500 every transport serves; a handler that already wrote or ended is
@@ -655,7 +719,10 @@ export async function dispatchRoute(
             },
           },
         );
+      } finally {
+        releaseAbort();
       }
+      args.abortSignal?.throwIfAborted();
       return capturedToResult(captured);
     } finally {
       restoreHostContext?.();
