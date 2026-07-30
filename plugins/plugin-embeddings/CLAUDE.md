@@ -31,7 +31,7 @@ So a bring-your-own endpoint **beats a bare local embedder** but **yields to a p
 
 ### Error policy (Commandment 8 / issue #9324)
 
-On **any** HTTP, config, or response-shape error the handler **THROWS** — it never returns a zero or fabricated vector, which would silently corrupt the embedding store. The single legitimate synthetic return is the boot dimension-probe: the runtime calls `useModel(TEXT_EMBEDDING, null)` purely to read `.length`, so a correctly-sized marker vector (`[0.1, 0, 0, …]`) is returned for `null` input only. There is **no Cerebras deterministic-fallback branch** (dropped from the lifted OpenAI handler) and **no default endpoint** — a missing `EMBEDDING_BASE_URL` throws.
+On **any** HTTP, config, caller-input, or response-shape error the handler **THROWS** — it never returns a zero or fabricated vector, which would silently corrupt the embedding store. Output width is declared in model-registration metadata, so runtime boot does not make an inference request and `null` input is rejected. There is **no Cerebras deterministic-fallback branch** (dropped from the lifted OpenAI handler) and **no default endpoint** — a missing `EMBEDDING_BASE_URL` throws.
 
 ## Layout
 
@@ -51,7 +51,7 @@ plugins/plugin-embeddings/
     types/
       index.ts          EmbeddingResponse, TokenUsage
   __tests__/
-    embedding.test.ts   Null-probe width, wire-mocked vector, dimension-mismatch/empty/unsupported throws, batch, VECTOR_DIMS contract
+    embedding.test.ts   Null-input rejection, wire-mocked vector, dimension-mismatch/empty/unsupported throws, batch, VECTOR_DIMS contract
     config.test.ts      Provider-neutral getter resolution + no chat fallback
     auto-enable.test.ts shouldEnable opt-in semantics
 ```
