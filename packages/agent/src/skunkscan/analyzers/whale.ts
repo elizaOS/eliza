@@ -25,6 +25,7 @@ export function analyzeWalletWhaleStatus(
   activity: WalletActivitySummary,
   funding: WalletFundingSummary,
   risk: WalletRiskSummary,
+  nativeSymbol: string,
 ): WalletWhaleSummary {
   const estimatedPortfolioUsdValue =
     typeof portfolio.estimatedTotalUsdValue === "number"
@@ -705,7 +706,7 @@ export function analyzeWalletWhaleStatus(
 
         limitations: [
           "The first known transaction may not contain the wallet's complete funding history.",
-          "Token transfers or indirect funding routes may not be represented by an incoming native SOL transfer.",
+          `Token transfers or indirect funding routes may not be represented by an incoming native ${nativeSymbol} transfer.`,
         ],
       }),
     );

@@ -83,6 +83,7 @@ export async function runWalletPipeline(
     activity,
     funding,
     risk,
+    input.balance.nativeSymbol,
   );
 
   const defi = analyzeWalletDeFi(
