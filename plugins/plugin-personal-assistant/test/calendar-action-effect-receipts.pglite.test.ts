@@ -408,9 +408,11 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     expect(new Set(requestIds).size).toBe(1);
     const requestId = requestIds[0];
     if (!requestId) throw new Error("approval request id was not returned");
+    // Reads are subject-fenced: the calendar action enqueues under the
+    // actor's entityId, which this harness sets to the agent.
     const persisted = await createApprovalQueue(runtime, {
       agentId: runtime.agentId,
-    }).byId(requestId);
+    }).byId(requestId, String(runtime.agentId));
     if (!persisted) throw new Error("approval request was not persisted");
     for (const { result } of concurrent) {
       expect(result.effectReceipts?.[0]).toMatchObject({
