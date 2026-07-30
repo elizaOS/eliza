@@ -114,9 +114,11 @@ export const pendingApprovalsProvider: Provider = {
     });
     if (!audienceGate.canLoadPrivateContext) {
       return {
-        text: "",
-        values: { pendingApprovalsUnavailable: true },
-        data: { lifeOpsAudienceReceipts: audienceGate.receipts },
+        ...EMPTY,
+        data: {
+          pendingApprovals: [],
+          lifeOpsAudienceReceipts: audienceGate.receipts,
+        },
       };
     }
     // Approvals are enqueued with subjectUserId = the requesting owner's
