@@ -53,11 +53,13 @@ function ownerPrivateDocument(): Memory {
   };
 }
 
-function ownerPrivateFragment(): Memory {
+function ownerPrivateFragment(
+  scope: DocumentFragmentMemoryMetadata["scope"] = "owner-private",
+): Memory {
   const metadata: DocumentFragmentMemoryMetadata = {
     type: MemoryType.FRAGMENT,
     documentId: DOCUMENT_ID,
-    scope: "owner-private",
+    scope,
     addedBy: OWNER_ENTITY,
     addedByRole: "OWNER",
     documentRevision: 0,
@@ -190,6 +192,40 @@ describe("chat augmentation derives document access from the requester", () => {
       "keyword",
     );
     expect(userHits.map((hit) => hit.content.text)).not.toContain(SECRET_TEXT);
+  });
+
+  it("authorizes delegated searches from the parent before ranking", async () => {
+    const { documents } = await makeRuntime([ownerPrivateFragment("global")]);
+    const agentMessage = {
+      ...chatMessage(USER_ENTITY),
+      entityId: AGENT_ID,
+    } as unknown as Memory;
+
+    const userHits = await documents.searchDocuments(
+      agentMessage,
+      { roomId: ROOM_ID },
+      "keyword",
+      {
+        requesterEntityId: USER_ENTITY,
+        worldId: WORLD_ID,
+        role: "USER",
+        isOwner: false,
+      },
+    );
+    expect(userHits).toEqual([]);
+
+    const ownerHits = await documents.searchDocuments(
+      agentMessage,
+      { roomId: ROOM_ID },
+      "keyword",
+      {
+        requesterEntityId: OWNER_ENTITY,
+        worldId: WORLD_ID,
+        role: "OWNER",
+        isOwner: true,
+      },
+    );
+    expect(ownerHits.map((hit) => hit.content.text)).toContain(SECRET_TEXT);
   });
 
   it.each(["", "   "])(

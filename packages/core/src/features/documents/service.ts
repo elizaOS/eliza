@@ -15,7 +15,6 @@
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
 import { existsSync, statSync } from "node:fs";
-import { filterByAccessContext } from "../../access-control/filter";
 import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
@@ -208,6 +207,14 @@ export async function resolveDocumentRequester(
 	message?: Memory,
 ): Promise<DocumentRequester> {
 	const requester = await resolveDocumentRequesterRole(runtime, message);
+	return resolveDocumentRequesterRooms(runtime, requester, message?.roomId);
+}
+
+async function resolveDocumentRequesterRooms(
+	runtime: IAgentRuntime,
+	requester: Pick<DocumentRequester, "entityId" | "role">,
+	roomId?: UUID,
+): Promise<DocumentRequester> {
 	if (documentRoleHasGlobalVisibility(requester.role)) {
 		return { ...requester, roomIds: [] };
 	}
@@ -225,17 +232,87 @@ export async function resolveDocumentRequester(
 			context: {
 				agentId: runtime.agentId,
 				entityId: requester.entityId,
-				roomId: message?.roomId,
+				roomId,
 			},
 			severity: "ephemeral",
 		});
 		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
 			agentId: runtime.agentId,
 			entityId: requester.entityId,
-			roomId: message?.roomId,
+			roomId,
 		});
 		throw error;
 	}
+}
+
+async function resolveAccessContextRequester(
+	runtime: IAgentRuntime,
+	accessContext: AccessContext,
+	roomId?: UUID,
+): Promise<DocumentRequester> {
+	const role: DocumentListRequesterRole =
+		accessContext.requesterEntityId === runtime.agentId
+			? "AGENT"
+			: accessContext.isOwner || accessContext.role === "OWNER"
+				? "OWNER"
+				: accessContext.role === "ADMIN"
+					? "ADMIN"
+					: "USER";
+	return resolveDocumentRequesterRooms(
+		runtime,
+		{ entityId: accessContext.requesterEntityId, role },
+		roomId,
+	);
+}
+
+function intersectDocumentRequesters(
+	runtime: IAgentRuntime,
+	messageRequester: DocumentRequester,
+	contextRequester: DocumentRequester,
+	roomId?: UUID,
+): DocumentRequester {
+	// One adapter principal exactly represents the intersection when either side
+	// has global visibility or both sides name the same entity. Two different
+	// room-scoped identities require a multi-principal storage capability, so
+	// reject them instead of approximating an authorization boundary.
+	if (documentRoleHasGlobalVisibility(messageRequester.role)) {
+		return contextRequester;
+	}
+	if (documentRoleHasGlobalVisibility(contextRequester.role)) {
+		return messageRequester;
+	}
+	if (messageRequester.entityId !== contextRequester.entityId) {
+		const error = new ElizaError(
+			"Document search requester identities conflict",
+			{
+				code: "DOCUMENT_REQUESTER_CONTEXT_CONFLICT",
+				context: {
+					agentId: runtime.agentId,
+					messageRequesterEntityId: messageRequester.entityId,
+					contextRequesterEntityId: contextRequester.entityId,
+					roomId,
+				},
+				severity: "ephemeral",
+			},
+		);
+		runtime.reportError("DocumentService.searchRequester", error, {
+			agentId: runtime.agentId,
+			messageRequesterEntityId: messageRequester.entityId,
+			contextRequesterEntityId: contextRequester.entityId,
+			roomId,
+		});
+		throw error;
+	}
+
+	const contextRoomIds = new Set(contextRequester.roomIds);
+	return {
+		entityId: messageRequester.entityId,
+		role:
+			messageRequester.role === "USER" || contextRequester.role === "USER"
+				? "USER"
+				: "ADMIN",
+		roomIds: messageRequester.roomIds.filter((id) => contextRoomIds.has(id)),
+	};
 }
 
 function normalizeDocumentScope(
@@ -1067,7 +1144,22 @@ export class DocumentService extends Service {
 		}
 
 		const queryText = message.content.text;
-		const requester = await resolveDocumentRequester(this.runtime, message);
+		const messageRequester = await resolveDocumentRequester(
+			this.runtime,
+			message,
+		);
+		const requester = accessContext
+			? intersectDocumentRequesters(
+					this.runtime,
+					messageRequester,
+					await resolveAccessContextRequester(
+						this.runtime,
+						accessContext,
+						scope?.roomId ?? message.roomId,
+					),
+					scope?.roomId ?? message.roomId,
+				)
+			: messageRequester;
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;
@@ -1107,16 +1199,7 @@ export class DocumentService extends Service {
 			);
 		}
 
-		// The caller-supplied AccessContext stays a second, strictly-subtractive
-		// gate on top of the adapter-level requester filtering. The adapter query
-		// filters by who the MESSAGE says is asking; a caller whose identity
-		// differs from the message identity (an agent-initiated search on behalf
-		// of a user) must still be narrowed to ITS view, and no caller can widen
-		// its view by threading a context. Fragments missing an entityId fall to
-		// the deny side of scoped reads (fail closed). Pinned by
-		// packages/agent/src/api/chat-augmentation.access-context.test.ts.
-		if (!accessContext) return results;
-		return filterByAccessContext(results, accessContext, this.runtime.agentId);
+		return results;
 	}
 
 	/** Pure vector (cosine-similarity) search. */

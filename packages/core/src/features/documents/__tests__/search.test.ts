@@ -133,16 +133,35 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 	const fragments = opts.fragments ?? [];
 	const agentId = "agent-1" as UUID;
 	const queryDocumentFragments = vi.fn(
-		async (params: { requesterEntityId: UUID }) =>
-			fragments.filter((fragment) => {
-				const metadata = fragment.metadata as
-					| Record<string, unknown>
-					| undefined;
-				return (
-					metadata?.scope !== "user-private" ||
-					metadata.scopedToEntityId === params.requesterEntityId
-				);
-			}),
+		async (params: {
+			limit: number;
+			requesterEntityId: UUID;
+			requesterRole: "OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME";
+		}) =>
+			fragments
+				.filter((fragment) => {
+					const metadata = fragment.metadata as
+						| Record<string, unknown>
+						| undefined;
+					if (
+						params.requesterRole === "OWNER" ||
+						params.requesterRole === "AGENT" ||
+						params.requesterRole === "RUNTIME"
+					) {
+						return true;
+					}
+					if (metadata?.scope === "user-private") {
+						return (
+							params.requesterRole === "ADMIN" ||
+							metadata.scopedToEntityId === params.requesterEntityId
+						);
+					}
+					return (
+						metadata?.scope !== "owner-private" &&
+						metadata?.scope !== "agent-private"
+					);
+				})
+				.slice(0, params.limit),
 	);
 
 	return {
@@ -318,6 +337,114 @@ describe("DocumentService.searchDocuments", () => {
 			);
 
 			expect(results.map((result) => result.id)).toEqual(["frag-owned"]);
+		});
+	});
+
+	describe("delegated access context", () => {
+		it.each(["vector", "hybrid"] as const)(
+			"authorizes before the %s candidate limit",
+			async (mode) => {
+				const authorizedEntity = "user-1" as UUID;
+				const inaccessible = Array.from({ length: 45 }, (_, index) =>
+					makeFragment(
+						`inaccessible-${index}`,
+						"launch launch launch",
+						1 - index / 100,
+						{
+							scope: "user-private",
+							scopedToEntityId: "user-2" as UUID,
+						},
+					),
+				);
+				const authorized = makeFragment("authorized", "launch note", 0.1, {
+					scope: "user-private",
+					scopedToEntityId: authorizedEntity,
+				});
+				const rt = buildRuntime({
+					hasEmbedding: true,
+					fragments: [...inaccessible, authorized],
+				});
+				const svc = buildService(rt);
+
+				const results = await svc.searchDocuments(
+					makeMessage("launch", rt.agentId),
+					{ roomId: "room-1" as UUID },
+					mode,
+					{
+						requesterEntityId: authorizedEntity,
+						worldId: "world-1" as UUID,
+						role: "USER",
+						isOwner: false,
+					},
+				);
+
+				expect(results.map((result) => result.id)).toContain("authorized");
+				expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
+					expect.objectContaining({
+						requesterEntityId: authorizedEntity,
+						requesterRole: "USER",
+					}),
+				);
+			},
+		);
+
+		it("preserves ADMIN document semantics at the adapter boundary", async () => {
+			const adminEntity = "admin-1" as UUID;
+			const rt = buildRuntime({
+				hasEmbedding: false,
+				fragments: [
+					makeFragment("owner-secret", "launch note", undefined, {
+						scope: "owner-private",
+					}),
+					makeFragment("room-user-note", "launch note", undefined, {
+						scope: "user-private",
+						scopedToEntityId: "user-2" as UUID,
+					}),
+				],
+			});
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("launch", rt.agentId),
+				{ roomId: "room-1" as UUID },
+				"keyword",
+				{
+					requesterEntityId: adminEntity,
+					worldId: "world-1" as UUID,
+					role: "ADMIN",
+					isOwner: false,
+				},
+			);
+
+			expect(results.map((result) => result.id)).toEqual(["room-user-note"]);
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
+				expect.objectContaining({
+					requesterEntityId: adminEntity,
+					requesterRole: "ADMIN",
+				}),
+			);
+		});
+
+		it("rejects conflicting non-agent requester identities", async () => {
+			const rt = buildRuntime({ hasEmbedding: false });
+			const svc = buildService(rt);
+
+			await expect(
+				svc.searchDocuments(
+					makeMessage("launch", "user-1" as UUID),
+					{ roomId: "room-1" as UUID },
+					"keyword",
+					{
+						requesterEntityId: "user-2" as UUID,
+						worldId: "world-1" as UUID,
+						role: "USER",
+						isOwner: false,
+					},
+				),
+			).rejects.toMatchObject({
+				code: "DOCUMENT_REQUESTER_CONTEXT_CONFLICT",
+			});
+			expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
 		});
 	});
 
