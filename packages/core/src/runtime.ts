@@ -5001,6 +5001,32 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		let inFlight = this.startingServices.get(key);
 		if (!inFlight) {
+			// A caller requesting a type with no surviving instance is an explicit
+			// retry boundary. Re-arm failed implementations only here, after the
+			// previous start has fully left the in-flight map, so concurrent callers
+			// still share one attempt and optional healthy siblings are not restarted.
+			if (
+				(!instances || instances.length === 0) &&
+				classes.some(
+					(serviceClass) =>
+						this.serviceImplementationHealth.get(serviceClass)?.status ===
+						"failed",
+				)
+			) {
+				for (const serviceClass of classes) {
+					if (
+						this.serviceImplementationHealth.get(serviceClass)?.status ===
+						"failed"
+					) {
+						this.updateServiceImplementationHealth(
+							serviceClass,
+							key,
+							"pending",
+						);
+					}
+				}
+				this.refreshServiceRegistrationStatus(key);
+			}
 			// Start ALL registered service classes for this type, not just the first.
 			// This supports multiple services of the same type (e.g. multiple wallet services).
 			inFlight = (async () => {
@@ -5020,6 +5046,9 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 				this.refreshServiceRegistrationStatus(key);
+				if (this.stopped) {
+					this.serviceRegistrationStatus.set(key, "failed");
+				}
 				if (!first && lastError) {
 					const handler = this.servicePromiseHandlers.get(serviceType);
 					if (handler) {
@@ -5156,6 +5185,7 @@ export class AgentRuntime implements IAgentRuntime {
 			if (this.stopped) {
 				this.serviceImplementationHealth.delete(serviceDef);
 				this.refreshServiceRegistrationStatus(key);
+				this.serviceRegistrationStatus.set(key, "failed");
 				return { service: null };
 			}
 			serviceInstance = await serviceDef.start(this);
@@ -5178,6 +5208,7 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				this.serviceImplementationHealth.delete(serviceDef);
 				this.refreshServiceRegistrationStatus(key);
+				this.serviceRegistrationStatus.set(key, "failed");
 				return { service: null };
 			}
 			if (serviceDef.registerSendHandlers) {
