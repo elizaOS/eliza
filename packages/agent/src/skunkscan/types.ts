@@ -327,8 +327,8 @@ export type WalletBalance = {
 };
 
 export type WalletRecentTransaction = {
-  signature: string;
-  slot?: number;
+  transactionId: string;
+  blockHeight?: number;
   blockTime?: number | null;
   status: "success" | "failed" | "unknown";
 };
