@@ -139,7 +139,10 @@ describe("NotificationService", () => {
 		try {
 			await expect(
 				failing.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
-			).rejects.toThrow("Service notification not found or failed to start");
+			).rejects.toMatchObject({
+				code: "SERVICE_START_FAILED",
+				message: "notification cache unavailable",
+			});
 			expect(failing.runtime.getRecentReportedErrors()).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
@@ -177,7 +180,10 @@ describe("NotificationService", () => {
 		try {
 			await expect(
 				transient.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
-			).rejects.toThrow("Service notification not found or failed to start");
+			).rejects.toMatchObject({
+				code: "SERVICE_START_FAILED",
+				message: "notification cache temporarily unavailable",
+			});
 			expect(
 				transient.runtime.getServiceRegistrationStatus(
 					ServiceType.NOTIFICATION,
@@ -240,19 +246,25 @@ describe("NotificationService", () => {
 		try {
 			await expect(
 				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
-			).rejects.toThrow("failed to start");
+			).rejects.toMatchObject({
+				code: "SERVICE_START_FAILED",
+				message: "notification cache unavailable",
+			});
 			expect(
 				NotificationService.requestRecovery(unavailable.runtime).state,
 			).toBe("started");
 			await expect(
 				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
-			).rejects.toThrow("failed to start");
+			).rejects.toMatchObject({
+				code: "SERVICE_START_FAILED",
+				message: "notification cache unavailable",
+			});
 			await Promise.resolve();
 			expect(unavailable.runtime.getRecentReportedErrors()).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
 						scope: "NotificationService.recovery",
-						message: "Service notification not found or failed to start",
+						message: "notification cache unavailable",
 						context: expect.objectContaining({
 							attempt: 1,
 							retryAfterSeconds: 1,
