@@ -1,7 +1,7 @@
 /** Verifies the LifeOpsService delegates messaging (X post/DM) and Calendly calls through the connector runtime services. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
 import type {
   CreateLifeOpsXPostRequest,
   LifeOpsConnectorGrant,
@@ -10,6 +10,18 @@ import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 
 const TestMessagingService = LifeOpsService;
+
+function confirmedSend(id: string): SendHandlerOutcome {
+  return {
+    kind: "delivered",
+    receipt: {
+      providerMessageIds: [id],
+      acceptedAt: 1_780_000_000_000,
+      persistence: { status: "persisted", memoryIds: [] },
+    },
+    memories: [],
+  };
+}
 
 type PrimaryChannelPolicy = {
   allowPosts: boolean;
@@ -102,6 +114,45 @@ function serviceWithConnectorGrants(args: {
 }
 
 describe("LifeOps messaging mixin runtime delegation", () => {
+  it("rejects outbound Telegram and Discord verification probes before dispatch", async () => {
+    const telegramSend = vi.fn(async () => undefined);
+    const discordSend = vi.fn(async () => undefined);
+    const service = serviceWithConnectorGrants({
+      services: {
+        telegram: {
+          connected: true,
+          handleSendMessage: telegramSend,
+        },
+        discord: {
+          isReady: () => true,
+          sendMessage: discordSend,
+        },
+      },
+    });
+
+    await expect(
+      service.verifyTelegramConnector({
+        sendTarget: "telegram-user",
+        sendMessage: "verification ping",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("owner approval"),
+    });
+    await expect(
+      service.verifyDiscordConnector({
+        channelId: "discord-channel",
+        sendMessage: "verification ping",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: expect.stringContaining("owner approval"),
+    });
+
+    expect(telegramSend).not.toHaveBeenCalled();
+    expect(discordSend).not.toHaveBeenCalled();
+  });
+
   it("does not connect Telegram from LifeOps-stored token refs", async () => {
     const service = serviceWithConnectorGrants({
       grants: { telegram: connectorGrant("telegram") },
@@ -128,7 +179,9 @@ describe("LifeOps messaging mixin runtime delegation", () => {
   });
 
   it("delegates Telegram sends through the runtime service account id", async () => {
-    const handleSendMessage = vi.fn(async () => undefined);
+    const handleSendMessage = vi.fn(async () =>
+      confirmedSend("telegram-message-1"),
+    );
     const service = serviceWithConnectorGrants({
       services: {
         telegram: {

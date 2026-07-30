@@ -1233,6 +1233,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"contexts",
 			"intents",
 			"replyText",
+			"replyEffectStatus",
 			"candidateActionNames",
 		]);
 		expect(required).not.toContain("shouldRespond");
@@ -3558,6 +3559,90 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"The follow-up is complete.",
 			);
+		}
+	});
+
+	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
+		const canonicalText = "Done — the pickup reminder is scheduled.";
+		const observedAt = "2026-07-27T18:00:00.000Z";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The reminder still needs to be persisted.",
+				contexts: ["tasks"],
+				candidateActionNames: ["CREATE_REMINDER"],
+				replyText: canonicalText,
+				extra: { requiresTool: true },
+			}),
+			{
+				thought: "Persist the reminder.",
+				toolCalls: [
+					{
+						id: "reminder-1",
+						name: "CREATE_REMINDER",
+						args: {},
+					},
+				],
+			},
+		]);
+		runtime.actions = [
+			{
+				name: "CREATE_REMINDER",
+				description: "Persist a reminder.",
+				tags: ["capability:write", "capability:schedule"],
+				contexts: ["tasks"],
+				suppressPostActionContinuation: true,
+				validate: async () => true,
+				handler: async () => ({
+					success: true,
+					text: canonicalText,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					effectReceipts: [
+						{
+							receiptId: "receipt-reminder-1",
+							operation: "lifeops.reminder.create",
+							resource: {
+								kind: "lifeops.reminder",
+								id: "pickup-reminder",
+							},
+							artifacts: [],
+							idempotency: {
+								key: "pickup-reminder-request",
+								replayed: false,
+							},
+							observedAt,
+							outcome: "applied",
+							commit: {
+								kind: "durable",
+								id: "transaction-reminder-1",
+								committedAt: observedAt,
+							},
+						},
+					],
+					userFacingEffectReceiptIds: ["receipt-reminder-1"],
+				}),
+			},
+		] as IAgentRuntime["actions"];
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Please remind me about pickup." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "On it." }),
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(canonicalText);
+			expect(result.result.responseContent?.effectReceiptIds).toEqual([
+				"receipt-reminder-1",
+			]);
 		}
 	});
 

@@ -326,6 +326,12 @@ export class TelegramDomain {
   async verifyTelegramConnector(
     request: VerifyLifeOpsTelegramConnectorRequest,
   ): Promise<VerifyLifeOpsTelegramConnectorResponse> {
+    if (request.sendTarget !== undefined || request.sendMessage !== undefined) {
+      fail(
+        400,
+        "Telegram verification is read-only. Draft a message and obtain owner approval before testing outbound delivery.",
+      );
+    }
     const side =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
     const status = await this.getTelegramConnectorStatus(side);
@@ -362,50 +368,20 @@ export class TelegramDomain {
       }
     }
 
-    let send: VerifyLifeOpsTelegramConnectorResponse["send"] = {
-      ok: true,
-      error: null,
-      target: request.sendTarget ?? "",
-      message: request.sendMessage ?? "",
-      messageId: null,
-    };
-    if (request.sendTarget) {
-      try {
-        const result = await this.sendTelegramMessage({
-          side,
-          target: request.sendTarget,
-          message:
-            request.sendMessage ??
-            "LifeOps Telegram connector verification ping.",
-        });
-        send = {
-          ok: true,
-          error: null,
-          target: request.sendTarget,
-          message:
-            request.sendMessage ??
-            "LifeOps Telegram connector verification ping.",
-          messageId: result.messageId,
-        };
-      } catch (error) {
-        send = {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-          target: request.sendTarget,
-          message:
-            request.sendMessage ??
-            "LifeOps Telegram connector verification ping.",
-          messageId: null,
-        };
-      }
-    }
-
     return {
       provider: "telegram",
       side,
       verifiedAt: new Date().toISOString(),
       read,
-      send,
+      send: {
+        attempted: false,
+        ok: false,
+        error:
+          "Outbound verification requires a drafted message and explicit owner approval.",
+        target: "",
+        message: "",
+        messageId: null,
+      },
     };
   }
 

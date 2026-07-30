@@ -202,6 +202,47 @@ export async function resolveDocumentRequesterRole(
 	}
 }
 
+/**
+ * Build the document requester from a caller-supplied {@link AccessContext}.
+ *
+ * The read runs for the entity the caller named, not the message author, so a
+ * privileged sender cannot widen a request the caller deliberately scoped. An
+ * absent role is treated as an unprivileged USER rather than inherited from
+ * the sender: the safe reading of "unspecified" is the least privilege.
+ */
+export async function resolveDocumentRequesterFromAccessContext(
+	runtime: IAgentRuntime,
+	accessContext: AccessContext,
+): Promise<DocumentRequester> {
+	const role: DocumentListRequesterRole =
+		accessContext.role === "OWNER" || accessContext.role === "ADMIN"
+			? accessContext.role
+			: "USER";
+	if (documentRoleHasGlobalVisibility(role)) {
+		return { entityId: accessContext.requesterEntityId, roomIds: [], role };
+	}
+	try {
+		const roomIds = await runtime.getRoomsForParticipants([
+			accessContext.requesterEntityId,
+		]);
+		return {
+			entityId: accessContext.requesterEntityId,
+			roomIds: [...new Set(roomIds)],
+			role,
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve room-resolution context and fail the read.
+		throw new ElizaError("Document requester room lookup failed", {
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause,
+			context: {
+				agentId: runtime.agentId,
+				entityId: accessContext.requesterEntityId,
+			},
+		});
+	}
+}
+
 export async function resolveDocumentRequester(
 	runtime: IAgentRuntime,
 	message?: Memory,

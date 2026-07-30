@@ -385,7 +385,11 @@ const BOOTED_PLUGIN_ACTION_SURFACE: Record<
       "plugins/plugin-personal-assistant/src/actions/block.ts",
       "plugins/plugin-personal-assistant/src/actions/brief.ts",
       "plugins/plugin-personal-assistant/src/actions/calendar.ts",
+      // PA's conflict-detect.ts is a thin adapter over the calendar-owned
+      // factory; the CONFLICT_DETECT umbrella name is declared in the
+      // plugin-calendar action source, so that file carries the name scan.
       "plugins/plugin-personal-assistant/src/actions/conflict-detect.ts",
+      "plugins/plugin-calendar/src/actions/conflict-detect.ts",
       "plugins/plugin-personal-assistant/src/actions/connector.ts",
       "plugins/plugin-personal-assistant/src/actions/credentials.ts",
       "plugins/plugin-personal-assistant/src/actions/document.ts",

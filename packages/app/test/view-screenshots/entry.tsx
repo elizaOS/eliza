@@ -83,6 +83,12 @@ async function main(): Promise<void> {
       state,
     ) as typeof globalThis.__VIEW_HARNESS_CALENDAR__;
   }
+  if (spec.calendarSourcesResultFor) {
+    globalThis.__VIEW_HARNESS_CALENDAR_SOURCES__ =
+      spec.calendarSourcesResultFor(
+        state,
+      ) as typeof globalThis.__VIEW_HARNESS_CALENDAR_SOURCES__;
+  }
 
   const props = spec.propsFor(state);
   const mod = await loader();

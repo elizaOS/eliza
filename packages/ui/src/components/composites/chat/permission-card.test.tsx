@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Renders PermissionCard in jsdom against a stub permissions registry to cover
- * each permission state (not-determined/granted/denied/restricted) and its CTA:
- * request, open-settings, coming-soon, unavailable, and auto-collapse on grant.
+ * each permission state (not-determined/granted/limited/denied/restricted) and
+ * its CTA: request, upgrade, open-settings, unavailable, and grant collapse.
  */
 import type {
   IPermissionsRegistry,
@@ -212,6 +212,76 @@ describe("PermissionCard", () => {
     );
     expect(screen.getByTestId("permission-card-granted")).toBeTruthy();
     expect(screen.queryByTestId("permission-card")).toBeNull();
+  });
+
+  it("renders write-only calendar access as limited until an upgrade succeeds", async () => {
+    const limitedState: PermissionState = state({
+      id: "calendar",
+      status: "limited",
+      lastChecked: 1,
+      canRequest: true,
+      reason: "Add-only access.",
+    });
+    const fullState: PermissionState = {
+      ...limitedState,
+      status: "granted",
+      canRequest: false,
+      lastChecked: 2,
+    };
+    const registry = makeRegistry(limitedState, {
+      request: vi.fn(async () => fullState),
+    });
+    const onGranted = vi.fn();
+
+    render(
+      <PermissionCard
+        {...baseProps}
+        permission="calendar"
+        feature="lifeops.calendar.read"
+        registry={registry}
+        initialState={limitedState}
+        onGranted={onGranted}
+      />,
+    );
+
+    expect(screen.queryByTestId("permission-card-granted")).toBeNull();
+    expect(screen.getByTestId("permission-card").dataset.status).toBe(
+      "limited",
+    );
+    expect(screen.getByText("limited")).toBeTruthy();
+    expect(
+      screen.getByText(/add-only access: new events can go to the default/i),
+    ).toBeTruthy();
+    const button = screen.getByTestId(
+      "permission-card-primary",
+    ) as HTMLButtonElement;
+    expect(button.textContent).toContain("Upgrade access");
+
+    fireEvent.click(button);
+    await screen.findByTestId("permission-card-granted");
+    expect(onGranted).toHaveBeenCalledWith(fullState);
+  });
+
+  it("sends non-requestable limited access to system settings", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <PermissionCard
+        {...baseProps}
+        permission="calendar"
+        initialState={{
+          id: "calendar",
+          status: "limited",
+          lastChecked: 1,
+          canRequest: false,
+          platform: "ios",
+        }}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    expect(screen.queryByTestId("permission-card-granted")).toBeNull();
+    fireEvent.click(screen.getByTestId("permission-card-primary"));
+    expect(onOpenSettings).toHaveBeenCalledWith("calendar");
   });
 
   it("dismisses on 'Not now'", () => {

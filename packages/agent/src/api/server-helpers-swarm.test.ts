@@ -23,6 +23,18 @@ const runtime = {
   },
 } as never;
 
+function confirmedSendOutcome(id = "provider-message-1") {
+  return {
+    kind: "delivered" as const,
+    receipt: {
+      providerMessageIds: [id] as [string],
+      acceptedAt: 1_780_000_000_000,
+      persistence: { status: "persisted" as const, memoryIds: [] },
+    },
+    memories: [],
+  };
+}
+
 describe("handleSwarmSynthesis", () => {
   it("uses the coordinator summary for Codex tasks instead of unrelated Claude jsonl from the same workdir", async () => {
     const routed: string[] = [];
@@ -182,6 +194,7 @@ describe("handleSwarmSynthesis", () => {
       }),
       sendMessageToTarget: async (target: unknown, content: unknown) => {
         sent.push({ target, content: content as Record<string, unknown> });
+        return confirmedSendOutcome();
       },
     } as never;
 
@@ -218,7 +231,7 @@ describe("handleSwarmSynthesis", () => {
   });
 
   it("uses one client_chat transport for dashboard-origin synthesis", async () => {
-    const sendMessageToTarget = vi.fn(async () => undefined);
+    const sendMessageToTarget = vi.fn(async () => confirmedSendOutcome());
     const dashboardFallback = vi.fn(async () => undefined);
     const runtimeWithDashboardRelay = {
       getService() {
@@ -354,6 +367,7 @@ describe("handleSwarmSynthesis", () => {
       }),
       sendMessageToTarget: async (target: unknown, content: unknown) => {
         sent.push({ target, content: content as Record<string, unknown> });
+        return confirmedSendOutcome();
       },
     } as never;
 
@@ -421,6 +435,7 @@ describe("handleSwarmSynthesis", () => {
       }),
       sendMessageToTarget: async (target: unknown, content: unknown) => {
         sent.push({ target, content: content as Record<string, unknown> });
+        return confirmedSendOutcome();
       },
     } as never;
 
@@ -480,6 +495,7 @@ describe("handleSwarmSynthesis", () => {
           target: null,
           content: content as Record<string, unknown>,
         });
+        return confirmedSendOutcome();
       },
     } as never;
 
@@ -539,6 +555,7 @@ describe("handleSwarmSynthesis", () => {
           target: null,
           content: content as Record<string, unknown>,
         });
+        return confirmedSendOutcome();
       },
     } as never;
 
@@ -601,6 +618,7 @@ describe("handleSwarmSynthesis", () => {
           target: null,
           content: content as Record<string, unknown>,
         });
+        return confirmedSendOutcome();
       },
     } as never;
 

@@ -6,6 +6,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
+import type { HouseholdGrantExpiryWarningReceipt } from "./household/grant-expiry-warning.js";
 import {
   isMissingLifeOpsRelationError,
   LIFEOPS_TASK_NAME,
@@ -68,6 +69,7 @@ export async function executeLifeOpsSchedulerTask(
   subsystemFailures: Awaited<
     ReturnType<LifeOpsService["processScheduledWork"]>
   >["subsystemFailures"];
+  householdGrantWarningReceipts: HouseholdGrantExpiryWarningReceipt[];
 }> {
   const now = resolveSchedulerNowIso(options);
 
@@ -111,6 +113,31 @@ export async function executeLifeOpsSchedulerTask(
     );
   }
 
+  let householdGrantWarningReceipts: HouseholdGrantExpiryWarningReceipt[] = [];
+  const subsystemFailures = [...scheduledWork.subsystemFailures];
+  try {
+    const {
+      createHouseholdCoordinationService,
+      getHouseholdCoordinationService,
+    } = await import("./household/service.js");
+    const household =
+      getHouseholdCoordinationService(runtime) ??
+      createHouseholdCoordinationService(runtime);
+    householdGrantWarningReceipts =
+      await household.reconcileGrantExpiryWarnings();
+  } catch (error) {
+    // error-policy:J7 this runs inside the existing LifeOps scheduler tick.
+    // The durable outbox remains pending and the next tick retries it; the
+    // failure is also returned alongside the other isolated subsystems.
+    runtime.reportError("LifeOpsScheduler.householdGrantWarnings", error, {
+      recovery: "next_lifeops_scheduler_tick",
+    });
+    subsystemFailures.push({
+      subsystem: "household_grant_warnings",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return {
     nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
     now: scheduledWork.now,
@@ -119,7 +146,8 @@ export async function executeLifeOpsSchedulerTask(
     scheduledTaskFires: scheduledWork.scheduledTaskFires,
     scheduledTaskCompletionTimeouts:
       scheduledWork.scheduledTaskCompletionTimeouts,
-    subsystemFailures: scheduledWork.subsystemFailures,
+    subsystemFailures,
+    householdGrantWarningReceipts,
   };
 }
 

@@ -1604,9 +1604,12 @@ interface LifeOpsCalendarSyncState {
   agentId: string;
   provider: LifeOpsConnectorGrant["provider"];
   side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
   calendarId: string;
   windowStartAt: string;
   windowEndAt: string;
+  nextSyncToken: string | null;
   syncedAt: string;
   updatedAt: string;
 }
@@ -1619,9 +1622,12 @@ function parseCalendarSyncState(
     agentId: toText(row.agent_id),
     provider: toText(row.provider) as LifeOpsConnectorGrant["provider"],
     side: toText(row.side, "owner") as LifeOpsConnectorSide,
+    grantId: toText(row.grant_id),
+    connectorAccountId: toText(row.connector_account_id),
     calendarId: toText(row.calendar_id),
     windowStartAt: toText(row.window_start_at),
     windowEndAt: toText(row.window_end_at),
+    nextSyncToken: row.next_sync_token ? toText(row.next_sync_token) : null,
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
   };
@@ -4763,7 +4769,7 @@ export class LifeOpsRepository {
         ${sqlQuote(event.syncedAt)},
         ${sqlQuote(event.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, calendar_id, external_event_id) DO UPDATE SET
+      ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         description = excluded.description,
         location = excluded.location,
@@ -4926,22 +4932,29 @@ export class LifeOpsRepository {
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_calendar.life_calendar_sync_states (
-        id, agent_id, provider, side, calendar_id, window_start_at,
-        window_end_at, synced_at, updated_at
+        id, agent_id, provider, side, calendar_id, connector_account_id,
+        grant_id, window_start_at, window_end_at, next_sync_token, synced_at,
+        updated_at
       ) VALUES (
         ${sqlQuote(state.id)},
         ${sqlQuote(state.agentId)},
         ${sqlQuote(state.provider)},
         ${sqlQuote(state.side)},
         ${sqlQuote(state.calendarId)},
+        ${sqlQuote(state.connectorAccountId)},
+        ${sqlQuote(state.grantId)},
         ${sqlQuote(state.windowStartAt)},
         ${sqlQuote(state.windowEndAt)},
+        ${sqlText(state.nextSyncToken)},
         ${sqlQuote(state.syncedAt)},
         ${sqlQuote(state.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, calendar_id) DO UPDATE SET
+      ON CONFLICT(id) DO UPDATE SET
+        connector_account_id = excluded.connector_account_id,
+        grant_id = excluded.grant_id,
         window_start_at = excluded.window_start_at,
         window_end_at = excluded.window_end_at,
+        next_sync_token = excluded.next_sync_token,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,
     );
@@ -4952,8 +4965,10 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     calendarId: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<LifeOpsCalendarSyncState | null> {
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -4962,6 +4977,7 @@ export class LifeOpsRepository {
           AND provider = ${sqlQuote(provider)}
           AND calendar_id = ${sqlQuote(calendarId)}
           ${sideClause}
+          ${grantClause}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -4973,18 +4989,21 @@ export class LifeOpsRepository {
     provider: LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     const calendarClause = calendarId
       ? `AND calendar_id = ${sqlQuote(calendarId)}`
       : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
+    const grantClause = grantId ? `AND grant_id = ${sqlQuote(grantId)}` : "";
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_calendar.life_calendar_sync_states
         WHERE agent_id = ${sqlQuote(agentId)}
           AND provider = ${sqlQuote(provider)}
           ${calendarClause}
-          ${sideClause}`,
+          ${sideClause}
+          ${grantClause}`,
     );
   }
 
@@ -7457,10 +7476,9 @@ export class LifeOpsRepository {
 
   async upsertSchedulingNegotiation(
     neg: LifeOpsSchedulingNegotiation,
+    tx?: TransactionalDb,
   ): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_scheduling_negotiations (
+    const statement = `INSERT INTO app_lifeops.life_scheduling_negotiations (
          id, agent_id, subject, relationship_id, duration_minutes, timezone,
          state, accepted_proposal_id, started_at, finalized_at, metadata_json,
          created_at, updated_at
@@ -7488,22 +7506,27 @@ export class LifeOpsRepository {
          accepted_proposal_id = EXCLUDED.accepted_proposal_id,
          finalized_at = EXCLUDED.finalized_at,
          metadata_json = EXCLUDED.metadata_json,
-         updated_at = EXCLUDED.updated_at`,
-    );
+         updated_at = EXCLUDED.updated_at`;
+    if (tx) {
+      await executeRawSqlTx(tx, statement);
+    } else {
+      await executeRawSql(this.runtime, statement);
+    }
   }
 
   async getSchedulingNegotiation(
     agentId: string,
     id: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingNegotiation | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
+    const statement = `SELECT *
          FROM app_lifeops.life_scheduling_negotiations
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
+        LIMIT 1`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, statement)
+      : await executeRawSql(this.runtime, statement);
     const row = rows[0];
     return row ? parseSchedulingNegotiation(row) : null;
   }
@@ -7534,26 +7557,30 @@ export class LifeOpsRepository {
     id: string,
     state: string,
     finalizedAt?: string | null,
+    tx?: TransactionalDb,
   ): Promise<void> {
     const now = isoNow();
     const finalizedClause =
       finalizedAt === undefined
         ? ""
         : `, finalized_at = ${sqlText(finalizedAt)}`;
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_scheduling_negotiations
+    const statement = `UPDATE app_lifeops.life_scheduling_negotiations
           SET state = ${sqlQuote(state)},
               updated_at = ${sqlQuote(now)}${finalizedClause}
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}`,
-    );
+          AND id = ${sqlQuote(id)}`;
+    if (tx) {
+      await executeRawSqlTx(tx, statement);
+    } else {
+      await executeRawSql(this.runtime, statement);
+    }
   }
 
-  async upsertSchedulingProposal(p: LifeOpsSchedulingProposal): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_scheduling_proposals (
+  async upsertSchedulingProposal(
+    p: LifeOpsSchedulingProposal,
+    tx?: TransactionalDb,
+  ): Promise<void> {
+    const statement = `INSERT INTO app_lifeops.life_scheduling_proposals (
          id, agent_id, negotiation_id, start_at, end_at, proposed_by, status,
          metadata_json, created_at, updated_at
        ) VALUES (
@@ -7574,22 +7601,27 @@ export class LifeOpsRepository {
          proposed_by = EXCLUDED.proposed_by,
          status = EXCLUDED.status,
          metadata_json = EXCLUDED.metadata_json,
-         updated_at = EXCLUDED.updated_at`,
-    );
+         updated_at = EXCLUDED.updated_at`;
+    if (tx) {
+      await executeRawSqlTx(tx, statement);
+    } else {
+      await executeRawSql(this.runtime, statement);
+    }
   }
 
   async getSchedulingProposal(
     agentId: string,
     id: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingProposal | null> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
+    const statement = `SELECT *
          FROM app_lifeops.life_scheduling_proposals
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(id)}
-        LIMIT 1`,
-    );
+        LIMIT 1`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, statement)
+      : await executeRawSql(this.runtime, statement);
     const row = rows[0];
     return row ? parseSchedulingProposal(row) : null;
   }
@@ -7597,15 +7629,16 @@ export class LifeOpsRepository {
   async listSchedulingProposals(
     agentId: string,
     negotiationId: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingProposal[]> {
-    const rows = await executeRawSql(
-      this.runtime,
-      `SELECT *
+    const statement = `SELECT *
          FROM app_lifeops.life_scheduling_proposals
         WHERE agent_id = ${sqlQuote(agentId)}
           AND negotiation_id = ${sqlQuote(negotiationId)}
-        ORDER BY created_at ASC`,
-    );
+        ORDER BY created_at ASC`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, statement)
+      : await executeRawSql(this.runtime, statement);
     return rows.map(parseSchedulingProposal);
   }
 
@@ -7613,16 +7646,19 @@ export class LifeOpsRepository {
     agentId: string,
     id: string,
     status: string,
+    tx?: TransactionalDb,
   ): Promise<void> {
     const now = isoNow();
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_scheduling_proposals
+    const statement = `UPDATE app_lifeops.life_scheduling_proposals
           SET status = ${sqlQuote(status)},
               updated_at = ${sqlQuote(now)}
         WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(id)}`,
-    );
+          AND id = ${sqlQuote(id)}`;
+    if (tx) {
+      await executeRawSqlTx(tx, statement);
+    } else {
+      await executeRawSql(this.runtime, statement);
+    }
   }
 
   // ScheduledTask spine. The runner is the only writer for these tables;
@@ -8704,11 +8740,38 @@ export function createLifeOpsConnectorGrant(
 // re-exported at the top of this file.
 
 export function createLifeOpsCalendarSyncState(
-  params: Omit<LifeOpsCalendarSyncState, "id" | "updatedAt">,
+  params: Omit<
+    LifeOpsCalendarSyncState,
+    "id" | "updatedAt" | "grantId" | "connectorAccountId" | "nextSyncToken"
+  > &
+    Partial<
+      Pick<
+        LifeOpsCalendarSyncState,
+        "grantId" | "connectorAccountId" | "nextSyncToken"
+      >
+    >,
 ): LifeOpsCalendarSyncState {
+  const legacySourceId =
+    params.provider === "apple_calendar"
+      ? "apple-calendar"
+      : `legacy:${params.provider}:${params.side}`;
+  const grantId = params.grantId ?? params.connectorAccountId ?? legacySourceId;
+  const connectorAccountId =
+    params.connectorAccountId ?? params.grantId ?? legacySourceId;
   return {
     ...params,
-    id: crypto.randomUUID(),
+    id: [
+      params.agentId,
+      params.provider,
+      params.side,
+      "grant",
+      grantId,
+      "calendar",
+      params.calendarId,
+    ].join(":"),
+    grantId,
+    connectorAccountId,
+    nextSyncToken: params.nextSyncToken ?? null,
     updatedAt: isoNow(),
   };
 }

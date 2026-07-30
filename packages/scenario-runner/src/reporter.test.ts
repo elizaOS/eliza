@@ -15,11 +15,13 @@ import {
   buildAggregate,
   printStdoutSummary,
   sumTrajectoryCostUsd,
+  validateAggregateEvidenceReport,
+  validateScenarioEvidenceReport,
   writeFileAtomic,
   writeReportBundle,
   writeScenarioRunViewer,
 } from "./reporter.ts";
-import type { AggregateReport } from "./types.ts";
+import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const tempDirs: string[] = [];
 
@@ -36,12 +38,21 @@ function makeTempDir(prefix: string): string {
   return dir;
 }
 
+function firstItem<T>(items: T[]): T {
+  const item = items[0];
+  if (item === undefined) {
+    throw new Error("expected a non-empty adversarial test fixture");
+  }
+  return item;
+}
+
 function aggregateReport(): AggregateReport {
   return {
     runId: "run-1",
     startedAtIso: "2026-05-23T00:00:00.000Z",
     completedAtIso: "2026-05-23T00:01:00.000Z",
     providerName: "deterministic-llm-proxy",
+    executionProfile: null,
     scenarios: [
       {
         id: "todos.create-basic",
@@ -67,6 +78,23 @@ function aggregateReport(): AggregateReport {
         providerName: "deterministic-llm-proxy",
       },
     ],
+    evidenceSummary: {
+      reportedScenarioCount: 0,
+      unreportedScenarioCount: 1,
+      qualificationCounts: {
+        qualified: 0,
+        unqualified: 0,
+        ineligible: 0,
+      },
+      publishableScenarioCount: 0,
+      observationCounts: {
+        "durable-approval": 0,
+        "durable-draft": 0,
+        "provider-effect": 0,
+        "provider-no-effect": 0,
+        "scheduled-task": 0,
+      },
+    },
     totals: {
       passed: 1,
       failed: 0,
@@ -79,6 +107,84 @@ function aggregateReport(): AggregateReport {
     failedCount: 0,
     skippedCount: 0,
     totalCostUsd: 0,
+  };
+}
+
+const HASH_A = "a".repeat(64);
+const HASH_B = "b".repeat(64);
+const HASH_C = "c".repeat(64);
+const HASH_D = "d".repeat(64);
+const HASH_E = "e".repeat(64);
+const HASH_F = "f".repeat(64);
+
+function providerQualifiedScenarioReport(): ScenarioReport {
+  return {
+    ...aggregateReport().scenarios[0],
+    id: "provider.qualified",
+    status: "passed",
+    executionProfile: "provider-qualified",
+    evidence: {
+      schemaVersion: 1,
+      executionProfile: "provider-qualified",
+      qualification: {
+        status: "qualified",
+        publishable: true,
+        reasons: [],
+      },
+      observerProvenance: [
+        {
+          observerId: "provider-calendar-observer",
+          kind: "provider-api",
+          implementation: "calendar-readback-adapter",
+          version: "1.0.0",
+          environment: "sandbox",
+          configurationSha256: HASH_A,
+        },
+      ],
+      trajectoryHashes: [
+        {
+          trajectoryId: "trajectory-provider-qualified",
+          relativePath: "trajectories/provider-qualified.json",
+          sha256: HASH_B,
+          recorder: {
+            implementation: "scenario-trajectory-recorder",
+            version: "1.0.0",
+            environment: "sandbox",
+          },
+        },
+      ],
+      observations: [
+        {
+          observationId: "provider-no-effect-1",
+          kind: "provider-no-effect",
+          observedAtIso: "2026-05-23T00:00:30.000Z",
+          observerId: "provider-calendar-observer",
+          source: {
+            kind: "provider-api",
+            system: "calendar",
+            environment: "sandbox",
+            recordIdSha256: HASH_C,
+            accountRefSha256: HASH_D,
+          },
+          payloadSha256: HASH_E,
+          trajectoryRefs: [
+            {
+              trajectoryId: "trajectory-provider-qualified",
+              stageId: "stage-provider-readback",
+              sha256: HASH_B,
+            },
+          ],
+          provider: "calendar",
+          accountRefSha256: HASH_D,
+          effectKinds: ["event-create"],
+          scopeSha256: HASH_F,
+          beforeSnapshotSha256: HASH_A,
+          afterSnapshotSha256: HASH_A,
+          observationStartedAtIso: "2026-05-23T00:00:00.000Z",
+          observationEndedAtIso: "2026-05-23T00:01:00.000Z",
+        },
+      ],
+    },
   };
 }
 
@@ -242,6 +348,248 @@ describe("scenario report aggregation", () => {
     expect(
       (report.totals as unknown as Record<string, unknown>).flakyPassed,
     ).toBeUndefined();
+    expect(report.executionProfile).toBeNull();
+    expect(report.evidenceSummary).toMatchObject({
+      reportedScenarioCount: 0,
+      unreportedScenarioCount: 3,
+      publishableScenarioCount: 0,
+    });
+  });
+
+  it("preserves trusted evidence and derives profile and observation summaries", () => {
+    const scenarioReport = providerQualifiedScenarioReport();
+    const report = buildAggregate(
+      [scenarioReport],
+      "live-provider",
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-provider-qualified",
+    );
+
+    expect(report.executionProfile).toBe("provider-qualified");
+    expect(report.scenarios[0]?.evidence).toEqual(scenarioReport.evidence);
+    expect(report.evidenceSummary).toEqual({
+      reportedScenarioCount: 1,
+      unreportedScenarioCount: 0,
+      qualificationCounts: {
+        qualified: 1,
+        unqualified: 0,
+        ineligible: 0,
+      },
+      publishableScenarioCount: 1,
+      observationCounts: {
+        "durable-approval": 0,
+        "durable-draft": 0,
+        "provider-effect": 0,
+        "provider-no-effect": 1,
+        "scheduled-task": 0,
+      },
+    });
+  });
+
+  it("does not infer qualification from provider-sounding action-result prose", () => {
+    const scenarioReport: ScenarioReport = {
+      ...aggregateReport().scenarios[0],
+      executionProfile: "provider-qualified",
+      actionsCalled: [
+        {
+          actionName: "SEND_MESSAGE",
+          result: {
+            success: true,
+            text: "Provider receipt confirmed and delivered.",
+          },
+        },
+      ],
+    };
+    const report = buildAggregate(
+      [scenarioReport],
+      "live-provider",
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-action-prose",
+    );
+
+    expect(report.executionProfile).toBe("provider-qualified");
+    expect(report.evidenceSummary).toMatchObject({
+      reportedScenarioCount: 0,
+      unreportedScenarioCount: 1,
+      publishableScenarioCount: 0,
+      qualificationCounts: {
+        qualified: 0,
+        unqualified: 0,
+        ineligible: 0,
+      },
+    });
+  });
+
+  it("reports mixed only from explicit scenario profiles and leaves legacy reports unreported", () => {
+    const report = buildAggregate(
+      [
+        {
+          ...aggregateReport().scenarios[0],
+          id: "legacy",
+        },
+        {
+          ...aggregateReport().scenarios[0],
+          id: "simulated",
+          executionProfile: "simulated",
+          evidence: {
+            schemaVersion: 1,
+            executionProfile: "simulated",
+            qualification: {
+              status: "ineligible",
+              publishable: false,
+              reasons: ["simulated runs are never provider evidence"],
+            },
+          },
+        },
+        providerQualifiedScenarioReport(),
+      ],
+      "mixed-provider",
+      "2026-05-23T00:00:00.000Z",
+      "2026-05-23T00:01:00.000Z",
+      "run-mixed",
+    );
+
+    expect(report.executionProfile).toBe("mixed");
+    expect(report.evidenceSummary).toMatchObject({
+      reportedScenarioCount: 2,
+      unreportedScenarioCount: 1,
+      publishableScenarioCount: 1,
+      qualificationCounts: {
+        qualified: 1,
+        unqualified: 0,
+        ineligible: 1,
+      },
+    });
+  });
+
+  it("rejects simulated attempts to claim publishable provider evidence", () => {
+    const invalid = {
+      ...aggregateReport().scenarios[0],
+      executionProfile: "simulated",
+      evidence: {
+        schemaVersion: 1,
+        executionProfile: "simulated",
+        qualification: {
+          status: "qualified",
+          publishable: true,
+          reasons: [],
+        },
+        observations: [
+          {
+            kind: "provider-effect",
+            text: "the action said it worked",
+          },
+        ],
+      },
+    } as unknown as ScenarioReport;
+
+    expect(() => validateScenarioEvidenceReport(invalid)).toThrow(
+      /simulated evidence must be ineligible and publishable=false/,
+    );
+  });
+
+  it("rejects action-result observers and non-canonical trajectory hashes", () => {
+    const actionResultObserver = structuredClone(
+      providerQualifiedScenarioReport(),
+    ) as unknown as {
+      evidence: {
+        observerProvenance: Array<{ kind: string }>;
+      };
+    };
+    firstItem(actionResultObserver.evidence.observerProvenance).kind =
+      "action-result";
+    expect(() =>
+      validateScenarioEvidenceReport(
+        actionResultObserver as unknown as ScenarioReport,
+      ),
+    ).toThrow(/unsupported trusted observer kind "action-result"/);
+
+    const uppercaseHash = structuredClone(
+      providerQualifiedScenarioReport(),
+    ) as unknown as {
+      evidence: {
+        trajectoryHashes: Array<{ sha256: string }>;
+      };
+    };
+    firstItem(uppercaseHash.evidence.trajectoryHashes).sha256 = "A".repeat(64);
+    expect(() =>
+      validateScenarioEvidenceReport(
+        uppercaseHash as unknown as ScenarioReport,
+      ),
+    ).toThrow(/exactly 64 lowercase hexadecimal characters/);
+  });
+
+  it("rejects unbounded, reversed, or changing no-effect snapshots", () => {
+    const reversedInterval = structuredClone(
+      providerQualifiedScenarioReport(),
+    ) as unknown as {
+      evidence: {
+        observations: Array<{
+          observationStartedAtIso: string;
+          observationEndedAtIso: string;
+          afterSnapshotSha256: string;
+        }>;
+      };
+    };
+    firstItem(reversedInterval.evidence.observations).observationStartedAtIso =
+      "2026-05-23T00:02:00.000Z";
+    expect(() =>
+      validateScenarioEvidenceReport(
+        reversedInterval as unknown as ScenarioReport,
+      ),
+    ).toThrow(/must not precede observationStartedAtIso/);
+
+    const changedSnapshot = structuredClone(
+      providerQualifiedScenarioReport(),
+    ) as unknown as {
+      evidence: {
+        observations: Array<{ afterSnapshotSha256: string }>;
+      };
+    };
+    firstItem(changedSnapshot.evidence.observations).afterSnapshotSha256 =
+      HASH_B;
+    expect(() =>
+      validateScenarioEvidenceReport(
+        changedSnapshot as unknown as ScenarioReport,
+      ),
+    ).toThrow(/must equal beforeSnapshotSha256/);
+  });
+
+  it("rejects dangling observer and trajectory provenance references", () => {
+    const danglingObserver = structuredClone(
+      providerQualifiedScenarioReport(),
+    ) as unknown as {
+      evidence: {
+        observations: Array<{ observerId: string }>;
+      };
+    };
+    firstItem(danglingObserver.evidence.observations).observerId =
+      "not-reported";
+    expect(() =>
+      validateScenarioEvidenceReport(
+        danglingObserver as unknown as ScenarioReport,
+      ),
+    ).toThrow(/references unreported observer "not-reported"/);
+
+    const mismatchedTrajectory = structuredClone(
+      providerQualifiedScenarioReport(),
+    ) as unknown as {
+      evidence: {
+        observations: Array<{
+          trajectoryRefs: Array<{ sha256: string }>;
+        }>;
+      };
+    };
+    firstItem(
+      firstItem(mismatchedTrajectory.evidence.observations).trajectoryRefs,
+    ).sha256 = HASH_C;
+    expect(() =>
+      validateScenarioEvidenceReport(
+        mismatchedTrajectory as unknown as ScenarioReport,
+      ),
+    ).toThrow(/does not match evidence\.trajectoryHashes/);
   });
 
   it("counts skipped finalChecks loudly in totals and the stdout summary", () => {
@@ -257,7 +605,8 @@ describe("scenario report aggregation", () => {
               label: "approval exists",
               type: "approvalRequestExists",
               status: "skipped",
-              detail: "dependency missing: no approval queue service registered",
+              detail:
+                "dependency missing: no approval queue service registered",
             },
             {
               label: "push sent",
@@ -295,6 +644,7 @@ describe("scenario report aggregation", () => {
       { ...report.scenarios[0], id: "email|send:urgent" },
     ];
     report.totalCount = report.scenarios.length;
+    report.evidenceSummary.unreportedScenarioCount = report.scenarios.length;
 
     writeReportBundle(report, outDir);
 
@@ -322,6 +672,23 @@ describe("scenario report aggregation", () => {
     expect(readdirSync(outDir).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );
+  });
+
+  it("rejects forged aggregate profiles and publishability summaries before serialization", () => {
+    const forgedProfile = aggregateReport();
+    forgedProfile.executionProfile = "provider-qualified";
+    expect(() => validateAggregateEvidenceReport(forgedProfile)).toThrow(
+      /aggregate executionProfile .* does not match scenario reports/,
+    );
+
+    const forgedSummary = aggregateReport();
+    forgedSummary.evidenceSummary.publishableScenarioCount = 1;
+    const outDir = makeTempDir("scenario-forged-summary-");
+    const target = path.join(outDir, "matrix.json");
+    expect(() => writeReportBundle(forgedSummary, outDir)).toThrow(
+      /aggregate evidenceSummary does not match/,
+    );
+    expect(existsSync(target)).toBe(false);
   });
 
   it("prints pipe-safe single-line failure summaries", () => {

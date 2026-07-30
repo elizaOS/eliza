@@ -24,6 +24,7 @@ import {
   integer,
   jsonb,
   pgSchema,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -1416,6 +1417,300 @@ export const lifeSchedulingProposals = appLifeopsPgSchema.table(
   },
 );
 
+/**
+ * Durable evidence for approval-gated scheduling dispatch. The shared
+ * `approval_requests` row remains the sole queue; this row records claims,
+ * retries, ambiguous outcomes, and the provider receipt tied to that queue
+ * entry so crashes cannot turn an unknown send into an automatic duplicate.
+ */
+export const lifeSchedulingDeliveryAttempts = appLifeopsPgSchema.table(
+  "life_scheduling_delivery_attempts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    approvalRequestId: text("approval_request_id").notNull(),
+    negotiationId: text("negotiation_id").notNull(),
+    proposalId: text("proposal_id"),
+    contentSha256: text("content_sha256").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    channel: text("channel").notNull(),
+    provider: text("provider"),
+    state: text("state").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    providerMessageId: text("provider_message_id"),
+    receiptJson: text("receipt_json"),
+    lastFailureJson: text("last_failure_json"),
+    firstAttemptedAt: text("first_attempted_at"),
+    lastAttemptedAt: text("last_attempted_at"),
+    completedAt: text("completed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.approvalRequestId),
+    unique().on(t.agentId, t.idempotencyKey),
+    index("idx_life_scheduling_delivery_state").on(
+      t.agentId,
+      t.state,
+      t.updatedAt,
+    ),
+  ],
+);
+
+/**
+ * Durable ownership of approval-gated calendar mutations. A provider call is
+ * claimed before execution and completed only with a source-bound receipt;
+ * orphaned execution sessions become terminally ambiguous so restart recovery
+ * cannot repeat an event create, update, or deletion.
+ */
+export const lifeCalendarMutationAttempts = appLifeopsPgSchema.table(
+  "life_calendar_mutation_attempts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    approvalRequestId: text("approval_request_id").notNull(),
+    approvalSha256: text("approval_sha256").notNull(),
+    operationKey: text("operation_key").notNull(),
+    operation: text("operation").notNull(),
+    state: text("state").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    executorSessionId: text("executor_session_id"),
+    claimToken: text("claim_token"),
+    provider: text("provider"),
+    sourceId: text("source_id"),
+    calendarId: text("calendar_id"),
+    eventId: text("event_id"),
+    providerEventId: text("provider_event_id"),
+    providerVersion: text("provider_version"),
+    receiptJson: text("receipt_json"),
+    lastFailureJson: text("last_failure_json"),
+    firstAttemptedAt: text("first_attempted_at"),
+    lastAttemptedAt: text("last_attempted_at"),
+    completedAt: text("completed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.approvalRequestId),
+    unique().on(t.agentId, t.operationKey),
+    index("idx_life_calendar_mutation_state").on(
+      t.agentId,
+      t.state,
+      t.updatedAt,
+    ),
+  ],
+);
+
+/**
+ * Durable outbox for one grant-expiry watcher per household access grant.
+ * Revocation records cancellation intent in the same transaction as access
+ * removal; the shared scheduler tick retries materialization or dismissal
+ * until the corresponding completion timestamp is committed.
+ */
+export const lifeHouseholdGrantExpiryWarningClaims = appLifeopsPgSchema.table(
+  "life_household_grant_expiry_warning_claims",
+  {
+    agentId: text("agent_id").notNull(),
+    grantId: text("grant_id").notNull(),
+    attemptToken: text("attempt_token").notNull(),
+    leaseExpiresAt: text("lease_expires_at").notNull(),
+    scheduledTaskId: text("scheduled_task_id"),
+    warningAt: text("warning_at"),
+    expiresAt: text("expires_at"),
+    cancelledAt: text("cancelled_at"),
+    cancellationCompletedAt: text("cancellation_completed_at"),
+    cancellationAttemptCount: integer("cancellation_attempt_count")
+      .notNull()
+      .default(0),
+    cancellationLastError: text("cancellation_last_error"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.agentId, t.grantId] }),
+    unique().on(t.agentId, t.scheduledTaskId),
+    index("idx_life_household_warning_cancellation").on(
+      t.agentId,
+      t.cancelledAt,
+      t.cancellationCompletedAt,
+    ),
+  ],
+);
+
+export const lifeHouseholdAccessGrants = appLifeopsPgSchema.table(
+  "life_household_access_grants",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    householdId: text("household_id").notNull().default("household:default"),
+    principalEntityId: text("principal_entity_id").notNull(),
+    relationshipId: text("relationship_id"),
+    role: text("role").notNull(),
+    subjectEntityIdsJson: text("subject_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    scopesJson: text("scopes_json").notNull().default("[]"),
+    issuedByEntityId: text("issued_by_entity_id").notNull(),
+    expiresAt: text("expires_at"),
+    revokedAt: text("revoked_at"),
+    revokedByEntityId: text("revoked_by_entity_id"),
+    revocationReason: text("revocation_reason"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_household_grants_principal").on(
+      t.agentId,
+      t.householdId,
+      t.principalEntityId,
+      t.updatedAt,
+    ),
+  ],
+);
+
+export const lifeHouseholdCoordinationHeads = appLifeopsPgSchema.table(
+  "life_household_coordination_heads",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    householdId: text("household_id").notNull().default("household:default"),
+    coordinationId: text("coordination_id").notNull(),
+    currentAgreementVersion: integer("current_agreement_version")
+      .notNull()
+      .default(0),
+    currentAgreementId: text("current_agreement_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [unique().on(t.agentId, t.householdId, t.coordinationId)],
+);
+
+export const lifeHouseholdScheduleProposals = appLifeopsPgSchema.table(
+  "life_household_schedule_proposals",
+  {
+    rowId: text("row_id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    householdId: text("household_id").notNull().default("household:default"),
+    proposalId: text("proposal_id").notNull(),
+    version: integer("version").notNull(),
+    coordinationId: text("coordination_id").notNull(),
+    baseAgreementVersion: integer("base_agreement_version")
+      .notNull()
+      .default(0),
+    termsJson: text("terms_json").notNull(),
+    affectedPartyEntityIdsJson: text("affected_party_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    requiredApproverEntityIdsJson: text("required_approver_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    createdByEntityId: text("created_by_entity_id").notNull(),
+    contentSha256: text("content_sha256").notNull(),
+    status: text("status").notNull(),
+    materialChange: boolean("material_change").notNull().default(true),
+    expiresAt: text("expires_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.proposalId, t.version),
+    index("idx_life_household_proposals_coordination").on(
+      t.agentId,
+      t.householdId,
+      t.coordinationId,
+      t.createdAt,
+    ),
+  ],
+);
+
+export const lifeHouseholdProposalApprovals = appLifeopsPgSchema.table(
+  "life_household_proposal_approvals",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    proposalId: text("proposal_id").notNull(),
+    proposalVersion: integer("proposal_version").notNull(),
+    partyEntityId: text("party_entity_id").notNull(),
+    approvalRequestId: text("approval_request_id").notNull(),
+    invalidatedAt: text("invalidated_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.proposalId, t.proposalVersion, t.partyEntityId),
+    index("idx_life_household_approvals_request").on(
+      t.agentId,
+      t.approvalRequestId,
+    ),
+  ],
+);
+
+/**
+ * Replay-safe receipts for affected-party decisions received through a
+ * connector-authenticated identity. Approval state remains in the shared
+ * queue; this table proves which immutable provider message supplied the
+ * decision and prevents a redelivered webhook from resolving anything twice.
+ */
+export const lifeHouseholdInboundApprovalReceipts = appLifeopsPgSchema.table(
+  "life_household_inbound_approval_receipts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    connectorAccountId: text("connector_account_id").notNull(),
+    providerThreadId: text("provider_thread_id").notNull(),
+    providerMessageId: text("provider_message_id").notNull(),
+    partyEntityId: text("party_entity_id").notNull(),
+    approvalRequestId: text("approval_request_id").notNull(),
+    proposalId: text("proposal_id").notNull(),
+    proposalVersion: integer("proposal_version").notNull(),
+    decision: text("decision").notNull(),
+    approvalState: text("approval_state").notNull(),
+    receivedAt: text("received_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(
+      t.agentId,
+      t.provider,
+      t.connectorAccountId,
+      t.providerThreadId,
+      t.providerMessageId,
+    ),
+    unique().on(t.agentId, t.approvalRequestId),
+    index("idx_life_household_inbound_party").on(
+      t.agentId,
+      t.partyEntityId,
+      t.receivedAt,
+    ),
+  ],
+);
+
+export const lifeHouseholdScheduleAgreements = appLifeopsPgSchema.table(
+  "life_household_schedule_agreements",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    householdId: text("household_id").notNull().default("household:default"),
+    coordinationId: text("coordination_id").notNull(),
+    version: integer("version").notNull(),
+    proposalId: text("proposal_id").notNull(),
+    proposalVersion: integer("proposal_version").notNull(),
+    termsJson: text("terms_json").notNull(),
+    affectedPartyEntityIdsJson: text("affected_party_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    approvedByEntityIdsJson: text("approved_by_entity_ids_json")
+      .notNull()
+      .default("[]"),
+    activatedAt: text("activated_at").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.householdId, t.coordinationId, t.version),
+    unique().on(t.agentId, t.proposalId, t.proposalVersion),
+  ],
+);
+
 // T8d — Activity tracker (WakaTime-like).
 // Append-only per-event log produced by the macOS Swift collector.
 export const lifeActivityEvents = appLifeopsPgSchema.table(
@@ -1699,6 +1994,15 @@ export const lifeOpsSchema = {
   lifeActivityEvents,
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
+  lifeSchedulingDeliveryAttempts,
+  lifeCalendarMutationAttempts,
+  lifeHouseholdGrantExpiryWarningClaims,
+  lifeHouseholdAccessGrants,
+  lifeHouseholdCoordinationHeads,
+  lifeHouseholdScheduleProposals,
+  lifeHouseholdProposalApprovals,
+  lifeHouseholdInboundApprovalReceipts,
+  lifeHouseholdScheduleAgreements,
   lifeBlockRules,
   lifeWorkThreads,
   lifeWorkThreadEvents,

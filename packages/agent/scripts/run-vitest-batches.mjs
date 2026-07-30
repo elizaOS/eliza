@@ -53,12 +53,16 @@ const files = roots.flatMap((root) => {
 files.sort();
 
 if (files.length === 0) {
-  console.error("[agent-test] No test files matched the package Vitest config.");
+  console.error(
+    "[agent-test] No test files matched the package Vitest config.",
+  );
   process.exit(1);
 }
 
 if (!Number.isFinite(batchSize) || batchSize < 1) {
-  console.error("[agent-test] AGENT_TEST_BATCH_SIZE must be a positive integer.");
+  console.error(
+    "[agent-test] AGENT_TEST_BATCH_SIZE must be a positive integer.",
+  );
   process.exit(1);
 }
 
@@ -84,7 +88,9 @@ for (let start = 0; start < files.length; start += batchSize) {
     },
   );
   if (result.error) {
-    console.error(`[agent-test] Failed to start Vitest: ${result.error.message}`);
+    console.error(
+      `[agent-test] Failed to start Vitest: ${result.error.message}`,
+    );
     process.exit(1);
   }
   if (result.status !== 0) {

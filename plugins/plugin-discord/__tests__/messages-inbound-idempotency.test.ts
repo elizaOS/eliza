@@ -10,6 +10,7 @@ import {
 	ChannelType,
 	type Content,
 	createUniqueUuid,
+	getTrustedDeliveryAudience,
 	type Memory,
 	type UUID,
 } from "@elizaos/core";
@@ -42,6 +43,11 @@ function makeRuntime(options?: {
 	const memories = new Map<string, Memory>();
 	const sends: Sent[] = [];
 	let handleCalls = 0;
+	// Canonical room state backing the delivery-audience attestation: the
+	// manager calls ensureConnection before attesting, so the store mirrors
+	// exactly what the connector declared for the room.
+	const rooms = new Map<UUID, { id: UUID; type?: string }>();
+	const participantsByRoom = new Map<UUID, UUID[]>();
 	const runtime = {
 		agentId: AGENT_ID,
 		character: { name: "Eliza" },
@@ -54,7 +60,19 @@ function makeRuntime(options?: {
 		getSetting: (key: string) =>
 			key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
 		getService: () => null,
-		ensureConnection: vi.fn(async () => {}),
+		ensureConnection: vi.fn(
+			async (params: { entityId: UUID; roomId: UUID; type?: string }) => {
+				// Store the declared type verbatim: a manager bug that omits it
+				// surfaces as an "unknown" audience in the assertions below.
+				rooms.set(params.roomId, { id: params.roomId, type: params.type });
+				participantsByRoom.set(params.roomId, [params.entityId, AGENT_ID]);
+			},
+		),
+		getRoom: vi.fn(async (roomId: UUID) => rooms.get(roomId) ?? null),
+		getParticipantsForRoom: vi.fn(
+			async (roomId: UUID) => participantsByRoom.get(roomId) ?? [],
+		),
+		reportError: vi.fn(),
 		getMemoryById: vi.fn(async (id: UUID) => memories.get(id) ?? null),
 		createMemory: vi.fn(async (memory: Memory) => {
 			const id =
@@ -187,9 +205,17 @@ describe("Discord inbound durable idempotency", () => {
 		expect(service.buildMemoryFromMessage).toHaveBeenCalledTimes(1);
 		expect(harness.handleCalls()).toBe(1);
 		expect(harness.sends).toHaveLength(1);
-		expect(
-			harness.memories.has(makeInboundMemory(DISCORD_MESSAGE_ID).id as string),
-		).toBe(true);
+		const persisted = harness.memories.get(
+			makeInboundMemory(DISCORD_MESSAGE_ID).id as string,
+		);
+		expect(persisted).toBeDefined();
+		// The inbound turn was attested from the canonical DM room before
+		// dispatch: owner-private disclosure gates downstream consume this
+		// evidence, and it must survive the persistence spread.
+		const audience = getTrustedDeliveryAudience(persisted);
+		expect(audience?.kind).toBe("direct");
+		expect(audience?.provenance).toBe("canonical_room");
+		expect(harness.runtime.reportError).not.toHaveBeenCalled();
 	});
 
 	it("suppresses a duplicate after manager reconstruction when inbound memory was persisted", async () => {

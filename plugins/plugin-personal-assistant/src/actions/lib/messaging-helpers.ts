@@ -128,7 +128,11 @@ export async function prepareCrossChannelSend(args: {
           });
           return {
             provider: sent.provider,
-            channelId: sent.channelId,
+            // The result is a union over channel- and user-addressed sends.
+            // This call addressed a channel, so read the id the transport
+            // actually used and fall back to the one we asked for rather than
+            // asserting the variant.
+            channelId: "channelId" in sent ? sent.channelId : target,
             deliveryStatus: sent.deliveryStatus,
           };
         },

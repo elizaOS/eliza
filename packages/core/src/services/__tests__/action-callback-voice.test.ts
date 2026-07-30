@@ -10,7 +10,7 @@ import { ModelType } from "../../types";
 import { wrapSingleTurnVisibleCallback } from "../message";
 
 describe("action callback voice rewriting", () => {
-	it("rewrites action callback text through TEXT_SMALL and delivers parsed natural language", async () => {
+	it("rewrites a read-only action diagnostic through TEXT_SMALL and delivers parsed natural language", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const runtime = createMockRuntime({
 			agentId: "agent",
@@ -29,9 +29,9 @@ describe("action callback voice rewriting", () => {
 				async (modelType: ModelType, params: { prompt: string }) => {
 					expect(modelType).toBe(ModelType.TEXT_SMALL);
 					expect(params.prompt).toContain("Original action payload");
-					expect(params.prompt).toContain("stdout: created task id=abc123");
+					expect(params.prompt).toContain("stdout: found task id=abc123");
 					return JSON.stringify({
-						response: "I created the task and kept its ID handy: abc123.",
+						response: "I found the task. Its ID is abc123.",
 					});
 				},
 			),
@@ -43,17 +43,17 @@ describe("action callback voice rewriting", () => {
 		} as unknown as Memory;
 
 		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
-		await wrapped?.({ text: "stdout: created task id=abc123" }, "CREATE_TASK");
+		await wrapped?.({ text: "stdout: found task id=abc123" }, "INSPECT_TASK");
 
 		expect(callback).toHaveBeenCalledWith(
 			expect.objectContaining({
-				text: "I created the task and kept its ID handy: abc123.",
+				text: "I found the task. Its ID is abc123.",
 				data: expect.objectContaining({
-					rawActionText: "stdout: created task id=abc123",
+					rawActionText: "stdout: found task id=abc123",
 					voiceRewritten: true,
 				}),
 			}),
-			"CREATE_TASK",
+			"INSPECT_TASK",
 		);
 	});
 

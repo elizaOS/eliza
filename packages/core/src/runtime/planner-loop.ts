@@ -26,6 +26,7 @@ import type {
 	ProviderDataRecord,
 } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
+import { hasAppliedUserFacingEffectProof } from "../types/effects";
 import {
 	type ChatMessage,
 	type GenerateTextResult,
@@ -3757,6 +3758,13 @@ export function singleVerifiedUserFacingToolResultText(
 	if (successfulToolSteps.length !== 1) return undefined;
 	const result = successfulToolSteps[0]?.result;
 	if (result?.verifiedUserFacing !== true) return undefined;
+	if (
+		(result.effectReceipts !== undefined ||
+			result.userFacingEffectReceiptIds !== undefined) &&
+		!hasAppliedUserFacingEffectProof(result)
+	) {
+		return undefined;
+	}
 	const text = result.userFacingText?.trim();
 	return text || undefined;
 }
@@ -4573,6 +4581,8 @@ export function actionResultToPlannerToolResult(
 		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
+		effectReceipts: result.effectReceipts,
+		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
 		turnComplete: result.turnComplete,

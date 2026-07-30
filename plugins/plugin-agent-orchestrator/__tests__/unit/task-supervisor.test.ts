@@ -199,7 +199,15 @@ describe("TaskSupervisorService.runOnce resilience", () => {
     return {
       getService: (type: string) =>
         type === "ORCHESTRATOR_TASK_SERVICE" ? taskSvc : undefined,
-      sendMessageToTarget: async () => undefined,
+      sendMessageToTarget: async () => ({
+        kind: "delivered" as const,
+        receipt: {
+          providerMessageIds: ["supervisor-digest-1"] as [string],
+          acceptedAt: 1_780_000_000_000,
+          persistence: { status: "persisted" as const, memoryIds: [] },
+        },
+        memories: [],
+      }),
       // Supervisor disabled → start() does not arm the interval timer.
       getSetting: (k: string) =>
         k === "ELIZA_ORCHESTRATOR_SUPERVISOR" ? "0" : undefined,

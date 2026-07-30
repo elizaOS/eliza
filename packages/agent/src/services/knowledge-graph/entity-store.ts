@@ -24,6 +24,7 @@ import {
   findIdentityMatches,
   foldIdentity,
   mergeEntities,
+  normalizeEntityConnectorAccountId,
   SELF_ENTITY_ID,
 } from "@elizaos/shared";
 import {
@@ -87,6 +88,9 @@ function identityRowToIdentity(row: Record<string, unknown>): EntityIdentity {
   return {
     platform: toText(row.platform),
     handle: toText(row.handle),
+    connectorAccountId: normalizeEntityConnectorAccountId(
+      toText(row.connector_account_id),
+    ),
     ...(displayName ? { displayName } : {}),
     verified: toBoolean(row.verified),
     confidence: toNumber(row.confidence, 0),
@@ -229,7 +233,7 @@ export class EntityStore {
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_entity_identities (
-         id, agent_id, entity_id, platform, handle, display_name,
+         id, agent_id, entity_id, platform, handle, connector_account_id, display_name,
          verified, confidence, added_at, added_via, evidence_json
        ) VALUES (
          ${sqlQuote(`eid_${crypto.randomUUID()}`)},
@@ -237,6 +241,9 @@ export class EntityStore {
          ${sqlQuote(entityId)},
          ${sqlQuote(identity.platform)},
          ${sqlQuote(identity.handle)},
+         ${sqlQuote(
+           normalizeEntityConnectorAccountId(identity.connectorAccountId),
+         )},
          ${sqlText(identity.displayName ?? null)},
          ${identity.verified ? "TRUE" : "FALSE"},
          ${sqlNumber(identity.confidence)},
@@ -244,7 +251,9 @@ export class EntityStore {
          ${sqlQuote(identity.addedVia)},
          ${sqlJson(identity.evidence)}
        )
-       ON CONFLICT (agent_id, entity_id, platform, handle) DO UPDATE SET
+       ON CONFLICT (
+         agent_id, entity_id, platform, connector_account_id, handle
+       ) DO UPDATE SET
          display_name = EXCLUDED.display_name,
          verified = EXCLUDED.verified,
          confidence = EXCLUDED.confidence,
@@ -317,13 +326,26 @@ export class EntityStore {
         `(LOWER(e.preferred_name) LIKE ${needle} OR LOWER(COALESCE(e.full_name, '')) LIKE ${needle})`,
       );
     }
-    if (filter?.hasPlatform) {
-      const platform = sqlQuote(filter.hasPlatform.toLowerCase());
+    if (filter?.hasPlatform || filter?.hasConnectorAccountId) {
+      const identityClauses = [
+        "i.agent_id = e.agent_id",
+        "i.entity_id = e.entity_id",
+      ];
+      if (filter.hasPlatform) {
+        identityClauses.push(
+          `LOWER(i.platform) = ${sqlQuote(filter.hasPlatform.toLowerCase())}`,
+        );
+      }
+      if (filter.hasConnectorAccountId) {
+        identityClauses.push(
+          `i.connector_account_id = ${sqlQuote(
+            normalizeEntityConnectorAccountId(filter.hasConnectorAccountId),
+          )}`,
+        );
+      }
       clauses.push(
         `EXISTS (SELECT 1 FROM app_lifeops.life_entity_identities i
-                  WHERE i.agent_id = e.agent_id
-                    AND i.entity_id = e.entity_id
-                    AND LOWER(i.platform) = ${platform})`,
+                  WHERE ${identityClauses.join("\n                    AND ")})`,
       );
     }
 
@@ -400,7 +422,7 @@ export class EntityStore {
   }
 
   /**
-   * Observe a `(platform, handle)` claim. Decision tree:
+   * Observe a `(platform, connector account, handle)` claim. Decision tree:
    *   - no candidate: create a new entity with this identity.
    *   - exactly one candidate AND confidence >= AUTO_MERGE: fold in.
    *   - exactly one candidate, low confidence: create a conflict outcome.
@@ -414,15 +436,20 @@ export class EntityStore {
   async observeIdentity(obs: {
     platform: string;
     handle: string;
+    connectorAccountId?: string;
     displayName?: string;
     evidence: string[];
     confidence: number;
     suggestedType?: string;
   }): Promise<{ entity: Entity; mergedFrom?: string[]; conflict?: boolean }> {
+    const connectorAccountId = normalizeEntityConnectorAccountId(
+      obs.connectorAccountId,
+    );
     const all = await this.list();
     const candidates = findIdentityMatches(all, {
       platform: obs.platform,
       handle: obs.handle,
+      connectorAccountId,
       confidence: obs.confidence,
     });
     const outcome = decideIdentityOutcome({
@@ -434,6 +461,7 @@ export class EntityStore {
     const newIdentity: EntityIdentity = {
       platform: obs.platform,
       handle: obs.handle,
+      connectorAccountId,
       ...(obs.displayName ? { displayName: obs.displayName } : {}),
       verified: false,
       confidence: obs.confidence,
@@ -492,23 +520,37 @@ export class EntityStore {
    */
   async resolve(query: {
     name?: string;
-    identity?: { platform: string; handle: string };
+    identity?: {
+      platform: string;
+      handle: string;
+      connectorAccountId?: string;
+    };
     type?: string;
   }): Promise<EntityResolveCandidate[]> {
     const filters: EntityFilter = {};
     if (query.type) filters.type = query.type;
     if (query.name) filters.nameContains = query.name;
-    if (query.identity) filters.hasPlatform = query.identity.platform;
+    if (query.identity) {
+      filters.hasPlatform = query.identity.platform;
+      filters.hasConnectorAccountId = normalizeEntityConnectorAccountId(
+        query.identity.connectorAccountId,
+      );
+    }
 
     let entities = await this.list(filters);
 
     if (query.identity) {
       const platformKey = query.identity.platform.toLowerCase();
       const handleKey = query.identity.handle.toLowerCase();
+      const accountKey = normalizeEntityConnectorAccountId(
+        query.identity.connectorAccountId,
+      );
       entities = entities.filter((entity) =>
         entity.identities.some(
           (identity) =>
             identity.platform.toLowerCase() === platformKey &&
+            normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
+              accountKey &&
             identity.handle.toLowerCase() === handleKey,
         ),
       );
@@ -524,6 +566,10 @@ export class EntityStore {
             (identity) =>
               identity.platform.toLowerCase() ===
                 query.identity?.platform.toLowerCase() &&
+              normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
+                normalizeEntityConnectorAccountId(
+                  query.identity.connectorAccountId,
+                ) &&
               identity.handle.toLowerCase() ===
                 query.identity.handle.toLowerCase(),
           );
@@ -538,7 +584,10 @@ export class EntityStore {
             entity.preferredName.toLowerCase() === query.name.toLowerCase();
           confidence = Math.max(confidence, exact ? 0.9 : 0.55);
         }
-        if (entity.identities.some((id) => id.verified)) {
+        if (
+          !query.identity &&
+          entity.identities.some((identity) => identity.verified)
+        ) {
           safeToSend = true;
         }
         return { entity, confidence, evidence, safeToSend };

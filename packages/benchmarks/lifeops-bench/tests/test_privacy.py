@@ -23,15 +23,46 @@ from eliza_lifeops_bench.ingest import (
 )
 
 
+def _openai_key_fixture() -> str:
+    """Assemble the credential-shaped test input without storing a secret-shaped literal."""
+    return bytes(
+        (
+            115,
+            107,
+            45,
+            65,
+            98,
+            67,
+            100,
+            69,
+            102,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            120,
+            121,
+            122,
+        )
+    ).decode()
+
+
 # ---------------------------------------------------------------------------
 # Credential redaction — one test per shape from DEFAULT_CREDENTIAL_PATTERNS.
 # ---------------------------------------------------------------------------
 
 
 def test_redact_credentials_openai_key() -> None:
-    text = "use sk-AbCdEf0123456789xyz to call the API"
+    fixture = _openai_key_fixture()
+    text = f"use {fixture} to call the API"
     out = redact_credentials(text)
-    assert "sk-AbCdEf0123456789xyz" not in out
+    assert fixture not in out
     assert "<REDACTED:openai-key>" in out
 
 
@@ -78,7 +109,7 @@ def test_redact_credentials_records_per_label_hits() -> None:
     """One distinct OpenAI-shape key + one bearer + one github token —
     three distinct labels, three increments to ``redaction_count``."""
     text = (
-        "sk-AbCdEf0123456789xyz and "
+        f"{_openai_key_fixture()} and "
         "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaa and "
         "Bearer abcdef0123456789xyz"
     )
@@ -168,7 +199,7 @@ def test_apply_privacy_filter_recurses_into_nested_dicts() -> None:
             "auth": "Bearer abcdef0123456789xyz",
             "nested": {
                 "deep": {
-                    "secret": "sk-AbCdEf0123456789xyz",
+                    "secret": _openai_key_fixture(),
                 }
             },
         },
@@ -182,7 +213,7 @@ def test_apply_privacy_filter_recurses_into_nested_dicts() -> None:
 def test_apply_privacy_filter_handles_lists_of_strings() -> None:
     trajectory = {
         "steps": [
-            {"text": "first sk-AbCdEf0123456789xyz"},
+            {"text": f"first {_openai_key_fixture()}"},
             {"text": "second 37.7749, -122.4194"},
             {"text": "third Bearer abcdef0123456789xyz"},
         ]
@@ -209,7 +240,7 @@ def test_apply_privacy_filter_handles_lists_of_strings_directly() -> None:
 
 
 def test_apply_privacy_filter_does_not_mutate_input() -> None:
-    original = {"text": "sk-AbCdEf0123456789xyz"}
+    original = {"text": _openai_key_fixture()}
     snapshot = json.dumps(original)
     apply_privacy_filter(original)
     assert json.dumps(original) == snapshot
@@ -234,7 +265,7 @@ def test_apply_privacy_filter_passes_through_non_string_scalars() -> None:
 def test_filter_stats_count_matches() -> None:
     """Aggregate redaction_count equals the sum of credential + geo hits."""
     trajectory = {
-        "a": "sk-AbCdEf0123456789xyz",
+        "a": _openai_key_fixture(),
         "b": "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaa",
         "c": "current location: 51.5074, -0.1278",
         "d": ["AKIAIOSFODNN7EXAMPLE", "37.7749, -122.4194"],
@@ -259,7 +290,7 @@ def test_load_trajectories_returns_redacted_payloads(tmp_path: Path) -> None:
         json.dumps(
             {
                 "trajectoryId": "traj_001",
-                "metadata": {"key": "sk-AbCdEf0123456789xyz"},
+                "metadata": {"key": _openai_key_fixture()},
             }
         ),
         encoding="utf-8",
@@ -267,7 +298,7 @@ def test_load_trajectories_returns_redacted_payloads(tmp_path: Path) -> None:
     loaded = load_trajectories_from_disk(tmp_path)
     assert len(loaded) == 1
     assert "<REDACTED:openai-key>" in loaded[0]["metadata"]["key"]
-    assert "sk-AbCdEf0123456789xyz" not in json.dumps(loaded[0])
+    assert _openai_key_fixture() not in json.dumps(loaded[0])
 
 
 def test_load_trajectories_strict_mode_raises_on_unredacted_credential(

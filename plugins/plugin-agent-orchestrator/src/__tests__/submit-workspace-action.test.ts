@@ -216,6 +216,10 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(true);
     expect(result.text).toBe("No changes to commit");
     expect(replies.join("\n")).toContain("No changes to commit");
+    const [receipt] = result.effectReceipts as Array<Record<string, unknown>>;
+    expect(receipt.outcome).toBe("noop");
+    expect(result.userFacingText).toBe(replies.at(-1));
+    expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
     // Really nothing happened: HEAD unchanged, no branch on the remote.
     expect(git(work, "rev-parse", "HEAD")).toBe(before);
     expect(
@@ -243,6 +247,19 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.text).toBe("Changes committed and pushed");
     const data = result.data as { commitHash: string; workspaceId: string };
     expect(data.workspaceId).toBe("ws-submit-1");
+    const [receipt] = result.effectReceipts as Array<{
+      receiptId: string;
+      outcome: string;
+      resource: { kind: string; id: string };
+      commit: { kind: string; id: string };
+    }>;
+    expect(receipt).toMatchObject({
+      outcome: "applied",
+      resource: { kind: "coding.workspace", id: "ws-submit-1" },
+      commit: { kind: "provider_accepted", id: data.commitHash },
+    });
+    expect(result.userFacingText).toBe(replies.at(-1));
+    expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
     // The reported hash is the real new HEAD…
     expect(data.commitHash).toBe(git(work, "rev-parse", "HEAD"));
     expect(git(work, "log", "-1", "--pretty=%B")).toBe(
@@ -283,6 +300,18 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
     expect(replies.join("\n")).toContain("Failed to finalize workspace");
+    expect(result.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "failed",
+        failure: expect.objectContaining({ acceptance: "unknown" }),
+      }),
+    ]);
+    expect(result.data).toEqual(
+      expect.objectContaining({
+        outcomeUnknown: true,
+        reconciliationRequired: true,
+      }),
+    );
     // The remote kept its own commit — the rejected push changed nothing.
     expect(git(bare, "rev-parse", "refs/heads/feat/submit")).toBe(remoteHash);
   });
@@ -319,6 +348,12 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
     expect(replies.join("\n")).toContain("Failed to finalize workspace");
+    expect(result.effectReceipts).toEqual([
+      expect.objectContaining({
+        outcome: "failed",
+        failure: expect.objectContaining({ acceptance: "unknown" }),
+      }),
+    ]);
     // No PR fields anywhere in the failure.
     expect(JSON.stringify(result)).not.toContain('"pr"');
     // The commit+push halves of the pipeline really executed first.

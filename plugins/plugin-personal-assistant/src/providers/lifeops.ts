@@ -12,6 +12,7 @@
  */
 
 import {
+  ElizaError,
   getAccountPrivacy,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -99,6 +100,10 @@ async function summarizeConnectorDegradation(
         const status = await contribution.status();
         return { contribution, status };
       } catch (error) {
+        // error-policy:J4 a registered connector whose status() probe throws
+        // degrades to a visible "disconnected" line below; reportError keeps
+        // the failure in RECENT_ERRORS so a broken probe cannot hide behind
+        // the degrade.
         runtime.reportError("LifeOpsProvider.connectorStatus", error, {
           connectorId: contribution.kind,
         });
@@ -406,11 +411,19 @@ export const lifeOpsProvider: Provider = {
       >;
       try {
         connectorAccounts = await accountManager.listAccounts("google");
-      } catch (error) {
-        runtime.reportError("LifeOpsProvider.connectorAccounts", error, {
+      } catch (cause) {
+        // error-policy:J2 context-adding rethrow — a failed connector-account
+        // read must not silently shrink the privacy metadata to an empty set;
+        // the provider boundary below reports it and renders the explicit
+        // unavailable state instead of a healthy-looking overview.
+        runtime.reportError("LifeOpsProvider.connectorAccounts", cause, {
           provider: "google",
         });
-        throw error;
+        throw new ElizaError("Google connector account read failed.", {
+          code: "LIFEOPS_CONNECTOR_ACCOUNTS_READ_FAILED",
+          cause,
+          context: { provider: "google" },
+        });
       }
       const privacyByAccountKey = new Map<
         string,
@@ -457,13 +470,13 @@ export const lifeOpsProvider: Provider = {
           ),
         );
       } catch (cause) {
+        // error-policy:J4 fail closed — with the per-account privacy table
+        // unreadable every account stays owner-only (the most restrictive
+        // policy); reportError surfaces the broken read instead of letting the
+        // degrade look healthy.
         runtime.reportError("LifeOpsProvider.accountPrivacy", cause, {
           agentId: runtime.agentId,
         });
-        logger.debug(
-          { err: cause },
-          "[LifeOpsProvider] account privacy table unavailable — defaulting to owner-only context",
-        );
       }
       const now = new Date();
       const ownerLines = summarizeOccurrences(
@@ -594,13 +607,12 @@ export const lifeOpsProvider: Provider = {
                   await service.getNextCalendarEventContext(INTERNAL_URL);
                 calendarLines.push(...summarizeNextEvent(nextEventContext));
               } catch (cause) {
+                // error-policy:J4 the granted calendar read failed — degrade
+                // to a visible "degraded" line and report, never a silently
+                // empty calendar.
                 runtime.reportError("LifeOpsProvider.calendar", cause, {
                   roomId: message.roomId,
                 });
-                logger.warn(
-                  { err: cause },
-                  "[LifeOpsProvider] calendar fetch failed — omitting calendar context",
-                );
                 calendarLines.push(
                   `Calendar connector degraded: ${cause instanceof Error ? cause.message : String(cause)}`,
                 );
@@ -629,13 +641,12 @@ export const lifeOpsProvider: Provider = {
                 gmailSummary = triage.summary;
                 emailLines.push(...summarizeGmailTriage(triage.summary));
               } catch (cause) {
+                // error-policy:J4 the granted Gmail triage read failed —
+                // degrade to a visible "degraded" line and report, never a
+                // silently empty inbox.
                 runtime.reportError("LifeOpsProvider.gmail", cause, {
                   roomId: message.roomId,
                 });
-                logger.warn(
-                  { err: cause },
-                  "[LifeOpsProvider] gmail triage fetch failed — omitting email context",
-                );
                 emailLines.push(
                   `Gmail connector degraded: ${cause instanceof Error ? cause.message : String(cause)}`,
                 );
@@ -650,9 +661,12 @@ export const lifeOpsProvider: Provider = {
               await service.getNextCalendarEventContext(INTERNAL_URL);
             calendarLines.push(...summarizeNextEvent(nextEventContext));
           } catch (cause) {
-            runtime.reportError("LifeOpsProvider.nativeCalendar", cause, {
-              roomId: message.roomId,
-            });
+            // error-policy:J4 designed absence — with no calendar source
+            // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
+            // every turn of a connector-less install, so it stays a
+            // debug-level omit rather than a reportError that would escalate
+            // an unconfigured install as a systemic failure; genuine failures
+            // on the capability-granted path are reported above.
             logger.debug(
               { err: cause },
               "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
@@ -660,13 +674,13 @@ export const lifeOpsProvider: Provider = {
           }
         }
       } catch (cause) {
+        // error-policy:J4 the Google connector read itself failed (a missing
+        // plugin reports connected:false without throwing) — degrade to a
+        // visible status line and report rather than silently dropping the
+        // calendar/email context.
         runtime.reportError("LifeOpsProvider.googleConnector", cause, {
           roomId: message.roomId,
         });
-        logger.debug(
-          { err: cause },
-          "[LifeOpsProvider] Google connector unavailable — skipping calendar/email context",
-        );
         accountLines.push(
           `Google connector status unavailable: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
@@ -785,14 +799,24 @@ export const lifeOpsProvider: Provider = {
         },
       };
     } catch (error) {
+      // error-policy:J4 provider boundary — the owner sees an explicit
+      // "LifeOps overview unavailable." block rather than a healthy-looking
+      // overview, and reportError surfaces the failure in RECENT_ERRORS so the
+      // agent can react to a broken overview pipeline.
       runtime.reportError("LifeOpsProvider.get", error, {
         roomId: message.roomId,
         entityId: message.entityId,
       });
       return {
         text: "LifeOps overview unavailable.",
-        values: { lifeOpsUnavailable: true },
-        data: { lifeOpsError: true },
+        // No counts: a failed read that reports zero open occurrences and zero
+        // active goals is indistinguishable from a genuinely empty day, and the
+        // model would state it as fact. The marker lets a consumer tell the
+        // three states apart.
+        values: { lifeOpsOverviewUnavailable: true },
+        data: {
+          error: error instanceof Error ? error.message : String(error),
+        },
       };
     }
   },

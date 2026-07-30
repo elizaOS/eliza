@@ -62,19 +62,19 @@
       "whitespaceRatio": 0.6923
     },
     "plugin-calendar-gui@ipad-portrait": {
-      "borderDividerDensity": 47.5403,
-      "textDensity": 2.0773,
-      "whitespaceRatio": 0.8595
+      "borderDividerDensity": 55.8082,
+      "textDensity": 7.3584,
+      "whitespaceRatio": 0.6604
     },
     "plugin-calendar-gui@mobile-landscape": {
-      "borderDividerDensity": 127.5975,
-      "textDensity": 4.1925,
-      "whitespaceRatio": 0.6833
+      "borderDividerDensity": 97.2172,
+      "textDensity": 6.7748,
+      "whitespaceRatio": 0.6302
     },
     "plugin-calendar-gui@mobile-portrait": {
-      "borderDividerDensity": 139.7497,
-      "textDensity": 5.9242,
-      "whitespaceRatio": 0.7231
+      "borderDividerDensity": 164.054,
+      "textDensity": 21.6308,
+      "whitespaceRatio": 0.2953
     },
     "plugin-goals-gui@mobile-landscape": {
       "borderDividerDensity": 48.6086,

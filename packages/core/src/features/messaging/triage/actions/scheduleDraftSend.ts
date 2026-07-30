@@ -1,16 +1,17 @@
 /**
  * The deferred-send action for the messaging-triage capability, registered
  * under the shared `MESSAGE` action name. Given an existing draft id and a
- * target time, it schedules the draft to send later through the TriageService,
- * preferring the adapter's native scheduling and falling back to a
- * process-local timer. It verifies the draft exists before scheduling and
- * reports the resolved send time.
+ * target time, it schedules the draft through an authoritative adapter-native
+ * remote schedule or the canonical durable ScheduledTask runner. The returned
+ * confirmation is bound to the provider or task-store commit receipt.
  */
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import type {
 	Action,
 	ActionExample,
 	ActionResult,
+	EffectReceipt,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
@@ -29,9 +30,15 @@ export const scheduleDraftSendAction: Action = {
 	contexts: ["messaging", "email", "calendar", "automation"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Schedule a previously created draft to send at a future time. Uses the adapter's native scheduling if supported; otherwise enqueues a process-local timer.",
+		"Schedule a previously created draft to send at a future time. Uses authoritative adapter-native scheduling when supported and otherwise persists a one-shot task in the shared scheduler.",
 	descriptionCompressed:
-		"schedule draft send sendAtMs adapter-native or fallback queue",
+		"schedule draft send sendAtMs durable shared scheduler",
+	tags: [
+		"domain:messages",
+		"capability:schedule",
+		"capability:send",
+		"effect:receipt-required",
+	],
 	similes: ["DEFER_SEND", "SCHEDULE_SEND", "SEND_LATER"],
 	parameters: [
 		draftIdParameter,
@@ -99,6 +106,42 @@ export const scheduleDraftSendAction: Action = {
 		);
 
 		const text = `Scheduled draft ${parsed.draftId} for ${new Date(parsed.sendAtMs).toISOString()}.`;
+		const commit = updated.scheduleCommit;
+		if (!commit) {
+			throw new ElizaError(
+				`Scheduled draft ${parsed.draftId} returned without commit proof.`,
+				{
+					code: "MESSAGE_DRAFT_SCHEDULE_RECEIPT_MISSING",
+					context: { draftId: parsed.draftId, sendAtMs: parsed.sendAtMs },
+					severity: "fatal",
+				},
+			);
+		}
+		const receipt: EffectReceipt = {
+			receiptId: `message-schedule:${commit.kind}:${commit.id}`,
+			operation: "message.draft.schedule",
+			resource: {
+				kind: "messaging.deferred_send",
+				id: commit.id,
+			},
+			artifacts: [
+				{
+					kind: "messaging.draft",
+					id: updated.draftId,
+				},
+			],
+			idempotency: {
+				key: commit.idempotencyKey,
+				replayed: commit.replayed,
+			},
+			observedAt: new Date().toISOString(),
+			outcome: "applied",
+			commit: {
+				kind: commit.kind,
+				id: commit.id,
+				committedAt: commit.committedAt,
+			},
+		};
 		logger.info(
 			`[ScheduleDraftSend] draftId=${parsed.draftId} sendAtMs=${parsed.sendAtMs} scheduledId=${updated.scheduledId ?? "unknown"}`,
 		);
@@ -108,6 +151,10 @@ export const scheduleDraftSendAction: Action = {
 		return {
 			success: true,
 			text,
+			verifiedUserFacing: true,
+			userFacingText: text,
+			effectReceipts: [receipt],
+			userFacingEffectReceiptIds: [receipt.receiptId],
 			data: {
 				draftId: updated.draftId,
 				source: updated.source,

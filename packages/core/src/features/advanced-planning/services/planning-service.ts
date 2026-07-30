@@ -14,9 +14,12 @@
  * disposed by createAdvancedPlanningPlugin.
  */
 import { v4 as uuidv4 } from "uuid";
+import { isElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
+import { settleActionHandler } from "../../../runtime/action-handler-settlement.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
 import { parseJsonObject } from "../../../runtime/json-output.ts";
+import { tagsPermitAutomaticRetry } from "../../../types/effects.ts";
 import {
 	type ActionContext,
 	type ActionParameters,
@@ -867,7 +870,10 @@ Focus on:
 		};
 
 		let retries = 0;
-		const maxRetries = step.retryPolicy?.maxRetries ?? 0;
+		const requestedRetries = step.retryPolicy?.maxRetries ?? 0;
+		const maxRetries = tagsPermitAutomaticRetry(action.tags)
+			? requestedRetries
+			: 0;
 
 		while (retries <= maxRetries) {
 			if (abortSignal?.aborted) {
@@ -884,38 +890,41 @@ Focus on:
 					abortSignal,
 					previousResults,
 				} satisfies ExtendedHandlerOptions;
-				const actionCallback: typeof callback = callback
-					? (response, actionName) =>
-							callback(response, actionName ?? action.name)
-					: undefined;
-
-				const result = await runWithActionRoutingContext(
-					{ actionName: action.name, modelClass: action.modelClass },
-					() =>
-						action.handler(
-							runtime,
-							message,
-							{ values: {}, data: {}, text: "" },
-							options,
-							actionCallback,
+				const actionResult = await settleActionHandler({
+					runtime,
+					action,
+					callback,
+					handlerError: "rethrow",
+					invoke: (actionCallback) =>
+						runWithActionRoutingContext(
+							{ actionName: action.name, modelClass: action.modelClass },
+							() =>
+								action.handler(
+									runtime,
+									message,
+									{ values: {}, data: {}, text: "" },
+									options,
+									actionCallback,
+								),
 						),
-				);
+				});
 
-				const actionResult: ActionResult =
-					typeof result === "object" && result !== null
-						? (result as ActionResult)
-						: { text: String(result), success: true };
-
-				if (!actionResult.data) {
-					actionResult.data = {};
-				}
-				const data = actionResult.data as Record<string, JsonValue>;
-				data.stepId = step.id ? String(step.id) : "";
-				data.actionName = step.actionName;
-				data.executedAt = Date.now();
-
-				return actionResult;
+				return {
+					...actionResult,
+					data: {
+						...(actionResult.data ?? {}),
+						stepId: step.id ? String(step.id) : "",
+						executedAt: Date.now(),
+						actionName: action.name,
+					},
+				};
 			} catch (error) {
+				if (
+					isElizaError(error) &&
+					error.code === "ACTION_RESULT_INVALID_AFTER_HANDLER"
+				) {
+					throw error;
+				}
 				retries++;
 				if (retries > maxRetries) {
 					throw error;

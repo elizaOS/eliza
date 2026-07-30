@@ -17,12 +17,14 @@ import { isDeepStrictEqual } from "node:util";
 import {
   type ActionResult,
   type AgentRuntime,
+  attestAuthenticatedApiDeliveryAudience,
   ChannelType,
   type Content,
   createMessageMemory,
   ElizaError,
   EventType,
   emitInferenceTiming,
+  executePlannedToolCall,
   getInferenceTimer,
   getSwarmCoordinatorService,
   INFERENCE_MARKS,
@@ -42,6 +44,7 @@ import {
   runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
+  type TrustedApiPrincipal,
   timeInferenceSpan,
   trackPostDeliveryTask,
   type UUID,
@@ -64,6 +67,7 @@ import {
   resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
   estimateTokenCount,
@@ -115,6 +119,10 @@ import {
   trimWalletProgressPrefix,
   validateChatImages,
 } from "./server-helpers.ts";
+import {
+  isAuthorized,
+  isServerTokenAuthorized,
+} from "./server-helpers-auth.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
 
 export type { ChatImageAttachment, LogEntry };
@@ -3134,35 +3142,70 @@ async function generateChatResponseWithTiming(
                     "[eliza-api] Direct dispatch START_CODING_TASK from UI intent",
                   );
                   let actionResponseText = "";
-                  await createTaskAction.handler(
+                  const declaredParameters = new Set(
+                    createTaskAction.parameters?.map(
+                      (parameter) => parameter.name,
+                    ) ?? [],
+                  );
+                  const directTaskParameters: Record<string, unknown> = {};
+                  if (declaredParameters.has("action")) {
+                    directTaskParameters.action = "create";
+                  } else if (declaredParameters.has("op")) {
+                    directTaskParameters.op = "create";
+                  }
+                  if (
+                    declaredParameters.has("task") &&
+                    typeof message.content.text === "string"
+                  ) {
+                    directTaskParameters.task = message.content.text;
+                  }
+                  if (
+                    declaredParameters.has("agentType") &&
+                    typeof contentMetadata.agentType === "string"
+                  ) {
+                    directTaskParameters.agentType = contentMetadata.agentType;
+                  }
+                  const directActionResult = await executePlannedToolCall(
                     runtime,
-                    message,
-                    undefined,
-                    {},
-                    async (content: Content) => {
-                      if (generationTimedOut) {
-                        throw createChatGenerationTimeoutError(
-                          generationTimeoutMs,
-                        );
-                      }
+                    {
+                      message,
+                      activeContexts: createTaskAction.contexts ?? [
+                        "code",
+                        "automation",
+                      ],
+                      callback: async (content: Content) => {
+                        if (generationTimedOut) {
+                          throw createChatGenerationTimeoutError(
+                            generationTimeoutMs,
+                          );
+                        }
 
-                      const chunk = extractCompatTextContent(content);
-                      if (chunk) {
-                        const voicedChunk =
-                          await rewriteDirectActionCallbackText({
-                            runtime,
-                            actionName: createTaskAction.name,
-                            text: chunk,
-                            content,
-                          });
-                        applyCallbackTextUpdate(content, voicedChunk);
-                        actionResponseText = responseText;
-                      }
-                      return [];
+                        const chunk = extractCompatTextContent(content);
+                        if (chunk) {
+                          const voicedChunk =
+                            await rewriteDirectActionCallbackText({
+                              runtime,
+                              actionName: createTaskAction.name,
+                              text: chunk,
+                              content,
+                            });
+                          applyCallbackTextUpdate(content, voicedChunk);
+                          actionResponseText = responseText;
+                        }
+                        return [];
+                      },
                     },
+                    {
+                      name: createTaskAction.name,
+                      params: directTaskParameters,
+                    },
+                    { actions: [createTaskAction] },
                   );
                   const finalText =
-                    actionResponseText || responseText || "Task created.";
+                    actionResponseText ||
+                    directActionResult.text ||
+                    responseText ||
+                    "Task created.";
                   result = {
                     didRespond: true,
                     responseContent: { text: finalText },
@@ -3958,6 +4001,7 @@ export interface ChatRouteState {
 
 export interface ChatRouteContext extends RouteRequestContext {
   state: ChatRouteState;
+  callerAuthorization?: AgentHttpRequestAuthorization;
 }
 
 export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
@@ -3970,10 +4014,20 @@ async function ensureCompatChatConnection(
   agentName: string,
   channelIdPrefix: string,
   roomKey: string,
+  principal: TrustedApiPrincipal,
 ): Promise<{ userId: UUID; roomId: UUID; worldId: UUID }> {
-  const userId = ensureAdminEntityIdForChat(state);
+  const ownerPrincipal =
+    principal.kind === "owner_session" || principal.kind === "owner_api_token";
+  const userId = ownerPrincipal
+    ? ensureAdminEntityIdForChat(state)
+    : (stringToUuid(
+        `${agentName}:${channelIdPrefix}:external:${principal.principalId}`,
+      ) as UUID);
+  const principalScopedRoomKey = ownerPrincipal
+    ? roomKey
+    : `${principal.kind}:${principal.principalId}:${roomKey}`;
   const roomId = stringToUuid(
-    `${agentName}-${channelIdPrefix}-room-${roomKey}`,
+    `${agentName}-${channelIdPrefix}-room-${principalScopedRoomKey}`,
   ) as UUID;
   const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
@@ -3984,13 +4038,17 @@ async function ensureCompatChatConnection(
     worldId,
     userName: resolveAppUserName(state.config),
     source: MESSAGE_SOURCE_CLIENT_CHAT,
-    channelId: `${channelIdPrefix}-${roomKey}`,
-    type: ChannelType.DM,
+    channelId: `${channelIdPrefix}-${principalScopedRoomKey}`,
+    type: ChannelType.API,
     messageServerId,
-    metadata: { ownership: { ownerId: userId } },
+    metadata: ownerPrincipal ? { ownership: { ownerId: userId } } : {},
   });
 
-  // Ensure world ownership
+  if (!ownerPrincipal) {
+    return { userId, roomId, worldId };
+  }
+
+  // Ensure world ownership only for a directly authenticated owner principal.
   const world = await runtime.getWorld(worldId);
   if (world) {
     let needsUpdate = false;
@@ -4024,6 +4082,46 @@ function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
   return resolveChatAdminEntityId(state);
 }
 
+export function resolveTrustedApiPrincipal(
+  req: http.IncomingMessage,
+  authorization: AgentHttpRequestAuthorization | undefined,
+): TrustedApiPrincipal {
+  if (isServerTokenAuthorized(req)) {
+    return {
+      kind: "service_gateway",
+      principalId: authorization?.principal ?? "shared-server-gateway",
+    };
+  }
+  if (authorization?.ok && authorization.role === "OWNER") {
+    return {
+      kind: "owner_session",
+      principalId:
+        authorization.identityId ??
+        authorization.principal ??
+        "authenticated-owner-session",
+    };
+  }
+  if (authorization?.ok) {
+    return {
+      kind: "service_gateway",
+      principalId:
+        authorization.identityId ??
+        authorization.principal ??
+        "authenticated-external-session",
+    };
+  }
+  if (isAuthorized(req)) {
+    return {
+      kind: "owner_api_token",
+      principalId: "direct-owner-api",
+    };
+  }
+  return {
+    kind: "service_gateway",
+    principalId: "non-owner-api",
+  };
+}
+
 function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {
   if (!state.runtime || !state.config) {
     return;
@@ -4043,6 +4141,10 @@ export async function handleChatRoutes(
   ctx: ChatRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, state } = ctx;
+  const trustedApiPrincipal = resolveTrustedApiPrincipal(
+    req,
+    ctx.callerAuthorization,
+  );
 
   // ── GET /v1/models (OpenAI compatible) ─────────────────────────────────
   if (method === "GET" && pathname === "/v1/models") {
@@ -4200,6 +4302,7 @@ export async function handleChatRoutes(
             agentName,
             "openai-compat",
             roomKey,
+            trustedApiPrincipal,
           );
 
           const message = createMessageMemory({
@@ -4213,6 +4316,11 @@ export async function handleChatRoutes(
               channelType: ChannelType.API,
             },
           });
+          await attestAuthenticatedApiDeliveryAudience(
+            runtime,
+            message,
+            trustedApiPrincipal,
+          );
 
           const result = await generateChatResponse(
             runtime,
@@ -4332,10 +4440,12 @@ export async function handleChatRoutes(
           agentName,
           "openai-compat",
           roomKey,
+          trustedApiPrincipal,
         );
         const message = createMessageMemory({
           id: crypto.randomUUID() as UUID,
           entityId: userId,
+          agentId: runtime.agentId,
           roomId,
           content: {
             text: prompt,
@@ -4343,6 +4453,11 @@ export async function handleChatRoutes(
             channelType: ChannelType.API,
           },
         });
+        await attestAuthenticatedApiDeliveryAudience(
+          runtime,
+          message,
+          trustedApiPrincipal,
+        );
         const result = await generateChatResponse(
           runtime,
           message,
@@ -4576,11 +4691,13 @@ export async function handleChatRoutes(
             agentName,
             "anthropic-compat",
             roomKey,
+            trustedApiPrincipal,
           );
 
           const message = createMessageMemory({
             id: crypto.randomUUID() as UUID,
             entityId: userId,
+            agentId: runtime.agentId,
             roomId,
             content: {
               text: prompt,
@@ -4588,6 +4705,11 @@ export async function handleChatRoutes(
               channelType: ChannelType.API,
             },
           });
+          await attestAuthenticatedApiDeliveryAudience(
+            runtime,
+            message,
+            trustedApiPrincipal,
+          );
 
           const generation = await generateChatResponse(
             runtime,
@@ -4697,10 +4819,12 @@ export async function handleChatRoutes(
           agentName,
           "anthropic-compat",
           roomKey,
+          trustedApiPrincipal,
         );
         const message = createMessageMemory({
           id: crypto.randomUUID() as UUID,
           entityId: userId,
+          agentId: runtime.agentId,
           roomId,
           content: {
             text: prompt,
@@ -4708,6 +4832,11 @@ export async function handleChatRoutes(
             channelType: ChannelType.API,
           },
         });
+        await attestAuthenticatedApiDeliveryAudience(
+          runtime,
+          message,
+          trustedApiPrincipal,
+        );
         const result = await generateChatResponse(
           runtime,
           message,
@@ -4822,17 +4951,16 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const platformName =
-      typeof safeBody.platformName === "string" ? safeBody.platformName : null;
-    const channelType =
-      typeof safeBody.channelType === "string"
-        ? (safeBody.channelType as ChannelType)
-        : ChannelType.API;
-    const source = platformName || "agent_message_api";
-
     try {
       const runtime = state.runtime;
       const agentName = runtime.character.name ?? "Eliza";
+      const messagePrincipal: TrustedApiPrincipal =
+        trustedApiPrincipal.kind === "service_gateway"
+          ? {
+              kind: "service_gateway",
+              principalId: `${trustedApiPrincipal.principalId}:${userId}`,
+            }
+          : trustedApiPrincipal;
       // Per-user room key — matches cloud `handleMessage`'s
       // `stringToUuid(\`${agentId}:${userId}\`)` shape closely enough that
       // both surfaces produce stable, user-scoped conversation rooms.
@@ -4842,6 +4970,7 @@ export async function handleChatRoutes(
         agentName,
         "agent-message",
         `${agentIdParam}:${userId}`.slice(0, 120),
+        messagePrincipal,
       );
 
       const message = createMessageMemory({
@@ -4851,10 +4980,15 @@ export async function handleChatRoutes(
         roomId,
         content: {
           text,
-          source,
-          channelType,
+          source: "agent_message_api",
+          channelType: ChannelType.API,
         },
       });
+      await attestAuthenticatedApiDeliveryAudience(
+        runtime,
+        message,
+        messagePrincipal,
+      );
 
       const result = await generateChatResponse(
         runtime,

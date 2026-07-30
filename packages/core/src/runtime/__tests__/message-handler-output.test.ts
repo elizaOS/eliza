@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { HANDLE_RESPONSE_SCHEMA } from "../../actions/to-tool";
 import {
 	BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	replyEffectStatusFieldEvaluator,
 	replyTextFieldEvaluator,
 } from "../builtin-field-evaluators";
 import { parseMessageHandlerOutput } from "../message-handler";
@@ -19,6 +20,14 @@ describe("message handler retrieval hint output", () => {
 		expect(replyTextFieldEvaluator.parse("}")).toBe("");
 		expect(replyTextFieldEvaluator.parse(' " , ')).toBe("");
 		expect(replyTextFieldEvaluator.parse("Hello there.")).toBe("Hello there.");
+	});
+
+	it("normalizes semantic effect status and defaults malformed values to none", () => {
+		expect(replyEffectStatusFieldEvaluator.parse(" APPLIED ")).toBe("applied");
+		expect(replyEffectStatusFieldEvaluator.parse("non_applied")).toBe(
+			"non_applied",
+		);
+		expect(replyEffectStatusFieldEvaluator.parse("maybe")).toBe("none");
 	});
 
 	it("strips leaked model tool-call markup out of replyText", () => {
@@ -118,6 +127,7 @@ describe("message handler retrieval hint output", () => {
 			"contexts",
 			"intents",
 			"replyText",
+			"replyEffectStatus",
 			"candidateActionNames",
 			"facts",
 			"relationships",
@@ -130,6 +140,7 @@ describe("message handler retrieval hint output", () => {
 			"contexts",
 			"intents",
 			"replyText",
+			"replyEffectStatus",
 			"candidateActionNames",
 			"facts",
 			"relationships",
@@ -152,6 +163,7 @@ describe("message handler retrieval hint output", () => {
 			"contexts",
 			"intents",
 			"replyText",
+			"replyEffectStatus",
 			"candidateActionNames",
 			"facts",
 			"relationships",
@@ -164,6 +176,10 @@ describe("message handler retrieval hint output", () => {
 			contexts: { type: "array" },
 			intents: { type: "array" },
 			replyText: { type: "string" },
+			replyEffectStatus: {
+				type: "string",
+				enum: ["none", "applied", "non_applied"],
+			},
 			candidateActionNames: { type: "array" },
 			facts: { type: "array" },
 			relationships: { type: "array" },

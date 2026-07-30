@@ -1,26 +1,7 @@
-// Keyless contract test: replays a REAL-shaped recorded Google Calendar
-// events.list response (test/__fixtures__/google-calendar.recorded.json — the
-// `response.data.items[]` calendar_v3.Schema$Event wire objects with the real
-// Google Calendar v3 field names: summary, start/end {dateTime,timeZone} or
-// {date}, htmlLink, hangoutLink, conferenceData.entryPoints[].uri, attendees[],
-// organizer, iCalUID, recurringEventId, created, updated) through the FULL
-// normalize chain:
-//
-//   raw events.list wire
-//     -> GoogleCalendarClient.listEvents  (genuine mapEvent in @elizaos/plugin-google)
-//        -> GoogleCalendarEvent
-//     -> lifeOpsCalendarEventFromGoogle    (this plugin's src/internal/google-delegates.ts)
-//        -> LifeOpsCalendarEvent           (the DTO the CalendarSection feed renders)
-//
-// This validates the connector against the real provider shape with NO network:
-// the GoogleApiClientFactory is faked at the constructor seam (the same seam
-// plugin-google's own index.test.ts uses), so the recorded `events.list` body
-// flows through the real mapper. The key raw->normalized transforms exercised:
-// start.dateTime "...-04:00" -> ISO Z startAt; start.date -> all-day
-// midnight-Z bounds + isAllDay; hangoutLink/conferenceData -> conferenceLink;
-// summary -> title (with the (untitled) default for the cancelled/minimal row);
-// attendees[].displayName -> attendee.displayName; iCalUID/updated -> metadata.
-// google-calendar-connector.real.test.ts re-fetches the live API to catch drift.
+/**
+ * Recorded Google Calendar v3 events flow through the real provider and
+ * LifeOps normalizers, while cancellation tombstones remain change records.
+ */
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -109,20 +90,22 @@ describe("Google Calendar connector — recorded real events.list contract", () 
     // mapEvent emits one GoogleCalendarEvent per raw item (incl. cancelled).
     expect(googleEvents).toHaveLength(3);
 
-    const events = googleEvents.map((event) =>
-      lifeOpsCalendarEventFromGoogle({
-        event,
-        grant: ownerGrant,
-        agentId: AGENT_ID,
-        syncedAt: "2026-06-16T08:00:00.000Z",
-      }),
-    );
+    const events = googleEvents
+      .filter((event) => event.status !== "cancelled")
+      .map((event) =>
+        lifeOpsCalendarEventFromGoogle({
+          event,
+          grant: ownerGrant,
+          agentId: AGENT_ID,
+          syncedAt: "2026-06-16T08:00:00.000Z",
+        }),
+      );
 
     // --- timed event (raw start.dateTime "...-04:00") ---
     const timed = events[0];
     if (!timed) throw new Error("missing timed event");
     expect(timed.id).toBe(
-      "agent-7:google:owner:calendar:owner@example.com:evt_abc123",
+      "agent-7:google:owner:grant:connector-account:acct-123:calendar:owner@example.com:evt_abc123",
     );
     expect(timed.externalId).toBe("evt_abc123");
     expect(timed.provider).toBe("google");
@@ -150,21 +133,20 @@ describe("Google Calendar connector — recorded real events.list contract", () 
       name: "Owner Person",
       self: true,
     });
-    // attendees[].displayName -> attendee.displayName; the Google summary
-    // projection drops responseStatus/self/organizer/optional, so they default.
+    // RSVP state and roles survive the provider boundary.
     expect(timed.attendees).toEqual([
       {
         email: "owner@example.com",
         displayName: "Owner Person",
-        responseStatus: null,
-        self: false,
-        organizer: false,
+        responseStatus: "accepted",
+        self: true,
+        organizer: true,
         optional: false,
       },
       {
         email: "guest@elsewhere.com",
         displayName: "Guest",
-        responseStatus: null,
+        responseStatus: "needsAction",
         self: false,
         organizer: false,
         optional: false,
@@ -190,32 +172,16 @@ describe("Google Calendar connector — recorded real events.list contract", () 
     // No conference / no attendees on this event.
     expect(allDay.conferenceLink).toBeNull();
     expect(allDay.attendees).toEqual([]);
+    expect(allDay.metadata.transparency).toBe("transparent");
 
-    // --- minimal cancelled event (only id + status on the wire) ---
-    const minimal = events[2];
-    if (!minimal) throw new Error("missing minimal event");
-    expect(minimal.externalId).toBe("evt_min");
-    expect(minimal.status).toBe("cancelled");
-    // (untitled)/""/false/null defaults; calendarId falls back to "primary".
-    expect(minimal.title).toBe("(untitled)");
-    expect(minimal.description).toBe("");
-    expect(minimal.location).toBe("");
-    expect(minimal.isAllDay).toBe(false);
-    expect(minimal.timezone).toBeNull();
-    expect(minimal.htmlLink).toBeNull();
-    expect(minimal.conferenceLink).toBeNull();
-    expect(minimal.organizer).toBeNull();
-    expect(minimal.attendees).toEqual([]);
-    // mapEvent stamps the listEvents calendarId on every item, so even the
-    // sparse cancelled row carries the queried calendar id (not a "primary"
-    // fallback — that only applies when the wire item has no calendarId).
-    expect(minimal.calendarId).toBe("owner@example.com");
-    expect(minimal.id).toBe(
-      "agent-7:google:owner:calendar:owner@example.com:evt_min",
-    );
-    // no start/end on the wire -> startAt falls back to syncedAt, endAt to startAt.
-    expect(minimal.startAt).toBe("2026-06-16T08:00:00.000Z");
-    expect(minimal.endAt).toBe("2026-06-16T08:00:00.000Z");
+    const tombstone = googleEvents[2];
+    expect(tombstone).toMatchObject({
+      id: "evt_min",
+      calendarId: "owner@example.com",
+      status: "cancelled",
+    });
+    expect(tombstone?.start).toBeUndefined();
+    expect(tombstone?.end).toBeUndefined();
 
     // Every normalized event carries the required contract fields.
     for (const event of events) {

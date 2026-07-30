@@ -9,9 +9,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type {
@@ -29,6 +31,8 @@ export function createIMessageConnectorContribution(
     capabilities: ["imessage.read", "imessage.send"],
     modes: ["local"],
     describe: { label: "iMessage" },
+    receiptContract: "provider_receipt_id",
+    requiresApproval: true,
     async start() {},
     async disconnect() {
       // iMessage account is bound to the macOS Messages.app login; LifeOps
@@ -57,9 +61,16 @@ export function createIMessageConnectorContribution(
           to: payload.target,
           text: payload.message,
         });
+        const receipt = dispatchReceipt({
+          provider: "imessage",
+          providerMessageId: result.messageId,
+          payload,
+        });
+        if (!receipt) return missingProviderReceipt("iMessage");
         return {
           ok: true,
-          messageId: result.messageId ?? undefined,
+          messageId: result.messageId,
+          receipt,
         };
       } catch (error) {
         return errorToDispatchResult(error);

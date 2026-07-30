@@ -27,7 +27,7 @@ required unless noted as nullable):
       "kwargs": { "subaction": "update_event", ... }   // must satisfy the action's parameter schema
     }
   ],
-  "required_outputs": ["dentist", "Friday"],            // substrings the agent's RESPOND must contain (use sparingly)
+  "required_outputs": ["the dentist visit is Friday"],  // semantic facts/outcomes the response must communicate
   "first_question_fallback": {                          // null if not provided
     "canned_answer": "Personal calendar.",
     "applies_when": "agent asks which calendar"
@@ -112,10 +112,12 @@ maintainer's hint; treat it like a docstring on a unit test.
   scenario fails because the snapshot doesn't have the right data,
   pick different data — don't add a "first the agent should generate
   the world" step.
-- **Don't include the answer in `required_outputs`.** That field is for
-  facts the agent must communicate (e.g. "Tuesday" when the agent
-  rescheduled to Tuesday). It is not for keywords from the instruction.
-  Fewer required_outputs is better; an empty list is fine.
+- **Don't write keyword canaries in `required_outputs`.** Each item is a
+  complete fact or outcome the response must communicate (for example,
+  `"the appointment moved to Tuesday"`). The independent judge accepts
+  faithful paraphrases and rejects copied tokens attached to wrong facts.
+  Fewer required outputs is better; an empty list is fine when state and
+  actions fully prove the result.
 - **Don't paste vendor names without checking the snapshot.** The
   seed has Netflix, Spotify, Apple iCloud, NYT, Disney+, YouTube
   Premium, Github Pro, ChatGPT Plus. If you reference something else,

@@ -66,7 +66,11 @@ function deleteMessage(
   return new Promise((resolve) => {
     const captured: Partial<Captured> = {};
     const ctx = {
-      req: { url, headers: { host: "localhost" } },
+      req: {
+        url,
+        headers: { host: "localhost" },
+        socket: { remoteAddress: "127.0.0.1" },
+      },
       res: {},
       method: "DELETE",
       pathname: `/api/conversations/${convId}/messages/${messageId}`,

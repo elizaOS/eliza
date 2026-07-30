@@ -6,6 +6,7 @@
  */
 import type { EvaluationResult } from "../types/components";
 import type { ContextObject } from "../types/context-object";
+import type { EffectReceipt } from "../types/effects";
 import type {
 	ChatMessage,
 	GenerateTextResult,
@@ -136,6 +137,10 @@ export interface PlannerToolResult {
 	 * rephrase or add framing.
 	 */
 	verifiedUserFacing?: boolean;
+	/** Canonical mutation outcomes propagated from the action result. */
+	effectReceipts?: readonly EffectReceipt[];
+	/** Receipt IDs described by the exact canonical user-facing text. */
+	userFacingEffectReceiptIds?: readonly string[];
 	/**
 	 * Owner-declared short summary of a successful action result. Used only for
 	 * synthesized planner fallback replies when the model/evaluator emitted no

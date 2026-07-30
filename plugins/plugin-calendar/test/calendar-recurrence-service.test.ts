@@ -1,20 +1,6 @@
 /**
- * CalendarService recurring-event semantics against a real PGlite-backed
- * cache and the plugin-google service seam (spied, provider-shaped).
- *
- * Covers the RRULE lifecycle the flattened feed cannot express on its own:
- *
- *   - create: recurrence lines validated fail-closed, passed to the provider,
- *     and visible on readback (event.recurrence)
- *   - create (Apple / Apple fallback): recurring requests are rejected, never
- *     silently created as one-off events
- *   - update scope=series through an occurrence id: resolves the cached
- *     `recurringEventId` and patches the series master
- *   - update scope=instance + recurrence lines: 400 (rules are series-level)
- *   - delete scope=series: ONE provider delete against the master id and a
- *     purge of every cached occurrence of that series — while another
- *     account's rows survive (grantId isolation)
- *   - delete without scope: the addressed occurrence only
+ * Recurring-event create, instance/series mutation, and account-isolated cache
+ * semantics against real PGlite and a provider-shaped Google service seam.
  */
 
 import { PGlite } from "@electric-sql/pglite";
@@ -40,6 +26,7 @@ import { CalendarRepository } from "../src/service/CalendarRepository.js";
 import {
   type CalendarHostGate,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
@@ -75,7 +62,7 @@ function cachedOccurrence(args: {
 }): LifeOpsCalendarEvent {
   const startAt = args.startAt ?? "2026-07-08T13:00:00.000Z";
   return {
-    id: `${AGENT_ID}:google:owner:calendar:primary:${args.externalId}`,
+    id: `${AGENT_ID}:google:owner:grant:${args.grantId}:calendar:primary:${args.externalId}`,
     externalId: args.externalId,
     agentId: AGENT_ID,
     provider: "google",
@@ -107,21 +94,28 @@ function googleWireEvent(args: {
   id: string;
   recurrence?: string[];
   recurringEventId?: string;
+  start?: string;
+  end?: string;
+  etag?: string;
+  originalStartTime?: string;
 }) {
+  const start = args.start ?? "2026-07-08T13:00:00.000Z";
   return {
     id: args.id,
     calendarId: "primary",
     title: "Team Standup",
     status: "confirmed",
-    start: "2026-07-08T13:00:00.000Z",
-    end: "2026-07-08T13:30:00.000Z",
+    start,
+    end: args.end ?? new Date(Date.parse(start) + 30 * 60 * 1000).toISOString(),
     isAllDay: false,
     timeZone: "America/New_York",
     recurrence: args.recurrence ?? null,
     recurringEventId: args.recurringEventId ?? null,
     metadata: {
       iCalUID: `${args.id}@google.com`,
+      etag: args.etag ?? `"${args.id}-etag"`,
       recurringEventId: args.recurringEventId ?? null,
+      originalStartTime: args.originalStartTime ?? null,
       ...(args.recurrence ? { recurrence: args.recurrence } : {}),
     },
   };
@@ -129,22 +123,65 @@ function googleWireEvent(args: {
 
 function fakeGoogleService() {
   return {
-    createEvent: vi.fn(async (input: { recurrence?: string[] }) =>
-      googleWireEvent({ id: "created-master", recurrence: input.recurrence }),
+    createEvent: vi.fn(
+      async (input: {
+        title?: string;
+        recurrence?: string[];
+        start?: string;
+        end?: string;
+        idempotencyKey?: string;
+      }) =>
+        googleWireEvent({
+          id: "created-master",
+          recurrence: input.recurrence,
+          start: input.start,
+          end: input.end,
+          etag: '"created-etag"',
+        }),
     ),
-    updateEvent: vi.fn(async (input: { eventId: string }) =>
-      googleWireEvent({
-        id: input.eventId,
-        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
-      }),
+    updateEvent: vi.fn(
+      async (input: {
+        eventId: string;
+        recurrence?: string[];
+        expectedEtag?: string;
+      }) =>
+        googleWireEvent({
+          id: input.eventId,
+          recurrence: input.recurrence ?? ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+          start:
+            input.eventId === "standup-master"
+              ? "2026-07-01T13:00:00.000Z"
+              : undefined,
+          etag: '"trimmed-master-etag"',
+        }),
     ),
     deleteEvent: vi.fn(async () => undefined),
-    getEvent: vi.fn(async (input: { eventId: string }) =>
-      googleWireEvent({
+    getEvent: vi.fn(async (input: { eventId: string }) => {
+      if (input.eventId === "standup-master") {
+        return googleWireEvent({
+          id: input.eventId,
+          recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=6"],
+          start: "2026-07-01T13:00:00.000Z",
+          etag: '"master-etag"',
+        });
+      }
+      if (input.eventId.startsWith("standup_")) {
+        const start = input.eventId.includes("20260715")
+          ? "2026-07-15T13:00:00.000Z"
+          : "2026-07-08T13:00:00.000Z";
+        return googleWireEvent({
+          id: input.eventId,
+          recurringEventId: "standup-master",
+          start,
+          originalStartTime: start,
+          etag: '"occurrence-etag"',
+        });
+      }
+      return googleWireEvent({
         id: input.eventId,
         recurringEventId: "uncached-master",
-      }),
-    ),
+      });
+    }),
   };
 }
 
@@ -153,6 +190,9 @@ type FakeGoogle = ReturnType<typeof fakeGoogleService>;
 function fakeGate(): CalendarHostGate {
   return {
     getGoogleConnectorAccounts: async () => [],
+    resolveGuestAvailabilityGrants: async () => {
+      throw new Error("Guest availability is outside this test.");
+    },
     requireGoogleCalendarGrant: async () => GRANT_A,
     requireGoogleCalendarWriteGrant: async () => GRANT_A,
     createReminderPlan: async () => {},
@@ -189,7 +229,8 @@ const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   synced_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, calendar_id, external_event_id)
+  CONSTRAINT calendar_events_source_external_unique
+    UNIQUE (agent_id, provider, side, grant_id, calendar_id, external_event_id)
 )`;
 
 const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
@@ -204,9 +245,11 @@ const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
   purge_resync_reason TEXT,
   window_start_at TEXT NOT NULL,
   window_end_at TEXT NOT NULL,
+  next_sync_token TEXT,
   synced_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, calendar_id)
+  CONSTRAINT calendar_sync_states_source_unique
+    UNIQUE (agent_id, provider, side, grant_id, calendar_id)
 )`;
 
 let pg: PGlite;
@@ -220,6 +263,10 @@ beforeAll(async () => {
   await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
+  await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
 
   google = fakeGoogleService();
   const runtime = {
@@ -239,7 +286,7 @@ beforeAll(async () => {
   calendar = new CalendarService(runtime);
   calendar.setGate(fakeGate());
   repo = new CalendarRepository(runtime);
-});
+}, 30_000);
 
 afterAll(async () => {
   await pg.close();
@@ -384,6 +431,159 @@ describe("updateCalendarEvent — instance vs series", () => {
     expect(google.getEvent).not.toHaveBeenCalled();
   });
 
+  it("this-and-following conditionally trims then creates one deterministic following series", async () => {
+    const updated = await calendar.updateCalendarEvent(INTERNAL_URL, {
+      grantId: GRANT_A.id,
+      calendarId: "primary",
+      eventId: "standup_20260715T130000Z",
+      title: "Family Sync",
+      recurrenceScope: "this_and_following",
+      expectedProviderVersion: '"master-etag"',
+      expectedOccurrenceProviderVersion: '"occurrence-etag"',
+      idempotencyKey: "approved-split-operation",
+      notifyAttendees: false,
+    });
+
+    expect(google.updateEvent).toHaveBeenCalledTimes(1);
+    expect(google.updateEvent.mock.calls[0]?.[0]).toMatchObject({
+      eventId: "standup-master",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2"],
+      expectedEtag: '"master-etag"',
+    });
+    expect(google.createEvent).toHaveBeenCalledTimes(1);
+    expect(google.createEvent.mock.calls[0]?.[0]).toMatchObject({
+      title: "Family Sync",
+      start: "2026-07-15T13:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=4"],
+      idempotencyKey: "calendar-series-split:v1:approved-split-operation",
+    });
+    expect(updated.metadata.recurrenceMutation).toEqual({
+      scope: "this_and_following",
+      originalSeriesEventId: "standup-master",
+      targetOriginalStartAt: "2026-07-15T13:00:00.000Z",
+      futureExceptions: "reset",
+    });
+  });
+
+  it("rejects a moved following DTSTART that no longer matches the retained RRULE", async () => {
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        grantId: GRANT_A.id,
+        calendarId: "primary",
+        eventId: "standup_20260715T130000Z",
+        startAt: "2026-07-16T13:00:00.000Z",
+        recurrenceScope: "this_and_following",
+        expectedProviderVersion: '"master-etag"',
+        expectedOccurrenceProviderVersion: '"occurrence-etag"',
+        idempotencyKey: "mismatched-start-split-operation",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_RECURRENCE_START_MISMATCH",
+    });
+    expect(google.updateEvent).not.toHaveBeenCalled();
+    expect(google.createEvent).not.toHaveBeenCalled();
+  });
+
+  it("accepts a moved following DTSTART with an aligned replacement RRULE", async () => {
+    await calendar.updateCalendarEvent(INTERNAL_URL, {
+      grantId: GRANT_A.id,
+      calendarId: "primary",
+      eventId: "standup_20260715T130000Z",
+      startAt: "2026-07-16T13:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TH;COUNT=4"],
+      recurrenceScope: "this_and_following",
+      expectedProviderVersion: '"master-etag"',
+      expectedOccurrenceProviderVersion: '"occurrence-etag"',
+      idempotencyKey: "aligned-start-split-operation",
+    });
+
+    expect(google.updateEvent).toHaveBeenCalledTimes(1);
+    expect(google.createEvent.mock.calls[0]?.[0]).toMatchObject({
+      start: "2026-07-16T13:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TH;COUNT=4"],
+    });
+  });
+
+  it.each([
+    {
+      label: "selected occurrence",
+      expectedProviderVersion: '"master-etag"',
+      expectedOccurrenceProviderVersion: '"stale-occurrence-etag"',
+    },
+    {
+      label: "series master",
+      expectedProviderVersion: '"stale-master-etag"',
+      expectedOccurrenceProviderVersion: '"occurrence-etag"',
+    },
+  ])(
+    "rejects a stale $label binding before changing either series",
+    async ({ expectedProviderVersion, expectedOccurrenceProviderVersion }) => {
+      await expect(
+        calendar.updateCalendarEvent(INTERNAL_URL, {
+          grantId: GRANT_A.id,
+          calendarId: "primary",
+          eventId: "standup_20260715T130000Z",
+          title: "Family Sync",
+          recurrenceScope: "this_and_following",
+          expectedProviderVersion,
+          expectedOccurrenceProviderVersion,
+          idempotencyKey: "stale-split-operation",
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "PROVIDER_PRECONDITION_FAILED",
+      });
+      expect(google.updateEvent).not.toHaveBeenCalled();
+      expect(google.createEvent).not.toHaveBeenCalled();
+      expect(google.deleteEvent).not.toHaveBeenCalled();
+    },
+  );
+
+  it("requires a durable operation key before reading either recurrence target", async () => {
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        grantId: GRANT_A.id,
+        calendarId: "primary",
+        eventId: "standup_20260715T130000Z",
+        title: "Family Sync",
+        recurrenceScope: "this_and_following",
+        expectedProviderVersion: '"master-etag"',
+        expectedOccurrenceProviderVersion: '"occurrence-etag"',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "CALENDAR_RECURRENCE_SPLIT_IDEMPOTENCY_REQUIRED",
+    });
+    expect(google.getEvent).not.toHaveBeenCalled();
+    expect(google.updateEvent).not.toHaveBeenCalled();
+    expect(google.createEvent).not.toHaveBeenCalled();
+  });
+
+  it("quarantines an unknown following-series create outcome after the conditional trim", async () => {
+    const providerFailure = new Error("provider connection closed");
+    google.createEvent.mockRejectedValueOnce(providerFailure);
+
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        grantId: GRANT_A.id,
+        calendarId: "primary",
+        eventId: "standup_20260715T130000Z",
+        title: "Family Sync",
+        recurrenceScope: "this_and_following",
+        expectedProviderVersion: '"master-etag"',
+        expectedOccurrenceProviderVersion: '"occurrence-etag"',
+        idempotencyKey: "ambiguous-split-operation",
+      }),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "CALENDAR_RECURRENCE_SPLIT_OUTCOME_AMBIGUOUS",
+      cause: providerFailure,
+    });
+    expect(google.updateEvent).toHaveBeenCalledTimes(1);
+    expect(google.createEvent).toHaveBeenCalledTimes(1);
+  });
+
   it("recurrence lines imply a series edit and reach the provider patch", async () => {
     await calendar.updateCalendarEvent(INTERNAL_URL, {
       eventId: "standup_20260708T130000Z",
@@ -422,6 +622,44 @@ describe("updateCalendarEvent — instance vs series", () => {
     });
     expect(google.updateEvent).not.toHaveBeenCalled();
   });
+
+  it("rejects lossy this-and-following rule sets before either provider write", async () => {
+    google.getEvent
+      .mockImplementationOnce(async () =>
+        googleWireEvent({
+          id: "standup_20260715T130000Z",
+          recurringEventId: "standup-master",
+          start: "2026-07-15T13:00:00.000Z",
+          originalStartTime: "2026-07-15T13:00:00.000Z",
+          etag: '"occurrence-etag"',
+        }),
+      )
+      .mockImplementationOnce(async () =>
+        googleWireEvent({
+          id: "standup-master",
+          recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE", "EXDATE:20260722T130000Z"],
+          start: "2026-07-01T13:00:00.000Z",
+          etag: '"master-etag"',
+        }),
+      );
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        grantId: GRANT_A.id,
+        calendarId: "primary",
+        eventId: "standup_20260715T130000Z",
+        title: "Family Sync",
+        recurrenceScope: "this_and_following",
+        expectedProviderVersion: '"master-etag"',
+        expectedOccurrenceProviderVersion: '"occurrence-etag"',
+        idempotencyKey: "unsupported-split-operation",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_RECURRENCE_SPLIT_UNSUPPORTED",
+    });
+    expect(google.updateEvent).not.toHaveBeenCalled();
+    expect(google.createEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe("deleteCalendarEvent — instance vs series", () => {
@@ -458,6 +696,32 @@ describe("deleteCalendarEvent — instance vs series", () => {
       "other-account-standup_1",
       "standup_20260715T130000Z",
     ]);
+  });
+
+  it("this-and-following conditionally truncates the master and removes no earlier occurrence", async () => {
+    await calendar.deleteCalendarEvent(INTERNAL_URL, {
+      grantId: GRANT_A.id,
+      calendarId: "primary",
+      eventId: "standup_20260715T130000Z",
+      recurrenceScope: "this_and_following",
+      expectedProviderVersion: '"master-etag"',
+      expectedOccurrenceProviderVersion: '"occurrence-etag"',
+      idempotencyKey: "approved-truncate-operation",
+      notifyAttendees: false,
+    });
+
+    expect(google.updateEvent).toHaveBeenCalledTimes(1);
+    expect(google.updateEvent.mock.calls[0]?.[0]).toMatchObject({
+      eventId: "standup-master",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE;COUNT=2"],
+      expectedEtag: '"master-etag"',
+    });
+    expect(google.deleteEvent).not.toHaveBeenCalled();
+    const remainingIds = (await repo.listCalendarEvents(AGENT_ID, "google"))
+      .map((event) => event.externalId)
+      .sort();
+    expect(remainingIds).toContain("standup_20260708T130000Z");
+    expect(remainingIds).not.toContain("standup_20260715T130000Z");
   });
 
   it("rejects an invalid recurrenceScope fail-closed", async () => {

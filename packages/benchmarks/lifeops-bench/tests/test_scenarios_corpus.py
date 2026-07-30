@@ -63,41 +63,32 @@ def world_ids_by_seed() -> dict[int, dict[str, set[str]]]:
 
 
 def test_corpus_size_meets_minimum() -> None:
-    assert len(ALL_SCENARIOS) >= 40, (
-        f"Wave 2A baseline is 40 hand-authored scenarios; have {len(ALL_SCENARIOS)}"
-    )
+    assert (
+        len(ALL_SCENARIOS) >= 40
+    ), f"Wave 2A baseline is 40 hand-authored scenarios; have {len(ALL_SCENARIOS)}"
 
 
 def test_corpus_expands_current_core_by_exactly_10x() -> None:
-    # 1434 distinct base scenarios (1260 prior + 18 issue #12279 traveler
-    # timezone scenarios + 18 issue #12282 neurotypical-control scenarios +
-    # 18 issue #12281 comms-flood scenarios + 32 issue #12278 irregular-sleep
-    # scenarios + 54 issue #12280 ADHD/low-activation scenarios + 3 issue
-    # #14789 co-parenting mirrors + 6 issue #14783 overdue-communications
-    # scenarios + 4 issue #14784 reconnect-old-friends scenarios + 5 issue
-    # #14785 relationship-type-inference scenarios + 4 issue #14786
-    # knowledge-graph live-capture scenarios, minus the 2 crisis-language-guard
-    # scenarios removed with #12284 item 9 — the guard is not being built), each
-    # plus the current relationship/support packs, each re-emitted 10x under
-    # fixed prompt-prefix framings = 15774 robustness
-    # runs. The legacy keys
+    # The registered base corpus includes the nine parent counterfactual
+    # scenarios and the full composite-parent contract set. Each base is
+    # re-emitted under ten model-generated language challenges. The legacy keys
     # (existing/added/total/multiplierAdded) stay pinned for back-compat; the
     # base/variantsPerBase/totalRuns/summary keys state the split.
     assert count_lifeops_scenarios() == {
         "suite": "lifeops-bench",
-        "existing": 1434,
-        "added": 14340,
-        "total": 15774,
+        "existing": 1501,
+        "added": 15010,
+        "total": 16511,
         "multiplierAdded": 10,
-        "base": 1434,
+        "base": 1501,
         "variantsPerBase": 10,
-        "totalRuns": 15774,
-        "summary": "1434 base scenarios; 10x prompt-prefix robustness variants = 15774 runs",
+        "totalRuns": 16511,
+        "summary": "1501 base scenarios; 10x model-generated language challenges = 16511 runs",
     }
     assert validate_lifeops_scenarios() == {
         "valid": True,
-        "total": 15774,
-        "uniqueIds": 15774,
+        "total": 16511,
+        "uniqueIds": 16511,
         "duplicateIds": [],
         "emptyInstructions": [],
         "expansionMatches": True,
@@ -128,9 +119,9 @@ def test_every_action_name_exists_in_manifest(manifest_action_names: set[str]) -
 def test_every_domain_has_minimum_coverage() -> None:
     for domain in Domain:
         present = SCENARIOS_BY_DOMAIN.get(domain, [])
-        assert len(present) >= 3, (
-            f"domain {domain.value} has only {len(present)} scenarios; need >= 3"
-        )
+        assert (
+            len(present) >= 3
+        ), f"domain {domain.value} has only {len(present)} scenarios; need >= 3"
 
 
 def _looks_like_entity_id(value: str) -> bool:
@@ -142,7 +133,7 @@ def _looks_like_entity_id(value: str) -> bool:
     """
     for prefix in ID_PREFIX_TO_KIND:
         if value.startswith(prefix):
-            suffix = value[len(prefix):]
+            suffix = value[len(prefix) :]
             if suffix and suffix.isdigit():
                 return True
             if value in KNOWN_REMINDER_LISTS:
@@ -200,9 +191,9 @@ def test_at_least_30_percent_have_first_question_fallback() -> None:
     static = [s for s in ALL_SCENARIOS if s.mode == ScenarioMode.STATIC]
     with_fallback = sum(1 for s in static if s.first_question_fallback is not None)
     ratio = with_fallback / len(static)
-    assert ratio >= 0.30, (
-        f"at least 30% of STATIC scenarios must have a first_question_fallback; got {ratio:.0%}"
-    )
+    assert (
+        ratio >= 0.30
+    ), f"at least 30% of STATIC scenarios must have a first_question_fallback; got {ratio:.0%}"
 
 
 def test_live_scenarios_are_unscripted() -> None:
@@ -232,6 +223,30 @@ def test_persona_shape_sane() -> None:
                 f"{scenario.id} persona patience_turns {persona.patience_turns} < 5"
             )
     assert not bad, "persona issues:\n" + "\n".join(bad)
+
+
+def test_world_traveling_coparent_maps_exactly_to_g1_through_g48() -> None:
+    from eliza_lifeops_bench.scenarios._personas import (
+        PERSONA_MAYA_TRAVELING_COPARENT,
+    )
+    from eliza_lifeops_bench.scenarios.world_traveling_coparent import (
+        M1_CAPABILITY_IDS,
+        WORLD_TRAVELING_COPARENT_SCENARIOS,
+    )
+    from eliza_lifeops_bench.types import ScenarioMode
+
+    assert len(WORLD_TRAVELING_COPARENT_SCENARIOS) == 48
+    assert M1_CAPABILITY_IDS == tuple(f"G{index}" for index in range(1, 49))
+    assert all(
+        scenario.persona is PERSONA_MAYA_TRAVELING_COPARENT
+        for scenario in WORLD_TRAVELING_COPARENT_SCENARIOS
+    )
+    assert all(
+        scenario.mode is ScenarioMode.LIVE
+        and scenario.success_criteria
+        and scenario.world_assertions
+        for scenario in WORLD_TRAVELING_COPARENT_SCENARIOS
+    )
 
 
 def test_description_and_instruction_non_empty() -> None:
@@ -271,8 +286,7 @@ def test_authoring_validator_accepts_a_real_scenario() -> None:
         "persona_id": scenario.persona.id,
         "instruction": scenario.instruction,
         "ground_truth_actions": [
-            {"name": a.name, "kwargs": a.kwargs}
-            for a in scenario.ground_truth_actions
+            {"name": a.name, "kwargs": a.kwargs} for a in scenario.ground_truth_actions
         ],
         "required_outputs": list(scenario.required_outputs),
         "first_question_fallback": (
@@ -287,16 +301,14 @@ def test_authoring_validator_accepts_a_real_scenario() -> None:
         "max_turns": scenario.max_turns,
         "description": scenario.description,
     }
-    snapshot_name = (
-        "tiny_seed_42" if scenario.world_seed == 42 else "medium_seed_2026"
-    )
+    snapshot_name = "tiny_seed_42" if scenario.world_seed == 42 else "medium_seed_2026"
     results = validate_batch(
         [candidate],
         manifest_path=MANIFEST_PATH,
         snapshot_path=SNAPSHOTS_DIR / f"{snapshot_name}.json",
     )
-    assert results[0].is_valid, (
-        "round-trip validation failed: " + str(results[0].issues)
+    assert results[0].is_valid, "round-trip validation failed: " + str(
+        results[0].issues
     )
 
 
@@ -310,9 +322,7 @@ def test_authoring_validator_rejects_fake_action_name() -> None:
         "mode": "static",
         "persona_id": "alex_eng",
         "instruction": "do the bogus thing",
-        "ground_truth_actions": [
-            {"name": "CALENDAR_BOGUS_ACTION", "kwargs": {}}
-        ],
+        "ground_truth_actions": [{"name": "CALENDAR_BOGUS_ACTION", "kwargs": {}}],
         "required_outputs": [],
         "first_question_fallback": None,
         "world_seed": 2026,
@@ -326,8 +336,7 @@ def test_authoring_validator_rejects_fake_action_name() -> None:
     )
     assert not results[0].is_valid
     assert any(
-        "CALENDAR_BOGUS_ACTION" in i.message
-        for i in results[0].issues
+        "CALENDAR_BOGUS_ACTION" in i.message for i in results[0].issues
     ), results[0].issues
 
 
@@ -448,9 +457,7 @@ def test_schema_check_catches_afterMinutes_escalation() -> None:
             "source": "user_chat",
             "respectsGlobalPause": True,
             "ownerVisible": True,
-            "escalation": {
-                "steps": [{"afterMinutes": 0, "channelKey": "in_app"}]
-            },
+            "escalation": {"steps": [{"afterMinutes": 0, "channelKey": "in_app"}]},
         },
     )
     issues = check_action_shape(broken, "broken")

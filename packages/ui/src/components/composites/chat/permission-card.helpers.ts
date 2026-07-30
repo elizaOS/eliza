@@ -70,6 +70,7 @@ export interface PermissionCardFallbackChoice {
 
 export interface PermissionCardLabels {
   grantAccess?: string;
+  upgradeAccess?: string;
   openSettings?: string;
   notNow?: string;
   comingSoon?: string;

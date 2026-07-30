@@ -3,7 +3,7 @@
  * `sql` tag, exposes the `RuntimeDb.execute` shape, and coerces DB result cells
  * to text/number/boolean.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {
   queryChunks: Array<{ value?: unknown }>;
@@ -11,6 +11,14 @@ export type RawSqlQuery = {
 
 export type RuntimeDb = {
   execute: (query: RawSqlQuery) => Promise<unknown>;
+};
+
+export type TransactionalDb = RuntimeDb;
+
+type TransactionalRuntimeDb = RuntimeDb & {
+  transaction?: <T>(
+    callback: (tx: TransactionalDb) => Promise<T>,
+  ) => Promise<T>;
 };
 
 let cachedSqlRaw: ((query: string) => RawSqlQuery) | null = null;
@@ -81,7 +89,7 @@ export function parseJsonArray<T>(value: unknown): T[] {
   throw new Error("[CalendarSql] Expected JSON array");
 }
 
-function extractRows(result: unknown): Array<Record<string, unknown>> {
+export function extractRows(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) {
     return result
       .map((row) => asObject(row))
@@ -105,7 +113,7 @@ async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
   return cachedSqlRaw;
 }
 
-function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
+export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb {
   const db = runtime.adapter.db as RuntimeDb | undefined;
   if (!db || typeof db.execute !== "function") {
     throw new Error("runtime database adapter unavailable");
@@ -123,6 +131,38 @@ export async function executeRawSql(
   return extractRows(result);
 }
 
+export async function executeRawSqlTx(
+  tx: TransactionalDb,
+  sqlText: string,
+): Promise<Array<Record<string, unknown>>> {
+  const raw = await getSqlRaw();
+  const result = await tx.execute(raw(sqlText));
+  return extractRows(result);
+}
+
+/**
+ * Calendar selection and provider state must commit together. Reject adapters
+ * without a real SQL transaction rather than presenting a partial write as a
+ * recoverable preference failure.
+ */
+export async function withCalendarTransaction<T>(
+  runtime: IAgentRuntime,
+  operation: (tx: TransactionalDb) => Promise<T>,
+): Promise<T> {
+  const db = getRuntimeDb(runtime) as TransactionalRuntimeDb;
+  if (typeof db.transaction !== "function") {
+    throw new ElizaError(
+      "Calendar source mutation requires an atomic database transaction.",
+      {
+        code: "CALENDAR_SOURCE_TRANSACTION_REQUIRED",
+        context: { agentId: runtime.agentId },
+        severity: "fatal",
+      },
+    );
+  }
+  return db.transaction(operation);
+}
+
 // ---------------------------------------------------------------------------
 // SQL value encoders
 // ---------------------------------------------------------------------------
@@ -138,6 +178,13 @@ export function sqlText(value: string | null | undefined): string {
 
 export function sqlBoolean(value: boolean): string {
   return value ? "TRUE" : "FALSE";
+}
+
+export function sqlInteger(value: number): string {
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("invalid integer SQL literal");
+  }
+  return String(value);
 }
 
 export function sqlJson(value: unknown): string {

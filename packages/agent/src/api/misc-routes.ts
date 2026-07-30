@@ -483,7 +483,7 @@ export async function handleMiscRoutes(
       json(res, { ok: true });
     }
 
-    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const runId = `run-${crypto.randomUUID()}`;
 
     emitTerminalEvent({
       type: "terminal-output",

@@ -1520,6 +1520,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
   isWebSocketAuthorized as _isWebSocketAuthorized,
@@ -1564,6 +1565,7 @@ const isAuthorized = _isAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
+const isServerTokenAuthorized = _isServerTokenAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
 const resolveTerminalRunClientId = _resolveTerminalRunClientId;
@@ -3233,6 +3235,13 @@ async function handleRequest(
       json,
       error,
       readJsonBody,
+      callerAuthorization: isServerTokenAuthorized(req)
+        ? {
+            ok: true,
+            role: "USER",
+            principal: "shared-server-gateway",
+          }
+        : await resolveHostSessionAuthorization(),
     })
   ) {
     return;

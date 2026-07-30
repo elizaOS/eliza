@@ -19,7 +19,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
+  registerRuntimeManagedInternalActor,
   ServiceType,
   stringToUuid,
 } from "@elizaos/core";
@@ -371,11 +373,27 @@ async function dispatchPrompt(
     const connectorSource = originRoomId ? room?.source?.trim() : undefined;
     if (originRoomId && connectorSource) {
       deliveryCallback = async (content) => {
-        const sent = await runtime.sendMessageToTarget(
-          { source: connectorSource, roomId: originRoomId },
-          { ...content, agentVoiced: true },
+        const disposition = inspectSendHandlerResult(
+          await runtime.sendMessageToTarget(
+            { source: connectorSource, roomId: originRoomId },
+            { ...content, agentVoiced: true },
+          ),
         );
-        return sent ? [sent] : [];
+        if (disposition.kind !== "delivered") {
+          throw new Error(
+            `Trigger reply was not fully delivered: ${disposition.message}`,
+          );
+        }
+        if (
+          disposition.receipt &&
+          (disposition.receipt.persistence.status === "partial" ||
+            disposition.receipt.persistence.status === "failed")
+        ) {
+          throw new Error(
+            `Trigger reply reached the provider, but local evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+          );
+        }
+        return [...disposition.memories];
       };
     }
 
@@ -398,7 +416,15 @@ async function dispatchPrompt(
       userName: "trigger",
       source: room?.source ?? MESSAGE_SOURCE_TRIGGER_PROMPT,
     });
-    await messageService.handleMessage(runtime, message, deliveryCallback);
+    const releaseInternalActor = registerRuntimeManagedInternalActor(
+      runtime,
+      entityId,
+    );
+    try {
+      await messageService.handleMessage(runtime, message, deliveryCallback);
+    } finally {
+      releaseInternalActor();
+    }
   } catch (err) {
     const detail =
       err instanceof Error

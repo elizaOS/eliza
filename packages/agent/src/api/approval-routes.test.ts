@@ -52,6 +52,7 @@ function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
     },
     channel: "discord",
     reason: "Send this reply?",
+    idempotencyKey: null,
     expiresAt: new Date("2026-06-24T19:00:00.000Z"),
     resolvedAt: null,
     resolvedBy: null,

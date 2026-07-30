@@ -101,6 +101,29 @@ export async function executeRawSql(
   return extractRows(result);
 }
 
+/**
+ * A caller-owned database transaction handle. Structurally identical to the
+ * runtime DB, so a drizzle `db.transaction(tx => …)` callback argument is
+ * accepted directly: plugins that must commit a domain mutation and its owner
+ * approval together pass their `tx` into the approval store.
+ */
+export type TransactionalDb = {
+  execute: (query: RawSqlQuery) => Promise<unknown>;
+};
+
+/**
+ * Transactional analogue of {@link executeRawSql}. Every statement issued
+ * through the same handle commits or rolls back as one unit.
+ */
+export async function executeRawSqlTx(
+  tx: TransactionalDb,
+  sqlText: string,
+): Promise<Array<Record<string, unknown>>> {
+  const raw = await getSqlRaw();
+  const result = await tx.execute(raw(sqlText));
+  return extractRows(result);
+}
+
 export function sqlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }

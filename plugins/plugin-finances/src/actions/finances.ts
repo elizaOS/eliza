@@ -17,6 +17,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import {
+  decodeChildcareWorkScenarioInput,
+  evaluateChildcareWorkScenario,
+} from "../childcare-work-scenario.ts";
 import { FinancesServiceError } from "../finance-normalize.ts";
 import {
   FinancesService,
@@ -43,6 +47,9 @@ export const OWNER_FINANCE_SIMILES: readonly string[] = [
   "CANCEL_NETFLIX",
   "CANCEL_HULU",
   "MANAGE_SUBSCRIPTIONS",
+  "CHILDCARE_COST",
+  "CHILDCARE_WORK_SCENARIO",
+  "RETURN_TO_WORK",
 ];
 
 /**
@@ -60,7 +67,7 @@ export const MONEY_PARAMETERS: readonly {
     name: "subaction",
     description:
       "dashboard | list_sources | add_source | remove_source | import_csv | list_transactions | spending_summary | recurring_charges " +
-      "| subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
+      "| childcare_work_scenario | subscription_audit | subscription_cancel | subscription_status. Defaults to dashboard for ambiguous intents.",
     required: false,
     schema: { type: "string" },
   },
@@ -161,6 +168,13 @@ export const MONEY_PARAMETERS: readonly {
     required: false,
     schema: { type: "boolean" },
   },
+  {
+    name: "scenarioJson",
+    description:
+      "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero.",
+    required: false,
+    schema: { type: "string" },
+  },
   // Subscription-side params.
   {
     name: "serviceName",
@@ -238,7 +252,8 @@ type PaymentsSubaction =
   | "import_csv"
   | "list_transactions"
   | "spending_summary"
-  | "recurring_charges";
+  | "recurring_charges"
+  | "childcare_work_scenario";
 
 type PaymentsActionParams = {
   subaction?: PaymentsSubaction;
@@ -258,6 +273,7 @@ type PaymentsActionParams = {
   limit?: number;
   merchantContains?: string;
   onlyDebits?: boolean;
+  scenarioJson?: string;
 };
 
 function mergeParams(
@@ -294,10 +310,47 @@ function normalizeSubaction(value: unknown): PaymentsSubaction | null {
     "list_transactions",
     "spending_summary",
     "recurring_charges",
+    "childcare_work_scenario",
   ];
   return (subactions as string[]).includes(normalized)
     ? (normalized as PaymentsSubaction)
     : null;
+}
+
+/** Evaluates the versioned JSON contract without touching finance storage. */
+export function runChildcareWorkScenarioJson(
+  scenarioJson: string | undefined,
+): ActionResult {
+  if (typeof scenarioJson !== "string" || scenarioJson.trim().length === 0) {
+    return {
+      success: false,
+      text: "A childcare/work comparison requires scenarioJson using childcare-work-scenario.v1.",
+      data: { error: "MISSING_CHILDCARE_WORK_SCENARIO" },
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(scenarioJson);
+  } catch {
+    // error-policy:J3 The planner/user JSON is an untrusted action boundary;
+    // a parse failure remains explicitly invalid and never becomes an empty
+    // or zero-valued financial scenario.
+    return {
+      success: false,
+      text: "The childcare/work scenario JSON is invalid; no comparison was calculated.",
+      data: { error: "INVALID_CHILDCARE_WORK_SCENARIO_JSON" },
+    };
+  }
+  const scenario = decodeChildcareWorkScenarioInput(parsed);
+  const result = evaluateChildcareWorkScenario(scenario);
+  return {
+    success: result.status === "complete",
+    text:
+      result.status === "complete"
+        ? `Compared ${result.options.length} household childcare/work options as cash-flow and total-economic ranges. This is decision support, not a recommendation about which adult should work.`
+        : `The childcare/work comparison is incomplete: ${result.missingAssumptions.length} material assumption${result.missingAssumptions.length === 1 ? "" : "s"} must be supplied. No numeric totals were produced for incomplete options.`,
+    data: { scenario: result },
+  };
 }
 
 async function runPaymentsActionInner(
@@ -308,8 +361,12 @@ async function runPaymentsActionInner(
 ): Promise<ActionResult> {
   void state;
   const params = mergeParams(message, options);
-  const service = new FinancesService(runtime);
   const subaction = normalizeSubaction(params.subaction) ?? "dashboard";
+  if (subaction === "childcare_work_scenario") {
+    return runChildcareWorkScenarioJson(params.scenarioJson);
+  }
+
+  const service = new FinancesService(runtime);
 
   switch (subaction) {
     case "dashboard": {

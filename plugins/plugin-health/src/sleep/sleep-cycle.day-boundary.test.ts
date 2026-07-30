@@ -55,4 +55,26 @@ describe("resolveLifeOpsDayBoundary DST handling", () => {
     expect(boundary.startOfDayAt).toBe("2026-06-15T04:00:00.000Z");
     expect(boundary.endOfDayAt).toBe("2026-06-16T04:00:00.000Z");
   });
+
+  it("starts Santiago's transition day at the first valid local time", () => {
+    const boundary = resolveLifeOpsDayBoundary({
+      nowMs: Date.parse("2026-09-06T16:00:00.000Z"),
+      timezone: "America/Santiago",
+      sleepCycle: NO_SLEEP_CYCLE,
+    });
+
+    expect(boundary.startOfDayAt).toBe("2026-09-06T04:00:00.000Z");
+    expect(boundary.endOfDayAt).toBe("2026-09-07T03:00:00.000Z");
+  });
+
+  it("ends Apia's December 29 day at the first instant after its skipped date", () => {
+    const boundary = resolveLifeOpsDayBoundary({
+      nowMs: Date.parse("2011-12-29T22:00:00.000Z"),
+      timezone: "Pacific/Apia",
+      sleepCycle: NO_SLEEP_CYCLE,
+    });
+
+    expect(boundary.startOfDayAt).toBe("2011-12-29T10:00:00.000Z");
+    expect(boundary.endOfDayAt).toBe("2011-12-30T10:00:00.000Z");
+  });
 });

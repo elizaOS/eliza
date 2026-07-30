@@ -296,6 +296,7 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
         name?: string;
         unique?: boolean;
         method?: string;
+        where?: SQL;
       };
     }
 
@@ -305,7 +306,10 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       const indexColumns: IndexColumn[] = indexCols.map((col) => {
         if (is(col, SQL)) {
           return {
-            expression: dialect.sqlToQuery(col).sql,
+            // The "indexes" invoke source makes embedded column refs serialize
+            // unqualified ("col", not "table"."col"), matching drizzle-kit's
+            // own index serialization.
+            expression: dialect.sqlToQuery(col, "indexes").sql,
             isExpression: true,
           };
         } else {
@@ -325,12 +329,23 @@ export async function generateSnapshot(schema: DrizzleSchema): Promise<SchemaSna
       const name =
         idx.config.name || `${tableName}_${indexColumns.map((c) => c.expression).join("_")}_index`;
 
-      indexesObject[name] = {
+      const indexEntry: SchemaIndex = {
         name,
         columns: indexColumns,
         isUnique: idx.config.unique || false,
         method: idx.config.method || "btree",
       };
+
+      // Partial-index predicate. Serialized with the "indexes" invoke source so
+      // column refs come out unqualified — index predicates can only reference
+      // the indexed table, and the committed SQL migrations write them that way
+      // (e.g. WHERE "idempotency_key" IS NOT NULL). Dropping this clause would
+      // turn declared partial unique indexes into full ones.
+      if (idx.config.where) {
+        indexEntry.where = dialect.sqlToQuery(idx.config.where, "indexes").sql;
+      }
+
+      indexesObject[name] = indexEntry;
     });
 
     // Drizzle check constraint interface

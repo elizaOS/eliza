@@ -47,7 +47,10 @@ export default scenario({
   finalChecks: [
     {
       type: "definitionCountDelta",
+      // The owner never dictates a label, so accept any reasonable title the
+      // agent picks for the recurring reminder instead of one invented string.
       title: "Mira exchange pack list",
+      titleAliases: ["Mira exchange", "exchange day", "handoff", "pack list"],
       delta: 1,
     },
     {

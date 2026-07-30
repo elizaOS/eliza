@@ -302,6 +302,11 @@ const ALLOWLIST: Record<string, string> = {
   "/api/lifeops/connectors/health/:provider/success (lifeops.health.success)":
     "health-connector OAuth provider return; arrives without dashboard JWT",
 
+  // plugin-calendar — Google pushes arrive without a dashboard session and
+  // are authenticated against the persisted channel/resource/token binding.
+  "/api/lifeops/calendar/google/webhook (google-calendar-push-notification)":
+    "Google calendar push delivery; provider binding, body bounds, and admission limits apply before scheduling",
+
   // @elizaos/agent
   "/api/media/:filename (media-file)":
     "iOS in-process media GET; the sha256 hash in the path is the capability",

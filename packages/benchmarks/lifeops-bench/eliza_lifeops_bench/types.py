@@ -13,8 +13,18 @@ DisruptionKind = Literal[
     "rule_change",
 ]
 
-ExpectedWorldMutation = Literal["auto", "changed", "unchanged", "optional"]
+ExpectedWorldMutation = Literal["changed", "unchanged", "optional"]
 ScenarioTier = Literal["T1", "T2", "T3", "T4"]
+ScenarioOpeningMode = Literal["authored", "simulated"]
+StaticGradingMode = Literal["semantic", "offline_conformance"]
+TrustedActionRisk = Literal["read", "proposal", "approved_write"]
+TrustedEvidenceBoundary = Literal[
+    "production_connector",
+    "sandbox_connector",
+    "production_runtime",
+    "native_device",
+]
+TrustedAttestationKind = Literal["operation", "terminal_postcondition"]
 
 
 class Domain(Enum):
@@ -73,6 +83,7 @@ class MessageTurn:
     latency_ms: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    model_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +135,75 @@ class Disruption:
 
 
 @dataclass(frozen=True)
+class TrustedActionPolicy:
+    """Pre-dispatch allow rule for one canonical external action surface."""
+
+    name: str
+    discriminator_field: str | None
+    allowed_discriminators: tuple[str, ...]
+    risk: TrustedActionRisk
+    required_kwargs: tuple[str, ...] = ()
+    max_calls: int = 1
+
+
+@dataclass(frozen=True)
+class TrustedEvidenceRequirement:
+    """Receipt contract that a LIVE scenario must satisfy outside model prose.
+
+    ``contract_id`` identifies the capability under test. Every
+    ``required_assertion_id`` must be attested by a trusted tool receipt before
+    a positive judge verdict can terminate the run. The receipt validator
+    deliberately rejects deterministic LifeWorld results as real-provider
+    evidence.
+    """
+
+    contract_id: str
+    contract_version: int
+    contract_sha256: str
+    required_assertion_ids: tuple[str, ...]
+    allowed_actions: tuple[TrustedActionPolicy, ...]
+    terminal_attestation_required: bool = True
+
+
+@dataclass(frozen=True)
+class VerifiedEvidenceReceipt:
+    """Runner-owned proof returned by an authenticated execution boundary.
+
+    The model and its adapter cannot populate this structure. The runner adds
+    it only after a configured verifier authenticates the receipt, binds it to
+    the current run and tool call, and recomputes the referenced artifact
+    digest from the received bytes.
+    """
+
+    schema: Literal["lifeops.verified-evidence.v1"]
+    receipt_id: str
+    provider: str
+    boundary: TrustedEvidenceBoundary
+    run_id: str
+    scenario_id: str
+    seed: int
+    tool_call_id: str
+    action: str
+    action_sha256: str
+    contract_id: str
+    assertion_ids: tuple[str, ...]
+    observed_at: str
+    artifact_sha256: str
+    request_sha256: str
+    payload_sha256: str
+    success: bool
+    verification_method: Literal["hmac-sha256"]
+    signing_key_id: str
+    executor_version: str
+    contract_sha256: str
+    request_ordinal: int
+    attestation_kind: TrustedAttestationKind
+    request_envelope: dict[str, Any]
+    signed_receipt: dict[str, Any]
+    artifact_manifest: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class Scenario:
     """A single benchmark scenario."""
 
@@ -143,10 +223,27 @@ class Scenario:
     success_criteria: list[str] = field(default_factory=list)
     world_assertions: list[str] = field(default_factory=list)
     disruptions: list[Disruption] = field(default_factory=list)
-    expected_world_mutation: ExpectedWorldMutation = "auto"
+    expected_world_mutation: ExpectedWorldMutation = "changed"
     # T1 extraction/normalization; T2 multi-turn friction; T3 longitudinal
     # journey; T4 adversarial/boundary behavior.
     tier: ScenarioTier | None = None
+    trusted_evidence_requirement: TrustedEvidenceRequirement | None = None
+    opening_mode: ScenarioOpeningMode = "simulated"
+    # Optional language stressor used by the simulated-user model for both
+    # STATIC and LIVE turns. It shapes surface wording without changing the
+    # hidden goal, ground truth, or world contract.
+    opening_challenge: str | None = None
+    # STATIC-only wording-class assertions graded per-criterion by the LLM
+    # judge (see LifeOpsEvaluator.judge_static_semantics). Structural facts —
+    # ids, subactions, timestamps, recurrence — belong in ground-truth action
+    # kwargs where deterministic matching can verify them; rubric criteria
+    # cover phrasing and content quality that deterministic checks cannot.
+    static_rubric: list[str] = field(default_factory=list)
+    # Kwarg names (canonical spelling) whose values are free-form prose for
+    # this scenario, excluded from deterministic kwarg equality the same way
+    # the global _SOFT_KWARGS set is. Wording quality for these fields is
+    # graded semantically via static_rubric instead of verbatim equality.
+    soft_kwargs: list[str] = field(default_factory=list)
 
 
 def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
@@ -236,7 +333,9 @@ def compute_cache_hit_pct(
     ):
         return None
     denominator = (
-        int(input_tokens) + int(cache_creation_input_tokens) + int(cache_read_input_tokens)
+        int(input_tokens)
+        + int(cache_creation_input_tokens)
+        + int(cache_read_input_tokens)
     )
     if denominator <= 0:
         return 0.0
@@ -281,6 +380,41 @@ class TurnResult:
     model_tier: str | None = None
     prompt_cache_key: str | None = None
     model_name: str | None = None
+    verified_evidence: list[VerifiedEvidenceReceipt] = field(default_factory=list)
+
+
+@dataclass
+class EvaluatorTraceEntry:
+    """Exact evaluator/judge inputs, outputs, telemetry, and provider payload."""
+
+    turn_number: int
+    role: Literal["simulated_user", "judge"]
+    provider: str | None
+    model_name: str
+    input_messages: list[dict[str, Any]]
+    output_text: str | None
+    finish_reason: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    latency_ms: int
+    cost_usd: float | None
+    raw_provider_response: dict[str, Any]
+    accepted_verdict: bool | None = None
+    verdict_reason: str | None = None
+    # Which judging surface produced this entry (None for simulated_user).
+    # The scorer keys off "static_semantic" entries to fold semantic verdicts
+    # into STATIC scoring without re-running the judge.
+    judge_kind: Literal["live_satisfaction", "static_semantic"] | None = None
+    # Enforced per-criterion verdicts (id, met, evidence_line_id, evidence).
+    # A positive claim without eligible transcript evidence is already
+    # downgraded here. None when the judge output or criterion coverage was
+    # invalid, or when the entry is not a judge verdict.
+    criterion_verdicts: list[dict[str, Any]] | None = None
+    # True when the judge returned unparseable output. Distinguishes "the
+    # judge failed to produce a verdict" from "the judge found every
+    # criterion unmet" in recorded traces.
+    verdict_invalid: bool = False
 
 
 @dataclass
@@ -289,6 +423,7 @@ class ScenarioResult:
 
     scenario_id: str
     seed: int
+    static_grading_mode: StaticGradingMode | None
     turns: list[TurnResult]
     state_hash_match: bool
     output_substring_matches: list[bool]
@@ -300,16 +435,24 @@ class ScenarioResult:
     total_cost_usd: float
     total_latency_ms: int
     error: str | None = None
+    evaluator_trace: list[EvaluatorTraceEntry] = field(default_factory=list)
 
 
 @dataclass
 class BenchmarkResult:
     """Aggregated results for a full benchmark run.
 
+    ``model_name`` names the simulated-user evaluator for compatibility with
+    existing result consumers. The acting system is identified independently
+    by ``agent_adapter``, ``agent_provider``, and ``agent_model_name`` so an
+    evaluator can never be mistaken for the model being benchmarked.
+
     ``total_cost_usd`` is the sum of agent + evaluator spend so existing
     consumers see the same headline number. ``agent_cost_usd`` and
     ``eval_cost_usd`` split that total so operators can answer "how much
     of this run was the executor vs. the judge / simulated user?".
+    ``unpriced_*_call_count`` makes that headline an explicitly known-cost
+    subtotal whenever a provider did not publish pricing.
     """
 
     scenarios: list[ScenarioResult]
@@ -322,6 +465,9 @@ class BenchmarkResult:
     judge_model_name: str
     timestamp: str
     seeds: int
+    agent_model_name: str | None = None
+    agent_adapter: str | None = None
+    agent_provider: str | None = None
     agent_cost_usd: float = 0.0
     eval_cost_usd: float = 0.0
     expected_run_count: int = 0
@@ -329,3 +475,11 @@ class BenchmarkResult:
     successful_run_count: int = 0
     complete: bool = False
     workload_sha256: str = ""
+    evaluator_provider: str | None = None
+    judge_provider: str | None = None
+    static_grading_mode: StaticGradingMode = "semantic"
+    static_run_count: int = 0
+    semantic_static_run_count: int = 0
+    semantic_static_judged_count: int = 0
+    unpriced_agent_call_count: int = 0
+    unpriced_eval_call_count: int = 0

@@ -8,8 +8,18 @@
  * round-trip.
  */
 
-import type { Memory, UUID } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import type {
+  ActionResult,
+  EffectReceipt,
+  HandlerCallback,
+  Memory,
+  UUID,
+} from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  executePlannedToolCall,
+} from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
 import type { ScheduledTask } from "../src/lifeops/scheduled-task/index.ts";
 import {
@@ -36,6 +46,14 @@ function autonomyMessage(agentId: UUID, text: string): Memory {
   const message = ownerMessage(agentId, text);
   message.content.source = "autonomy";
   return message;
+}
+
+function receipt(result: ActionResult | undefined): EffectReceipt {
+  expect(result?.effectReceipts).toHaveLength(1);
+  const value = result?.effectReceipts?.[0];
+  if (!value) throw new Error("expected one effect receipt");
+  expect(result?.userFacingEffectReceiptIds).toEqual([value.receiptId]);
+  return value;
 }
 
 describe("SCHEDULED_TASK action", () => {
@@ -69,6 +87,11 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(created?.success).toBe(true);
+    expect(receipt(created)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.create",
+      commit: { kind: "durable", id: expect.any(String) },
+    });
     const createdTask = (created?.data as { task?: ScheduledTask } | undefined)
       ?.task;
     expect(createdTask?.kind).toBe("reminder");
@@ -86,6 +109,10 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(listed?.success).toBe(true);
+    expect(receipt(listed)).toMatchObject({
+      outcome: "noop",
+      operation: "lifeops.scheduled_task.list",
+    });
     const tasks = (listed?.data as { tasks?: ScheduledTask[] } | undefined)
       ?.tasks;
     if (!tasks) throw new Error("list did not return scheduled tasks");
@@ -101,6 +128,12 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(snoozed?.success).toBe(true);
+    expect(receipt(snoozed)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.snooze",
+      resource: { id: taskId },
+      commit: { kind: "durable", id: expect.any(String) },
+    });
     const snoozedTask = (snoozed?.data as { task?: ScheduledTask } | undefined)
       ?.task;
     expect(snoozedTask?.state.lastDecisionLog).toMatch(/snoozed until/);
@@ -115,11 +148,237 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(completed?.success).toBe(true);
+    expect(receipt(completed)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.complete",
+      resource: { id: taskId },
+      commit: { kind: "durable", id: expect.any(String) },
+    });
     const completedTask = (
       completed?.data as { task?: ScheduledTask } | undefined
     )?.task;
     expect(completedTask?.state.status).toBe("completed");
   });
+
+  it("proves mutation preconditions, replay noops, and every ledger-backed transition", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const idempotencyKey = `scheduled-receipt-${crypto.randomUUID()}`;
+    const parameters = {
+      subaction: "create",
+      kind: "custom",
+      promptInstructions: "exercise every receipt-backed transition",
+      trigger: { kind: "manual" },
+      priority: "medium",
+      idempotencyKey,
+    };
+    const created = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "create transition test task"),
+      undefined,
+      { parameters },
+      undefined,
+      [],
+    );
+    expect(created?.success).toBe(true);
+    expect(receipt(created).outcome).toBe("applied");
+    const task = (created?.data as { task?: ScheduledTask } | undefined)?.task;
+    if (!task) throw new Error("create did not return a task");
+
+    const duplicate = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "retry transition test task"),
+      undefined,
+      { parameters },
+      undefined,
+      [],
+    );
+    expect(duplicate?.success).toBe(true);
+    expect(receipt(duplicate)).toMatchObject({
+      outcome: "noop",
+      operation: "lifeops.scheduled_task.create",
+      resource: { id: task.taskId },
+      idempotency: { key: idempotencyKey, replayed: true },
+    });
+
+    const updated = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "make it important"),
+      undefined,
+      {
+        parameters: {
+          subaction: "update",
+          taskId: task.taskId,
+          patch: { priority: "high" },
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(updated?.success).toBe(true);
+    expect(receipt(updated)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.update",
+      resource: { id: task.taskId },
+      idempotency: { key: null, replayed: false },
+    });
+
+    const unchanged = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "keep it important"),
+      undefined,
+      {
+        parameters: {
+          subaction: "update",
+          taskId: task.taskId,
+          patch: { priority: "high" },
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(unchanged?.success).toBe(true);
+    expect(receipt(unchanged)).toMatchObject({
+      outcome: "noop",
+      operation: "lifeops.scheduled_task.update",
+      resource: { id: task.taskId },
+    });
+
+    const completed = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "finish it"),
+      undefined,
+      { parameters: { subaction: "complete", taskId: task.taskId } },
+      undefined,
+      [],
+    );
+    expect(receipt(completed).outcome).toBe("applied");
+
+    const completeReplay = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "finish it again"),
+      undefined,
+      { parameters: { subaction: "complete", taskId: task.taskId } },
+      undefined,
+      [],
+    );
+    expect(completeReplay?.success).toBe(true);
+    expect(receipt(completeReplay)).toMatchObject({
+      outcome: "noop",
+      operation: "lifeops.scheduled_task.complete",
+    });
+
+    const closedSnooze = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "snooze the closed task"),
+      undefined,
+      {
+        parameters: {
+          subaction: "snooze",
+          taskId: task.taskId,
+          minutes: 5,
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(closedSnooze?.success).toBe(false);
+    expect(receipt(closedSnooze)).toMatchObject({
+      outcome: "failed",
+      operation: "lifeops.scheduled_task.snooze",
+      failure: { code: "INVALID_STATE_TRANSITION" },
+    });
+
+    const reopened = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "reopen it"),
+      undefined,
+      { parameters: { subaction: "reopen", taskId: task.taskId } },
+      undefined,
+      [],
+    );
+    expect(reopened?.success).toBe(true);
+    expect(receipt(reopened)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.reopen",
+    });
+
+    const cancelled = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "cancel it"),
+      undefined,
+      { parameters: { subaction: "cancel", taskId: task.taskId } },
+      undefined,
+      [],
+    );
+    expect(cancelled?.success).toBe(true);
+    expect(receipt(cancelled)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.cancel",
+    });
+
+    const cancelReplay = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "cancel it again"),
+      undefined,
+      { parameters: { subaction: "cancel", taskId: task.taskId } },
+      undefined,
+      [],
+    );
+    expect(cancelReplay?.success).toBe(true);
+    expect(receipt(cancelReplay)).toMatchObject({
+      outcome: "noop",
+      operation: "lifeops.scheduled_task.cancel",
+    });
+  }, 120_000);
+
+  it("binds one callback to the validated receipt through the canonical executor", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const callback = vi.fn<HandlerCallback>(async () => []);
+    const message = autonomyMessage(
+      runtime.agentId,
+      "create an executor receipt task",
+    );
+    // Owner-private actions require an attested delivery audience
+    // (disclosureGate stamped by ownerPrivateAction at plugin assembly).
+    // Production always attests before the executor runs — handleMessage
+    // attests every inbound turn from canonical room state — so mirror that
+    // seam here. The runtime provisions its own SELF room (id = agentId, agent
+    // as sole participant) at initialize, and the agent-actor turn clears the
+    // gate via the internal_agent_turn basis.
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message,
+        callback,
+        userRoles: ["OWNER"],
+        activeContexts: ["tasks"],
+      },
+      {
+        name: "SCHEDULED_TASKS",
+        params: {
+          action: "create",
+          kind: "custom",
+          promptInstructions: "prove the scheduler executor receipt",
+          trigger: { kind: "manual" },
+          idempotencyKey: `executor-scheduled-${crypto.randomUUID()}`,
+        },
+      },
+    );
+
+    const applied = receipt(result);
+    expect(applied).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.scheduled_task.create",
+    });
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toMatchObject({
+      text: result.text,
+      effectReceiptIds: [applied.receiptId],
+    });
+  }, 120_000);
 
   it("rejects missing-subaction calls cleanly", async () => {
     runtimeResult = await createLifeOpsTestRuntime();

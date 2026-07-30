@@ -12,6 +12,7 @@ import type {
 	ContextGate,
 	RoleGate,
 } from "./contexts";
+import type { EffectReceipt } from "./effects";
 import type { Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -328,6 +329,15 @@ export const HOOK_MODES: readonly ActionMode[] = [
  */
 export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
 
+/**
+ * Non-overridable policy for components whose prompt or result can contain
+ * owner-private data. Unlike a role gate, this binds access to the attested
+ * destination audience as well as the actor.
+ */
+export interface DisclosureGate {
+	require: "owner_exclusive";
+}
+
 export interface Action {
 	/** Action name */
 	name: string;
@@ -374,7 +384,14 @@ export interface Action {
 	 */
 	override?: boolean;
 
-	/** Optional tags for categorization */
+	/**
+	 * Optional structural capability tags. Effectful actions use
+	 * `capability:write|update|delete|schedule|send|delegate|execute`; add
+	 * `effect:idempotent` only when every invocation carries a stable operation
+	 * key and the authoritative provider or store safely replays it. Add
+	 * `effect:receipt-required` only after every successful visible branch binds
+	 * exact user-facing text to a validated effect receipt.
+	 */
 	tags?: string[];
 
 	/**
@@ -539,6 +556,13 @@ export interface Action {
 
 	/** Optional role gate checked by planners before exposing this action. */
 	roleGate?: RoleGate;
+
+	/**
+	 * Destination-audience policy enforced before catalog exposure, execution,
+	 * provider composition, and visible delivery. Operator role policy cannot
+	 * weaken this gate.
+	 */
+	disclosureGate?: DisclosureGate;
 
 	/**
 	 * Optional connector account policy checked by planner tool exposure and
@@ -782,6 +806,9 @@ export interface Provider {
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 
+	/** Non-overridable destination-audience policy for sensitive context. */
+	disclosureGate?: DisclosureGate;
+
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];
 
@@ -876,6 +903,20 @@ export interface ActionResult {
 	 * than echoing the action verbatim.
 	 */
 	verifiedUserFacing?: boolean;
+
+	/**
+	 * Canonical mutation outcomes produced by this action. `success` alone is
+	 * never proof that an external change committed; only an applied receipt with
+	 * commit proof can ground a user-facing completion claim.
+	 */
+	effectReceipts?: readonly EffectReceipt[];
+
+	/**
+	 * Receipt IDs described by the exact `userFacingText`. The runtime accepts a
+	 * completion confirmation only when every ID resolves to an active applied
+	 * receipt from this turn.
+	 */
+	userFacingEffectReceiptIds?: readonly string[];
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

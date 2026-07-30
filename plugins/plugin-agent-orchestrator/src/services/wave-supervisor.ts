@@ -12,10 +12,16 @@ import { spawnSync } from "node:child_process";
 import type {
   Content,
   IAgentRuntime,
+  SendHandlerResult,
   Service as ServiceType,
   UUID,
 } from "@elizaos/core";
-import { ElizaError, logger, Service } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  Service,
+} from "@elizaos/core";
 import type { TaskThreadDetailDto } from "./orchestrator-task-mapper.js";
 import type { CreateTaskInput } from "./orchestrator-task-types.js";
 import { parseOwnerRepo } from "./workspace-github.js";
@@ -363,7 +369,7 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
     target: { source: string; roomId?: UUID; accountId?: string },
     content: Content,
-  ) => Promise<unknown>;
+  ) => SendHandlerResult;
 };
 
 export interface WaveStatus {
@@ -983,9 +989,11 @@ export class WaveSupervisor extends Service {
             ? `open PR ${collision.rightId}`
             : `lane ${collision.rightId}`;
         const text = `Wave ${collision.waveId} collision warning: lane ${collision.leftId} now overlaps ${other} on ${collision.paths.join(", ")}. Re-scope or coordinate before continuing.`;
-        await send(
-          { source: target.source, roomId: target.roomId as UUID },
-          { text, source: target.source },
+        requireConfirmedSendHandlerDelivery(
+          await send(
+            { source: target.source, roomId: target.roomId as UUID },
+            { text, source: target.source },
+          ),
         );
       } catch (error) {
         this.warnedCollisions.delete(collision.key);

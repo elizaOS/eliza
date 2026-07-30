@@ -7,7 +7,7 @@
  *   PATCH  /api/lifeops/entities/:id
  *   POST   /api/lifeops/entities/:id/identities
  *   POST   /api/lifeops/entities/merge
- *   GET    /api/lifeops/entities/resolve?q=
+ *   GET    /api/lifeops/entities/resolve?q=&platform=&handle=&connectorAccountId=
  */
 
 import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
@@ -50,6 +50,10 @@ function parseEntityFilter(url: URL): EntityFilter {
   if (nameContains) filter.nameContains = nameContains;
   const hasPlatform = url.searchParams.get("hasPlatform");
   if (hasPlatform) filter.hasPlatform = hasPlatform;
+  const hasConnectorAccountId = url.searchParams.get("hasConnectorAccountId");
+  if (hasConnectorAccountId) {
+    filter.hasConnectorAccountId = hasConnectorAccountId;
+  }
   const limit = url.searchParams.get("limit");
   if (limit && /^\d+$/.test(limit)) {
     filter.limit = Number.parseInt(limit, 10);
@@ -95,11 +99,21 @@ export async function handleEntityRoutes(
     const q = url.searchParams.get("q") ?? undefined;
     const platform = url.searchParams.get("platform") ?? undefined;
     const handle = url.searchParams.get("handle") ?? undefined;
+    const connectorAccountId =
+      url.searchParams.get("connectorAccountId") ?? undefined;
     const type = url.searchParams.get("type") ?? undefined;
     const candidates = await store.resolve({
       ...(q ? { name: q } : {}),
       ...(type ? { type } : {}),
-      ...(platform && handle ? { identity: { platform, handle } } : {}),
+      ...(platform && handle
+        ? {
+            identity: {
+              platform,
+              handle,
+              ...(connectorAccountId ? { connectorAccountId } : {}),
+            },
+          }
+        : {}),
     });
     json(res, { candidates });
     return true;
@@ -140,6 +154,7 @@ export async function handleEntityRoutes(
     const body = await readJsonBody<{
       platform?: unknown;
       handle?: unknown;
+      connectorAccountId?: unknown;
       displayName?: unknown;
       evidence?: unknown;
       confidence?: unknown;
@@ -155,6 +170,9 @@ export async function handleEntityRoutes(
     const result = await store.observeIdentity({
       platform,
       handle,
+      ...(typeof body.connectorAccountId === "string"
+        ? { connectorAccountId: body.connectorAccountId }
+        : {}),
       ...(typeof body.displayName === "string"
         ? { displayName: body.displayName }
         : {}),

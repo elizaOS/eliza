@@ -11,6 +11,7 @@ import {
   getConnectorAccountManager,
   InMemoryConnectorAccountStorage,
   type RouteHelpers,
+  type SendHandlerOutcome,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
@@ -56,9 +57,22 @@ async function createHarness(options: {
   omitCallerAuthorization?: boolean;
   roomSource?: string;
   sendHandlers?: Map<string, unknown>;
+  sendOutcome?: SendHandlerOutcome | undefined;
+  returnUnconfirmedSend?: boolean;
 }) {
   const sendMessageToTarget = vi.fn(
-    async (_target: TargetInfo, _content: Content) => undefined,
+    async (_target: TargetInfo, _content: Content) =>
+      options.returnUnconfirmedSend
+        ? undefined
+        : (options.sendOutcome ?? {
+            kind: "delivered",
+            receipt: {
+              providerMessageIds: ["inbox-provider-message-1"],
+              acceptedAt: 1_780_000_000_000,
+              persistence: { status: "persisted", memoryIds: [] },
+            },
+            memories: [],
+          }),
   );
   const logger = {
     error: vi.fn(),

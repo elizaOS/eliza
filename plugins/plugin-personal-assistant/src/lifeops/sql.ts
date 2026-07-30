@@ -3,7 +3,7 @@
  * builder and exposes the small helpers (executeRawSql, sqlText, parseJsonRecord)
  * the repository uses to run parameterized queries against the local store.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {
   queryChunks: Array<{ value?: unknown }>;
@@ -169,9 +169,9 @@ export class OptimisticLockError extends Error {
  * the same `.execute(raw)` shape as the global runtime DB, but every call
  * goes through the transaction. Throwing rolls back; returning commits.
  *
- * Drizzle's pg adapter supports `db.transaction(fn)` natively. If the adapter
- * does not (e.g., a test fake), we fall back to running `fn` against the
- * global DB and warn — atomicity is not guaranteed in that mode.
+ * Drizzle's pg adapter supports `db.transaction(fn)` natively. An adapter that
+ * cannot provide that boundary is rejected: callers use this helper because a
+ * partial commit would leave household state internally inconsistent.
  */
 export async function withTransaction<T>(
   runtime: IAgentRuntime,
@@ -181,10 +181,38 @@ export async function withTransaction<T>(
   if (typeof db.transaction === "function") {
     return await db.transaction(async (tx) => fn(tx));
   }
-  // Adapter does not support transactions (likely a test fake). Run inline.
-  return await fn({
-    execute: (query) => db.execute(query),
-  });
+  throw new ElizaError(
+    "[LifeOpsSql] atomic transaction support is required for multi-record LifeOps mutations",
+    {
+      code: "LIFEOPS_TRANSACTION_REQUIRED",
+      context: { agentId: runtime.agentId },
+      severity: "fatal",
+    },
+  );
+}
+
+/**
+ * Run a safety-critical mutation only when the runtime adapter can guarantee
+ * a real transaction. Approval claims and provider-receipt persistence must
+ * use a distinct error code because a partial commit can make an external send
+ * look retriable and requires an operator-facing diagnosis.
+ */
+export async function withRequiredTransaction<T>(
+  runtime: IAgentRuntime,
+  fn: (tx: TransactionalDb) => Promise<T>,
+): Promise<T> {
+  const db = getRuntimeDb(runtime) as DrizzleTransactionalDb;
+  if (typeof db.transaction !== "function") {
+    throw new ElizaError(
+      "[LifeOpsSql] atomic transaction support is required for approval-gated delivery",
+      {
+        code: "LIFEOPS_ATOMIC_TRANSACTION_REQUIRED",
+        context: { agentId: runtime.agentId },
+        severity: "fatal",
+      },
+    );
+  }
+  return db.transaction(async (tx) => fn(tx));
 }
 
 /**

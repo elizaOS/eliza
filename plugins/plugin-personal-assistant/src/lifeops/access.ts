@@ -9,11 +9,40 @@
  */
 
 import { hasOwnerAccess } from "@elizaos/agent";
-import type { Action, Memory } from "@elizaos/core";
+import {
+  type Action,
+  type Memory,
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type Provider,
+} from "@elizaos/core";
 import type { LifeOpsGoogleConnectorStatus } from "../contracts/index.js";
 import type { LifeOpsService } from "./service.js";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
+
+/** Stamp every owner-operation action, including inline children, at assembly. */
+export function ownerPrivateAction(action: Action): Action {
+  return {
+    ...action,
+    disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+    ...(action.subActions
+      ? {
+          subActions: action.subActions.map((child) =>
+            typeof child === "string" ? child : ownerPrivateAction(child),
+          ),
+        }
+      : {}),
+  };
+}
+
+/** Owner providers are never stable-cache candidates across audience changes. */
+export function ownerPrivateProvider(provider: Provider): Provider {
+  return {
+    ...provider,
+    disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+    cacheStable: false,
+  };
+}
 
 export async function hasLifeOpsAccess(
   runtime: Parameters<NonNullable<Action["validate"]>>[0],

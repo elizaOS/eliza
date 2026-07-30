@@ -20,6 +20,18 @@ import { InboxView } from "../src/components/inbox/InboxView.tsx";
 import { inboxPlugin } from "../src/plugin.ts";
 
 describe("inboxPlugin view registration", () => {
+  it("marks every triage action and provider owner-exclusive", () => {
+    expect(inboxPlugin.actions?.length).toBeGreaterThan(0);
+    for (const action of inboxPlugin.actions ?? []) {
+      expect(action.disclosureGate).toEqual({ require: "owner_exclusive" });
+    }
+    expect(inboxPlugin.providers?.length).toBeGreaterThan(0);
+    for (const provider of inboxPlugin.providers ?? []) {
+      expect(provider.disclosureGate).toEqual({ require: "owner_exclusive" });
+      expect(provider.cacheStable).toBe(false);
+    }
+  });
+
   it("registers exactly one view with the inbox descriptor", () => {
     expect(inboxPlugin.views).toBeDefined();
     expect(inboxPlugin.views).toHaveLength(1);

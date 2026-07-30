@@ -26,6 +26,7 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  inspectSendHandlerResult,
   logger,
   type Media,
   type Memory,
@@ -787,8 +788,34 @@ async function dispatchToRoom(
     };
   }
   try {
-    const sent = await runtime.sendMessageToTarget(target, content);
-    return { ok: true, ...(sent?.id ? { messageId: sent.id } : {}) };
+    const disposition = inspectSendHandlerResult(
+      await runtime.sendMessageToTarget(target, content),
+    );
+    if (disposition.kind === "delivered") {
+      if (
+        disposition.receipt &&
+        (disposition.receipt.persistence.status === "partial" ||
+          disposition.receipt.persistence.status === "failed")
+      ) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: false,
+          message: `The provider accepted the message, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+        };
+      }
+      return {
+        ok: true,
+        messageId:
+          disposition.memories.at(-1)?.id ?? disposition.providerMessageId,
+      };
+    }
+    return {
+      ok: false,
+      reason: "transport_error",
+      userActionable: disposition.kind === "not_delivered",
+      message: disposition.message,
+    };
   } catch (err) {
     // error-policy:J1 boundary translation — connector dispatch failures become
     // a structured DispatchResult the action surfaces to the model/user.

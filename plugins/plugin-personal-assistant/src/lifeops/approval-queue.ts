@@ -22,6 +22,8 @@ import type {
   ApprovalAction,
   ApprovalChannel,
   ApprovalEnqueueInput,
+  ApprovalEnqueueResult,
+  ApprovalExecutionCapability,
   ApprovalExecutionClaim,
   ApprovalExecutionCompletion,
   ApprovalExecutionFailure,
@@ -35,6 +37,7 @@ import type {
 import { ApprovalQueueCompatibilityError } from "./approval-queue.types.js";
 import { getChannelRegistry } from "./channels/index.js";
 import { buildApprovalChoiceText } from "./choice-markers.js";
+import type { TransactionalDb } from "./sql.js";
 
 interface AssistantEventEmitter {
   emit?: (event: {
@@ -164,46 +167,83 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string,
-    private readonly delegate: ApprovalQueue,
+    private readonly delegate: ApprovalExecutionCapability,
   ) {}
 
   async enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
-    const request = await this.delegate.enqueue(input);
+    return (await this.enqueueWithResult(input)).request;
+  }
+
+  /**
+   * A replayed idempotency key returns the existing row untouched: the owner
+   * already has a task and a prompt for it, and re-surfacing would duplicate
+   * both.
+   */
+  async enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult> {
+    const enqueued = await this.delegate.enqueueWithResult(input);
+    if (enqueued.reused) return enqueued;
     try {
-      await scheduleApprovalTask(this.runtime, {
-        agentId: this.agentId,
-        requestId: request.id,
-        subjectUserId: input.subjectUserId,
-        action: input.action,
-        channel: input.channel,
-        reason: input.reason,
-        requestedBy: input.requestedBy,
-        createdAt: request.createdAt,
-      });
+      await this.surfaceEnqueuedApproval(enqueued.request);
     } catch (error) {
       // error-policy:J2 The approval row and ScheduledTask are one owner-visible
       // operation. Remove the still-pending row before adding context.
-      await this.delegate.removePending(request.id, input.subjectUserId);
+      await this.delegate.removePending(
+        enqueued.request.id,
+        input.subjectUserId,
+      );
       throw new Error(
-        `[ApprovalQueue] failed to schedule approval task for ${request.id}; rolled back approval row`,
+        `[ApprovalQueue] failed to schedule approval task for ${enqueued.request.id}; rolled back approval row`,
         { cause: error },
       );
     }
+    return enqueued;
+  }
 
+  /**
+   * The owner already confirmed this at an authenticated boundary, so no task,
+   * chat choice, or notification is raised — a prompt here would ask for
+   * consent that was just given.
+   */
+  enqueueConfirmed(
+    input: ApprovalEnqueueInput,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest> {
+    return this.delegate.enqueueConfirmed(input, resolution);
+  }
+
+  enqueueTransactional(
+    input: ApprovalEnqueueInput,
+    tx: TransactionalDb,
+  ): Promise<ApprovalEnqueueResult> {
+    return this.delegate.enqueueTransactional(input, tx);
+  }
+
+  async surfaceEnqueuedApproval(request: ApprovalRequest): Promise<void> {
+    await scheduleApprovalTask(this.runtime, {
+      agentId: this.agentId,
+      requestId: request.id,
+      subjectUserId: request.subjectUserId,
+      action: request.action,
+      channel: request.channel,
+      reason: request.reason,
+      requestedBy: request.requestedBy,
+      createdAt: request.createdAt,
+    });
     try {
       emitApprovalChoiceEvent(this.runtime, {
         requestId: request.id,
-        reason: input.reason,
-        action: input.action,
+        reason: request.reason,
+        action: request.action,
       });
     } catch (error) {
       // error-policy:J7 Chat choice emission is a diagnostic side-channel.
       this.runtime.reportError("ApprovalQueue.chatChoice", error, {
         requestId: request.id,
-        action: input.action,
+        action: request.action,
       });
     }
-    return request;
   }
 
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>> {
@@ -212,6 +252,13 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
 
   byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null> {
     return this.delegate.byId(id, subjectUserId);
+  }
+
+  byIdempotencyKey(
+    idempotencyKey: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null> {
+    return this.delegate.byIdempotencyKey(idempotencyKey, subjectUserId);
   }
 
   approve(
@@ -281,7 +328,9 @@ class LifeOpsApprovalQueue implements ApprovalQueue {
   }
 }
 
-function assertExecutionCapability(candidate: unknown): ApprovalQueue {
+function assertExecutionCapability(
+  candidate: unknown,
+): ApprovalExecutionCapability {
   if (
     !candidate ||
     typeof candidate !== "object" ||
@@ -295,7 +344,7 @@ function assertExecutionCapability(candidate: unknown): ApprovalQueue {
       (candidate as { protocolVersion?: unknown } | null)?.protocolVersion,
     );
   }
-  return candidate as ApprovalQueue;
+  return candidate as ApprovalExecutionCapability;
 }
 
 export function createApprovalQueue(

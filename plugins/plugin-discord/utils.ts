@@ -673,6 +673,12 @@ export function buildDiscordComponents(
 	}
 }
 
+export interface DiscordChunkSendOutcome {
+	messages: readonly DiscordMessage[];
+	/** Present only when at least one later provider operation failed. */
+	failure?: unknown;
+}
+
 export async function sendMessageInChunks(
 	channel: TextChannel,
 	content: string,
@@ -683,6 +689,7 @@ export async function sendMessageInChunks(
 	components?: DiscordActionRow[],
 	runtime?: IAgentRuntime,
 	replyToMode: ReplyToMode = "first",
+	outcomeObserver?: (outcome: DiscordChunkSendOutcome) => void,
 ): Promise<DiscordMessage[]> {
 	const sentMessages: DiscordMessage[] = [];
 	let lastSendError: unknown = null;
@@ -786,6 +793,10 @@ export async function sendMessageInChunks(
 		);
 	}
 
+	outcomeObserver?.({
+		messages: sentMessages,
+		...(lastSendError ? { failure: lastSendError } : {}),
+	});
 	return sentMessages;
 }
 

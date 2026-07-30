@@ -251,7 +251,17 @@ describe("TaskWatchdogService cap warnings (#8901)", () => {
             source: target.source,
             text: content.text ?? "",
           });
-          return undefined;
+          return {
+            kind: "delivered" as const,
+            receipt: {
+              providerMessageIds: [
+                `watchdog-message-${opts.posts?.length ?? 0}`,
+              ] as [string],
+              acceptedAt: 1_780_000_000_000,
+              persistence: { status: "persisted" as const, memoryIds: [] },
+            },
+            memories: [],
+          };
         }
       : undefined;
     return {

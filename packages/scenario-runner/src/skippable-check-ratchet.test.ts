@@ -80,7 +80,8 @@ function finalCheckTypes(sourceFile: ts.SourceFile): string[] {
         for (const prop of el.properties) {
           if (!ts.isPropertyAssignment(prop)) continue;
           if (propName(prop.name) !== "type") continue;
-          if (ts.isStringLiteral(prop.initializer)) types.push(prop.initializer.text);
+          if (ts.isStringLiteral(prop.initializer))
+            types.push(prop.initializer.text);
         }
       }
       return;

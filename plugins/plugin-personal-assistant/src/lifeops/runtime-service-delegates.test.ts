@@ -1,7 +1,7 @@
 /** Verifies the connector runtime-service delegates (X, Calendly) forward calls and apply egress filtering. Deterministic vitest with stubbed runtime services. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, SendHandlerOutcome } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { LifeOpsConnectorGrant } from "../contracts/index.js";
 import {
@@ -34,6 +34,18 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
     getService: vi.fn((serviceType: string) => services[serviceType] ?? null),
     setSetting: vi.fn(),
   } as IAgentRuntime;
+}
+
+function confirmedSend(id: string): SendHandlerOutcome {
+  return {
+    kind: "delivered",
+    receipt: {
+      providerMessageIds: [id],
+      acceptedAt: 1_780_000_000_000,
+      persistence: { status: "persisted", memoryIds: [] },
+    },
+    memories: [],
+  };
 }
 
 function grant(
@@ -275,7 +287,9 @@ describe("runtime service delegates", () => {
   });
 
   it("delegates Discord sends through the runtime service with accountId target", async () => {
-    const handleSendMessage = vi.fn(async () => undefined);
+    const handleSendMessage = vi.fn(async () =>
+      confirmedSend("discord-message-1"),
+    );
     const runtime = runtimeWithServices({
       discord: { handleSendMessage },
     });
@@ -304,6 +318,24 @@ describe("runtime service delegates", () => {
         metadata: { accountId: "acct-owner-1" },
       }),
     );
+  });
+
+  it("does not report a Discord send as handled without delivery evidence", async () => {
+    const runtime = runtimeWithServices({
+      discord: { handleSendMessage: vi.fn(async () => undefined) },
+    });
+
+    await expect(
+      sendDiscordMessageWithRuntimeService({
+        runtime,
+        grant: grant({ provider: "discord" }),
+        channelId: "1234567890",
+        text: "ship it",
+      }),
+    ).resolves.toMatchObject({
+      status: "unavailable",
+      reason: expect.stringContaining("handleSendMessage failed"),
+    });
   });
 
   it("delegates Telegram searches with accountId-first context and params", async () => {

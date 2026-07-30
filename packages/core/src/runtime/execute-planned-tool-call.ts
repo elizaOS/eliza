@@ -7,7 +7,13 @@
  */
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
+import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
+import {
+	authorizeOwnerExclusiveDisclosure,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+} from "../security/trusted-delivery-audience";
 import {
 	emitStreamingHook,
 	getStreamingContext,
@@ -34,6 +40,11 @@ import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
 import { actionGateFailure } from "./action-gate";
+import {
+	actionFailureResult as failureResult,
+	settleActionHandler,
+	stringifyActionError as stringifyError,
+} from "./action-handler-settlement";
 import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { parseJsonObject } from "./json-output";
@@ -163,6 +174,14 @@ export function projectActionResultForClipboard(
 		...(result.verifiedUserFacing !== undefined
 			? { verifiedUserFacing: result.verifiedUserFacing }
 			: {}),
+		...(result.effectReceipts !== undefined
+			? { effectReceipts: result.effectReceipts }
+			: {}),
+		...(result.userFacingEffectReceiptIds !== undefined
+			? {
+					userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
+				}
+			: {}),
 		...(safeActionName ? { data: { actionName: safeActionName } } : {}),
 		...(result.turnComplete !== undefined
 			? { turnComplete: result.turnComplete }
@@ -255,6 +274,21 @@ export async function executePlannedToolCall(
 	const gateFailure = actionGateFailure(action, executorCtx);
 	if (gateFailure) {
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
+	}
+	if (action.disclosureGate?.require === "owner_exclusive") {
+		const disclosure = await authorizeOwnerExclusiveDisclosure(
+			runtime,
+			executorCtx.message,
+		);
+		if (!disclosure.allowed) {
+			return emitToolResult(
+				toolCall,
+				failureResult(
+					action.name,
+					`Owner-private disclosure denied: ${disclosure.reason}`,
+				),
+			);
+		}
 	}
 
 	const normalizedArgs = expandEnumShortForm(
@@ -377,64 +411,98 @@ export async function executePlannedToolCall(
 			});
 	}
 
-	let resultForEvent: ActionResult;
-	try {
-		const callback = executorCtx.callback;
-		const actionCallback: typeof executorCtx.callback = callback
-			? (response, actionName) => callback(response, actionName ?? action.name)
-			: undefined;
-		const result = await runWithMessageTrajectoryContext(
-			runtime,
-			executorCtx.message,
-			async () => {
-				// Egress (#10469): this is the true execution boundary. Restore real
-				// secrets into the handler args ONLY here — the model, transcripts, logs,
-				// and trajectory upstream kept the placeholders. Fail loud if the model
-				// emitted a this-turn placeholder we cannot resolve, so a placeholder is
-				// never sent to a real command/connector/endpoint. No-op (and zero cost)
-				// when secret-swap is disabled: there is no turn session on the context.
-				const secretSwapSession = getTrajectoryContext()?.secretSwapSession;
-				if (secretSwapSession && handlerOptions.parameters !== undefined) {
-					handlerOptions.parameters = secretSwapSession.restoreInValue(
-						handlerOptions.parameters,
-						{ failOnUnresolved: true },
+	const ownerExclusive = action.disclosureGate?.require === "owner_exclusive";
+	const protectedCallback =
+		ownerExclusive && executorCtx.callback
+			? async (
+					...callbackArgs: Parameters<NonNullable<typeof executorCtx.callback>>
+				) => {
+					const disclosure = await revalidateOwnerExclusiveDisclosure(
+						runtime,
+						executorCtx.message,
+					);
+					if (disclosure.allowed) {
+						return executorCtx.callback?.(...callbackArgs) ?? [];
+					}
+					return (
+						executorCtx.callback?.(
+							{
+								text: PRIVACY_DENIED_TEXT,
+								actions: ["PRIVACY_DENIED"],
+								data: {
+									privacyDenied: true,
+									privacyReason: disclosure.reason,
+								},
+							},
+							"PRIVACY_DENIED",
+						) ?? []
 					);
 				}
-				// Egress (#10469 / #7007): restore real named-entity PII here too —
-				// including the REPLY action's own text, so the tool call runs against the
-				// real recipient and the user sees their real contacts, while the model,
-				// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
-				// a surrogate the model rewrote, or a genuinely new name it introduced, is
-				// simply left as-is.
-				const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
-				if (piiSwapSession && handlerOptions.parameters !== undefined) {
-					handlerOptions.parameters = piiSwapSession.restoreInValue(
-						handlerOptions.parameters,
-					);
-				}
-				return runWithActionRoutingContext(
-					{ actionName: action.name, modelClass: action.modelClass },
-					() =>
-						withActionStep(runtime, action.name, () =>
-							runWithSuppressedModelStream(() =>
-								action.handler(
-									runtime,
-									executorCtx.message,
-									executorCtx.state,
-									handlerOptions,
-									actionCallback,
-									executorCtx.responses,
+			: executorCtx.callback;
+	let resultForEvent = await settleActionHandler({
+		runtime,
+		action,
+		callback: protectedCallback,
+		invoke: (actionCallback) =>
+			runWithMessageTrajectoryContext(
+				runtime,
+				executorCtx.message,
+				async () => {
+					// Egress (#10469): this is the true execution boundary. Restore real
+					// secrets into the handler args ONLY here — the model, transcripts, logs,
+					// and trajectory upstream kept the placeholders. Fail loud if the model
+					// emitted a this-turn placeholder we cannot resolve, so a placeholder is
+					// never sent to a real command/connector/endpoint. No-op (and zero cost)
+					// when secret-swap is disabled: there is no turn session on the context.
+					const secretSwapSession = getTrajectoryContext()?.secretSwapSession;
+					if (secretSwapSession && handlerOptions.parameters !== undefined) {
+						handlerOptions.parameters = secretSwapSession.restoreInValue(
+							handlerOptions.parameters,
+							{ failOnUnresolved: true },
+						);
+					}
+					// Egress (#10469 / #7007): restore real named-entity PII here too —
+					// including the REPLY action's own text, so the tool call runs against the
+					// real recipient and the user sees their real contacts, while the model,
+					// trajectory, and logs kept the surrogates. Best-effort (no failOnUnresolved):
+					// a surrogate the model rewrote, or a genuinely new name it introduced, is
+					// simply left as-is.
+					const piiSwapSession = getTrajectoryContext()?.piiSwapSession;
+					if (piiSwapSession && handlerOptions.parameters !== undefined) {
+						handlerOptions.parameters = piiSwapSession.restoreInValue(
+							handlerOptions.parameters,
+						);
+					}
+					return runWithActionRoutingContext(
+						{ actionName: action.name, modelClass: action.modelClass },
+						() =>
+							withActionStep(runtime, action.name, () =>
+								runWithSuppressedModelStream(() =>
+									action.handler(
+										runtime,
+										executorCtx.message,
+										executorCtx.state,
+										handlerOptions,
+										actionCallback,
+										executorCtx.responses,
+									),
 								),
 							),
-						),
-				);
-			},
+					);
+				},
+			),
+	});
+	if (ownerExclusive) {
+		const disclosure = await revalidateOwnerExclusiveDisclosure(
+			runtime,
+			executorCtx.message,
 		);
-		resultForEvent = normalizeActionResult(action.name, result);
-	} catch (error) {
-		resultForEvent = failureResult(action.name, stringifyError(error), {
-			error,
-		});
+		if (!disclosure.allowed) {
+			resultForEvent = failureResult(action.name, PRIVACY_DENIED_TEXT, {
+				privacyDenied: true,
+				privacyReason: disclosure.reason,
+			});
+		}
 	}
 	const suppressActionResult = shouldSuppressActionResultClipboard(
 		action,
@@ -473,6 +541,18 @@ export async function executePlannedToolCall(
 					"emitEvent failed",
 				);
 			});
+	}
+	if (ownerExclusive) {
+		const disclosure = await revalidateOwnerExclusiveDisclosure(
+			runtime,
+			executorCtx.message,
+		);
+		if (!disclosure.allowed) {
+			resultForEvent = failureResult(action.name, PRIVACY_DENIED_TEXT, {
+				privacyDenied: true,
+				privacyReason: disclosure.reason,
+			});
+		}
 	}
 
 	return emitToolResult(toolCall, resultForEvent, {
@@ -534,16 +614,22 @@ async function resolveToolCallUserRoles(
 			return [result.role as RoleGateRole];
 		}
 	} catch (error) {
-		runtime.logger.debug(
-			{
-				src: "execute-planned-tool-call",
-				error: error instanceof Error ? error.message : String(error),
+		// error-policy:J2 A role-store failure cannot be converted into a role
+		// because doing so would authorize actions without canonical evidence.
+		throw new ElizaError("Failed to resolve the tool caller's role", {
+			code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
+			cause: error,
+			context: {
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
 			},
-			"sender role lookup failed; defaulting to USER",
-		);
+		});
 	}
 
-	return ["USER"];
+	// A missing canonical room/world is not evidence of an authenticated user.
+	// GUEST is the non-authorizing floor for actions that require USER or above.
+	return ["GUEST"];
 }
 
 function plannedToolCallToStreamingToolCall(
@@ -562,11 +648,13 @@ function actionResultToStreamingResult(
 	result: ActionResult,
 	options: { suppressData?: boolean } = {},
 ): ToolCall["result"] {
-	return {
+	const streamingResult: ActionResult = {
 		success: result.success,
 		text: result.text,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
+		effectReceipts: result.effectReceipts,
+		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		error: result.error ? stringifyError(result.error) : undefined,
 		data: options.suppressData
 			? sensitiveActionResultMarker(result.data)
@@ -577,7 +665,8 @@ function actionResultToStreamingResult(
 				: result.values,
 		turnComplete: result.turnComplete,
 		continueChain: result.continueChain,
-	} as ToolCall["result"];
+	};
+	return actionResultToContentRecord(streamingResult);
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
@@ -843,57 +932,4 @@ function normalizeToolArgs(
 		return raw as Record<string, unknown>;
 	}
 	return {};
-}
-
-function normalizeActionResult(
-	actionName: string,
-	result: unknown,
-): ActionResult {
-	const rawResult = result as ActionResult | boolean | null | undefined;
-	if (
-		rawResult === undefined ||
-		rawResult === null ||
-		typeof rawResult === "boolean"
-	) {
-		return {
-			success: rawResult !== false,
-			data: { actionName },
-		};
-	}
-
-	const resultData =
-		typeof rawResult.data === "object" &&
-		rawResult.data !== null &&
-		!Array.isArray(rawResult.data)
-			? rawResult.data
-			: {};
-
-	return {
-		...rawResult,
-		success: "success" in rawResult ? rawResult.success : true,
-		data: {
-			actionName,
-			...resultData,
-		},
-	};
-}
-
-function failureResult(
-	actionName: string,
-	message: string,
-	extraData: Record<string, unknown> = {},
-): ActionResult {
-	return {
-		success: false,
-		text: message,
-		error: message,
-		data: {
-			actionName,
-			...extraData,
-		},
-	};
-}
-
-function stringifyError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }

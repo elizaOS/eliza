@@ -31,6 +31,7 @@ export * from "./connector-setup";
 export * from "./contexts";
 export * from "./database";
 export * from "./documents";
+export * from "./effects";
 export * from "./environment";
 export * from "./evaluator";
 export * from "./events";

@@ -501,6 +501,61 @@ export function toPlugin(candidate: unknown, source: string): Plugin {
   return candidate as Plugin;
 }
 
+const PLUGIN_SHAPE_FIELDS = [
+  "actions",
+  "providers",
+  "services",
+  "evaluators",
+  "schema",
+  "routes",
+  "models",
+  "events",
+  "init",
+] as const;
+
+function isPluginShaped(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.name !== "string" || candidate.name.length === 0) {
+    return false;
+  }
+  return PLUGIN_SHAPE_FIELDS.some((field) => field in candidate);
+}
+
+/**
+ * Pick the `Plugin` export out of a loaded plugin module.
+ *
+ * elizaOS plugin packages are barrels: under the `eliza-source` condition they
+ * resolve to `src/index.ts`, which re-exports dozens of helpers and usually has
+ * no default export. Taking the first key of the module namespace therefore
+ * selects an arbitrary symbol (an alphabetically-first helper function), so the
+ * loader must identify the plugin object by shape instead of by position.
+ */
+export function selectPluginExport(
+  pluginModule: Record<string, unknown>,
+  source: string,
+): unknown {
+  if (isPluginShaped(pluginModule.default)) return pluginModule.default;
+  const shaped = Object.entries(pluginModule).filter(([, value]) =>
+    isPluginShaped(value),
+  );
+  if (shaped.length === 1) return shaped[0][1];
+  if (shaped.length > 1) {
+    const shortName = source.replace(/^@elizaos\/plugin-/, "");
+    const named = shaped.find(([, value]) => {
+      const { name } = value as { name: string };
+      return name === source || name === shortName;
+    });
+    if (named) return named[1];
+    throw new Error(
+      `plugin ${source} exports multiple plugin objects (${shaped
+        .map(([key]) => key)
+        .join(", ")}); none matches ${shortName}`,
+    );
+  }
+  return pluginModule.default;
+}
+
 export function resolvePort(): number {
   const raw = process.env.ELIZA_BENCH_PORT;
   if (!raw) return DEFAULT_PORT;

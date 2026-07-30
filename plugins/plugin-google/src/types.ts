@@ -69,6 +69,30 @@ export interface GoogleEmailAddress {
   name?: string;
 }
 
+export type GoogleCalendarAttendeeResponseStatus =
+  | "needsAction"
+  | "declined"
+  | "tentative"
+  | "accepted";
+
+export interface GoogleCalendarAttendeeInput extends GoogleEmailAddress {
+  responseStatus?: GoogleCalendarAttendeeResponseStatus;
+  optional?: boolean;
+}
+
+export interface GoogleCalendarAttendee extends GoogleEmailAddress {
+  responseStatus: GoogleCalendarAttendeeResponseStatus | null;
+  self: boolean;
+  organizer: boolean;
+  optional: boolean;
+}
+
+export type GoogleCalendarSendUpdates = "all" | "externalOnly" | "none";
+
+export type GoogleCalendarTransparency = "opaque" | "transparent";
+
+export type GoogleCalendarVisibility = "default" | "public" | "private" | "confidential";
+
 export interface GoogleMessageSummary {
   id: string;
   threadId?: string;
@@ -181,13 +205,24 @@ export interface GoogleCalendarEventInput extends GoogleAccountRef {
   title: string;
   start: string;
   end: string;
-  attendees?: GoogleEmailAddress[];
+  attendees?: GoogleCalendarAttendeeInput[];
   location?: string;
   description?: string;
   createMeetLink?: boolean;
   timeZone?: string;
+  /**
+   * Controls attendee notification email. Omission is treated as `none` so an
+   * agent cannot notify external people without making that side effect explicit.
+   */
+  sendUpdates?: GoogleCalendarSendUpdates;
   /** RFC 5545 recurrence lines, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=MO"]. */
   recurrence?: string[];
+  /**
+   * Stable caller key for exactly-once creation. The connector hashes this
+   * value into a provider event id and private marker; the raw key never leaves
+   * the process.
+   */
+  idempotencyKey?: string;
 }
 
 export interface GoogleCalendarEventPatchInput extends GoogleAccountRef {
@@ -196,12 +231,38 @@ export interface GoogleCalendarEventPatchInput extends GoogleAccountRef {
   title?: string;
   start?: string;
   end?: string;
-  attendees?: GoogleEmailAddress[];
+  attendees?: GoogleCalendarAttendeeInput[];
   location?: string;
   description?: string;
   timeZone?: string;
+  /** See {@link GoogleCalendarEventInput.sendUpdates}. */
+  sendUpdates?: GoogleCalendarSendUpdates;
   /** Replacement RFC 5545 recurrence lines. Valid on series masters only. */
   recurrence?: string[];
+  /** Provider ETag required by an approval-bound conditional write. */
+  expectedEtag?: string;
+}
+
+export interface GoogleCalendarEventDeleteInput extends GoogleAccountRef {
+  calendarId?: string;
+  eventId: string;
+  /** See {@link GoogleCalendarEventInput.sendUpdates}. */
+  sendUpdates?: GoogleCalendarSendUpdates;
+  /** Provider ETag required by an approval-bound conditional delete. */
+  expectedEtag?: string;
+}
+
+export interface GoogleCalendarEventResponseInput extends GoogleAccountRef {
+  calendarId?: string;
+  eventId: string;
+  responseStatus: Extract<
+    GoogleCalendarAttendeeResponseStatus,
+    "accepted" | "declined" | "tentative"
+  >;
+  /** See {@link GoogleCalendarEventInput.sendUpdates}. */
+  sendUpdates?: GoogleCalendarSendUpdates;
+  /** Provider ETag required by an approval-bound conditional response. */
+  expectedEtag?: string;
 }
 
 export interface GoogleCalendarEvent {
@@ -215,10 +276,12 @@ export interface GoogleCalendarEvent {
   timeZone?: string | null;
   htmlLink?: string;
   meetLink?: string;
-  attendees?: GoogleEmailAddress[];
+  attendees?: GoogleCalendarAttendee[];
   location?: string;
   description?: string;
   organizer?: GoogleEmailAddress & { self?: boolean };
+  transparency?: GoogleCalendarTransparency;
+  visibility?: GoogleCalendarVisibility;
   /** RFC 5545 recurrence lines when the event is a recurring series master. */
   recurrence?: string[] | null;
   /** Series master event id when this event is a flattened occurrence. */
@@ -236,6 +299,102 @@ export interface GoogleCalendarListEntry {
   foregroundColor: string | null;
   timeZone: string | null;
   selected: boolean;
+  /** Present on incremental-sync tombstones. */
+  deleted?: boolean;
+  hidden?: boolean;
+}
+
+export interface GoogleCalendarListPageInput extends GoogleAccountRef {
+  pageToken?: string;
+  syncToken?: string;
+  maxResults?: number;
+  showDeleted?: boolean;
+  showHidden?: boolean;
+  minAccessRole?: "freeBusyReader" | "reader" | "writer" | "owner";
+}
+
+export interface GoogleCalendarListPage {
+  calendars: GoogleCalendarListEntry[];
+  nextPageToken: string | null;
+  nextSyncToken: string | null;
+}
+
+export interface GoogleCalendarEventListPageInput extends GoogleAccountRef {
+  calendarId?: string;
+  timeMin?: string;
+  timeMax?: string;
+  maxResults?: number;
+  pageToken?: string;
+  syncToken?: string;
+  timeZone?: string;
+  showDeleted?: boolean;
+  /**
+   * Google suppresses nextSyncToken on any events.list request that carries
+   * orderBy, so sync drains must leave this unset; only display paths that
+   * need provider-side ordering opt in.
+   */
+  orderBy?: "startTime" | "updated";
+}
+
+export interface GoogleCalendarEventListPage {
+  events: GoogleCalendarEvent[];
+  nextPageToken: string | null;
+  nextSyncToken: string | null;
+}
+
+export interface GoogleCalendarWatchInput extends GoogleAccountRef {
+  calendarId?: string;
+  channelId: string;
+  address: string;
+  token: string;
+  ttlSeconds: number;
+}
+
+export interface GoogleCalendarWatchResponse {
+  channelId: string;
+  resourceId: string;
+  resourceUri: string;
+  token: string | null;
+  expirationAt: string;
+}
+
+export interface GoogleCalendarStopChannelInput extends GoogleAccountRef {
+  channelId: string;
+  resourceId: string;
+}
+
+export interface GoogleCalendarBusyInterval {
+  start: string;
+  end: string;
+}
+
+export interface GoogleCalendarFreeBusyError {
+  domain: string | null;
+  reason: string | null;
+}
+
+export interface GoogleCalendarFreeBusyCalendar {
+  busy: GoogleCalendarBusyInterval[];
+  errors: GoogleCalendarFreeBusyError[];
+}
+
+export interface GoogleCalendarFreeBusyInput extends GoogleAccountRef {
+  timeMin: string;
+  timeMax: string;
+  calendarIds: readonly string[];
+  timeZone?: string;
+  groupExpansionMax?: number;
+  calendarExpansionMax?: number;
+}
+
+/**
+ * Availability-only response. It intentionally has no event metadata, titles,
+ * descriptions, attendee identities, or expanded group membership.
+ */
+export interface GoogleCalendarFreeBusyResult {
+  timeMin: string;
+  timeMax: string;
+  calendars: Record<string, GoogleCalendarFreeBusyCalendar>;
 }
 
 export interface GoogleDriveFile {
@@ -651,20 +810,28 @@ export interface IGoogleGmailService extends Service {
 
 export interface IGoogleCalendarService extends Service {
   listCalendars(params: GoogleAccountRef): Promise<GoogleCalendarListEntry[]>;
+  listCalendarPage(params: GoogleCalendarListPageInput): Promise<GoogleCalendarListPage>;
   listEvents(
     params: GoogleAccountRef & {
       calendarId?: string;
       timeMin?: string;
       timeMax?: string;
+      /** Google page size; the convenience method still drains every page. */
       limit?: number;
+      timeZone?: string;
     }
   ): Promise<GoogleCalendarEvent[]>;
+  listEventPage(params: GoogleCalendarEventListPageInput): Promise<GoogleCalendarEventListPage>;
+  watchEvents(params: GoogleCalendarWatchInput): Promise<GoogleCalendarWatchResponse>;
+  stopCalendarChannel(params: GoogleCalendarStopChannelInput): Promise<void>;
+  queryFreeBusy(params: GoogleCalendarFreeBusyInput): Promise<GoogleCalendarFreeBusyResult>;
   getEvent(
     params: GoogleAccountRef & { calendarId?: string; eventId: string; timeZone?: string }
   ): Promise<GoogleCalendarEvent>;
   createEvent(params: GoogleCalendarEventInput): Promise<GoogleCalendarEvent>;
   updateEvent(params: GoogleCalendarEventPatchInput): Promise<GoogleCalendarEvent>;
-  deleteEvent(params: GoogleAccountRef & { calendarId?: string; eventId: string }): Promise<void>;
+  deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void>;
+  respondToEvent(params: GoogleCalendarEventResponseInput): Promise<GoogleCalendarEvent>;
 }
 
 export interface IGoogleDriveService extends Service {

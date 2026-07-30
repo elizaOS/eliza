@@ -51,6 +51,7 @@ type AgentState =
   | "error";
 type PermissionStatus =
   | "granted"
+  | "limited"
   | "denied"
   | "not-determined"
   | "restricted"

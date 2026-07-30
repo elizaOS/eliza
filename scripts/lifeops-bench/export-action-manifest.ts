@@ -3,10 +3,10 @@
  * Exports the LifeOps planner action manifest as JSON for the LifeOps bench.
  *
  * Loads the personal-assistant plus its connector plugins (bluebubbles,
- * contacts, imessage, phone, todos), builds the planner tool definitions from
- * their actions, and emits each as a function-tool entry annotated with the
- * source plugin and planner metadata (tags, contexts, priority, surfaces,
- * risk/cost). The bench consumes the manifest to drive and score action selection.
+ * calendar, contacts, imessage, phone, todos), builds the planner tool
+ * definitions from their actions, and emits each as a function-tool entry
+ * annotated with the source plugin and planner metadata. The bench consumes
+ * the manifest to drive and score action selection.
  */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,6 +16,7 @@ import { buildPlannerToolsFromActions } from "../../packages/core/src/actions/to
 import type { Action } from "../../packages/core/src/types/components.ts";
 import type { Plugin } from "../../packages/core/src/types/plugin.ts";
 import blueBubblesPlugin from "../../plugins/plugin-bluebubbles/src/index.ts";
+import { calendarSourcesAction } from "../../plugins/plugin-calendar/src/actions/calendar-sources.ts";
 import { appContactsPlugin } from "../../plugins/plugin-contacts/src/plugin.ts";
 import imessagePlugin from "../../plugins/plugin-imessage/src/index.ts";
 import { personalAssistantPlugin } from "../../plugins/plugin-personal-assistant/src/plugin.ts";
@@ -441,8 +442,15 @@ function truncateForTable(value: string): string {
 
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
+  const calendarSourcePlugin: Plugin = {
+    name: "@elizaos/plugin-calendar",
+    description:
+      "Calendar source administration exported without the overlapping event action.",
+    actions: [calendarSourcesAction],
+  };
   const sourcePlugins = [
     appContactsPlugin,
+    calendarSourcePlugin,
     personalAssistantPlugin,
     appPhonePlugin,
     blueBubblesPlugin,

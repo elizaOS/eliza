@@ -93,6 +93,7 @@ function createReq(token: string): http.IncomingMessage {
       authorization: `Bearer ${token}`,
       host: "localhost",
     },
+    socket: { remoteAddress: "203.0.113.1" },
   }) as http.IncomingMessage;
 }
 

@@ -103,6 +103,7 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   payload jsonb NOT NULL,
   channel text NOT NULL,
   reason text NOT NULL,
+  idempotency_key text,
   expires_at timestamp with time zone NOT NULL,
   resolved_at timestamp with time zone,
   resolved_by text,
@@ -121,6 +122,10 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone NOT NULL
 )`;
+
+const CREATE_APPROVAL_IDEMPOTENCY_INDEX = `CREATE UNIQUE INDEX approval_requests_agent_idempotency_uidx
+  ON approval_requests (agent_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL`;
 
 let pg: PGlite;
 let runtime: IAgentRuntime;
@@ -270,6 +275,7 @@ beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
   await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+  await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
 
   const approvalService = {
     getExecutionCapability: () => activeQueue,

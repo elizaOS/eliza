@@ -116,8 +116,9 @@ function fragmentForDocument(
 }
 
 /**
- * Persists the authorization-bearing parent and fragment through the same
- * adapter capability production document search requires.
+ * Persists authorization-bearing parents and fragments through the real
+ * in-memory adapter used by production document search. No embedding model is
+ * registered, so recall falls back to deterministic BM25 keyword matching.
  */
 async function makeRuntime(
   fragments: Memory[],

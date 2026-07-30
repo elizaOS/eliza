@@ -81,6 +81,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			"contexts",
 			"intents",
 			"replyText",
+			"replyEffectStatus",
 			"candidateActionNames",
 			"facts",
 			"relationships",

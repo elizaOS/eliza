@@ -30,7 +30,12 @@ from typing import Any
 
 from ...clients.base import ClientCall
 from ...clients.factory import make_client
-from ...lifeworld.snapshots import SNAPSHOT_SPECS, build_world_for, package_root, snapshots_dir
+from ...lifeworld.snapshots import (
+    SNAPSHOT_SPECS,
+    build_world_for,
+    package_root,
+    snapshots_dir,
+)
 from ...types import Domain, Scenario, ScenarioMode
 from .._personas import ALL_PERSONAS
 from .generate_candidates import (
@@ -88,7 +93,9 @@ def _log_drops(domain: str, mode: str, drops: list[tuple[str, str]]) -> None:
             fh.write(f"- {cid}: {reason}\n")
 
 
-def _log_spend(domain: str, mode: str, cost: float, prompt_tokens: int, completion_tokens: int) -> None:
+def _log_spend(
+    domain: str, mode: str, cost: float, prompt_tokens: int, completion_tokens: int
+) -> None:
     SPEND_LOG.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "ts": _now_iso(),
@@ -145,7 +152,9 @@ def _world_factory_for(scenario: Scenario):
     return _factory
 
 
-async def _conformance_check_one(scenario: Scenario, supported: set[str]) -> tuple[bool, str]:
+async def _conformance_check_one(
+    scenario: Scenario, supported: set[str]
+) -> tuple[bool, str]:
     """Run PerfectAgent against the scenario; return (passed, reason)."""
     gt_names = {a.name for a in scenario.ground_truth_actions}
     if not gt_names.issubset(supported):
@@ -168,6 +177,7 @@ async def _conformance_check_one(scenario: Scenario, supported: set[str]) -> tup
         seeds=1,
         max_cost_usd=10.0,
         per_scenario_timeout_s=15,
+        static_grading_mode="offline_conformance",
     )
     try:
         result = await runner.run_one(scenario, scenario.world_seed)
@@ -186,10 +196,15 @@ def _scenario_from_candidate(c: dict[str, Any]) -> Scenario:
     from ...types import Action, FirstQuestionFallback
 
     persona = next(p for p in ALL_PERSONAS if p.id == c["persona_id"])
-    actions = [Action(name=a["name"], kwargs=a["kwargs"]) for a in c["ground_truth_actions"]]
+    actions = [
+        Action(name=a["name"], kwargs=a["kwargs"]) for a in c["ground_truth_actions"]
+    ]
     fallback_dict = c.get("first_question_fallback")
     fallback = (
-        FirstQuestionFallback(canned_answer=fallback_dict["canned_answer"], applies_when=fallback_dict["applies_when"])
+        FirstQuestionFallback(
+            canned_answer=fallback_dict["canned_answer"],
+            applies_when=fallback_dict["applies_when"],
+        )
         if fallback_dict
         else None
     )
@@ -366,15 +381,21 @@ async def run_batch(
         module_path = SCENARIOS_DIR / "live" / f"{domain.value}.py"
         list_name = DOMAIN_TO_LIVE_LIST_NAME[domain.value]
         _splice_into_module(
-            module_path, list_name, rendered,
-            personas_needed=personas_needed, is_live=True,
+            module_path,
+            list_name,
+            rendered,
+            personas_needed=personas_needed,
+            is_live=True,
         )
     else:
         module_path = SCENARIOS_DIR / f"{domain.value}.py"
         list_name = DOMAIN_TO_LIST_NAME[domain.value]
         _splice_into_module(
-            module_path, list_name, rendered,
-            personas_needed=personas_needed, is_live=False,
+            module_path,
+            list_name,
+            rendered,
+            personas_needed=personas_needed,
+            is_live=False,
         )
     outcome.imported = len(final)
     return outcome
@@ -392,7 +413,9 @@ async def _async_main(args: argparse.Namespace) -> int:
         if spent >= args.budget_usd:
             print(f"[scale_corpus] hit budget cap at batch {batch_no}; stopping")
             break
-        print(f"[scale_corpus] {args.mode}/{domain.value} batch {batch_no}/{args.batches} (spent ${spent:.4f})")
+        print(
+            f"[scale_corpus] {args.mode}/{domain.value} batch {batch_no}/{args.batches} (spent ${spent:.4f})"
+        )
         t0 = time.perf_counter()
         outcome = await run_batch(
             mode=args.mode,
@@ -423,7 +446,9 @@ async def _async_main(args: argparse.Namespace) -> int:
         f"imported_rate={(total_imported / total_generated * 100) if total_generated else 0:.0f}% "
         f"spent=${spent:.4f}"
     )
-    print(f"BATCH_RESULT {json.dumps({'domain': domain.value, 'mode': args.mode, 'imported': total_imported, 'validated': total_validated, 'generated': total_generated, 'spent_usd': spent})}")
+    print(
+        f"BATCH_RESULT {json.dumps({'domain': domain.value, 'mode': args.mode, 'imported': total_imported, 'validated': total_validated, 'generated': total_generated, 'spent_usd': spent})}"
+    )
     return 0
 
 
@@ -431,7 +456,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scale_corpus")
     parser.add_argument("--domain", required=True, choices=[d.value for d in Domain])
     parser.add_argument("--mode", required=True, choices=["static", "live"])
-    parser.add_argument("--n", type=int, default=30, help="Candidates requested per batch.")
+    parser.add_argument(
+        "--n", type=int, default=30, help="Candidates requested per batch."
+    )
     parser.add_argument("--batches", type=int, default=1)
     parser.add_argument("--budget-usd", type=float, default=2.0)
     parser.add_argument("--provider", default="cerebras")

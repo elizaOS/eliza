@@ -20,9 +20,20 @@ import {
   GOOGLE_SERVICE_NAME,
   type GoogleAccountRef,
   type GoogleCalendarEvent,
+  type GoogleCalendarEventDeleteInput,
   type GoogleCalendarEventInput,
+  type GoogleCalendarEventListPage,
+  type GoogleCalendarEventListPageInput,
   type GoogleCalendarEventPatchInput,
+  type GoogleCalendarEventResponseInput,
+  type GoogleCalendarFreeBusyInput,
+  type GoogleCalendarFreeBusyResult,
   type GoogleCalendarListEntry,
+  type GoogleCalendarListPage,
+  type GoogleCalendarListPageInput,
+  type GoogleCalendarStopChannelInput,
+  type GoogleCalendarWatchInput,
+  type GoogleCalendarWatchResponse,
   type GoogleCredentialResolver,
   type GoogleDocContent,
   type GoogleDriveCreateFileInput,
@@ -237,15 +248,36 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.calendarClient.listCalendars(params);
   }
 
+  listCalendarPage(params: GoogleCalendarListPageInput): Promise<GoogleCalendarListPage> {
+    return this.calendarClient.listCalendarPage(params);
+  }
+
   listEvents(
     params: GoogleAccountRef & {
       calendarId?: string;
       timeMin?: string;
       timeMax?: string;
       limit?: number;
+      timeZone?: string;
     }
   ): Promise<GoogleCalendarEvent[]> {
     return this.calendarClient.listEvents(params);
+  }
+
+  listEventPage(params: GoogleCalendarEventListPageInput): Promise<GoogleCalendarEventListPage> {
+    return this.calendarClient.listEventPage(params);
+  }
+
+  watchEvents(params: GoogleCalendarWatchInput): Promise<GoogleCalendarWatchResponse> {
+    return this.calendarClient.watchEvents(params);
+  }
+
+  stopCalendarChannel(params: GoogleCalendarStopChannelInput): Promise<void> {
+    return this.calendarClient.stopCalendarChannel(params);
+  }
+
+  queryFreeBusy(params: GoogleCalendarFreeBusyInput): Promise<GoogleCalendarFreeBusyResult> {
+    return this.calendarClient.queryFreeBusy(params);
   }
 
   getEvent(
@@ -262,8 +294,12 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
     return this.calendarClient.updateEvent(params);
   }
 
-  deleteEvent(params: GoogleAccountRef & { calendarId?: string; eventId: string }): Promise<void> {
+  deleteEvent(params: GoogleCalendarEventDeleteInput): Promise<void> {
     return this.calendarClient.deleteEvent(params);
+  }
+
+  respondToEvent(params: GoogleCalendarEventResponseInput): Promise<GoogleCalendarEvent> {
+    return this.calendarClient.respondToEvent(params);
   }
 
   searchFiles(
