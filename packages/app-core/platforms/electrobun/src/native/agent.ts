@@ -55,12 +55,12 @@ import {
   resolveDatabaseMode,
   updateDatabaseSnapshotStatus,
 } from "../database";
+import { setActiveLocalAgentDispatcher } from "../local-agent-dispatcher-registry";
+import { LocalAgentStdioDispatcher } from "../local-agent-stdio-dispatcher";
 import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
 import { findFirstAvailableLoopbackPort } from "./loopback-port";
-import { setActiveLocalAgentDispatcher } from "../local-agent-dispatcher-registry";
-import { LocalAgentStdioDispatcher } from "../local-agent-stdio-dispatcher";
 
 // ---------------------------------------------------------------------------
 // Types

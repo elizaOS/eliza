@@ -311,11 +311,11 @@ import {
   PGLITE_ERROR_CODES,
 } from "./pglite-error-compat.ts";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
+import { planPluginRegistrationWaves } from "./plugin-registration-waves.ts";
 import {
   applyPluginRoleGating,
   installProviderRoleGatingChokepoint,
 } from "./plugin-role-gating.ts";
-import { planPluginRegistrationWaves } from "./plugin-registration-waves.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
 import { createRolesPlugin } from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";

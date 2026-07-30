@@ -32,10 +32,7 @@ import { dispatchRoute } from "./dispatch-route.ts";
 interface ShimResponse extends RouteResponse {
   setHeader(name: string, value: string | string[]): RouteResponse;
   write(chunk: unknown): boolean;
-  writeHead(
-    status: number,
-    headers?: Record<string, string>,
-  ): RouteResponse;
+  writeHead(status: number, headers?: Record<string, string>): RouteResponse;
   end(chunk?: unknown): RouteResponse;
   on(event: string, listener: () => void): RouteResponse;
   destroyed: boolean;

@@ -225,7 +225,9 @@
   {
     "file": "scripts/lifeops-bench/export-action-manifest.ts",
     "tokens": [
+      "@elizaos/plugin-calendar",
       "plugins/plugin-bluebubbles",
+      "plugins/plugin-calendar",
       "plugins/plugin-contacts",
       "plugins/plugin-imessage",
       "plugins/plugin-personal-assistant",
