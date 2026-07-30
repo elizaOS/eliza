@@ -15,9 +15,9 @@
   },
   "devDependencies": {
     "@avalix/chroma": "^1.0.1",
-    "@playwright/test": "1.62.0",
+    "@playwright/test": "1.61.1",
     "@types/node": "24.12.0",
-    "playwright": "1.62.0",
+    "playwright": "1.61.1",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^5.9.3"
   }
