@@ -85,8 +85,13 @@ jobs:
       - name: Install root workspace dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build @elizaos/core dist
-        run: bun run --cwd packages/core build
+      - name: Build Feed's elizaOS workspace dependencies
+        run: |
+          bun run --cwd packages/shared build
+          bun run --cwd packages/core build
+          bun run --cwd plugins/plugin-sql build
+          bun run --cwd plugins/plugin-anthropic build
+          bun run --cwd plugins/plugin-openai build
 
       - name: Typecheck feed workspace
         working-directory: packages/feed
