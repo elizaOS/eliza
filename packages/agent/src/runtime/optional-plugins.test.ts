@@ -34,11 +34,16 @@ function readSource(file: string): string {
  * check reads the source and asserts on the literal `"pkg": () => import("pkg")`
  * entries instead.
  */
-function generatedImporterEntries(): { key: string; specifier: string }[] {
-  const source = readSource("optional-plugin-imports.generated.ts");
+function importerEntries(source: string): { key: string; specifier: string }[] {
   return [
-    ...source.matchAll(/"([^"]+)":\s*\(\)\s*=>\s*import\(\s*"([^"]+)"\s*\)/g),
+    ...source.matchAll(
+      /"([^"]+)":\s*\(\)\s*=>\s*(?:(?:\/\/[^\n]*\n)\s*)*import\(\s*"([^"]+)"\s*\)/g,
+    ),
   ].map((m) => ({ key: m[1], specifier: m[2] }));
+}
+
+function generatedImporterEntries(): { key: string; specifier: string }[] {
+  return importerEntries(readSource("optional-plugin-imports.generated.ts"));
 }
 
 /**
@@ -76,11 +81,12 @@ describe("optional-plugin literal-import codegen", () => {
     const rendered = renderOptionalPluginImportsModule(
       OPTIONAL_STATIC_PLUGIN_PACKAGES,
     );
-    for (const pkg of OPTIONAL_STATIC_PLUGIN_PACKAGES) {
-      expect(rendered, pkg).toContain(
-        `"${pkg}": () => import("${optionalPluginImportSpecifier(pkg)}")`,
-      );
-    }
+    expect(importerEntries(rendered)).toEqual(
+      OPTIONAL_STATIC_PLUGIN_PACKAGES.map((pkg) => ({
+        key: pkg,
+        specifier: optionalPluginImportSpecifier(pkg),
+      })),
+    );
   });
 
   it("bundled and unbundled optional lists are disjoint", () => {

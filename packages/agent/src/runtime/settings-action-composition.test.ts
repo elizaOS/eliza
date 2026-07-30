@@ -1,21 +1,21 @@
 /**
  * Regression coverage for the production SETTINGS action composition. The
- * default runtime loads the built-in eliza plugin before plugin-app-control, so
- * this test pins the one-action contract that keeps both settings operation
- * families reachable after plugin action dedupe.
+ * built-in eliza plugin composes app-control's section registry with its
+ * provider/backend/world operations. Runtime registration keeps the first
+ * owner without mutating either plugin's standalone action surface.
  */
 
-import type {
-  Action,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  Plugin,
+import {
+  type Action,
+  AgentRuntime,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type Plugin,
 } from "@elizaos/core";
 import { appControlPlugin } from "@elizaos/plugin-app-control";
 import { describe, expect, it } from "vitest";
 import { createElizaPlugin } from "./eliza-plugin.ts";
-import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 
 const RUNTIME = {
   character: {},
@@ -70,17 +70,27 @@ describe("default SETTINGS action composition", () => {
     }
   });
 
-  it("keeps exactly one SETTINGS action with legacy and section-registry operations", async () => {
+  it("registers one composed SETTINGS action without mutating either plugin", async () => {
     const plugins = [
       createElizaPlugin(),
       clonePlugin(appControlPlugin),
     ] satisfies Plugin[];
-    deduplicatePluginActions(plugins);
+    const runtime = new AgentRuntime({
+      character: { name: "settings-composition-test" },
+    });
+    for (const action of plugins.flatMap((plugin) => plugin.actions ?? [])) {
+      runtime.registerAction(action);
+    }
 
-    const settingsActions = plugins.flatMap((plugin) =>
-      (plugin.actions ?? []).filter((action) => action.name === "SETTINGS"),
+    const settingsActions = runtime.actions.filter(
+      (action) => action.name === "SETTINGS",
     );
     expect(settingsActions).toHaveLength(1);
+    expect(
+      plugins
+        .flatMap((plugin) => plugin.actions ?? [])
+        .filter((action) => action.name === "SETTINGS"),
+    ).toHaveLength(2);
     const [settingsAction] = settingsActions;
 
     const actionSchema = actionParameter(settingsAction, "action")?.schema;

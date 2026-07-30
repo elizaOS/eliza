@@ -29,15 +29,7 @@ import {
   resolveCanonicalOwnerId,
 } from "./utils.ts";
 
-const BOOTSTRAP_RETRY_TIMERS_KEY = Symbol.for(
-  "@elizaos/runtime.roles.bootstrapRetries",
-);
-const BOOTSTRAP_RETRY_LIMIT = 3;
 const CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
-
-type RuntimeWithBootstrapRetries = IAgentRuntime & {
-  [BOOTSTRAP_RETRY_TIMERS_KEY]?: Map<string, ReturnType<typeof setTimeout>>;
-};
 
 export { rolesProvider } from "./provider.ts";
 export type {
@@ -83,72 +75,6 @@ async function updateWorldMetadata(
   (world as { metadata: RolesWorldMetadata }).metadata = metadata;
   await runtime.updateWorld(
     world as Parameters<IAgentRuntime["updateWorld"]>[0],
-  );
-}
-
-function getBootstrapRetryTimers(
-  runtime: IAgentRuntime,
-): Map<string, ReturnType<typeof setTimeout>> {
-  const runtimeWithBootstrapRetries = runtime as RuntimeWithBootstrapRetries;
-  runtimeWithBootstrapRetries[BOOTSTRAP_RETRY_TIMERS_KEY] ??= new Map();
-  return runtimeWithBootstrapRetries[BOOTSTRAP_RETRY_TIMERS_KEY];
-}
-
-function scheduleBootstrapRetry(
-  runtime: IAgentRuntime,
-  label: string,
-  task: () => Promise<boolean>,
-  attempt = 1,
-): void {
-  const timers = getBootstrapRetryTimers(runtime);
-  const existingTimer = timers.get(label);
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-  }
-
-  const delayMs = Math.min(1500 * attempt, 5000);
-  const timer = setTimeout(() => {
-    timers.delete(label);
-    void task().then((ok) => {
-      if (ok) {
-        return;
-      }
-
-      if (attempt >= BOOTSTRAP_RETRY_LIMIT) {
-        logger.warn(
-          `[roles] ${label} retries exhausted because runtime state is still unavailable`,
-        );
-        return;
-      }
-
-      logger.info(
-        `[roles] ${label} retry ${attempt} skipped because runtime state is still unavailable`,
-      );
-      scheduleBootstrapRetry(runtime, label, task, attempt + 1);
-    });
-  }, delayMs);
-  timers.set(label, timer);
-}
-
-function isExpectedRuntimeStateBootstrapError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return (
-    /Failed query:\s*select\b.*\bfrom "worlds"/i.test(message) ||
-    /relation .*worlds.*does not exist/i.test(message) ||
-    /no such table:?\s*worlds/i.test(message)
-  );
-}
-
-function logRuntimeStateBootstrapDeferral(label: string, err: unknown): void {
-  if (isExpectedRuntimeStateBootstrapError(err)) {
-    logger.info(
-      `[roles] Deferring ${label} bootstrap until runtime worlds are available`,
-    );
-    return;
-  }
-
-  logger.info(
-    `[roles] Deferring ${label} bootstrap until runtime worlds are available: ${String(err)}`,
   );
 }
 
@@ -224,8 +150,7 @@ async function ensureOwnerRole(
     }
     return true;
   } catch (err) {
-    logRuntimeStateBootstrapDeferral("owner role", err);
-    return false;
+    throw new Error("Failed to bootstrap owner roles", { cause: err });
   }
 }
 
@@ -303,8 +228,9 @@ async function applyConnectorAdminWhitelists(
     }
     return true;
   } catch (err) {
-    logRuntimeStateBootstrapDeferral("connector admin", err);
-    return false;
+    throw new Error("Failed to bootstrap connector admin roles", {
+      cause: err,
+    });
   }
 }
 
@@ -336,78 +262,67 @@ function loadConnectorAdminsConfig(
   }
 }
 
-const rolesPlugin: Plugin = {
-  name: "roles",
-  description:
-    "Role-based access control — OWNER/ADMIN/USER/GUEST hierarchy with " +
-    "connector whitelisting and /role command.",
+export function createRolesPlugin(options?: {
+  includeRoleAction?: boolean;
+}): Plugin {
+  const includeRoleAction = options?.includeRoleAction ?? true;
+  return {
+    name: "roles",
+    description:
+      "Role-based access control — OWNER/ADMIN/USER/GUEST hierarchy with " +
+      "connector whitelisting and /role command.",
 
-  providers: [rolesProvider],
-  actions: [roleAction],
+    providers: [rolesProvider],
+    actions: includeRoleAction ? [roleAction] : [],
 
-  async init(pluginConfig: Record<string, unknown>, runtime: IAgentRuntime) {
-    logger.info("[roles] Initializing roles");
-    const config = loadConnectorAdminsConfig(pluginConfig, runtime);
-    const connectorAdmins = config.connectorAdmins ?? {};
-    const hasConnectorAdmins = Object.values(connectorAdmins).some(
-      (ids) => ids.length > 0,
-    );
+    async init(pluginConfig: Record<string, unknown>, runtime: IAgentRuntime) {
+      logger.info("[roles] Initializing roles");
+      const config = loadConnectorAdminsConfig(pluginConfig, runtime);
+      const connectorAdmins = config.connectorAdmins ?? {};
+      const hasConnectorAdmins = Object.values(connectorAdmins).some(
+        (ids) => ids.length > 0,
+      );
 
-    // Step 1: Ensure world owners have OWNER role
-    const ownerBootstrapOk = await ensureOwnerRole(runtime, {
-      pruneConnectorAdmins: !hasConnectorAdmins,
-    });
-    if (!ownerBootstrapOk) {
-      scheduleBootstrapRetry(runtime, "Owner role bootstrap", () =>
-        ensureOwnerRole(runtime, {
+      // Connector worlds can appear after boot, so every creation event
+      // re-applies the same idempotent ownership and admin projection.
+      const rerunOwnerBootstrap = async (label: string): Promise<void> => {
+        await ensureOwnerRole(runtime, {
           pruneConnectorAdmins: !hasConnectorAdmins,
-        }),
-      );
-    }
-
-    // Step 2: Apply connector admin whitelists if configured
-    if (hasConnectorAdmins) {
-      const adminBootstrapOk = await applyConnectorAdminWhitelists(
-        runtime,
-        connectorAdmins,
-      );
-      if (!adminBootstrapOk) {
-        scheduleBootstrapRetry(runtime, "Connector admin bootstrap", () =>
-          applyConnectorAdminWhitelists(runtime, connectorAdmins),
-        );
-      }
-    }
-
-    // Step 3: Re-fire the bootstrap on every world-creation event. init()
-    // runs before any connector (Discord/Telegram/etc.) has populated
-    // runtime.worlds, so ensureOwnerRole sees an empty set and the scheduled
-    // retry tail fires three times within ~10s — usually still before the
-    // connector worlds land. Without this hook the owner role never lands in
-    // world metadata, resolveStage1SenderRole forever returns USER, and
-    // every ADMIN-gated context (tasks/code/automation/connectors) stays
-    // hidden from the Stage 1 planner. Hooking WORLD_JOINED + WORLD_CONNECTED
-    // makes the bootstrap converge as soon as the first connector world
-    // appears, regardless of the initial retry-window timing.
-    const rerunOwnerBootstrap = async (label: string): Promise<void> => {
-      const ok = await ensureOwnerRole(runtime, {
-        pruneConnectorAdmins: !hasConnectorAdmins,
+        });
+        if (hasConnectorAdmins) {
+          await applyConnectorAdminWhitelists(runtime, connectorAdmins);
+        }
+        logger.info(`[roles] Owner role applied after ${label}`);
+      };
+      runtime.registerEvent("WORLD_JOINED", async () => {
+        await rerunOwnerBootstrap("WORLD_JOINED");
       });
-      if (ok) {
-        logger.info(`[roles] Owner role re-applied after ${label}`);
-      }
-      if (hasConnectorAdmins) {
-        await applyConnectorAdminWhitelists(runtime, connectorAdmins);
-      }
-    };
-    runtime.registerEvent("WORLD_JOINED", async () => {
-      await rerunOwnerBootstrap("WORLD_JOINED");
-    });
-    runtime.registerEvent("WORLD_CONNECTED", async () => {
-      await rerunOwnerBootstrap("WORLD_CONNECTED");
-    });
+      runtime.registerEvent("WORLD_CONNECTED", async () => {
+        await rerunOwnerBootstrap("WORLD_CONNECTED");
+      });
 
-    logger.info("[roles] Roles initialized");
-  },
-};
+      // Plugin registration happens before the runtime's one migration pass.
+      // Waiting on initPromise avoids speculative queries and timer retries
+      // against tables that do not exist yet without delaying registration.
+      void runtime.initPromise
+        .then(() => {
+          if (!runtime.isInitialized()) {
+            throw new Error(
+              "Runtime initialization failed before role bootstrap",
+            );
+          }
+          return rerunOwnerBootstrap("runtime initialization");
+        })
+        .catch((error) => {
+          // error-policy:J1 background lifecycle boundary reports bootstrap failure.
+          runtime.reportError("roles.bootstrap", error, {
+            hasConnectorAdmins,
+          });
+        });
+    },
+  };
+}
+
+const rolesPlugin = createRolesPlugin();
 
 export default rolesPlugin;
