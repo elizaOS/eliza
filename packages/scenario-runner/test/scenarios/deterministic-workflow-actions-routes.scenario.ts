@@ -313,7 +313,24 @@ function expectWorkflowAction(
   if (!Array.isArray(executions) || executions.length !== 1) {
     return `expected one workflow execution in action result, saw ${stableStringify(action.result)}`;
   }
-  return expectSeededExecution(executions[0]);
+  // Captured action evidence is depth-bounded, so nested runData entries may be
+  // represented as null. The API turn and final service check below retain and
+  // verify the complete execution artifact.
+  for (const [path, expected] of Object.entries({
+    workflowId: WORKFLOW_ID,
+    status: "success",
+    mode: "manual",
+    finished: true,
+    id: seededExecutionId,
+  })) {
+    const failure = expectEqual(
+      readPath(executions[0], path),
+      expected,
+      `captured execution ${path}`,
+    );
+    if (failure) return failure;
+  }
+  return undefined;
 }
 
 function expectWorkflowRoute(

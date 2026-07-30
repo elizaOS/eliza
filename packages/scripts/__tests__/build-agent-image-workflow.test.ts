@@ -291,7 +291,7 @@ describe("build-agent-image workflow", () => {
       `subject-name: ${githubExpression("steps.image.outputs.name")}`,
     );
     expect(workflowText).toContain(
-      "uses: imjasonh/setup-crane@59c71e96a00b28651f10369ba3359a6d730740a0",
+      "uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b",
     );
     expect(workflowText).toContain("version: v0.20.6");
 
