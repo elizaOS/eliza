@@ -202,11 +202,15 @@ export interface DesktopHttpRequestResult {
  * `eliza-local-agent://ipc` api base.
  */
 export interface LocalAgentRequestOptions {
+  requestId: string;
   path: string;
   method?: string;
   headers?: Record<string, string>;
   body?: string | null;
-  timeoutMs?: number;
+}
+
+export interface LocalAgentCancelRequestOptions {
+  requestId: string;
 }
 
 export interface LocalAgentRequestResult {
@@ -225,6 +229,7 @@ export interface LocalAgentRequestResult {
  * serves every platform.
  */
 export interface LocalAgentStreamRequestOptions {
+  streamId: string;
   path: string;
   method?: string;
   headers?: Record<string, string>;
@@ -1664,6 +1669,10 @@ export type ElizaDesktopRPCSchema = {
       localAgentRequest: {
         params: LocalAgentRequestOptions;
         response: LocalAgentRequestResult;
+      };
+      localAgentCancelRequest: {
+        params: LocalAgentCancelRequestOptions;
+        response: { cancelled: boolean };
       };
       localAgentStreamRequest: {
         params: LocalAgentStreamRequestOptions;

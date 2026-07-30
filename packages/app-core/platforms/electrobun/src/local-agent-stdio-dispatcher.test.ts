@@ -1,5 +1,5 @@
 /** Exercises local agent stdio dispatcher behavior with deterministic app-core test fixtures. */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   LocalAgentStdioDispatcher,
   type StdioFrameWriter,
@@ -7,7 +7,7 @@ import {
 
 /**
  * Unit tests for the main-process client of the desktop local-agent NDJSON
- * stdio bridge (#12355): request framing, id correlation, timeout, and
+ * stdio bridge (#12355): request framing, id correlation, cancellation, and
  * error-frame-to-rejection translation. Drives a deterministic in-memory writer
  * (no spawned child); the real child-side kernel is proven by the capture lane.
  */
@@ -23,6 +23,7 @@ describe("LocalAgentStdioDispatcher", () => {
     const dispatcher = new LocalAgentStdioDispatcher(writer);
 
     const promise = dispatcher.request({
+      requestId: "owner-1",
       path: "/api/health",
       method: "GET",
       headers: {},
@@ -59,12 +60,14 @@ describe("LocalAgentStdioDispatcher", () => {
     const dispatcher = new LocalAgentStdioDispatcher(writer);
 
     const first = dispatcher.request({
+      requestId: "owner-a",
       path: "/api/a",
       method: "GET",
       headers: {},
       body: null,
     });
     const second = dispatcher.request({
+      requestId: "owner-b",
       path: "/api/b",
       method: "GET",
       headers: {},
@@ -86,6 +89,7 @@ describe("LocalAgentStdioDispatcher", () => {
     const { writer } = makeWriter();
     const dispatcher = new LocalAgentStdioDispatcher(writer);
     const promise = dispatcher.request({
+      requestId: "owner-2",
       path: "/api/x",
       method: "GET",
       headers: {},
@@ -101,6 +105,7 @@ describe("LocalAgentStdioDispatcher", () => {
     const { writer } = makeWriter();
     const dispatcher = new LocalAgentStdioDispatcher(writer);
     const promise = dispatcher.request({
+      requestId: "owner-3",
       path: "/api/x",
       method: "GET",
       headers: {},
@@ -120,6 +125,7 @@ describe("LocalAgentStdioDispatcher", () => {
     const { writer } = makeWriter();
     const dispatcher = new LocalAgentStdioDispatcher(writer);
     const promise = dispatcher.request({
+      requestId: "owner-4",
       path: "/api/x",
       method: "GET",
       headers: {},
@@ -131,31 +137,81 @@ describe("LocalAgentStdioDispatcher", () => {
     await expect(promise).rejects.toThrow(/missing a numeric status/);
   });
 
-  it("times out a request with no response", async () => {
-    vi.useFakeTimers();
-    try {
-      const { writer } = makeWriter();
-      const dispatcher = new LocalAgentStdioDispatcher(writer, 100);
-      const promise = dispatcher.request({
-        path: "/api/slow",
-        method: "GET",
-        headers: {},
-        body: null,
-      });
-      const assertion = expect(promise).rejects.toThrow(
-        /timed out after 100ms/,
-      );
-      await vi.advanceTimersByTimeAsync(101);
-      await assertion;
-    } finally {
-      vi.useRealTimers();
-    }
+  it("sends a cancellation control frame for the owned request", () => {
+    const { writer, lines } = makeWriter();
+    const dispatcher = new LocalAgentStdioDispatcher(writer);
+    void dispatcher.request({
+      requestId: "owner-cancel",
+      path: "/api/slow",
+      method: "GET",
+      headers: {},
+      body: null,
+    });
+
+    expect(dispatcher.cancel("owner-cancel")).toBe(true);
+    expect(JSON.parse(lines[1])).toEqual({
+      id: 2,
+      method: "local_agent_cancel",
+      payload: { requestId: 1 },
+    });
+    expect(dispatcher.cancel("unknown")).toBe(false);
+  });
+
+  it("opens and forwards an incremental stream without buffering", async () => {
+    const { writer, lines } = makeWriter();
+    const dispatcher = new LocalAgentStdioDispatcher(writer);
+    const chunks: string[] = [];
+    const ended: Array<string | undefined> = [];
+    const head = dispatcher.requestStream(
+      {
+        requestId: "stream-1",
+        path: "/api/conversations/c/messages/stream",
+        method: "POST",
+        headers: { accept: "text/event-stream" },
+        body: "{}",
+      },
+      {
+        onChunk: (chunk) => chunks.push(chunk),
+        onEnd: (error) => ended.push(error),
+      },
+    );
+    expect(JSON.parse(lines[0])).toMatchObject({
+      id: "stream-1",
+      stream: true,
+      method: "local_agent_stream_request",
+    });
+
+    dispatcher.handleLine(
+      JSON.stringify({
+        id: "stream-1",
+        stream: "response",
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    await expect(head).resolves.toMatchObject({
+      streamId: "stream-1",
+      status: 200,
+    });
+    dispatcher.handleLine(
+      JSON.stringify({
+        id: "stream-1",
+        stream: "chunk",
+        dataBase64: Buffer.from("data: hi\n\n").toString("base64"),
+      }),
+    );
+    expect(chunks).toEqual(["data: hi\n\n"]);
+    dispatcher.handleLine(
+      JSON.stringify({ id: "stream-1", stream: "complete" }),
+    );
+    expect(ended).toEqual([undefined]);
   });
 
   it("dispose() rejects all in-flight requests (pipe closed)", async () => {
     const { writer } = makeWriter();
     const dispatcher = new LocalAgentStdioDispatcher(writer);
     const promise = dispatcher.request({
+      requestId: "owner-5",
       path: "/api/x",
       method: "GET",
       headers: {},
