@@ -84,6 +84,7 @@ type StartEliza = (options: {
 interface AndroidAgentModule {
 	startEliza: StartEliza;
 	dispatchRoute: AndroidDispatchRoute;
+	registerLocalInferenceTransportRoutes: (runtime: IAgentRuntime) => void;
 	/** Persisted-config seams for the server-level core routes (first-run). */
 	coreRoutes: AndroidCoreRouteDeps;
 }
@@ -99,6 +100,7 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 	const mod = (await import(/* @vite-ignore */ "@elizaos/agent")) as {
 		startEliza: StartEliza;
 		dispatchRoute: AndroidDispatchRoute;
+		registerLocalInferenceTransportRoutes: (runtime: IAgentRuntime) => void;
 		configFileExists: AndroidCoreRouteDeps["configFileExists"];
 		loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"];
 		saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"];
@@ -107,6 +109,8 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 	return {
 		startEliza: mod.startEliza,
 		dispatchRoute: mod.dispatchRoute,
+		registerLocalInferenceTransportRoutes:
+			mod.registerLocalInferenceTransportRoutes,
 		coreRoutes: {
 			configFileExists: mod.configFileExists,
 			loadElizaConfig: mod.loadElizaConfig,
@@ -250,6 +254,7 @@ function serveConnection(
 	dispatchRoute: AndroidDispatchRoute,
 	coreRoutes: AndroidCoreRouteDeps,
 ): void {
+	const owner = new AbortController();
 	const bridge = createStdioBridge({
 		request: async (frame) =>
 			dispatchBufferedRequest(
@@ -257,6 +262,7 @@ function serveConnection(
 				dispatchRoute,
 				(frame.payload ?? {}) as AndroidRequestPayload,
 				coreRoutes,
+				owner.signal,
 			),
 		requestStream: async (frame, sink) =>
 			dispatchStreamingRequest(
@@ -265,6 +271,7 @@ function serveConnection(
 				(frame.payload ?? {}) as AndroidRequestPayload,
 				sink,
 				coreRoutes,
+				owner.signal,
 			),
 		writeFrame: (frame: StdioBridgeResponseFrame) => {
 			if (!socket.destroyed) socket.write(`${JSON.stringify(frame)}\n`);
@@ -294,7 +301,15 @@ function serveConnection(
 		});
 	});
 	socket.once("error", (err: Error) => {
+		owner.abort(err);
 		_logToFile(`[android-bridge] connection error: ${err.message}`);
+	});
+	socket.once("close", () => {
+		if (!owner.signal.aborted) {
+			owner.abort(
+				new DOMException("Android IPC client disconnected", "AbortError"),
+			);
+		}
 	});
 }
 
@@ -435,7 +450,12 @@ export async function runAndroidBridgeCli(): Promise<void> {
 	process.once("SIGINT", _earlyInt);
 
 	_logToFile("[android-bridge] importing agent module...");
-	const { startEliza, dispatchRoute, coreRoutes } = await loadAgentModule();
+	const {
+		startEliza,
+		dispatchRoute,
+		registerLocalInferenceTransportRoutes,
+		coreRoutes,
+	} = await loadAgentModule();
 	_logToFile(
 		"[android-bridge] calling startEliza({ serverOnly: true, localAgentMode: true })...",
 	);
@@ -472,6 +492,11 @@ export async function runAndroidBridgeCli(): Promise<void> {
 			"[android-bridge] startEliza returned no runtime; cannot serve stdio requests",
 		);
 	}
+
+	registerLocalInferenceTransportRoutes(runtime);
+	_logToFile(
+		"[android-bridge] mounted local-inference control and voice routes on the in-process dispatcher",
+	);
 
 	// ── Step 4: wire inference delegation if device-bridge enabled ────────────
 	// Registers TEXT_SMALL/TEXT_LARGE/TEXT_EMBEDDING handlers (registerModel) on
