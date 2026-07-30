@@ -1,10 +1,13 @@
 /**
  * Tests that `ensureLocalInferenceHandler` registers the TEXT_SMALL/TEXT_LARGE/
- * TEXT_EMBEDDING handlers and wires the router at boot. Routing mode,
- * assignments, and the registry are mocked; no model loads.
+ * TEXT_EMBEDDING handlers, wires the router, and releases the fused embedding
+ * context through runtime shutdown. Native calls use an in-memory FFI seam.
  */
 
 import { type AgentRuntime, ModelType } from "@elizaos/core";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
@@ -52,6 +55,19 @@ const arbiterState = vi.hoisted(() => ({
 		description: "A tiny synthetic image.",
 	})),
 }));
+const fusedFfiState = vi.hoisted(() => {
+	const context = 123n;
+	return {
+		context,
+		ffi: {
+			close: vi.fn(),
+			create: vi.fn(() => context),
+			destroy: vi.fn(),
+			embed: vi.fn(() => new Float32Array([0.25, 0.75])),
+			embedSupported: vi.fn(() => true),
+		},
+	};
+});
 vi.mock("../services/active-model", () => ({
 	resolveLocalInferenceLoadArgs: vi.fn(async (target) => target),
 }));
@@ -75,6 +91,10 @@ vi.mock("../services/device-bridge", () => ({
 		loadModel: vi.fn(),
 		unloadModel: vi.fn(),
 	},
+}));
+
+vi.mock("../services/desktop-fused-ffi-backend-runtime", () => ({
+	resolveFusedLibraryPath: vi.fn(() => "/tmp/libelizainference.dylib"),
 }));
 
 vi.mock("../services/engine", () => ({
@@ -110,6 +130,10 @@ vi.mock("../services/voice", () => ({
 	})),
 }));
 
+vi.mock("../services/voice/ffi-bindings", () => ({
+	loadElizaInferenceFfi: vi.fn(() => fusedFfiState.ffi),
+}));
+
 import { resolveLocalInferenceLoadArgs } from "../services/active-model";
 import { probeHardware } from "../services/hardware";
 import { installRouterHandler } from "../services/router-handler";
@@ -126,15 +150,17 @@ interface Registration {
 function makeRuntime(): {
 	registrations: Registration[];
 	runtime: AgentRuntime;
+	services: Map<string, unknown>;
 } {
 	const registrations: Registration[] = [];
+	const services = new Map<string, unknown>();
 	const runtime = {
 		agentId: "agent-test",
 		getModel: vi.fn(() => undefined),
 		getSetting: vi.fn((key: string) =>
 			key === "ELIZA_RUNTIME_MODE" ? modeState.mode : undefined,
 		),
-		getService: vi.fn(() => null),
+		getService: vi.fn((name: string) => services.get(name) ?? null),
 		setSetting: vi.fn(),
 		registerModel: vi.fn(
 			(
@@ -151,9 +177,11 @@ function makeRuntime(): {
 				});
 			},
 		),
-		registerService: vi.fn(),
+		registerServiceInstance: vi.fn((name: string, service: unknown) => {
+			services.set(name, service);
+		}),
 	} as unknown as AgentRuntime;
-	return { registrations, runtime };
+	return { registrations, runtime, services };
 }
 
 function findRegisteredHandler(
@@ -179,6 +207,11 @@ beforeEach(() => {
 	delete process.env.ELIZA_LOCAL_LLAMA;
 	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
 	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
+	delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
+	delete process.env.ELIZA_BIONIC_INFERENCE_SOCK;
+	delete process.env.ELIZA_EMBED_BUNDLE_ROOT;
+	delete process.env.LOCAL_EMBEDDING_MODEL;
+	delete process.env.MODELS_DIR;
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.hasLoadedModel.mockReturnValue(false);
@@ -276,6 +309,186 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(installRouterHandler).toHaveBeenCalledWith(runtime, {
 			skipSlots: ["TEXT_EMBEDDING"],
 		});
+	});
+
+	it("destroys the fused embedding context when its owning runtime stops", async () => {
+		const modelsDir = mkdtempSync(
+			path.join(tmpdir(), "eliza-embed-lifecycle-"),
+		);
+		const model = "gte-small-test.gguf";
+		writeFileSync(path.join(modelsDir, model), "test");
+		process.env.MODELS_DIR = modelsDir;
+		process.env.LOCAL_EMBEDDING_MODEL = model;
+		const { registrations, runtime, services } = makeRuntime();
+
+		try {
+			await ensureLocalInferenceHandler(runtime);
+			const embedding = registrations.find(
+				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
+			)?.handler as (
+				runtime: AgentRuntime,
+				params: { text: string },
+			) => Promise<number[]>;
+
+			await expect(
+				embedding(runtime, { text: "shutdown ownership" }),
+			).resolves.toEqual([0.25, 0.75]);
+
+			const lifecycle = services.get("localInferenceEmbeddingLifecycle") as {
+				stop(): Promise<void>;
+			};
+			await lifecycle.stop();
+			await lifecycle.stop();
+
+			expect(fusedFfiState.ffi.create).toHaveBeenCalledOnce();
+			expect(fusedFfiState.ffi.destroy).toHaveBeenCalledOnce();
+			expect(fusedFfiState.ffi.destroy).toHaveBeenCalledWith(
+				fusedFfiState.context,
+			);
+			expect(fusedFfiState.ffi.close).toHaveBeenCalledOnce();
+		} finally {
+			rmSync(modelsDir, { recursive: true, force: true });
+		}
+	});
+
+	it("routes Android bionic-host TTS without arming the musl FFI voice engine", async () => {
+		const { registrations, runtime } = makeRuntime();
+		const installed = {
+			id: "eliza-1-2b",
+			path: "/models/eliza-1-2b.gguf",
+		};
+		assignmentsState.assignments = { TEXT_TO_SPEECH: installed.id };
+		registryState.installed = [installed];
+		const synthesizeSpeech = vi.fn(
+			async () => new Uint8Array([82, 73, 70, 70]),
+		);
+		const bionicHost = {
+			currentModelPath: vi.fn(() => null),
+			loadModel: vi.fn(async () => undefined),
+			unloadModel: vi.fn(async () => undefined),
+			transcribe: vi.fn(),
+			describeImage: vi.fn(),
+			synthesizeSpeech,
+		};
+		(runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+			(name: string) => (name === "localInferenceLoader" ? bionicHost : null),
+		);
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.TEXT_TO_SPEECH,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<Uint8Array>)
+			| undefined;
+		const controller = new AbortController();
+		await expect(
+			handler?.(runtime, {
+				text: "Hello from Android.",
+				signal: controller.signal,
+			}),
+		).resolves.toEqual(new Uint8Array([82, 73, 70, 70]));
+
+		expect(synthesizeSpeech).toHaveBeenCalledWith(
+			"Hello from Android.",
+			controller.signal,
+		);
+		expect(bionicHost.unloadModel).toHaveBeenCalledOnce();
+		expect(bionicHost.loadModel).toHaveBeenCalledWith(installed);
+		expect(engineState.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
+		expect(engineState.synthesizeSpeech).not.toHaveBeenCalled();
+	});
+
+	it("loads the assigned Android bundle before bionic ASR and vision", async () => {
+		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "eliza-test-inference";
+		const { registrations, runtime } = makeRuntime();
+		const installed = {
+			id: "eliza-1-2b",
+			path: "/models/eliza-1-2b.gguf",
+		};
+		assignmentsState.assignments = {
+			TRANSCRIPTION: installed.id,
+			TEXT_SMALL: installed.id,
+		};
+		registryState.installed = [installed];
+		let loadedPath: string | null = null;
+		const bionicHost = {
+			currentModelPath: vi.fn(() => loadedPath),
+			loadModel: vi.fn(async () => {
+				loadedPath = installed.path;
+			}),
+			unloadModel: vi.fn(async () => {
+				loadedPath = null;
+			}),
+			transcribe: vi.fn(async () => "hello"),
+			describeImage: vi.fn(async () => "a test image"),
+			synthesizeSpeech: vi.fn(),
+		};
+		(runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+			(name: string) => (name === "localInferenceLoader" ? bionicHost : null),
+		);
+
+		await ensureLocalInferenceHandler(runtime);
+		const transcription = registrations.find(
+			(entry) => entry.modelType === ModelType.TRANSCRIPTION,
+		)?.handler as (
+			runtime: AgentRuntime,
+			params: Record<string, unknown>,
+		) => Promise<string>;
+		const imageDescription = registrations.find(
+			(entry) => entry.modelType === ModelType.IMAGE_DESCRIPTION,
+		)?.handler as (
+			runtime: AgentRuntime,
+			params: Record<string, unknown>,
+		) => Promise<{ description: string }>;
+
+		await expect(
+			transcription(runtime, {
+				pcm: new Float32Array([0]),
+				sampleRate: 16_000,
+			}),
+		).resolves.toBe("hello");
+		await expect(
+			imageDescription(runtime, {
+				imageUrl: "data:image/png;base64,AQID",
+			}),
+		).resolves.toMatchObject({ description: "a test image" });
+
+		expect(bionicHost.loadModel).toHaveBeenCalledOnce();
+		expect(bionicHost.transcribe).toHaveBeenCalledWith({
+			pcmBase64: "AAAAAA==",
+			sampleRate: 16_000,
+		});
+		expect(bionicHost.describeImage).toHaveBeenCalledWith({
+			imageBase64: "AQID",
+			prompt: undefined,
+		});
+	});
+
+	it("registers the Android bionic loader as a started service instance", async () => {
+		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "eliza-test-inference";
+		const { runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(runtime.registerServiceInstance).toHaveBeenCalledWith(
+			"localInferenceLoader",
+			expect.objectContaining({
+				capabilityDescription: "Android bionic host local inference backend",
+				stop: expect.any(Function),
+				synthesizeSpeech: expect.any(Function),
+			}),
+		);
+		expect(runtime.getService("localInferenceLoader")).toEqual(
+			expect.objectContaining({
+				synthesizeSpeech: expect.any(Function),
+			}),
+		);
 	});
 
 	it("skips handler registration outside local modes", async () => {
