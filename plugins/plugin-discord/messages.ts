@@ -1788,6 +1788,9 @@ export class MessageManager {
 								type: MemoryType.MESSAGE,
 								accountId: this.accountId,
 								platformMessageId: m.id,
+								// Trusted scope stamp at ingestion: the reply belongs to the
+								// room it was delivered into.
+								scope: "room",
 							},
 							createdAt: m.createdTimestamp,
 						};
