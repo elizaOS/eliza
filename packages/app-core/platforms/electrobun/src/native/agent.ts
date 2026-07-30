@@ -34,7 +34,10 @@ import {
   setApiToken,
 } from "@elizaos/shared";
 import { Utils } from "electrobun/bun";
-import { resolveDesktopRuntimeMode } from "../api-base";
+import {
+  resolveDesktopRuntimeMode,
+  resolveLocalAgentIpcMode,
+} from "../api-base";
 import { getBrandConfig } from "../brand-config";
 import { DEFAULT_API_PORT } from "../constants";
 import {
@@ -56,6 +59,8 @@ import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
 import { findFirstAvailableLoopbackPort } from "./loopback-port";
+import { setActiveLocalAgentDispatcher } from "../local-agent-dispatcher-registry";
+import { LocalAgentStdioDispatcher } from "../local-agent-stdio-dispatcher";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1157,6 +1162,30 @@ async function waitForHealthy(
   return false;
 }
 
+async function waitForLocalAgentIpcReady(
+  isReady: () => boolean,
+  timeoutMs: number,
+  childProcess: BunSubprocess,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (isReady()) return true;
+    if (childProcess.exitCode !== null) return false;
+    await Bun.sleep(25);
+  }
+  return false;
+}
+
+function isLocalAgentReadyLine(line: string): boolean {
+  try {
+    const frame = JSON.parse(line) as { type?: unknown; ready?: unknown };
+    return frame.type === "local_agent_ready" && frame.ready === true;
+  } catch {
+    // error-policy:J3 stdout also carries human-readable logs.
+    return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -1388,6 +1417,7 @@ export class AgentManager {
     error: null,
   };
   private childProcess: BunSubprocess | null = null;
+  private localAgentDispatcher: LocalAgentStdioDispatcher | null = null;
   private stdioAbortController: AbortController | null = null;
   private hasPgliteError = false;
   private pgliteRecoveryDone = false;
@@ -1593,6 +1623,7 @@ export class AgentManager {
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
+      const localAgentIpc = resolveLocalAgentIpcMode(childEnv);
       childEnv.ELIZA_NAMESPACE = resolveDesktopChildNamespace(childEnv);
       applyDesktopChildStateEnv(childEnv);
       delete childEnv.ELIZA_PORT;
@@ -1728,10 +1759,22 @@ export class AgentManager {
           env: childEnv,
           stdout: "pipe",
           stderr: "pipe",
+          stdin: localAgentIpc ? "pipe" : "ignore",
         },
       );
 
       this.childProcess = proc;
+      if (localAgentIpc && proc.stdin) {
+        const childStdin = proc.stdin;
+        const dispatcher = new LocalAgentStdioDispatcher({
+          write: (line) => {
+            childStdin.write(line);
+            childStdin.flush();
+          },
+        });
+        this.localAgentDispatcher = dispatcher;
+        setActiveLocalAgentDispatcher(dispatcher);
+      }
       diagnosticLog(
         `[Agent] Child spawned pid=${proc.pid} elapsed=${Date.now() - spawnTime}ms`,
       );
@@ -1760,6 +1803,10 @@ export class AgentManager {
           proc.stdout,
           (line: string) => {
             diagnosticLog(`[Agent][stdout] ${line}`);
+            this.localAgentDispatcher?.handleLine(line);
+            if (localAgentIpc && isLocalAgentReadyLine(line)) {
+              detectedListening = true;
+            }
             const lower = line.toLowerCase();
             // Parse dynamic port from "[eliza-api] Listening on http://host:PORT"
             const portMatch = line.match(
@@ -1812,15 +1859,19 @@ export class AgentManager {
       // Wait for the health endpoint to respond
       // Use a getter so the health check follows dynamic port reassignment from stdout
       diagnosticLog(
-        `[Agent] Waiting for health endpoint at http://127.0.0.1:${apiPort}/api/health ...`,
+        localAgentIpc
+          ? "[Agent] Waiting for local-agent stdio readiness..."
+          : `[Agent] Waiting for health endpoint at http://127.0.0.1:${apiPort}/api/health ...`,
       );
       this.setStartupPhase("waiting_for_health");
       const healthPollTimeoutMs = getHealthPollTimeoutMs();
-      const healthy = await waitForHealthy(
-        () => apiPort,
-        healthPollTimeoutMs,
-        proc,
-      );
+      const healthy = localAgentIpc
+        ? await waitForLocalAgentIpcReady(
+            () => detectedListening,
+            healthPollTimeoutMs,
+            proc,
+          )
+        : await waitForHealthy(() => apiPort, healthPollTimeoutMs, proc);
 
       if (!healthy) {
         // Check if process already exited
@@ -1853,9 +1904,11 @@ export class AgentManager {
           return this.status;
         }
 
-        const errMsg = detectedListening
-          ? "Server reported listening but health check timed out"
-          : `Health check timed out after ${healthPollTimeoutMs}ms`;
+        const errMsg = localAgentIpc
+          ? `Local-agent stdio startup did not become ready after ${healthPollTimeoutMs}ms`
+          : detectedListening
+            ? "Server reported listening but health check timed out"
+            : `Health check timed out after ${healthPollTimeoutMs}ms`;
         diagnosticLog(`[Agent] ${errMsg}`);
         this.status = {
           state: "error",
@@ -1876,11 +1929,12 @@ export class AgentManager {
           error: errMsg,
         });
         this.releaseDatabaseStartupLock();
+        await this.killChildProcess();
         this.emitStatus();
         return this.status;
       }
       recordStartupPhase("health_ready", {
-        port: apiPort,
+        port: localAgentIpc ? null : apiPort,
         child_pid: proc.pid,
       });
       this.databaseSnapshot = updateDatabaseSnapshotStatus(
@@ -1916,13 +1970,15 @@ export class AgentManager {
       this.setStartupPhase("ready", null);
       this.emitStatus();
       diagnosticLog(
-        `[Agent] Runtime ready -- port: ${apiPort}, pid: ${proc.pid}, startup_ms: ${startupMs}`,
+        `[Agent] Runtime ready -- transport: ${localAgentIpc ? "stdio" : `port:${apiPort}`}, pid: ${proc.pid}, startup_ms: ${startupMs}`,
       );
       recordStartupPhase("runtime_ready", {
         port: apiPort,
         child_pid: proc.pid,
       });
-      void this.refreshAgentMetadata(proc, apiPort, startupMs);
+      if (!localAgentIpc) {
+        void this.refreshAgentMetadata(proc, apiPort, startupMs);
+      }
       return this.status;
     } catch (err) {
       const errMsg =
@@ -2301,6 +2357,9 @@ export class AgentManager {
       .then((exitCode: number) => {
         // Only update status if this is still our active child process
         if (this.childProcess !== proc) return;
+        this.detachLocalAgentDispatcher(
+          `agent child exited with code ${exitCode}`,
+        );
 
         const wasRunning = this.status.state === "running";
         const wasStarting = this.status.state === "starting";
@@ -2351,6 +2410,7 @@ export class AgentManager {
       })
       .catch((err: unknown) => {
         if (this.childProcess !== proc) return;
+        this.detachLocalAgentDispatcher("agent child exit watcher failed");
         diagnosticLog(
           `[Agent] Child process exited with error: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -2388,6 +2448,14 @@ export class AgentManager {
       clearTimeout(this.autoRestartTimer);
       this.autoRestartTimer = null;
     }
+  }
+
+  private detachLocalAgentDispatcher(reason: string): void {
+    const dispatcher = this.localAgentDispatcher;
+    if (!dispatcher) return;
+    this.localAgentDispatcher = null;
+    dispatcher.dispose(reason);
+    setActiveLocalAgentDispatcher(null);
   }
 
   /**
@@ -2456,6 +2524,7 @@ export class AgentManager {
    * after a timeout.
    */
   private async killChildProcess(): Promise<void> {
+    this.detachLocalAgentDispatcher("agent child stopped");
     const proc = this.childProcess;
     if (!proc) return;
 

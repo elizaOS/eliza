@@ -57,7 +57,10 @@ describe("desktopLocalAgentTransportForUrl (#12180)", () => {
       headers: { "content-type": "application/json" },
       body: '{"ok":true}',
     });
-    const request = { localAgentRequest };
+    const localAgentCancelRequest = vi
+      .fn()
+      .mockResolvedValue({ cancelled: true });
+    const request = { localAgentRequest, localAgentCancelRequest };
     bridgeMock.getElectrobunRendererRpc.mockReturnValue({ request });
 
     expect(isElectrobunLocalMode(`${IPC_BASE}/api/health`)).toBe(true);
@@ -72,13 +75,15 @@ describe("desktopLocalAgentTransportForUrl (#12180)", () => {
       { timeoutMs: 1234 },
     );
 
-    expect(localAgentRequest).toHaveBeenCalledWith({
-      path: "/api/health",
-      method: "GET",
-      headers: { "content-type": "application/json" },
-      body: null,
-      timeoutMs: 1234,
-    });
+    expect(localAgentRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: expect.any(String),
+        path: "/api/health",
+        method: "GET",
+        headers: { "content-type": "application/json" },
+        body: null,
+      }),
+    );
     expect(response?.status).toBe(200);
     await expect(response?.json()).resolves.toEqual({ ok: true });
   });
@@ -103,7 +108,10 @@ describe("desktopLocalAgentTransportForUrl (#12180)", () => {
       .fn()
       .mockResolvedValue({ status: 201, body: "{}" });
     bridgeMock.getElectrobunRendererRpc.mockReturnValue({
-      request: { localAgentRequest },
+      request: {
+        localAgentRequest,
+        localAgentCancelRequest: vi.fn().mockResolvedValue({ cancelled: true }),
+      },
     });
 
     const transport = await desktopLocalAgentTransportForUrl(
@@ -121,6 +129,90 @@ describe("desktopLocalAgentTransportForUrl (#12180)", () => {
         body: '{"title":"hi"}',
       }),
     );
+  });
+
+  it("streams desktop IPC chunks incrementally through renderer messages", async () => {
+    runtimeMock.isElectrobunRuntime.mockReturnValue(true);
+    const listeners = new Map<string, Set<(payload: unknown) => void>>();
+    const emit = (name: string, payload: unknown): void => {
+      for (const listener of listeners.get(name) ?? []) listener(payload);
+    };
+    const localAgentStreamRequest = vi.fn(
+      async (params: { streamId: string }) => {
+        queueMicrotask(() => {
+          emit("localAgentStreamChunk", {
+            streamId: params.streamId,
+            chunk: "data: first\n\n",
+          });
+          emit("localAgentStreamChunk", {
+            streamId: params.streamId,
+            chunk: "data: second\n\n",
+          });
+          emit("localAgentStreamEnd", { streamId: params.streamId });
+        });
+        return {
+          streamId: params.streamId,
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        };
+      },
+    );
+    bridgeMock.getElectrobunRendererRpc.mockReturnValue({
+      request: {
+        localAgentRequest: vi.fn(),
+        localAgentStreamRequest,
+        localAgentCancelRequest: vi.fn().mockResolvedValue({ cancelled: true }),
+      },
+      onMessage: (name: string, listener: (payload: unknown) => void) => {
+        const set = listeners.get(name) ?? new Set();
+        set.add(listener);
+        listeners.set(name, set);
+      },
+      offMessage: (name: string, listener: (payload: unknown) => void) => {
+        listeners.get(name)?.delete(listener);
+      },
+    });
+    const transport = await desktopLocalAgentTransportForUrl(
+      `${IPC_BASE}/api/conversations/c/messages/stream`,
+    );
+
+    const response = await transport?.request(
+      `${IPC_BASE}/api/conversations/c/messages/stream`,
+      { headers: { accept: "text/event-stream" } },
+    );
+
+    expect(response?.headers.get("content-type")).toBe("text/event-stream");
+    await expect(response?.text()).resolves.toBe(
+      "data: first\n\ndata: second\n\n",
+    );
+  });
+
+  it("cancels the owned main-process request when the caller aborts", async () => {
+    runtimeMock.isElectrobunRuntime.mockReturnValue(true);
+    const localAgentRequest = vi.fn(
+      (_params: unknown) => new Promise(() => {}),
+    );
+    const localAgentCancelRequest = vi
+      .fn()
+      .mockResolvedValue({ cancelled: true });
+    bridgeMock.getElectrobunRendererRpc.mockReturnValue({
+      request: { localAgentRequest, localAgentCancelRequest },
+    });
+    const transport = await desktopLocalAgentTransportForUrl(
+      `${IPC_BASE}/api/slow`,
+    );
+    const owner = new AbortController();
+    const pending = transport?.request(`${IPC_BASE}/api/slow`, {
+      signal: owner.signal,
+    });
+    owner.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    const requestArgs = localAgentRequest.mock.calls[0]?.[0] as {
+      requestId: string;
+    };
+    const requestId = requestArgs.requestId;
+    expect(localAgentCancelRequest).toHaveBeenCalledWith({ requestId });
   });
 });
 

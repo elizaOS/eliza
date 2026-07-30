@@ -7,7 +7,7 @@
  * writes back. This module is the main-process peer: it serializes a normalized
  * local-agent request into a request frame, writes the line to the child's
  * stdin, and resolves when the matching response frame arrives on stdout. It
- * owns request/response correlation (monotonic ids), timeout, and the
+ * owns request/response correlation (monotonic ids), cancellation, and the
  * error-frame-to-rejection translation, so a failed dispatch surfaces as a
  * thrown RPC error rather than a fabricated 200.
  *
@@ -15,6 +15,7 @@
  * (`localAgentStreamRequest`) is added with its child-side consumer.
  */
 
+import { Buffer } from "node:buffer";
 import type {
   LocalAgentDispatcher,
   NormalizedLocalAgentRequest,
@@ -24,17 +25,28 @@ import type { LocalAgentRequestResult } from "./rpc-schema";
 /** Method label the child dispatches to its in-process route kernel. */
 const LOCAL_AGENT_REQUEST_METHOD = "local_agent_request" as const;
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-
 /** Sink for outbound request frames — the child process's stdin writer. */
 export interface StdioFrameWriter {
   write(line: string): void;
 }
 
 interface PendingRequest {
+  ownerRequestId: string;
   resolve: (result: LocalAgentRequestResult) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+}
+
+interface PendingStream {
+  resolveHead: (result: {
+    streamId: string;
+    status: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+  }) => void;
+  rejectHead: (error: Error) => void;
+  onChunk: (chunk: string) => void;
+  onEnd: (error?: string) => void;
+  headSettled: boolean;
 }
 
 interface StdioResponseFrame {
@@ -42,6 +54,11 @@ interface StdioResponseFrame {
   ok?: unknown;
   result?: unknown;
   error?: unknown;
+  stream?: unknown;
+  status?: unknown;
+  statusText?: unknown;
+  headers?: unknown;
+  dataBase64?: unknown;
 }
 
 function isLocalAgentRequestResult(
@@ -62,27 +79,20 @@ function isLocalAgentRequestResult(
 export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
   private nextId = 1;
   private readonly pending = new Map<number, PendingRequest>();
+  private readonly pendingStreams = new Map<string, PendingStream>();
 
-  constructor(
-    private readonly writer: StdioFrameWriter,
-    private readonly defaultTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
-  ) {}
+  constructor(private readonly writer: StdioFrameWriter) {}
 
   request(
     request: NormalizedLocalAgentRequest,
   ): Promise<LocalAgentRequestResult> {
     const id = this.nextId++;
-    const timeoutMs = request.timeoutMs ?? this.defaultTimeoutMs;
     return new Promise<LocalAgentRequestResult>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new Error(
-            `localAgentRequest ${request.method} ${request.path} timed out after ${timeoutMs}ms.`,
-          ),
-        );
-      }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, {
+        ownerRequestId: request.requestId,
+        resolve,
+        reject,
+      });
 
       const frame = JSON.stringify({
         id,
@@ -105,6 +115,71 @@ export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
     });
   }
 
+  cancel(ownerRequestId: string): boolean {
+    const entry = [...this.pending.entries()].find(
+      ([, pending]) => pending.ownerRequestId === ownerRequestId,
+    );
+    const stream = this.pendingStreams.get(ownerRequestId);
+    const requestId = entry?.[0] ?? (stream ? ownerRequestId : null);
+    if (requestId === null) return false;
+    const controlId = this.nextId++;
+    this.writer.write(
+      `${JSON.stringify({
+        id: controlId,
+        method: "local_agent_cancel",
+        payload: { requestId },
+      })}\n`,
+    );
+    return true;
+  }
+
+  requestStream(
+    request: NormalizedLocalAgentRequest,
+    callbacks: {
+      onChunk: (chunk: string) => void;
+      onEnd: (error?: string) => void;
+    },
+  ): Promise<{
+    streamId: string;
+    status: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+  }> {
+    const streamId = request.requestId;
+    if (this.pendingStreams.has(streamId)) {
+      return Promise.reject(
+        new Error(`Duplicate local-agent stream id: ${streamId}`),
+      );
+    }
+    return new Promise((resolveHead, rejectHead) => {
+      this.pendingStreams.set(streamId, {
+        resolveHead,
+        rejectHead,
+        onChunk: callbacks.onChunk,
+        onEnd: callbacks.onEnd,
+        headSettled: false,
+      });
+      try {
+        this.writer.write(
+          `${JSON.stringify({
+            id: streamId,
+            method: "local_agent_stream_request",
+            stream: true,
+            payload: {
+              path: request.path,
+              method: request.method,
+              headers: request.headers,
+              body: request.body,
+            },
+          })}\n`,
+        );
+      } catch (error) {
+        this.pendingStreams.delete(streamId);
+        rejectHead(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
   /**
    * Feed one raw stdout line from the child. Non-JSON lines and frames without a
    * numeric id we are waiting on are ignored (the child multiplexes logs on the
@@ -117,6 +192,10 @@ export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
     try {
       frame = JSON.parse(trimmed) as StdioResponseFrame;
     } catch {
+      return;
+    }
+    if (typeof frame.id === "string" && typeof frame.stream === "string") {
+      this.handleStreamFrame(frame.id, frame);
       return;
     }
     if (typeof frame.id !== "number") return;
@@ -149,12 +228,53 @@ export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
     for (const id of [...this.pending.keys()]) {
       this.settleError(id, new Error(reason));
     }
+    for (const [streamId, pending] of this.pendingStreams) {
+      const error = new Error(reason);
+      if (!pending.headSettled) pending.rejectHead(error);
+      else pending.onEnd(error.message);
+      this.pendingStreams.delete(streamId);
+    }
+  }
+
+  private handleStreamFrame(streamId: string, frame: StdioResponseFrame): void {
+    const pending = this.pendingStreams.get(streamId);
+    if (!pending) return;
+    if (frame.stream === "response") {
+      if (pending.headSettled || typeof frame.status !== "number") return;
+      pending.headSettled = true;
+      pending.resolveHead({
+        streamId,
+        status: frame.status,
+        ...(typeof frame.statusText === "string"
+          ? { statusText: frame.statusText }
+          : {}),
+        ...(frame.headers && typeof frame.headers === "object"
+          ? { headers: frame.headers as Record<string, string> }
+          : {}),
+      });
+      return;
+    }
+    if (frame.stream === "chunk" && typeof frame.dataBase64 === "string") {
+      pending.onChunk(Buffer.from(frame.dataBase64, "base64").toString("utf8"));
+      return;
+    }
+    if (frame.stream !== "complete") return;
+    this.pendingStreams.delete(streamId);
+    const error = typeof frame.error === "string" ? frame.error : undefined;
+    if (!pending.headSettled && error) {
+      pending.rejectHead(new Error(error));
+      return;
+    }
+    if (!pending.headSettled) {
+      pending.headSettled = true;
+      pending.resolveHead({ streamId, status: 200 });
+    }
+    pending.onEnd(error);
   }
 
   private settleResult(id: number, result: LocalAgentRequestResult): void {
     const pending = this.pending.get(id);
     if (!pending) return;
-    clearTimeout(pending.timer);
     this.pending.delete(id);
     pending.resolve(result);
   }
@@ -162,7 +282,6 @@ export class LocalAgentStdioDispatcher implements LocalAgentDispatcher {
   private settleError(id: number, error: Error): void {
     const pending = this.pending.get(id);
     if (!pending) return;
-    clearTimeout(pending.timer);
     this.pending.delete(id);
     pending.reject(error);
   }

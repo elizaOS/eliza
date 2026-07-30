@@ -13,6 +13,7 @@ import {
   type AgentRequestTransport,
   bodyToString,
   headersToRecord,
+  isStreamingRequest,
   methodAllowsBody,
 } from "./transport";
 
@@ -25,14 +26,6 @@ import {
  * base must not open a socket — they route through the Electrobun main process
  * over `window.__ELIZA_ELECTROBUN_RPC__.request.localAgentRequest(...)`, which
  * drives the in-process route kernel (stdio bridge) with no TCP listener.
- *
- * This resolver is DORMANT until a future PR (#12180 item 4) adds the
- * `localAgentRequest` RPC handler in the Electrobun main process AND switches the
- * desktop API base to the IPC scheme in local mode. Until then no code path sets
- * the base to `eliza-local-agent://ipc`, so `desktopLocalAgentTransportForUrl`
- * always returns `null` and the transport is never exercised. If the base is
- * flipped before the handler exists, `request` throws a clear
- * not-yet-implemented error rather than silently falling back to HTTP.
  */
 
 interface DesktopLocalAgentRequestResult {
@@ -40,6 +33,96 @@ interface DesktopLocalAgentRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+}
+
+async function requestDesktopStream(
+  rpc: NonNullable<ReturnType<typeof getElectrobunRendererRpc>>,
+  url: string,
+  init: RequestInit,
+  method: string,
+  body: string | null | undefined,
+): Promise<Response> {
+  const requestStream = rpc.request.localAgentStreamRequest;
+  if (!requestStream) {
+    throw new Error("Desktop local-agent streaming RPC is not registered");
+  }
+  const streamId = crypto.randomUUID();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let detached = false;
+  const encoder = new TextEncoder();
+  const detach = (): void => {
+    if (detached) return;
+    detached = true;
+    rpc.offMessage("localAgentStreamChunk", onChunk);
+    rpc.offMessage("localAgentStreamEnd", onEnd);
+    init.signal?.removeEventListener("abort", onAbort);
+  };
+  const cancel = (): void => {
+    void rpc.request.localAgentCancelRequest({ requestId: streamId });
+  };
+  const onChunk = (payload: unknown): void => {
+    const event = payload as { streamId?: string; chunk?: string };
+    if (event.streamId !== streamId || typeof event.chunk !== "string") return;
+    controller?.enqueue(encoder.encode(event.chunk));
+  };
+  const onEnd = (payload: unknown): void => {
+    const event = payload as { streamId?: string; error?: string };
+    if (event.streamId !== streamId) return;
+    if (event.error) controller?.error(new Error(event.error));
+    else controller?.close();
+    detach();
+  };
+  const onAbort = (): void => {
+    cancel();
+    controller?.error(
+      init.signal?.reason instanceof Error
+        ? init.signal.reason
+        : new DOMException(
+            "Desktop local-agent stream cancelled",
+            "AbortError",
+          ),
+    );
+    detach();
+  };
+  const responseBody = new ReadableStream<Uint8Array>({
+    start(value) {
+      controller = value;
+    },
+    cancel() {
+      cancel();
+      detach();
+    },
+  });
+  rpc.onMessage("localAgentStreamChunk", onChunk);
+  rpc.onMessage("localAgentStreamEnd", onEnd);
+  init.signal?.addEventListener("abort", onAbort, { once: true });
+  if (init.signal?.aborted) {
+    onAbort();
+    throw init.signal.reason instanceof Error
+      ? init.signal.reason
+      : new DOMException("Desktop local-agent stream cancelled", "AbortError");
+  }
+  try {
+    const head = (await requestStream.call(rpc.request, {
+      streamId,
+      path: mobileLocalAgentPathFromUrl(url) ?? url,
+      method,
+      headers: headersToRecord(init.headers),
+      body: methodAllowsBody(method) ? (body ?? null) : null,
+    })) as {
+      status: number;
+      statusText?: string;
+      headers?: Record<string, string>;
+    };
+    return new Response(responseBody, {
+      status: head.status,
+      statusText: head.statusText ?? "",
+      headers: head.headers,
+    });
+  } catch (error) {
+    detach();
+    throw error;
+  }
 }
 
 /**
@@ -52,7 +135,7 @@ export function isElectrobunLocalMode(url: string): boolean {
 }
 
 const desktopLocalAgentTransport: AgentRequestTransport = {
-  async request(url, init, context) {
+  async request(url, init) {
     const rpc = getElectrobunRendererRpc();
     const request = rpc?.request?.localAgentRequest;
     if (!request || !rpc?.request) {
@@ -60,13 +143,18 @@ const desktopLocalAgentTransport: AgentRequestTransport = {
       // Fail loudly — falling back to fetch would open a socket the whole
       // feature exists to remove.
       throw new Error(
-        "Desktop local-agent IPC transport is not available: window.__ELIZA_ELECTROBUN_RPC__.request.localAgentRequest is not registered (#12180 item 4 not yet landed)",
+        "Desktop local-agent IPC transport is not available: window.__ELIZA_ELECTROBUN_RPC__.request.localAgentRequest is not registered",
       );
     }
 
     const method = init.method ?? "GET";
     const body = bodyToString(init.body);
-    const result = (await request.call(rpc.request, {
+    if (isStreamingRequest(url, init.headers)) {
+      return requestDesktopStream(rpc, url, init, method, body);
+    }
+    const requestId = crypto.randomUUID();
+    const requestPromise = request.call(rpc.request, {
+      requestId,
       // The path relative to the IPC base; the main process joins it to the
       // in-process route kernel. Fall back to the raw url if it is not an IPC
       // URL (should not happen — the resolver gates on isElectrobunLocalMode).
@@ -74,8 +162,37 @@ const desktopLocalAgentTransport: AgentRequestTransport = {
       method,
       headers: headersToRecord(init.headers),
       body: methodAllowsBody(method) ? (body ?? null) : null,
-      timeoutMs: context?.timeoutMs,
-    })) as DesktopLocalAgentRequestResult;
+    }) as Promise<DesktopLocalAgentRequestResult>;
+    const result = await new Promise<DesktopLocalAgentRequestResult>(
+      (resolve, reject) => {
+        const onAbort = (): void => {
+          void rpc.request.localAgentCancelRequest({ requestId });
+          reject(
+            init.signal?.reason instanceof Error
+              ? init.signal.reason
+              : new DOMException(
+                  "Desktop local-agent request cancelled",
+                  "AbortError",
+                ),
+          );
+        };
+        if (init.signal?.aborted) {
+          onAbort();
+          return;
+        }
+        init.signal?.addEventListener("abort", onAbort, { once: true });
+        void requestPromise.then(
+          (value) => {
+            init.signal?.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error) => {
+            init.signal?.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+      },
+    );
 
     return new Response(result.body ?? "", {
       status: result.status,

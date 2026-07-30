@@ -83,7 +83,10 @@ import {
 import { isKioskShellMode } from "./kiosk-mode";
 import { LaunchOrchestrator } from "./launch";
 import { requireActiveLocalAgentDispatcher } from "./local-agent-dispatcher-registry";
-import { createLocalAgentRequestHandler } from "./local-agent-request";
+import {
+  createLocalAgentRequestHandler,
+  normalizeLocalAgentRequest,
+} from "./local-agent-request";
 import { logger } from "./logger";
 import {
   getAgentManager,
@@ -703,16 +706,29 @@ export function buildBunRpcHandlers({
     localAgentRequest: createLocalAgentRequestHandler({
       request: (request) =>
         requireActiveLocalAgentDispatcher().request(request),
+      cancel: (requestId) =>
+        requireActiveLocalAgentDispatcher().cancel(requestId),
     }),
-    // Streaming (chat token SSE) over the IPC bridge is registered so the wire
-    // contract exists for the renderer's native streaming adapter; the
-    // child-side streaming consumer lands with the desktop capture proof
-    // (#12180 phase 4). It fails loudly rather than silently degrading to a
-    // non-streaming or socket path.
-    localAgentStreamRequest: async () => {
-      throw new Error(
-        "localAgentStreamRequest is not yet available: the desktop IPC streaming leg lands with its child-side consumer (#12180 phase 4).",
-      );
+    localAgentCancelRequest: async (params) => ({
+      cancelled: requireActiveLocalAgentDispatcher().cancel(params.requestId),
+    }),
+    localAgentStreamRequest: async (params) => {
+      const request = normalizeLocalAgentRequest({
+        ...params,
+        requestId: params.streamId,
+      });
+      return requireActiveLocalAgentDispatcher().requestStream(request, {
+        onChunk: (chunk) =>
+          sendToWebview("localAgentStreamChunk", {
+            streamId: params.streamId,
+            chunk,
+          }),
+        onEnd: (error) =>
+          sendToWebview("localAgentStreamEnd", {
+            streamId: params.streamId,
+            ...(error ? { error } : {}),
+          }),
+      });
     },
 
     // ---- Renderer diagnostics ----

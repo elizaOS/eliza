@@ -27,11 +27,11 @@ import type {
  * stdio bridge today).
  */
 export interface NormalizedLocalAgentRequest {
+  requestId: string;
   path: string;
   method: string;
   headers: Record<string, string>;
   body: string | null;
-  timeoutMs?: number;
 }
 
 /**
@@ -46,6 +46,19 @@ export interface LocalAgentDispatcher {
   request(
     request: NormalizedLocalAgentRequest,
   ): Promise<LocalAgentRequestResult>;
+  cancel(requestId: string): boolean;
+  requestStream(
+    request: NormalizedLocalAgentRequest,
+    callbacks: {
+      onChunk: (chunk: string) => void;
+      onEnd: (error?: string) => void;
+    },
+  ): Promise<{
+    streamId: string;
+    status: number;
+    statusText?: string;
+    headers?: Record<string, string>;
+  }>;
 }
 
 const METHODS_WITHOUT_BODY = new Set(["GET", "HEAD"]);
@@ -62,6 +75,9 @@ export function normalizeLocalAgentRequest(
     throw new Error("localAgentRequest params must be an object.");
   }
   const record = params as Record<string, unknown>;
+  if (typeof record.requestId !== "string" || !record.requestId.trim()) {
+    throw new Error("localAgentRequest requestId must be a non-empty string.");
+  }
   if (typeof record.path !== "string" || record.path.length === 0) {
     throw new Error("localAgentRequest path must be a non-empty string.");
   }
@@ -93,14 +109,13 @@ export function normalizeLocalAgentRequest(
   }
   const body = METHODS_WITHOUT_BODY.has(method) ? null : rawBody;
 
-  const timeoutMs =
-    typeof record.timeoutMs === "number" &&
-    Number.isFinite(record.timeoutMs) &&
-    record.timeoutMs > 0
-      ? record.timeoutMs
-      : undefined;
-
-  return { path: record.path, method, headers, body, timeoutMs };
+  return {
+    requestId: record.requestId.trim(),
+    path: record.path,
+    method,
+    headers,
+    body,
+  };
 }
 
 /**

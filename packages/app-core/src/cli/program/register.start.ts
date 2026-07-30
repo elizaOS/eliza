@@ -47,6 +47,12 @@ function shouldDisableAutoConnectionKey(): boolean {
   return resolveApiSecurityConfig(process.env).disableAutoApiToken;
 }
 
+function isDesktopLocalAgentIpc(): boolean {
+  return ["1", "true", "yes", "on"].includes(
+    process.env.ELIZA_DESKTOP_LOCAL_AGENT_IPC?.trim().toLowerCase() ?? "",
+  );
+}
+
 async function startAction() {
   bootLap("start:startAction entry");
   // Auto-generate a connection key only when binding to a network address
@@ -65,8 +71,10 @@ async function startAction() {
       "../../api/auth-pairing-routes"
     );
     // Use serverOnly mode: starts API server, no interactive chat loop
-    await startEliza({
+    const localAgentIpc = isDesktopLocalAgentIpc();
+    const runtime = await startEliza({
       serverOnly: true,
+      localAgentMode: localAgentIpc,
       onEmbeddingProgress: (phase, detail) => {
         if (phase === "downloading") {
           console.log(`[eliza] Embedding: ${detail ?? "downloading..."}`);
@@ -75,6 +83,17 @@ async function startAction() {
         }
       },
     });
+
+    if (localAgentIpc) {
+      if (!runtime) {
+        throw new Error("Desktop local-agent runtime did not start");
+      }
+      const { serveDesktopLocalAgentStdio } = await import(
+        "../../runtime/local-agent-stdio-server"
+      );
+      serveDesktopLocalAgentStdio(runtime);
+      return;
+    }
 
     const port = String(resolveServerOnlyPort(process.env));
     const pairing = ensureAuthPairingCodeForRemoteAccess();
