@@ -42,7 +42,7 @@ src/
   mobile-device-bridge-bootstrap.ts  MobileDeviceBridge class + ensureMobileDeviceBridgeInferenceHandlers
                                       Model path resolution: env vars → registry → manifest.json → first .gguf
                                       Auto-download from elizaos/eliza-1 on HuggingFace (respects ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD)
-                                      Recommended models: eliza-1-4b (TEXT_SMALL + TEXT_LARGE), eliza-1-embedding (TEXT_EMBEDDING)
+                                      Recommended models come from the shared local-inference catalog
   android/
     bridge.ts                       Android CLI entry: env setup, fs shim install, startEliza({ serverOnly: true }), device-bridge wiring
   ios/
@@ -110,12 +110,12 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 | `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | Override embedding vector size (default: model-id lookup or 1024). |
 | `TEXT_EMBEDDING_DIMENSIONS` | Fallback for embedding dimension override. |
 
-### Timeouts
-| Var | Default | Description |
-|---|---|---|
-| `ELIZA_DEVICE_LOAD_TIMEOUT_MS` | 600000 | ms to wait for model load / formatChat. |
-| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | 600000 | ms to wait for generate / unload. |
-| `ELIZA_DEVICE_EMBED_TIMEOUT_MS` | 600000 | ms to wait for embed. |
+### Request lifecycle
+
+Model RPCs have no bridge-owned wall-clock deadline. They finish when the
+device responds, its socket disconnects, or the owning runtime call aborts.
+Aborted generations send a correlated `cancel` frame so the device stops native
+decode instead of wasting work on an answer whose caller is gone.
 
 ### Android-specific
 | Var | Description |
@@ -152,7 +152,7 @@ bun run --cwd plugins/plugin-capacitor-bridge clean           # rm -rf dist .tur
 
 ### Add a new iOS host call
 
-Add a new branch in `runIosBridgeCli()` (in `src/ios/bridge.ts`) that calls `callIosHost(method, payload, timeoutMs)`. Handle the native result in `tryHandleHostResultLine()` — it dispatches based on `parsed.type === "host_result"`.
+Add a new branch in `runIosBridgeCli()` (in `src/ios/bridge.ts`) that calls `callIosHost(method, payload, signal?)`. Handle the native result in `tryHandleHostResultLine()` — it dispatches based on `parsed.type === "host_result"`.
 
 ### Add a new sandboxed fs operation
 
