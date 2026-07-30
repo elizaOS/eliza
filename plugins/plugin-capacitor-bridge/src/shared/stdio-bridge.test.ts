@@ -114,11 +114,12 @@ describe("createStdioBridge — buffered NDJSON round-trip", () => {
 		expect(frames[0]).toEqual({ id: 7, ok: false, error: "route blew up" });
 	});
 
-	it("dispatches lines in request order", async () => {
+	it("dispatches independent request ids concurrently", async () => {
 		const seen: number[] = [];
 		const { frames, bridge } = harness(async (request) => {
 			const id = (request as { id: number }).id;
-			// Reverse the natural resolution order to prove serialization.
+			// The shorter second request completes first instead of waiting behind
+			// the first request's work.
 			await new Promise((r) => setTimeout(r, id === 1 ? 20 : 0));
 			seen.push(id);
 			return { status: 200 };
@@ -126,8 +127,42 @@ describe("createStdioBridge — buffered NDJSON round-trip", () => {
 		void bridge.handleLine(JSON.stringify({ id: 1, method: "http_request" }));
 		void bridge.handleLine(JSON.stringify({ id: 2, method: "http_request" }));
 		await bridge.drain();
-		expect(seen).toEqual([1, 2]);
-		expect(frames.map((f) => f.id)).toEqual([1, 2]);
+		expect(seen).toEqual([2, 1]);
+		expect(frames.map((f) => f.id)).toEqual([2, 1]);
+	});
+
+	it("can dispatch a cancellation control frame while a stream is active", async () => {
+		let releaseStream: () => void = () => {};
+		const streamDone = new Promise<void>((resolve) => {
+			releaseStream = resolve;
+		});
+		const frames: StdioBridgeResponseFrame[] = [];
+		const bridge = createStdioBridge({
+			request: async (request) => {
+				if (request.method !== "cancel") throw new Error("unexpected request");
+				releaseStream();
+				return { cancelled: true };
+			},
+			requestStream: async (_request, sink) => {
+				sink.emitResponse({ status: 200, statusText: "OK", headers: {} });
+				await streamDone;
+			},
+			writeFrame: (frame) => frames.push(frame),
+		});
+
+		void bridge.handleLine(
+			JSON.stringify({ id: "stream", stream: true, method: "generate" }),
+		);
+		await Promise.resolve();
+		await bridge.handleLine(JSON.stringify({ id: "cancel", method: "cancel" }));
+		await bridge.drain();
+
+		expect(frames).toContainEqual({
+			id: "cancel",
+			ok: true,
+			result: { cancelled: true },
+		});
+		expect(frames.at(-1)).toEqual({ id: "stream", stream: "complete" });
 	});
 
 	it("skips dispatch for lines claimed by interceptLine", async () => {
