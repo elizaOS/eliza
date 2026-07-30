@@ -52,7 +52,7 @@ import {
   type GenerateTextParams,
   getInferencePriorityGate,
   type IAgentRuntime,
-  InferenceBackgroundWaitTimeoutError,
+  InferenceLaneBusyError,
   logger,
   type ModelRegistrationMetadata,
   ModelType,
@@ -858,10 +858,9 @@ function classifyLocalError(err: unknown): {
     if (name === "AbortError") {
       return { fallback: false, reason: "local-aborted-pre-completion" };
     }
-    if (err instanceof InferenceBackgroundWaitTimeoutError) {
-      // The local lane was busy for the whole bounded background wait
-      // (#11914) — the job never started locally, so a configured cloud
-      // handler may run it instead.
+    if (err instanceof InferenceLaneBusyError) {
+      // Busy background work is rejected before it enters the local lane, so
+      // a configured cloud handler may run it instead.
       return { fallback: true, reason: "local-overloaded" };
     }
     if (
@@ -1673,9 +1672,9 @@ function makeLoaderLifecycle(loader: AospLoader): {
  * background lane (elizaOS/eliza#11914). The fused context runs one decode at
  * a time, so ALL text generates (model load included — a swap touches the same
  * native lane) acquire the shared {@link getInferencePriorityGate} first:
- * interactive turns dispatch ahead of queued background jobs; background jobs
- * run only when the lane is idle, wait at most the RAM-class bound before
- * failing back to their scheduler, and are clamped to the RAM-class budget
+ * interactive turns wait in FIFO order; background jobs run only when the lane
+ * is idle, otherwise fail immediately back to their scheduler, and are clamped
+ * to the RAM-class budget
  * (`maxTokens` + prompt size) so one autonomous job cannot hold the lane for
  * multi-minute stretches on a constrained phone.
  *
@@ -1689,7 +1688,6 @@ export async function generateOnPriorityLane(
 ): Promise<string> {
   const priority = params.priority ?? "interactive";
   const args = buildGenerateArgsFromParams(params);
-  let lockWaitMs: number | undefined;
   if (priority === "background") {
     const budget = resolveBackgroundInferenceBudget(
       classifyInferenceRamClass(),
@@ -1705,13 +1703,11 @@ export async function generateOnPriorityLane(
     }
     args.prompt = clampedArgs.prompt;
     args.maxTokens = clampedArgs.maxTokens;
-    lockWaitMs = budget.lockWaitMs;
   }
   return getInferencePriorityGate().runExclusive(
     {
       priority,
       label: `aosp-text (${args.prompt.length} chars, maxTokens=${args.maxTokens ?? "default"})`,
-      ...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
       ...(params.signal ? { signal: params.signal } : {}),
     },
     async () => {
