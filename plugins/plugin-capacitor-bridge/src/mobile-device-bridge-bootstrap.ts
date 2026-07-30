@@ -13,13 +13,11 @@ import { randomUUID } from "node:crypto";
 import {
 	createWriteStream,
 	existsSync,
-	linkSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
 	renameSync,
 	statSync,
-	symlinkSync,
 	unlinkSync,
 } from "node:fs";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
@@ -39,19 +37,23 @@ import {
 	logger,
 	MobileDeviceBridgeService,
 	type MobileDeviceBridgeStatus,
+	type ModelRegistrationMetadata,
 	ModelType,
 	resolveBackgroundInferenceBudget,
 	resolveStateDir,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
+import { deriveBionicBundleDir as deriveSharedBionicBundleDir } from "@elizaos/shared/bionic-bundle-view";
+import {
+	type Eliza1TierId,
+	FIRST_RUN_DEFAULT_MODEL_ID,
+	findCatalogModel,
+} from "@elizaos/shared/local-inference";
 import { resolveStoredModelPath } from "./shared/local-inference-stored-path.ts";
 
 const DEVICE_BRIDGE_PATH = "/api/local-inference/device-bridge";
 const PROVIDER = "capacitor-llama";
 const LOCAL_INFERENCE_PRIORITY = 0;
-const DEFAULT_NATIVE_REQUEST_TIMEOUT_MS = 600_000;
-const DEFAULT_CALL_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
-const DEFAULT_LOAD_TIMEOUT_MS = DEFAULT_NATIVE_REQUEST_TIMEOUT_MS;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 /**
@@ -69,42 +71,51 @@ const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
 	"eliza-1-4b": 2560,
 };
 
-// Gemma 4 MTP uses a separate assistant/drafter GGUF. The current shared
-// catalog declares `mtp/drafter-<tier>.gguf` with a measured one-token draft
-// window; omitting a drafter path would select the retired same-file path.
-const GEMMA_MTP_DRAFT = { draftMin: 1, draftMax: 1 } as const;
+function requireCatalogModel(modelId: Eliza1TierId) {
+	const model = findCatalogModel(modelId);
+	if (!model) {
+		throw new Error(
+			`[mobile-device-bridge] Shared catalog has no model ${modelId}`,
+		);
+	}
+	return model;
+}
+
+function catalogLoadMetadata(modelId: Eliza1TierId): {
+	contextSize: number;
+	mtp?: { drafterFile: string; draftMin: number; draftMax: number };
+} {
+	const model = requireCatalogModel(modelId);
+	const mtp = model.runtime?.mtp;
+	const drafterFile = mtp?.drafterFile;
+	if (!model.contextLength) {
+		throw new Error(
+			`[mobile-device-bridge] Shared catalog model ${modelId} has no context length`,
+		);
+	}
+	return {
+		contextSize: model.contextLength,
+		...(mtp && drafterFile
+			? {
+					mtp: {
+						drafterFile,
+						draftMin: mtp.draftMin,
+						draftMax: mtp.draftMax,
+					},
+				}
+			: {}),
+	};
+}
 
 const ELIZA_1_LOAD_METADATA: Record<
 	string,
-	{
-		contextSize: number;
-		mtp?: { drafterFile: string; draftMin: number; draftMax: number };
-	}
+	ReturnType<typeof catalogLoadMetadata>
 > = {
-	// 2B is the smallest/entry tier (the small-phone default). Every shipped
-	// tier can use a Gemma 4 assistant drafter when that companion GGUF is
-	// staged next to the bundle. The bridge never falls back to same-file MTP
-	// because that belonged to the retired pre-Gemma contract.
-	"eliza-1-2b": {
-		contextSize: 131072,
-		mtp: { drafterFile: "mtp/drafter-2b.gguf", ...GEMMA_MTP_DRAFT },
-	},
-	"eliza-1-4b": {
-		contextSize: 65536,
-		mtp: { drafterFile: "mtp/drafter-4b.gguf", ...GEMMA_MTP_DRAFT },
-	},
-	"eliza-1-9b": {
-		contextSize: 65536,
-		mtp: { drafterFile: "mtp/drafter-9b.gguf", ...GEMMA_MTP_DRAFT },
-	},
-	"eliza-1-27b": {
-		contextSize: 131072,
-		mtp: { drafterFile: "mtp/drafter-27b.gguf", ...GEMMA_MTP_DRAFT },
-	},
-	"eliza-1-27b-256k": {
-		contextSize: 262144,
-		mtp: { drafterFile: "mtp/drafter-27b-256k.gguf", ...GEMMA_MTP_DRAFT },
-	},
+	"eliza-1-2b": catalogLoadMetadata("eliza-1-2b"),
+	"eliza-1-4b": catalogLoadMetadata("eliza-1-4b"),
+	"eliza-1-9b": catalogLoadMetadata("eliza-1-9b"),
+	"eliza-1-27b": catalogLoadMetadata("eliza-1-27b"),
+	"eliza-1-27b-256k": catalogLoadMetadata("eliza-1-27b-256k"),
 };
 
 // Native bionic-host override for Gemma separate-drafter MTP. When
@@ -137,6 +148,7 @@ type EmbeddingHandler = (
 
 interface LocalInferenceLoadArgs {
 	modelPath: string;
+	signal?: AbortSignal;
 	contextSize?: number;
 	useGpu?: boolean;
 	maxThreads?: number;
@@ -160,6 +172,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 		handler: GenerateTextHandler | EmbeddingHandler,
 		provider: string,
 		priority?: number,
+		metadata?: ModelRegistrationMetadata,
 	) => void;
 };
 
@@ -215,6 +228,18 @@ interface DeviceCapabilities {
 	} | null;
 }
 
+function isDeviceGpu(
+	value: unknown,
+): value is NonNullable<DeviceCapabilities["gpu"]> {
+	return (
+		isRecord(value) &&
+		(value.backend === "metal" ||
+			value.backend === "vulkan" ||
+			value.backend === "gpu-delegate") &&
+		typeof value.available === "boolean"
+	);
+}
+
 type DeviceOutbound =
 	| {
 			type: "register";
@@ -261,8 +286,161 @@ type DeviceOutbound =
 	  }
 	| { type: "pong"; at: number };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseDeviceOutbound(text: string): DeviceOutbound {
+	const value: unknown = JSON.parse(text);
+	if (!isRecord(value) || typeof value.type !== "string") {
+		throw new TypeError("frame must be an object with a string type");
+	}
+	if (value.type === "register") {
+		if (
+			!isRecord(value.payload) ||
+			typeof value.payload.deviceId !== "string" ||
+			(value.payload.pairingToken !== undefined &&
+				typeof value.payload.pairingToken !== "string") ||
+			!isRecord(value.payload.capabilities)
+		) {
+			throw new TypeError("register frame has invalid payload");
+		}
+		const capabilities = value.payload.capabilities;
+		const gpu = capabilities.gpu;
+		if (
+			(capabilities.platform !== "ios" &&
+				capabilities.platform !== "android" &&
+				capabilities.platform !== "web") ||
+			typeof capabilities.deviceModel !== "string" ||
+			typeof capabilities.totalRamGb !== "number" ||
+			typeof capabilities.cpuCores !== "number" ||
+			(gpu !== null && !isDeviceGpu(gpu)) ||
+			(value.payload.loadedPath !== null &&
+				typeof value.payload.loadedPath !== "string")
+		) {
+			throw new TypeError("register frame has invalid capabilities");
+		}
+		return {
+			type: "register",
+			payload: {
+				deviceId: value.payload.deviceId,
+				...(value.payload.pairingToken !== undefined
+					? { pairingToken: value.payload.pairingToken }
+					: {}),
+				capabilities: {
+					platform: capabilities.platform,
+					deviceModel: capabilities.deviceModel,
+					totalRamGb: capabilities.totalRamGb,
+					cpuCores: capabilities.cpuCores,
+					gpu:
+						gpu === null
+							? null
+							: {
+									backend: gpu.backend,
+									available: gpu.available,
+								},
+				},
+				loadedPath: value.payload.loadedPath,
+			},
+		};
+	}
+	if (value.type === "pong") {
+		if (typeof value.at !== "number") {
+			throw new TypeError("pong frame requires numeric at");
+		}
+		return { type: "pong", at: value.at };
+	}
+	if (
+		typeof value.correlationId !== "string" ||
+		typeof value.ok !== "boolean"
+	) {
+		throw new TypeError("result frame requires correlationId and ok");
+	}
+	if (!value.ok) {
+		if (typeof value.error !== "string") {
+			throw new TypeError("failed result frame requires error");
+		}
+		if (
+			value.type !== "loadResult" &&
+			value.type !== "unloadResult" &&
+			value.type !== "generateResult" &&
+			value.type !== "embedResult" &&
+			value.type !== "formatChatResult"
+		) {
+			throw new TypeError(`unknown result frame type ${value.type}`);
+		}
+		return {
+			type: value.type,
+			correlationId: value.correlationId,
+			ok: false,
+			error: value.error,
+		};
+	}
+	if (value.type === "loadResult" && typeof value.loadedPath === "string") {
+		return {
+			type: "loadResult",
+			correlationId: value.correlationId,
+			ok: true,
+			loadedPath: value.loadedPath,
+		};
+	}
+	if (value.type === "unloadResult") {
+		return {
+			type: "unloadResult",
+			correlationId: value.correlationId,
+			ok: true,
+		};
+	}
+	if (
+		value.type === "generateResult" &&
+		typeof value.text === "string" &&
+		typeof value.promptTokens === "number" &&
+		typeof value.outputTokens === "number" &&
+		typeof value.durationMs === "number"
+	) {
+		return {
+			type: "generateResult",
+			correlationId: value.correlationId,
+			ok: true,
+			text: value.text,
+			promptTokens: value.promptTokens,
+			outputTokens: value.outputTokens,
+			durationMs: value.durationMs,
+		};
+	}
+	if (
+		value.type === "embedResult" &&
+		Array.isArray(value.embedding) &&
+		value.embedding.every((entry) => typeof entry === "number") &&
+		typeof value.tokens === "number"
+	) {
+		return {
+			type: "embedResult",
+			correlationId: value.correlationId,
+			ok: true,
+			embedding: value.embedding,
+			tokens: value.tokens,
+		};
+	}
+	if (
+		value.type === "formatChatResult" &&
+		(value.prompt === null || typeof value.prompt === "string")
+	) {
+		return {
+			type: "formatChatResult",
+			correlationId: value.correlationId,
+			ok: true,
+			prompt: value.prompt,
+		};
+	}
+	throw new TypeError(`invalid successful result frame ${value.type}`);
+}
+
 type AgentOutbound =
-	| ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
+	| ({
+			type: "load";
+			correlationId: string;
+	  } & Omit<LocalInferenceLoadArgs, "signal">)
 	| { type: "unload"; correlationId: string }
 	| {
 			type: "generate";
@@ -273,6 +451,7 @@ type AgentOutbound =
 			temperature?: number;
 	  }
 	| { type: "embed"; correlationId: string; input: string }
+	| { type: "cancel"; correlationId: string }
 	| {
 			type: "formatChat";
 			correlationId: string;
@@ -291,8 +470,14 @@ interface ConnectedDevice {
 interface Pending<T> {
 	resolve: (value: T) => void;
 	reject: (err: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	cleanup: () => void;
 	routedDeviceId: string;
+}
+
+function abortError(signal: AbortSignal): Error {
+	return signal.reason instanceof Error
+		? signal.reason
+		: new DOMException("The operation was aborted", "AbortError");
 }
 
 interface RegistryModelEntry {
@@ -338,7 +523,7 @@ interface BundledModelManifest {
 
 export type { MobileDeviceBridgeStatus };
 
-class MobileDeviceBridge {
+export class MobileDeviceBridge {
 	private wss: WssInstance | null = null;
 	private readonly devices = new Map<string, ConnectedDevice>();
 	private readonly attachListeners = new Set<() => void>();
@@ -435,9 +620,14 @@ class MobileDeviceBridge {
 			let msg: DeviceOutbound;
 			try {
 				const text = typeof raw === "string" ? raw : raw.toString("utf8");
-				msg = JSON.parse(text) as DeviceOutbound;
-			} catch {
-				logger.warn("[mobile-device-bridge] Ignoring non-JSON frame");
+				msg = parseDeviceOutbound(text);
+			} catch (error) {
+				// error-policy:J3 untrusted websocket input is rejected as invalid
+				// instead of being interpreted as a successful empty message.
+				logger.warn(
+					`[mobile-device-bridge] Rejecting invalid device frame: ${error instanceof Error ? error.message : String(error)}`,
+				);
+				socket.close(4004, "invalid-frame");
 				return;
 			}
 
@@ -482,10 +672,36 @@ class MobileDeviceBridge {
 		});
 
 		socket.on("close", () => {
+			clearInterval(heartbeat);
 			if (!registeredDeviceId) return;
 			const current = this.devices.get(registeredDeviceId);
 			if (current?.socket === socket) {
 				this.devices.delete(registeredDeviceId);
+				this.rejectPendingForDevice(
+					this.pendingLoads,
+					registeredDeviceId,
+					"model load",
+				);
+				this.rejectPendingForDevice(
+					this.pendingUnloads,
+					registeredDeviceId,
+					"model unload",
+				);
+				this.rejectPendingForDevice(
+					this.pendingGenerates,
+					registeredDeviceId,
+					"generation",
+				);
+				this.rejectPendingForDevice(
+					this.pendingEmbeds,
+					registeredDeviceId,
+					"embedding",
+				);
+				this.rejectPendingForDevice(
+					this.pendingFormatChats,
+					registeredDeviceId,
+					"chat formatting",
+				);
 				logger.info(
 					`[mobile-device-bridge] Device disconnected: ${registeredDeviceId}`,
 				);
@@ -500,12 +716,32 @@ class MobileDeviceBridge {
 			if (!registeredDeviceId || socket.readyState !== WsCtor.OPEN) return;
 			try {
 				socket.send(JSON.stringify({ type: "ping", at: Date.now() }));
-			} catch {
+			} catch (error) {
+				// error-policy:J6 heartbeat teardown is best effort; the socket
+				// close/error handlers own request rejection and diagnostics.
+				logger.warn(
+					`[mobile-device-bridge] Heartbeat send failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
 				clearInterval(heartbeat);
 			}
 		}, 15_000);
 		if (typeof heartbeat === "object" && "unref" in heartbeat) {
 			(heartbeat as { unref(): void }).unref();
+		}
+	}
+
+	private rejectPendingForDevice<T>(
+		pendingMap: Map<string, Pending<T>>,
+		deviceId: string,
+		operation: string,
+	): void {
+		for (const [correlationId, pending] of pendingMap) {
+			if (pending.routedDeviceId !== deviceId) continue;
+			pendingMap.delete(correlationId);
+			pending.cleanup();
+			pending.reject(
+				new Error(`DEVICE_DISCONNECTED: ${deviceId} during ${operation}`),
+			);
 		}
 	}
 
@@ -515,8 +751,8 @@ class MobileDeviceBridge {
 		if (msg.type === "loadResult") {
 			const pending = this.pendingLoads.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingLoads.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === true) {
 				const device = this.devices.get(pending.routedDeviceId);
 				if (device) device.loadedPath = msg.loadedPath;
@@ -530,8 +766,8 @@ class MobileDeviceBridge {
 		if (msg.type === "unloadResult") {
 			const pending = this.pendingUnloads.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingUnloads.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === true) {
 				const device = this.devices.get(pending.routedDeviceId);
 				if (device) device.loadedPath = null;
@@ -545,8 +781,8 @@ class MobileDeviceBridge {
 		if (msg.type === "generateResult") {
 			const pending = this.pendingGenerates.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingGenerates.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === true) {
 				pending.resolve(msg.text);
 			} else {
@@ -558,8 +794,8 @@ class MobileDeviceBridge {
 		if (msg.type === "embedResult") {
 			const pending = this.pendingEmbeds.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingEmbeds.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === true) {
 				pending.resolve(msg.embedding);
 			} else {
@@ -571,8 +807,8 @@ class MobileDeviceBridge {
 		if (msg.type === "formatChatResult") {
 			const pending = this.pendingFormatChats.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingFormatChats.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === true) {
 				pending.resolve(msg.prompt);
 			} else {
@@ -604,9 +840,11 @@ class MobileDeviceBridge {
 	private sendToPrimary<T>(
 		pendingMap: Map<string, Pending<T>>,
 		makeMessage: (correlationId: string) => AgentOutbound,
-		timeoutMs: number,
-		timeoutMessage: string,
+		options: { signal?: AbortSignal; cancelGeneration?: boolean } = {},
 	): Promise<T> {
+		if (options.signal?.aborted) {
+			return Promise.reject(abortError(options.signal));
+		}
 		const device = this.primaryDevice();
 		if (!device) {
 			return Promise.reject(
@@ -620,24 +858,39 @@ class MobileDeviceBridge {
 		const message = makeMessage(correlationId);
 
 		return new Promise<T>((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				pendingMap.delete(correlationId);
-				reject(new Error(timeoutMessage));
-			}, timeoutMs);
-			if (typeof timeout === "object" && "unref" in timeout) {
-				(timeout as { unref(): void }).unref();
-			}
+			let abort = () => {};
+			const cleanup = () => options.signal?.removeEventListener("abort", abort);
+			abort = () => {
+				if (!pendingMap.delete(correlationId)) return;
+				cleanup();
+				if (options.cancelGeneration) {
+					try {
+						device.socket.send(
+							JSON.stringify({ type: "cancel", correlationId }),
+						);
+					} catch {
+						// error-policy:J5 the caller observes cancellation; socket
+						// failure is independently observed by the close/error handlers.
+					}
+				}
+				reject(abortError(options.signal as AbortSignal));
+			};
 			pendingMap.set(correlationId, {
 				resolve,
 				reject,
-				timeout,
+				cleanup,
 				routedDeviceId: device.deviceId,
 			});
+			options.signal?.addEventListener("abort", abort, { once: true });
+			if (options.signal?.aborted) {
+				abort();
+				return;
+			}
 			try {
 				device.socket.send(JSON.stringify(message));
 			} catch (err) {
-				clearTimeout(timeout);
 				pendingMap.delete(correlationId);
+				cleanup();
 				reject(err instanceof Error ? err : new Error(String(err)));
 			}
 		});
@@ -646,29 +899,25 @@ class MobileDeviceBridge {
 	async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
 		const device = this.primaryDevice();
 		if (device?.loadedPath === args.modelPath) return;
+		const { signal, ...wireArgs } = args;
 		return this.sendToPrimary<void>(
 			this.pendingLoads,
 			(correlationId) => ({
 				type: "load",
 				correlationId,
-				...args,
+				...wireArgs,
 			}),
-			readTimeoutMs("ELIZA_DEVICE_LOAD_TIMEOUT_MS", DEFAULT_LOAD_TIMEOUT_MS),
-			"DEVICE_TIMEOUT: model load exceeded deadline",
+			{ signal },
 		);
 	}
 
-	async unloadModel(): Promise<void> {
+	async unloadModel(signal?: AbortSignal): Promise<void> {
 		const device = this.primaryDevice();
 		if (!device?.loadedPath) return;
 		return this.sendToPrimary<void>(
 			this.pendingUnloads,
 			(correlationId) => ({ type: "unload", correlationId }),
-			readTimeoutMs(
-				"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
-				DEFAULT_CALL_TIMEOUT_MS,
-			),
-			"DEVICE_TIMEOUT: unload exceeded deadline",
+			{ signal },
 		);
 	}
 
@@ -677,6 +926,7 @@ class MobileDeviceBridge {
 		stopSequences?: string[];
 		maxTokens?: number;
 		temperature?: number;
+		signal?: AbortSignal;
 	}): Promise<string> {
 		return this.sendToPrimary<string>(
 			this.pendingGenerates,
@@ -688,15 +938,11 @@ class MobileDeviceBridge {
 				maxTokens: args.maxTokens,
 				temperature: args.temperature,
 			}),
-			readTimeoutMs(
-				"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
-				DEFAULT_CALL_TIMEOUT_MS,
-			),
-			"DEVICE_TIMEOUT: no device responded within deadline",
+			{ signal: args.signal, cancelGeneration: true },
 		);
 	}
 
-	embed(args: { input: string }): Promise<number[]> {
+	embed(args: { input: string; signal?: AbortSignal }): Promise<number[]> {
 		return this.sendToPrimary<number[]>(
 			this.pendingEmbeds,
 			(correlationId) => ({
@@ -704,8 +950,7 @@ class MobileDeviceBridge {
 				correlationId,
 				input: args.input,
 			}),
-			readTimeoutMs("ELIZA_DEVICE_EMBED_TIMEOUT_MS", DEFAULT_CALL_TIMEOUT_MS),
-			"DEVICE_TIMEOUT: no device returned embeddings within deadline",
+			{ signal: args.signal },
 		);
 	}
 
@@ -720,6 +965,7 @@ class MobileDeviceBridge {
 	 */
 	formatChat(
 		messages: { role: string; content: string }[],
+		signal?: AbortSignal,
 	): Promise<string | null> {
 		return this.sendToPrimary<string | null>(
 			this.pendingFormatChats,
@@ -728,18 +974,12 @@ class MobileDeviceBridge {
 				correlationId,
 				messages,
 			}),
-			readTimeoutMs("ELIZA_DEVICE_LOAD_TIMEOUT_MS", DEFAULT_LOAD_TIMEOUT_MS),
-			"DEVICE_TIMEOUT: chat template format exceeded deadline",
+			{ signal },
 		);
 	}
 }
 
 export const mobileDeviceBridge = new MobileDeviceBridge();
-
-function readTimeoutMs(envKey: string, fallback: number): number {
-	const parsed = Number.parseInt(process.env[envKey]?.trim() ?? "", 10);
-	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 function localInferenceRoot(): string {
 	return path.join(resolveStateDir(), "local-inference");
@@ -760,8 +1000,21 @@ function assignmentsPath(): string {
 function readJsonFile<T>(filePath: string): T | null {
 	try {
 		return JSON.parse(readFileSync(filePath, "utf8")) as T;
-	} catch {
-		return null;
+	} catch (error) {
+		if (
+			error &&
+			typeof error === "object" &&
+			"code" in error &&
+			error.code === "ENOENT"
+		) {
+			return null;
+		}
+		// error-policy:J2 registry corruption is configuration failure, not an
+		// empty registry; preserve the parser/read error for the owner.
+		throw new Error(
+			`[mobile-device-bridge] Could not read JSON registry ${filePath}`,
+			{ cause: error },
+		);
 	}
 }
 
@@ -794,11 +1047,8 @@ function resolveFromEnv(slot: string): string | null {
 }
 
 function resolveFromRegistry(slot: string): string | null {
-	const assignments = readJsonFile<AssignmentsFile>(
-		assignmentsPath(),
-	)?.assignments;
-	const assigned = assignments?.[slot];
-	if (typeof assigned !== "string" || !assigned.trim()) return null;
+	const assigned = resolveAssignedModelId(slot);
+	if (!assigned) return null;
 
 	const models = readRegistryModels();
 	const matched = models.find((model) => model.id === assigned);
@@ -809,7 +1059,32 @@ function resolveFromRegistry(slot: string): string | null {
 }
 
 function readRegistryModels(): RegistryModelEntry[] {
-	return readJsonFile<RegistryFile>(registryPath())?.models ?? [];
+	const registry = readJsonFile<RegistryFile>(registryPath());
+	if (!registry) return [];
+	if (!Array.isArray(registry.models)) {
+		throw new TypeError(
+			`[mobile-device-bridge] Invalid model registry at ${registryPath()}: models must be an array`,
+		);
+	}
+	return registry.models;
+}
+
+function resolveAssignedModelId(slot: string): string | null {
+	const assignmentFile = readJsonFile<AssignmentsFile>(assignmentsPath());
+	if (!assignmentFile) return null;
+	if (
+		!assignmentFile.assignments ||
+		typeof assignmentFile.assignments !== "object" ||
+		Array.isArray(assignmentFile.assignments)
+	) {
+		throw new TypeError(
+			`[mobile-device-bridge] Invalid model assignments at ${assignmentsPath()}: assignments must be an object`,
+		);
+	}
+	const assigned = assignmentFile.assignments[slot];
+	return typeof assigned === "string" && assigned.trim().length > 0
+		? assigned.trim()
+		: null;
 }
 
 function resolveAssignedRegistryModel(slot: string): {
@@ -819,11 +1094,8 @@ function resolveAssignedRegistryModel(slot: string): {
 	embeddingDimension?: unknown;
 	embeddingDimensions?: unknown;
 } | null {
-	const assignments = readJsonFile<AssignmentsFile>(
-		assignmentsPath(),
-	)?.assignments;
-	const assigned = assignments?.[slot];
-	if (typeof assigned !== "string" || !assigned.trim()) return null;
+	const assigned = resolveAssignedModelId(slot);
+	if (!assigned) return null;
 
 	const models = readRegistryModels();
 	const matched = models.find((model) => model.id === assigned);
@@ -1016,32 +1288,40 @@ type RecommendedModel = {
 	expectedSizeBytes?: number;
 };
 
+function catalogRecommendedModel(
+	modelId: Eliza1TierId,
+	role: "text" | "embedding",
+	publicId: string = modelId,
+): RecommendedModel {
+	const component =
+		requireCatalogModel(modelId).sourceModel?.components?.[role];
+	if (!component?.file) {
+		throw new Error(
+			`[mobile-device-bridge] Shared catalog model ${modelId} has no ${role} artifact`,
+		);
+	}
+	return {
+		id: publicId,
+		hfRepo: component.repo,
+		ggufFile: component.file,
+		localFile: path.basename(component.file),
+	};
+}
+
 const RECOMMENDED_MODELS: Record<
 	"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING",
 	RecommendedModel
 > = {
-	// The quantized 2B is the shipped mobile default. Both chat slots resolve
-	// to it — it is the entry tier, fits 8 GB-class phones with headroom, and is
-	// the model bundled into the AOSP image. The load path runs it at 64k
-	// context (see ELIZA_1_LOAD_METADATA) with compressed KV.
-	TEXT_SMALL: {
-		id: "eliza-1-2b",
-		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
-		localFile: "eliza-1-2b-128k.gguf",
-	},
-	TEXT_LARGE: {
-		id: "eliza-1-2b",
-		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
-		localFile: "eliza-1-2b-128k.gguf",
-	},
-	TEXT_EMBEDDING: {
-		id: "eliza-1-embedding",
-		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
-		localFile: "eliza-1-embedding.gguf",
-	},
+	// Both chat slots use the published first-run tier. Artifact paths come
+	// from the shared catalog because stable product ids (2b/4b) intentionally
+	// differ from the Gemma-4 repository slugs (e2b/e4b).
+	TEXT_SMALL: catalogRecommendedModel(FIRST_RUN_DEFAULT_MODEL_ID, "text"),
+	TEXT_LARGE: catalogRecommendedModel(FIRST_RUN_DEFAULT_MODEL_ID, "text"),
+	TEXT_EMBEDDING: catalogRecommendedModel(
+		"eliza-1-4b",
+		"embedding",
+		"eliza-1-embedding",
+	),
 };
 
 const inflightDownloads = new Map<string, Promise<string>>();
@@ -1154,14 +1434,20 @@ async function resolveLoadArgsWithAutoDownload(
 }
 
 function resolveEmbeddingDimension(): number {
-	const assigned = resolveAssignedRegistryModel("TEXT_EMBEDDING");
+	const assigned =
+		resolveAssignedRegistryModel("TEXT_EMBEDDING") ??
+		(bionicSocketName() ? resolveAssignedRegistryModel("TEXT_SMALL") : null);
+	const assignedId =
+		assigned?.id ??
+		resolveAssignedModelId("TEXT_EMBEDDING") ??
+		(bionicSocketName() ? resolveAssignedModelId("TEXT_SMALL") : null);
 	return (
 		positiveInteger(process.env.ELIZA_LOCAL_EMBEDDING_DIMENSIONS) ??
 		positiveInteger(process.env.TEXT_EMBEDDING_DIMENSIONS) ??
 		positiveInteger(assigned?.dimensions) ??
 		positiveInteger(assigned?.embeddingDimension) ??
 		positiveInteger(assigned?.embeddingDimensions) ??
-		(assigned?.id ? KNOWN_EMBEDDING_DIMENSIONS[assigned.id] : null) ??
+		(assignedId ? KNOWN_EMBEDDING_DIMENSIONS[assignedId] : null) ??
 		KNOWN_EMBEDDING_DIMENSIONS[RECOMMENDED_MODELS.TEXT_EMBEDDING.id] ??
 		1024
 	);
@@ -1214,17 +1500,6 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 // matches ElizaBionicInferenceServer.java + BionicHostLoader.ts:
 // [int32 BE length][UTF-8 JSON] each direction.
 
-// The bionic host does a SINGLE blocking generate per call (no streaming), so
-// the whole decode must finish inside this window. On a CPU-only build (the
-// Vulkan lib isn't staged) a small model runs at only a few tok/s, so a longer
-// reply (~200+ tokens) can exceed a 120s window and surface as a bionic-host
-// timeout with an empty/failed turn. Default to 300s (the other native
-// device-bridge ops already use 600s) and let it be tuned via env for slower
-// devices.
-const BIONIC_REQUEST_TIMEOUT_MS = readTimeoutMs(
-	"ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
-	300_000,
-);
 const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 interface BionicGenerateResponse {
@@ -1267,43 +1542,10 @@ export function resolveBionicStreamStep(): number | undefined {
 // BionicHostLoader path (bionic-host-loader.ts, #11335) so both delegated
 // entrypoints resolve the same bundle. This path (mobile-device-bridge) is the
 // one the WebView chat "(via bionic-host)" delegation actually uses.
-const FLAT_ELIZA_1_GGUF_RE = /^eliza-1-[a-z0-9_.-]+\.gguf$/i;
-const BIONIC_FLAT_BUNDLE_DIR = ".bionic-bundles";
-
 /** Bundle root the host's eliza_inference_create expects (…/text/<model>.gguf → …). */
 export function deriveBionicBundleDir(modelPath: string): string {
-	if (!modelPath) return "";
-	const dir = path.dirname(modelPath);
-	if (path.basename(dir) === "text") return path.dirname(dir);
-	if (!FLAT_ELIZA_1_GGUF_RE.test(path.basename(modelPath))) return "";
-	if (!existsSync(modelPath)) return "";
-
-	const modelName = path.basename(modelPath);
-	const bundleRoot = path.join(
-		dir,
-		BIONIC_FLAT_BUNDLE_DIR,
-		path.basename(modelName, path.extname(modelName)),
-	);
-	const textDir = path.join(bundleRoot, "text");
-	const stagedPath = path.join(textDir, modelName);
 	try {
-		mkdirSync(textDir, { recursive: true });
-		if (existsSync(stagedPath)) {
-			try {
-				if (statSync(modelPath).size === statSync(stagedPath).size) {
-					return bundleRoot;
-				}
-			} catch {
-				// Recreate a stale or broken alias below.
-			}
-			unlinkSync(stagedPath);
-		}
-		try {
-			linkSync(modelPath, stagedPath);
-		} catch {
-			symlinkSync(modelPath, stagedPath);
-		}
-		return bundleRoot;
+		return deriveSharedBionicBundleDir(modelPath);
 	} catch (err) {
 		logger.warn(
 			`[mobile-device-bridge] could not stage bionic bundle view for flat model "${modelPath}": ${err instanceof Error ? err.message : String(err)}`,
@@ -1387,27 +1629,31 @@ export function buildGemmaBionicPrompt(params: GenerateTextParams): string {
 function bionicHostGenerate(
 	socketName: string,
 	request: Record<string, unknown>,
+	signal?: AbortSignal,
 ): Promise<BionicGenerateResponse> {
 	const payload = Buffer.from(JSON.stringify(request), "utf8");
 	const frame = Buffer.allocUnsafe(4 + payload.length);
 	frame.writeUInt32BE(payload.length, 0);
 	payload.copy(frame, 4);
 	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(abortError(signal));
+			return;
+		}
 		const sock = net.connect({ path: `\0${socketName}` });
 		let settled = false;
 		let chunks = Buffer.alloc(0);
 		let expected = -1;
+		let abort = () => {};
 		const finish = (err: Error | null, value?: BionicGenerateResponse) => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(timer);
+			signal?.removeEventListener("abort", abort);
 			sock.destroy();
 			err ? reject(err) : resolve(value as BionicGenerateResponse);
 		};
-		const timer = setTimeout(
-			() => finish(new Error("[mobile-device-bridge] bionic host timed out")),
-			BIONIC_REQUEST_TIMEOUT_MS,
-		);
+		abort = () => finish(abortError(signal as AbortSignal));
+		signal?.addEventListener("abort", abort, { once: true });
 		sock.on("connect", () => sock.write(frame));
 		sock.on("data", (d: Buffer) => {
 			chunks = Buffer.concat([chunks, d]);
@@ -1459,6 +1705,7 @@ function bionicHostGenerateStream(
 	socketName: string,
 	request: Record<string, unknown>,
 	onToken: (text: string) => void,
+	signal?: AbortSignal,
 ): Promise<BionicGenerateResponse> {
 	const payload = Buffer.from(
 		JSON.stringify({ ...request, op: "generateStream" }),
@@ -1468,20 +1715,23 @@ function bionicHostGenerateStream(
 	frame.writeUInt32BE(payload.length, 0);
 	payload.copy(frame, 4);
 	return new Promise((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(abortError(signal));
+			return;
+		}
 		const sock = net.connect({ path: `\0${socketName}` });
 		let settled = false;
 		let chunks = Buffer.alloc(0);
+		let abort = () => {};
 		const finish = (err: Error | null, value?: BionicGenerateResponse) => {
 			if (settled) return;
 			settled = true;
-			clearTimeout(timer);
+			signal?.removeEventListener("abort", abort);
 			sock.destroy();
 			err ? reject(err) : resolve(value as BionicGenerateResponse);
 		};
-		const timer = setTimeout(
-			() => finish(new Error("[mobile-device-bridge] bionic host timed out")),
-			BIONIC_REQUEST_TIMEOUT_MS,
-		);
+		abort = () => finish(abortError(signal as AbortSignal));
+		signal?.addEventListener("abort", abort, { once: true });
 		sock.on("connect", () => sock.write(frame));
 		sock.on("data", (d: Buffer) => {
 			chunks = Buffer.concat([chunks, d]);
@@ -1533,7 +1783,7 @@ function bionicHostGenerateStream(
 /**
  * Clamp a background-priority request to the device-class budget and resolve
  * its bounded lane wait (#11914). Interactive requests pass through untouched
- * with an unbounded lane wait (their transport timeout governs the total).
+ * with an unbounded lane wait; their owner signal governs operation lifetime.
  */
 function resolveMobileLaneBudget(
 	priority: LocalInferencePriority,
@@ -1601,31 +1851,34 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					...(params.signal ? { signal: params.signal } : {}),
 				},
 				async () => {
-					// When the runtime wants streaming (chat SSE / voice), server-push
-					// the decode token-by-token over the UDS so the UI paints at the
-					// first token instead of after the whole reply. Otherwise one
-					// buffered RPC. `streamStep` bounds how many tokens the host
-					// decodes per native call before flushing a frame (#11913) — the
-					// host clamps it to its JNI buffer and defaults to the #9174
-					// streaming knee (8) when the agent-side knob is unset.
+					// Always use the streaming host operation. Besides improving TTFT
+					// when the caller consumes chunks, each flushed frame observes a
+					// disconnected owner so cancellation interrupts native decode
+					// instead of waiting for a buffered response to finish.
 					const onChunk = params.onStreamChunk;
 					const streamStep = resolveBionicStreamStep();
 					let accumulated = "";
-					return typeof onChunk === "function"
-						? bionicHostGenerateStream(
-								bionicSock,
-								streamStep !== undefined
-									? { ...baseRequest, streamStep }
-									: baseRequest,
-								(text) => {
-									accumulated += text;
-									void onChunk(text, undefined, accumulated);
+					return bionicHostGenerateStream(
+						bionicSock,
+						streamStep !== undefined
+							? { ...baseRequest, streamStep }
+							: baseRequest,
+						(text) => {
+							if (typeof onChunk !== "function") return;
+							accumulated += text;
+							Promise.resolve(onChunk(text, undefined, accumulated)).catch(
+								(error) => {
+									// error-policy:J5 the returned generation promise remains
+									// observable; chunk-consumer failure is reported separately.
+									_runtime.reportError(
+										"mobile-device-bridge.streamChunk",
+										error,
+									);
 								},
-							)
-						: bionicHostGenerate(bionicSock, {
-								op: "generate",
-								...baseRequest,
-							});
+							);
+						},
+						params.signal,
+					);
 				},
 			);
 			if (!res.ok) {
@@ -1650,7 +1903,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			);
 		}
 
-		await mobileDeviceBridge.loadModel(loadArgs);
+		await mobileDeviceBridge.loadModel({ ...loadArgs, signal: params.signal });
 		// Prefer the model's native chat template via the Capacitor
 		// `LlamaCpp.getFormattedChat()` round-trip. That path invokes
 		// `llama_chat_apply_template()` on the loaded GGUF, which:
@@ -1668,7 +1921,10 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		let nativePrompt: string | null = null;
 		if (messagesForTemplate) {
 			try {
-				nativePrompt = await mobileDeviceBridge.formatChat(messagesForTemplate);
+				nativePrompt = await mobileDeviceBridge.formatChat(
+					messagesForTemplate,
+					params.signal,
+				);
 			} catch (err) {
 				logger.warn(
 					`[mobile-device-bridge] getFormattedChat failed, falling back to plain-text flatten: ${err instanceof Error ? err.message : String(err)}`,
@@ -1690,6 +1946,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 					stopSequences: params.stopSequences,
 					maxTokens: lane.maxTokens,
 					temperature: params.temperature,
+					signal: params.signal,
 				}),
 		);
 	};
@@ -1774,11 +2031,9 @@ function extractEmbeddingText(
 function makeEmbeddingHandler(): EmbeddingHandler {
 	return async (_runtime, params) => {
 		if (params === null) {
-			// Runtime initialization uses a null embedding request only to size
-			// the vector column. On stock Capacitor, the WebView cannot attach to
-			// the device bridge until the agent HTTP server is already listening,
-			// so this startup probe must not try to load the native model.
-			return new Array(resolveEmbeddingDimension()).fill(0);
+			throw new Error(
+				"[mobile-device-bridge] TEXT_EMBEDDING requires real input; the output width is declared in model registration metadata",
+			);
 		}
 		let loadArgs: LocalInferenceLoadArgs | null =
 			resolveLocalLoadArgs("TEXT_EMBEDDING");
@@ -1804,11 +2059,16 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 		// cloud BatchEmbeddings (401 on a fresh local install).
 		const bionicSock = bionicSocketName();
 		if (bionicSock) {
-			const res = await bionicHostGenerate(bionicSock, {
-				op: "embed",
-				bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
-				text: extractEmbeddingText(params),
-			});
+			const signal = typeof params === "string" ? undefined : params.signal;
+			const res = await bionicHostGenerate(
+				bionicSock,
+				{
+					op: "embed",
+					bundleDir: deriveBionicBundleDir(loadArgs.modelPath),
+					text: extractEmbeddingText(params),
+				},
+				signal,
+			);
 			if (!res.ok || !Array.isArray(res.embedding)) {
 				throw new Error(
 					`[mobile-device-bridge] bionic embed failed: ${res.error ?? "no embedding"}`,
@@ -1817,9 +2077,11 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 			return res.embedding;
 		}
 
-		await mobileDeviceBridge.loadModel(loadArgs);
+		const signal = typeof params === "string" ? undefined : params.signal;
+		await mobileDeviceBridge.loadModel({ ...loadArgs, signal });
 		return mobileDeviceBridge.embed({
 			input: extractEmbeddingText(params),
+			signal,
 		});
 	};
 }
@@ -1840,21 +2102,14 @@ export interface MobileDeviceBridgeServingStatus {
 	bionicHostServing: boolean;
 }
 
-const BIONIC_PROBE_TIMEOUT_MS = readTimeoutMs(
-	"ELIZA_BIONIC_PROBE_TIMEOUT_MS",
-	2_000,
-);
-
 /** True when the bionic host's abstract UDS accepts a connection right now. */
 function probeBionicHostSocket(socketName: string): Promise<boolean> {
 	return new Promise((resolve) => {
 		const sock = net.connect({ path: `\0${socketName}` });
 		const finish = (ok: boolean) => {
-			clearTimeout(timer);
 			sock.destroy();
 			resolve(ok);
 		};
-		const timer = setTimeout(() => finish(false), BIONIC_PROBE_TIMEOUT_MS);
 		sock.on("connect", () => finish(true));
 		sock.on("error", () => finish(false));
 	});
@@ -1879,6 +2134,20 @@ export async function loadMobileDeviceBridgeModel(
 	modelPath: string,
 	modelId?: string,
 ): Promise<void> {
+	const bionicSock = bionicSocketName();
+	if (bionicSock) {
+		const bundleDir = deriveBionicBundleDir(modelPath);
+		const response = await bionicHostGenerate(bionicSock, {
+			op: "load",
+			bundleDir,
+		});
+		if (!response.ok) {
+			throw new Error(
+				`[mobile-device-bridge] bionic model load failed: ${response.error ?? "unknown error"}`,
+			);
+		}
+		return;
+	}
 	await mobileDeviceBridge.loadModel(
 		modelId
 			? buildLoadArgsFromRegistryModel({ id: modelId, path: modelPath })
@@ -1887,6 +2156,16 @@ export async function loadMobileDeviceBridgeModel(
 }
 
 export async function unloadMobileDeviceBridgeModel(): Promise<void> {
+	const bionicSock = bionicSocketName();
+	if (bionicSock) {
+		const response = await bionicHostGenerate(bionicSock, { op: "unload" });
+		if (!response.ok) {
+			throw new Error(
+				`[mobile-device-bridge] bionic model unload failed: ${response.error ?? "unknown error"}`,
+			);
+		}
+		return;
+	}
 	await mobileDeviceBridge.unloadModel();
 }
 
@@ -2103,6 +2382,10 @@ function registerMobileDeviceBridgeModels(
 		makeEmbeddingHandler(),
 		PROVIDER,
 		LOCAL_INFERENCE_PRIORITY,
+		{
+			embeddingDimension: resolveEmbeddingDimension(),
+			local: true,
+		},
 	);
 	// On-device vision describe (EPIC #9105): route IMAGE_DESCRIPTION to the
 	// bionic host op="image" so the GET_SCREEN describe loop runs on the GPU

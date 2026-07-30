@@ -36,14 +36,13 @@ function withTempBundle<T>(fn: (root: string) => T): T {
 }
 
 describe("buildLoadArgsFromRegistryModel — Gemma separate-drafter MTP", () => {
-	it("keeps the shipped 4B context but leaves MTP off until a drafter is staged", () => {
+	it("uses the shared 4B context but leaves MTP off until a drafter is staged", () => {
 		const args = buildLoadArgsFromRegistryModel({
 			id: "eliza-1-4b",
-			path: "/models/eliza-1-4b-128k.gguf",
+			path: "/models/eliza-1-e4b-128k.gguf",
 		});
-		expect(args.modelPath).toBe("/models/eliza-1-4b-128k.gguf");
-		// 4B runs a 64k context on mobile.
-		expect(args.contextSize).toBe(65536);
+		expect(args.modelPath).toBe("/models/eliza-1-e4b-128k.gguf");
+		expect(args.contextSize).toBe(131072);
 		// Gemma 4 uses a separate assistant drafter; no staged file means no MTP.
 		expect(args.draftMin).toBeUndefined();
 		expect(args.draftMax).toBeUndefined();
@@ -57,8 +56,8 @@ describe("buildLoadArgsFromRegistryModel — Gemma separate-drafter MTP", () => 
 			const mtpDir = path.join(root, "mtp");
 			mkdirSync(textDir, { recursive: true });
 			mkdirSync(mtpDir, { recursive: true });
-			const modelPath = path.join(textDir, "eliza-1-2b-128k.gguf");
-			const drafterPath = path.join(mtpDir, "drafter-2b.gguf");
+			const modelPath = path.join(textDir, "eliza-1-e2b-128k.gguf");
+			const drafterPath = path.join(mtpDir, "drafter-e2b.gguf");
 			writeFileSync(modelPath, "");
 			writeFileSync(drafterPath, "");
 			const args = buildLoadArgsFromRegistryModel({
@@ -74,8 +73,8 @@ describe("buildLoadArgsFromRegistryModel — Gemma separate-drafter MTP", () => 
 
 	it("finds a flat staged Gemma drafter next to the model", () => {
 		withTempBundle((root) => {
-			const modelPath = path.join(root, "eliza-1-4b-128k.gguf");
-			const drafterPath = path.join(root, "drafter-4b.gguf");
+			const modelPath = path.join(root, "eliza-1-e4b-128k.gguf");
+			const drafterPath = path.join(root, "drafter-e4b.gguf");
 			writeFileSync(modelPath, "");
 			writeFileSync(drafterPath, "");
 			const args = buildLoadArgsFromRegistryModel({
@@ -164,7 +163,19 @@ describe("deriveBionicBundleDir — flat-model bundle staging (#11335)", () => {
 		withTempBundle((models) => {
 			const model = path.join(models, "eliza-1-2b-128k.gguf");
 			writeFileSync(model, "gguf-bytes");
-			mkdirSync(path.join(models, "asr"), { recursive: true }); // sibling voice dir
+			mkdirSync(path.join(models, "asr"), { recursive: true });
+			mkdirSync(path.join(models, "kokoro", "voices"), {
+				recursive: true,
+			});
+			writeFileSync(path.join(models, "asr", "eliza-1-asr.gguf"), "asr");
+			writeFileSync(
+				path.join(models, "kokoro", "kokoro-82m-v1_0.gguf"),
+				"kokoro",
+			);
+			writeFileSync(
+				path.join(models, "kokoro", "voices", "af_bella.bin"),
+				"voice",
+			);
 
 			const bundle = deriveBionicBundleDir(model);
 			// Bundle root is under .bionic-bundles/<name>/ (matches BionicHostLoader).
@@ -176,6 +187,17 @@ describe("deriveBionicBundleDir — flat-model bundle staging (#11335)", () => {
 			const view = path.join(bundle, "text", "eliza-1-2b-128k.gguf");
 			expect(existsSync(view)).toBe(true);
 			expect(statSync(view).ino).toBe(statSync(model).ino);
+			expect(existsSync(path.join(bundle, "asr", "eliza-1-asr.gguf"))).toBe(
+				true,
+			);
+			expect(
+				existsSync(path.join(bundle, "tts", "kokoro", "kokoro-82m-v1_0.gguf")),
+			).toBe(true);
+			expect(
+				existsSync(
+					path.join(bundle, "tts", "kokoro", "voices", "af_bella.bin"),
+				),
+			).toBe(true);
 		});
 	});
 

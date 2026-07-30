@@ -48,12 +48,6 @@ This package is used by the elizaOS agent bundle. It is not a standard elizaOS p
 
 If no model path is set and auto-download is enabled, the bridge downloads recommended eliza-1 GGUFs from `elizaos/eliza-1` on HuggingFace into `$ELIZA_STATE_DIR/local-inference/models/`.
 
-### Timeouts (all optional, default 600000 ms)
-
-- `ELIZA_DEVICE_LOAD_TIMEOUT_MS`
-- `ELIZA_DEVICE_GENERATE_TIMEOUT_MS`
-- `ELIZA_DEVICE_EMBED_TIMEOUT_MS`
-
 ## Filesystem sandbox
 
 Both platforms install a deny-by-default `node:fs` interceptor (`installMobileFsShim`) before booting the runtime:
@@ -71,10 +65,11 @@ The Capacitor WebView connects to `ws://127.0.0.1:<port>/api/local-inference/dev
 Connection flow:
 1. WebView sends `{ type: "register", payload: { deviceId, pairingToken, capabilities, loadedPath } }`.
 2. Agent sends `{ type: "load", correlationId, modelPath, ... }` → device replies `{ type: "loadResult", correlationId, ok, loadedPath }`.
-3. Agent sends `{ type: "generate", correlationId, prompt, ... }` → device replies `{ type: "generateResult", correlationId, ok, text }`.
-4. Agent sends `{ type: "embed", correlationId, input }` → device replies `{ type: "embedResult", correlationId, ok, embedding }`.
-5. Agent sends `{ type: "formatChat", correlationId, messages }` → device replies `{ type: "formatChatResult", correlationId, ok, prompt }` (invokes native Jinja chat template).
-6. Agent pings every 15 s; device replies `{ type: "pong" }`.
+3. Agent sends `{ type: "generate", correlationId, prompt, ... }` → device replies `{ type: "generateResult", correlationId, ok, text, promptTokens, outputTokens, durationMs }`.
+4. If the caller abandons generation, the agent sends `{ type: "cancel", correlationId }` and the device calls native `cancelGenerate()`.
+5. Agent sends `{ type: "embed", correlationId, input }` → device replies `{ type: "embedResult", correlationId, ok, embedding }`.
+6. Agent sends `{ type: "formatChat", correlationId, messages }` → device replies `{ type: "formatChatResult", correlationId, ok, prompt }` (invokes native Jinja chat template).
+7. Agent pings every 15 s; device replies `{ type: "pong" }`.
 
 Note: iOS connections are rejected with close code `4003`. iOS uses native IPC, not this WebSocket path.
 
@@ -82,9 +77,9 @@ Note: iOS connections are rejected with close code `4003`. iOS uses native IPC, 
 
 | Slot | Model ID | HuggingFace path |
 |---|---|---|
-| TEXT_SMALL | `eliza-1-4b` | `elizaos/eliza-1` — `bundles/4b/text/eliza-1-4b-128k.gguf` |
-| TEXT_LARGE | `eliza-1-4b` | `elizaos/eliza-1` — `bundles/4b/text/eliza-1-4b-128k.gguf` |
-| TEXT_EMBEDDING | `eliza-1-embedding` | `elizaos/eliza-1` — `bundles/4b/embedding/eliza-1-embedding.gguf` |
+| TEXT_SMALL | `eliza-1-2b` | `elizaos/eliza-1` — `bundles/e2b/text/eliza-1-e2b-128k.gguf` |
+| TEXT_LARGE | `eliza-1-2b` | `elizaos/eliza-1` — `bundles/e2b/text/eliza-1-e2b-128k.gguf` |
+| TEXT_EMBEDDING | `eliza-1-embedding` | `elizaos/eliza-1` — `bundles/e4b/embedding/eliza-1-embedding.gguf` |
 
-The 4B tier is the shipped mobile default for both chat slots; `eliza-1-2b` is
-the smallest/entry tier (the small-phone floor) but is not a recommended default.
+The shared local-inference catalog owns these paths. Stable product ids retain
+their 2B/4B names while the published Gemma-4 bundle slugs are e2b/e4b.
