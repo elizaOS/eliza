@@ -15,6 +15,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -36,15 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <pre>
  *   [int32 big-endian byte length N][N bytes UTF-8 JSON]
  * </pre>
- * Request JSON: {@code {op:"generate", bundleDir, prompt, maxTokens}}.
- * Response JSON: {@code {ok, text?, error?, tokens?, ms?, tokS?}} — for the
- * buffered first slice this is exactly the JSON {@link ElizaVoiceNative#nativeLlmSelfTest}
- * already returns, so the GPU decode loop runs entirely server-side and the
- * musl agent never round-trips per token.
- *
- * <p>This is the buffered first slice. Server-push per-step streaming, embed,
- * and cancel are layered on later (the framing already supports an {@code op}
- * discriminator).
+ * Requests select generation, streaming generation, embeddings, speech,
+ * transcription, or image description with an {@code op} discriminator.
+ * Streaming generation emits one response frame per decode step; the other
+ * operations return one frame. Model execution remains server-side so the musl
+ * agent does not cross the process boundary for each token or audio sample.
  */
 final class ElizaBionicInferenceServer {
 
@@ -163,6 +162,9 @@ final class ElizaBionicInferenceServer {
         // nativeLlmStreamResetKeep) stays wired for caches that support bounded
         // partial removal (llama_memory_seq_rm).
         setEnvIfAbsent("ELIZA_BIONIC_MTP", "1");
+        if (BuildConfig.DEBUG) {
+            setEnvIfAbsent("KOKORO_PROFILE", "1");
+        }
     }
 
     private static void setEnvIfAbsent(String key, String value) {
@@ -176,9 +178,9 @@ final class ElizaBionicInferenceServer {
         }
     }
 
-    synchronized void start() {
+    synchronized boolean start() {
         if (running.get()) {
-            return;
+            return true;
         }
         applyBionicInferenceMemoryDefaults();
         // Load the fused native engine up front so the first request doesn't pay
@@ -187,13 +189,13 @@ final class ElizaBionicInferenceServer {
         if (!ElizaVoiceNative.ensureLoaded()) {
             Log.e(TAG, "fused native engine failed to load; bionic inference host NOT started: "
                 + ElizaVoiceNative.getLoadError());
-            return;
+            return false;
         }
         try {
             serverSocket = new LocalServerSocket(socketName);
         } catch (IOException e) {
             Log.e(TAG, "failed to bind abstract UDS \"" + socketName + "\"", e);
-            return;
+            return false;
         }
         running.set(true);
         acceptThread = new Thread(this::acceptLoop, "eliza-bionic-infer-accept");
@@ -204,6 +206,7 @@ final class ElizaBionicInferenceServer {
             + "\" (default bundle " + defaultBundleDir + ", ramClass=" + ramClass
             + ", nCtx=" + InferenceMemoryPolicy.llmContextTokens(ramClass)
             + ", idleUnloadMs=" + idleUnloadMs + ")");
+        return true;
     }
 
     synchronized void stop() {
@@ -395,11 +398,25 @@ final class ElizaBionicInferenceServer {
             if (bundleDir.isEmpty()) {
                 bundleDir = defaultBundleDir;
             }
+            if ("load".equals(op)) {
+                synchronized (residentLock) {
+                    ensureResidentCtx(bundleDir);
+                }
+                return new JSONObject()
+                    .put("ok", true)
+                    .put("bundleDir", bundleDir)
+                    .toString();
+            }
+            if ("unload".equals(op)) {
+                resetResident();
+                return new JSONObject().put("ok", true).toString();
+            }
             if ("embed".equals(op)) {
                 return embed(bundleDir, req.optString("text", ""));
             }
             if ("tts".equals(op)) {
                 return tts(bundleDir, req.optString("text", ""),
+                    req.optString("ipa", ""),
                     (float) req.optDouble("speed", 1.0));
             }
             if ("asr".equals(op)) {
@@ -776,21 +793,25 @@ final class ElizaBionicInferenceServer {
     }
 
     /**
-     * Synthesize {@code text} with the fused Kokoro-82M head and return base64
-     * fp32 PCM at the model's native rate. This is the on-device voice the
+     * Synthesize {@code text} with the fused Kokoro-82M head and return a
+     * base64 PCM16 WAV. Encoding in the bionic host halves the IPC payload
+     * compared with fp32 and avoids decoding then re-encoding every sample in
+     * the musl agent. This is the on-device voice the
      * Android app speaks with: TalkMode delegates here instead of falling back to
      * the platform TextToSpeech (the HTTP /api/tts/local-inference path can't
      * reach the fused lib from the musl agent, so it 502'd and the app spoke with
      * the system voice). Resolves the Kokoro GGUF + voice preset from the bundle's
      * {@code tts/kokoro/} dir.
      */
-    private String tts(String bundleDir, String text, float speed) throws org.json.JSONException {
-        if (text.trim().isEmpty()) {
-            return errorJson("tts: empty text");
+    private String tts(String bundleDir, String text, String ipa, float speed)
+            throws org.json.JSONException {
+        final long requestStartedMs = android.os.SystemClock.elapsedRealtime();
+        if (text.trim().isEmpty() && ipa.trim().isEmpty()) {
+            return errorJson("tts: empty text and IPA");
         }
         File kokoroDir = new File(bundleDir, "tts/kokoro");
-        String gguf = firstMatch(kokoroDir, ".gguf");
-        String voiceBin = firstMatch(kokoroDir, ".bin");
+        String gguf = resolveKokoroModel(kokoroDir);
+        String voiceBin = resolveKokoroVoice(kokoroDir);
         if (gguf == null || voiceBin == null) {
             return errorJson("tts: Kokoro GGUF + voice .bin not found under " + kokoroDir);
         }
@@ -800,24 +821,45 @@ final class ElizaBionicInferenceServer {
         // is loaded once and cached on the ctx (idempotent kokoro_load), so a
         // multi-clause reply synthesizes each clause without any reload.
         synchronized (residentLock) {
+            final long lockAcquiredMs = android.os.SystemClock.elapsedRealtime();
             final long ctx = ensureResidentCtx(bundleDir);
+            final long contextReadyMs = android.os.SystemClock.elapsedRealtime();
             try {
-                float[] pcm = ElizaVoiceNative.nativeKokoroSynthesize(
-                    ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed);
+                float[] pcm = ipa.trim().isEmpty()
+                    ? ElizaVoiceNative.nativeKokoroSynthesize(
+                        ctx, gguf, voiceBin, text, speed <= 0f ? 1.0f : speed)
+                    : ElizaVoiceNative.nativeKokoroSynthesizeIpa(
+                        ctx, gguf, voiceBin, ipa, speed <= 0f ? 1.0f : speed);
+                final long synthesizedMs = android.os.SystemClock.elapsedRealtime();
                 int sampleRate = ElizaVoiceNative.nativeKokoroSampleRate(ctx);
-                // Pack fp32 PCM little-endian and base64 it for the JSON frame.
-                ByteBuffer buf = ByteBuffer.allocate(pcm.length * 4).order(ByteOrder.LITTLE_ENDIAN);
-                for (float v : pcm) {
-                    buf.putFloat(v);
-                }
-                String b64 = Base64.encodeToString(buf.array(), Base64.NO_WRAP);
-                Log.i(TAG, "TTS (kokoro) from agent: " + text.length() + " chars -> "
-                    + pcm.length + " samples @ " + sampleRate + " Hz");
+                byte[] wav = encodeMonoPcm16Wav(pcm, sampleRate);
+                String b64 = Base64.encodeToString(wav, Base64.NO_WRAP);
+                final long encodedMs = android.os.SystemClock.elapsedRealtime();
+                final long lockWaitMs = lockAcquiredMs - requestStartedMs;
+                final long contextMs = contextReadyMs - lockAcquiredMs;
+                final long synthesisMs = synthesizedMs - contextReadyMs;
+                final long encodeMs = encodedMs - synthesizedMs;
+                final long totalMs = encodedMs - requestStartedMs;
+                Log.i(TAG, "TTS (kokoro) from agent: "
+                    + (ipa.trim().isEmpty() ? "raw=" + text.length() : "ipa=" + ipa.length())
+                    + " chars -> "
+                    + pcm.length + " samples @ " + sampleRate + " Hz"
+                    + " (lockWait=" + lockWaitMs + "ms"
+                    + ", context=" + contextMs + "ms"
+                    + ", synthesis=" + synthesisMs + "ms"
+                    + ", encode=" + encodeMs + "ms"
+                    + ", total=" + totalMs + "ms)");
                 return new JSONObject()
                     .put("ok", true)
                     .put("sampleRate", sampleRate)
                     .put("samples", pcm.length)
-                    .put("pcmBase64", b64)
+                    .put("wavBase64", b64)
+                    .put("timings", new JSONObject()
+                        .put("lockWaitMs", lockWaitMs)
+                        .put("contextMs", contextMs)
+                        .put("synthesisMs", synthesisMs)
+                        .put("encodeMs", encodeMs)
+                        .put("totalMs", totalMs))
                     .toString();
             } catch (Throwable t) {
                 // A failed synth may leave the shared ctx in an unknown state;
@@ -826,6 +868,30 @@ final class ElizaBionicInferenceServer {
                 throw t;
             }
         }
+    }
+
+    static byte[] encodeMonoPcm16Wav(float[] pcm, int sampleRate) {
+        final int dataBytes = pcm.length * 2;
+        ByteBuffer wav = ByteBuffer.allocate(44 + dataBytes).order(ByteOrder.LITTLE_ENDIAN);
+        wav.put(new byte[] {'R', 'I', 'F', 'F'});
+        wav.putInt(36 + dataBytes);
+        wav.put(new byte[] {'W', 'A', 'V', 'E'});
+        wav.put(new byte[] {'f', 'm', 't', ' '});
+        wav.putInt(16);
+        wav.putShort((short) 1);
+        wav.putShort((short) 1);
+        wav.putInt(sampleRate);
+        wav.putInt(sampleRate * 2);
+        wav.putShort((short) 2);
+        wav.putShort((short) 16);
+        wav.put(new byte[] {'d', 'a', 't', 'a'});
+        wav.putInt(dataBytes);
+        for (float sample : pcm) {
+            float clamped = Math.max(-1.0f, Math.min(1.0f, sample));
+            int value = Math.round(clamped < 0.0f ? clamped * 32768.0f : clamped * 32767.0f);
+            wav.putShort((short) value);
+        }
+        return wav.array();
     }
 
     /**
@@ -890,7 +956,7 @@ final class ElizaBionicInferenceServer {
         String mmproj = mmprojPath;
         if (mmproj == null || mmproj.isEmpty()) {
             File visionDir = new File(bundleDir, "vision");
-            mmproj = firstMatch(visionDir, ".gguf");
+            mmproj = firstMatchRecursive(visionDir, ".gguf");
             if (mmproj == null) {
                 return errorJson("image: mmproj GGUF not found under " + visionDir
                     + " (stage a vision projector or pass mmprojPath)");
@@ -913,18 +979,58 @@ final class ElizaBionicInferenceServer {
         }
     }
 
-    /** First file in {@code dir} whose name ends with {@code suffix}, or null. */
-    private static String firstMatch(File dir, String suffix) {
-        File[] files = dir.listFiles();
-        if (files == null) {
-            return null;
+    static String resolveKokoroModel(File dir) {
+        String preferred = findNamedRecursive(dir, "kokoro-82m-v1_0.gguf");
+        if (preferred != null) {
+            return preferred;
         }
-        for (File f : files) {
-            if (f.isFile() && f.getName().endsWith(suffix)) {
-                return f.getAbsolutePath();
+        preferred = findNamedRecursive(dir, "kokoro-82m-v1_0-Q8_0.gguf");
+        return preferred != null ? preferred : firstMatchRecursive(dir, ".gguf");
+    }
+
+    static String resolveKokoroVoice(File dir) {
+        String preferred = findNamedRecursive(dir, "af_same.bin");
+        if (preferred != null) {
+            return preferred;
+        }
+        preferred = findNamedRecursive(dir, "af_bella.bin");
+        return preferred != null ? preferred : firstMatchRecursive(dir, ".bin");
+    }
+
+    private static String findNamedRecursive(File dir, String name) {
+        for (File file : matchingFilesRecursive(dir, null)) {
+            if (file.getName().equals(name)) {
+                return file.getAbsolutePath();
             }
         }
         return null;
+    }
+
+    /** First deterministic recursive match under {@code dir}, or null. */
+    private static String firstMatchRecursive(File dir, String suffix) {
+        List<File> matches = matchingFilesRecursive(dir, suffix);
+        return matches.isEmpty() ? null : matches.get(0).getAbsolutePath();
+    }
+
+    private static List<File> matchingFilesRecursive(File dir, String suffix) {
+        List<File> matches = new ArrayList<>();
+        collectMatchingFiles(dir, suffix, matches);
+        matches.sort(Comparator.comparing(File::getAbsolutePath));
+        return matches;
+    }
+
+    private static void collectMatchingFiles(File dir, String suffix, List<File> matches) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File f : files) {
+            if (f.isDirectory()) {
+                collectMatchingFiles(f, suffix, matches);
+            } else if (f.isFile() && (suffix == null || f.getName().endsWith(suffix))) {
+                matches.add(f);
+            }
+        }
     }
 
     private static String errorJson(String message) {

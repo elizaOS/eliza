@@ -102,10 +102,9 @@ const HEALTH_POLL_INTERVAL_MS = 2_000;
 // planner prompt on CPU runs for several minutes per turn (planner +
 // action evaluator + reply). End-to-end chat lands at 25–45 min on
 // cvd's 4 emulated vCPUs (each model call is ~12 min wall-clock; a
-// chat turn fires 3–5 calls). 3600 s matches the service-side
-// ELIZA_CHAT_GENERATION_TIMEOUT_MS we set in ElizaAgentService when
-// AOSP_BUILD=true. Real phone hardware resolves in seconds, so this
-// only matters for cvd runs.
+// chat turn fires 3–5 calls). This is a smoke-harness wall-clock
+// bound, not a production request deadline. Real phone hardware
+// resolves in seconds, so this only matters for cvd runs.
 const CHAT_TIMEOUT_MS = 3_600_000;
 
 // ANSI color helpers; output is human-readable, no JSON for now.
@@ -204,9 +203,8 @@ export async function runSmoke({
   // Configure undici's global dispatcher so fetch() doesn't enforce
   // its default 300 s `bodyTimeout` on the long-running chat request
   // (Step 6). On cuttlefish CPU a single chat turn can take 10–25
-  // minutes; the bodyTimeout has to match the server-side
-  // ELIZA_CHAT_GENERATION_TIMEOUT_MS budget or the client gives up
-  // mid-decode. Fail-soft: if undici isn't available we run with
+  // minutes. This keeps the evidence harness alive long enough to
+  // observe the production request lifecycle. If undici is unavailable, run with
   // default fetch and the operator sees `fetch failed` on long runs.
   const undiciOk = await configureUndiciIfAvailable(CHAT_TIMEOUT_MS);
   if (!undiciOk) {

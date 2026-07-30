@@ -218,7 +218,7 @@ export function validateLocalInferenceLoadArgs(
 
 export interface LocalInferenceLoader {
 	loadModel(args: LocalInferenceLoadArgs): Promise<void>;
-	unloadModel(): Promise<void>;
+	unloadModel(signal?: AbortSignal): Promise<void>;
 	currentModelPath(): string | null;
 	/**
 	 * Optional generation surface. When a loader implements this, the runtime
@@ -232,6 +232,11 @@ export interface LocalInferenceLoader {
 		stopSequences?: string[];
 		maxTokens?: number;
 		temperature?: number;
+		/**
+		 * Caller-owned cancellation. Native loaders must propagate this through
+		 * their transport instead of imposing a wall-clock response deadline.
+		 */
+		signal?: AbortSignal;
 		/**
 		 * Optional `promptCacheKey` from the runtime cache plan. Loaders
 		 * that implement prefix caching (the in-process llama.cpp FFI slot
@@ -265,9 +270,10 @@ export interface LocalInferenceLoader {
 	 * the connected device. Loaders that cannot embed leave this undefined,
 	 * and the runtime falls back to its non-local embedding provider chain.
 	 */
-	embed?(args: { input: string }): Promise<{
+	embed?(args: { input: string; signal?: AbortSignal }): Promise<{
 		embedding: number[];
-		tokens: number;
+		/** Present only when the native backend reports an exact tokenizer count. */
+		tokens?: number;
 	}>;
 }
 

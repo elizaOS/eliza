@@ -1,15 +1,15 @@
+/**
+ * Drives the bionic loader through real abstract-namespace Unix sockets,
+ * exercising production framing without replacing the transport with mocks.
+ */
+
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { BionicHostLoader, deriveBundleDir } from "./bionic-host-loader";
-
-/**
- * Real-IPC test: stand up an actual abstract-namespace AF_UNIX server (the same
- * transport ElizaBionicInferenceServer.java binds on the device) and drive the
- * loader against it. No mocks — this exercises the real node:net framing.
- */
+import { decodeMonoPcm16Wav, encodeMonoPcm16Wav } from "./voice/wav-codec";
 
 function frame(json: string): Buffer {
 	const payload = Buffer.from(json, "utf8");
@@ -109,6 +109,40 @@ describe("deriveBundleDir", () => {
 		expect(fs.readFileSync(stagedPath, "utf8")).toBe("GGUF");
 	});
 
+	it("attaches staged auxiliary models to a flat Android bundle view", () => {
+		const modelsDir = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-bionic-flat-aux-"),
+		);
+		tempDirs.push(modelsDir);
+		const modelPath = path.join(modelsDir, "eliza-1-2b-128k.gguf");
+		const asrDir = path.join(modelsDir, "asr");
+		const kokoroDir = path.join(modelsDir, "kokoro");
+		fs.mkdirSync(path.join(kokoroDir, "voices"), { recursive: true });
+		fs.mkdirSync(asrDir, { recursive: true });
+		fs.writeFileSync(modelPath, "GGUF");
+		fs.writeFileSync(path.join(asrDir, "eliza-1-asr.gguf"), "ASR");
+		fs.writeFileSync(path.join(kokoroDir, "kokoro-82m-v1_0.gguf"), "KOKORO");
+		fs.writeFileSync(path.join(kokoroDir, "voices", "af_bella.bin"), "VOICE");
+
+		const bundleDir = deriveBundleDir(modelPath);
+
+		expect(
+			fs.readFileSync(path.join(bundleDir, "asr", "eliza-1-asr.gguf"), "utf8"),
+		).toBe("ASR");
+		expect(
+			fs.readFileSync(
+				path.join(bundleDir, "tts", "kokoro", "kokoro-82m-v1_0.gguf"),
+				"utf8",
+			),
+		).toBe("KOKORO");
+		expect(
+			fs.readFileSync(
+				path.join(bundleDir, "tts", "kokoro", "voices", "af_bella.bin"),
+				"utf8",
+			),
+		).toBe("VOICE");
+	});
+
 	it("does not stage arbitrary flat GGUF files into a fused Eliza-1 bundle", () => {
 		const modelsDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "eliza-bionic-flat-generic-"),
@@ -139,6 +173,31 @@ describe("deriveBundleDir", () => {
 });
 
 describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
+	it("round-trips an exact embedding without fabricating token usage", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({
+				ok: true,
+				embedding: [0.25, -0.5, 0.75],
+				dim: 3,
+			});
+		});
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({
+			modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
+		});
+
+		const out = await loader.embed({ input: "semantic memory" });
+
+		expect(out).toEqual({ embedding: [0.25, -0.5, 0.75] });
+		expect(seen).toMatchObject({
+			op: "embed",
+			text: "semantic memory",
+			bundleDir: "/data/x/eliza-1/bundle",
+		});
+	});
+
 	it("round-trips a buffered generate and returns the host completion", async () => {
 		let seen: Record<string, unknown> | null = null;
 		host = startHost(SOCK, (req) => {
@@ -224,6 +283,45 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		await expect(loader.generate({ prompt: "x" })).rejects.toThrow();
 	});
 
+	it("closes a buffered generation socket when the caller aborts", async () => {
+		let acceptConnection: () => void = () => {};
+		let observePeerClose: () => void = () => {};
+		let requestOp: string | undefined;
+		const accepted = new Promise<void>((resolve) => {
+			acceptConnection = resolve;
+		});
+		const peerClosed = new Promise<void>((resolve) => {
+			observePeerClose = resolve;
+		});
+		host = net.createServer((socket) => {
+			acceptConnection();
+			socket.on("close", observePeerClose);
+			socket.once("data", (data) => {
+				const size = data.readUInt32BE(0);
+				requestOp = (
+					JSON.parse(data.subarray(4, 4 + size).toString("utf8")) as {
+						op?: string;
+					}
+				).op;
+			});
+		});
+		host.listen({ path: `\0${SOCK}` });
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		const controller = new AbortController();
+
+		const generation = loader.generate({
+			prompt: "keep decoding",
+			signal: controller.signal,
+		});
+		await accepted;
+		controller.abort();
+
+		await expect(generation).rejects.toMatchObject({ name: "AbortError" });
+		await peerClosed;
+		expect(requestOp).toBe("generateStream");
+	});
+
 	it("transcribe forwards op=asr with pcm + sampleRate and returns the transcript", async () => {
 		let seen: Record<string, unknown> | null = null;
 		host = startHost(SOCK, (req) => {
@@ -244,6 +342,76 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 			sampleRate: 16000,
 			bundleDir: path.dirname(path.dirname(modelPath)),
 		});
+	});
+
+	it("phonemizes once in the agent and sends IPA to the Android Kokoro host", async () => {
+		let seen: Record<string, unknown> | null = null;
+		const wav = encodeMonoPcm16Wav(Float32Array.from([0.25, -0.25]), 24_000);
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({
+				ok: true,
+				sampleRate: 24_000,
+				wavBase64: Buffer.from(wav).toString("base64"),
+			});
+		});
+		const previous = process.env.ELIZA_BIONIC_HOST_DELEGATED;
+		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+		try {
+			const loader = new BionicHostLoader(SOCK);
+			await loader.loadModel({
+				modelPath: "/data/x/eliza-1/bundle/text/model.gguf",
+			});
+			const wav = await loader.synthesizeSpeech("Hello world.");
+			const decoded = decodeMonoPcm16Wav(wav);
+
+			expect(seen).toMatchObject({
+				op: "tts",
+				text: "Hello world.",
+				bundleDir: "/data/x/eliza-1/bundle",
+			});
+			expect((seen as { ipa?: string } | null)?.ipa).toContain("ˈ");
+			expect(decoded.sampleRate).toBe(24_000);
+			expect(decoded.pcm[0]).toBeCloseTo(0.25, 3);
+			expect(decoded.pcm[1]).toBeCloseTo(-0.25, 3);
+		} finally {
+			if (previous === undefined) {
+				delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
+			} else {
+				process.env.ELIZA_BIONIC_HOST_DELEGATED = previous;
+			}
+		}
+	});
+
+	it("closes an in-flight TTS socket when the caller aborts", async () => {
+		let peerClosed = false;
+		host = net.createServer((socket) => {
+			socket.on("close", () => {
+				peerClosed = true;
+			});
+		});
+		host.listen({ path: `\0${SOCK}` });
+		const previous = process.env.ELIZA_BIONIC_HOST_DELEGATED;
+		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+		const controller = new AbortController();
+		try {
+			const loader = new BionicHostLoader(SOCK);
+			const synthesis = loader.synthesizeSpeech(
+				"Cancel this.",
+				controller.signal,
+			);
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			controller.abort();
+			await expect(synthesis).rejects.toMatchObject({ name: "AbortError" });
+			await new Promise((resolve) => setTimeout(resolve, 10));
+			expect(peerClosed).toBe(true);
+		} finally {
+			if (previous === undefined) {
+				delete process.env.ELIZA_BIONIC_HOST_DELEGATED;
+			} else {
+				process.env.ELIZA_BIONIC_HOST_DELEGATED = previous;
+			}
+		}
 	});
 
 	it("transcribe refuses Qwen ASR provenance before contacting the host", async () => {
@@ -461,6 +629,43 @@ describeLinuxOnly("BionicHostLoader streaming generate (#11913)", () => {
 		await expect(
 			loader.generate({ prompt: "x", onTextChunk: () => {} }),
 		).rejects.toThrow(/closed the stream|socket error/);
+	});
+
+	it("closes a streaming generation socket when the caller aborts", async () => {
+		let observePeerClose: () => void = () => {};
+		const peerClosed = new Promise<void>((resolve) => {
+			observePeerClose = resolve;
+		});
+		host = net.createServer((sock) => {
+			let buf = Buffer.alloc(0);
+			let expected = -1;
+			sock.on("close", observePeerClose);
+			sock.on("data", (d) => {
+				buf = Buffer.concat([buf, d]);
+				if (expected < 0 && buf.length >= 4) expected = buf.readUInt32BE(0);
+				if (expected >= 0 && buf.length >= 4 + expected) {
+					sock.write(frame(JSON.stringify({ type: "token", text: "partial" })));
+				}
+			});
+		});
+		host.listen({ path: `\0${SOCK}` });
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: "/m/text/x.gguf" });
+		const controller = new AbortController();
+		const chunks: string[] = [];
+
+		const generation = loader.generate({
+			prompt: "keep streaming",
+			signal: controller.signal,
+			onTextChunk: (chunk) => {
+				chunks.push(chunk);
+				controller.abort();
+			},
+		});
+
+		await expect(generation).rejects.toMatchObject({ name: "AbortError" });
+		expect(chunks).toEqual(["partial"]);
+		await peerClosed;
 	});
 
 	it("rejects the turn when an onTextChunk callback throws", async () => {

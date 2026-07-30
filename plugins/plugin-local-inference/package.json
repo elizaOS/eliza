@@ -138,6 +138,7 @@
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/shared": "workspace:*",
+		"cmu-pronouncing-dictionary": "^3.0.0",
 		"phonemizer": "^1.2.1",
 		"ws": "^8.20.1"
 	},

@@ -173,6 +173,10 @@ const REQUIRED_FUSED_SYMBOLS = [
   // require these so a slice built before the fork bump fails loudly here.
   "eliza_inference_kokoro_g2p_kind",
   "eliza_inference_kokoro_synthesize_ipa",
+  // ABI v15 — exact-size, library-owned PCM removes guessed duration caps.
+  "eliza_inference_kokoro_synthesize_alloc",
+  "eliza_inference_kokoro_synthesize_ipa_alloc",
+  "eliza_inference_free_pcm",
   "mtmd_init_from_file",
 ].map((symbol) => ({
   symbol,

@@ -235,13 +235,11 @@ const RECURSIVE_CLEANUP_SCRIPT = path.join(
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.2.0-eliza";
-// Must track the `plugins/plugin-local-inference/native/llama.cpp` submodule
-// gitlink on develop. The old pin `33c888a7be` predated the Mali flash-attn
-// subgroup-race fix (the `VK_VENDOR_ID_ARM` `disable_subgroups` branch), so the
-// fused Vulkan lib built from it SIGABRTed mid-decode on Mali GPUs (#9508). This
-// commit is a forward descendant that bakes the mitigation in; the
-// `verify-fused-symbols` gate enforces the marker is present post-build.
-export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
+// Must track the `plugins/plugin-local-inference/native/llama.cpp` gitlink.
+// This revision includes the Mali subgroup mitigation, Kokoro's exact-size PCM
+// ownership ABI, and the mobile GGML convolution path; symbol verification
+// rejects builds that omit either required surface.
+export const LLAMA_CPP_COMMIT = "6543d9078051a9bb194c2ef5c2995f003c5158de";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 export const AARCH64_MUSL_ZIG_MIN_VERSION = "0.13.0";
@@ -360,13 +358,6 @@ export const FUSED_ANDROID_TARGETS = Object.freeze([
   "android-x86_64-cpu-fused",
   "android-riscv64-cpu-fused",
 ]);
-
-// Extra cmake targets whose build failure must STILL abort the run. Only the
-// fused `elizainference` lib (libelizainference.so) is bundled into the APK;
-// every other extra target is a standalone CLI driver that ships nothing, so a
-// compile break in one of those (e.g. the fork's stale omnivoice-tts.cpp) must
-// not fail a build whose required libs are otherwise good.
-const CRITICAL_EXTRA_TARGETS = new Set(["elizainference"]);
 
 /**
  * Parse one of the `android-<arch>-<backend>[-fused]` target strings used by
@@ -1588,7 +1579,19 @@ export function buildLibllamaForAbi({
       // ~1.5 MB stripped per ABI; small price relative to the spec-decode
       // throughput win.
       "-DLLAMA_BUILD_SERVER=ON",
+      // AOSP launches only the server API; embedding the browser UI adds an npm
+      // install, a network-dependent build, and dead APK bytes.
+      "-DLLAMA_BUILD_WEBUI=OFF",
       "-DLLAMA_CURL=OFF",
+      // A host Homebrew OpenSSL archive is not an Android link input. Leaving
+      // the fork's default ON makes CMake discover the macOS archive during a
+      // cross-build and produces hundreds of undefined TLS symbols at link.
+      // The on-device server binds loopback HTTP and does not need HTTPS.
+      "-DLLAMA_OPENSSL=OFF",
+      // The host search hints include Homebrew. An Android cross-build must
+      // never fold that Mach-O archive into its Kokoro target; mobile supplies
+      // IPA through ABI v14 and intentionally omits native espeak.
+      "-DKOKORO_ENABLE_ESPEAK=OFF",
       `-DCMAKE_C_COMPILER=${ccPath}`,
       `-DCMAKE_CXX_COMPILER=${cxxPath}`,
       // Archive ELF objects with zig's llvm-ar/ranlib. The host default
@@ -1634,22 +1637,11 @@ export function buildLibllamaForAbi({
     {},
   );
 
-  // Build any extra cmake targets the caller asked for — for fused builds
-  // this is omnivoice-core + libelizainference + llama-omnivoice-server +
-  // the bench/completion drivers (see fusedCmakeBuildTargets()). We filter
-  // out `llama` + `llama-server` upstream (the dedicated build steps below
-  // already handle those), so the extra-target invocation only adds NEW
-  // CMake target names. The non-fused path passes an empty list.
+  // Build the fused runtime artifact after its llama dependency. We filter out
+  // `llama` + `llama-server` upstream because dedicated build steps own those.
   //
-  // Targets are filtered against what the configured build tree actually
-  // exposes. The eliza llama.cpp fork's target set drifts from the script's
-  // pinned expectations — e.g. `llama-speculative-simple` is an upstream
-  // example the fork drops in favour of MTP spec-decode. A
-  // requested-but-absent *auxiliary* target must not abort the whole
-  // libllama build: the libllama.so + libggml*.so family is the critical
-  // output and is fully built by the `llama` target above. We warn on the
-  // gap and continue. A target that *exists* but fails to build still
-  // hard-errors via `spawn()`.
+  // The configured tree must expose the runtime target; a missing or failed
+  // `elizainference` target is fatal because that is the library the APK loads.
   if (extraBuildTargets.length > 0) {
     const helpProbe = spawnSync(
       "cmake",
@@ -1664,39 +1656,18 @@ export function buildLibllamaForAbi({
     );
     for (const extraTarget of extraBuildTargets) {
       if (availableTargets.size > 0 && !availableTargets.has(extraTarget)) {
-        log(
-          `[compile-libllama] Skipping extra cmake target ${extraTarget} for ${abi} — ` +
-            `not defined in this llama.cpp checkout (auxiliary target; libllama.so is unaffected).`,
+        throw new Error(
+          `[compile-libllama] Required CMake target ${extraTarget} is not defined for ${abi}`,
         );
-        continue;
       }
       log(
         `[compile-libllama] Building extra cmake target ${extraTarget} for ${abi}`,
       );
-      try {
-        spawn(
-          "cmake",
-          ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
-          {},
-        );
-      } catch (err) {
-        // The fused libelizainference.so (`elizainference` target) is the only
-        // extra target the APK actually bundles, and `verifyFusedSymbols`
-        // enforces it after this loop — so it stays fatal. The rest are
-        // standalone CLI drivers (omnivoice-tts / omnivoice-codec / llama-cli /
-        // llama-bench / llama-completion / llama-mtmd-cli) that ship nothing
-        // into the APK. The pinned fork's `omnivoice-tts.cpp` currently calls a
-        // removed `backend_init("LM")` overload (backend.h only exposes
-        // `backend_init_auto()`), so that driver fails to compile while
-        // libelizainference.so builds fine. Don't let a broken auxiliary CLI
-        // abort the build that produces the lib we need; warn and continue.
-        if (CRITICAL_EXTRA_TARGETS.has(extraTarget)) throw err;
-        log(
-          `[compile-libllama] WARN: auxiliary cmake target ${extraTarget} failed to build for ${abi}; ` +
-            `continuing — it bundles nothing into the APK and libllama.so/libelizainference.so are unaffected. ` +
-            `Cause: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      spawn(
+        "cmake",
+        ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
+        {},
+      );
     }
   }
 
@@ -2446,7 +2417,10 @@ export function describeAndroidTargetDryRun({
     "-DLLAMA_BUILD_EXAMPLES=OFF",
     "-DLLAMA_BUILD_TESTS=OFF",
     "-DLLAMA_BUILD_SERVER=ON",
+    "-DLLAMA_BUILD_WEBUI=OFF",
     "-DLLAMA_CURL=OFF",
+    "-DLLAMA_OPENSSL=OFF",
+    "-DKOKORO_ENABLE_ESPEAK=OFF",
     `-DCMAKE_C_COMPILER=${ccPath}`,
     `-DCMAKE_CXX_COMPILER=${cxxPath}`,
     `-DCMAKE_AR=${arPath}`,
