@@ -37,6 +37,7 @@ export interface DraftStreamController {
 		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
 	) => Promise<DiscordMessage[]>;
 	abort: (reason?: string) => Promise<void>;
+	cancel: () => void;
 	messageId: () => string | undefined;
 	isStarted: () => boolean;
 	isDone: () => boolean;
@@ -311,11 +312,22 @@ export function createDraftStreamController(
 		log("draft-stream: aborted");
 	};
 
+	const cancel = (): void => {
+		if (done) {
+			return;
+		}
+		done = true;
+		clearThrottle();
+		pendingText = null;
+		log("draft-stream: cancelled");
+	};
+
 	return {
 		start,
 		update,
 		finalize,
 		abort,
+		cancel,
 		messageId: () => lastSentMessage?.id,
 		isStarted: () => started,
 		isDone: () => done,

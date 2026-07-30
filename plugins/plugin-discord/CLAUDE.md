@@ -136,8 +136,6 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated 
 | `DISCORD_STATUS_REACTIONS` | No | Scope of the acknowledgement emoji reaction on handled inbound messages: `all` / `group-mentions` / `none` (default: `all`). |
 | `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
 | `DISCORD_IPC_DIR` | No | Override the IPC socket directory searched by `DiscordLocalService` when connecting to the Discord desktop app |
-| `DISCORD_GENERATION_TIMEOUT_MS` | No | Milliseconds cap for generation before the pending Discord message is discarded |
-| `MESSAGE_TIMEOUT_MS` | No | Fallback generation timeout in ms (used when `DISCORD_GENERATION_TIMEOUT_MS` is not set) |
 | `DISCORD_TEST_CHANNEL_ID` | No | Channel used by `DiscordTestSuite` |
 
 All settings can also be provided in the character file under `settings.discord` (as `DiscordConfig` / `DiscordAccountConfig`) — character settings override env vars.

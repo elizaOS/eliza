@@ -4022,6 +4022,13 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		this.channelDebouncer = undefined;
 
+		await Promise.all(
+			states.map(async (state) => {
+				await state.messageManager?.stop();
+				state.messageManager = undefined;
+			}),
+		);
+
 		for (const state of states) {
 			try {
 				state.voiceManager?.stop();

@@ -1,7 +1,6 @@
 /**
- * Unit tests for `MessageManager` URL enrichment plus the in-flight
- * task-agent/timeout-suppression guards, with a mocked runtime and stubbed
- * document-URL fetch.
+ * Unit tests for `MessageManager` URL enrichment and outbound persistence,
+ * with a mocked runtime and stubbed document-URL fetch.
  */
 import {
 	__setDocumentUrlFetchImplForTests,
@@ -16,9 +15,7 @@ import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	type DiscordOutboundDeliveryState,
-	hasActiveTaskAgentWorkForMessage,
 	MessageManager,
-	shouldSuppressTimeoutForInFlightDispatchForTests,
 } from "../messages";
 
 function runtime(): IAgentRuntime {
@@ -110,131 +107,6 @@ describe("MessageManager URL enrichment", () => {
 		);
 
 		expect(first.attachments[0]?.id).toBe(second.attachments[0]?.id);
-	});
-});
-
-describe("hasActiveTaskAgentWorkForMessage", () => {
-	function runtimeWithTasks(tasks: Map<string, unknown>): IAgentRuntime {
-		return {
-			getService: vi.fn((serviceType) =>
-				serviceType === "SWARM_COORDINATOR" ? { tasks } : null,
-			),
-		} as IAgentRuntime;
-	}
-
-	it("matches active task-agent work by originating message id", () => {
-		const runtime = runtimeWithTasks(
-			new Map([
-				[
-					"session-1",
-					{
-						status: "tool_running",
-						originMetadata: { messageId: "message-memory-id" },
-					},
-				],
-			]),
-		);
-
-		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
-			true,
-		);
-	});
-
-	it("matches queued active task-agent work by originating message id", () => {
-		const runtime = runtimeWithTasks(
-			new Map([
-				[
-					"session-1",
-					{
-						status: "active",
-						originMetadata: { messageId: "message-memory-id" },
-					},
-				],
-			]),
-		);
-
-		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
-			true,
-		);
-	});
-
-	it("matches blocked task-agent work by originating message id", () => {
-		const runtime = runtimeWithTasks(
-			new Map([
-				[
-					"session-1",
-					{
-						status: "blocked",
-						originMetadata: { messageId: "message-memory-id" },
-					},
-				],
-			]),
-		);
-
-		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
-			true,
-		);
-	});
-
-	it("ignores active task-agent work for a different originating message id", () => {
-		const runtime = runtimeWithTasks(
-			new Map([
-				[
-					"session-1",
-					{
-						status: "tool_running",
-						originMetadata: { messageId: "other-message-memory-id" },
-					},
-				],
-			]),
-		);
-
-		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
-			false,
-		);
-	});
-
-	it("ignores terminal task-agent work", () => {
-		const runtime = runtimeWithTasks(
-			new Map([
-				[
-					"session-1",
-					{
-						status: "completed",
-						originMetadata: { messageId: "message-memory-id" },
-					},
-				],
-			]),
-		);
-
-		expect(hasActiveTaskAgentWorkForMessage(runtime, "message-memory-id")).toBe(
-			false,
-		);
-	});
-});
-
-describe("shouldSuppressTimeoutForInFlightDispatchForTests", () => {
-	it("suppresses only timeout handling that loses to an in-flight response dispatch", () => {
-		expect(
-			shouldSuppressTimeoutForInFlightDispatchForTests({
-				generationTimedOut: true,
-				responseDispatchInFlight: true,
-			}),
-		).toBe(true);
-
-		expect(
-			shouldSuppressTimeoutForInFlightDispatchForTests({
-				generationTimedOut: false,
-				responseDispatchInFlight: true,
-			}),
-		).toBe(false);
-
-		expect(
-			shouldSuppressTimeoutForInFlightDispatchForTests({
-				generationTimedOut: true,
-				responseDispatchInFlight: false,
-			}),
-		).toBe(false);
 	});
 });
 
