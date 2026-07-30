@@ -3,12 +3,17 @@
 // Drives the FeedView GUI data wrapper through the
 // rendered DOM: the same component the bundle exports for both the "gui" and
 // non-embedded state. The Feed data layer (the ten `getFeed*` loaders + the
-// pause/resume control + the suggested-prompt send) is mocked at the
+// launch + pause/resume controls and suggested-prompt send) is mocked at the
 // `@elizaos/app-core/ui-compat` `client`, and the run list is injected via the
 // mocked `useAppSelector`. Asserts the populated dashboard, the autonomy toggle
-// + refresh + suggested-prompt controls reach the client with the exact args,
-// the loader-failure banner, and the no-session waiting state.
+// + refresh + suggested-prompt + spawn controls reach the client with the exact
+// args, including spawn activation through the real agent-surface registry.
 
+import {
+  AgentSurfaceProvider,
+  getViewRegistry,
+  handleAgentSurfaceCapability,
+} from "@elizaos/ui/agent-surface";
 import {
   cleanup,
   fireEvent,
@@ -21,6 +26,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const controlAppRun = vi.hoisted(() => vi.fn());
 const sendAppRunMessage = vi.hoisted(() => vi.fn());
+const launchApp = vi.hoisted(() => vi.fn());
 const feedClient = vi.hoisted(() => ({
   getFeedAgentStatus: vi.fn(),
   getFeedAgentSummary: vi.fn(),
@@ -33,6 +39,7 @@ const feedClient = vi.hoisted(() => ({
   getFeedAgentWallet: vi.fn(),
   getFeedAgentTradingBalance: vi.fn(),
   controlAppRun,
+  launchApp,
   sendAppRunMessage,
 }));
 
@@ -210,6 +217,16 @@ function primeClient() {
     message: "Suggestion delivered.",
     status: 202,
   });
+  launchApp.mockResolvedValue({
+    pluginInstalled: true,
+    needsRestart: false,
+    displayName: "Feed",
+    launchType: "url",
+    launchUrl: "https://feed.example",
+    viewer: null,
+    session: null,
+    run: null,
+  });
 }
 
 function makeRun(overrides: Record<string, unknown> = {}) {
@@ -372,16 +389,41 @@ describe("FeedView — GUI operator surface", () => {
 });
 
 describe("FeedView — no-session waiting state", () => {
-  it("renders the readiness empty state with an enabled Spawn agent CTA and fires no loaders", async () => {
+  it("dispatches the visible Spawn agent CTA through the real app launch handler", async () => {
     appState.appRuns = [];
     render(React.createElement(FeedView));
 
     await screen.findByText("Ready to trade?");
     const spawn = button("spawn-agent");
     expect(spawn.disabled).toBe(false);
+    fireEvent.click(spawn);
 
-    // With no run, no loaders fire and no controls are wired.
+    await waitFor(() =>
+      expect(launchApp).toHaveBeenCalledWith("@elizaos/plugin-feed"),
+    );
     expect(feedClient.getFeedAgentStatus).not.toHaveBeenCalled();
     expect(controlAppRun).not.toHaveBeenCalled();
+  });
+
+  it("dispatches spawn-agent activation from the agent-surface bridge", async () => {
+    appState.appRuns = [];
+    render(
+      <AgentSurfaceProvider viewId="feed" viewType="gui">
+        <FeedView />
+      </AgentSurfaceProvider>,
+    );
+    await screen.findByText("Ready to trade?");
+
+    const registry = getViewRegistry("feed", "gui");
+    if (!registry) throw new Error("Feed agent-surface registry missing");
+    const result = handleAgentSurfaceCapability(registry, "agent-click", {
+      id: "spawn-agent",
+    });
+
+    expect(result).toMatchObject({ ok: true, id: "spawn-agent" });
+    await waitFor(() =>
+      expect(launchApp).toHaveBeenCalledWith("@elizaos/plugin-feed"),
+    );
+    expect(launchApp).toHaveBeenCalledTimes(1);
   });
 });
