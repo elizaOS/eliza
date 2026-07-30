@@ -706,8 +706,6 @@ export function buildBunRpcHandlers({
     localAgentRequest: createLocalAgentRequestHandler({
       request: (request) =>
         requireActiveLocalAgentDispatcher().request(request),
-      cancel: (requestId) =>
-        requireActiveLocalAgentDispatcher().cancel(requestId),
     }),
     localAgentCancelRequest: async (params) => ({
       cancelled: requireActiveLocalAgentDispatcher().cancel(params.requestId),

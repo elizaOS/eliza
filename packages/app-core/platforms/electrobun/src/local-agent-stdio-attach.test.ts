@@ -79,6 +79,7 @@ describe("attachLocalAgentStdioBridge", () => {
     expect(getActiveLocalAgentDispatcher()).not.toBeNull();
 
     const promise = requireActiveLocalAgentDispatcher().request({
+      requestId: "attach-health",
       path: "/api/health",
       method: "GET",
       headers: {},
@@ -109,6 +110,7 @@ describe("attachLocalAgentStdioBridge", () => {
     const { detach } = attachLocalAgentStdioBridge(child);
     const dispatcher = requireActiveLocalAgentDispatcher();
     const promise = dispatcher.request({
+      requestId: "attach-detach",
       path: "/api/x",
       method: "GET",
       headers: {},
@@ -123,6 +125,7 @@ describe("attachLocalAgentStdioBridge", () => {
     const { child, endStdout } = makeFakeChild();
     const { dispatcher } = attachLocalAgentStdioBridge(child);
     const promise = dispatcher.request({
+      requestId: "attach-stdout-close",
       path: "/api/x",
       method: "GET",
       headers: {},
@@ -131,6 +134,61 @@ describe("attachLocalAgentStdioBridge", () => {
     endStdout();
     await expect(promise).rejects.toThrow(/stdout closed/);
     expect(getActiveLocalAgentDispatcher()).toBeNull();
+  });
+
+  it("round-trips an incremental stream through the attached child", async () => {
+    const { child, stdinLines, pushStdout } = makeFakeChild();
+    const { dispatcher, detach } = attachLocalAgentStdioBridge(child);
+    const chunks: string[] = [];
+    const ended: Array<string | undefined> = [];
+    let resolveEnd!: () => void;
+    const streamEnded = new Promise<void>((resolve) => {
+      resolveEnd = resolve;
+    });
+
+    const head = dispatcher.requestStream(
+      {
+        requestId: "attach-stream",
+        path: "/api/conversations/c/messages/stream",
+        method: "POST",
+        headers: { accept: "text/event-stream" },
+        body: "{}",
+      },
+      {
+        onChunk: (chunk) => chunks.push(chunk),
+        onEnd: (error) => {
+          ended.push(error);
+          resolveEnd();
+        },
+      },
+    );
+    expect(JSON.parse(stdinLines[0])).toMatchObject({
+      id: "attach-stream",
+      method: "local_agent_stream_request",
+      stream: true,
+    });
+
+    pushStdout(
+      JSON.stringify({
+        id: "attach-stream",
+        stream: "response",
+        status: 200,
+      }),
+    );
+    await expect(head).resolves.toMatchObject({ status: 200 });
+    pushStdout(
+      JSON.stringify({
+        id: "attach-stream",
+        stream: "chunk",
+        dataBase64: Buffer.from("data: hello\n\n").toString("base64"),
+      }),
+    );
+    pushStdout(JSON.stringify({ id: "attach-stream", stream: "complete" }));
+    await streamEnded;
+
+    expect(chunks).toEqual(["data: hello\n\n"]);
+    expect(ended).toEqual([undefined]);
+    detach("test done");
   });
 });
 

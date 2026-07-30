@@ -207,6 +207,93 @@ describe("LocalAgentStdioDispatcher", () => {
     expect(ended).toEqual([undefined]);
   });
 
+  it("rejects completion before the HTTP response instead of fabricating 200", async () => {
+    const { writer } = makeWriter();
+    const dispatcher = new LocalAgentStdioDispatcher(writer);
+    const head = dispatcher.requestStream(
+      {
+        requestId: "stream-no-head",
+        path: "/api/stream",
+        method: "GET",
+        headers: {},
+        body: null,
+      },
+      { onChunk: () => undefined, onEnd: () => undefined },
+    );
+
+    dispatcher.handleLine(
+      JSON.stringify({
+        id: "stream-no-head",
+        stream: "complete",
+      }),
+    );
+
+    await expect(head).rejects.toThrow(
+      /completed before sending an HTTP response/,
+    );
+  });
+
+  it("rejects a chunk that arrives before the HTTP response", async () => {
+    const { writer } = makeWriter();
+    const dispatcher = new LocalAgentStdioDispatcher(writer);
+    const head = dispatcher.requestStream(
+      {
+        requestId: "stream-out-of-order",
+        path: "/api/stream",
+        method: "GET",
+        headers: {},
+        body: null,
+      },
+      { onChunk: () => undefined, onEnd: () => undefined },
+    );
+
+    dispatcher.handleLine(
+      JSON.stringify({
+        id: "stream-out-of-order",
+        stream: "chunk",
+        dataBase64: Buffer.from("bad order").toString("base64"),
+      }),
+    );
+
+    await expect(head).rejects.toThrow(/chunk arrived before response/);
+  });
+
+  it("ends an established stream on a duplicate response frame", async () => {
+    const { writer } = makeWriter();
+    const dispatcher = new LocalAgentStdioDispatcher(writer);
+    const ended: Array<string | undefined> = [];
+    const head = dispatcher.requestStream(
+      {
+        requestId: "stream-duplicate-head",
+        path: "/api/stream",
+        method: "GET",
+        headers: {},
+        body: null,
+      },
+      { onChunk: () => undefined, onEnd: (error) => ended.push(error) },
+    );
+
+    dispatcher.handleLine(
+      JSON.stringify({
+        id: "stream-duplicate-head",
+        stream: "response",
+        status: 200,
+      }),
+    );
+    await expect(head).resolves.toMatchObject({ status: 200 });
+    dispatcher.handleLine(
+      JSON.stringify({
+        id: "stream-duplicate-head",
+        stream: "response",
+        status: 200,
+      }),
+    );
+
+    expect(ended).toEqual([
+      "local-agent stream protocol error: duplicate response frame",
+    ]);
+  });
+
   it("dispose() rejects all in-flight requests (pipe closed)", async () => {
     const { writer } = makeWriter();
     const dispatcher = new LocalAgentStdioDispatcher(writer);

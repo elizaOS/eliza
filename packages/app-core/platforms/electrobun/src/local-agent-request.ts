@@ -124,7 +124,7 @@ export function normalizeLocalAgentRequest(
  * api base is the `eliza-local-agent://ipc` scheme (local-agent IPC mode).
  */
 export function createLocalAgentRequestHandler(
-  dispatcher: LocalAgentDispatcher,
+  dispatcher: Pick<LocalAgentDispatcher, "request">,
 ): (params: LocalAgentRequestOptions) => Promise<LocalAgentRequestResult> {
   return async (params) => {
     const normalized = normalizeLocalAgentRequest(params);

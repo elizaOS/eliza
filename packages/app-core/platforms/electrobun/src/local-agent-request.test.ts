@@ -149,8 +149,6 @@ describe("createLocalAgentRequestHandler", () => {
     const request = vi.fn();
     const handler = createLocalAgentRequestHandler({
       request,
-      cancel: () => false,
-      requestStream: async () => ({ streamId: "unused", status: 200 }),
     });
 
     await expect(
