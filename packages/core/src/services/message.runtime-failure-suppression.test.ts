@@ -176,6 +176,20 @@ describe("v5 runtime failure before a respond decision", () => {
 		expect(terminal?.actions).toEqual(["IGNORE"]);
 	});
 
+	it("surfaces a MESSAGE_RECEIVED hook failure before persisting the turn", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const hookFailure = new Error("trajectory persistence unavailable");
+		vi.mocked(runtime.emitEvent).mockRejectedValueOnce(hookFailure);
+
+		await expect(
+			new DefaultMessageService().handleMessage(
+				runtime,
+				makeMessage({ channelType: ChannelType.DM }),
+			),
+		).rejects.toBe(hookFailure);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
 	it("still surfaces the failure reply when the agent was platform-mentioned", async () => {
 		const { result, visibleTexts } = await runTurn(
 			makeMessage({
