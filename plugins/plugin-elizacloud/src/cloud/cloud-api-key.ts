@@ -13,9 +13,23 @@
  * `cloud/` matches their actual ownership.
  */
 
+import { defaultCloudSiteUrl } from "@elizaos/shared";
+
 import type { ElizaConfig } from "../lib/config-like";
 
-export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
+/**
+ * The cloud API an unconfigured agent talks to. Environment-dependent: `bun run
+ * dev` targets staging, everything else production — see
+ * `defaultCloudSiteUrl()` in `@elizaos/shared`, which owns that decision for the
+ * whole repo so the agent, the CLI, and the web bundles cannot disagree.
+ *
+ * A function, not a constant: the dev flag is read from the environment at call
+ * time, and a module-load constant would freeze whichever value happened to be
+ * set when this module was first imported.
+ */
+export function defaultCloudApiBaseUrl(): string {
+  return `${defaultCloudSiteUrl()}/api/v1`;
+}
 
 export type CloudApiKeyRuntimeLike = {
   getSetting?: (key: string) => unknown;
@@ -51,7 +65,7 @@ export function resolveCloudApiBaseUrl(
 ): string | null {
   const candidate =
     normalizeCloudSecret(rawBaseUrl ?? process.env.ELIZAOS_CLOUD_BASE_URL) ??
-    DEFAULT_CLOUD_API_BASE_URL;
+    defaultCloudApiBaseUrl();
   try {
     const parsed = new URL(candidate);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
