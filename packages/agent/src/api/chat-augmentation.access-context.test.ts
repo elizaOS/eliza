@@ -17,7 +17,6 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { queryDocumentFragmentsInMemory } from "../../../core/src/database/document-list-query.ts";
 import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";
 
 // ---------------------------------------------------------------------------
@@ -39,32 +38,6 @@ const USER_ENTITY = "00000000-0000-0000-0000-00000000dddd" as UUID;
 
 const SECRET_TEXT = "the denver launch codeword is mallard";
 const SECRET_QUERY = "denver launch codeword";
-
-/**
- * The parent document the fragment belongs to.
- *
- * Fragment visibility is derived from its parent: the shared query resolves
- * `metadata.documentId`, applies the scope/role decision to the parent, and
- * requires the fragment's revision to match the parent's. A fragment without
- * its document is invisible to everyone, owner included.
- */
-function ownerPrivateDocument(): Memory {
-  return {
-    id: "00000000-0000-0000-0000-00000000d001" as UUID,
-    agentId: AGENT_ID,
-    entityId: OWNER_ENTITY,
-    roomId: ROOM_ID,
-    worldId: WORLD_ID,
-    content: { text: SECRET_TEXT },
-    metadata: {
-      type: MemoryType.DOCUMENT,
-      scope: "owner-private",
-      addedBy: OWNER_ENTITY,
-      addedByRole: "OWNER",
-      documentRevision: 0,
-    },
-  } as unknown as Memory;
-}
 
 /** A single owner-private document fragment carrying the secret. */
 function ownerPrivateFragment(): Memory {
@@ -128,14 +101,6 @@ function makeRuntime(fragments: Memory[]): {
     },
     getModel: vi.fn(() => undefined),
     getMemories: vi.fn(async () => fragments),
-    adapter: {
-      queryDocumentFragments: vi.fn(async (params) =>
-        queryDocumentFragmentsInMemory(
-          [ownerPrivateDocument(), ...fragments],
-          params,
-        ),
-      ),
-    },
     searchMemories: vi.fn(async () => fragments),
     countMemories: vi.fn(async () => fragments.length),
     getServiceLoadPromise: vi.fn(),
