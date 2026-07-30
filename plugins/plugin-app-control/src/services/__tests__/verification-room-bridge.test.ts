@@ -26,10 +26,21 @@ function makeCoordinator() {
 
 function makeRuntime(initialServices: Record<string, unknown>) {
 	const services = { ...initialServices };
+	const registered = new Set(Object.keys(initialServices));
+	const waiters = new Map<string, (service: unknown) => void>();
 	return {
 		runtime: {
 			getService: vi.fn((name: string) => services[name] ?? null),
+			hasService: vi.fn((name: string) => registered.has(name)),
+			getServiceLoadPromise: vi.fn((name: string) =>
+				services[name] !== undefined
+					? Promise.resolve(services[name])
+					: new Promise((resolve) => {
+							waiters.set(name, resolve);
+						}),
+			),
 			createMemory: vi.fn(async () => ({ id: "mem-test" })),
+			reportError: vi.fn(),
 			agentId: "agent-1",
 			logger: {
 				debug: vi.fn(),
@@ -38,21 +49,19 @@ function makeRuntime(initialServices: Record<string, unknown>) {
 				error: vi.fn(),
 			},
 		} as unknown as IAgentRuntime,
+		registerService: (name: string) => {
+			registered.add(name);
+		},
 		setService: (name: string, instance: unknown) => {
+			registered.add(name);
 			services[name] = instance;
+			waiters.get(name)?.(instance);
+			waiters.delete(name);
 		},
 	};
 }
 
-describe("VerificationRoomBridgeService — boot-order retry", () => {
-	beforeEach(() => {
-		vi.useFakeTimers();
-	});
-
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
+describe("VerificationRoomBridgeService — service startup", () => {
 	it("attaches immediately when SwarmCoordinator is available at start()", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
@@ -64,65 +73,41 @@ describe("VerificationRoomBridgeService — boot-order retry", () => {
 		expect(coordinator.__listenerCount()).toBe(0);
 	});
 
-	it("retries until SwarmCoordinator is registered, then subscribes once", async () => {
+	it("awaits a registered SwarmCoordinator without polling", async () => {
 		const coordinator = makeCoordinator();
-		const { runtime, setService } = makeRuntime({});
-
-		const service = await VerificationRoomBridgeService.start(runtime);
-
-		// First attach attempt failed — no service yet, no subscriber.
+		const { runtime, registerService, setService } = makeRuntime({});
+		registerService("SWARM_COORDINATOR");
+		const startPromise = VerificationRoomBridgeService.start(runtime);
+		await Promise.resolve();
 		expect(coordinator.__listenerCount()).toBe(0);
 
-		// Service becomes available later; advance the retry timer.
 		setService("SWARM_COORDINATOR", coordinator);
-		vi.advanceTimersByTime(500);
-		await Promise.resolve();
-
+		const service = await startPromise;
 		expect(coordinator.__listenerCount()).toBe(1);
+		expect(runtime.getServiceLoadPromise).toHaveBeenCalledTimes(1);
 		await service.stop();
 		expect(coordinator.__listenerCount()).toBe(0);
 	});
 
-	it("keeps retrying past ATTACH_MAX_RETRIES and binds once when the coordinator appears late", async () => {
+	it("starts inactive when the orchestrator is not registered", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime, setService } = makeRuntime({});
 
 		const service = await VerificationRoomBridgeService.start(runtime);
-
-		// Drain past the entire fast-retry budget (60 retries × 500ms = 30s). The
-		// bridge does NOT give up here — a heavy boot can register the coordinator
-		// well past that window, so it keeps retrying with a coarser backoff.
-		vi.advanceTimersByTime(31_000);
-		await Promise.resolve();
+		expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
 		expect(coordinator.__listenerCount()).toBe(0);
 
-		// The coordinator finally shows up long after the fast window. The
-		// still-running retry loop must bind it — exactly once.
 		setService("SWARM_COORDINATOR", coordinator);
-		vi.advanceTimersByTime(5_000);
-		await Promise.resolve();
-		expect(coordinator.__listenerCount()).toBe(1);
-
-		await service.stop();
 		expect(coordinator.__listenerCount()).toBe(0);
+		await service.stop();
 	});
 
-	it("stop() cancels a pending retry timer", async () => {
-		const coordinator = makeCoordinator();
-		const { runtime, setService } = makeRuntime({});
+	it("rejects a registered coordinator with no subscription surface", async () => {
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: {} });
 
-		const service = await VerificationRoomBridgeService.start(runtime);
-
-		// Tear down BEFORE the service becomes available.
-		await service.stop();
-
-		// Now register the coordinator and advance time. A leaked timer
-		// would re-attach and increment the listener count; a proper
-		// cancel keeps it at zero.
-		setService("SWARM_COORDINATOR", coordinator);
-		vi.advanceTimersByTime(60_000);
-		await Promise.resolve();
-		expect(coordinator.__listenerCount()).toBe(0);
+		await expect(VerificationRoomBridgeService.start(runtime)).rejects.toThrow(
+			"does not expose subscribe()",
+		);
 	});
 });
 
@@ -219,6 +204,28 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(text).toContain("Reload the agent");
 		expect(text).not.toContain("reinject");
 
+		await service.stop();
+	});
+
+	it("reports malformed loopback JSON as an explicit load failure", async () => {
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => {
+				throw new SyntaxError("unexpected token");
+			},
+		} as unknown as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(pluginEvent("pass"));
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		expect(memory.content.text).toContain("load returned malformed JSON");
+		expect(memory.content.text).toContain("unexpected token");
 		await service.stop();
 	});
 
@@ -363,6 +370,62 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(memory.content.metadata).toMatchObject({ verdict: "fail" });
 
 		await service.stop();
+	});
+
+	it("keeps a failed chat-memory write observable and retryable", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		vi.mocked(runtime.createMemory)
+			.mockRejectedValueOnce(new Error("database unavailable"))
+			.mockResolvedValue({ id: "mem-retry" } as never);
+		const service = await VerificationRoomBridgeService.start(runtime);
+		const event = pluginEvent("fail");
+
+		coordinator.__emit(event);
+		await flush();
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"VerificationRoomBridge.handleEvent",
+			expect.objectContaining({ message: "database unavailable" }),
+			expect.objectContaining({
+				sessionId: "sess-fail",
+				verdict: "fail",
+			}),
+		);
+
+		coordinator.__emit(event);
+		await flush();
+		expect(runtime.createMemory).toHaveBeenCalledTimes(2);
+		await service.stop();
+	});
+
+	it("aborts an owned loopback request when the service stops", async () => {
+		let requestSignal: AbortSignal | undefined;
+		vi.mocked(globalThis.fetch).mockImplementation(
+			(_input: string | URL | Request, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) => {
+					requestSignal = init?.signal ?? undefined;
+					if (!requestSignal) {
+						reject(new Error("missing request signal"));
+						return;
+					}
+					requestSignal.addEventListener(
+						"abort",
+						() => reject(requestSignal?.reason),
+						{ once: true },
+					);
+				}),
+		);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(pluginEvent("pass"));
+		expect(requestSignal?.aborted).toBe(false);
+		await service.stop();
+
+		expect(requestSignal?.aborted).toBe(true);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+		expect(runtime.reportError).not.toHaveBeenCalled();
 	});
 
 	it("offers a rollback in the verifyPlugin fail verdict (#8915)", async () => {

@@ -69,6 +69,7 @@ export interface RegisteredAppItem {
  */
 export async function loadAppFromWorkdir(
 	workdir: string,
+	signal: AbortSignal,
 ): Promise<
 	{ ok: true; items: RegisteredAppItem[] } | { ok: false; error: string }
 > {
@@ -81,13 +82,31 @@ export async function loadAppFromWorkdir(
 				method: "POST",
 				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ directory }),
-				signal: AbortSignal.timeout(30_000),
+				signal,
 			},
 		);
-		const body = (await resp.json().catch(() => ({}))) as Record<
-			string,
-			unknown
-		>;
+		let rawBody: unknown;
+		try {
+			rawBody = await resp.json();
+		} catch (error) {
+			// error-policy:J3 malformed loopback JSON is an explicit
+			// registration failure, never a fabricated empty response.
+			return {
+				ok: false,
+				error: `register returned malformed JSON: ${error instanceof Error ? error.message : String(error)}`,
+			};
+		}
+		if (
+			typeof rawBody !== "object" ||
+			rawBody === null ||
+			Array.isArray(rawBody)
+		) {
+			return {
+				ok: false,
+				error: "register returned a non-object JSON response",
+			};
+		}
+		const body = rawBody as Record<string, unknown>;
 		if (resp.ok && body.ok === true) {
 			const items = Array.isArray(body.items)
 				? body.items.filter(
@@ -108,6 +127,13 @@ export async function loadAppFromWorkdir(
 					: `register returned HTTP ${resp.status}`,
 		};
 	} catch (err) {
+		if (signal.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new Error("App registration was cancelled", { cause: err });
+		}
+		// error-policy:J1 translate the loopback transport boundary into an
+		// explicit install failure for the caller.
 		return {
 			ok: false,
 			error: err instanceof Error ? err.message : String(err),

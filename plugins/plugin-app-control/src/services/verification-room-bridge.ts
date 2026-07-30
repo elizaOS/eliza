@@ -1,44 +1,23 @@
 /**
- * @module plugin-app-control/services/verification-room-bridge
- *
- * Closes the chat loop for the APP/PLUGIN create flow.
- *
- * The dispatchers in `actions/app-create.ts` and the plugin-manager's
- * `plugin-handlers/create.ts` start a coding agent via START_CODING_TASK and
- * return immediately ("Started task; verification will run when it's
- * done"). The user's chat turn ends. When the AppVerificationService
- * eventually verifies the workdir, the swarm coordinator broadcasts a
- * `task_complete` (verdict=pass) or `escalation` (verdict=fail) event
- * — but no chat surface receives it. This service subscribes to that
- * broadcast stream and posts a continuation message back into the
- * originating room so the user actually sees the verdict.
- *
- * Subscription mechanism: the SwarmCoordinator service exposes
- * `subscribe(listener)` which calls the listener for every event also
- * sent to SSE/WS clients. This service registers on `start()` and
- * unsubscribes on `stop()`.
- *
- * Privacy filter: the privacy filter at
- * `eliza/plugins/plugin-training/src/core/privacy-filter.ts` exists for
- * trajectory exports — it anonymizes user-content trajectories before
- * disk/cloud writes. Messages this service writes are agent-authored
- * verification results and contain no user trajectory data, so the
- * filter does not apply here.
- *
- * Owner gating: this service only writes to the originRoomId that the
- * dispatcher itself stamped onto the START_CODING_TASK metadata. The
- * dispatcher already enforced `hasOwnerAccess` at request time. The
- * bridge does not bypass any access check — it simply replies in the
- * same room the original create request came from.
+ * Relays completed app and plugin verification into the chat room that started
+ * the coding task. The bridge waits on the runtime's registered coordinator
+ * lifecycle, owns cancellation of its loopback installation requests, and only
+ * deduplicates verdicts after the chat memory commits successfully.
  */
 
 import { randomUUID } from "node:crypto";
-import type { IAgentRuntime, Memory, SwarmEvent, UUID } from "@elizaos/core";
+import type {
+	IAgentRuntime,
+	ISwarmCoordinatorService,
+	Memory,
+	SwarmEvent,
+	UUID,
+} from "@elizaos/core";
 import {
-	getSwarmCoordinatorService,
 	logger,
 	resolveServerOnlyPort,
 	Service,
+	SWARM_COORDINATOR_SERVICE_TYPE,
 } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 import { loadAppFromWorkdir } from "./verification-helpers.js";
@@ -58,24 +37,6 @@ const VERIFY_PLUGIN_METHOD = "verifyPlugin";
  * the window where a duplicate is anything other than a replay.
  */
 const VERDICT_DEDUPE_TTL_MS = 10 * 60 * 1000;
-
-/**
- * How often we re-check for the SwarmCoordinator service when it was not
- * registered yet during the first `attach()` call. Plugin start ordering
- * is not deterministic, so we retry on a fixed interval until the
- * coordinator shows up or `ATTACH_MAX_RETRIES` is reached.
- *
- * 500ms interval × 60 retries = 30 seconds of patience — long enough to
- * cover slow plugin-loading on cold boots while still bounding the
- * dangling-timer window after `stop()` to 0.5s.
- */
-const ATTACH_RETRY_INTERVAL_MS = 500;
-// Attempt count at which a still-unbound bridge stops being "plausibly slow"
-// and starts logging loudly + backing off. Not a give-up point: the bridge
-// retries indefinitely (a heavy boot can register the coordinator well past
-// the old 30s window), it just gets coarser and louder past here.
-const ATTACH_MAX_RETRIES = 60;
-const ATTACH_MAX_RETRY_INTERVAL_MS = 5_000;
 
 interface BridgeEventPayload {
 	originRoomId: string;
@@ -179,6 +140,7 @@ function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
  */
 async function loadPluginFromWorkdir(
 	workdir: string,
+	signal: AbortSignal,
 ): Promise<{ ok: boolean; pluginName?: string; error?: string }> {
 	const port = resolveServerOnlyPort(process.env);
 	try {
@@ -188,13 +150,24 @@ async function loadPluginFromWorkdir(
 				method: "POST",
 				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ directory: workdir }),
-				signal: AbortSignal.timeout(30_000),
+				signal,
 			},
 		);
-		const body = (await resp.json().catch(() => ({}))) as Record<
-			string,
-			unknown
-		>;
+		let rawBody: unknown;
+		try {
+			rawBody = await resp.json();
+		} catch (error) {
+			// error-policy:J3 malformed loopback JSON is an explicit load
+			// failure, never a fabricated empty response.
+			return {
+				ok: false,
+				error: `load returned malformed JSON: ${error instanceof Error ? error.message : String(error)}`,
+			};
+		}
+		if (!isRecord(rawBody)) {
+			return { ok: false, error: "load returned a non-object JSON response" };
+		}
+		const body = rawBody;
 		if (resp.ok && body.ok === true) {
 			return {
 				ok: true,
@@ -210,6 +183,15 @@ async function loadPluginFromWorkdir(
 					: `load returned HTTP ${resp.status}`,
 		};
 	} catch (err) {
+		if (signal.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new Error("Verification-room bridge stopped during plugin load", {
+						cause: err,
+					});
+		}
+		// error-policy:J1 translate the loopback transport boundary into the
+		// explicit install-failed verdict shown to the user.
 		return {
 			ok: false,
 			error: err instanceof Error ? err.message : String(err),
@@ -217,7 +199,10 @@ async function loadPluginFromWorkdir(
 	}
 }
 
-async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
+async function buildPassMessage(
+	payload: BridgeEventPayload,
+	signal: AbortSignal,
+): Promise<string> {
 	const isApp = payload.method === VERIFY_APP_METHOD;
 	if (isApp) {
 		// Register the freshly built app so `launch <name>` resolves. Without this
@@ -227,7 +212,7 @@ async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 		if (!payload.workdir) {
 			return `${payload.targetName} app built and verified, but its build directory is unknown, so it could not be installed. It won't launch until it's registered.`;
 		}
-		const load = await loadAppFromWorkdir(payload.workdir);
+		const load = await loadAppFromWorkdir(payload.workdir, signal);
 		if (!load.ok) {
 			return `${payload.targetName} app built and verified at ${payload.workdir}, but installing it failed: ${load.error}. It won't launch until it's registered — reload the agent or check its package.json manifest.`;
 		}
@@ -250,7 +235,7 @@ async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 	// without a restart. `reinject` is NOT advertised — it only drops an *ejected*
 	// plugin to fall back to the npm copy and cannot load a new local plugin.
 	if (payload.workdir) {
-		const load = await loadPluginFromWorkdir(payload.workdir);
+		const load = await loadPluginFromWorkdir(payload.workdir, signal);
 		if (load.ok) {
 			return `${payload.targetName} plugin built, verified, and loaded live — its views and actions are now available.`;
 		}
@@ -284,120 +269,71 @@ export class VerificationRoomBridgeService extends Service {
 		"Posts the AppVerificationService verdict back into the originating chat room when the orchestrator's custom-validator branch fires task_complete / escalation events.";
 
 	private unsubscribe: (() => void) | null = null;
-	private attachRetryTimer: ReturnType<typeof setTimeout> | null = null;
-	private attachRetryAttempts = 0;
+	private readonly lifecycleAbort = new AbortController();
+	private stopped = false;
 
 	/**
 	 * Dedupe map: `${sessionId}:${verdict}` -> expiresAt epoch ms. Drops
-	 * replayed verdict events that would otherwise post duplicate chat
-	 * memories. Entries age out via `VERDICT_DEDUPE_TTL_MS`; we sweep
-	 * opportunistically on each insert (single-digit concurrent verdicts
-	 * in practice).
+	 * replayed verdict events after their chat memories commit. In-flight work
+	 * is coalesced separately so a failed write remains retryable.
 	 */
 	private readonly verdictDedupe: Map<string, number> = new Map();
+	private readonly verdictsInFlight: Map<string, Promise<void>> = new Map();
 
 	static override async start(
 		runtime: IAgentRuntime,
 	): Promise<VerificationRoomBridgeService> {
 		const service = new VerificationRoomBridgeService(runtime);
-		service.attach();
+		await service.attach();
 		return service;
 	}
 
 	override async stop(): Promise<void> {
-		// Cancel any pending attach retry before tearing down so a late retry
-		// can't subscribe to a coordinator after stop() returned.
-		if (this.attachRetryTimer) {
-			clearTimeout(this.attachRetryTimer);
-			this.attachRetryTimer = null;
-		}
+		this.stopped = true;
+		this.lifecycleAbort.abort(
+			new Error("Verification-room bridge stopped during verdict processing"),
+		);
 		const unsub = this.unsubscribe;
 		// Always clear the field first so a retry of stop() can't double-call.
 		this.unsubscribe = null;
-		if (unsub === null) return;
-		if (typeof unsub !== "function") {
-			logger.warn(
-				"[VerificationRoomBridge] stored unsubscribe was not a function; skipping",
-			);
-			return;
+		if (unsub !== null) {
+			try {
+				unsub();
+			} catch (err) {
+				// error-policy:J6 coordinator unsubscribe is best-effort teardown.
+				logger.warn(
+					`[VerificationRoomBridge] unsubscribe threw during stop(): ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
 		}
-		// Single-purpose catch: a misbehaving coordinator must not crash
-		// service teardown. Translate the failure into a structured warn
-		// log and continue.
-		try {
-			unsub();
-		} catch (err) {
-			logger.warn(
-				`[VerificationRoomBridge] unsubscribe threw during stop(): ${err instanceof Error ? err.message : String(err)}`,
-			);
-		}
+		await Promise.all(this.verdictsInFlight.values());
 	}
 
-	private attach(): void {
-		const coordinator = getSwarmCoordinatorService(this.runtime);
-		if (!coordinator) {
-			// Orchestrator plugin isn't loaded yet — but plugin start ordering
-			// is not deterministic, so the orchestrator may register its
-			// SwarmCoordinator after we ran. Retry on a backoff up to
-			// `ATTACH_MAX_RETRIES` so the bridge ends up wired whenever the
-			// orchestrator IS in the plugin set. After the retry budget
-			// expires we give up quietly — `plugin-app-control` still works
-			// for non-create flows without the bridge.
-			this.scheduleAttachRetry();
+	private async attach(): Promise<void> {
+		// Service definitions are registered before service startup begins.
+		// `hasService` therefore distinguishes "orchestrator is not part of this
+		// runtime" from "orchestrator is registered and still starting" without
+		// a timer, retry count, or arbitrary boot threshold.
+		if (!this.runtime.hasService(SWARM_COORDINATOR_SERVICE_TYPE)) {
+			logger.debug(
+				"[VerificationRoomBridge] SWARM_COORDINATOR is not registered; bridge is inactive",
+			);
 			return;
 		}
-		// Clear any pending retry timer — we succeeded on this pass.
-		if (this.attachRetryTimer) {
-			clearTimeout(this.attachRetryTimer);
-			this.attachRetryTimer = null;
+		const coordinator = (await this.runtime.getServiceLoadPromise(
+			SWARM_COORDINATOR_SERVICE_TYPE,
+		)) as Partial<ISwarmCoordinatorService>;
+		if (typeof coordinator.subscribe !== "function") {
+			throw new TypeError(
+				"[VerificationRoomBridge] SWARM_COORDINATOR does not expose subscribe()",
+			);
 		}
 		this.unsubscribe = coordinator.subscribe((event) => {
-			this.handleEvent(event).catch((err) => {
-				logger.error(
-					`[VerificationRoomBridge] handleEvent failed: ${err instanceof Error ? err.message : String(err)}`,
-				);
-			});
+			void this.handleEvent(event);
 		});
 		logger.info(
-			`[VerificationRoomBridge] subscribed to SWARM_COORDINATOR event stream${
-				this.attachRetryAttempts > 0
-					? ` (after ${this.attachRetryAttempts} retr${this.attachRetryAttempts === 1 ? "y" : "ies"})`
-					: ""
-			}`,
+			"[VerificationRoomBridge] subscribed to SWARM_COORDINATOR event stream",
 		);
-	}
-
-	private scheduleAttachRetry(): void {
-		this.attachRetryAttempts += 1;
-		// The orchestrator's SWARM_COORDINATOR can take well over the old
-		// bounded window to register + bind on a heavy boot. Giving up at a
-		// fixed retry count left this bridge permanently inactive (verdicts
-		// never posted back) even though the coordinator DID eventually appear.
-		// Retry indefinitely with backoff + escalating severity instead: quiet
-		// while it's plausibly just slow, loud once it's clearly wrong. If the
-		// orchestrator plugin genuinely isn't installed this loop is harmless
-		// (coarse steady-state poll), and stop() clears the timer.
-		const interval =
-			this.attachRetryAttempts < ATTACH_MAX_RETRIES
-				? ATTACH_RETRY_INTERVAL_MS
-				: Math.min(
-						ATTACH_MAX_RETRY_INTERVAL_MS,
-						ATTACH_RETRY_INTERVAL_MS *
-							2 ** (this.attachRetryAttempts - ATTACH_MAX_RETRIES),
-					);
-		if (this.attachRetryAttempts === ATTACH_MAX_RETRIES) {
-			// First crossing of the "taking too long" threshold — warn once so a
-			// stuck bridge is grep-able without spamming a non-orchestrator boot.
-			logger.warn(
-				`[VerificationRoomBridge] SWARM_COORDINATOR service still has no subscribe() after ${ATTACH_MAX_RETRIES} attempts (~${Math.round(
-					(ATTACH_RETRY_INTERVAL_MS * ATTACH_MAX_RETRIES) / 1000,
-				)}s); still retrying. If this persists, verification verdicts will not be posted back to chat — check the orchestrator's SwarmCoordinator startup.`,
-			);
-		}
-		this.attachRetryTimer = setTimeout(() => {
-			this.attachRetryTimer = null;
-			this.attach();
-		}, interval);
 	}
 
 	private async handleEvent(event: SwarmEvent): Promise<void> {
@@ -414,12 +350,45 @@ export class VerificationRoomBridgeService extends Service {
 			);
 			return;
 		}
-		this.verdictDedupe.set(dedupeKey, now + VERDICT_DEDUPE_TTL_MS);
+		const existing = this.verdictsInFlight.get(dedupeKey);
+		if (existing) {
+			await existing;
+			return;
+		}
 
+		const processing = this.processVerdict(payload)
+			.then(() => {
+				this.verdictDedupe.set(dedupeKey, Date.now() + VERDICT_DEDUPE_TTL_MS);
+			})
+			.catch((error: unknown) => {
+				if (this.stopped && this.lifecycleAbort.signal.aborted) {
+					logger.debug(
+						"[VerificationRoomBridge] verdict processing cancelled during stop",
+					);
+					return;
+				}
+				// error-policy:J7 event failures remain observable without
+				// rejecting the coordinator's broadcast loop.
+				this.runtime.reportError("VerificationRoomBridge.handleEvent", error, {
+					sessionId: event.sessionId,
+					verdict: payload.verdict,
+					targetName: payload.targetName,
+				});
+			})
+			.finally(() => {
+				this.verdictsInFlight.delete(dedupeKey);
+			});
+		this.verdictsInFlight.set(dedupeKey, processing);
+		await processing;
+	}
+
+	private async processVerdict(payload: BridgeEventPayload): Promise<void> {
+		this.lifecycleAbort.signal.throwIfAborted();
 		const text =
 			payload.verdict === "pass"
-				? await buildPassMessage(payload)
+				? await buildPassMessage(payload, this.lifecycleAbort.signal)
 				: buildFailMessage(payload);
+		this.lifecycleAbort.signal.throwIfAborted();
 
 		const memory: Memory = {
 			id: randomUUID() as UUID,

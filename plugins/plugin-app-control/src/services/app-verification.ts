@@ -1116,6 +1116,7 @@ export class AppVerificationService extends Service {
 		"Runs typecheck/lint/test/launch/browser verification against an app workdir and returns a structured pass/fail result with diagnostics for the orchestrator to consume.";
 
 	private readonly openBrowsers = new Set<BrowserLike>();
+	private readonly lifecycleAbort = new AbortController();
 
 	static override async start(
 		runtime: IAgentRuntime,
@@ -1124,6 +1125,9 @@ export class AppVerificationService extends Service {
 	}
 
 	override async stop(): Promise<void> {
+		this.lifecycleAbort.abort(
+			new Error("App verification service stopped during verification"),
+		);
 		await this.cleanup();
 	}
 
@@ -1200,7 +1204,10 @@ export class AppVerificationService extends Service {
 					// first-build launch check could never pass. Same idempotent
 					// load-from-directory the bridge uses; when registration fails the
 					// launch check itself reports the unresolvable name.
-					const load = await loadAppFromWorkdir(opts.workdir);
+					const load = await loadAppFromWorkdir(
+						opts.workdir,
+						this.lifecycleAbort.signal,
+					);
 					if (!load.ok) {
 						logger.warn(
 							`[AppVerificationService] pre-launch app registration failed: ${load.error}`,
