@@ -1,6 +1,8 @@
 # Configures GitHub's auto-generated release notes (generate_release_notes: true
 # in packages/scripts/lib/release-github.mjs). Groups merged PRs into readable
-# categories and drops noise so the Releases page reads cleanly.
+# categories and drops noise so the Releases page reads cleanly. Categories use
+# the repository's real PR labels; commit-title prefixes are not visible to
+# GitHub's release-note generator.
 changelog:
   exclude:
     labels:
@@ -16,38 +18,64 @@ changelog:
   categories:
     - title: ⚠️ Breaking Changes
       labels:
-        - breaking
-        - breaking-change
-        - semver:major
+        - Breaking Changes
     - title: 🚀 Features
       labels:
         - feature
-        - feat
         - enhancement
+        - feature request
+        - kind/feat
+        - Improvement
     - title: 🐛 Fixes
       labels:
-        - fix
         - bug
-        - bugfix
+        - bug-confirmed
+        - Fixed
+        - Regression Risk
     - title: ⚡ Performance
       labels:
-        - perf
         - performance
     - title: 🔒 Security
       labels:
         - security
+        - SECURITY ISSUE
     - title: 📚 Documentation
       labels:
-        - docs
+        - Docs
         - documentation
-    - title: 🧰 Build, CI & Maintenance
+        - needs_documentation
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+        - dependency management
+    - title: 🧩 Plugins & Connectors
+      labels:
+        - plugins
+        - Plugin
+        - Plugin_new
+        - area/plugin
+        - connector
+    - title: 🎨 App & UI
+      labels:
+        - ui
+        - frontend
+        - ux
+        - Design
+        - Eliza App
+    - title: 🧠 Core & Agents
+      labels:
+        - core
+        - area/core
+        - Agent
+    - title: 🧰 Build, CI & Operations
       labels:
         - build
         - ci
-        - chore
+        - github_actions
+        - infrastructure
+        - ops
+        - deploy
         - refactor
-        - test
-        - dependencies
     - title: Other Changes
       labels:
         - "*"
