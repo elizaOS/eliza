@@ -497,8 +497,13 @@ describe("household inbound approval — real PGlite", () => {
         command: wrongCommand,
         identity: wrongIdentity,
       }),
+    // The approval read is fenced to the verified sender's party, so a
+    // wrong-party sender never retrieves the row and cannot learn that this
+    // approval exists. HOUSEHOLD_INBOUND_UNAUTHORIZED still guards the case
+    // the fence cannot cover — a row whose target party differs from the
+    // subject it was enqueued under.
     ).rejects.toMatchObject<Partial<HouseholdInboundApprovalError>>({
-      code: "HOUSEHOLD_INBOUND_UNAUTHORIZED",
+      code: "HOUSEHOLD_INBOUND_STALE_APPROVAL",
     });
 
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });

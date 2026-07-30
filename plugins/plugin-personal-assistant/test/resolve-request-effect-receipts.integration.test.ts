@@ -265,16 +265,20 @@ describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
       }),
     );
 
+    // Another subject's row is non-enumerable: the read is subject-scoped, so
+    // it resolves to nothing rather than confirming that this request id
+    // exists. "Forbidden" would answer that question for an actor who should
+    // not be able to ask it. The row must still be untouched below.
     const denied = await invoke("reject", request.id);
     expect(denied.result.success).toBe(false);
     expect(denied.result.data).toMatchObject({
-      error: "CROSS_SUBJECT_APPROVAL_FORBIDDEN",
+      error: "REQUEST_NOT_FOUND",
     });
     expect(receipt(denied.result)).toMatchObject({
       outcome: "failed",
       operation: "lifeops.approval.reject",
       resource: { id: request.id },
-      failure: { code: "CROSS_SUBJECT_APPROVAL_FORBIDDEN" },
+      failure: { code: "REQUEST_NOT_FOUND" },
     });
     // Read back under the foreign subject the row was enqueued with
     // ("another-owner"), not the agent's. Reading under the agent's subject
