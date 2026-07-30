@@ -1371,7 +1371,6 @@ function _resolvePromptAttachments(
  */
 type ResolvedMessageOptions = {
 	maxRetries: number;
-	timeoutDuration: number;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -10553,10 +10552,6 @@ export class DefaultMessageService implements IMessageService {
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
-					// A turn has no implicit wall-clock deadline. Callers that own a
-					// real execution budget may provide one explicitly; cancellation
-					// otherwise travels through abortSignal.
-					timeoutDuration: options?.timeoutDuration ?? 0,
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -10585,8 +10580,6 @@ export class DefaultMessageService implements IMessageService {
 					recordDeliveredVisibleText,
 				);
 
-				// Set up timeout monitoring
-				let timeoutId: NodeJS.Timeout | undefined;
 				// A host route may open the timer before calling the message service so
 				// augmentation and response normalization share this same timeline.
 				// Only the layer that creates the timer closes and persists it.
@@ -10669,26 +10662,6 @@ export class DefaultMessageService implements IMessageService {
 							} as RunEventPayload),
 						),
 					);
-
-					const timeoutPromise = new Promise<never>((_, reject) => {
-						if (opts.timeoutDuration <= 0) return;
-						timeoutId = setTimeout(async () => {
-							await runtime.emitEvent(EventType.RUN_TIMEOUT, {
-								runtime,
-								source: "messageHandler",
-								runId,
-								messageId: message.id,
-								roomId: message.roomId,
-								entityId: message.entityId,
-								startTime,
-								status: "timeout",
-								endTime: Date.now(),
-								duration: Date.now() - startTime,
-								error: "Run exceeded timeout",
-							} as RunEventPayload);
-							reject(new Error("Run exceeded timeout"));
-						}, opts.timeoutDuration);
-					});
 
 					// Structured streaming is handled by dynamicPromptExecFromState for
 					// text fields. Native v5 planner/tool/evaluator events use the same
@@ -10781,13 +10754,7 @@ export class DefaultMessageService implements IMessageService {
 						},
 					);
 
-					const result = await Promise.race([
-						processingPromise,
-						timeoutPromise,
-					]);
-
-					// Clean up timeout
-					clearTimeout(timeoutId);
+					const result = await processingPromise;
 
 					// Voice: Handle the rest of the message
 					if (firstSentenceSent && result.responseContent?.text) {
@@ -10863,8 +10830,6 @@ export class DefaultMessageService implements IMessageService {
 
 					return result;
 				} finally {
-					clearTimeout(timeoutId);
-
 					// Close + emit the per-turn latency breakdown. Detached side
 					// effects (post-turn evaluators) intentionally run after this and
 					// are NOT counted in turn latency — that is the proof they don't

@@ -21,7 +21,6 @@ import type { State } from "./state";
  */
 export interface MessageProcessingOptions {
 	maxRetries?: number;
-	timeoutDuration?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
 	shouldRespondModel?: ShouldRespondModelType;
