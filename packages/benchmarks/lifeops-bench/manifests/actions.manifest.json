@@ -5902,14 +5902,14 @@
       "type": "function",
       "function": {
         "name": "CALENDAR_SOURCES",
-        "description": "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR\ncalendar source list|select|deselect|connect|reconnect exact identity versioned; ics create=owner UI only",
+        "description": "calendar source connection, reconnection, health, or including/excluding a calendar from the feed (a durable write, not just a report) -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR\ncalendar sources: list reads; select|deselect WRITE feed inclusion; connect|reconnect start owner auth; exact identity + version; ics create=owner UI only",
         "parameters": {
           "type": "object",
           "required": ["operation"],
           "properties": {
             "operation": {
               "type": "string",
-              "description": "Calendar source operation. Always list before select/deselect so the exact identity and current version are available.",
+              "description": "Calendar source operation. list reads the sources; select and deselect write feed inclusion; connect and reconnect start owner authorization. Always list before select/deselect so the exact identity and current version are available.",
               "enum": ["list", "select", "deselect", "connect", "reconnect"]
             },
             "provider": {
@@ -9346,6 +9346,10 @@
               "type": "string",
               "description": "Observed identity displayName for set_identity."
             },
+            "connectorAccountId": {
+              "type": "string",
+              "description": "exact connector account id; omitted means default only (e.g. default, family-discord, work-slack)"
+            },
             "toEntityId": {
               "type": "string",
               "description": "Target Entity id for set_relationship."
@@ -9724,7 +9728,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION",
-        "description": "household role/access/proposal/agreement -> HOUSEHOLD_COORDINATION; calendar event CRUD -> CALENDAR; never use this owner action to answer for another affected party\nhousehold roles|grants|proposal versions|approval repair|agreement finalize|scoped export; no party impersonation",
+        "description": "household role/access/proposal/agreement -> HOUSEHOLD_COORDINATION; calendar event CRUD -> CALENDAR; never use this owner action to answer for another affected party\nhousehold roles|custody authority|grants|proposal versions|approval repair|agreement finalize|scoped export; no party impersonation",
         "parameters": {
           "type": "object",
           "required": ["action"],
@@ -9734,6 +9738,8 @@
               "description": "Household coordination operation.",
               "enum": [
                 "bind_role",
+                "set_custody_authority",
+                "revoke_custody_authority",
                 "issue_grant",
                 "revoke_grant",
                 "create_proposal",
@@ -9745,7 +9751,7 @@
             },
             "householdId": {
               "type": "string",
-              "description": "Canonical household namespace to bind to this relationship for household-scoped authorization.",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
               "minLength": 1
             },
             "entityId": {
@@ -9775,12 +9781,30 @@
             },
             "relationshipId": {
               "type": "string",
-              "description": "Existing relationship edge to annotate instead of creating another edge.",
+              "description": "Existing relationship edge to annotate, revise as custody authority, or revoke.",
               "minLength": 1
             },
             "evidence": {
               "type": "string",
-              "description": "Owner-supplied reason/evidence for the role binding.",
+              "description": "Owner-supplied evidence for a role binding or custody-authority baseline.",
+              "minLength": 1
+            },
+            "childEntityId": {
+              "type": "string",
+              "description": "Child Entity whose custody-authority baseline is being set.",
+              "minLength": 1
+            },
+            "custodianEntityIds": {
+              "type": "array",
+              "description": "Owner and child-scoped co-parent Entity ids authorized by the custody baseline.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expectedRevisionSha256": {
+              "type": "string",
+              "description": "Optional exact current custody-authority revision hash for compare-and-swap protection.",
               "minLength": 1
             },
             "principalEntityId": {
@@ -9813,7 +9837,7 @@
             },
             "reason": {
               "type": "string",
-              "description": "Auditable revocation reason.",
+              "description": "Auditable grant or custody-authority revocation reason.",
               "minLength": 1
             },
             "coordinationId": {
@@ -9955,6 +9979,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -9974,7 +9999,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_BIND_ROLE",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = bind_role",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = bind_role",
         "parameters": {
           "type": "object",
           "required": [],
@@ -9987,7 +10012,7 @@
             },
             "householdId": {
               "type": "string",
-              "description": "Canonical household namespace to bind to this relationship for household-scoped authorization.",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
               "minLength": 1
             },
             "entityId": {
@@ -10017,12 +10042,12 @@
             },
             "relationshipId": {
               "type": "string",
-              "description": "Existing relationship edge to annotate instead of creating another edge.",
+              "description": "Existing relationship edge to annotate, revise as custody authority, or revoke.",
               "minLength": 1
             },
             "evidence": {
               "type": "string",
-              "description": "Owner-supplied reason/evidence for the role binding.",
+              "description": "Owner-supplied evidence for a role binding or custody-authority baseline.",
               "minLength": 1
             }
           },
@@ -10037,6 +10062,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10056,7 +10082,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_CREATE_PROPOSAL",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = create_proposal",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = create_proposal",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10066,6 +10092,11 @@
               "description": "Subaction discriminator (auto-set to \"create_proposal\" for this virtual; do not change).",
               "enum": ["create_proposal"],
               "default": "create_proposal"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
+              "minLength": 1
             },
             "expiresAt": {
               "type": "string",
@@ -10201,6 +10232,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10220,7 +10252,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_ENSURE_APPROVALS",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = ensure_approvals",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = ensure_approvals",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10253,6 +10285,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10272,7 +10305,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_EXPORT",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = export",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = export",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10282,6 +10315,11 @@
               "description": "Subaction discriminator (auto-set to \"export\" for this virtual; do not change).",
               "enum": ["export"],
               "default": "export"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
+              "minLength": 1
             },
             "principalEntityId": {
               "type": "string",
@@ -10300,6 +10338,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10319,7 +10358,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_FINALIZE_PROPOSAL",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = finalize_proposal",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = finalize_proposal",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10352,6 +10391,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10371,7 +10411,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_ISSUE_GRANT",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = issue_grant",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = issue_grant",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10381,6 +10421,11 @@
               "description": "Subaction discriminator (auto-set to \"issue_grant\" for this virtual; do not change).",
               "enum": ["issue_grant"],
               "default": "issue_grant"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
+              "minLength": 1
             },
             "role": {
               "type": "string",
@@ -10437,6 +10482,7 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10456,7 +10502,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_REVISE_PROPOSAL",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revise_proposal",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revise_proposal",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10596,6 +10642,70 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_REVOKE_CUSTODY_AUTHORITY",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revoke_custody_authority",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"revoke_custody_authority\" for this virtual; do not change).",
+              "enum": ["revoke_custody_authority"],
+              "default": "revoke_custody_authority"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
+              "minLength": 1
+            },
+            "relationshipId": {
+              "type": "string",
+              "description": "Existing relationship edge to annotate, revise as custody authority, or revoke.",
+              "minLength": 1
+            },
+            "expectedRevisionSha256": {
+              "type": "string",
+              "description": "Optional exact current custody-authority revision hash for compare-and-swap protection.",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "Auditable grant or custody-authority revocation reason.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -10615,7 +10725,7 @@
       "type": "function",
       "function": {
         "name": "HOUSEHOLD_COORDINATION_REVOKE_GRANT",
-        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revoke_grant",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revoke_grant",
         "parameters": {
           "type": "object",
           "required": [],
@@ -10633,7 +10743,7 @@
             },
             "reason": {
               "type": "string",
-              "description": "Auditable revocation reason.",
+              "description": "Auditable grant or custody-authority revocation reason.",
               "minLength": 1
             }
           },
@@ -10648,6 +10758,83 @@
         "capability:read",
         "capability:write",
         "capability:update",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_SET_CUSTODY_AUTHORITY",
+        "description": "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = set_custody_authority",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"set_custody_authority\" for this virtual; do not change).",
+              "enum": ["set_custody_authority"],
+              "default": "set_custody_authority"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
+              "minLength": 1
+            },
+            "relationshipId": {
+              "type": "string",
+              "description": "Existing relationship edge to annotate, revise as custody authority, or revoke.",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Owner-supplied evidence for a role binding or custody-authority baseline.",
+              "minLength": 1
+            },
+            "childEntityId": {
+              "type": "string",
+              "description": "Child Entity whose custody-authority baseline is being set.",
+              "minLength": 1
+            },
+            "custodianEntityIds": {
+              "type": "array",
+              "description": "Owner and child-scoped co-parent Entity ids authorized by the custody baseline.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "expectedRevisionSha256": {
+              "type": "string",
+              "description": "Optional exact current custody-authority revision hash for compare-and-swap protection.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
@@ -20823,8 +21010,13 @@
           "properties": {
             "action": {
               "type": "string",
-              "description": "approve | reject.",
-              "enum": ["approve", "reject"]
+              "description": "approve | reject | reconcile_delivered | reconcile_not_delivered.",
+              "enum": [
+                "approve",
+                "reject",
+                "reconcile_delivered",
+                "reconcile_not_delivered"
+              ]
             },
             "requestId": {
               "type": "string",
@@ -20886,6 +21078,128 @@
               "description": "Subaction discriminator (auto-set to \"approve\" for this virtual; do not change).",
               "enum": ["approve"],
               "default": "approve"
+            },
+            "requestId": {
+              "type": "string",
+              "description": "Approval request id. Optional when user references pending request."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Optional approve/reject reason, user language."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "capability:send",
+        "effect:receipt-required",
+        "surface:internal",
+        "risk:irreversible"
+      ],
+      "_contexts": [
+        "email",
+        "messaging",
+        "calendar",
+        "tasks",
+        "contacts",
+        "payments",
+        "automation",
+        "admin",
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:send"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": "risk:irreversible",
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "RESOLVE_REQUEST_RECONCILE_DELIVERED",
+        "description": "Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. Subactions approve|reject. Reject also covers holds ('don't send it', 'not yet', 'wait until I confirm') — it terminally cancels the queued dispatch and a fresh request can be queued later. requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up. — subaction = reconcile_delivered",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"reconcile_delivered\" for this virtual; do not change).",
+              "enum": ["reconcile_delivered"],
+              "default": "reconcile_delivered"
+            },
+            "requestId": {
+              "type": "string",
+              "description": "Approval request id. Optional when user references pending request."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Optional approve/reject reason, user language."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:meta",
+        "capability:execute",
+        "capability:update",
+        "capability:send",
+        "effect:receipt-required",
+        "surface:internal",
+        "risk:irreversible"
+      ],
+      "_contexts": [
+        "email",
+        "messaging",
+        "calendar",
+        "tasks",
+        "contacts",
+        "payments",
+        "automation",
+        "admin",
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:send"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": "risk:irreversible",
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "RESOLVE_REQUEST_RECONCILE_NOT_DELIVERED",
+        "description": "Approve/reject pending owner-confirmation action: send_email, send_message, book_travel, voice_call, etc. Subactions approve|reject. Reject also covers holds ('don't send it', 'not yet', 'wait until I confirm') — it terminally cancels the queued dispatch and a fresh request can be queued later. requestId optional; handler inspects pending queue, infers owner intent, or asks follow-up. — subaction = reconcile_not_delivered",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"reconcile_not_delivered\" for this virtual; do not change).",
+              "enum": ["reconcile_not_delivered"],
+              "default": "reconcile_not_delivered"
             },
             "requestId": {
               "type": "string",
