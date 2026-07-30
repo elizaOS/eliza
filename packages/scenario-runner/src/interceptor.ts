@@ -54,6 +54,28 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+function captureHandlerOptions(
+  options: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const actionContext = toRecord(options?.actionContext);
+  if (
+    !options ||
+    !actionContext ||
+    !Object.hasOwn(actionContext, "getPreviousResult")
+  ) {
+    return options;
+  }
+
+  // The lookup callback is execution plumbing; previous results remain useful
+  // assertion evidence and are safe to serialize into scenario reports.
+  const { getPreviousResult: _getPreviousResult, ...capturedActionContext } =
+    actionContext;
+  return {
+    ...options,
+    actionContext: capturedActionContext,
+  };
+}
+
 function captureArtifact(
   artifacts: CapturedArtifact[],
   artifact: CapturedArtifact,
@@ -352,7 +374,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       ];
       const entry: CapturedAction = {
         actionName: action.name,
-        parameters: options,
+        parameters: captureHandlerOptions(options),
       };
       const wrappedArgs = [...args];
       if (isCallable(callback)) {
