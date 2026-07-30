@@ -1,11 +1,11 @@
-import { SolanaParsedTransaction } from "../helius";
-import { collectProgramIdsFromTransaction } from "../parsers/instructions";
-import { SolanaProtocol, lookupSolanaProtocol } from "../protocols/registry";
+import { ParsedWalletTransaction } from "../parsers/transaction";
+import { ChainProtocol, lookupProtocol } from "../protocols/registry";
+import { SupportedChain } from "../types";
 
 export interface WalletProtocol {
   programId: string;
 
-  protocol: SolanaProtocol;
+  protocol: ChainProtocol;
 
   interactionCount: number;
 
@@ -23,22 +23,22 @@ export interface ProtocolAnalysis {
 }
 
 export function analyzeWalletProtocols(
-  parsedTransactions: SolanaParsedTransaction[],
+  parsedTransactions: ParsedWalletTransaction[],
+  chain: SupportedChain,
 ): ProtocolAnalysis {
   const discovered = new Map<string, WalletProtocol>();
 
   for (const transaction of parsedTransactions) {
     const timestamp = transaction.timestamp ?? null;
-    const programIds = collectProgramIdsFromTransaction(transaction);
 
-    for (const programId of programIds) {
-      const protocol = lookupSolanaProtocol(programId);
+    for (const programOrContractId of transaction.programOrContractIds) {
+      const protocol = lookupProtocol(chain, programOrContractId);
 
       if (!protocol) {
         continue;
       }
 
-      const existing = discovered.get(programId);
+      const existing = discovered.get(programOrContractId);
 
       if (existing) {
         existing.interactionCount++;
@@ -62,8 +62,8 @@ export function analyzeWalletProtocols(
         continue;
       }
 
-      discovered.set(programId, {
-        programId,
+      discovered.set(programOrContractId, {
+        programId: programOrContractId,
         protocol,
         interactionCount: 1,
         firstInteractionAt: timestamp,

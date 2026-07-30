@@ -26,7 +26,7 @@ import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
-import { SolanaParsedTransaction } from "../helius";
+import { ParsedWalletTransaction } from "../parsers/transaction";
 import { TokenPrice } from "../providers/priceProvider";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
@@ -44,8 +44,10 @@ export interface WalletPipelineInput {
   recentTransactions: WalletRecentTransaction[];
   oldestTransactionId?: string;
   oldestTransactionTimestamp?: number;
-  firstParsedTransaction: SolanaParsedTransaction | null;
-  recentParsedTransactions: SolanaParsedTransaction[];
+  firstParsedTransaction: ParsedWalletTransaction | null;
+  // Normalized and chain-neutral — the single transaction shape every
+  // analyzer downstream consumes.
+  normalizedRecentParsedTransactions: ParsedWalletTransaction[];
   tokenPrices: Record<string, TokenPrice>;
 }
 

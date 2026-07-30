@@ -34,7 +34,6 @@ import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
 import { getSolanaNftHoldings } from "../helius";
-import { parseSolanaTransaction } from "../parsers/transaction";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
   WalletPipelineInput,
@@ -56,7 +55,7 @@ export async function runWalletPipeline(
   const funding = analyzeWalletFunding(
     input.chain,
     input.address,
-    parseSolanaTransaction(input.firstParsedTransaction),
+    input.firstParsedTransaction,
   );
 
   const portfolio = analyzeWalletPortfolio(
@@ -84,11 +83,13 @@ export async function runWalletPipeline(
   );
 
   const defi = analyzeWalletDeFi(
-    input.recentParsedTransactions,
+    input.normalizedRecentParsedTransactions,
+    input.chain,
   );
 
   const protocols = analyzeWalletProtocols(
-    input.recentParsedTransactions,
+    input.normalizedRecentParsedTransactions,
+    input.chain,
   );
 
   const protocolIntelligence =
@@ -111,7 +112,7 @@ export async function runWalletPipeline(
   const relationships = analyzeWalletRelationships(
     funding,
     input.address,
-    input.recentParsedTransactions,
+    input.normalizedRecentParsedTransactions,
     input.chain,
   );
 

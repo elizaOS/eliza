@@ -1,7 +1,7 @@
-import { SolanaProtocol } from "../registry";
+import { ChainProtocol } from "../registry";
 
 export const SOLANA_LENDING_PROTOCOLS: Readonly<
-  Record<string, SolanaProtocol>
+  Record<string, ChainProtocol>
 > = {
   So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo: {
     programId: "So1endDq2YkqhipRh3WViPa8hdiSpxWy6z3Z6tMCpAo",

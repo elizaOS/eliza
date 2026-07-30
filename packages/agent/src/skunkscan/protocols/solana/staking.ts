@@ -1,7 +1,7 @@
-import { SolanaProtocol } from "../registry";
+import { ChainProtocol } from "../registry";
 
 export const SOLANA_STAKING_PROTOCOLS: Readonly<
-  Record<string, SolanaProtocol>
+  Record<string, ChainProtocol>
 > = {
   MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD: {
     programId: "MarBmsSgKXdrN1egZf5sqe1TMai9K1rChYNDJgjq7aD",
