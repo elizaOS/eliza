@@ -154,8 +154,6 @@ async function ensureHouseholdEntity(
     entityId: string;
     preferredName: string;
     role: "child" | "current_partner";
-    /** Set for household-scoped scenarios; school-source fixtures have none. */
-    householdId?: string;
     subjectEntityIds: readonly string[];
     householdId?: string;
     attributes?: Record<string, EntityAttribute>;
@@ -376,7 +374,6 @@ function operationsProvenance(input: {
 async function prepareG30(runtime: AgentRuntime): Promise<void> {
   await ensureHouseholdEntity(runtime, {
     entityId: G30_CHILD_ENTITY_ID,
-    householdId: G30_HOUSEHOLD_ID,
     preferredName: "Lee",
     role: "child",
     subjectEntityIds: [G30_CHILD_ENTITY_ID],
@@ -483,7 +480,6 @@ function responsibilityDefinition(
 async function prepareG38(runtime: AgentRuntime): Promise<void> {
   await ensureHouseholdEntity(runtime, {
     entityId: G38_PARTNER_ENTITY_ID,
-    householdId: G38_HOUSEHOLD_ID,
     preferredName: "Household partner",
     role: "current_partner",
     subjectEntityIds: [],
