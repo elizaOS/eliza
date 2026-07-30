@@ -72,10 +72,6 @@ public class AgentPlugin extends Plugin {
             putIfPresent(request, "method", call.getString("method"));
             putIfPresent(request, "path", call.getString("path"));
             putIfPresent(request, "body", call.getString("body"));
-            Integer timeoutMs = call.getInt("timeoutMs");
-            if (timeoutMs != null) {
-                request.put("timeoutMs", timeoutMs);
-            }
             JSObject headers = call.getObject("headers");
             if (headers != null) {
                 request.put("headers", headers);
@@ -108,15 +104,16 @@ public class AgentPlugin extends Plugin {
             putIfPresent(request, "method", call.getString("method"));
             putIfPresent(request, "path", call.getString("path"));
             putIfPresent(request, "body", call.getString("body"));
-            Integer timeoutMs = call.getInt("timeoutMs");
-            if (timeoutMs != null) {
-                request.put("timeoutMs", timeoutMs);
-            }
             JSObject headers = call.getObject("headers");
             if (headers != null) {
                 request.put("headers", headers);
             }
+            request.put("requestId", streamId);
             final String requestJson = request.toString();
+            if (!ElizaAgentService.registerLocalAgentStream(streamId)) {
+                call.reject("Local agent stream id is already active");
+                return;
+            }
 
             // Resolve first so the WebView attaches its agentStream* listeners
             // for this streamId before the background thread starts emitting.
@@ -124,34 +121,62 @@ public class AgentPlugin extends Plugin {
             ack.put("streamId", streamId);
             call.resolve(ack);
 
-            new Thread(() -> ElizaAgentService.requestLocalAgentStream(requestJson, (String eventJson) -> {
-                try {
-                    JSONObject event = new JSONObject(eventJson);
-                    String type = event.optString("type");
-                    JSObject payload = new JSObject();
-                    payload.put("streamId", streamId);
-                    if ("response".equals(type)) {
-                        payload.put("status", event.optInt("status"));
-                        payload.put("statusText", event.optString("statusText"));
-                        JSONObject h = event.optJSONObject("headers");
-                        payload.put("headers", h != null ? h : new JSONObject());
-                        notifyListeners("agentStreamResponse", payload);
-                    } else if ("chunk".equals(type)) {
-                        payload.put("dataBase64", event.optString("dataBase64"));
-                        notifyListeners("agentStreamChunk", payload);
-                    } else if ("complete".equals(type)) {
-                        if (event.has("error")) {
-                            payload.put("error", event.optString("error"));
+            try {
+                new Thread(() -> ElizaAgentService.requestLocalAgentStream(requestJson, (String eventJson) -> {
+                    try {
+                        JSONObject event = new JSONObject(eventJson);
+                        String type = event.optString("type");
+                        JSObject payload = new JSObject();
+                        payload.put("streamId", streamId);
+                        if ("response".equals(type)) {
+                            payload.put("status", event.optInt("status"));
+                            payload.put("statusText", event.optString("statusText"));
+                            JSONObject h = event.optJSONObject("headers");
+                            payload.put("headers", h != null ? h : new JSONObject());
+                            notifyListeners("agentStreamResponse", payload);
+                        } else if ("chunk".equals(type)) {
+                            payload.put("dataBase64", event.optString("dataBase64"));
+                            notifyListeners("agentStreamChunk", payload);
+                        } else if ("complete".equals(type)) {
+                            if (event.has("error")) {
+                                payload.put("error", event.optString("error"));
+                            }
+                            notifyListeners("agentStreamComplete", payload);
                         }
-                        notifyListeners("agentStreamComplete", payload);
+                    } catch (JSONException error) {
+                        // error-policy:J1 native bridge boundary: malformed
+                        // agent frames terminate the owner-visible stream.
+                        JSObject failure = new JSObject();
+                        failure.put("streamId", streamId);
+                        failure.put("error", "Local agent emitted an invalid stream frame");
+                        notifyListeners("agentStreamComplete", failure);
                     }
-                } catch (JSONException ignored) {
-                    // A malformed envelope must not kill the stream.
-                }
-            })).start();
+                })).start();
+            } catch (RuntimeException error) {
+                ElizaAgentService.cancelLocalAgentStream(streamId);
+                // error-policy:J1 native bridge boundary: the Capacitor call
+                // already returned its stream id, so startup failure must be a
+                // terminal stream event rather than an unhandled exception.
+                JSObject failure = new JSObject();
+                failure.put("streamId", streamId);
+                failure.put("error", "Local agent stream worker failed to start");
+                notifyListeners("agentStreamComplete", failure);
+            }
         } catch (JSONException e) {
             call.reject("Local agent stream request was invalid", e);
         }
+    }
+
+    @PluginMethod
+    public void cancelRequestStream(PluginCall call) {
+        String streamId = call.getString("streamId");
+        if (streamId == null || streamId.trim().isEmpty()) {
+            call.reject("streamId is required");
+            return;
+        }
+        JSObject result = new JSObject();
+        result.put("cancelled", ElizaAgentService.cancelLocalAgentStream(streamId));
+        call.resolve(result);
     }
 
     private static JSObject status(String state) {
