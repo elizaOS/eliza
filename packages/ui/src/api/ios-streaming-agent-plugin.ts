@@ -69,7 +69,6 @@ export function createIosStreamingAgentPlugin(
             path: options.path,
             headers: options.headers,
             body: options.body,
-            timeoutMs: options.timeoutMs,
             streamId,
           },
         })
@@ -83,6 +82,12 @@ export function createIosStreamingAgentPlugin(
       // `completion` (and surfaced via onStreamError above).
       void completion.catch(() => {});
       return Promise.resolve({ streamId, completion });
+    },
+    async cancelStream(streamId: string): Promise<void> {
+      await runtime.call({
+        method: "http_request_stream_cancel",
+        args: { streamId },
+      });
     },
     addListener(
       eventName:

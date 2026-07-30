@@ -12,12 +12,13 @@
  * Pure transport glue — the plugin is passed in, so it unit-tests with a fake.
  */
 
+import { logger } from "@elizaos/logger";
+
 export interface NativeStreamAgentRequestOptions {
   method?: string;
   path: string;
   headers?: Record<string, string>;
   body?: string | null;
-  timeoutMs?: number;
 }
 
 export interface NativeStreamResponseEvent {
@@ -53,6 +54,11 @@ export interface NativeStreamingAgentPlugin {
       | "agentStreamComplete",
     listener: (event: unknown) => void,
   ) => Promise<NativeStreamListenerHandle> | NativeStreamListenerHandle;
+  /**
+   * Stop the native producer when the owner abandons a stream. Implementations
+   * close the Android UDS or abort the iOS model request.
+   */
+  cancelStream?: (streamId: string) => Promise<void> | void;
 }
 
 /** Type guard: does this plugin expose the streaming bridge? */
@@ -85,21 +91,11 @@ function base64ToBytes(base64: string): Uint8Array {
 export async function createNativeStreamingResponse(
   agent: NativeStreamingAgentPlugin,
   options: NativeStreamAgentRequestOptions,
+  signal?: AbortSignal,
 ): Promise<Response> {
+  signal?.throwIfAborted();
   const stream = await agent.requestStream(options);
   const { streamId } = stream;
-
-  // Liveness bounds: the head must arrive within HEAD_TIMEOUT_MS, and once the
-  // body is streaming each chunk must arrive within IDLE_TIMEOUT_MS. Without
-  // these a dropped head/terminal event (agent crash, killed loopback, lost
-  // Capacitor event) would hang the reply forever — Android's `requestStream`
-  // carries no `completion` safety net, so the transport's try/catch fallback
-  // never fires. On timeout the head rejects (caller falls back to the buffered
-  // request) or the body errors, and `detach()` clears both timers.
-  const HEAD_TIMEOUT_MS = options.timeoutMs ?? 30000;
-  const IDLE_TIMEOUT_MS = options.timeoutMs ?? 30000;
-  let headTimer: ReturnType<typeof setTimeout> | null = null;
-  let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   // Buffer events that land before `start()` runs (and the terminal state if it
@@ -108,23 +104,42 @@ export async function createNativeStreamingResponse(
   let terminal: { error?: string | null } | null = null;
   const handles: NativeStreamListenerHandle[] = [];
   let detached = false;
+  let nativeCancelled = false;
 
-  const clearTimers = (): void => {
-    if (headTimer !== null) clearTimeout(headTimer);
-    if (idleTimer !== null) clearTimeout(idleTimer);
-    headTimer = null;
-    idleTimer = null;
+  const cancelNative = (): void => {
+    if (nativeCancelled) return;
+    nativeCancelled = true;
+    void Promise.resolve(agent.cancelStream?.(streamId)).catch((error) => {
+      // error-policy:J6 best-effort teardown: the owner-facing stream is
+      // already cancelled; report a failed native stop so leaked work remains
+      // observable without replacing the caller's AbortError.
+      logger.warn(
+        { error, streamId },
+        "[NativeAgentStream] Native stream cancellation failed",
+      );
+    });
+  };
+
+  const removeHandle = (handle: NativeStreamListenerHandle): void => {
+    void Promise.resolve(handle.remove()).catch((error) => {
+      // error-policy:J6 best-effort teardown: listener removal cannot repair a
+      // terminal stream, but a failed removal is observable as a leak signal.
+      logger.warn(
+        { error, streamId },
+        "[NativeAgentStream] Native listener removal failed",
+      );
+    });
   };
 
   const detach = (): void => {
     if (detached) return;
     detached = true;
-    clearTimers();
-    for (const handle of handles) void handle.remove();
+    signal?.removeEventListener("abort", onAbort);
+    for (const handle of handles) removeHandle(handle);
   };
   const trackHandle = (handle: NativeStreamListenerHandle): void => {
     if (detached) {
-      void handle.remove();
+      removeHandle(handle);
       return;
     }
     handles.push(handle);
@@ -142,6 +157,7 @@ export async function createNativeStreamingResponse(
       }
     },
     cancel() {
+      cancelNative();
       detach();
     },
   });
@@ -157,6 +173,17 @@ export async function createNativeStreamingResponse(
   // catch only prevents a spurious unhandledrejection if head settles first.
   void head.catch(() => {});
   let headSettled = false;
+
+  const abortError = (): Error =>
+    signal?.reason instanceof Error
+      ? signal.reason
+      : new DOMException("Native stream cancelled", "AbortError");
+
+  const onAbort = (): void => {
+    if (detached) return;
+    cancelNative();
+    failStream(abortError());
+  };
 
   const failStream = (reason: unknown): void => {
     if (detached) return;
@@ -196,26 +223,6 @@ export async function createNativeStreamingResponse(
     }
   };
 
-  // Re-arm the idle deadline; called once the head settles and on every chunk.
-  const bumpIdle = (): void => {
-    if (detached) return;
-    if (idleTimer !== null) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      if (detached) return;
-      const idle = new Error("native stream idle timeout");
-      if (!headSettled) {
-        failStream(idle);
-        return;
-      }
-      if (controller) {
-        controller.error(idle);
-        detach();
-      } else {
-        terminal = { error: "native stream idle timeout" };
-      }
-    }, IDLE_TIMEOUT_MS);
-  };
-
   const onResponse = (event: unknown): void => {
     const e = event as NativeStreamResponseEvent;
     if (!e || e.streamId !== streamId || headSettled) return;
@@ -227,7 +234,6 @@ export async function createNativeStreamingResponse(
         headers: e.headers ?? {},
       }),
     );
-    bumpIdle();
   };
 
   const onChunk = (event: unknown): void => {
@@ -236,7 +242,6 @@ export async function createNativeStreamingResponse(
     const bytes = base64ToBytes(e.dataBase64);
     if (controller) controller.enqueue(bytes);
     else pending.push(bytes);
-    bumpIdle();
   };
 
   const onComplete = (event: unknown): void => {
@@ -272,15 +277,14 @@ export async function createNativeStreamingResponse(
     void stream.completion.then(finishStream, failStream);
   }
 
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) {
+    onAbort();
+  }
+
   trackHandle(await agent.addListener("agentStreamResponse", onResponse));
   trackHandle(await agent.addListener("agentStreamChunk", onChunk));
   trackHandle(await agent.addListener("agentStreamComplete", onComplete));
-
-  // Head deadline: if no response arrives in time, fail the head so the caller's
-  // try/catch falls back to the buffered request instead of hanging.
-  headTimer = setTimeout(() => {
-    if (!headSettled) failStream(new Error("native stream head timeout"));
-  }, HEAD_TIMEOUT_MS);
 
   return head;
 }
