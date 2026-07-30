@@ -15,7 +15,10 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jobs";
+import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import type { Job } from "../../db/schemas/jobs";
+import { jobs } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
@@ -340,21 +343,47 @@ function adminCanaryCutoverTx(
     rollback_standby_environment_revision: 7,
     image_digest: data.targetDigest,
     docker_image: data.targetImage,
+    lifecycle_job_id: ctx.job.id,
+    lifecycle_execution_generation: ctx.job.execution_generation,
   };
 
   return {
-    update: () => ({
-      set: (updates: Record<string, unknown>) => {
-        const prior =
-          atomicAuditWrites.length === 0 ? ctx.job : { ...ctx.job, ...atomicAuditWrites.at(-1) };
-        atomicAuditWrites.push(updates);
+    update: (table: unknown) => {
+      if (table === agentSandboxes) {
         return {
-          where: () => ({
-            returning: async () => [{ ...prior, ...updates }],
+          set: () => ({
+            where: () => ({
+              returning: async () => [{ id: AGENT }],
+            }),
           }),
         };
-      },
-    }),
+      }
+      if (table !== jobs) {
+        throw new Error("Unexpected table passed to admin canary transaction update");
+      }
+      return {
+        set: (updates: Record<string, unknown>) => {
+          const prior =
+            atomicAuditWrites.length === 0 ? ctx.job : { ...ctx.job, ...atomicAuditWrites.at(-1) };
+          atomicAuditWrites.push(updates);
+          return {
+            where: () => ({
+              returning: async () => [{ ...prior, ...updates }],
+            }),
+          };
+        },
+      };
+    },
+    delete: (table: unknown) => {
+      if (table !== jobExecutionLeases) {
+        throw new Error("Unexpected table passed to admin canary transaction delete");
+      }
+      return {
+        where: () => ({
+          returning: async () => [{ jobId: ctx.job.id }],
+        }),
+      };
+    },
     select: () => ({
       from: () => ({
         where: () => ({

@@ -128,6 +128,8 @@ describe("recoverStaleJobs threshold by job type", () => {
         sharedTypes: [type],
         maxRunning: 1,
         limit: 1,
+        executionOwnerId: expect.any(String),
+        executionLeaseMs: watchdogMs + 30_000,
       });
       expect(recoverSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -181,6 +183,8 @@ describe("recoverStaleJobs threshold by job type", () => {
       error_key: null,
       attempts: 4,
       max_attempts: 10,
+      execution_generation: "00000000-0000-4000-8000-000000000011",
+      execution_quiesced_at: null,
       organization_id: organizationId,
       user_id: actorUserId,
       api_key_id: null,
@@ -222,10 +226,13 @@ describe("recoverStaleJobs threshold by job type", () => {
         jobTypes: [type],
       });
       expect(result).toMatchObject({ claimed: 1, succeeded: 0, retried: 1, failed: 0 });
+      const executionOwnerId = sharedClaimSpy.mock.calls[0]?.[0].executionOwnerId;
+      expect(executionOwnerId).toEqual(expect.any(String));
       expect(retrySpy).toHaveBeenCalledWith(
         job,
         `Restore validation ${restoreValidationId} is still applying; retry later`,
         2 * 60 * 1000,
+        executionOwnerId,
       );
       expect(incrementSpy).not.toHaveBeenCalled();
     } finally {
