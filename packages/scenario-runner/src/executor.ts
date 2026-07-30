@@ -1553,6 +1553,7 @@ async function executeMessageTurn(
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: room.userId,
+    agentId: runtime.agentId,
     roomId: room.roomId,
     content: {
       ...turnContent,
@@ -1675,6 +1676,7 @@ async function executeActionTurn(
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: room.userId,
+    agentId: runtime.agentId,
     roomId: room.roomId,
     content: {
       ...turnContent,

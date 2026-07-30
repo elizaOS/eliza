@@ -60,13 +60,13 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
  * Holding that closure would also pin the planner's state alive for the whole
  * report.
  *
- * Functions, symbols, and undefined are dropped rather than stringified —
+ * Functions, symbols, and undefined are dropped rather than stringified -
  * substituting a placeholder would put a value in the trace that the action was
- * never called with. Cycles resolve to null (the options graph is data, so a
- * cycle means runtime plumbing leaked in), and depth is capped so a deeply
- * self-referential object cannot stall serialization.
+ * never called with. Cycles resolve to null because they indicate runtime
+ * plumbing leaked into the data graph. The depth cap matches the downstream
+ * canonical JSON boundary so every accepted value remains intact.
  */
-const MAX_CAPTURED_PARAM_DEPTH = 12;
+const MAX_CAPTURED_PARAM_DEPTH = 128;
 
 function toJsonSafe(
   value: unknown,
@@ -80,7 +80,7 @@ function toJsonSafe(
   }
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return value;
-  if (depth >= MAX_CAPTURED_PARAM_DEPTH) return null;
+  if (depth > MAX_CAPTURED_PARAM_DEPTH) return null;
 
   const obj = value as object;
   if (seen.has(obj)) return null;
@@ -331,9 +331,9 @@ export function captureConnectorDispatchesFromAction(
   parameters: unknown,
   result: unknown,
 ): void {
-  const paramsRecord = toRecord(parameters);
+  const paramsRecord = toRecord(toJsonSafe(parameters));
   const params = toRecord(paramsRecord?.parameters) ?? paramsRecord;
-  const resultRecord = toRecord(result);
+  const resultRecord = toRecord(toJsonSafe(result));
   const resultData = toRecord(resultRecord?.data);
   // Only record a dispatch as delivered when the action explicitly reports
   // success. Defaulting to `true` would let a "messageDelivered" final check

@@ -126,6 +126,46 @@ describe("scenario executor wait turns", () => {
   });
 });
 
+describe("scenario executor message turns", () => {
+  it("binds inbound messages to the receiving agent", async () => {
+    const agentId =
+      "00000000-0000-0000-0000-0000000000aa" as AgentRuntime["agentId"];
+    const handleMessage = vi.fn(
+      async (
+        _runtime: AgentRuntime,
+        message: Memory,
+        callback: HandlerCallback,
+      ) => {
+        expect(message.agentId).toBe(agentId);
+        await callback({ text: "bound" });
+        return {};
+      },
+    );
+    const runtime = {
+      ...createRuntime([], { agentId }),
+      messageService: { handleMessage },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "message-agent-binding",
+        title: "Message agent binding",
+        domain: "executor",
+        turns: [{ kind: "message", name: "bound turn", text: "hello" }],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(handleMessage).toHaveBeenCalledOnce();
+  });
+});
+
 describe("provider-qualified execution boundary", () => {
   it("fails before creating synthetic users or dispatching through the in-process runtime", async () => {
     const ensureConnection = vi.fn(async () => undefined);
@@ -499,6 +539,8 @@ describe("scenario executor action turns", () => {
         } as Action,
       ],
       {
+        agentId:
+          "00000000-0000-0000-0000-0000000000aa" as AgentRuntime["agentId"],
         useModel: vi.fn() as AgentRuntime["useModel"],
       },
     );
@@ -541,6 +583,7 @@ describe("scenario executor action turns", () => {
     expect(validate).toHaveBeenCalledWith(
       runtime,
       expect.objectContaining({
+        agentId: runtime.agentId,
         content: expect.objectContaining({
           action: "VIEWS",
           source: "telegram",
