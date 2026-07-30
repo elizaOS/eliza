@@ -8404,11 +8404,37 @@ export async function runV5MessageRuntimeStage1(args: {
 					return normalized.length > 0 && deliveredVisibleTexts.has(normalized);
 				});
 			});
+		// The planned ⊇ delivered direction of the suppression above, keyed on
+		// provenance instead of fuzzy text comparison: a verifiedUserFacing action
+		// whose userFacingText already went out through its own callback makes any
+		// planned reply still embedding that text a re-render of a message the
+		// user already has — precedence rung 1 re-selects it verbatim, alone or
+		// fenced with evaluator prose appended, a strict superset the
+		// one-directional guard cannot match, and independent render passes defeat
+		// equality. The returned userFacingText is the RECORD of the callback's
+		// delivery, not an input to a second one. Verified actions that never
+		// invoked the callback fail the delivered-set membership, so finalMessage
+		// remains their sole delivery.
+		const plannedTextRepeatsVerifiedActionDelivery = actionResults.some(
+			(result) => {
+				if (result.verifiedUserFacing !== true) return false;
+				const verified =
+					typeof result.userFacingText === "string"
+						? normalizeVisibleTextForDuplicateCheck(result.userFacingText)
+						: "";
+				return (
+					verified.length > 0 &&
+					deliveredVisibleTexts.has(verified) &&
+					normalizedPlannedReply.includes(verified)
+				);
+			},
+		);
 		const shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
-			!plannedTextIsRedundantFailureFallback;
+			!plannedTextIsRedundantFailureFallback &&
+			!plannedTextRepeatsVerifiedActionDelivery;
 		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous
 		// model provenance here (`messageHandler.plan.reply` is the Stage-1
 		// model's own field). The planner's `finalMessage` is deliberately NOT
@@ -9681,6 +9707,19 @@ export function wrapSingleTurnVisibleCallback(
 		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
+		}
+		// The voice rewrite (voiceActionReply below) restyles the wire text and
+		// stashes the action's original text in data.rawActionText. The planner's
+		// finalMessage is composed from that RAW text (a verified tool's
+		// userFacingText), so record it too — same rationale as the sanitize-drift
+		// recording above: echo suppression must recognize a delivery whose wire
+		// form diverged from the text the planner re-selects.
+		if (response?.data && typeof response.data === "object") {
+			const rawActionText = (response.data as Record<string, unknown>)
+				.rawActionText;
+			if (typeof rawActionText === "string" && rawActionText.trim()) {
+				recordDeliveredVisibleText?.(rawActionText);
+			}
 		}
 		return delivered;
 	};
