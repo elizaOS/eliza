@@ -381,7 +381,7 @@ export class TriageService {
 		record: DraftRecord,
 	): Promise<DraftRecord> {
 		const adapter = this.adapters.get(record.source);
-		if (!adapter || !adapter.isAvailable(runtime)) {
+		if (!adapter?.isAvailable(runtime)) {
 			throw new ElizaError(
 				`The ${record.source} message adapter is unavailable.`,
 				{
@@ -444,7 +444,7 @@ export class TriageService {
 		snapshot: DraftRecord,
 	): Promise<DraftRecord> {
 		const adapter = this.adapters.get(snapshot.source);
-		if (!adapter || !adapter.isAvailable(runtime)) {
+		if (!adapter?.isAvailable(runtime)) {
 			throw new ElizaError(
 				`The ${snapshot.source} message adapter is unavailable.`,
 				{
@@ -615,7 +615,7 @@ export class TriageService {
 	): Promise<DraftRecord> {
 		const draftId = record.draftId;
 		const adapter = this.adapters.get(record.source);
-		if (!adapter || !adapter.isAvailable(runtime)) {
+		if (!adapter?.isAvailable(runtime)) {
 			throw new ElizaError(
 				`The ${record.source} message adapter is unavailable.`,
 				{
