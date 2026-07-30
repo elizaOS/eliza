@@ -36,8 +36,7 @@ export {
 	loadAospVisionBackend,
 } from "./aosp-unavailable";
 export {
-	getVisionContextAugmenter,
-	registerVisionContextAugmenter,
+	augmentVisionRequest,
 	type VisionAugmentResult,
 	type VisionContextAugmenter,
 	type VisionFusedContext,

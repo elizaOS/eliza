@@ -240,8 +240,7 @@ export type {
 	TextGenerationSlot,
 } from "./types";
 export {
-	getVisionContextAugmenter,
-	registerVisionContextAugmenter,
+	augmentVisionRequest,
 	type VisionAugmentResult,
 	type VisionContextAugmenter,
 	type VisionFusedContext,

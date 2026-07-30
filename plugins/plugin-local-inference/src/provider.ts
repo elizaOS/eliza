@@ -878,7 +878,7 @@ function createImageDescriptionHandler() {
 					? modelKeyCandidate
 					: "gemma-vl";
 			const request = paramsToVisionRequest(params);
-			await augmentVisionRequest(request);
+			await augmentVisionRequest(runtime, request);
 			const result = await arbiter.requestVisionDescribe<
 				typeof request,
 				ImageDescriptionResult | string

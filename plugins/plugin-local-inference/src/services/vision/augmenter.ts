@@ -8,15 +8,14 @@
  * structured text context. The VL model then grounds its description in real
  * extracted signals instead of guessing at small text or object identity.
  *
- * Layering: the IMAGE_DESCRIPTION handler (this package) is the *consumer*; it
- * owns the registry and reads whatever augmenter is registered. plugin-vision
- * is the *provider*; it registers its implementation at boot via a best-effort
- * dynamic import (no hard dependency in either direction — mirrors the
- * coord-OCR bridge plugin-vision already uses for plugin-computeruse). When no
- * augmenter is registered the handler describes the image unaugmented.
+ * Layering: the IMAGE_DESCRIPTION handler (this package) is the consumer, while
+ * plugin-vision contributes a runtime-scoped service under the core
+ * `VISION_CONTEXT_AUGMENTER` service type. Keeping the seam in the runtime
+ * avoids process-global state and preserves identity across separately bundled
+ * plugin entrypoints.
  */
 
-import { logger } from "@elizaos/core";
+import { type IAgentRuntime, type Service, ServiceType } from "@elizaos/core";
 import type { VisionImageInput } from "./types";
 
 /**
@@ -55,22 +54,7 @@ export interface VisionContextAugmenter {
 	}): Promise<VisionAugmentResult | null>;
 }
 
-let registered: VisionContextAugmenter | null = null;
-
-/**
- * Register (or clear, with `null`) the process-wide vision-context augmenter.
- * Last writer wins — a native provider can override an earlier registration.
- */
-export function registerVisionContextAugmenter(
-	augmenter: VisionContextAugmenter | null,
-): void {
-	registered = augmenter;
-}
-
-/** The currently registered augmenter, or `null` when none is wired. */
-export function getVisionContextAugmenter(): VisionContextAugmenter | null {
-	return registered;
-}
+type VisionContextAugmenterRuntimeService = Service & VisionContextAugmenter;
 
 /**
  * Fold pre-vision detector signals into a describe request's prompt, in place,
@@ -79,11 +63,16 @@ export function getVisionContextAugmenter(): VisionContextAugmenter | null {
  * the augmentation is extra grounding context, never a hard dependency of
  * IMAGE_DESCRIPTION. Used by the IMAGE_DESCRIPTION handler in `provider.ts`.
  */
-export async function augmentVisionRequest(request: {
-	image: VisionImageInput;
-	prompt?: string;
-}): Promise<void> {
-	const augmenter = registered;
+export async function augmentVisionRequest(
+	runtime: IAgentRuntime,
+	request: {
+		image: VisionImageInput;
+		prompt?: string;
+	},
+): Promise<void> {
+	const augmenter = runtime.getService<VisionContextAugmenterRuntimeService>(
+		ServiceType.VISION_CONTEXT_AUGMENTER,
+	);
 	if (!augmenter) return;
 	try {
 		const augmented = await augmenter.augmentImagePrompt({
@@ -93,11 +82,10 @@ export async function augmentVisionRequest(request: {
 		if (augmented?.prompt) {
 			request.prompt = augmented.prompt;
 		}
-	} catch (err) {
-		logger.warn(
-			`[local-inference] vision context augmenter '${augmenter.name}' failed; describing unaugmented: ${
-				err instanceof Error ? err.message : String(err)
-			}`,
-		);
+	} catch (error) {
+		// error-policy:J7 Optional grounding may degrade, but the failure remains observable.
+		runtime.reportError("LocalInference.VisionContextAugmenter", error, {
+			augmenter: augmenter.name,
+		});
 	}
 }

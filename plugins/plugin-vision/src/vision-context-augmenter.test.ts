@@ -127,7 +127,12 @@ describe("FusedVisionContextAugmenter", () => {
     expect(await aug.augmentImagePrompt({ image: IMAGE })).toBeNull();
   });
 
-  it("degrades gracefully when a detector throws (OCR still fuses)", async () => {
+  it("reports detector failures while preserving successful OCR", async () => {
+    const reported: Array<{
+      scope: string;
+      detector: unknown;
+      error: unknown;
+    }> = [];
     const aug = new FusedVisionContextAugmenter({
       getOcr: () => fakeOcr([{ text: "STILL WORKS" }]),
       detectObjects: async () => {
@@ -136,11 +141,27 @@ describe("FusedVisionContextAugmenter", () => {
       detectFaces: async () => {
         throw new Error("blazeface weights missing");
       },
+      reportError: (scope, error, context) =>
+        reported.push({ scope, detector: context?.detector, error }),
     });
     const out = await aug.augmentImagePrompt({ image: IMAGE });
     expect(out?.fused.ocrText).toBe('"STILL WORKS"');
     expect(out?.fused.objects).toBeUndefined();
     expect(out?.fused.faces).toBeUndefined();
+    expect(reported).toEqual([
+      {
+        scope: "VisionContextAugmenter.detector",
+        detector: "objects",
+        error: expect.objectContaining({ message: "yolo native lib missing" }),
+      },
+      {
+        scope: "VisionContextAugmenter.detector",
+        detector: "faces",
+        error: expect.objectContaining({
+          message: "blazeface weights missing",
+        }),
+      },
+    ]);
   });
 
   it("is idempotent — skips a prompt that already carries a fused-context block", async () => {
