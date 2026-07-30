@@ -660,6 +660,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
+	isInitialized(): boolean;
 
 	/** Get the underlying database connection. Type depends on the adapter implementation. */
 	getConnection(): Promise<object>;
@@ -671,6 +672,15 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	getAllServices(): Map<ServiceTypeName, Service[]>;
 
 	registerService(service: ServiceClass): Promise<void>;
+
+	/**
+	 * Register an adapter that the host has already constructed and started.
+	 * Plugin declarations should use `registerService(ServiceClass)` instead.
+	 */
+	registerServiceInstance(
+		serviceType: ServiceTypeName | string,
+		service: import("./service").RuntimeServiceInstance,
+	): void;
 
 	getServiceLoadPromise(
 		serviceType: ServiceTypeName | string,

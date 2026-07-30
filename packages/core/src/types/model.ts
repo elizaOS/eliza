@@ -1645,6 +1645,19 @@ export interface ModelRegistrationMetadata {
 	 * the runtime streaming gate; absence means "unknown / do not assume".
 	 */
 	streamable?: boolean;
+	/**
+	 * Exact output width for a TEXT_EMBEDDING handler. The runtime uses this
+	 * declaration to configure vector storage without fabricating a probe
+	 * vector or making a network/model call during boot.
+	 */
+	embeddingDimension?: number;
+	/**
+	 * Runtime setting/env keys that resolve the embedding width. The first
+	 * positive integer wins; use this when deployments can override the model.
+	 */
+	embeddingDimensionSettings?: string[];
+	/** Width used when none of `embeddingDimensionSettings` is configured. */
+	embeddingDimensionDefault?: number;
 }
 
 /**

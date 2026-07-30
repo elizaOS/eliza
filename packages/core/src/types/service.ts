@@ -167,9 +167,24 @@ export const ServiceType = {
 } as const;
 
 /**
+ * Lifecycle surface for a service instance that a host has already started.
+ *
+ * Plugins normally register a {@link ServiceClass} and let the runtime create
+ * the instance. Native hosts sometimes have to construct an adapter around an
+ * existing process or device connection before plugin initialization; those
+ * adapters register through `IAgentRuntime.registerServiceInstance`.
+ */
+export interface RuntimeServiceInstance {
+	/** Human-readable capability used by service diagnostics. */
+	capabilityDescription: string;
+	/** Release native handles, sockets, and other owned resources. */
+	stop(): Promise<void> | void;
+}
+
+/**
  * Client instance
  */
-export abstract class Service {
+export abstract class Service implements RuntimeServiceInstance {
 	/** Runtime instance */
 	protected runtime!: IAgentRuntime;
 
