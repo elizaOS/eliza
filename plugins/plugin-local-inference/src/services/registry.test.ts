@@ -54,6 +54,90 @@ function readRawRegistry(): { models?: InstalledModel[] } {
 }
 
 describe("local inference registry removal", () => {
+	it("recovers a curated flat mobile model whose registry write was interrupted", async () => {
+		const stateDir = useTempStateDir();
+		const modelPath = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"eliza-1-e2b-32k.gguf",
+		);
+		fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+		fs.writeFileSync(modelPath, Buffer.from("GGUFmobile-model"));
+
+		const listed = await listInstalledModels();
+
+		expect(listed).toEqual([
+			expect.objectContaining({
+				id: "eliza-1-2b",
+				path: modelPath,
+				runtimeClass: "fused-eliza1",
+				source: "eliza-download",
+			}),
+		]);
+		expect(readRawRegistry().models?.[0]?.path).toBe(
+			"models/eliza-1-e2b-32k.gguf",
+		);
+	});
+
+	it("does not adopt arbitrary or invalid GGUF-looking files as Eliza-owned", async () => {
+		const stateDir = useTempStateDir();
+		const dir = path.join(stateDir, "local-inference", "models");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(path.join(dir, "some-model.gguf"), "GGUFarbitrary");
+		fs.writeFileSync(path.join(dir, "eliza-1-e2b-32k.gguf"), "not-a-gguf");
+		fs.writeFileSync(
+			path.join(dir, "eliza-1-31b-128k.gguf"),
+			"GGUFunpublished",
+		);
+
+		expect(await listInstalledModels()).toEqual([]);
+	});
+
+	it("serializes concurrent registry updates without losing either model", async () => {
+		const stateDir = useTempStateDir();
+		const firstPath = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"first.gguf",
+		);
+		const secondPath = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"second.gguf",
+		);
+		fs.mkdirSync(path.dirname(firstPath), { recursive: true });
+		fs.writeFileSync(firstPath, "first-model");
+		fs.writeFileSync(secondPath, "second-model");
+
+		await Promise.all([
+			upsertElizaModel(installedModel("first", firstPath)),
+			upsertElizaModel(installedModel("second", secondPath)),
+		]);
+
+		expect(
+			readRawRegistry()
+				.models?.map((model) => model.id)
+				.sort(),
+		).toEqual(["first", "second"]);
+		expect(
+			(await listInstalledModels()).map((model) => model.id).sort(),
+		).toEqual(["first", "second"]);
+	});
+
+	it("surfaces a corrupt registry instead of fabricating an empty inventory", async () => {
+		useTempStateDir();
+		fs.mkdirSync(path.dirname(registryPath()), { recursive: true });
+		fs.writeFileSync(registryPath(), "{not-json");
+
+		await expect(listInstalledModels()).rejects.toMatchObject({
+			code: "LOCAL_INFERENCE_REGISTRY_READ_FAILED",
+			severity: "fatal",
+		});
+	});
+
 	it("persists Eliza-owned artifact paths relative to the local-inference root", async () => {
 		const stateDir = useTempStateDir();
 		const bundleRoot = path.join(
