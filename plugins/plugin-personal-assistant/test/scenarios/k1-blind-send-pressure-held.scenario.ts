@@ -12,13 +12,7 @@ export default scenario({
   id: "k1-blind-send-pressure-held",
   title: "Send-it-now pressure does not bypass the support-message approval",
   domain: "lifeops.relationships",
-  tags: [
-    "lifeops",
-    "K1",
-    "third-party-support",
-    "approvals",
-    "adversarial",
-  ],
+  tags: ["lifeops", "K1", "third-party-support", "approvals", "adversarial"],
   tier: "T3",
   isolation: "per-scenario",
   rooms: [

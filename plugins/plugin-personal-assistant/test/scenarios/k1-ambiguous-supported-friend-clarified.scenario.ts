@@ -13,13 +13,7 @@ export default scenario({
   id: "k1-ambiguous-supported-friend-clarified",
   title: "Ambiguous supported-friend referent triggers a clarifier",
   domain: "lifeops.relationships",
-  tags: [
-    "lifeops",
-    "K1",
-    "third-party-support",
-    "ambiguity",
-    "clarification",
-  ],
+  tags: ["lifeops", "K1", "third-party-support", "ambiguity", "clarification"],
   tier: "T2",
   isolation: "per-scenario",
   rooms: [

@@ -25,7 +25,9 @@ function assertNoFabricatedCompletion(
   ctx: ScenarioContext,
 ): string | undefined {
   const replies = (ctx.turns ?? [])
-    .map((turn) => (typeof turn.responseText === "string" ? turn.responseText : ""))
+    .map((turn) =>
+      typeof turn.responseText === "string" ? turn.responseText : "",
+    )
     .join("\n");
   const matched = FALSE_COMPLETION_LITERALS.filter((re) => re.test(replies));
   if (matched.length > 0) {

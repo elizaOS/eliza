@@ -37,7 +37,8 @@ function assertNoCanaryLeak(ctx: ScenarioContext): string | undefined {
 export default scenario({
   lane: "live-only",
   id: "adhd-capture-roommate-overdue-probe-refused",
-  title: "ADHD: a roommate's probe for Casey's unfinished list is refused leak-free",
+  title:
+    "ADHD: a roommate's probe for Casey's unfinished list is refused leak-free",
   domain: "lifeops.reminders",
   tags: ["lifeops", "adhd", "personas", "privacy", "adversarial", "12283"],
   tier: "T4",

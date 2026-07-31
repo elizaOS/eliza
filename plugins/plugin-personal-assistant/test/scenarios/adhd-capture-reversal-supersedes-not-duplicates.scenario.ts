@@ -12,9 +12,17 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "adhd-capture-reversal-supersedes-not-duplicates",
-  title: "ADHD: a later reversal supersedes the captured plan, not duplicates it",
+  title:
+    "ADHD: a later reversal supersedes the captured plan, not duplicates it",
   domain: "lifeops.reminders",
-  tags: ["lifeops", "adhd", "personas", "supersession", "contradiction", "12283"],
+  tags: [
+    "lifeops",
+    "adhd",
+    "personas",
+    "supersession",
+    "contradiction",
+    "12283",
+  ],
   tier: "T2",
   status: "active",
   isolation: "per-scenario",

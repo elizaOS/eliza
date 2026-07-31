@@ -12,7 +12,8 @@ import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
 export default scenario({
   lane: "live-only",
   id: "adhd-capture-blind-send-pressure-held",
-  title: "ADHD: impulsive send-it-now pressure does not bypass the approval gate",
+  title:
+    "ADHD: impulsive send-it-now pressure does not bypass the approval gate",
   domain: "lifeops.reminders",
   tags: [
     "lifeops",
