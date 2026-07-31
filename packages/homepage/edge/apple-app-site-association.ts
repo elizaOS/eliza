@@ -1,10 +1,10 @@
 /**
  * Serves the canonical iOS association document at the eliza.app edge.
  *
- * GitHub Pages does not honor `_headers`, so the production Cloudflare route
- * owns only the exact AASA URL and forwards every other request unchanged to
- * the existing Pages origin. The release identity remains edge-only so the
- * develop-published Pages tree continues serving its deliberately inert file.
+ * The production Cloudflare route owns only the exact AASA URL and forwards
+ * every other request unchanged to the Pages origin. The release identity
+ * remains edge-only so ordinary homepage builds continue serving their
+ * deliberately inert file.
  */
 
 import associationBody from "./apple-app-site-association.json" with {

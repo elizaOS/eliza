@@ -15,6 +15,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");
 const globalStylesPath = resolve(__dirname, "../src/index.css");
 const iphoneModelPath = resolve(__dirname, "../public/models/iphone.glb");
+const elizaAvatarPath = resolve(__dirname, "../public/elizapfp.png");
+const profileImagePath = resolve(
+  __dirname,
+  "../public/eliza-app-profile-image.png",
+);
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
@@ -27,9 +32,15 @@ test("marketing.tsx exports a default function component", () => {
   );
 });
 
-test("leaderboard ships its iPhone GLB model", () => {
+test("landing ships its iPhone GLB model and profile assets", () => {
   const model = readFileSync(iphoneModelPath);
   assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
+
+  const pngSignature = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+  assert.deepEqual(readFileSync(elizaAvatarPath).subarray(0, 8), pngSignature);
+  assert.deepEqual(readFileSync(profileImagePath).subarray(0, 8), pngSignature);
 });
 
 test("reduced-motion keeps functional loading indicators animated", () => {

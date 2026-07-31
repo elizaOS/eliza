@@ -1,19 +1,10 @@
 /**
- * Eliza app onboarding + phone-verify flow. The file is named "leaderboard.tsx"
- * for historical routing reasons; the actual route is /leaderboard and this is
- * the multi-step onboarding entry (platform pick -> phone -> SMS verify).
+ * Animated eliza.app landing experience and phone-verification entry flow.
  *
- * State machine (top-level):
- *   intro animation (SVG letter swap) -> showUI -> platform tab
- *     [imessage | telegram | discord | try]
- *   - "try" reveals an inline message input bar (textarea + voice/send)
- *   - "imessage/telegram/discord" platforms drive ModelB messaging surface
- *   - tapping the back-style action opens the switcher overlay which then
- *     drives a two-step login flow:
- *       loginStep: "phone" -> "verify"  (6-digit OTP)
- *   react-spring drives: tab indicator slide, tab bar bounce, try-tab expand,
- *   input/login/verify slide-up, intro logo scale+swap, l/i/e/a letter morph,
- *   chrome filter, z-shape wipe. We touch colors only -- never timings.
+ * The platform switcher drives iMessage, Telegram, Discord, and inline trial
+ * surfaces inside the 3D phone. Its intro, spring transitions, ambient shader,
+ * and onboarding state are kept together because they form one continuous
+ * interaction rather than independent page sections.
  */
 import {
   DiscordIcon,
@@ -49,9 +40,8 @@ import { ElizaLogo } from "@/components/brand/eliza-logo";
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import { useT } from "@/providers/I18nProvider";
 
-// Heavy WebGL bundles split out so the leaderboard route shell becomes
-// interactive without waiting for the shader/canvas code. ShaderBackground is
-// opt-in via ?shader=1. VideoCall only mounts when the user opens the modal.
+// Heavy WebGL bundles stay behind Suspense so the interactive route chrome can
+// appear without waiting for the shader, phone model, or video-call canvas.
 const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
@@ -125,21 +115,6 @@ type Platform = "imessage" | "telegram" | "discord" | "try";
 const INTRO_DELAY = 1000;
 const PLATFORMS: Platform[] = ["imessage", "telegram", "discord", "try"];
 
-/**
- * ShaderBackground is the original ambient WebGL gradient. Brand pass replaces
- * it with a flat brand-color backdrop by default; pass ?shader=1 in the URL
- * to opt back in (useful for product feel comparisons).
- */
-const SHADER_BACKGROUND_OPT_IN =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("shader") === "1";
-
-const PLATFORM_BACKGROUND: Record<Platform, string> = {
-  imessage: "var(--brand-orange)",
-  telegram: "var(--brand-white)",
-  discord: "var(--brand-black)",
-  try: "var(--brand-blue)",
-};
 const VERIFY_CODE_INPUT_KEYS = [
   "verify-0",
   "verify-1",
@@ -758,31 +733,27 @@ export default function Leaderboard() {
       className="theme-app min-h-screen"
       style={{
         touchAction: "pan-y",
-        background: SHADER_BACKGROUND_OPT_IN
-          ? undefined
-          : PLATFORM_BACKGROUND[platform],
-        transition: "background-color 240ms ease, background 240ms ease",
       }}
     >
-      {SHADER_BACKGROUND_OPT_IN && (
-        <Suspense fallback={null}>
-          <ShaderBackground />
-        </Suspense>
-      )}
-      <ModelB
-        ref={modelRef}
-        tryActive={platform === "try"}
-        switcherOpen={switcherOpen}
-        onWaitingChange={setWaiting}
-        onVideoClick={handleVideoClick}
-        onBackClick={handleLoginClick}
-        onSwitcherDone={handleSwitcherDone}
-        onSwitcherOpen={handleSwitcherOpen}
-        loginTitle={loginTitle}
-        loginSubtitle={loginSubtitle}
-        platform={platform}
-        introDelayMs={INTRO_DELAY}
-      />
+      <Suspense fallback={null}>
+        <ShaderBackground />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ModelB
+          ref={modelRef}
+          tryActive={platform === "try"}
+          switcherOpen={switcherOpen}
+          onWaitingChange={setWaiting}
+          onVideoClick={handleVideoClick}
+          onBackClick={handleLoginClick}
+          onSwitcherDone={handleSwitcherDone}
+          onSwitcherOpen={handleSwitcherOpen}
+          loginTitle={loginTitle}
+          loginSubtitle={loginSubtitle}
+          platform={platform}
+          introDelayMs={INTRO_DELAY}
+        />
+      </Suspense>
       <div className="relative z-30 pointer-events-none">
         <header className="flex items-center justify-between p-5 pointer-events-auto">
           <button

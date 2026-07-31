@@ -13,17 +13,16 @@ export function DocumentMetaManager(): null {
   useEffect(() => {
     if (typeof document === "undefined") return;
     const title = t("homepage_eliza.meta.title", {
-      defaultValue: "Eliza — your agent, everywhere",
+      defaultValue: "Eliza",
     });
     const description = t("homepage_eliza.meta.description", {
-      defaultValue:
-        "Eliza — your agent, everywhere. Desktop, mobile, and cloud, all running the same Eliza.",
+      defaultValue: "Create apps and agents by chatting with AI.",
     });
     const ogTitle = t("homepage_eliza.meta.ogTitle", {
-      defaultValue: "Eliza — your agent, everywhere",
+      defaultValue: "Eliza",
     });
     const ogDescription = t("homepage_eliza.meta.ogDescription", {
-      defaultValue: "Desktop, mobile, and cloud, all running the same Eliza.",
+      defaultValue: "Create apps and agents by chatting with AI.",
     });
     const ogImageAlt = t("homepage_eliza.meta.ogImageAlt", {
       defaultValue: "Eliza",
