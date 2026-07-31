@@ -1,5 +1,6 @@
 import { getTokenMetadata } from "../providers/tokenMetadata";
-import { TokenPrice, WRAPPED_NATIVE_ASSET_ID } from "../providers/priceProvider";
+import { WRAPPED_NATIVE_ASSET_ID } from "../providers/priceProvider";
+import { TokenPrice } from "../providers/pricing/types";
 import {
   SupportedChain,
   WalletBalance,

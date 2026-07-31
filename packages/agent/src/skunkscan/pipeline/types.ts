@@ -27,7 +27,7 @@ import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
 import { ParsedWalletTransaction } from "../parsers/transaction";
-import { TokenPrice } from "../providers/priceProvider";
+import { TokenPrice } from "../providers/pricing/types";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
   SupportedChain,
