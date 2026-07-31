@@ -1,7 +1,4 @@
-/**
- * Brand logo image component for homepage navigation and onboarding surfaces.
- */
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+/** Brand wordmark used by the homepage navigation. */
 import { useT } from "@/providers/I18nProvider";
 
 interface ElizaLogoProps {
@@ -12,7 +9,7 @@ export function ElizaLogo({ className }: ElizaLogoProps) {
   const t = useT();
   return (
     <img
-      src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupBlack}`}
+      src="/eliza-logo.webp"
       alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
       className={className}
       draggable={false}

@@ -19,6 +19,7 @@ const TEST_TOKEN = "homepage-aesthetic-audit-token";
 const ROUTES = [
   { path: "/", name: "landing", authed: false },
   { path: "/leaderboard", name: "leaderboard", authed: false },
+  { path: "/downloads", name: "downloads", authed: false },
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
   { path: "/connected", name: "connected", authed: true },
@@ -114,12 +115,13 @@ async function seedAuthed(page: Page) {
 
 async function settle(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // /leaderboard runs a ~1800ms SVG intro animation before the real chrome
-  // (header, tab bar, BlobButton) is visible. Wait for the header element
-  // specifically so we don't screenshot the orange Suspense loading screen,
-  // then add extra padding for the spring animations that fire after showUI.
-  if (routePath === "/leaderboard") {
-    await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
+  // The animated landing keeps long-lived shader and model requests in
+  // flight. Its primary action appears only after the intro and Suspense
+  // boundaries settle, making it the stable screenshot boundary.
+  if (routePath === "/" || routePath === "/leaderboard") {
+    await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
+      timeout: 30_000,
+    });
     await page.waitForTimeout(3000);
     return;
   }

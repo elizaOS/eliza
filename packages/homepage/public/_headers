@@ -7,5 +7,14 @@
 /*.css
   Cache-Control: public, max-age=31536000, immutable
 
+/models/*
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+/*.webp
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
+/*.woff2
+  Cache-Control: public, max-age=604800, stale-while-revalidate=86400
+
 /index.html
   Cache-Control: public, max-age=0, must-revalidate

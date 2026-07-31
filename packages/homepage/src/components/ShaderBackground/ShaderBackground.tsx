@@ -12,6 +12,7 @@ function ShaderPlane() {
   const mouseSmooth = useRef(new THREE.Vector2(0.5, 0.5));
   const mouseVel = useRef(new THREE.Vector2(0, 0));
   const velSmooth = useRef(new THREE.Vector2(0, 0));
+  const previousMouse = useRef(new THREE.Vector2(0.5, 0.5));
   const clickPos = useRef(new THREE.Vector2(0.5, 0.5));
   const clickTime = useRef(100);
 
@@ -48,14 +49,14 @@ function ShaderPlane() {
     );
     mat.uniforms.uClickPos.value.copy(clickPos.current);
 
-    const prev = mouseSmooth.current.clone();
+    previousMouse.current.copy(mouseSmooth.current);
     mouseSmooth.current.lerp(mouseRaw.current, 0.08);
     mat.uniforms.uMouse.value.copy(mouseSmooth.current);
 
     const safeDelta = Math.max(delta, 0.001);
     mouseVel.current.set(
-      (mouseSmooth.current.x - prev.x) / safeDelta,
-      (mouseSmooth.current.y - prev.y) / safeDelta,
+      (mouseSmooth.current.x - previousMouse.current.x) / safeDelta,
+      (mouseSmooth.current.y - previousMouse.current.y) / safeDelta,
     );
     velSmooth.current.lerp(mouseVel.current, 0.1);
     mat.uniforms.uMouseVel.value.copy(velSmooth.current);
@@ -80,8 +81,12 @@ export default function ShaderBackground() {
       <Canvas
         orthographic
         camera={{ position: [0, 0, 1] }}
-        dpr={[1, 1.5]}
-        gl={{ alpha: false, antialias: false }}
+        dpr={[1, 1.25]}
+        gl={{
+          alpha: false,
+          antialias: false,
+          powerPreference: "high-performance",
+        }}
         style={{ pointerEvents: "auto" }}
       >
         <ShaderPlane />

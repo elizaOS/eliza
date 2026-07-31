@@ -1,19 +1,10 @@
 /**
- * Eliza app onboarding + phone-verify flow. The file is named "leaderboard.tsx"
- * for historical routing reasons; the actual route is /leaderboard and this is
- * the multi-step onboarding entry (platform pick -> phone -> SMS verify).
+ * Animated eliza.app landing experience and phone-verification entry flow.
  *
- * State machine (top-level):
- *   intro animation (SVG letter swap) -> showUI -> platform tab
- *     [imessage | telegram | discord | try]
- *   - "try" reveals an inline message input bar (textarea + voice/send)
- *   - "imessage/telegram/discord" platforms drive ModelB messaging surface
- *   - tapping the back-style action opens the switcher overlay which then
- *     drives a two-step login flow:
- *       loginStep: "phone" -> "verify"  (6-digit OTP)
- *   react-spring drives: tab indicator slide, tab bar bounce, try-tab expand,
- *   input/login/verify slide-up, intro logo scale+swap, l/i/e/a letter morph,
- *   chrome filter, z-shape wipe. We touch colors only -- never timings.
+ * The platform switcher drives iMessage, Telegram, Discord, and inline trial
+ * surfaces inside the 3D phone. Its intro, spring transitions, ambient shader,
+ * and onboarding state are kept together because they form one continuous
+ * interaction rather than independent page sections.
  */
 import {
   DiscordIcon,
@@ -49,9 +40,8 @@ import { ElizaLogo } from "@/components/brand/eliza-logo";
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import { useT } from "@/providers/I18nProvider";
 
-// Heavy WebGL bundles split out so the leaderboard route shell becomes
-// interactive without waiting for the shader/canvas code. ShaderBackground is
-// opt-in via ?shader=1. VideoCall only mounts when the user opens the modal.
+// Heavy WebGL bundles stay behind Suspense so the interactive route chrome can
+// appear without waiting for the shader, phone model, or video-call canvas.
 const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
@@ -125,21 +115,6 @@ type Platform = "imessage" | "telegram" | "discord" | "try";
 const INTRO_DELAY = 1000;
 const PLATFORMS: Platform[] = ["imessage", "telegram", "discord", "try"];
 
-/**
- * ShaderBackground is the original ambient WebGL gradient. Brand pass replaces
- * it with a flat brand-color backdrop by default; pass ?shader=1 in the URL
- * to opt back in (useful for product feel comparisons).
- */
-const SHADER_BACKGROUND_OPT_IN =
-  typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("shader") === "1";
-
-const PLATFORM_BACKGROUND: Record<Platform, string> = {
-  imessage: "var(--brand-orange)",
-  telegram: "var(--brand-white)",
-  discord: "var(--brand-black)",
-  try: "var(--brand-blue)",
-};
 const VERIFY_CODE_INPUT_KEYS = [
   "verify-0",
   "verify-1",
@@ -477,6 +452,13 @@ export default function Leaderboard() {
     recognition.start();
   }, [listening]);
 
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    };
+  }, []);
+
   const [selectedCountry, setSelectedCountry] = useState("US");
   const country =
     COUNTRIES.find((c) => c.code === selectedCountry) ?? COUNTRIES[0];
@@ -486,8 +468,9 @@ export default function Leaderboard() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
+    if (tryInput.length === 0) return;
     el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
-  }, []);
+  }, [tryInput]);
 
   const formatPhone = useCallback((digits: string, pattern: string) => {
     let result = "";
@@ -758,31 +741,31 @@ export default function Leaderboard() {
       className="theme-app min-h-screen"
       style={{
         touchAction: "pan-y",
-        background: SHADER_BACKGROUND_OPT_IN
-          ? undefined
-          : PLATFORM_BACKGROUND[platform],
-        transition: "background-color 240ms ease, background 240ms ease",
       }}
     >
-      {SHADER_BACKGROUND_OPT_IN && (
-        <Suspense fallback={null}>
-          <ShaderBackground />
-        </Suspense>
-      )}
-      <ModelB
-        ref={modelRef}
-        tryActive={platform === "try"}
-        switcherOpen={switcherOpen}
-        onWaitingChange={setWaiting}
-        onVideoClick={handleVideoClick}
-        onBackClick={handleLoginClick}
-        onSwitcherDone={handleSwitcherDone}
-        onSwitcherOpen={handleSwitcherOpen}
-        loginTitle={loginTitle}
-        loginSubtitle={loginSubtitle}
-        platform={platform}
-        introDelayMs={INTRO_DELAY}
+      <Suspense fallback={null}>
+        <ShaderBackground />
+      </Suspense>
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')]"
       />
+      <Suspense fallback={null}>
+        <ModelB
+          ref={modelRef}
+          tryActive={platform === "try"}
+          switcherOpen={switcherOpen}
+          onWaitingChange={setWaiting}
+          onVideoClick={handleVideoClick}
+          onBackClick={handleLoginClick}
+          onSwitcherDone={handleSwitcherDone}
+          onSwitcherOpen={handleSwitcherOpen}
+          loginTitle={loginTitle}
+          loginSubtitle={loginSubtitle}
+          platform={platform}
+          introDelayMs={INTRO_DELAY}
+        />
+      </Suspense>
       <div className="relative z-30 pointer-events-none">
         <header className="flex items-center justify-between p-5 pointer-events-auto">
           <button
@@ -837,7 +820,7 @@ export default function Leaderboard() {
               style={{ gap: tryAppearSpring.tryGap }}
             >
               <AnimatedDiv
-                className="absolute z-1 h-12 bg-white border border-black rounded-xs"
+                className="absolute z-1 h-12 rounded-full border border-white/60 bg-white/30 backdrop-blur-sm"
                 style={{
                   ...indicatorSpring,
                   top: 7,
@@ -852,11 +835,11 @@ export default function Leaderboard() {
                 }}
               />
               <AnimatedDiv
-                className="relative flex items-center gap-1 rounded-xs py-1.5 border border-transparent"
+                className="relative flex items-center gap-1 rounded-full border border-transparent py-1.5"
                 style={barSpring}
               >
                 <AnimatedDiv
-                  className="absolute inset-0 rounded-xs bg-black"
+                  className="absolute inset-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
                   style={{
                     WebkitMaskImage: tabBarBgSpring.reveal.to(
                       (v) =>
@@ -873,7 +856,7 @@ export default function Leaderboard() {
                     <AnimatedButton
                       key={p}
                       onClick={() => changePlatform(p)}
-                      className="relative z-20 flex items-center justify-center size-12 rounded-xs cursor-pointer"
+                      className="relative z-20 flex size-12 cursor-pointer items-center justify-center rounded-full"
                       style={{
                         opacity: iconSprings[i].opacity,
                         scale: iconSprings[i].scale,
@@ -903,7 +886,7 @@ export default function Leaderboard() {
                 }}
               >
                 <AnimatedDiv
-                  className="absolute right-0 top-0 rounded-xs border border-black bg-white"
+                  className="absolute right-0 top-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
                   style={{
                     width: trySpring.width,
                     height: trySpring.height,
@@ -919,7 +902,7 @@ export default function Leaderboard() {
                 />
                 <AnimatedButton
                   onClick={() => navigate("/get-started")}
-                  className="relative z-2 flex items-center justify-center h-full w-full rounded-xs text-black font-semibold text-base whitespace-nowrap cursor-pointer"
+                  className="relative z-2 flex h-full w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-full text-base font-semibold text-neutral-900"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
                   {t("homepage_eliza.leaderboard.tryNow", {

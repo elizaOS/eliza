@@ -1,6 +1,6 @@
 # Exact-path Cloudflare route for the production iOS association document.
-# The homepage remains on GitHub Pages; this Worker only repairs the response
-# contract that Pages cannot express.
+# The homepage remains on Cloudflare Pages; this Worker owns only the exact
+# response contract that static hosting cannot express.
 
 name = "eliza-app-aasa-edge-prod"
 main = "edge/apple-app-site-association.ts"
@@ -14,7 +14,7 @@ rules = [
   { type = "Text", globs = ["**/apple-app-site-association.json"], fallthrough = true },
 ]
 
-# An exact HTTPS route leaves all other GitHub Pages traffic outside the Worker.
+# An exact HTTPS route leaves all other Pages traffic outside the Worker.
 routes = [
   { pattern = "https://eliza.app/.well-known/apple-app-site-association", zone_name = "eliza.app" },
 ]
