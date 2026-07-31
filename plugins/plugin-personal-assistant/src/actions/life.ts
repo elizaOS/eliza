@@ -76,6 +76,7 @@ import {
   toActionData,
 } from "../lifeops/google/format-helpers.js";
 import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
+import type { LifeOpsDefinitionScope } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 import {
@@ -774,6 +775,43 @@ function requestedOwnership(domain?: LifeOpsDomain) {
   return { domain: "user_lifeops" as const, subjectType: "owner" as const };
 }
 
+function definitionMutationScope(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  domain?: LifeOpsDomain;
+}): LifeOpsDefinitionScope {
+  const ownership = requestedOwnership(args.domain);
+  return {
+    agentId: String(args.runtime.agentId),
+    ...ownership,
+    subjectId:
+      ownership.subjectType === "agent"
+        ? String(args.runtime.agentId)
+        : String(args.message.entityId),
+  };
+}
+
+function definitionRevision(record: LifeOpsDefinitionRecord): number | null {
+  const revision = (record.definition as { revision?: unknown }).revision;
+  return typeof revision === "number" &&
+    Number.isInteger(revision) &&
+    revision > 0
+    ? revision
+    : null;
+}
+
+function definitionMutationFailureCode(error: unknown): string {
+  if (error && typeof error === "object") {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === "string" && code.length > 0) {
+      return code;
+    }
+  }
+  return error instanceof Error && error.name
+    ? error.name
+    : "LIFEOPS_DEFINITION_MUTATION_FAILED";
+}
+
 function normalizeIntentText(value: string): string {
   return normalizeLifeInputText(value).toLowerCase();
 }
@@ -915,6 +953,69 @@ async function resolveDefinition(
   return (
     defs.find((e) => e.definition.id === target) ?? matchByTitle(defs, target)
   );
+}
+
+type DefinitionMutationSelection = {
+  match: LifeOpsDefinitionRecord | null;
+  ambiguousCandidates: string[];
+};
+
+function includesNormalizedPhrase(text: string, phrase: string): boolean {
+  return phrase.length > 0 && ` ${text} `.includes(` ${phrase} `);
+}
+
+async function resolveDefinitionForMutation(
+  service: LifeOpsService,
+  target: string | undefined,
+  ownerText: string,
+  domain?: LifeOpsDomain,
+): Promise<DefinitionMutationSelection> {
+  const definitions = (await service.listDefinitions()).filter((entry) =>
+    domain ? entry.definition.domain === domain : true,
+  );
+  const normalizedOwnerText = normalizeTitle(ownerText);
+  const grounded = definitions.filter((entry) => {
+    const title = normalizeTitle(entry.definition.title);
+    return includesNormalizedPhrase(normalizedOwnerText, title);
+  });
+  if (grounded.length === 1) {
+    return { match: grounded[0] ?? null, ambiguousCandidates: [] };
+  }
+  if (grounded.length > 1) {
+    return {
+      match: null,
+      ambiguousCandidates: grounded.map((entry) => entry.definition.title),
+    };
+  }
+
+  const ownerSelectedId = definitions.find(
+    (entry) =>
+      entry.definition.id === target &&
+      includesNormalizedPhrase(
+        normalizedOwnerText,
+        normalizeTitle(entry.definition.id),
+      ),
+  );
+  if (ownerSelectedId) {
+    return { match: ownerSelectedId, ambiguousCandidates: [] };
+  }
+
+  const normalizedTarget = normalizeTitle(target ?? "");
+  const candidates =
+    normalizedTarget.length === 0
+      ? []
+      : definitions.filter((entry) => {
+          const title = normalizeTitle(entry.definition.title);
+          return (
+            title === normalizedTarget ||
+            title.includes(normalizedTarget) ||
+            normalizedTarget.includes(title)
+          );
+        });
+  return {
+    match: null,
+    ambiguousCandidates: candidates.map((entry) => entry.definition.title),
+  };
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -2575,13 +2676,23 @@ export function buildCadenceFromUpdateFields(args: {
       return dueAt ? { cadence: { kind: "once", dueAt } } : null;
     }
     if (timeOfDayMinute !== null) {
+      const currentDueAt =
+        currentCadence.kind === "once" ? new Date(currentCadence.dueAt) : null;
+      if (!currentDueAt || !Number.isFinite(currentDueAt.getTime())) {
+        return null;
+      }
+      const currentLocalDate = getZonedDateParts(currentDueAt, timeZone);
       return {
         cadence: {
           kind: "once",
-          dueAt: buildOneOffDueAtFromMinuteOfDay({
-            minuteOfDay: timeOfDayMinute,
-            timeZone,
-          }),
+          dueAt: buildUtcDateFromLocalParts(timeZone, {
+            year: currentLocalDate.year,
+            month: currentLocalDate.month,
+            day: currentLocalDate.day,
+            hour: Math.floor(timeOfDayMinute / 60),
+            minute: timeOfDayMinute % 60,
+            second: 0,
+          }).toISOString(),
         },
       };
     }
@@ -2594,6 +2705,7 @@ function hasDefinitionUpdateChanges(
 ): boolean {
   return (
     request.title != null ||
+    request.timezone != null ||
     request.cadence != null ||
     request.priority != null ||
     request.description != null ||
@@ -3065,6 +3177,23 @@ function lifeEffectRequestId(message: Memory): string {
   return message.id ?? `room:${message.roomId}`;
 }
 
+function lifeEffectObservedAt(
+  message: Memory,
+  data: Record<string, unknown> | null,
+): string {
+  const durableObservedAt = data?.mutationObservedAt;
+  if (
+    typeof durableObservedAt === "string" &&
+    Number.isFinite(Date.parse(durableObservedAt))
+  ) {
+    return durableObservedAt;
+  }
+  if (message.createdAt !== undefined) {
+    return new Date(message.createdAt).toISOString();
+  }
+  return new Date().toISOString();
+}
+
 function lifeEffectReceiptId(
   message: Memory,
   operation: string,
@@ -3165,6 +3294,7 @@ async function lifeEffectReceiptForResult(args: {
   const operationHint = lifeRequestedOperation(args.options);
   const operation = `lifeops.owner.${operationHint}`;
   const requestId = lifeEffectRequestId(args.message);
+  const observedAt = lifeEffectObservedAt(args.message, data);
 
   if (
     data?.deferred === true ||
@@ -3181,7 +3311,7 @@ async function lifeEffectReceiptForResult(args: {
       resource: { kind: "runtime.message", id: requestId },
       artifacts: [],
       idempotency: { key: null, replayed: false },
-      observedAt: new Date().toISOString(),
+      observedAt,
       failure: {
         code: lifeFailureCode(args.result),
         retryable: false,
@@ -3217,7 +3347,7 @@ async function lifeEffectReceiptForResult(args: {
         : { kind: "runtime.message", id: requestId },
       artifacts: [],
       idempotency: { key: null, replayed: false },
-      observedAt: new Date().toISOString(),
+      observedAt,
       reason:
         "The operation only read, evaluated, clarified, or intentionally left state unchanged.",
     });
@@ -3274,7 +3404,7 @@ async function lifeEffectReceiptForResult(args: {
       },
       artifacts: [],
       idempotency: { key: definitionId, replayed: true },
-      observedAt: new Date().toISOString(),
+      observedAt,
       reason: "An equivalent active definition already exists.",
     });
   }
@@ -3324,7 +3454,7 @@ async function lifeEffectReceiptForResult(args: {
       },
       artifacts: [],
       idempotency: { key: goalId, replayed: true },
-      observedAt: new Date().toISOString(),
+      observedAt,
       reason: "An equivalent active goal already exists.",
     });
   }
@@ -3397,7 +3527,7 @@ async function lifeEffectReceiptForResult(args: {
           },
         ],
         idempotency: { key: occurrenceId, replayed: true },
-        observedAt: new Date().toISOString(),
+        observedAt,
         reason: `The occurrence was already ${occurrenceState}.`,
       });
     }
@@ -3495,7 +3625,7 @@ async function lifeEffectReceiptForResult(args: {
           : null,
       replayed: data?.deduplicated === true,
     },
-    observedAt: new Date().toISOString(),
+    observedAt,
     reason:
       data?.deduplicated === true
         ? "The requested resource already exists."
@@ -3630,7 +3760,9 @@ async function runLifeOperationHandlerInner(
       (recentSave.sourceMessageId === undefined ||
         recentSave.sourceMessageId !== retractionMessageId)
     ) {
-      const retractionService = new LifeOpsService(runtime);
+      const retractionService = new LifeOpsService(runtime, {
+        ownerEntityId: message.entityId,
+      });
       const retracted = (await retractionService.listDefinitions()).find(
         (record) =>
           record.definition.id === recentSave.definitionId &&
@@ -3824,7 +3956,9 @@ async function runLifeOperationHandlerInner(
     : !isLifeOwnedOperation(operationPlan.operation)
       ? operationPlan.operation
       : null;
-  const service = new LifeOpsService(runtime);
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: message.entityId,
+  });
   if (
     queryOperation === "query_calendar_today" ||
     queryOperation === "query_calendar_next" ||
@@ -4811,16 +4945,90 @@ async function runLifeOperationHandlerInner(
     }
 
     if (internalOp === "update_definition") {
-      const target = await resolveDefinition(service, targetName, domain);
-      if (!target)
+      const mutationScope = definitionMutationScope({
+        runtime,
+        message,
+        domain,
+      });
+      const requestId = lifeEffectRequestId(message);
+      const priorMutation = await service.repository.getDefinitionMutation({
+        scope: mutationScope,
+        requestId,
+        operation: "update_definition",
+      });
+      if (priorMutation?.status === "completed") {
+        const updated = await service.getDefinition(priorMutation.definitionId);
+        const fallback = `Updated "${updated.definition.title}".`;
+        const text = await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "updated_definition",
+          fallback,
+          context: {
+            previousTitle: updated.definition.title,
+            updated: { title: updated.definition.title },
+          },
+        });
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: toActionData({
+            ...updated,
+            deduplicated: true,
+            mutationObservedAt: priorMutation.observedAt,
+          }),
+        };
+      }
+      if (priorMutation) {
         return {
           success: false,
-          text: "I could not find that item to update.",
+          text:
+            priorMutation.status === "pending"
+              ? "That update is already in progress. I will not apply it twice."
+              : "That update previously failed and was not retried automatically.",
         };
+      }
+      const requestedTime = detailString(details, "time");
+      const requestedTimeZone = normalizeLifeTimeZoneToken(
+        detailString(details, "timezone"),
+      );
+      const { match: target, ambiguousCandidates } =
+        await resolveDefinitionForMutation(
+          service,
+          targetName,
+          messageText(message) || intent,
+          domain,
+        );
+      if (!target) {
+        return {
+          success: false,
+          text:
+            ambiguousCandidates.length > 0
+              ? `Please name the exact item to update:\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              : "I could not ground that update in an item you explicitly named.",
+        };
+      }
+      if (
+        requestedTime !== undefined &&
+        requestedTimeZone === null &&
+        /\b(?:landing|arrival|outbound|departure|flight|trip|travel)\b/i.test(
+          target.definition.title,
+        )
+      ) {
+        return {
+          success: false,
+          text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
+        };
+      }
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
           params.title !== target.definition.title ? params.title : undefined,
+        timezone: requestedTimeZone ?? undefined,
         description: detailString(details, "description"),
         cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
         priority: detailNumber(details, "priority"),
@@ -4835,9 +5043,7 @@ async function runLifeOperationHandlerInner(
         ) as UpdateLifeOpsDefinitionRequest["reminderPlan"],
       };
 
-      // If no explicit changes from structured details, try LLM extraction
-      const hasExplicitChanges = hasDefinitionUpdateChanges(request);
-      if (!hasExplicitChanges && intent) {
+      if (request.cadence == null && intent) {
         const llmFields = await extractUpdateFieldsWithLlm({
           runtime,
           intent,
@@ -4866,7 +5072,7 @@ async function runLifeOperationHandlerInner(
             const built = buildCadenceFromUpdateFields({
               currentCadence: target.definition.cadence,
               currentWindowPolicy: target.definition.windowPolicy,
-              timeZone: target.definition.timezone,
+              timeZone: requestedTimeZone ?? target.definition.timezone,
               update: llmFields,
             });
             if (built) {
@@ -4884,28 +5090,67 @@ async function runLifeOperationHandlerInner(
         };
       }
 
-      const updated = await service.updateDefinition(
-        target.definition.id,
-        request,
-      );
+      const claim = await service.repository.claimDefinitionMutation({
+        scope: mutationScope,
+        requestId,
+        operation: "update_definition",
+        definitionId: target.definition.id,
+        expectedRevision: definitionRevision(target),
+        observedAt: lifeEffectObservedAt(message, null),
+      });
+      if (claim.disposition !== "claimed") {
+        return {
+          success: false,
+          text:
+            claim.disposition === "pending"
+              ? "That update is already in progress. I will not apply it twice."
+              : claim.disposition === "completed"
+                ? "That update was already applied."
+                : "That update previously failed and was not retried automatically.",
+        };
+      }
+      let updated: LifeOpsDefinitionRecord;
+      try {
+        updated = await service.updateDefinition(target.definition.id, request);
+        await service.repository.completeDefinitionMutation({
+          entry: claim.entry,
+          resultRevision: definitionRevision(updated),
+          result: {
+            definitionId: updated.definition.id,
+            title: updated.definition.title,
+          },
+        });
+      } catch (error) {
+        await service.repository.failDefinitionMutation({
+          entry: claim.entry,
+          failureCode: definitionMutationFailureCode(error),
+        });
+        throw error;
+      }
       const fallback = `Updated "${updated.definition.title}".`;
+      const text = await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "updated_definition",
+        fallback,
+        context: {
+          previousTitle: target.definition.title,
+          updated: {
+            title: updated.definition.title,
+          },
+        },
+      });
       return {
         success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "updated_definition",
-          fallback,
-          context: {
-            previousTitle: target.definition.title,
-            updated: {
-              title: updated.definition.title,
-            },
-          },
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        data: toActionData({
+          ...updated,
+          mutationObservedAt: claim.entry.observedAt,
         }),
-        data: toActionData(updated),
       };
     }
 
@@ -5037,31 +5282,132 @@ async function runLifeOperationHandlerInner(
           },
         };
       }
-      const target = await resolveDefinition(service, targetName, domain);
-      if (!target)
-        return {
-          success: false,
-          text: "I could not find that item to delete.",
-        };
-      await service.deleteDefinition(target.definition.id);
-      const fallback = `Deleted "${target.definition.title}" and its occurrences.`;
-      return {
-        success: true,
-        text: await renderLifeActionReply({
+      const mutationScope = definitionMutationScope({
+        runtime,
+        message,
+        domain,
+      });
+      const requestId = lifeEffectRequestId(message);
+      const priorMutation = await service.repository.getDefinitionMutation({
+        scope: mutationScope,
+        requestId,
+        operation: "delete_definition",
+      });
+      if (priorMutation?.status === "completed") {
+        const deletedTitle =
+          typeof priorMutation.result?.title === "string"
+            ? priorMutation.result.title
+            : "the selected item";
+        const fallback = `Deleted "${deletedTitle}" and its occurrences.`;
+        const text = await renderLifeActionReply({
           runtime,
           message,
           state,
           intent,
           scenario: "deleted_definition",
           fallback,
-          context: {
+          context: { deleted: { title: deletedTitle } },
+        });
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: {
+            actionName: ownerSurfaceActionName,
+            deduplicated: true,
+            mutationObservedAt: priorMutation.observedAt,
             deleted: {
-              title: target.definition.title,
+              kind: "definition",
+              id: priorMutation.definitionId,
+              title: deletedTitle,
             },
           },
-        }),
+        };
+      }
+      if (priorMutation) {
+        return {
+          success: false,
+          text:
+            priorMutation.status === "pending"
+              ? "That deletion is already in progress. I will not apply it twice."
+              : "That deletion previously failed and was not retried automatically.",
+        };
+      }
+      const { match: target, ambiguousCandidates } =
+        await resolveDefinitionForMutation(
+          service,
+          targetName,
+          messageText(message) || intent,
+          domain,
+        );
+      if (!target) {
+        return {
+          success: false,
+          text:
+            ambiguousCandidates.length > 0
+              ? `Please name the exact item to delete:\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              : "I could not ground that deletion in an item you explicitly named.",
+        };
+      }
+      const claim = await service.repository.claimDefinitionMutation({
+        scope: mutationScope,
+        requestId,
+        operation: "delete_definition",
+        definitionId: target.definition.id,
+        expectedRevision: definitionRevision(target),
+        observedAt: lifeEffectObservedAt(message, null),
+      });
+      if (claim.disposition !== "claimed") {
+        return {
+          success: false,
+          text:
+            claim.disposition === "pending"
+              ? "That deletion is already in progress. I will not apply it twice."
+              : claim.disposition === "completed"
+                ? "That deletion was already applied."
+                : "That deletion previously failed and was not retried automatically.",
+        };
+      }
+      try {
+        await service.deleteDefinition(target.definition.id);
+        await service.repository.completeDefinitionMutation({
+          entry: claim.entry,
+          resultRevision: null,
+          result: {
+            definitionId: target.definition.id,
+            title: target.definition.title,
+          },
+        });
+      } catch (error) {
+        await service.repository.failDefinitionMutation({
+          entry: claim.entry,
+          failureCode: definitionMutationFailureCode(error),
+        });
+        throw error;
+      }
+      const fallback = `Deleted "${target.definition.title}" and its occurrences.`;
+      const text = await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "deleted_definition",
+        fallback,
+        context: {
+          deleted: {
+            title: target.definition.title,
+          },
+        },
+      });
+      return {
+        success: true,
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
         data: {
           actionName: ownerSurfaceActionName,
+          mutationObservedAt: claim.entry.observedAt,
           deleted: {
             kind: "definition",
             id: target.definition.id,

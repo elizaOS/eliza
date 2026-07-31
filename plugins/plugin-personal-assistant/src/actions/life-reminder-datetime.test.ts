@@ -445,6 +445,23 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     ).not.toBe(currentCadence.dueAt);
   });
 
+  it("preserves the stored zoned date on a time-only edit", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "once",
+        dueAt: "2026-12-24T18:00:00.000Z",
+      },
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, timeOfDay: "16:30" },
+    });
+
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-12-24T23:30:00.000Z",
+    });
+  });
+
   it("returns null (no silent no-op) when nothing reschedulable was extracted", () => {
     const built = buildCadenceFromUpdateFields({
       currentCadence,
