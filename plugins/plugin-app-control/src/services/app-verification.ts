@@ -79,7 +79,7 @@ export type CheckResult = {
 	testSummary?: TestRunSummary;
 };
 
-export type VerificationProfile = "fast" | "full";
+export type VerificationProfile = "fast" | "build" | "full";
 export type ProjectKind = "app" | "plugin";
 export type StructuredProofKind = "APP_CREATE_DONE" | "PLUGIN_CREATE_DONE";
 
@@ -168,6 +168,18 @@ function expandProfile(
 	}
 	if (profile === "fast" || profile === undefined) {
 		return [{ kind: "typecheck" }, { kind: "lint" }];
+	}
+	// "build": everything verifiable in-place for a scaffolded directory app.
+	// The launch/browser checks require a runtime launcher for the app; fresh
+	// directory scaffolds have none (the worker host only executes plugin
+	// exports), so including them makes every first build fail-by-design.
+	if (profile === "build") {
+		return [
+			{ kind: "typecheck" },
+			{ kind: "lint" },
+			{ kind: "test" },
+			{ kind: "build" },
+		];
 	}
 	const checks: VerificationCheck[] = [
 		{ kind: "typecheck" },
