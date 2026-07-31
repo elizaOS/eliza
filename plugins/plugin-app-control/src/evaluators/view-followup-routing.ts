@@ -59,6 +59,7 @@ const CONTENT_MARKER_TOKENS = new Set([
 	"TEXT",
 	"TITLE",
 ]);
+const CONTENT_TAIL_MARKER_TOKENS = new Set(["ABOUT", "FOR", "TO"]);
 
 function tokenize(text: string): string[] {
 	return text.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
@@ -69,6 +70,15 @@ function hasAny(
 	accepted: ReadonlySet<string>,
 ): boolean {
 	return tokens.some((token) => accepted.has(token));
+}
+
+function hasReferentialContentTail(tokens: readonly string[]): boolean {
+	return tokens.some(
+		(token, index) =>
+			CONTENT_TAIL_MARKER_TOKENS.has(token) &&
+			index < tokens.length - 1 &&
+			hasAny(tokens.slice(0, index), REFERENCE_TOKENS),
+	);
 }
 
 function requestFamily(tokens: readonly string[]): CapabilityFamily | null {
@@ -120,7 +130,11 @@ function shouldConsiderViewFollowup(
 	const family = requestFamily(tokens);
 	if (!family) return null;
 	if (!hasAny(tokens, REFERENCE_TOKENS)) return null;
-	if (family !== "delete" && !hasAny(tokens, CONTENT_MARKER_TOKENS)) {
+	if (
+		family !== "delete" &&
+		!hasAny(tokens, CONTENT_MARKER_TOKENS) &&
+		!hasReferentialContentTail(tokens)
+	) {
 		return null;
 	}
 	return family;
