@@ -1111,7 +1111,14 @@ export class AgentSandboxesRepository {
         sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
         sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
         sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expectedRunningGeneration.containerName}`,
-        eq(agentSandboxes.updated_at, expectedRunningGeneration.updatedAt),
+        // ms-window fence: the stored value may carry microseconds (raw
+        // `updated_at = NOW()` writers) while the expected value came through
+        // a typed read, which truncates to milliseconds — JS Date parsing
+        // truncates sub-ms lexically (never rounds), so ms==ms is exact. A
+        // plain eq() silently missed for every µs-stored row, so the observed
+        // running generation was never persisted after such a write (#17249
+        // fence class; same remedy as the sleep and managed-launch CASes).
+        sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) = ${expectedRunningGeneration.updatedAt}`,
       );
     }
     const [r] = await dbWrite

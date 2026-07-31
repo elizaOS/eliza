@@ -311,6 +311,11 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("sandbox_id");
     expect(sql).toContain("node_id");
     expect(sql).toContain("container_name");
+    // ms-window fence (#17249 fence class): the stored updated_at may carry
+    // microseconds from raw `updated_at = NOW()` writers, so the CAS compares
+    // date_trunc('milliseconds', updated_at) against the ms-truncated typed
+    // read instead of a plain eq().
+    expect(sql).toContain("date_trunc('milliseconds'");
     expect(sql).toContain("updated_at");
     expect(sql.match(/is not distinct from/g)).toHaveLength(3);
     expect(query.params).toEqual(
@@ -322,9 +327,18 @@ describe("AgentSandboxesRepository", () => {
         "sandbox-generation-7",
         "node-generation-7",
         "agent-generation-7",
-        "2026-07-23T11:59:00.000Z",
       ]),
     );
+    // The raw-sql fence binds the observed generation without the column's
+    // driver mapping, so the param may surface as a Date rather than the
+    // eq()-era ISO string — accept either encoding, but require the value.
+    expect(
+      query.params.some(
+        (p) =>
+          (p instanceof Date && p.toISOString() === "2026-07-23T11:59:00.000Z") ||
+          p === "2026-07-23T11:59:00.000Z",
+      ),
+    ).toBe(true);
   });
 
   test("generic repository updates cannot write through a durable deletion owner", async () => {
