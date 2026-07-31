@@ -293,7 +293,7 @@ describe("view switching — VIEWS action resolver", () => {
 		);
 
 		expect(navigated).toEqual(["calendar"]);
-		expect(navigation?.transcriptVisibility).toBe("internal");
+		expect(navigation?.transcriptVisibility).toBeUndefined();
 		expect(navigation?.userFacingText).toBe(navigation?.text);
 		expect(navigation?.verifiedUserFacing).toBe(true);
 	});
@@ -365,7 +365,6 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result).toMatchObject({
 				success: true,
 				text: "Opened Calendar.",
-				transcriptVisibility: "internal",
 				userFacingText: "Opened Calendar.",
 				verifiedUserFacing: true,
 				turnComplete: true,
@@ -376,6 +375,7 @@ describe("view switching — VIEWS action resolver", () => {
 					label: "Calendar",
 				},
 			});
+			expect(result?.transcriptVisibility).toBeUndefined();
 		});
 
 		it("acknowledges Home without relabeling an explicit Messages destination", async () => {
