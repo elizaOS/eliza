@@ -36,8 +36,15 @@ function readPositiveInteger(name: string, fallback: number): number {
 	if (rawValue === undefined) {
 		return fallback;
 	}
-	const value = Number.parseInt(rawValue, 10);
-	return Number.isFinite(value) && value > 0 ? value : fallback;
+	const value = Number(rawValue);
+	if (!Number.isSafeInteger(value) || value <= 0) {
+		throw new Error(`${name} must be a positive integer`);
+	}
+	return value;
+}
+
+function rounded(value: number): number {
+	return Math.round(value * 1_000) / 1_000;
 }
 
 function percentile(sorted: readonly number[], value: number): number {
@@ -52,12 +59,14 @@ function distribution(samples: readonly number[]): Distribution {
 	const sorted = [...samples].sort((a, b) => a - b);
 	return {
 		count: sorted.length,
-		min: sorted[0] as number,
-		p50: percentile(sorted, 50),
-		p95: percentile(sorted, 95),
-		p99: percentile(sorted, 99),
-		max: sorted.at(-1) as number,
-		mean: sorted.reduce((sum, value) => sum + value, 0) / sorted.length,
+		min: rounded(sorted[0] as number),
+		p50: rounded(percentile(sorted, 50)),
+		p95: rounded(percentile(sorted, 95)),
+		p99: rounded(percentile(sorted, 99)),
+		max: rounded(sorted.at(-1) as number),
+		mean: rounded(
+			sorted.reduce((sum, value) => sum + value, 0) / sorted.length,
+		),
 	};
 }
 

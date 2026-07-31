@@ -29,6 +29,7 @@ import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
+import { memoizeTurnWork } from "../../trajectory-context";
 import {
 	type AccessContext,
 	type Content,
@@ -248,35 +249,49 @@ export async function resolveDocumentRequester(
 	runtime: IAgentRuntime,
 	message?: Memory,
 ): Promise<DocumentRequester> {
-	const requester = await resolveDocumentRequesterRole(runtime, message);
-	if (documentRoleHasGlobalVisibility(requester.role)) {
-		return { ...requester, roomIds: [] };
-	}
-	try {
-		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
-		return {
-			...requester,
-			roomIds: [...new Set(roomIds)],
-		};
-	} catch (cause) {
-		// error-policy:J2 Preserve room-resolution context and fail the read.
-		const error = new ElizaError("Document requester room lookup failed", {
-			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
-			cause,
-			context: {
+	// Search and inventory providers authorize the same immutable ingress
+	// message concurrently. Sharing that promise gives the entire turn one
+	// requester snapshot and avoids repeating role and membership reads.
+	const requesterKey = [
+		"documents:requester",
+		runtime.agentId,
+		message?.id ?? "no-message",
+		message?.entityId ?? runtime.agentId,
+		message?.roomId ?? "no-room",
+	].join(":");
+	return memoizeTurnWork(requesterKey, async () => {
+		const requester = await resolveDocumentRequesterRole(runtime, message);
+		if (documentRoleHasGlobalVisibility(requester.role)) {
+			return { ...requester, roomIds: [] };
+		}
+		try {
+			const roomIds = await runtime.getRoomsForParticipants([
+				requester.entityId,
+			]);
+			return {
+				...requester,
+				roomIds: [...new Set(roomIds)],
+			};
+		} catch (cause) {
+			// error-policy:J2 Preserve room-resolution context and fail the read.
+			const error = new ElizaError("Document requester room lookup failed", {
+				code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+				cause,
+				context: {
+					agentId: runtime.agentId,
+					entityId: requester.entityId,
+					roomId: message?.roomId,
+				},
+				severity: "ephemeral",
+			});
+			runtime.reportError("DocumentService.resolveRequesterRooms", error, {
 				agentId: runtime.agentId,
 				entityId: requester.entityId,
 				roomId: message?.roomId,
-			},
-			severity: "ephemeral",
-		});
-		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
-			agentId: runtime.agentId,
-			entityId: requester.entityId,
-			roomId: message?.roomId,
-		});
-		throw error;
-	}
+			});
+			throw error;
+		}
+	});
 }
 
 function normalizeDocumentScope(
@@ -617,14 +632,14 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 		});
 		if (!document) {
-			// The read above is scoped to the requester, so a document the caller
-			// cannot READ is indistinguishable from one that does not exist — and
-			// reporting NOT_FOUND here made the adapter's `forbidden` verdict
-			// unreachable for exactly the case it exists for (a non-owner trying to
-			// delete a global / owner-private document). Distinguish the two with an
-			// unscoped existence probe so the mutation wall renders the real reason.
-			const existsUnscoped = await this.runtime.getMemoryById(documentId);
-			if (existsUnscoped) {
+			// A hidden document owned by this runtime is a forbidden mutation, while
+			// foreign-agent and non-document rows remain indistinguishable from a
+			// missing UUID. This preserves tenant isolation across the unscoped probe.
+			const existingUnscoped = await this.runtime.getMemoryById(documentId);
+			if (
+				existingUnscoped?.agentId === this.runtime.agentId &&
+				readDocumentMutationSnapshot(existingUnscoped)
+			) {
 				throw new ElizaError(
 					`Document ${documentId} cannot be deleted by this requester`,
 					{
