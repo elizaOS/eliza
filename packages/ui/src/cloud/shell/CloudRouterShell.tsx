@@ -80,21 +80,6 @@ export const DASHBOARD_REDIRECTS: ReadonlyArray<{ from: string; to: string }> =
   ];
 
 /**
- * The app shell and agent view registry use `/cloud-apps` on native platforms.
- * The web shell owns the canonical Applications route at `/dashboard/apps`, so
- * the same deterministic navigation handoff resolves through this redirect.
- */
-export const CLOUD_APPS_WEB_REDIRECT = {
-  from: "cloud-apps",
-  to: "/dashboard/apps",
-} as const;
-
-/** Resolve the cross-platform app-shell path inside the web router. */
-export function CloudAppsWebRedirect(): React.JSX.Element {
-  return <ParamRedirect to={CLOUD_APPS_WEB_REDIRECT.to} />;
-}
-
-/**
  * Substitute `:param` segments from the matched route params, preserve the
  * query string, and keep any `#hash` on the target after the query (a naive
  * `to + search` concatenation would swallow the query into the hash).
@@ -348,11 +333,6 @@ export function CloudRouterShell({
           {DASHBOARD_REDIRECTS.map(({ from, to }) => (
             <Route key={from} path={from} element={<ParamRedirect to={to} />} />
           ))}
-
-          <Route
-            path={CLOUD_APPS_WEB_REDIRECT.from}
-            element={<CloudAppsWebRedirect />}
-          />
 
           {/* Backend OAuth/Stripe return URLs still target the legacy
               /dashboard/settings?tab=<x> shape; map them onto the standalone

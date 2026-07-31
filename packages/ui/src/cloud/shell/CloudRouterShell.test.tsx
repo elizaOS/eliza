@@ -3,12 +3,7 @@ import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  AppCatchAllRoute,
-  CLOUD_APPS_WEB_REDIRECT,
-  CloudAppsWebRedirect,
-  DASHBOARD_REDIRECTS,
-} from "./CloudRouterShell";
+import { AppCatchAllRoute, DASHBOARD_REDIRECTS } from "./CloudRouterShell";
 
 /**
  * Apex catch-all regression coverage. elizacloud.ai (an apex control-plane
@@ -149,27 +144,6 @@ describe("CloudRouterShell apex catch-all", () => {
 });
 
 describe("CloudRouterShell dashboard compat redirects", () => {
-  it("maps the app-shell Cloud Apps path to the real web Applications route", () => {
-    expect(CLOUD_APPS_WEB_REDIRECT).toEqual({
-      from: "cloud-apps",
-      to: "/dashboard/apps",
-    });
-
-    render(
-      <MemoryRouter initialEntries={["/cloud-apps?source=agent"]}>
-        <Routes>
-          <Route path="/cloud-apps" element={<CloudAppsWebRedirect />} />
-          <Route
-            path="/dashboard/apps"
-            element={<div data-testid="cloud-apps-web-destination" />}
-          />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByTestId("cloud-apps-web-destination")).toBeTruthy();
-  });
-
   it("carries NO redirects for surfaces that are standalone console routes", () => {
     // billing / api-keys / monetization / account / security / permissions are
     // registered routes now (see register-all.test.ts); a same-path redirect

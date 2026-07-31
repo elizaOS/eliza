@@ -72,6 +72,12 @@ export function registerAllCloudSurfaces(): void {
   // same-path registration wins) so a stale /dashboard/apps link redirects to
   // the dashboard. The applications components stay for the native eliza app.
   const AppsMovedRoute = lazy(() => import("./applications/AppsMovedRoute"));
+  const CloudAppsRoute = lazy(() => import("./applications/ApplicationsPage"));
+  registerCloudRoute({
+    path: "cloud-apps",
+    element: CloudAppsRoute,
+    group: "dashboard",
+  });
   registerCloudRoute({
     path: APPLICATIONS_LIST_ROUTE_PATH,
     element: AppsMovedRoute,
