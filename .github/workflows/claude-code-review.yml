@@ -72,10 +72,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
-        run: node packages/scripts/pr-deep-review-context.mjs
+        run: |
+          # The builder is read from the BASE ref by design; a base that predates
+          # it (the PR introducing this workflow, or a very stale base) has no
+          # audit tooling to run, which is a graceful skip, not a red check.
+          if [ ! -f packages/scripts/pr-deep-review-context.mjs ]; then
+            echo "dossier tooling absent on the base ref; skipping review"
+            echo "dossier_path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node packages/scripts/pr-deep-review-context.mjs
 
       - name: Deep review
-        if: steps.classify.outputs.run_review == 'true'
+        if: steps.classify.outputs.run_review == 'true' && steps.dossier.outputs.dossier_path != ''
         # Advisory: an unreachable model must not redden the pull request.
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b

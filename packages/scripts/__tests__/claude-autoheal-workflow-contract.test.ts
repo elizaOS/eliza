@@ -129,7 +129,7 @@ describe("deep review workflow", () => {
       "node packages/scripts/pr-deep-review-context.mjs",
     );
     expect(review.indexOf("pull_request.base.sha")).toBeLessThan(
-      review.indexOf("run: node packages/scripts/pr-deep-review-context.mjs"),
+      review.indexOf("node packages/scripts/pr-deep-review-context.mjs"),
     );
     expect(
       existsSync(`${ROOT}/packages/scripts/pr-deep-review-context.mjs`),
