@@ -109,6 +109,61 @@ describe("normalizeSchemaForCerebras", () => {
 		expect(result.additionalProperties).toBe(false);
 	});
 
+	it("rewrites nested oneOf to anyOf under strict mode", () => {
+		// The live failure shape: a property offering string-or-array via oneOf
+		// (plugin-calendar's recurrence field) aborted every planner call on
+		// Cerebras with "'oneOf' is not permitted". Verified against the live
+		// API: the identical payload with anyOf is accepted.
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			properties: {
+				recurrence: {
+					oneOf: [
+						{ type: "string" },
+						{ type: "array", items: { type: "string" } },
+					],
+				},
+			},
+		}) as Record<string, unknown>;
+		const recurrence = (result.properties as Record<string, unknown>)
+			.recurrence as Record<string, unknown>;
+		expect(recurrence.oneOf).toBeUndefined();
+		expect(recurrence.anyOf).toHaveLength(2);
+	});
+
+	it("appends migrated oneOf branches after existing anyOf branches", () => {
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			properties: {
+				value: {
+					anyOf: [{ type: "number" }],
+					oneOf: [{ type: "string" }],
+				},
+			},
+		}) as Record<string, unknown>;
+		const value = (result.properties as Record<string, unknown>)
+			.value as Record<string, unknown>;
+		expect(value.oneOf).toBeUndefined();
+		expect(value.anyOf).toMatchObject([{ type: "number" }, { type: "string" }]);
+	});
+
+	it("keeps oneOf intact for non-strict tools", () => {
+		const result = normalizeSchemaForCerebras(
+			{
+				type: "object",
+				properties: {
+					recurrence: { oneOf: [{ type: "string" }] },
+				},
+			},
+			false,
+			{ strict: false },
+		) as Record<string, unknown>;
+		const recurrence = (result.properties as Record<string, unknown>)
+			.recurrence as Record<string, unknown>;
+		expect(recurrence.oneOf).toHaveLength(1);
+		expect(recurrence.anyOf).toBeUndefined();
+	});
+
 	it("walks every schema-bearing keyword", () => {
 		const bareObject = () => ({ type: "object" });
 		const result = normalizeSchemaForCerebras({
@@ -159,7 +214,14 @@ describe("normalizeSchemaForCerebras", () => {
 		expect((result.dependencies as Record<string, unknown>).names).toEqual([
 			"direct",
 		]);
-		for (const key of ["anyOf", "oneOf", "allOf", "prefixItems"] as const) {
+		// Strict mode folds `oneOf` into `anyOf` (Cerebras's strict grammar
+		// rejects `oneOf`), so the original anyOf branch and the migrated
+		// oneOf branch both land in anyOf and the oneOf key disappears.
+		expect(result.oneOf).toBeUndefined();
+		const anyOf = result.anyOf as unknown[];
+		expect(anyOf).toHaveLength(2);
+		for (const branch of anyOf) expectClosed(branch);
+		for (const key of ["allOf", "prefixItems"] as const) {
 			expectClosed((result[key] as unknown[])[0]);
 		}
 		for (const item of result.items as unknown[]) expectClosed(item);

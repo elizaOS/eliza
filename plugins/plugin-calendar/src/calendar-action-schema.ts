@@ -109,9 +109,12 @@ const CALENDAR_DETAIL_RECURRENCE_KEYS = [
 const stringSchema: ActionParameterSchema = { type: "string" };
 const numberSchema: ActionParameterSchema = { type: "number" };
 const booleanSchema: ActionParameterSchema = { type: "boolean" };
+// The runtime normalizer (internal/recurrence.ts) accepts a single RRULE
+// string or an array of RFC 5545 lines, so the schema offers both branches.
+// `anyOf` rather than `oneOf`: strict-mode provider grammars (Cerebras)
+// reject `oneOf`, and a sibling `type` would contradict the array branch.
 const recurrenceSchema: ActionParameterSchema = {
-  type: "string",
-  oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+  anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
 };
 
 export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {

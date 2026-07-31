@@ -201,7 +201,7 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
                 "description": (
                     "Either an integer passenger count or the canonical passenger array."
                 ),
-                "oneOf": [
+                "anyOf": [
                     {"type": "number"},
                     {
                         "type": "array",
