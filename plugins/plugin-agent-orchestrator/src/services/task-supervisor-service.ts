@@ -183,11 +183,21 @@ export interface SupervisorTickResult {
   skipped: string[];
 }
 
+export interface SupervisorDeliveryRetry {
+  digest: string;
+  failures: number;
+  retryAt: number;
+}
+
+const DELIVERY_RETRY_BASE_MS = 30_000;
+const DELIVERY_RETRY_MAX_MS = 5 * 60_000;
+
 /**
  * One supervisor tick: group live tasks by origin room, and post each room's
- * digest only when it changed since `seen` last recorded it. Pure except for the
- * injected `send`; mutates `seen` to remember what was posted (and prunes rooms
- * that no longer have live tasks so a later re-activation re-posts).
+ * digest only when it changed since `seen` last recorded it. Failed deliveries
+ * retry with bounded exponential backoff, while a changed digest bypasses the
+ * old digest's delay. Pure except for the injected `send`; mutates the supplied
+ * maps and prunes rooms that no longer have live tasks.
  */
 export async function runSupervisorTick(
   views: SupervisorTaskView[],
@@ -196,6 +206,8 @@ export async function runSupervisorTick(
     content: Content,
   ) => Promise<unknown>,
   seen: Map<string, string>,
+  deliveryRetries: Map<string, SupervisorDeliveryRetry> = new Map(),
+  nowMs = Date.now(),
 ): Promise<SupervisorTickResult> {
   const byRoom = new Map<
     string,
@@ -218,15 +230,26 @@ export async function runSupervisorTick(
   for (const roomId of [...seen.keys()]) {
     if (!byRoom.has(roomId)) seen.delete(roomId);
   }
+  for (const roomId of [...deliveryRetries.keys()]) {
+    if (!byRoom.has(roomId)) deliveryRetries.delete(roomId);
+  }
 
   const posted: string[] = [];
   const skipped: string[] = [];
   for (const [roomId, { source, views: roomViews }] of byRoom) {
     const digest = composeRoomDigest(roomViews);
     const last = seen.get(roomId);
-    if (last === digest || last === `undeliverable:${digest}`) {
+    if (last === digest) {
       skipped.push(roomId);
       continue;
+    }
+    const retry = deliveryRetries.get(roomId);
+    if (retry?.digest === digest && nowMs < retry.retryAt) {
+      skipped.push(roomId);
+      continue;
+    }
+    if (retry && retry.digest !== digest) {
+      deliveryRetries.delete(roomId);
     }
     // Cross-surface arbitration: a completion relay for a task in this room
     // already posted within the current tick window, so this digest would be
@@ -235,12 +258,14 @@ export async function runSupervisorTick(
     // contract the permanent-failure damper below uses.
     if (roomViews.some((v) => v.recentlyRelayed)) {
       seen.set(roomId, digest);
+      deliveryRetries.delete(roomId);
       skipped.push(roomId);
       continue;
     }
     try {
       await send({ source, roomId: roomId as UUID }, { text: digest, source });
       seen.set(roomId, digest);
+      deliveryRetries.delete(roomId);
       posted.push(roomId);
     } catch (error) {
       // error-policy:J7 per-room send loop must not die on one delivery failure —
@@ -250,12 +275,17 @@ export async function runSupervisorTick(
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      // Permanent-failure damper: remember the digest that failed so the loop
-      // retries only when the digest CHANGES — staleness bands mutate the digest
-      // over time and room pruning resets state on task turnover, so stalled
-      // tasks still re-attempt without warn-looping every tick against a
-      // permanently undeliverable target.
-      seen.set(roomId, `undeliverable:${digest}`);
+      const failures =
+        retry?.digest === digest ? Math.min(retry.failures + 1, 32) : 1;
+      const delayMs = Math.min(
+        DELIVERY_RETRY_MAX_MS,
+        DELIVERY_RETRY_BASE_MS * 2 ** Math.min(failures - 1, 10),
+      );
+      deliveryRetries.set(roomId, {
+        digest,
+        failures,
+        retryAt: nowMs + delayMs,
+      });
     }
   }
   return { posted, skipped };
@@ -312,6 +342,8 @@ export class TaskSupervisorService extends Service {
   private ticking = false;
   /** roomId → last-posted digest, for change-driven dedup. */
   private readonly seen = new Map<string, string>();
+  /** Failed sends remain retryable without hammering a dead connector. */
+  private readonly deliveryRetries = new Map<string, SupervisorDeliveryRetry>();
   /** taskId → ms timestamp of the task's most recent reported completion.
    *  Stamped by the task service's task_complete event bridge via
    *  noteTaskCompletion — the same event whose result the router relays to
@@ -486,6 +518,7 @@ export class TaskSupervisorService extends Service {
         views,
         (target, content) => this.sendDigest(target, content, send),
         this.seen,
+        this.deliveryRetries,
       );
       if (result.posted.length > 0) {
         logger.info(
@@ -512,6 +545,7 @@ export class TaskSupervisorService extends Service {
       this.timer = undefined;
     }
     this.seen.clear();
+    this.deliveryRetries.clear();
     this.completionNotes.clear();
     this.digestSinks.clear();
   }

@@ -132,19 +132,55 @@ describe("runSupervisorTick (#8900)", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it("damps a permanent delivery failure: remembers it undeliverable, no same-digest retry (ebdc4bc storm guard)", async () => {
-    const send = vi.fn().mockRejectedValue(new Error("connector down"));
+  it("retries a failed delivery with bounded backoff", async () => {
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connector down"))
+      .mockResolvedValue(undefined);
     const seen = new Map<string, string>();
+    const retries = new Map();
     const views = [view({ id: "t1" })];
-    const first = await runSupervisorTick(views, send, seen);
-    expect(first.posted).toEqual([]); // failed, nothing posted
-    // A failed digest is REMEMBERED as `undeliverable:<digest>` so the loop does
-    // not re-hammer a permanently-dead target every tick (the ~1871 warns/day
-    // storm ebdc4bc fixed). It re-posts only when the digest CHANGES — staleness
-    // bands mutate it within minutes; covered by the escalation test below.
-    expect(seen.get(ROOM_A)?.startsWith("undeliverable:")).toBe(true);
-    const second = await runSupervisorTick(views, send, seen);
-    expect(second.posted).toEqual([]); // same digest still dead → damped, not retried
+    const first = await runSupervisorTick(views, send, seen, retries, 1_000);
+    expect(first.posted).toEqual([]);
+    expect(seen.has(ROOM_A)).toBe(false);
+    expect(retries.get(ROOM_A)).toMatchObject({
+      failures: 1,
+      retryAt: 31_000,
+    });
+
+    const damped = await runSupervisorTick(views, send, seen, retries, 30_999);
+    expect(damped.skipped).toEqual([ROOM_A]);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    const retried = await runSupervisorTick(views, send, seen, retries, 31_000);
+    expect(retried.posted).toEqual([ROOM_A]);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(retries.has(ROOM_A)).toBe(false);
+  });
+
+  it("attempts a changed digest immediately during delivery backoff", async () => {
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connector down"))
+      .mockResolvedValue(undefined);
+    const seen = new Map<string, string>();
+    const retries = new Map();
+    await runSupervisorTick(
+      [view({ id: "t1", status: "active" })],
+      send,
+      seen,
+      retries,
+      1_000,
+    );
+    const changed = await runSupervisorTick(
+      [view({ id: "t1", status: "blocked" })],
+      send,
+      seen,
+      retries,
+      2_000,
+    );
+    expect(changed.posted).toEqual([ROOM_A]);
+    expect(send).toHaveBeenCalledTimes(2);
   });
 
   it("re-posts a STUCK task when its staleness band escalates (not deduped silent)", async () => {
