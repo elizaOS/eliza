@@ -1,21 +1,22 @@
 /**
- * Data + state wrapper around `Launcher`: pulls the routable views, filters them
- * by the user's enabled view kinds and active modality, curates them into the
- * ordered page (`curateLauncherPages`), and wires tile taps to view navigation
- * and chat-open. `Launcher` itself is pure presentation — one flat grid, no
+ * Data + state wrapper around `Launcher`: merges loaded views with the
+ * installable app catalog, curates them into the ordered page
+ * (`curateLauncherPages`), and wires tile taps to either first-install launch or
+ * view navigation. `Launcher` itself is pure presentation — one flat grid, no
  * favorites, recents, or section zones.
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
 import { dispatchChatOpen } from "../../events";
-import { useRoutableViews } from "../../hooks/useAvailableViews";
-import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
+import { useViewCatalog } from "../../hooks/useViewCatalog";
+import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { isAospShellEnabled } from "../../navigation";
-import { getActiveViewModality } from "../../platform/platform-guards";
-import { useAppSelectorShallow } from "../../state";
+import { useAppSelectorShallow } from "../../state/app-store";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { shellHistory } from "../../surface-realm-channel";
+import { openExternalUrl } from "../../utils/openExternalUrl";
+import { getAppSlug } from "../apps/helpers";
 import { Launcher } from "./Launcher";
 import { curateLauncherPages } from "./launcher-curation";
 
@@ -27,57 +28,120 @@ export interface LauncherSurfaceProps {
 export const LauncherSurface = React.memo(function LauncherSurface({
   layout = "page",
 }: LauncherSurfaceProps): React.JSX.Element {
-  const { views, loading } = useRoutableViews();
+  const { entries, get, loading } = useViewCatalog();
   const enabledKinds = useEnabledViewKinds();
-  const { elizaCloudConnected } = useAppSelectorShallow((state) => ({
-    elizaCloudConnected: state.elizaCloudConnected,
-  }));
-  const activeModality = React.useMemo(() => getActiveViewModality(), []);
+  const { appRuns, elizaCloudConnected, setActionNotice, setState, setTab, t } =
+    useAppSelectorShallow((state) => ({
+      appRuns: state.appRuns,
+      elizaCloudConnected: state.elizaCloudConnected,
+      setActionNotice: state.setActionNotice,
+      setState: state.setState,
+      setTab: state.setTab,
+      t: state.t,
+    }));
   const isAosp = React.useMemo(() => isAospShellEnabled(), []);
-
-  // The launcher renders the loaded views for the active modality; the curation
-  // layer owns removal, dedup, AOSP-gating, and developer/preview visibility.
-  const modalEntries = React.useMemo(
-    () =>
-      views
-        .filter((view) => (view.viewType ?? "gui") === activeModality)
-        .map(viewToEntry),
-    [activeModality, views],
-  );
 
   const page = React.useMemo<ViewEntry[]>(
     () =>
-      curateLauncherPages(modalEntries, {
+      curateLauncherPages(entries, {
         isAosp,
         enabledKinds,
         cloudActive: elizaCloudConnected,
       }),
-    [modalEntries, isAosp, enabledKinds, elizaCloudConnected],
+    [entries, isAosp, enabledKinds, elizaCloudConnected],
   );
 
-  const handleLaunch = React.useCallback((entry: ViewEntry) => {
-    const path = entry.path ?? `/apps/${entry.id}`;
-    try {
-      if (typeof window === "undefined") return;
-      if (window.location.protocol === "file:") {
-        window.location.hash = path;
-      } else {
-        shellHistory.pushState(null, "", path);
-        window.dispatchEvent(new PopStateEvent("popstate"));
+  const handleLaunch = React.useCallback(
+    async (entry: ViewEntry) => {
+      // Catalog entries have no route until their package is installed and
+      // loaded. Use the launch response itself to open a viewer on this first
+      // click; the app manager intentionally resolves registry metadata before
+      // installation, so no manifest rehydration/restart is required.
+      if (entry.kind === "app" && entry.appName && !entry.path) {
+        try {
+          const result = await get(entry);
+          if (!result) return;
+          const run = result.run;
+          if (run?.viewer?.url) {
+            setState("appRuns", [
+              ...appRuns.filter((candidate) => candidate.runId !== run.runId),
+              run,
+            ]);
+            setState("activeGameRunId", run.runId);
+            setState("appsSubTab", "games");
+            const path = `/apps/${getAppSlug(run.appName)}`;
+            if (window.location.protocol === "file:") {
+              window.location.hash = path;
+            } else {
+              shellHistory.pushState(null, "", path);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }
+            return;
+          }
+          const targetUrl = result.launchUrl ?? entry.launchUrl;
+          if (targetUrl) {
+            await openExternalUrl(targetUrl);
+            setActionNotice(
+              t("appsview.OpenedInNewTab", { name: entry.label }),
+              "success",
+              2600,
+            );
+            return;
+          }
+          if (run) {
+            setState("appRuns", [
+              ...appRuns.filter((candidate) => candidate.runId !== run.runId),
+              run,
+            ]);
+            setTab("apps");
+            setState("appsSubTab", "running");
+            return;
+          }
+          setActionNotice(
+            t("appsview.LaunchedNoViewer", { name: entry.label }),
+            "error",
+            4000,
+          );
+        } catch (err) {
+          // error-policy:J4 a failed catalog install/launch remains visible on
+          // the tile and in the shell notice instead of navigating to an empty
+          // app surface.
+          setActionNotice(
+            t("appsview.LaunchFailed", {
+              name: entry.label,
+              message: err instanceof Error ? err.message : t("common.error"),
+            }),
+            "error",
+            4000,
+          );
+        }
+        return;
       }
-      if (entry.id === "chat") {
-        // The Messages tile lands on `/chat` (the ambient home). Open the chat
-        // so the user arrives in a conversation, not on a collapsed pill.
-        dispatchChatOpen();
+
+      const path = entry.path ?? `/apps/${entry.id}`;
+      try {
+        if (typeof window === "undefined") return;
+        if (window.location.protocol === "file:") {
+          window.location.hash = path;
+        } else {
+          shellHistory.pushState(null, "", path);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+        if (entry.id === "chat") {
+          // The Messages tile lands on `/chat` (the ambient home). Open the chat
+          // so the user arrives in a conversation, not on a collapsed pill.
+          dispatchChatOpen();
+        }
+      } catch (err) {
+        // error-policy:J4 sandboxed webviews (embeds) can reject history
+        // navigation with a SecurityError; the tile tap degrades to a no-op
+        // there. Logged so a launcher that silently stops navigating is
+        // diagnosable.
+        logger.warn({ err, path }, "[LauncherSurface] tile navigation failed");
       }
-    } catch (err) {
-      // error-policy:J4 sandboxed webviews (embeds) can reject history
-      // navigation with a SecurityError; the tile tap degrades to a no-op
-      // there. Logged so a launcher that silently stops navigating is
-      // diagnosable.
-      logger.warn({ err, path }, "[LauncherSurface] tile navigation failed");
-    }
-  }, []);
+    },
+    [appRuns, get, setActionNotice, setState, setTab, t],
+  );
 
   return (
     <div

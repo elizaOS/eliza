@@ -55,6 +55,34 @@ export function toGeneratedEntry(entry: RegistryEntry): GeneratedRegistryEntry {
     kind: entry.kind,
     registryKind: entry.kind,
     directory: entry.directory ?? null,
+    app: entry.app
+      ? {
+          ...entry.app,
+          heroImage: entry.app.heroImage ?? null,
+          minPlayers: entry.app.minPlayers ?? null,
+          maxPlayers: entry.app.maxPlayers ?? null,
+          capabilities: [...entry.app.capabilities],
+          uiExtension: entry.app.uiExtension
+            ? { ...entry.app.uiExtension }
+            : undefined,
+          viewer: entry.app.viewer
+            ? {
+                ...entry.app.viewer,
+                embedParams: entry.app.viewer.embedParams
+                  ? { ...entry.app.viewer.embedParams }
+                  : undefined,
+              }
+            : undefined,
+          session: entry.app.session
+            ? {
+                ...entry.app.session,
+                features: entry.app.session.features
+                  ? [...entry.app.session.features]
+                  : undefined,
+              }
+            : undefined,
+        }
+      : undefined,
   };
 }
 
