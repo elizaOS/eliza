@@ -2,10 +2,13 @@
  * Settles action handlers before any callback can reach a user-facing transport.
  * The boundary normalizes the returned ActionResult, validates effect receipts,
  * binds exact canonical text to those receipts, and keeps delivery failures
- * separate from handler failures so committed mutations are never retried.
+ * separate from handler failures so committed mutations are never retried. It
+ * also detaches ambient model tokens across both handler execution and deferred
+ * callback delivery; actions expose content through their typed callback only.
  */
 
 import { ElizaError } from "../errors";
+import { runWithSuppressedModelStream } from "../streaming-context";
 import type {
 	Action,
 	ActionResult,
@@ -281,6 +284,8 @@ export async function settleActionHandler(
 			return [];
 		}
 	};
+	const deliverWithoutModelStream = (buffered: BufferedActionCallback) =>
+		runWithSuppressedModelStream(() => deliverSafely(buffered));
 
 	const actionCallback: HandlerCallback | undefined = options.callback
 		? async (response, actionName) => {
@@ -301,13 +306,15 @@ export async function settleActionHandler(
 					);
 					return [];
 				}
-				return deliverSafely(buffered);
+				return deliverWithoutModelStream(buffered);
 			}
 		: undefined;
 
 	let rawResult: unknown;
 	try {
-		rawResult = await options.invoke(actionCallback);
+		rawResult = await runWithSuppressedModelStream(() =>
+			options.invoke(actionCallback),
+		);
 	} catch (error) {
 		// error-policy:J1 this boundary either translates the failure for a planner
 		// or suppresses callbacks before returning it to a retry-owning caller.
@@ -375,7 +382,7 @@ export async function settleActionHandler(
 	}
 
 	for (const buffered of bufferedCallbacks) {
-		await deliverSafely(buffered);
+		await deliverWithoutModelStream(buffered);
 	}
 	if (callbackDeliveryFailures.length > 0) {
 		settledResult = {
