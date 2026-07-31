@@ -4,15 +4,13 @@
  * the route module under a fresh mock graph.
  */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Every case re-imports the route module under a fresh mock graph
 // (`vi.resetModules()` + `await import("./setup-routes")` in loadSetupRoutes).
-// The handlers themselves are synchronous, but that per-test re-transform can
-// exceed the 5s default when the Plugin Tests lane runs the workspace at full
-// concurrency on a saturated runner — which intermittently timed out the last
-// cases in the suite. Give the re-import generous headroom; the assertions stay
-// strict so a genuine handler hang would still fail fast against this ceiling.
+// `resetModules` preserves Vite's transform cache, so a suite-level import
+// separates one-time route-graph compilation from each handler's time budget.
+// Per-test imports still re-execute the module and preserve mock isolation.
 vi.setConfig({ testTimeout: 20_000 });
 
 type PairingStatus =
@@ -132,6 +130,10 @@ async function loadSetupRoutes(overrides: { signalLogout?: ReturnType<typeof vi.
 }
 
 describe("Signal setup routes", () => {
+  beforeAll(async () => {
+    await loadSetupRoutes();
+  }, 120_000);
+
   afterEach(() => {
     vi.restoreAllMocks();
     vi.resetModules();
