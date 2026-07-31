@@ -179,7 +179,7 @@ export function CalendarSpatialView({
             {snapshot.refreshing ? "Refreshing…" : "Refresh"}
           </Button>
         </HStack>
-        {snapshot.sources.length > 0 ? (
+        {!snapshot.sourceManager.open && snapshot.sources.length > 0 ? (
           <List gap={0}>
             {snapshot.sources.map((source) => (
               <HStack key={source.id} gap={1} align="center">
@@ -192,7 +192,9 @@ export function CalendarSpatialView({
               </HStack>
             ))}
           </List>
-        ) : snapshot.status !== "loading" && snapshot.status !== "error" ? (
+        ) : !snapshot.sourceManager.open &&
+          snapshot.status !== "loading" &&
+          snapshot.status !== "error" ? (
           <Text style="caption" tone="muted">
             {snapshot.status === "unavailable"
               ? "No connected source details are available."
@@ -223,8 +225,8 @@ export function CalendarSpatialView({
         {snapshot.sourceManager.open ? (
           <>
             <Text style="caption" tone="muted">
-              New calendars are included automatically. Exclude one to remove it
-              from the combined calendar.
+              New calendars join automatically. Exclude one from the combined
+              calendar.
             </Text>
 
             {snapshot.sourceManager.status === "loading" ? (
@@ -294,9 +296,6 @@ export function CalendarSpatialView({
                             ? " · Primary"
                             : ""}
                         </Text>
-                        <Text style="caption" tone="muted">
-                          {source.providerLabel} · {source.accountLabel}
-                        </Text>
                       </VStack>
                       {source.toggleAvailable ? (
                         <Button
@@ -319,17 +318,32 @@ export function CalendarSpatialView({
                           Inclusion unavailable
                         </Text>
                       )}
+                      <Button
+                        variant="ghost"
+                        tone="default"
+                        agent={`source-details:${source.actionId}`}
+                        onPress={dispatch(`source-details:${source.actionId}`)}
+                      >
+                        {source.detailsOpen ? "Hide details" : "Show details"}
+                      </Button>
                     </HStack>
-                    <Text style="caption" tone={source.tone}>
-                      {source.accessLabel} · {source.visibilityLabel} ·{" "}
-                      {source.statusLabel} · {source.freshnessLabel}
-                    </Text>
+                    {source.detailsOpen ? (
+                      <>
+                        <Text style="caption" tone="muted">
+                          {source.providerLabel} · {source.accountLabel}
+                        </Text>
+                        <Text style="caption" tone={source.tone}>
+                          {source.accessLabel} · {source.visibilityLabel} ·{" "}
+                          {source.statusLabel} · {source.freshnessLabel}
+                        </Text>
+                      </>
+                    ) : null}
                     {source.mutationError ? (
                       <Text style="caption" tone="danger">
                         {source.mutationError}
                       </Text>
                     ) : null}
-                    {source.reconnectConnectorId ? (
+                    {source.detailsOpen && source.reconnectConnectorId ? (
                       <Button
                         variant="ghost"
                         tone="default"
@@ -340,7 +354,7 @@ export function CalendarSpatialView({
                       >
                         Reconnect Google Calendar
                       </Button>
-                    ) : source.reconnectUnavailable ? (
+                    ) : source.detailsOpen && source.reconnectUnavailable ? (
                       <Text style="caption" tone="muted">
                         Reconnect unavailable here.
                       </Text>
