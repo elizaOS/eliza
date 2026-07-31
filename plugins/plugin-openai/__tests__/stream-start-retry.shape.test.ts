@@ -7,7 +7,7 @@
  * Mocked `ai` SDK (fresh stream objects per call — generators are single-use),
  * no network; the live Cerebras failure this fences rode the incident log.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const aiMocks = vi.hoisted(() => ({
   generateText: vi.fn(),
@@ -105,8 +105,19 @@ async function collect(stream: { textStream: AsyncIterable<string> }) {
 
 describe("live-stream start retry", () => {
   beforeEach(() => {
+    // The plugin intentionally falls back to process.env when the runtime has
+    // no setting. Pin the provider so a developer's live Cerebras key cannot
+    // silently change which structured-output contract this unit test covers.
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("OPENAI_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("CEREBRAS_API_KEY", undefined);
+    vi.stubEnv("ELIZA_PROVIDER", undefined);
     aiMocks.streamText.mockReset();
     aiMocks.generateText.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("retries a transient onError-with-empty-stream failure and delivers the second attempt", async () => {

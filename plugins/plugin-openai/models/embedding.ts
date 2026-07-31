@@ -187,11 +187,17 @@ export async function handleTextEmbedding(
   }
 
   if (data.usage) {
-    emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, trimmedText, {
-      promptTokens: data.usage.prompt_tokens,
-      completionTokens: 0,
-      totalTokens: data.usage.total_tokens,
-    });
+    emitModelUsageEvent(
+      runtime,
+      ModelType.TEXT_EMBEDDING,
+      trimmedText,
+      {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: 0,
+        totalTokens: data.usage.total_tokens,
+      },
+      embeddingModel
+    );
   }
 
   logger.debug(`[OpenAI] Generated embedding with ${embedding.length} dimensions`);

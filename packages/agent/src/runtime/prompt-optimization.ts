@@ -789,7 +789,7 @@ function isModelUsedEvent(event: unknown): boolean {
 function toUsageModelLabel(
   payload: Record<string, unknown>,
 ): string | undefined {
-  for (const key of ["model", "modelId", "modelName", "type"]) {
+  for (const key of ["model", "modelId", "modelName"]) {
     const value = payload[key];
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();

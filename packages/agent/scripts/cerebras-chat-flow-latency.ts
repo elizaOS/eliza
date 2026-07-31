@@ -14,16 +14,17 @@ import {
   ChannelType,
   createMessageMemory,
   drainPostDeliveryTasks,
+  EventType,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
   InferenceTurnTimer,
   inferenceTimingRegistry,
   type Memory,
+  type ModelEventPayload,
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
-import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 
 const DEFAULT_MODEL = "gemma-4-31b";
@@ -39,6 +40,79 @@ export interface Distribution {
   p99: number;
   max: number;
   mean: number;
+}
+
+export interface ModelUsageEvidence {
+  provider: string;
+  model: string;
+  modelName: string;
+  modelLabel?: string;
+  type: string;
+  tokens: {
+    prompt: number;
+    completion: number;
+    total: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cachedInputTokens?: number;
+  };
+}
+
+export function modelUsageEvidence(
+  payload: ModelEventPayload,
+  expectedModel: string,
+): ModelUsageEvidence {
+  const provider = payload.provider?.trim();
+  const model = payload.model?.trim();
+  const modelName = payload.modelName?.trim();
+  if (provider !== "cerebras") {
+    throw new Error(
+      `Expected MODEL_USED provider cerebras, received ${JSON.stringify(provider)}`,
+    );
+  }
+  if (model !== expectedModel || modelName !== expectedModel) {
+    throw new Error(
+      `Expected MODEL_USED model ${expectedModel}, received ${JSON.stringify({
+        model,
+        modelName,
+      })}`,
+    );
+  }
+  const { tokens } = payload;
+  if (
+    !tokens ||
+    !Number.isFinite(tokens.prompt) ||
+    !Number.isFinite(tokens.completion) ||
+    !Number.isFinite(tokens.total) ||
+    tokens.prompt < 0 ||
+    tokens.completion < 0 ||
+    tokens.total <= 0
+  ) {
+    throw new Error(
+      `MODEL_USED did not report valid provider token usage: ${JSON.stringify(tokens)}`,
+    );
+  }
+  return {
+    provider,
+    model,
+    modelName,
+    ...(payload.modelLabel ? { modelLabel: payload.modelLabel } : {}),
+    type: String(payload.type),
+    tokens: {
+      prompt: tokens.prompt,
+      completion: tokens.completion,
+      total: tokens.total,
+      ...(tokens.cacheReadInputTokens !== undefined
+        ? { cacheReadInputTokens: tokens.cacheReadInputTokens }
+        : {}),
+      ...(tokens.cacheCreationInputTokens !== undefined
+        ? { cacheCreationInputTokens: tokens.cacheCreationInputTokens }
+        : {}),
+      ...(tokens.cachedInputTokens !== undefined
+        ? { cachedInputTokens: tokens.cachedInputTokens }
+        : {}),
+    },
+  };
 }
 
 function rounded(value: number): number {
@@ -154,11 +228,18 @@ async function main(): Promise<void> {
   );
   configuredModelEnvironment(model);
 
+  const { default: openaiPlugin } = await import(
+    "../../../plugins/plugin-openai/index.ts"
+  );
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
     plugins: [openaiPlugin],
   });
   try {
+    const modelUsageEvents: ModelEventPayload[] = [];
+    runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
+      modelUsageEvents.push(payload);
+    });
     const worldId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
     const entityId = randomUUID() as UUID;
@@ -194,6 +275,7 @@ async function main(): Promise<void> {
         },
       });
       const streamed: string[] = [];
+      const usageEventOffset = modelUsageEvents.length;
       const startedAt = performance.now();
       const result = await generateChatResponse(
         runtime,
@@ -206,6 +288,14 @@ async function main(): Promise<void> {
         },
       );
       const wallMs = performance.now() - startedAt;
+      const turnUsageEvents = modelUsageEvents.slice(usageEventOffset);
+      const modelUsagePayload = turnUsageEvents[0];
+      if (turnUsageEvents.length !== 1 || !modelUsagePayload) {
+        throw new Error(
+          `Expected one MODEL_USED event for ${proof}, observed ${turnUsageEvents.length}`,
+        );
+      }
+      const modelUsage = modelUsageEvidence(modelUsagePayload, model);
       const streamedText = streamed.join("");
       try {
         verifyProofResponse(result.text, proof);
@@ -275,6 +365,7 @@ async function main(): Promise<void> {
         streamedCharacters: streamedText.length,
         outputCharacters: result.text.length,
         usage: result.usage,
+        modelUsage,
         failureKind: result.failureKind ?? null,
         persistedResponse: {
           id: persistedResponse.id,

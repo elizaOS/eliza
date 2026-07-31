@@ -504,7 +504,17 @@ describe("OpenAI native text plumbing", () => {
       )
     );
 
-    expect(scoped.result).toBe("ok");
+    expect(scoped.result).toMatchObject({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: {
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+      },
+      providerMetadata: { modelName: "gpt-5.6-luna", provider: "openai" },
+    });
     expect(aiMocks.generateText).not.toHaveBeenCalled();
     expect(aiMocks.streamText).toHaveBeenCalledTimes(1);
     expect(aiMocks.streamText.mock.calls[0][0]).toMatchObject({
@@ -881,8 +891,18 @@ describe("OpenAI native text plumbing", () => {
         source: "openai",
         provider: "openai",
         type: ModelType.TEXT_SMALL,
+        model: "gpt-test-small",
+        modelName: "gpt-test-small",
+        modelLabel: ModelType.TEXT_SMALL,
         prompt: "stream",
-        tokens: { prompt: 2, completion: 1, total: 3, cached: 1 },
+        tokens: {
+          prompt: 2,
+          completion: 1,
+          total: 3,
+          cached: 1,
+          cachedInputTokens: 1,
+          cacheReadInputTokens: 1,
+        },
       })
     );
     expect(trajectoryCalls).toHaveLength(1);
@@ -927,7 +947,10 @@ describe("OpenAI native text plumbing", () => {
     expect(runtime.emitEvent).toHaveBeenCalledWith(
       EventType.MODEL_USED,
       expect.objectContaining({
+        provider: "openai",
         type: ModelType.TEXT_SMALL,
+        model: "gpt-test-small",
+        modelName: "gpt-test-small",
         prompt: "break stream",
         tokens: { prompt: 5, completion: 2, total: 7 },
       })
@@ -1083,6 +1106,17 @@ describe("OpenAI native text plumbing", () => {
       // empty content when reasoning runs unbounded); see resolveReasoningEffort.
       openai: { promptCacheKey: "v5:abc", reasoningEffort: "low" },
     });
+    expect(runtime.emitEvent).toHaveBeenCalledWith(
+      EventType.MODEL_USED,
+      expect.objectContaining({
+        source: "openai",
+        provider: "cerebras",
+        type: ModelType.TEXT_SMALL,
+        model: "gpt-oss-120b",
+        modelName: "gpt-oss-120b",
+        modelLabel: ModelType.TEXT_SMALL,
+      })
+    );
   });
 
   it("defaults small and response handler models to gpt-5.6-luna while preserving explicit overrides", async () => {
