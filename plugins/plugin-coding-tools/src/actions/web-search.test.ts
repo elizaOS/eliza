@@ -44,6 +44,10 @@ vi.mock("@elizaos/logger", () => {
 
 const PUBLIC_IP = "93.184.216.34";
 
+const runtime = {
+  logger: { warn: vi.fn() },
+} as unknown as IAgentRuntime;
+
 const mcpJson = (text: string): string =>
   JSON.stringify({
     jsonrpc: "2.0",
@@ -83,7 +87,7 @@ function mockSearchProviders(byHost: {
 
 async function runSearch(parameters: ActionParameters): Promise<ActionResult> {
   const result = await webSearchAction.handler(
-    {} as IAgentRuntime,
+    runtime,
     {} as Memory,
     {} as State,
     { parameters },
@@ -156,6 +160,27 @@ describe("coding-tools WEB_SEARCH", () => {
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("search returned no usable results");
+  });
+
+  it("logs provider diagnostics without exposing them to the planner", async () => {
+    __setWebHttpLookupFnForTests(async () => [
+      { address: PUBLIC_IP, family: 4 },
+    ]);
+    __setWebHttpPinnedFetchImplForTests(async () => {
+      throw new Error("connect ETIMEDOUT 203.0.113.9");
+    });
+
+    const result = await runSearch({ query: "network failure" });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain(
+      "search providers failed before returning usable results",
+    );
+    expect(result.text).not.toContain("ETIMEDOUT");
+    expect(runtime.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "connect ETIMEDOUT 203.0.113.9" }),
+      "[CodingTools] WEB_SEARCH provider request failed",
+    );
   });
 
   it("requires a query", async () => {

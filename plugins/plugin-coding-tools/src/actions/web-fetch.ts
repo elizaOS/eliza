@@ -7,17 +7,17 @@
 import type {
   Action,
   ActionResult,
-  HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
+import { SsrfBlockedError } from "@elizaos/core";
 import {
   failureToActionResult,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
-import { guardedTextHttpRequest } from "../lib/web-http.js";
+import { guardedTextHttpRequest, WebHttpPolicyError } from "../lib/web-http.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
 const WEB_FETCH_RESULT_CHARS = 8_000;
@@ -109,11 +109,13 @@ function extractBody(
   body: string,
   contentType: string,
   extract: string | undefined,
-): { value: string; kind: "html" | "json" | "text" } {
+):
+  | { ok: true; value: string; kind: "html" | "json" | "text" }
+  | { ok: false; path: string } {
   const type = contentType.toLowerCase();
   const trimmed = body.trim();
   if (type.includes("html")) {
-    return { value: htmlToReadableText(body), kind: "html" };
+    return { ok: true, value: htmlToReadableText(body), kind: "html" };
   }
   if (
     type.includes("json") ||
@@ -121,13 +123,12 @@ function extractBody(
   ) {
     const parsed = JSON.parse(body) as unknown;
     const selected = extract ? resolveJsonPath(parsed, extract) : parsed;
-    // A fuzzy or unresolved extract path must not hard-fail the fetch: fall back
-    // to the full JSON so the model can still read it and pick out what it needs,
-    // rather than surfacing an io_error for a best-effort path hint.
-    const jsonValue = extract && selected === undefined ? parsed : selected;
-    return { value: JSON.stringify(jsonValue), kind: "json" };
+    if (extract && selected === undefined) {
+      return { ok: false, path: extract };
+    }
+    return { ok: true, value: JSON.stringify(selected), kind: "json" };
   }
-  return { value: body.trim(), kind: "text" };
+  return { ok: true, value: body.trim(), kind: "text" };
 }
 
 export const webFetchAction: Action = {
@@ -156,11 +157,10 @@ export const webFetchAction: Action = {
   ],
   validate: async () => isCodingWebFetchEnabled(),
   handler: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
     options?: unknown,
-    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!isCodingWebFetchEnabled()) {
       return failureToActionResult({
@@ -200,6 +200,21 @@ export const webFetchAction: Action = {
         response.contentType,
         extract,
       );
+      if (!extracted.ok) {
+        return failureToActionResult(
+          {
+            reason: "extract_missing",
+            message: `JSON path "${extracted.path}" was not found`,
+          },
+          {
+            action: "WEB_FETCH",
+            url,
+            final_url: response.url,
+            status: response.status,
+            extract: extracted.path,
+          },
+        );
+      }
       const value =
         extracted.value.length > WEB_FETCH_RESULT_CHARS
           ? `${extracted.value.slice(0, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
@@ -215,12 +230,19 @@ export const webFetchAction: Action = {
           response.truncated || extracted.value.length > WEB_FETCH_RESULT_CHARS,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const result = failureToActionResult(
-        { reason: "io_error", message },
+      const diagnostic = error instanceof Error ? error.message : String(error);
+      runtime.logger.warn(
+        { error: diagnostic, url },
+        "[CodingTools] WEB_FETCH request failed",
+      );
+      const safeMessage =
+        error instanceof SsrfBlockedError || error instanceof WebHttpPolicyError
+          ? diagnostic
+          : "request failed before a usable response was received";
+      return failureToActionResult(
+        { reason: "io_error", message: safeMessage },
         { action: "WEB_FETCH", url },
       );
-      return result;
     }
   },
 };

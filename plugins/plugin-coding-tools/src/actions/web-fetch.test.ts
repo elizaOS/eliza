@@ -46,9 +46,13 @@ vi.mock("@elizaos/logger", () => {
 
 const PUBLIC_IP = "93.184.216.34";
 
+const runtime = {
+  logger: { warn: vi.fn() },
+} as unknown as IAgentRuntime;
+
 async function runFetch(parameters: ActionParameters): Promise<ActionResult> {
   const result = await webFetchAction.handler(
-    {} as IAgentRuntime,
+    runtime,
     {} as Memory,
     {} as State,
     { parameters },
@@ -179,7 +183,7 @@ describe("coding-tools WEB_FETCH", () => {
     });
   });
 
-  it("surfaces timeout-style fetch errors honestly", async () => {
+  it("logs timeout diagnostics without exposing them to the planner", async () => {
     __setWebHttpLookupFnForTests(async () => [
       { address: PUBLIC_IP, family: 4 },
     ]);
@@ -190,7 +194,12 @@ describe("coding-tools WEB_FETCH", () => {
     const result = await runFetch({ url: "https://public.example.test/slow" });
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("request aborted by timeout");
+    expect(result.text).toContain("request failed before a usable response");
+    expect(result.text).not.toContain("request aborted by timeout");
+    expect(runtime.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "request aborted by timeout" }),
+      "[CodingTools] WEB_FETCH request failed",
+    );
   });
 
   it("extracts useful readable text from HTML instead of raw markup", async () => {
@@ -264,7 +273,7 @@ describe("coding-tools WEB_FETCH", () => {
     });
   });
 
-  it("falls back to the full JSON when the extract path is missing", async () => {
+  it("reports a missing JSON extraction path as an explicit failure", async () => {
     usePinnedRoutes({
       "https://public.example.test/data": new Response(
         JSON.stringify({ data: { price: 42 } }),
@@ -277,10 +286,13 @@ describe("coding-tools WEB_FETCH", () => {
       extract: "data.missing",
     });
 
-    // The extract path is a best-effort hint from the planner; a miss must not
-    // fail the whole fetch. The model gets the full JSON and picks what it
-    // needs instead of the turn dying on an io_error.
-    expect(result.success).toBe(true);
-    expect(result.text).toContain('"price":42');
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("extract_missing");
+    expect(result.text).toContain('JSON path "data.missing" was not found');
+    expect(result.data).toMatchObject({
+      action: "WEB_FETCH",
+      extract: "data.missing",
+      status: 200,
+    });
   });
 });

@@ -38,6 +38,7 @@ export type ToolFailureReason =
   | "no_match"
   | "unchanged"
   | "command_failed"
+  | "extract_missing"
   | "needs_confirmation"
   | "timeout"
   | "io_error"

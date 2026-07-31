@@ -20,6 +20,13 @@ const DEFAULT_USER_AGENT = "ElizaCodingTools/1.0 (+https://elizaos.ai)";
 
 type FetchLike = NonNullable<GuardedFetchOptions["fetchImpl"]>;
 
+export class WebHttpPolicyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WebHttpPolicyError";
+  }
+}
+
 let fetchImplOverride: FetchLike | undefined;
 let lookupFnOverride: LookupFn | undefined;
 let pinnedFetchImplOverride: PinnedLookupFetchLike | undefined;
@@ -135,7 +142,9 @@ async function readTextCapped(
  */
 function rejectPlaintextHop(url: URL): void {
   if (url.protocol !== "https:") {
-    throw new Error("Refusing HTTPS redirect downgrade to a non-HTTPS URL");
+    throw new WebHttpPolicyError(
+      "Refusing HTTPS redirect downgrade to a non-HTTPS URL",
+    );
   }
 }
 
@@ -176,9 +185,14 @@ export async function guardedTextHttpRequest(
   url: string,
   options: GuardedTextHttpOptions = {},
 ): Promise<GuardedTextHttpResult> {
-  const parsed = new URL(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new WebHttpPolicyError("Invalid URL");
+  }
   if (parsed.protocol !== "https:") {
-    throw new Error("Only https URLs are allowed");
+    throw new WebHttpPolicyError("Only https URLs are allowed");
   }
 
   const headers = new Headers({
@@ -207,14 +221,18 @@ export async function guardedTextHttpRequest(
   try {
     if (new URL(guarded.finalUrl).protocol !== "https:") {
       void guarded.response.body?.cancel();
-      throw new Error("Refusing HTTPS redirect downgrade to a non-HTTPS URL");
+      throw new WebHttpPolicyError(
+        "Refusing HTTPS redirect downgrade to a non-HTTPS URL",
+      );
     }
     const contentType = guarded.response.headers.get("content-type") ?? "";
     if (!isTextualContentType(contentType)) {
       // Close the rejected body — an unconsumed large/streaming binary body
       // would otherwise hold the socket open until the remote closes it.
       void guarded.response.body?.cancel().catch(() => {});
-      throw new Error(`Unsupported content type: ${contentType || "unknown"}`);
+      throw new WebHttpPolicyError(
+        `Unsupported content type: ${contentType || "unknown"}`,
+      );
     }
     const { text, truncated } = await readTextCapped(
       guarded.response,
