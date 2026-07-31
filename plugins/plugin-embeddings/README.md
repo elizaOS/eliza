@@ -13,7 +13,7 @@ Embeddings power memory, recall, and semantic search — but they don't have to 
 
 ## Purely additive
 
-The plugin activates **only** when you set `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY`. With neither set it never loads, so dropping it into an existing deployment changes nothing until you opt in.
+The plugin activates **only** when you set `EMBEDDING_BASE_URL`. A key alone cannot identify an endpoint and does not load the plugin, so dropping it into an existing deployment changes nothing until a usable route is configured.
 
 ## What it registers
 
@@ -40,7 +40,7 @@ A bring-your-own endpoint beats a bare local embedder but yields to a paired Eli
 
 ### Fail loudly, never fabricate
 
-On any HTTP / config / response-shape error the handler **throws** — it never returns a zero or garbage vector that would silently corrupt the embedding store. The only synthetic return is the boot dimension-probe (`null` input), where a correctly-sized marker vector is the expected, legitimate response.
+On any HTTP / config / response-shape error the handler **throws** — it never returns a zero or garbage vector that would silently corrupt the embedding store. Output width is declared in model metadata, and `null` input is rejected without making a provider request.
 
 ## Configuration
 
@@ -57,7 +57,7 @@ All variables are read via `runtime.getSetting(key)` first, then `process.env`, 
 | `EMBEDDING_DIMENSIONS` | `1536` | Vector width (see below). Sent as the request `dimensions` field when explicitly set. |
 | `EMBEDDING_BROWSER_URL` | _(none)_ | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent only when this is set, keeping the key off the client. |
 
-Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` activates the plugin.
+Setting `EMBEDDING_BASE_URL` activates the plugin; `EMBEDDING_API_KEY` only authenticates that configured endpoint.
 Fallback-only settings do **not** activate it and cannot replace a missing primary base URL.
 
 ### Supported dimensions
@@ -106,7 +106,7 @@ EMBEDDING_DIMENSIONS=384
 
 ## Installation
 
-The plugin is picked up automatically when `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is present. To reference it explicitly in a character file:
+The plugin is picked up automatically when `EMBEDDING_BASE_URL` is present. To reference it explicitly in a character file:
 
 ```json
 {

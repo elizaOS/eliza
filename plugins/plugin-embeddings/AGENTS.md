@@ -6,7 +6,7 @@ Provider-agnostic ("bring your own") `TEXT_EMBEDDING` provider for elizaOS agent
 
 Decouples embeddings from text generation. A self-hosted bot whose chat provider serves no good embeddings — Claude (no embeddings API), Cerebras (no embeddings) — can still get high-quality vectors by setting `EMBEDDING_BASE_URL` / `EMBEDDING_API_KEY` to a personal OpenAI key, an Eliza Cloud URL, Voyage, or a local TEI / Infinity / vLLM / LM Studio server.
 
-**Purely additive.** The plugin auto-enables **only** when `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is set (see `auto-enable.ts`). With neither set it never loads, so existing deployments — which use their chat provider's embedding slot, local inference, or Eliza Cloud — are unaffected.
+**Purely additive.** The plugin auto-enables **only** when `EMBEDDING_BASE_URL` is set (see `auto-enable.ts`). A key alone cannot identify an endpoint and does not load the plugin, so existing deployments — which use their chat provider's embedding slot, local inference, or Eliza Cloud — are unaffected.
 
 It registers **only the embedding slots** — no text/image/audio handlers, no actions, providers, services, or evaluators.
 
@@ -75,8 +75,8 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 
 | Var | Required | Default | Purpose |
 |---|---|---|---|
-| `EMBEDDING_BASE_URL` | one-of* | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
-| `EMBEDDING_API_KEY` | one-of* | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
+| `EMBEDDING_BASE_URL` | yes | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
+| `EMBEDDING_API_KEY` | no | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
 | `EMBEDDING_MODEL` | no | `text-embedding-3-small` | Model id sent as the request `model` field. |
 | `EMBEDDING_FALLBACK_BASE_URL` | no | — | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once after a primary network/HTTP/shape failure. Does not activate the plugin by itself. |
 | `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
@@ -84,7 +84,7 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 | `EMBEDDING_DIMENSIONS` | no | `1536` | Vector width. When explicitly set, sent as the request `dimensions` field. |
 | `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
-\* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
+`EMBEDDING_BASE_URL` activates the plugin. `EMBEDDING_API_KEY` authenticates that endpoint but cannot activate a handler with no destination.
 Fallback-only settings are inert until the primary plugin opt-in and primary base URL are configured.
 
 ### Supported dimensions

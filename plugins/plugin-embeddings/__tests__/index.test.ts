@@ -12,6 +12,7 @@ function createRuntime(settings: Record<string, Setting> = {}): IAgentRuntime {
     character: { name: "Ada" },
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => settings[key] ?? null),
+    reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
 
@@ -53,10 +54,7 @@ describe("plugin-embeddings entrypoint", () => {
     expect(defaultEmbeddingsPlugin).toBe(embeddingsPlugin);
     expect(embeddingsPlugin.name).toBe("embeddings");
     expect(embeddingsPlugin.priority).toBe(1);
-    expect(embeddingsPlugin.autoEnable?.envKeys).toEqual([
-      "EMBEDDING_BASE_URL",
-      "EMBEDDING_API_KEY",
-    ]);
+    expect(embeddingsPlugin.autoEnable?.envKeys).toEqual(["EMBEDDING_BASE_URL"]);
     expect(Object.keys(embeddingsPlugin.models ?? {}).sort()).toEqual([
       ModelType.TEXT_EMBEDDING,
       ModelType.TEXT_EMBEDDING_BATCH,
@@ -80,13 +78,13 @@ describe("plugin-embeddings entrypoint", () => {
     ]);
   });
 
-  it("init warns but does not throw when the plugin is manually loaded without opt-in config", async () => {
-    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+  it("init fails fast when the plugin is manually loaded without an endpoint", async () => {
     const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => undefined);
 
-    await expect(embeddingsPlugin.init?.({}, createRuntime())).resolves.toBeUndefined();
+    await expect(embeddingsPlugin.init?.({}, createRuntime())).rejects.toMatchObject({
+      code: "EMBEDDINGS_ENDPOINT_NOT_CONFIGURED",
+    });
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/Neither EMBEDDING_BASE_URL/));
     expect(infoSpy).not.toHaveBeenCalled();
   });
 
@@ -105,8 +103,7 @@ describe("plugin-embeddings entrypoint", () => {
     ).rejects.toThrow(/Invalid embedding dimension: 999/i);
   });
 
-  it("init allows API-key-only opt-in but warns that real embedding calls still need an endpoint", async () => {
-    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+  it("init rejects API-key-only configuration", async () => {
     const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => undefined);
 
     await expect(
@@ -117,10 +114,9 @@ describe("plugin-embeddings entrypoint", () => {
           EMBEDDING_DIMENSIONS: "768",
         })
       )
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({ code: "EMBEDDINGS_ENDPOINT_NOT_CONFIGURED" });
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/EMBEDDING_API_KEY is set/));
-    expect(infoSpy).toHaveBeenCalledWith(expect.stringMatching(/dimensions=768/));
+    expect(infoSpy).not.toHaveBeenCalled();
   });
 
   it("wires TEXT_EMBEDDING to the local primary endpoint before any configured fallback", async () => {

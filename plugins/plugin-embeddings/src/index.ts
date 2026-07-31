@@ -8,9 +8,9 @@
  * OpenAI key, Eliza Cloud, Voyage, or a local TEI / Infinity / vLLM / LM Studio
  * server) and get embeddings independently of chat.
  *
- * Purely additive: the plugin only loads when `EMBEDDING_BASE_URL` or
- * `EMBEDDING_API_KEY` is set (see auto-enable.ts), so existing deployments are
- * unaffected. It registers ONLY the embedding slots — no text/image/audio
+ * Purely additive: the plugin only loads when `EMBEDDING_BASE_URL` is set (see
+ * auto-enable.ts), so a stray API key cannot register a handler with nowhere to
+ * send requests. It registers ONLY the embedding slots — no text/image/audio
  * handlers, no actions, providers, services, or evaluators.
  */
 
@@ -21,7 +21,7 @@ import type {
   ProcessEnvLike,
   TextEmbeddingParams,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ElizaError, logger, ModelType } from "@elizaos/core";
 
 import {
   handleBatchTextEmbedding,
@@ -53,7 +53,7 @@ export const embeddingsPlugin: Plugin = {
   // that consults the inline `autoEnable.envKeys` (rather than the package
   // manifest) activates the plugin on the same signal.
   autoEnable: {
-    envKeys: ["EMBEDDING_BASE_URL", "EMBEDDING_API_KEY"],
+    envKeys: ["EMBEDDING_BASE_URL"],
   },
 
   // Registration priority for the embedding slot. The native priority sort is:
@@ -76,21 +76,14 @@ export const embeddingsPlugin: Plugin = {
 
   async init(_config, runtime) {
     if (!hasEmbeddingConfig(runtime)) {
-      logger.warn(
-        "[Embeddings] Neither EMBEDDING_BASE_URL nor EMBEDDING_API_KEY is set — " +
-          "embedding calls will throw until one is configured."
-      );
-      return;
+      throw new ElizaError("EMBEDDING_BASE_URL is required when the embeddings plugin is loaded.", {
+        code: "EMBEDDINGS_ENDPOINT_NOT_CONFIGURED",
+        severity: "fatal",
+      });
     }
     // Validate the dimension up-front so a misconfiguration surfaces at boot,
     // not on the first embedding call.
     validateEmbeddingDimension(getEmbeddingDimensions(runtime));
-    if (!getEmbeddingBaseURL(runtime)) {
-      logger.warn(
-        "[Embeddings] EMBEDDING_API_KEY is set but EMBEDDING_BASE_URL is not — " +
-          "set the endpoint URL for embedding calls to succeed."
-      );
-    }
     logResolvedConfig(runtime);
 
     // Warm the endpoint (TLS handshake + provider-side connection routing) off
@@ -101,9 +94,13 @@ export const embeddingsPlugin: Plugin = {
     if (getEmbeddingBaseURL(runtime)) {
       void handleTextEmbedding(runtime, "warmup")
         .then(() => logger.debug("[Embeddings] Endpoint warm"))
-        // error-policy:J6 boot warm-up is best-effort; a cold or unreachable
-        // endpoint surfaces on the first real call through the normal throw.
-        .catch(() => undefined);
+        .catch((error) => {
+          // error-policy:J7 warm-up diagnostics must not reject plugin boot,
+          // but the unavailable endpoint must remain observable to the agent.
+          runtime.reportError("Embeddings.warmup", error, {
+            endpoint: getEmbeddingBaseURL(runtime),
+          });
+        });
     }
   },
 

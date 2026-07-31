@@ -144,9 +144,9 @@ export function getEndpointAuthHeader(
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-/** True when the operator has opted in by configuring a URL or a key. */
+/** True when the operator configured the endpoint required to make a request. */
 export function hasEmbeddingConfig(runtime: IAgentRuntime): boolean {
-  return Boolean(getEmbeddingBaseURL(runtime) || getEmbeddingApiKey(runtime));
+  return Boolean(getEmbeddingBaseURL(runtime));
 }
 
 /**

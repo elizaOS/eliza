@@ -80,10 +80,10 @@ describe("plugin-embeddings config", () => {
     expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "768" }))).toBe(768);
   });
 
-  it("hasEmbeddingConfig is true when EITHER url or key is set", () => {
+  it("hasEmbeddingConfig requires a request endpoint", () => {
     expect(hasEmbeddingConfig(makeRuntime())).toBe(false);
     expect(hasEmbeddingConfig(makeRuntime({ EMBEDDING_BASE_URL: "https://x/v1" }))).toBe(true);
-    expect(hasEmbeddingConfig(makeRuntime({ EMBEDDING_API_KEY: "k" }))).toBe(true);
+    expect(hasEmbeddingConfig(makeRuntime({ EMBEDDING_API_KEY: "k" }))).toBe(false);
   });
 
   it("falls back to process.env when the runtime setting is absent", () => {

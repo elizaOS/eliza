@@ -9,7 +9,6 @@
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 
-import type { EmbeddingResponse } from "../types";
 import {
   getEmbeddingApiKey,
   getEmbeddingBaseURL,
@@ -202,21 +201,27 @@ async function requestEmbeddingsFromEndpoint(
   });
 
   if (!response.ok) {
-    // error-policy:J2 context-adding — the request already failed (non-2xx); a
-    // body that is itself unreadable must not mask the HTTP error we are about to
-    // throw, so fall back to a placeholder for the message only.
-    const errorText = await response.text().catch(() => "Unknown error");
+    let errorText: string;
+    try {
+      errorText = await response.text();
+    } catch (cause) {
+      // error-policy:J2 preserve both the HTTP failure and the body-read cause.
+      throw new Error(
+        `${endpoint.role} embedding API HTTP ${response.status} ${response.statusText}; error body could not be read`,
+        { cause }
+      );
+    }
     throw new Error(
       `${endpoint.role} embedding API HTTP ${response.status} ${response.statusText} - ${errorText}`
     );
   }
 
-  const data = (await response.json()) as EmbeddingResponse;
+  const data: unknown = await response.json();
 
-  if (!Array.isArray(data.data) || data.data.length !== expectedCount) {
+  if (!isRecord(data) || !Array.isArray(data.data) || data.data.length !== expectedCount) {
     throw new Error(
       `${endpoint.role} embedding API returned ${
-        Array.isArray(data.data) ? data.data.length : "non-array"
+        isRecord(data) && Array.isArray(data.data) ? data.data.length : "non-array"
       } vectors, expected ${expectedCount}`
     );
   }
@@ -225,6 +230,9 @@ async function requestEmbeddingsFromEndpoint(
   // reordered response still maps back to the right input slot.
   const vectors: number[][] = new Array(expectedCount);
   for (const item of data.data) {
+    if (!isRecord(item)) {
+      throw new Error(`${endpoint.role} embedding API returned a non-object vector entry`);
+    }
     const idx = typeof item.index === "number" ? item.index : undefined;
     if (idx === undefined || !Number.isInteger(idx) || idx < 0 || idx >= expectedCount) {
       throw new Error(
@@ -248,10 +256,26 @@ async function requestEmbeddingsFromEndpoint(
         }, expected ${embeddingDimension}. Check EMBEDDING_DIMENSIONS / EMBEDDING_MODEL.`
       );
     }
-    vectors[idx] = item.embedding;
+    const validatedEmbedding: number[] = [];
+    for (const [offset, value] of item.embedding.entries()) {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        throw new Error(
+          `${endpoint.role} embedding API returned a non-finite numeric value at vector ${idx}, offset ${offset}`
+        );
+      }
+      validatedEmbedding.push(value);
+    }
+    vectors[idx] = validatedEmbedding;
   }
 
-  if (data.usage) {
+  if (data.usage !== undefined) {
+    if (
+      !isRecord(data.usage) ||
+      !isNonNegativeInteger(data.usage.prompt_tokens) ||
+      !isNonNegativeInteger(data.usage.total_tokens)
+    ) {
+      throw new Error(`${endpoint.role} embedding API returned invalid token usage telemetry`);
+    }
     const promptText = Array.isArray(input) ? `batch:${input.length}` : input;
     emitModelUsageEvent(runtime, ModelType.TEXT_EMBEDDING, promptText, {
       promptTokens: data.usage.prompt_tokens,
@@ -261,6 +285,14 @@ async function requestEmbeddingsFromEndpoint(
   }
 
   return vectors;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 /**

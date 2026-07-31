@@ -22,7 +22,7 @@ function vectorOf(length: number): number[] {
   return Array.from({ length }, (_v, i) => (i + 1) / length);
 }
 
-function mockEmbeddingsResponse(vectors: number[][]): Response {
+function mockEmbeddingsResponse(vectors: unknown[][]): Response {
   return {
     ok: true,
     status: 200,
@@ -203,6 +203,62 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     await expect(
       handleTextEmbedding(createRuntime({ EMBEDDING_DIMENSIONS: "1536" }), { text: "hi" })
     ).rejects.toThrow(/dimension mismatch/i);
+  });
+
+  it("throws when a right-width vector contains non-numeric values", async () => {
+    const malformed = vectorOf(1536) as unknown[];
+    malformed[731] = "0.25";
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([malformed]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(
+      /non-finite numeric value at vector 0, offset 731/i
+    );
+  });
+
+  it("throws when provider usage telemetry has the wrong shape", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          json: async () => ({
+            data: [{ embedding: vectorOf(1536), index: 0 }],
+            usage: { prompt_tokens: "3", total_tokens: 3 },
+          }),
+          text: async () => "",
+        }) as unknown as Response
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(handleTextEmbedding(createRuntime(), { text: "hi" })).rejects.toThrow(
+      /invalid token usage telemetry/i
+    );
+  });
+
+  it("preserves an unreadable HTTP error-body failure as the cause", async () => {
+    const bodyReadFailure = new Error("socket closed while reading error body");
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: false,
+          status: 502,
+          statusText: "Bad Gateway",
+          text: async () => {
+            throw bodyReadFailure;
+          },
+        }) as unknown as Response
+    );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    const error = await handleTextEmbedding(createRuntime(), { text: "hi" }).catch(
+      (cause: unknown) => cause
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("error body could not be read");
+    expect((error as Error).cause).toBeInstanceOf(Error);
+    expect(((error as Error).cause as Error).cause).toBe(bodyReadFailure);
   });
 
   it("throws on empty text before calling the provider", async () => {

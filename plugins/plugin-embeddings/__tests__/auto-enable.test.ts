@@ -1,4 +1,4 @@
-/** Unit tests for the embeddings auto-enable predicate: on only when EMBEDDING_BASE_URL or EMBEDDING_API_KEY is set. */
+/** Unit tests for endpoint-based embeddings auto-enable admission. */
 import type { PluginAutoEnableContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
@@ -24,7 +24,7 @@ describe("plugin-embeddings auto-enable", () => {
     expect(shouldEnable(ctx({ EMBEDDING_BASE_URL: "https://x/v1" }))).toBe(true);
   });
 
-  it("is true when EMBEDDING_API_KEY is a non-empty string", () => {
-    expect(shouldEnable(ctx({ EMBEDDING_API_KEY: "sk-test" }))).toBe(true);
+  it("is false when only EMBEDDING_API_KEY is set", () => {
+    expect(shouldEnable(ctx({ EMBEDDING_API_KEY: "sk-test" }))).toBe(false);
   });
 });

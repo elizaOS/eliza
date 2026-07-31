@@ -84,13 +84,13 @@
     "pluginParameters": {
       "EMBEDDING_BASE_URL": {
         "type": "string",
-        "description": "Base URL of an OpenAI-compatible /embeddings endpoint (e.g. https://api.openai.com/v1, an Eliza Cloud URL, a Voyage proxy, or a local TEI/Infinity/vLLM server). Setting this (or EMBEDDING_API_KEY) is what activates the plugin.",
+        "description": "Required base URL of an OpenAI-compatible /embeddings endpoint (e.g. https://api.openai.com/v1, an Eliza Cloud URL, a Voyage proxy, or a local TEI/Infinity/vLLM server). Setting this activates the plugin.",
         "required": false,
         "sensitive": false
       },
       "EMBEDDING_API_KEY": {
         "type": "string",
-        "description": "Bearer token for the embedding endpoint. Setting this (or EMBEDDING_BASE_URL) is what activates the plugin. Omit for local servers that need no auth.",
+        "description": "Bearer token for the configured embedding endpoint. Omit for local servers that need no auth; a key alone does not activate the plugin.",
         "required": false,
         "sensitive": true
       },
