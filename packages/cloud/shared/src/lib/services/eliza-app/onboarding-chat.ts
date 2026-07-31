@@ -24,6 +24,12 @@ export interface OnboardingChatMessage {
 
 export interface OnboardingSession {
   id: string;
+  /**
+   * Opaque credential carried by browser continuation links. Messaging
+   * transports keep the deterministic platform session id private because
+   * platform user ids are commonly public or guessable.
+   */
+  continuationToken?: string;
   createdAt: string;
   updatedAt: string;
   platform?: OnboardingPlatform;
@@ -87,6 +93,10 @@ function sessionCacheKey(sessionId: string): string {
   return `eliza-app:onboarding:${sessionId}`;
 }
 
+function continuationCacheKey(token: string): string {
+  return `eliza-app:onboarding-continuation:${token}`;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -110,13 +120,10 @@ function redactSessionIdForLog(sessionId: string): string {
 
 /**
  * Platform-scoped session ids (`platform:<platform>:<platformUserId>`) are
- * derived from messaging identities (usually phone numbers), so they are
- * guessable. Only two callers may present one:
- * - a trusted transport (internal gateway auth, `trustedPlatformIdentity`);
- * - an authenticated user continuing a session from their login link.
- * Anonymous callers with a malformed or platform-scoped id get a fresh
- * random session instead, so a forged id can never read or mutate another
- * user's onboarding state.
+ * derived from public or guessable messaging identities. Only a trusted
+ * transport may present one. Browser continuations use a separate opaque
+ * credential, so authentication alone never grants access to a session whose
+ * platform id an attacker can derive.
  */
 function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput): string {
   const trimmed = value?.trim();
@@ -124,7 +131,7 @@ function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput
     if (!trimmed.startsWith(PLATFORM_SESSION_PREFIX)) {
       return trimmed;
     }
-    if (input.trustedPlatformIdentity === true || input.authenticatedUser) {
+    if (input.trustedPlatformIdentity === true) {
       return trimmed;
     }
     logger.warn(
@@ -140,11 +147,49 @@ function sanitizeSessionId(value: string | undefined, input: OnboardingChatInput
   return crypto.randomUUID();
 }
 
+interface OnboardingContinuation {
+  sessionId: string;
+}
+
+function isOnboardingContinuation(value: unknown): value is OnboardingContinuation {
+  if (!value || typeof value !== "object" || !("sessionId" in value)) {
+    return false;
+  }
+  const sessionId = value.sessionId;
+  return (
+    typeof sessionId === "string" &&
+    SESSION_ID_PATTERN.test(sessionId) &&
+    sessionId.startsWith(PLATFORM_SESSION_PREFIX)
+  );
+}
+
+async function resolveSessionId(input: OnboardingChatInput): Promise<string> {
+  const sessionId = sanitizeSessionId(input.sessionId, input);
+  if (
+    input.authenticatedUser &&
+    input.trustedPlatformIdentity !== true &&
+    input.sessionId?.trim() === sessionId
+  ) {
+    const continuation = await cache.get<unknown>(continuationCacheKey(sessionId));
+    if (isOnboardingContinuation(continuation)) {
+      return continuation.sessionId;
+    }
+  }
+  return sessionId;
+}
+
 async function loadSession(sessionId: string): Promise<OnboardingSession | null> {
   return cache.get<OnboardingSession>(sessionCacheKey(sessionId));
 }
 
 async function saveSession(session: OnboardingSession): Promise<void> {
+  if (session.continuationToken && session.id.startsWith(PLATFORM_SESSION_PREFIX)) {
+    await cache.set(
+      continuationCacheKey(session.continuationToken),
+      { sessionId: session.id } satisfies OnboardingContinuation,
+      SESSION_TTL_SECONDS,
+    );
+  }
   await cache.set(sessionCacheKey(session.id), session, SESSION_TTL_SECONDS);
 }
 
@@ -591,6 +636,7 @@ function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
   const createdAt = nowIso();
   return {
     id,
+    continuationToken: id.startsWith(PLATFORM_SESSION_PREFIX) ? crypto.randomUUID() : undefined,
     createdAt,
     updatedAt: createdAt,
     platform: input.platform,
@@ -601,13 +647,11 @@ function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
 }
 
 export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
-  let sessionId = sanitizeSessionId(input.sessionId, input);
+  let sessionId = await resolveSessionId(input);
   let session = await loadSession(sessionId);
 
-  // Authenticated web callers may CONTINUE a platform-scoped session (they
-  // carry its id from a login link the gateway texted out), but they may not
-  // CREATE one — that would let any signed-in user pre-bind a messaging
-  // identity they do not own.
+  // An untrusted caller must never create a platform-scoped session. Opaque
+  // browser credentials resolve to an existing platform session above.
   if (
     !session &&
     sessionId.startsWith(PLATFORM_SESSION_PREFIX) &&
@@ -621,6 +665,9 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   }
 
   session = session ?? newSession(sessionId, input);
+  if (session.id.startsWith(PLATFORM_SESSION_PREFIX) && !session.continuationToken) {
+    session = { ...session, continuationToken: crypto.randomUUID() };
+  }
 
   // A session already bound to one cloud account never carries over to a
   // different authenticated account: the second account gets a fresh session
@@ -717,7 +764,9 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   }
 
   const loginUrl = onboardingAppPath(
-    `/get-started/?onboardingSession=${encodeURIComponent(session.id)}`,
+    `/get-started/?onboardingSession=${encodeURIComponent(
+      session.continuationToken ?? session.id,
+    )}`,
   );
   const panelUrl = controlPanelUrl(session.agentId);
   const reply = await generateOnboardingReply({

@@ -12,6 +12,9 @@ const listOwnerSessions = mock();
 const routeToSession = mock();
 const bridge = mock();
 const runOnboardingChat = mock();
+const findByDiscordIdWithOrganization = mock();
+const readManagedAgentDiscordBinding = mock(() => null as unknown);
+const readManagedAgentDiscordGateway = mock(() => null as unknown);
 
 let selectResults: Array<Array<Record<string, unknown>>> = [];
 let selectErrors: unknown[] = [];
@@ -63,7 +66,7 @@ mock.module("../../db/repositories/users", () => ({
   usersRepository: {
     findByPhoneNumberWithOrganization,
     findByEmailWithOrganization: mock(),
-    findByDiscordIdWithOrganization: mock(),
+    findByDiscordIdWithOrganization,
     findByTelegramIdWithOrganization: mock(),
     findByPrivyDidWithOrganization: mock(),
   },
@@ -77,6 +80,11 @@ const findRunningSandboxSpy = spyOn(
   agentSandboxesRepository,
   "findRunningSandbox",
 ).mockImplementation((...args) => findRunningSandbox(...args) as never);
+const findByManagedDiscordGuildId = mock();
+const findByManagedDiscordGuildIdSpy = spyOn(
+  agentSandboxesRepository,
+  "findByManagedDiscordGuildId",
+).mockImplementation((...args) => findByManagedDiscordGuildId(...args) as never);
 
 mock.module("../../db/schemas", () => ({
   ...realDbSchemas,
@@ -141,13 +149,14 @@ const bridgeSpy = spyOn(elizaSandboxService, "bridge").mockImplementation(
 );
 
 mock.module("./eliza-agent-config", () => ({
-  readManagedAgentDiscordBinding: mock(() => null),
-  readManagedAgentDiscordGateway: mock(() => null),
+  readManagedAgentDiscordBinding,
+  readManagedAgentDiscordGateway,
 }));
 
 afterAll(() => {
   listByOrganizationSpy.mockRestore();
   findRunningSandboxSpy.mockRestore();
+  findByManagedDiscordGuildIdSpy.mockRestore();
   bridgeSpy.mockRestore();
 });
 
@@ -168,6 +177,17 @@ function routeArgs(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+// These collaborators span phone and Discord cases, so file-level reset keeps
+// either suite valid when test ordering or filtering changes.
+beforeEach(() => {
+  findByDiscordIdWithOrganization.mockReset();
+  findByManagedDiscordGuildId.mockReset();
+  readManagedAgentDiscordBinding.mockReset();
+  readManagedAgentDiscordBinding.mockReturnValue(null);
+  readManagedAgentDiscordGateway.mockReset();
+  readManagedAgentDiscordGateway.mockReturnValue(null);
+});
 
 describe("AgentGatewayRouterService phone routing", () => {
   beforeEach(() => {
@@ -598,6 +618,108 @@ describe("AgentGatewayRouterService phone routing", () => {
       organizationId: "owner-org",
       userId: "owner-user",
     });
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+});
+
+describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
+  beforeEach(() => {
+    listOwnerSessions.mockReset();
+    listByOrganization.mockReset();
+    runOnboardingChat.mockReset();
+  });
+
+  function discordArgs(overrides: Record<string, unknown> = {}) {
+    return {
+      guildId: null,
+      channelId: "chan-1",
+      messageId: "msg-1",
+      content: "hi eliza",
+      sender: { id: "discord-user-1", username: "newuser", displayName: "New User" },
+      ...overrides,
+    };
+  }
+
+  test("a first-contact DM onboards instead of silence", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue(null);
+    runOnboardingChat.mockResolvedValue({
+      reply: "Welcome! Here is your login link.",
+      session: { userId: undefined, organizationId: undefined },
+      provisioning: { agentId: null },
+    });
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result.handled).toBe(true);
+    expect(result.replyText).toBe("Welcome! Here is your login link.");
+    expect(runOnboardingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "discord",
+        platformUserId: "discord-user-1",
+        platformDisplayName: "New User",
+        sessionId: "platform:discord:discord-user-1",
+        trustedPlatformIdentity: true,
+      }),
+    );
+  });
+
+  test("an authenticated user with ZERO sandboxes continues onboarding under their identity", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    listOwnerSessions.mockResolvedValue([]);
+    listByOrganization.mockResolvedValue([]);
+    runOnboardingChat.mockResolvedValue({
+      reply: "Let's finish setting up your agent.",
+      session: { userId: "user-1", organizationId: "org-1" },
+      provisioning: { agentId: null },
+    });
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result.handled).toBe(true);
+    expect(result.replyText).toBe("Let's finish setting up your agent.");
+    expect(runOnboardingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "discord",
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+      }),
+    );
+  });
+
+  test("GUILD context never onboards — the login URL must not land in a public channel", async () => {
+    // This fixture reaches unknown_owner through the guild resolver, proving
+    // the DM guard is enforced on the shared reason rather than assumed.
+    findByManagedDiscordGuildId.mockResolvedValue([
+      { id: "sb-1", agent_config: {}, organization_id: "org-1" },
+    ]);
+    readManagedAgentDiscordBinding.mockReturnValue({ adminDiscordUserId: "discord-user-1" });
+    readManagedAgentDiscordGateway.mockReturnValue({ gateway: true });
+    findByDiscordIdWithOrganization.mockResolvedValue(null);
+
+    const result = await newRouter().routeDiscordMessage(discordArgs({ guildId: "guild-9" }));
+
+    expect(result.handled).toBe(false);
+    expect(result.reason).toBe("unknown_owner");
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("a stopped-agent owner keeps today's silence (parity with the phone path)", async () => {
+    findByDiscordIdWithOrganization.mockResolvedValue({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    listOwnerSessions.mockResolvedValue([]);
+    listByOrganization.mockResolvedValue([
+      { id: "sb-stopped", status: "stopped", user_id: "user-1", agent_config: {} },
+    ]);
+
+    const result = await newRouter().routeDiscordMessage(discordArgs());
+
+    expect(result.handled).toBe(false);
+    expect(result.reason).toBe("owner_agent_not_running");
+    expect(result.agentId).toBe("sb-stopped");
     expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 });

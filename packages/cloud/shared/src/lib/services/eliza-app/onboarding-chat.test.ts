@@ -3,6 +3,14 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 import type { OnboardingChatMessage, OnboardingSession } from "./onboarding-chat";
 
+function continuationToken(result: { loginUrl: string }): string {
+  const token = new URL(result.loginUrl).searchParams.get("onboardingSession");
+  if (!token) {
+    throw new Error("onboarding login URL has no continuation token");
+  }
+  return token;
+}
+
 const sessionCache = new Map<string, unknown>();
 const ensureElizaAppProvisioning = mock();
 const getElizaAppProvisioningStatus = mock();
@@ -155,9 +163,11 @@ describe("runOnboardingChat", () => {
 
     expect(result.requiresLogin).toBe(true);
     expect(result.provisioning.status).toBe("none");
-    expect(result.loginUrl).toContain(
-      "/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
+    expect(continuationToken(result)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
+    expect(result.loginUrl).not.toContain("platform%3A");
+    expect(result.loginUrl).not.toContain("14155550123");
     expect(result.reply).toContain("Connect Eliza Cloud here:");
     expect(result.reply).toContain(result.loginUrl);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
@@ -410,7 +420,7 @@ describe("runOnboardingChat", () => {
       const continued = await runOnboardingChat({
         platform: "blooio",
         platformUserId: "+14155550123",
-        sessionId: "platform:blooio:+14155550123",
+        sessionId: continuationToken(result),
         authenticatedUser: {
           userId: "user-1",
           organizationId: "org-1",
@@ -436,7 +446,7 @@ describe("runOnboardingChat", () => {
       sandbox: null,
     });
 
-    await runOnboardingChat({
+    const gatewayTurn = await runOnboardingChat({
       message: "My name is Sam",
       platform: "blooio",
       platformUserId: "+14155550123",
@@ -453,7 +463,7 @@ describe("runOnboardingChat", () => {
 
     const result = await runOnboardingChat({
       platform: "blooio",
-      sessionId: "platform:blooio:+14155550123",
+      sessionId: continuationToken(gatewayTurn),
       authenticatedUser: {
         userId: "phone-user",
         organizationId: "phone-org",
@@ -587,6 +597,27 @@ describe("runOnboardingChat", () => {
       expect(linkPhoneToUser).not.toHaveBeenCalled();
     });
 
+    test("an authenticated caller cannot claim an existing unbound session by public platform id", async () => {
+      const victim = await runTrustedPhoneTurn("My name is Sam");
+      const victimSnapshot = JSON.stringify(getCachedSession(PLATFORM_SESSION));
+      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
+      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
+
+      const attacker = await runOnboardingChat({
+        sessionId: PLATFORM_SESSION,
+        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+      });
+
+      expect(attacker.session.id).not.toBe(PLATFORM_SESSION);
+      expect(attacker.session.id).toMatch(UUID_PATTERN);
+      expect(attacker.session.name).toBeUndefined();
+      expect(
+        attacker.session.history.map((message: OnboardingChatMessage) => message.content),
+      ).not.toContain("My name is Sam");
+      expect(JSON.stringify(getCachedSession(PLATFORM_SESSION))).toBe(victimSnapshot);
+      expect(continuationToken(victim)).toMatch(UUID_PATTERN);
+    });
+
     test("a session bound to one user never carries over to a different authenticated user", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "provisioning",
@@ -596,9 +627,9 @@ describe("runOnboardingChat", () => {
       });
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
 
-      await runTrustedPhoneTurn("My name is Sam");
+      const victim = await runTrustedPhoneTurn("My name is Sam");
       const victimBound = await runOnboardingChat({
-        sessionId: PLATFORM_SESSION,
+        sessionId: continuationToken(victim),
         platform: "blooio",
         authenticatedUser: { userId: "victim-user", organizationId: "victim-org" },
       });
@@ -621,7 +652,7 @@ describe("runOnboardingChat", () => {
       expect(linkPhoneToUser).not.toHaveBeenCalledWith("attacker-user", PHONE);
     });
 
-    test("a web continuation cannot mutate the platform identity and still links the phone", async () => {
+    test("an opaque web continuation cannot mutate the platform identity and still links the phone", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-1",
@@ -629,9 +660,9 @@ describe("runOnboardingChat", () => {
         sandbox: null,
       });
 
-      await runTrustedPhoneTurn("My name is Sam");
+      const gatewayTurn = await runTrustedPhoneTurn("My name is Sam");
       const continued = await runOnboardingChat({
-        sessionId: PLATFORM_SESSION,
+        sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
       });
@@ -943,11 +974,12 @@ describe("runOnboardingChat", () => {
         expect(first.reply).toContain("finishing the handoff");
         expect(first.reply).not.toContain("copied this onboarding chat");
         expect(rememberCalls).toBe(1);
+        const browserContinuation = continuationToken(first);
 
         rememberStatus = 200;
         const second = await runOnboardingChat({
           platform: "blooio",
-          sessionId: PLATFORM_SESSION,
+          sessionId: browserContinuation,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
         });
         expect(second.handoffComplete).toBe(true);
@@ -956,7 +988,7 @@ describe("runOnboardingChat", () => {
 
         const third = await runOnboardingChat({
           platform: "blooio",
-          sessionId: PLATFORM_SESSION,
+          sessionId: browserContinuation,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
         });
         expect(third.handoffComplete).toBe(true);
