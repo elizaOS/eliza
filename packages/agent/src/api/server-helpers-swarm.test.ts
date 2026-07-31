@@ -171,7 +171,7 @@ describe("handleSwarmSynthesis", () => {
   it("never relays a kickoff-prompt originalTask raw (live incident shape)", async () => {
     const workdir = await seedClaudeTranscript("irrelevant narration");
     const kickoff =
-      "--- Swarm Coordination ---\nNamed coding sub-agent in a task swarm. Keep working until the task is finished or genuinely blocked.\n\nBuild sweeptune.\nWhen done print: APP_CREATE_DONE {\"appName\":\"sweeptune\",\"files\":[\"src/App.tsx\"]}";
+      '--- Swarm Coordination ---\nNamed coding sub-agent in a task swarm. Keep working until the task is finished or genuinely blocked.\n\nBuild sweeptune.\nWhen done print: APP_CREATE_DONE {"appName":"sweeptune","files":["src/App.tsx"]}';
     const routed: string[] = [];
 
     await handleSwarmSynthesis(
