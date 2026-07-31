@@ -218,6 +218,97 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.actionCallbackHistory).toBeUndefined();
   });
 
+  it("delivers a callback-only reply to append-only streaming consumers", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ text: "callback reply", actions: ["REPLY"] });
+          return {
+            didRespond: true,
+            responseContent: { actions: ["REPLY"], text: "callback reply" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { onChunk },
+    );
+
+    expect(result.text).toBe("callback reply");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("callback reply");
+  });
+
+  it("does not duplicate callback replies across snapshot and chunk transports", async () => {
+    const onChunk = vi.fn();
+    const onSnapshot = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ text: "callback reply", actions: ["REPLY"] });
+          return {
+            didRespond: true,
+            responseContent: { actions: ["REPLY"], text: "callback reply" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { onChunk, onSnapshot },
+    );
+
+    expect(result.text).toBe("callback reply");
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+    expect(onSnapshot).toHaveBeenCalledWith("callback reply");
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it("holds progress snapshots until an append-only stream has a final reply", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.(
+            {
+              text: "Searching...",
+              actions: ["SEARCH"],
+              actionStatus: "in_progress",
+            },
+            "SEARCH",
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "Search complete." },
+            responseMessages: [],
+            actionResults: [actionResult("SEARCH")],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("search"),
+      "Chat Agent",
+      { onChunk },
+    );
+
+    expect(result.text).toBe("Search complete.");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("Search complete.");
+  });
+
   it("records an attributed visible callback only when its action succeeded", async () => {
     const runtime = createRuntime({
       messageService: {

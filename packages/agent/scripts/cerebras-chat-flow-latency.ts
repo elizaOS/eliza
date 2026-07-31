@@ -286,8 +286,21 @@ async function main(): Promise<void> {
         },
       );
       const wallMs = performance.now() - startedAt;
-      verifyProofResponse(result.text, proof);
-      verifyProofResponse(streamed.join(""), proof);
+      const streamedText = streamed.join("");
+      try {
+        verifyProofResponse(result.text, proof);
+        verifyProofResponse(streamedText, proof);
+      } catch (cause) {
+        throw new Error(
+          `Live chat proof validation failed: ${JSON.stringify({
+            proof,
+            result,
+            streamedText,
+            wallMs: rounded(wallMs),
+          })}`,
+          { cause },
+        );
+      }
       const quiescenceStartedAt = performance.now();
       const backgroundTasks = await drainPostDeliveryTasks(runtime);
       const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
@@ -300,7 +313,7 @@ async function main(): Promise<void> {
         backgroundTasks,
         backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
         totalToQuiescenceMs: rounded(performance.now() - startedAt),
-        streamedCharacters: streamed.join("").length,
+        streamedCharacters: streamedText.length,
         outputCharacters: result.text.length,
         usage: result.usage,
         failureKind: result.failureKind ?? null,
