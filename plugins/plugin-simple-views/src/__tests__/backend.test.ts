@@ -518,6 +518,170 @@ describe("Simple Views capabilities", () => {
       interact("delete-calendar-event", { id: eventId }, service),
     ).resolves.toMatchObject({ success: true });
     expect(service.listCalendarEvents()).toEqual([]);
+
+    await interact(
+      "create-calendar-event",
+      {
+        title: "Afternoon review",
+        date: "2026-08-05",
+        time: "15:30",
+        notes: "Review the roadmap",
+      },
+      service,
+    );
+    await expect(
+      interact("delete-calendar-event", { title: "Afternoon review" }, service),
+    ).resolves.toMatchObject({ success: true });
+    expect(service.listCalendarEvents()).toEqual([]);
+
+    await interact(
+      "create-calendar-event",
+      {
+        title: "Morning review",
+        date: "2026-08-05",
+        time: "08:30",
+        notes: "Review launch notes",
+      },
+      service,
+    );
+    await expect(
+      interact("delete-calendar-event", { query: "launch notes" }, service),
+    ).resolves.toMatchObject({ success: true });
+    expect(service.listCalendarEvents()).toEqual([]);
+  });
+
+  it("fails closed when a calendar delete lookup is missing or ambiguous", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-calendar-event",
+      {
+        title: "Daily review",
+        date: "2026-08-05",
+        time: "08:30",
+        notes: "Morning",
+      },
+      service,
+    );
+    await interact(
+      "create-calendar-event",
+      {
+        title: "Daily review",
+        date: "2026-08-06",
+        time: "17:30",
+        notes: "Evening",
+      },
+      service,
+    );
+
+    await expect(
+      interact("delete-calendar-event", { title: "Daily review" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_AMBIGUOUS_EVENT" },
+    });
+    await expect(
+      interact("delete-calendar-event", { query: "does not exist" }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_NOT_FOUND" },
+    });
+    const [firstEvent] = service.listCalendarEvents();
+    expect(firstEvent).toBeDefined();
+    await expect(
+      interact(
+        "delete-calendar-event",
+        { id: firstEvent?.id, title: "Daily review" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact(
+        "delete-calendar-event",
+        { id: 123, title: "Daily review" },
+        service,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact("delete-calendar-event", { query: "   " }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_VALIDATION_FAILED" },
+    });
+    expect(service.listCalendarEvents()).toHaveLength(2);
+  });
+
+  it("serializes calendar lookup deletion with concurrent event mutations", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    await interact(
+      "create-calendar-event",
+      {
+        title: "Rename race",
+        date: "2026-08-05",
+        time: "08:30",
+        notes: "Preserve after rename",
+      },
+      service,
+    );
+    const renameTarget = service.listCalendarEvents()[0];
+    expect(renameTarget).toBeDefined();
+    const rename = service.updateCalendarEvent(renameTarget?.id, {
+      title: "Renamed before delete",
+    });
+    const deleteRenamed = interact(
+      "delete-calendar-event",
+      { title: "Rename race" },
+      service,
+    );
+    await expect(rename).resolves.toMatchObject({
+      title: "Renamed before delete",
+    });
+    await expect(deleteRenamed).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_NOT_FOUND" },
+    });
+    expect(service.listCalendarEvents()).toEqual([
+      expect.objectContaining({ title: "Renamed before delete" }),
+    ]);
+
+    await interact(
+      "create-calendar-event",
+      {
+        title: "Unique before create",
+        date: "2026-08-06",
+        time: "09:00",
+        notes: "Existing",
+      },
+      service,
+    );
+    const createDuplicate = service.createCalendarEvent({
+      title: "Unique before create",
+      date: "2026-08-07",
+      time: "10:00",
+      notes: "Concurrent duplicate",
+    });
+    const deleteDuplicated = interact(
+      "delete-calendar-event",
+      { title: "Unique before create" },
+      service,
+    );
+    await expect(createDuplicate).resolves.toMatchObject({
+      title: "Unique before create",
+    });
+    await expect(deleteDuplicated).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_AMBIGUOUS_EVENT" },
+    });
+    expect(
+      service
+        .listCalendarEvents()
+        .filter((event) => event.title === "Unique before create"),
+    ).toHaveLength(2);
   });
 
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {
