@@ -52,6 +52,8 @@ import {
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
 } from "../../events";
 import {
   FIRST_RUN_GREETING,
@@ -76,6 +78,7 @@ import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+import { tabFromPath } from "../../navigation";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
 import {
@@ -788,7 +791,6 @@ function SheetGrabber({
   breathing,
   opacity,
   pilled,
-  inert,
 }: {
   open: boolean;
   onOpen: () => void;
@@ -802,11 +804,8 @@ function SheetGrabber({
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
-  // Inert while collapsed attachment controls are visible; their tap targets sit
-  // in the same top edge zone the broad swipe handle normally owns.
-  inert?: boolean;
 }): React.JSX.Element {
-  const disabled = pilled || inert;
+  const disabled = pilled;
   return (
     <motion.button
       style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
@@ -1842,6 +1841,7 @@ export function ChatOverlay({
   const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const preserveFocusOnAgentNavigationRef = React.useRef<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -2172,8 +2172,13 @@ export function ChatOverlay({
     element: HTMLElement;
     fadeTimer: number;
     cleanupTimer: number;
-    outline: string;
-    outlineOffset: string;
+    display: string;
+    boxShadow: string;
+    filter: string;
+    maxWidth: string;
+    width: string;
+    borderRadius: string;
+    textShadow: string;
     transition: string;
   } | null>(null);
   const clearSearchHighlight = React.useCallback(() => {
@@ -2181,8 +2186,13 @@ export function ChatOverlay({
     if (!active) return;
     window.clearTimeout(active.fadeTimer);
     window.clearTimeout(active.cleanupTimer);
-    active.element.style.outline = active.outline;
-    active.element.style.outlineOffset = active.outlineOffset;
+    active.element.style.display = active.display;
+    active.element.style.boxShadow = active.boxShadow;
+    active.element.style.filter = active.filter;
+    active.element.style.maxWidth = active.maxWidth;
+    active.element.style.width = active.width;
+    active.element.style.borderRadius = active.borderRadius;
+    active.element.style.textShadow = active.textShadow;
     active.element.style.transition = active.transition;
     active.element.removeAttribute("data-chat-search-highlight");
     activeSearchHighlightRef.current = null;
@@ -2201,26 +2211,49 @@ export function ChatOverlay({
         el.scrollIntoView({ block: "center", behavior: "smooth" });
       }
       // Paint inside the actual bubble so the scroller's paint containment
-      // cannot clip the transient accent.
+      // cannot clip the transient neutral highlight.
       const bubble =
         el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
         el;
+      // The assistant bubble spans the transcript width by design. Paint on
+      // its selectable text layer so the halo follows the message rather than
+      // inheriting the row's straight edges.
+      const paintTarget =
+        bubble.querySelector<HTMLElement>('[data-chat-selectable="true"]') ??
+        bubble;
       const previous = {
-        outline: bubble.style.outline,
-        outlineOffset: bubble.style.outlineOffset,
-        transition: bubble.style.transition,
+        display: paintTarget.style.display,
+        boxShadow: paintTarget.style.boxShadow,
+        filter: paintTarget.style.filter,
+        maxWidth: paintTarget.style.maxWidth,
+        width: paintTarget.style.width,
+        borderRadius: paintTarget.style.borderRadius,
+        textShadow: paintTarget.style.textShadow,
+        transition: paintTarget.style.transition,
       };
-      bubble.setAttribute("data-chat-search-highlight", "true");
-      bubble.style.outline = "2px solid var(--accent)";
-      bubble.style.outlineOffset = "-2px";
-      bubble.style.transition =
-        "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+      paintTarget.setAttribute("data-chat-search-highlight", "true");
+      // A drop shadow follows the painted bubble/text silhouette. An outline
+      // follows the full assistant row, which reads as a rectangular box.
+      paintTarget.style.display = "inline-block";
+      paintTarget.style.maxWidth = "100%";
+      paintTarget.style.width = "fit-content";
+      paintTarget.style.borderRadius = "0.75rem";
+      paintTarget.style.boxShadow =
+        "0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 16px rgba(255, 255, 255, 0.28)";
+      paintTarget.style.filter =
+        "drop-shadow(0 0 7px rgba(255, 255, 255, 0.62))";
+      paintTarget.style.textShadow =
+        "0 0 4px rgba(255, 255, 255, 0.72), 0 0 12px rgba(255, 255, 255, 0.38)";
+      paintTarget.style.transition =
+        "box-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1), filter 650ms cubic-bezier(0.22, 1, 0.36, 1), text-shadow 650ms cubic-bezier(0.22, 1, 0.36, 1)";
       const fadeTimer = window.setTimeout(() => {
-        bubble.style.outline = "2px solid transparent";
+        paintTarget.style.boxShadow = "none";
+        paintTarget.style.filter = "drop-shadow(0 0 0 rgba(255, 255, 255, 0))";
+        paintTarget.style.textShadow = "0 0 0 rgba(255, 255, 255, 0)";
       }, 1050);
       const cleanupTimer = window.setTimeout(clearSearchHighlight, 1750);
       activeSearchHighlightRef.current = {
-        element: bubble,
+        element: paintTarget,
         fadeTimer,
         cleanupTimer,
         ...previous,
@@ -2312,6 +2345,9 @@ export function ChatOverlay({
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
+      // Keep this synchronous with the trusted Reply click so mobile browsers
+      // may open the software keyboard without a second tap.
+      inputRef.current?.focus({ preventScroll: true });
     },
     [setChatReplyTarget, agentName],
   );
@@ -3177,10 +3213,16 @@ export function ChatOverlay({
     fullBleedT,
     (t: number) => PANEL_RADIUS_PX * (1 - t),
   );
-  // A matching clip-path keeps transformed transcript children inside the
-  // morphing glass edge on WebKit. Border-radius plus overflow-hidden alone can
-  // leak a compositor-layer text sliver through the rounded top corners.
-  const contentClipPath = useMotionTemplate`inset(0 round ${morphRadius}px)`;
+  // Keep transformed transcript children one physical border-width inside the
+  // inset glass. The rim is translucent, so clipping at its outer edge lets
+  // compositor-promoted text show through the antialiased top curve even when
+  // the rim itself paints above it. The reserved pixel eases to zero with the
+  // full-bleed morph, where there is no border or rounded edge to protect.
+  const contentClipPath = useTransform(fullBleedT, (t: number) => {
+    const inset = 1 - t;
+    const innerRadius = Math.max(0, PANEL_RADIUS_PX * (1 - t) - inset);
+    return `inset(${inset}px round ${innerRadius}px)`;
+  });
   const bottomInsetFactor = useTransform(fullBleedT, [0, 1], [1, 0]);
   const overlayPadBottom = useMotionTemplate`calc(${bottomInsetFactor} * (var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem))`;
   // Full-bleed extends the glass UP under the status bar; riding the shape
@@ -3739,6 +3781,39 @@ export function ChatOverlay({
     if (preFocusCollapsedRef.current) collapse();
   }, [collapse]);
 
+  // A chat-command navigation is different from a direct tile/tab navigation:
+  // the user just pressed Enter and should be able to keep typing. Capture that
+  // one transition before App updates currentTab; the blur effect below consumes
+  // the lease. Direct navigation carries no agent source and keeps the existing
+  // iOS keyboard cleanup.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const preserveFocusedComposer = (event: Event) => {
+      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      const action = detail?.action;
+      const targetTab =
+        action === "close" || action === "close-all" || action === "open-window"
+          ? null
+          : action === "split-view" || action === "tile-views"
+            ? "views"
+            : detail?.viewId && detail.viewPath === `/${detail.viewId}`
+              ? detail.viewId
+              : detail?.viewPath
+                ? (tabFromPath(detail.viewPath) ?? detail.viewId ?? null)
+                : (detail?.viewId ?? null);
+      preserveFocusOnAgentNavigationRef.current =
+        detail?.source === "agent" &&
+        targetTab !== null &&
+        typeof document !== "undefined" &&
+        document.activeElement === inputRef.current
+          ? targetTab
+          : null;
+    };
+    window.addEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, preserveFocusedComposer);
+  }, []);
+
   // The composer overlay floats over every view and survives tab changes, so
   // navigating away from a focused composer (chat → Settings / Home / …) would
   // otherwise leave the textarea holding DOM focus on the new view (its
@@ -3750,7 +3825,13 @@ export function ChatOverlay({
   // change) is left untouched. Keyboard.hide() guarantees iOS dismisses the
   // accessory bar, not just the soft keyboard.
   React.useEffect(() => {
-    if (currentTab === "chat") return;
+    if (currentTab === "chat") {
+      preserveFocusOnAgentNavigationRef.current = null;
+      return;
+    }
+    const preserveFocus =
+      preserveFocusOnAgentNavigationRef.current === currentTab;
+    preserveFocusOnAgentNavigationRef.current = null;
     const input = inputRef.current;
     if (
       typeof document === "undefined" ||
@@ -3759,6 +3840,7 @@ export function ChatOverlay({
     ) {
       return;
     }
+    if (preserveFocus) return;
     input.blur();
     void import("@capacitor/keyboard")
       .then(({ Keyboard }) => Keyboard.hide())
@@ -5477,7 +5559,6 @@ export function ChatOverlay({
             breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
-            inert={!sheetOpen && (hasImages || Boolean(imageError))}
           />
         ) : null}
         <motion.fieldset
@@ -6075,10 +6156,12 @@ export function ChatOverlay({
                       // the floating grabber without masking the scrolling
                       // subtree. WebKit re-rasterizes CSS-masked scrollers while
                       // their flex basis changes, which makes the pull gesture
-                      // stutter; this overlay preserves hit-testing and 1:1 drag.
+                      // stutter. Hold the panel color through the grabber's
+                      // footprint before beginning the dissolve so no glyph can
+                      // ghost through the antialiased rim or the handle itself.
                       backgroundImage: fullBleed
-                        ? "linear-gradient(to bottom, var(--bg) 0%, color-mix(in srgb, var(--bg) 72%, transparent) 52%, transparent 100%)"
-                        : "linear-gradient(to bottom, var(--card) 0%, color-mix(in srgb, var(--card) 62%, transparent) 52%, transparent 100%)",
+                        ? "linear-gradient(to bottom, var(--bg) 0%, var(--bg) 28%, color-mix(in srgb, var(--bg) 72%, transparent) 64%, transparent 100%)"
+                        : "linear-gradient(to bottom, var(--card) 0%, var(--card) 28%, color-mix(in srgb, var(--card) 62%, transparent) 64%, transparent 100%)",
                     }}
                   />
                 ) : null}
@@ -6412,33 +6495,16 @@ export function ChatOverlay({
                   slot="left"
                   reduceMotion={reduce}
                   controlKey={
-                    transcriptionMode
-                      ? "voice-master-stop"
-                      : transcriptionComposerActive ||
-                          draftOwnsTrailingControl ||
-                          generationOwnsTrailingControl
-                        ? null
-                        : "voice"
+                    transcriptionComposerActive ||
+                    draftOwnsTrailingControl ||
+                    generationOwnsTrailingControl
+                      ? null
+                      : "voice"
                   }
                 >
-                  {transcriptionMode ? (
-                    // Transcript capture and the underlying mic are independent:
-                    // this control preserves the one-tap privacy stop while the
-                    // adjacent transcript control can leave listening enabled.
-                    <SoftButton
-                      icon={AudioLines}
-                      label="stop transcription and mic"
-                      disabled={firstRunOpen || transcriptionFinishing}
-                      active
-                      pressed
-                      pulse={recording}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={handleMicClick}
-                      testId="chat-composer-mic"
-                    />
-                  ) : !transcriptionComposerActive &&
-                    !draftOwnsTrailingControl &&
-                    !generationOwnsTrailingControl ? (
+                  {!transcriptionComposerActive &&
+                  !draftOwnsTrailingControl &&
+                  !generationOwnsTrailingControl ? (
                     // Tap starts hands-free conversation; hold inserts
                     // push-to-talk dictation into the editable draft.
                     <SoftButton
