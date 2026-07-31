@@ -69,6 +69,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["설정 열어", "settings"],
 		["設定を開いて", "settings"],
 		["open app builder", "task-coordinator"],
+		["open cloud apps", "cloud-apps"],
 	];
 	for (const [text, view] of commands) {
 		it(`"${text}" forces VIEWS`, async () => {
@@ -123,5 +124,19 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 	});
 	it("when processMessage is STOP", async () => {
 		expect(await run("open settings", { processMessage: "STOP" })).toBeNull();
+	});
+
+	it.each([
+		"list my cloud apps",
+		"show my cloud apps",
+		"list my deployed apps",
+	])("preserves LIST_CLOUD_APPS planning for %j", async (text) => {
+		expect(
+			await run(text, {
+				extraActions: ["LIST_CLOUD_APPS"],
+				candidateActions: ["LIST_CLOUD_APPS"],
+				parentActionHints: ["LIST_CLOUD_APPS"],
+			}),
+		).toBeNull();
 	});
 });

@@ -83,6 +83,7 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   transcripts: { viewId: "transcripts", label: "Transcripts" },
   character: { viewId: "character", label: "Character" },
   automations: { viewId: "automations", label: "Automations" },
+  "cloud-apps": { viewId: "cloud-apps", label: "Cloud Apps" },
   chat: { viewId: "chat", label: "Home" },
   // "camera" is deliberately absent: the camera view is an AOSP-fork-only
   // native surface, and AOSP devices run dedicated local runtimes whose real
