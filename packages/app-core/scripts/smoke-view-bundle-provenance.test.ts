@@ -135,6 +135,17 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
         expect(String(capability.description).trim()).not.toBe("");
       }
     }
+
+    const byId = new Map(
+      payload.views
+        .filter(isRecord)
+        .map((view) => [String(view.id), view] as const),
+    );
+    for (const viewId of ["feed", "orchestrator"]) {
+      expect(byId.get(viewId)?.surface).toEqual({
+        capabilities: ["agent-surface"],
+      });
+    }
   });
 
   it("audit mode returns an observable failure, never a fabricated bundle", async () => {
