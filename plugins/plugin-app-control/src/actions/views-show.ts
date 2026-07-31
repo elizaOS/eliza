@@ -321,6 +321,30 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
+/**
+ * Resolve a semantic intent to the view that owns the connector-independent
+ * experience in the current registry. The connected Calendar remains
+ * addressable by its exact id and is the fallback when Simple Calendar is not
+ * installed; when both exist, a generic spoken calendar request should open the
+ * durable view that works without a connector.
+ */
+function resolveIntentViewInRegistry(
+	intentViewId: string,
+	views: readonly ViewSummary[],
+):
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" } {
+	if (intentViewId === "calendar") {
+		const simpleCalendar = views.find(
+			(view) =>
+				view.id.toLowerCase() === "simple-calendar" && view.available !== false,
+		);
+		if (simpleCalendar) return { kind: "match", view: simpleCalendar };
+	}
+	return resolveView(intentViewId, views);
+}
+
 function resolveRegisteredNotesView(
 	views: readonly ViewSummary[],
 ):
@@ -479,13 +503,22 @@ export async function runViewsShow({
 	// to a surface this build doesn't have (e.g. task-coordinator without the
 	// coding plugin loaded) leaves the planner's explicit, registered target in
 	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId && intentViewId !== target) {
-		const intentResolution = resolveView(intentViewId, views);
+	if (intentViewId) {
+		const intentResolution = resolveIntentViewInRegistry(intentViewId, views);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
-		if (intentRegistered || resolution.kind === "none") {
+		const intentTarget =
+			intentResolution.kind === "match"
+				? intentResolution.view.id
+				: intentViewId;
+		const resolvedTarget =
+			resolution.kind === "match" ? resolution.view.id : target;
+		if (
+			intentTarget !== resolvedTarget &&
+			(intentRegistered || resolution.kind === "none")
+		) {
 			resolution = intentResolution;
-			target = intentViewId;
+			target = intentTarget;
 		}
 	}
 
