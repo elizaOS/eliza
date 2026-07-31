@@ -111,10 +111,29 @@ jobs:
           echo "::warning::No complete published release data is available; skipping homepage deploy for this develop push."
           echo "available=false" >> "$GITHUB_OUTPUT"
 
+      # Vite inlines these identifiers into the public bundle. Verifying them
+      # at the deploy boundary prevents publishing inactive channel controls.
+      - name: Verify channel build config
+        if: steps.release_data_check.outputs.available == 'true'
+        working-directory: packages/homepage
+        env:
+          ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
+          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: node scripts/verify-channel-build-config.mjs
+
       - name: Build homepage
         if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
         run: bun run build
+        env:
+          ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
+          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
 
       - name: Install homepage browser
         if: steps.release_data_check.outputs.available == 'true'
