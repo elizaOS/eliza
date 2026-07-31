@@ -661,7 +661,7 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(createMemory.mock.calls.length).toBeGreaterThan(0);
   });
 
-  it("SSE: a completed turn survives transport disconnect and the retry replays it", async () => {
+  it("SSE: transport disconnect cancels the turn and releases the key for retry", async () => {
     const { state, handleMessage, createMemory } = createHarness();
     let releaseTurn: (() => void) | undefined;
     const turnGate = new Promise<void>((resolve) => {
@@ -684,28 +684,43 @@ describe("conversation-route chat idempotency wiring", () => {
       },
     );
     const body = {
-      text: "finish even if my socket drops",
+      text: "retry if my socket drops",
       clientMessageId: "disconnect-after-model-1",
     };
 
-    await runRoute("POST", STREAM_PATH, state, body, async (req) => {
-      expect(handleMessage).toHaveBeenCalledTimes(1);
-      req.emit("aborted");
-      releaseTurn?.();
-    });
+    const disconnected = await runRoute(
+      "POST",
+      STREAM_PATH,
+      state,
+      body,
+      async (req) => {
+        expect(handleMessage).toHaveBeenCalledTimes(1);
+        req.emit("aborted");
+        releaseTurn?.();
+      },
+    );
+    expect(
+      parseDataFrames(disconnected.record).find(
+        (frame) => frame.type === "done",
+      ),
+    ).toBeUndefined();
     const persistsAfterDisconnect = createMemory.mock.calls.length;
     expect(persistsAfterDisconnect).toBeGreaterThan(0);
 
     const retry = await runRoute("POST", STREAM_PATH, state, body);
-    expect(handleMessage).toHaveBeenCalledTimes(1);
-    expect(createMemory).toHaveBeenCalledTimes(persistsAfterDisconnect);
-    expect(parseDataFrames(retry.record)).toEqual([
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(createMemory.mock.calls.length).toBeGreaterThan(
+      persistsAfterDisconnect,
+    );
+    expect(
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toEqual(
       expect.objectContaining({
         type: "done",
-        fullText: "durable reply",
+        fullText: "ok",
         messageId: expect.any(String),
       }),
-    ]);
+    );
   });
 
   it("SSE: terminal setup and persistence failures release the key for a real retry", async () => {

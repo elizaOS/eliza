@@ -2853,6 +2853,7 @@ async function generateChatResponseWithTiming(
   }
   let closeResponseFinalization: (() => void) | undefined;
   try {
+    generationAbortController.signal.throwIfAborted();
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
@@ -3015,6 +3016,7 @@ async function generateChatResponseWithTiming(
         "Failed to emit MESSAGE_RECEIVED event",
       );
     }
+    generationAbortController.signal.throwIfAborted();
     const trajectoryStepId = readMessageTrajectoryStepId(message);
     const trajectoryContext =
       typeof trajectoryStepId === "string" && trajectoryStepId.trim().length > 0
@@ -3032,6 +3034,7 @@ async function generateChatResponseWithTiming(
           opts,
         }),
     );
+    generationAbortController.signal.throwIfAborted();
     if (androidDirectResult) {
       try {
         if (
@@ -3117,6 +3120,7 @@ async function generateChatResponseWithTiming(
       withTimeout(
         Promise.resolve(
           runWithTrajectoryContext(trajectoryContext, async () => {
+            generationAbortController.signal.throwIfAborted();
             // Plugin-registered chat pre-handlers (generic direct-dispatch
             // extension point): drained by priority before normal action
             // processing; the first non-null result resolves the turn.
@@ -3126,6 +3130,7 @@ async function generateChatResponseWithTiming(
               appendText: replaceCallbackText,
               replaceText: emitSnapshot,
             });
+            generationAbortController.signal.throwIfAborted();
             if (preHandlerResult) {
               const directText = preHandlerResult.responseText;
               const finalText = isClientVisibleNoResponse(directText)
@@ -3222,8 +3227,12 @@ async function generateChatResponseWithTiming(
                       name: createTaskAction.name,
                       params: directTaskParameters,
                     },
-                    { actions: [createTaskAction] },
+                    {
+                      actions: [createTaskAction],
+                      abortSignal: generationAbortController.signal,
+                    },
                   );
+                  generationAbortController.signal.throwIfAborted();
                   const finalText =
                     actionResponseText ||
                     directActionResult.text ||
@@ -3296,6 +3305,7 @@ async function generateChatResponseWithTiming(
                 ),
               { phase: "pre-model" },
             );
+            generationAbortController.signal.throwIfAborted();
             result = await timeInferenceSpan(
               "chat:message-service",
               async () =>
@@ -3382,6 +3392,7 @@ async function generateChatResponseWithTiming(
                 ),
               { phase: "message" },
             );
+            generationAbortController.signal.throwIfAborted();
 
             // Ensure MESSAGE_SENT hooks run for API chat flows.
             try {
