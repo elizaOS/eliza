@@ -18,6 +18,7 @@ import { relationshipsProvider } from "./advanced-capabilities/providers/relatio
 import { worldProvider } from "./basic-capabilities/providers/world.ts";
 import { documentsProvider } from "./documents/provider.ts";
 import {
+	createDocumentProviderRequesterResolver,
 	DocumentService,
 	resolveDocumentRequester,
 } from "./documents/service.ts";
@@ -51,38 +52,90 @@ function deferred<T>() {
 	return { promise, resolve };
 }
 
-describe("provider database I/O concurrency", () => {
-	it("coalesces concurrent document authorization reads within one turn", async () => {
-		const getRoom = vi.fn(async () => ({ id: roomId, worldId }));
-		const getWorld = vi.fn(async () => ({
+function requesterRuntime(
+	getRoomsForParticipants: IAgentRuntime["getRoomsForParticipants"],
+): IAgentRuntime {
+	return {
+		agentId,
+		getRoom: vi.fn(async () => ({ id: roomId, worldId })),
+		getWorld: vi.fn(async () => ({
 			id: worldId,
 			name: "test world",
 			metadata: {},
-		}));
+		})),
+		getRoomsForParticipants,
+		getSetting: vi.fn(() => undefined),
+		reportError: vi.fn(),
+	} as unknown as IAgentRuntime;
+}
+
+describe("provider database I/O concurrency", () => {
+	it("coalesces document authorization only inside a caller-owned read composition", async () => {
 		const getRoomsForParticipants = vi.fn(async () => [roomId, roomId]);
-		const runtime = {
-			agentId,
-			getRoom,
-			getWorld,
-			getRoomsForParticipants,
-			getSetting: vi.fn(() => undefined),
-			reportError: vi.fn(),
-		} as unknown as IAgentRuntime;
+		const runtime = requesterRuntime(getRoomsForParticipants);
 
 		const [first, second] = await runWithTrajectoryContext(
 			{ turnMemo: new Map<string, Promise<unknown>>() },
-			() =>
-				Promise.all([
-					resolveDocumentRequester(runtime, message),
-					resolveDocumentRequester(runtime, message),
-				]),
+			() => {
+				const resolveRequester = createDocumentProviderRequesterResolver(
+					runtime,
+					message,
+				);
+				return Promise.all([resolveRequester(), resolveRequester()]);
+			},
 		);
 
 		expect(first).toEqual(second);
 		expect(first.roomIds).toEqual([roomId]);
-		expect(getRoom).toHaveBeenCalledOnce();
-		expect(getWorld).toHaveBeenCalledOnce();
 		expect(getRoomsForParticipants).toHaveBeenCalledOnce();
+
+		await resolveDocumentRequester(runtime, message);
+		expect(getRoomsForParticipants).toHaveBeenCalledTimes(2);
+	});
+
+	it("evicts rejected document requester work before a local retry", async () => {
+		const failure = new Error("membership read failed");
+		const getRoomsForParticipants = vi
+			.fn<IAgentRuntime["getRoomsForParticipants"]>()
+			.mockRejectedValueOnce(failure)
+			.mockResolvedValueOnce([roomId]);
+		const runtime = requesterRuntime(getRoomsForParticipants);
+		const resolveRequester = createDocumentProviderRequesterResolver(
+			runtime,
+			message,
+		);
+
+		await expect(
+			Promise.all([resolveRequester(), resolveRequester()]),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause: failure,
+		});
+		await expect(resolveRequester()).resolves.toMatchObject({
+			roomIds: [roomId],
+		});
+		expect(getRoomsForParticipants).toHaveBeenCalledTimes(2);
+	});
+
+	it("creates an independent document requester snapshot for each turn", async () => {
+		const getRoomsForParticipants = vi
+			.fn<IAgentRuntime["getRoomsForParticipants"]>()
+			.mockResolvedValueOnce([roomId])
+			.mockResolvedValueOnce([]);
+		const runtime = requesterRuntime(getRoomsForParticipants);
+
+		const first = await runWithTrajectoryContext(
+			{ turnMemo: new Map<string, Promise<unknown>>() },
+			() => createDocumentProviderRequesterResolver(runtime, message)(),
+		);
+		const second = await runWithTrajectoryContext(
+			{ turnMemo: new Map<string, Promise<unknown>>() },
+			() => createDocumentProviderRequesterResolver(runtime, message)(),
+		);
+
+		expect(first.roomIds).toEqual([roomId]);
+		expect(second.roomIds).toEqual([]);
+		expect(getRoomsForParticipants).toHaveBeenCalledTimes(2);
 	});
 
 	it("starts FACTS history and identity reads together, then starts every candidate pool together", async () => {
@@ -290,19 +343,13 @@ describe("provider database I/O concurrency", () => {
 		expect(runtime.getParticipantsForRoom).not.toHaveBeenCalled();
 	});
 
-	it("starts DOCUMENTS relevance search and inventory listing together", async () => {
-		const search = deferred<Memory[]>();
-		const list = deferred<Memory[]>();
-		const started: string[] = [];
+	it("uses the DOCUMENTS service's bounded concurrent read composition", async () => {
+		const composition = deferred<{
+			relevantFragments: Memory[];
+			documents: Memory[];
+		}>();
 		const service = {
-			searchDocuments: vi.fn(() => {
-				started.push("search");
-				return search.promise;
-			}),
-			listDocuments: vi.fn(() => {
-				started.push("list");
-				return list.promise;
-			}),
+			composeProviderDocuments: vi.fn(() => composition.promise),
 		};
 		const runtime = {
 			getService: vi.fn((serviceType: string) =>
@@ -312,19 +359,23 @@ describe("provider database I/O concurrency", () => {
 
 		const resultPromise = documentsProvider.get(runtime, message, state);
 		await Promise.resolve();
-		expect(started).toEqual(["search", "list"]);
+		expect(service.composeProviderDocuments).toHaveBeenCalledWith(message, {
+			limit: 25,
+		});
 
-		search.resolve([]);
-		list.resolve([
-			{
-				id: "10000000-0000-0000-0000-000000000008" as UUID,
-				agentId,
-				entityId,
-				roomId,
-				content: { text: "Project notes" },
-				metadata: { type: MemoryType.DOCUMENT, title: "Project" },
-			},
-		]);
+		composition.resolve({
+			relevantFragments: [],
+			documents: [
+				{
+					id: "10000000-0000-0000-0000-000000000008" as UUID,
+					agentId,
+					entityId,
+					roomId,
+					content: { text: "Project notes" },
+					metadata: { type: MemoryType.DOCUMENT, title: "Project" },
+				},
+			],
+		});
 		await expect(resultPromise).resolves.toMatchObject({
 			values: { documentsAvailable: true, documentsCount: 1 },
 		});
