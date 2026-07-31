@@ -189,6 +189,11 @@ function createRuntime(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
+    // Required by IAgentRuntime and called by the trusted-delivery-audience
+    // gate on every outbound turn. Omitting it does not degrade the audience
+    // decision — it throws, and the route reports the TypeError as a 500, so
+    // an incomplete mock reads as a broken product route.
+    getParticipantsForRoom: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
