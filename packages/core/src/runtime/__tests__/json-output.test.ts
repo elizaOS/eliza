@@ -10,6 +10,7 @@ import {
 	extractJsonObjects,
 	parseJsonObject,
 	repairJsonStringEscapes,
+	stripJsonStructuralJunkReply,
 } from "../json-output";
 
 describe("parseJsonObject", () => {
@@ -106,5 +107,44 @@ describe("extractJsonObjects", () => {
 
 	it("returns an empty array when there is no object", () => {
 		expect(extractJsonObjects("just prose, no json here")).toEqual([]);
+	});
+});
+
+describe("stripJsonStructuralJunkReply — leaked pseudo-tool markup", () => {
+	it("strips a paired invented pseudo-tool tag block (cerebras <BROWSE_PAGE>)", () => {
+		expect(
+			stripJsonStructuralJunkReply(
+				"checking the repo directly.\n\n<BROWSE_PAGE><url>https://github.com/x</url></BROWSE_PAGE>",
+			),
+		).toBe("checking the repo directly.");
+	});
+
+	it("strips a truncated-open pseudo-tool tag to end of string", () => {
+		expect(
+			stripJsonStructuralJunkReply("here it is <WEB_FETCH> and then nothing"),
+		).toBe("here it is");
+	});
+
+	it("strips the native <tool_call> serialization", () => {
+		expect(
+			stripJsonStructuralJunkReply(
+				"<tool_call>WEB_FETCH<arg_key>url</arg_key></tool_call>",
+			),
+		).toBe("");
+	});
+
+	it("preserves ordinary prose and lowercase html mentions", () => {
+		expect(stripJsonStructuralJunkReply("use the <div> tag in html")).toBe(
+			"use the <div> tag in html",
+		);
+		expect(stripJsonStructuralJunkReply("the answer is 42")).toBe(
+			"the answer is 42",
+		);
+	});
+
+	it("does not touch short quoted acronyms", () => {
+		expect(
+			stripJsonStructuralJunkReply("the <AI> label means artificial"),
+		).toBe("the <AI> label means artificial");
 	});
 });

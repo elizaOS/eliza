@@ -8404,11 +8404,75 @@ export async function runV5MessageRuntimeStage1(args: {
 					return normalized.length > 0 && deliveredVisibleTexts.has(normalized);
 				});
 			});
+		// The planned ⊇ delivered direction of the suppression above, gated on
+		// callback-delivery provenance (the delivered-set membership) not text
+		// equality: when a verifiedUserFacing action already sent its userFacingText
+		// through its own callback, a planned reply that merely re-renders that block
+		// verbatim duplicates a message the user already has. Only a TRIVIAL
+		// re-render collapses, though — if the planner appended substantive prose to
+		// the verbatim block (the evaluator's grounded answer, #7960: a `df -h` mount
+		// table followed by "still 95%, 22G free"), that prose was never
+		// callback-delivered and still ships; the remainder check below enforces
+		// that. Verified actions that never invoked the callback fail delivered-set
+		// membership, so finalMessage remains their sole delivery.
+		const plannedTextRepeatsVerifiedActionDelivery = actionResults.some(
+			(result) => {
+				if (result.verifiedUserFacing !== true) return false;
+				const verified =
+					typeof result.userFacingText === "string"
+						? normalizeVisibleTextForDuplicateCheck(result.userFacingText)
+						: "";
+				if (verified.length === 0 || !deliveredVisibleTexts.has(verified)) {
+					return false;
+				}
+				if (!normalizedPlannedReply.includes(verified)) return false;
+				// Trivial-re-render check the block comment above promises (#7960).
+				const remainder = normalizedPlannedReply
+					.replace(verified, " ")
+					.replace(/```/g, " ");
+				return !/[a-z0-9]/.test(remainder);
+			},
+		);
+		// Substantive-remainder counterpart of the suppression above, #7960 kept
+		// intact: combinedVerifiedToolTextAndProse deterministically composes
+		// `<verified block>\n\n<evaluator prose>` (fencing a multiline verified
+		// text), so when the verified block was already callback-delivered the
+		// planned reply re-sends a verbatim copy of a message the user has and
+		// the prose is the only content they have not seen. Strip the block ONLY
+		// in that code-composed leading position, matched byte-exactly (fenced
+		// form first, then bare) against the delivered userFacingText. A
+		// paraphrased re-render or a mid-prose mention is never touched — the
+		// strip must not remove anything it cannot prove was already delivered,
+		// and cutting inside flowing prose could mutilate a sentence.
+		let strippedPlannedReplyText = effectiveReplyText;
+		for (const result of actionResults) {
+			if (result.verifiedUserFacing !== true) continue;
+			if (typeof result.userFacingText !== "string") continue;
+			const rawVerified = result.userFacingText.trim();
+			if (
+				rawVerified.length === 0 ||
+				!deliveredVisibleTexts.has(
+					normalizeVisibleTextForDuplicateCheck(rawVerified),
+				)
+			) {
+				continue;
+			}
+			const fencedVerified = `\`\`\`\n${rawVerified}\n\`\`\``;
+			const source = strippedPlannedReplyText;
+			if (source.startsWith(`${fencedVerified}\n\n`)) {
+				strippedPlannedReplyText = source.slice(fencedVerified.length).trim();
+			} else if (source.startsWith(`${rawVerified}\n\n`)) {
+				strippedPlannedReplyText = source.slice(rawVerified.length).trim();
+			}
+		}
+		const effectiveDeliveredReplyText =
+			strippedPlannedReplyText || effectiveReplyText;
 		const shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
-			!plannedTextIsRedundantFailureFallback;
+			!plannedTextIsRedundantFailureFallback &&
+			!plannedTextRepeatsVerifiedActionDelivery;
 		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous
 		// model provenance here (`messageHandler.plan.reply` is the Stage-1
 		// model's own field). The planner's `finalMessage` is deliberately NOT
@@ -8435,7 +8499,7 @@ export async function runV5MessageRuntimeStage1(args: {
 						...createV5ReplyStrategyResult({
 							...args,
 							state: finalPlannerState,
-							text: effectiveReplyText,
+							text: effectiveDeliveredReplyText,
 							thought:
 								plannerResult.evaluator?.thought ??
 								plannerResult.trajectory.steps.at(-1)?.thought ??
@@ -9681,6 +9745,19 @@ export function wrapSingleTurnVisibleCallback(
 		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
+		}
+		// The voice rewrite (voiceActionReply below) restyles the wire text and
+		// stashes the action's original text in data.rawActionText. The planner's
+		// finalMessage is composed from that RAW text (a verified tool's
+		// userFacingText), so record it too — same rationale as the sanitize-drift
+		// recording above: echo suppression must recognize a delivery whose wire
+		// form diverged from the text the planner re-selects.
+		if (response?.data && typeof response.data === "object") {
+			const rawActionText = (response.data as Record<string, unknown>)
+				.rawActionText;
+			if (typeof rawActionText === "string" && rawActionText.trim()) {
+				recordDeliveredVisibleText?.(rawActionText);
+			}
 		}
 		return delivered;
 	};
