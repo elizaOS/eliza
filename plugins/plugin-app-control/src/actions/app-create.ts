@@ -555,7 +555,7 @@ function buildCreatePrompt(
 	);
 	if (liveUrl) {
 		lines.push(
-			`userReport: your final summary is read by a normal person in chat. ONE casual line only, like: your app's live: ${liveUrl} — no technical wording (never say "verification", "commands", "deployed", "assets", "workdir").`,
+			`userReport: AFTER the APP_CREATE_DONE line (which is machine-required and must always be emitted), add exactly one casual line for the user, like: your app's live: ${liveUrl} — that user line must have no technical wording (never say "verification", "commands", "deployed", "assets", "workdir").`,
 		);
 	}
 	return lines.join("\n");
