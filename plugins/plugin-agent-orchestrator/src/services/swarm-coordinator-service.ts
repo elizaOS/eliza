@@ -1124,9 +1124,17 @@ export class SwarmCoordinatorService
     if (validatorVerdict && sanitizedBody === FAILED_TOOL_FALLBACK_MESSAGE) {
       sanitizedBody = "";
     }
+    // A PASS verdict never prefixes the deliverable: the body ("live at
+    // <url>") IS the user's proof, and the verifier status line is plumbing.
+    // Fail verdicts keep the explicit verdict text — there the status is the
+    // actionable content.
+    const isPassVerdict =
+      validatorVerdict.length > 0 && terminalStatus === "completed";
     const sanitizedSummary = validatorVerdict
       ? sanitizedBody && sanitizedBody !== validatorVerdict
-        ? `${validatorVerdict}\n\n${sanitizedBody}`
+        ? isPassVerdict
+          ? sanitizedBody
+          : `${validatorVerdict}\n\n${sanitizedBody}`
         : validatorVerdict
       : sanitizedBody;
     if (validatorVerdict && terminalStatus === "completed") {
