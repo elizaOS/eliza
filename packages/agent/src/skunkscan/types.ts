@@ -1371,6 +1371,64 @@ export type WalletInvestigationNarrative = {
   limitationsStatement: string;
 };
 
+// Mirrors ChainProtocol (protocols/registry.ts) and ProtocolAnalysis/
+// ProtocolIntelligence (analyzers/protocols.ts, analyzers/protocolIntelligence.ts)
+// structurally rather than importing them, matching this file's existing
+// pattern for every other Wallet*Summary type - analyzers/registries
+// already import SupportedChain from here, so importing back would be
+// circular.
+export type WalletProtocolMatch = {
+  programId: string;
+  protocol: {
+    programId: string;
+    name: string;
+    category:
+      | "dex"
+      | "dex_aggregator"
+      | "lending"
+      | "staking"
+      | "liquidity"
+      | "bridge"
+      | "nft"
+      | "perpetuals"
+      | "yield"
+      | "launchpad"
+      | "stablecoin"
+      | "infrastructure"
+      | "other";
+    reputation: "high" | "medium" | "unknown";
+    verified: boolean;
+    custodial: boolean;
+    deprecated: boolean;
+    website?: string;
+    notes?: string;
+    tags: string[];
+  };
+  interactionCount: number;
+  firstInteractionAt: string | null;
+  lastInteractionAt: string | null;
+};
+
+export type WalletProtocolsSummary = {
+  totalProtocols: number;
+  verifiedProtocols: number;
+  protocols: WalletProtocolMatch[];
+};
+
+export type WalletProtocolIntelligenceSummary = {
+  primaryProtocol: string | null;
+  primaryCategory: string | null;
+  activeProtocols: number;
+  protocolDiversity: "none" | "low" | "medium" | "high";
+  dominantProtocolShare: number;
+  investorProfile:
+    | "Inactive"
+    | "Basic User"
+    | "DEX Trader"
+    | "Multi-Protocol DeFi User";
+  confidence: "low" | "medium" | "high";
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -1378,13 +1436,18 @@ export type WalletInvestigationResult = {
   balance?: WalletBalance;
   tokenHoldings?: WalletTokenHolding[];
   portfolio?: WalletPortfolioSummary;
+  nftHoldings?: UniversalNftHolding[];
   whale?: WalletWhaleSummary;
   defi?: WalletDeFiSummary;
+  protocols?: WalletProtocolsSummary;
+  protocolIntelligence?: WalletProtocolIntelligenceSummary;
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
   display?: WalletDisplaySummary;
   decision?: WalletDecisionSummary;
   executiveVerdict?: WalletExecutiveVerdict;
+  assessment?: WalletAssessmentSummary;
+  intelligenceBrief?: WalletIntelligenceBrief;
   custodyProfile?: WalletCustodyProfile;
   complianceScreening?: WalletComplianceScreeningSummary;
   intelligenceSources?: WalletIntelligenceSource[];
@@ -1403,6 +1466,12 @@ export type WalletInvestigationResult = {
   transactionRisk?: WalletTransactionRiskSummary;
   smartMoney?: WalletSmartMoneySummary;
   strategy?: WalletStrategySummary;
+  conviction?: WalletConvictionSummary;
+  alpha?: WalletAlphaSummary;
+  investmentStyle?: WalletInvestmentStyleSummary;
+  profitability?: WalletProfitabilitySummary;
+  reputation?: WalletReputationSummary;
+  skunkScore?: WalletSkunkScoreSummary;
   investigationReport?: WalletInvestigationReport;
   investigationNarrative?: WalletInvestigationNarrative;
   summary: string;

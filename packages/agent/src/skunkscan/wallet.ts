@@ -1,12 +1,17 @@
 import {
   getSolanaParsedTransactions,
 } from "./helius";
+import {
+  getEthereumOldestTransaction,
+  getEthereumTransactions,
+} from "./moralis";
 import { requireBlockchainConnector } from "./chains/registry";
 import { WRAPPED_NATIVE_ASSET_ID } from "./providers/priceProvider";
 import { getTokenPriceProvider } from "./providers/pricing/registry";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
 import { parseSolanaTransaction } from "./parsers/transaction";
+import { parseEthereumTransaction } from "./parsers/ethereumTransaction";
 import {
   SupportedChain,
   UniversalNftHolding,
@@ -269,7 +274,7 @@ const {
   intelligenceSources,
   trust,
   display,
-  transactionRiskAssessment,
+  transactionRisk,
   smartMoney,
   strategy,
   conviction,
@@ -335,8 +340,7 @@ activity,
 age,
 funding,
 risk,
-transactionRisk:
-  transactionRiskAssessment,
+transactionRisk,
 smartMoney,
 strategy,
 conviction,
@@ -365,7 +369,276 @@ warnings: [],
       }
     }
 
-    case "ethereum":
+    case "ethereum": {
+      try {
+        const connector = requireBlockchainConnector(chain);
+
+        const nativeBalanceResult =
+          await connector.getNativeBalance(walletAddress);
+
+        if (
+          nativeBalanceResult.status === "error" ||
+          nativeBalanceResult.status === "unsupported" ||
+          !nativeBalanceResult.data
+        ) {
+          throw new Error(
+            nativeBalanceResult.error?.message ??
+              "Unable to retrieve the wallet native balance.",
+          );
+        }
+
+        const rawWei = Number(nativeBalanceResult.data.rawAmount);
+        const ethBalance = Number(
+          nativeBalanceResult.data.decimalAmount ?? "0",
+        );
+
+        if (!Number.isFinite(rawWei) || !Number.isFinite(ethBalance)) {
+          throw new Error(
+            "The Ethereum connector returned an invalid balance.",
+          );
+        }
+
+        // Fetched directly from moralis.ts rather than through
+        // connector.getTransactions()/getOldestTransaction(): the
+        // connector's Layer A wraps these same calls but discards
+        // transfers into an empty array by design (see chains/ethereum.ts's
+        // createUniversalTransaction) - going through it first would be a
+        // wasted round trip producing throwaway data. Unlike Solana, Moralis
+        // doesn't split "get IDs" from "get rich content" into separate
+        // calls, so there's no equivalent bypass-and-refetch needed here.
+        const { transactions: rawTransactions } =
+          await getEthereumTransactions(walletAddress, 50);
+
+        const normalizedRecentParsedTransactions =
+          rawTransactions.map(parseEthereumTransaction);
+
+        const recentTransactions: WalletRecentTransaction[] =
+          rawTransactions.map((transaction) => ({
+            transactionId: transaction.hash,
+            blockHeight: transaction.blockNumber ?? undefined,
+            blockTime: transaction.blockTimestamp ?? undefined,
+            status:
+              transaction.status === "failed" ? "failed" : "success",
+          }));
+
+        const oldestTransaction =
+          await getEthereumOldestTransaction(walletAddress);
+
+        const firstParsedTransaction = parseEthereumTransaction(
+          oldestTransaction,
+        );
+
+        const tokenBalancesResult =
+          await connector.getTokenBalances(walletAddress);
+
+        if (
+          tokenBalancesResult.status === "error" ||
+          tokenBalancesResult.status === "unsupported" ||
+          !tokenBalancesResult.data
+        ) {
+          throw new Error(
+            tokenBalancesResult.error?.message ??
+              "Unable to retrieve the wallet token balances.",
+          );
+        }
+
+        // A "partial" status (e.g. a wallet with too many distinct tokens
+        // for Moralis's endpoint to enumerate) still has usable .data - the
+        // warning explaining what's incomplete must reach the caller here,
+        // not get silently discarded once .data.balances is extracted below.
+        const investigationWarnings: string[] =
+          tokenBalancesResult.warnings.map((warning) => warning.message);
+
+        const tokenHoldings: WalletTokenHolding[] =
+          tokenBalancesResult.data.balances.map((tokenBalance) => {
+            const contractAddress = tokenBalance.asset.contractAddress;
+            const decimals = tokenBalance.asset.decimals;
+            const amount = Number(tokenBalance.decimalAmount ?? "0");
+
+            if (!contractAddress) {
+              throw new Error(
+                "The Ethereum connector returned a token without a contract address.",
+              );
+            }
+
+            if (
+              typeof decimals !== "number" ||
+              !Number.isInteger(decimals) ||
+              decimals < 0
+            ) {
+              throw new Error(
+                `The Ethereum connector returned invalid decimals for token "${contractAddress}".`,
+              );
+            }
+
+            if (!Number.isFinite(amount)) {
+              throw new Error(
+                `The Ethereum connector returned an invalid amount for token "${contractAddress}".`,
+              );
+            }
+
+            return {
+              tokenId: contractAddress,
+              amount,
+              decimals,
+              rawAmount: tokenBalance.rawAmount,
+            };
+          });
+
+        // Same tolerance as Solana: a connector that omits getNftHoldings
+        // (or a call that fails) degrades to an empty list rather than
+        // failing the whole investigation.
+        const nftHoldingsResult =
+          await connector.getNftHoldings?.(walletAddress);
+
+        const nftHoldings: UniversalNftHolding[] =
+          nftHoldingsResult?.data?.holdings ?? [];
+
+        // Neither WRAPPED_NATIVE_ASSET_ID nor the pricing registry has an
+        // Ethereum entry yet (PR 6+) - both already degrade to "no prices"
+        // rather than throwing.
+        const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
+        const priceProvider = getTokenPriceProvider(chain);
+        const tokenPrices = priceProvider
+          ? await priceProvider.getTokenPrices([
+              ...tokenHoldings.map((token) => token.tokenId),
+              ...(nativeAssetId ? [nativeAssetId] : []),
+            ])
+          : {};
+
+        const walletBalance: WalletBalance = {
+          nativeAmount: ethBalance,
+          nativeSymbol: "ETH",
+          rawAmount: rawWei,
+        };
+
+        const pipeline = await runWalletPipeline({
+          chain,
+          address: walletAddress,
+          balance: walletBalance,
+          tokenHoldings,
+          recentTransactions,
+          oldestTransactionId: oldestTransaction?.hash,
+          oldestTransactionTimestamp:
+            oldestTransaction?.blockTimestamp ?? undefined,
+          firstParsedTransaction,
+          normalizedRecentParsedTransactions,
+          tokenPrices,
+        });
+
+        const {
+          activity,
+          age,
+          funding,
+          portfolio,
+          risk,
+          whale,
+          defi,
+          protocols,
+          protocolIntelligence,
+          behavior,
+          exposure,
+          relationships,
+          custodyProfile,
+          complianceScreening,
+          intelligenceSources,
+          trust,
+          display,
+          transactionRisk,
+          smartMoney,
+          strategy,
+          conviction,
+          alpha,
+          investmentStyle,
+          profitability,
+          reputation,
+          skunkScore,
+          investigationReplay,
+          evidenceRecords,
+          assessment,
+          intelligenceBrief,
+          evidence,
+          executiveVerdict,
+        } = pipeline;
+
+        const investigation = createWalletInvestigation({
+          chain,
+          address: walletAddress,
+          executiveVerdict,
+          assessment,
+          intelligenceBrief,
+          evidence,
+          evidenceRecords,
+          risk,
+          trust,
+          portfolio,
+          whale,
+          funding,
+          activity,
+        });
+
+        void investigation;
+
+        return {
+          chain,
+          address: walletAddress,
+          status: "supported",
+          balance: walletBalance,
+          tokenHoldings,
+          portfolio,
+          nftHoldings,
+          whale,
+          defi,
+          protocols,
+          protocolIntelligence,
+          behavior,
+          exposure,
+          relationships,
+          display,
+          assessment,
+          intelligenceBrief,
+          custodyProfile,
+          complianceScreening,
+          intelligenceSources,
+          trust,
+          investigationReplay,
+          evidence,
+          evidenceRecords,
+          recentTransactions,
+          transactionCountSample: recentTransactions.length,
+          activity,
+          age,
+          funding,
+          risk,
+          transactionRisk,
+          smartMoney,
+          strategy,
+          conviction,
+          alpha,
+          investmentStyle,
+          profitability,
+          reputation,
+          skunkScore,
+          summary: `Wallet found. Current balance: ${ethBalance.toFixed(
+            6,
+          )} ETH. Recent transaction sample: ${recentTransactions.length}.`,
+          warnings: investigationWarnings,
+        };
+      } catch (error) {
+        return {
+          chain,
+          address: walletAddress,
+          status: "error",
+          summary: "Unable to investigate this wallet.",
+          warnings: [
+            error instanceof Error
+              ? error.message
+              : "Unknown investigation error.",
+          ],
+        };
+      }
+    }
+
     case "base":
     case "bnb":
       return {

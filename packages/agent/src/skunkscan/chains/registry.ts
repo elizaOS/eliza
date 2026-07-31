@@ -55,6 +55,10 @@ blockchainConnectorRegistry.register(
   solanaBlockchainConnector,
 );
 
+blockchainConnectorRegistry.register(
+  ethereumBlockchainConnector,
+);
+
 export function getBlockchainConnector(
   chainId: ChainIdentifier,
 ): BlockchainConnector | undefined {

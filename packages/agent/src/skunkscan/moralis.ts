@@ -23,6 +23,16 @@
 // Single-transaction-by-hash lookup (getEthereumTransaction, /transaction/
 // {hash}) has NOT been live-verified to return these same rich fields -
 // treated as a separate, still-partial path.
+//
+// PR 5: found (live, on Vitalik's wallet - 1774+ tokens) that
+// /wallets/{address}/tokens's "too many ERC20 token balances" error
+// fires on the very first call for a large enough wallet, regardless of
+// the limit/cursor pagination PR 3.5 added - that fix helps wallets
+// below whatever Moralis's absolute threshold is, but does nothing for
+// wallets above it. getEthereumTokenHoldings now catches this specific
+// condition and returns a partial/empty result with truncated: true
+// instead of throwing, so one endpoint's hard limit doesn't abort the
+// entire wallet investigation.
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
@@ -36,6 +46,29 @@ function getMoralisApiKey(): string {
   }
 
   return apiKey;
+}
+
+// Thrown by callMoralisRest on any non-ok response, carrying Moralis's
+// actual error message (when the body parses as JSON with one) rather
+// than just the HTTP status - the generic status-only message this
+// replaced is exactly what made a real, reproducible bug (the
+// "too many ERC20 token balances" error) take a dedicated live
+// diagnostic round-trip to root-cause instead of being obvious from the
+// error text alone.
+export class MoralisRequestError extends Error {
+  readonly status: number;
+  readonly moralisMessage: string | null;
+
+  constructor(status: number, moralisMessage: string | null) {
+    super(
+      moralisMessage
+        ? `Moralis request failed with status ${status}: ${moralisMessage}`
+        : `Moralis request failed with status ${status}`,
+    );
+    this.name = "MoralisRequestError";
+    this.status = status;
+    this.moralisMessage = moralisMessage;
+  }
 }
 
 async function callMoralisRest<T>(
@@ -59,12 +92,29 @@ async function callMoralisRest<T>(
   });
 
   if (!response.ok) {
-    throw new Error(
-      `Moralis request failed with status ${response.status}`,
-    );
+    let moralisMessage: string | null = null;
+
+    try {
+      const body = (await response.json()) as { message?: string };
+      moralisMessage = typeof body.message === "string" ? body.message : null;
+    } catch {
+      // Body wasn't JSON (or was empty) - fall back to status-only.
+    }
+
+    throw new MoralisRequestError(response.status, moralisMessage);
   }
 
   return (await response.json()) as T;
+}
+
+const TOO_MANY_TOKEN_BALANCES_PATTERN = /too many erc20 token balances/i;
+
+function isTooManyTokenBalancesError(error: unknown): boolean {
+  return (
+    error instanceof MoralisRequestError &&
+    error.moralisMessage !== null &&
+    TOO_MANY_TOKEN_BALANCES_PATTERN.test(error.moralisMessage)
+  );
 }
 
 export type MoralisNativeBalanceResponse = {
@@ -122,10 +172,23 @@ export type EthereumTokenHolding = {
 // forever.
 const MAX_TOKEN_HOLDING_PAGES = 20;
 
+export type EthereumTokenHoldingsResult = {
+  holdings: EthereumTokenHolding[];
+  // true when Moralis refused the endpoint outright ("too many ERC20
+  // token balances") before any page could be served - live-confirmed on
+  // Vitalik's wallet (1774+ tokens): the limit/cursor pagination below
+  // does NOT help here, since the error fires on the very first call
+  // regardless of page size. holdings will be empty (or a partial list,
+  // if this happens after a few successful pages) rather than the true
+  // full set - callers should surface this, not treat it as "this wallet
+  // simply holds no tokens."
+  truncated: boolean;
+};
+
 export async function getEthereumTokenHoldings(
   address: string,
   options: { excludeSpam?: boolean } = {},
-): Promise<EthereumTokenHolding[]> {
+): Promise<EthereumTokenHoldingsResult> {
   if (!address || address.trim().length === 0) {
     throw new Error("Wallet address is required");
   }
@@ -135,6 +198,7 @@ export async function getEthereumTokenHoldings(
 
   const allTokens: MoralisWalletToken[] = [];
   let cursor: string | null = null;
+  let truncated = false;
 
   for (let page = 0; page < MAX_TOKEN_HOLDING_PAGES; page += 1) {
     const searchParams: Record<string, string> = {
@@ -147,10 +211,21 @@ export async function getEthereumTokenHoldings(
       searchParams.cursor = cursor;
     }
 
-    const data = await callMoralisRest<MoralisWalletTokensResponse>(
-      `/wallets/${walletAddress}/tokens`,
-      searchParams,
-    );
+    let data: MoralisWalletTokensResponse;
+
+    try {
+      data = await callMoralisRest<MoralisWalletTokensResponse>(
+        `/wallets/${walletAddress}/tokens`,
+        searchParams,
+      );
+    } catch (error) {
+      if (isTooManyTokenBalancesError(error)) {
+        truncated = true;
+        break;
+      }
+
+      throw error;
+    }
 
     const results = Array.isArray(data.result) ? data.result : [];
     allTokens.push(...results);
@@ -162,7 +237,7 @@ export async function getEthereumTokenHoldings(
     cursor = data.cursor;
   }
 
-  return allTokens
+  const holdings = allTokens
     .filter((token) => !token.native_token && token.token_address)
     .map((token) => ({
       contractAddress: String(token.token_address),
@@ -172,6 +247,8 @@ export async function getEthereumTokenHoldings(
       rawAmount: typeof token.balance === "string" ? token.balance : "0",
     }))
     .filter((token) => token.contractAddress.length > 0);
+
+  return { holdings, truncated };
 }
 
 export type MoralisNft = {
