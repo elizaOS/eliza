@@ -139,10 +139,11 @@ describe("LIST_CLOUD_APPS", () => {
         (requireDefined(result, "action result").data as { count: number })
           .count,
       ).toBe(0);
+      expect(cb.calls).toHaveLength(1);
       expect(cb.calls[0]?.text).toContain("haven't created any apps");
-      // The canned empty message is not a verified terminal answer — the
-      // evaluator still runs and may add guidance (e.g. how to create one).
-      expect(result?.turnComplete).toBeUndefined();
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text);
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("degrades gracefully when no Cloud API key is configured", async () => {
@@ -160,7 +161,11 @@ describe("LIST_CLOUD_APPS", () => {
         (requireDefined(result, "action result").data as { reason: string })
           .reason,
       ).toBe("no_key");
+      expect(cb.calls).toHaveLength(1);
       expect(cb.calls[0]?.text).toContain("no Cloud API key");
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text);
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.continueChain).toBe(false);
     });
 
     it("handles a Cloud API error without throwing", async () => {
@@ -180,7 +185,11 @@ describe("LIST_CLOUD_APPS", () => {
         (requireDefined(result, "action result").data as { reason: string })
           .reason,
       ).toBe("error");
+      expect(cb.calls).toHaveLength(1);
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text);
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.continueChain).toBe(false);
     });
   });
 });

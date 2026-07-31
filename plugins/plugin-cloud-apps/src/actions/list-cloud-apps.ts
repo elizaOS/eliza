@@ -75,6 +75,11 @@ export const listCloudAppsAction: Action = {
         success: false,
         text: "No Eliza Cloud API key configured.",
         userFacingText: NO_KEY_MESSAGE,
+        verifiedUserFacing: true,
+        // The callback already delivered the complete configuration boundary
+        // response. Stop this failed tool from asking an evaluator to add a
+        // second, differently worded message.
+        continueChain: false,
         data: { reason: "no_key" },
       };
     }
@@ -88,6 +93,8 @@ export const listCloudAppsAction: Action = {
           success: true,
           text: "User has no Eliza Cloud apps.",
           userFacingText: EMPTY_MESSAGE,
+          verifiedUserFacing: true,
+          turnComplete: true,
           data: { count: 0, apps: [] },
         };
       }
@@ -130,6 +137,10 @@ export const listCloudAppsAction: Action = {
         success: false,
         text: "Failed to list Eliza Cloud apps.",
         userFacingText: ERROR_MESSAGE,
+        verifiedUserFacing: true,
+        // The failure is already translated at this action boundary and sent
+        // through the callback, so another planner pass can only double-post.
+        continueChain: false,
         error: err instanceof Error ? err : new Error(String(err)),
         data: { reason: "error" },
       };
