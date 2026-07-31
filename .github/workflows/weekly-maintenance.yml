@@ -13,11 +13,12 @@ jobs:
   maintenance:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
+    outputs:
+      attribution_snapshot: ${{ steps.attribution-boundary.outputs.snapshot }}
     permissions:
-      contents: write
+      contents: read
       issues: write
       pull-requests: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -25,6 +26,21 @@ jobs:
         with:
           fetch-depth: 0
           filter: blob:none
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Capture attribution audit boundary
+        id: attribution-boundary
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          snapshot="$(
+            node scripts/audit-ai-workflow-output.mjs snapshot \
+              --repository "$GITHUB_REPOSITORY" \
+              --scope repository
+          )"
+          printf 'snapshot=%s\n' "$snapshot" >> "$GITHUB_OUTPUT"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -39,7 +55,7 @@ jobs:
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          track_progress: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
           prompt: |
             REPO: ${{ github.repository }}
@@ -63,8 +79,50 @@ jobs:
             - 📚 Documentation Status
 
             If critical security issues are found, also comment on relevant open PRs.
+            Create new content only. Do not edit or delete an existing issue,
+            pull request, review, or comment.
+            End the issue body and every GitHub comment with this exact terminal
+            provenance footer:
+
+            AI provider/model: Anthropic / claude-opus-4-7
+            Client / agent tooling: claude-code-action
+            Contribution skill revision: N/A - weekly maintenance does not invoke the contribution skill
+            Attribution status: self-reported
+            — [weekly-maintenance-agent]
+            <!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-opus-4-7","client":"claude-code-action","skill_revision":"N/A - weekly maintenance does not invoke the contribution skill"} -->
 
           # Claude CLI arguments for model and allowed tools
           claude_args: |
             --model claude-opus-4-7
-            --allowedTools "Read,Bash(bun *),Bash(gh issue *),Bash(gh pr *),Bash(git *),Bash(grep *),Bash(find *)"
+            --allowedTools "Read,Glob,Grep,Bash(bun outdated:*),Bash(bun x better-npm-audit audit:*),Bash(bun test:*),Bash(gh issue list:*),Bash(gh issue view:*),Bash(gh issue create:*),Bash(gh issue comment:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(git log:*),Bash(git grep:*)"
+
+  audit-attribution:
+    name: Audit weekly-maintenance GitHub output attribution
+    needs: maintenance
+    if: ${{ always() && needs.maintenance.outputs.attribution_snapshot != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout trusted attribution policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts
+
+      - name: Validate every GitHub text mutation
+        env:
+          ATTRIBUTION_AUDIT_SNAPSHOT: ${{ needs.maintenance.outputs.attribution_snapshot }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/audit-ai-workflow-output.mjs verify \
+            --author "github-actions[bot]" \
+            --expected-provider "Anthropic" \
+            --expected-model "claude-opus-4-7" \
+            --expected-client "claude-code-action" \
+            --expected-skill-revision "N/A - weekly maintenance does not invoke the contribution skill" \
+            --expected-lane "weekly-maintenance-agent"

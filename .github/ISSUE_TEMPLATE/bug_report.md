@@ -6,6 +6,24 @@ labels: "bug"
 assignees: ""
 ---
 
+## Contribution provenance
+
+<!--
+AI-assisted reports complete these rows, then append only the lane signature
+and matching eliza-computer-attribution:v1 JSON marker from CONTRIBUTING.md as
+the final two body lines. Do not repeat the visible rows. Human-only reports do
+not add an attribution marker.
+-->
+AI assistance is self-reported provenance, not a request for hidden reasoning.
+Use the exact runtime values; do not include secrets, tokens, private prompts,
+session IDs, or chain-of-thought.
+
+- AI assistance: `yes` / `no - human-only report`
+- AI provider/model: `<provider> / <exact-model-id>` / `N/A - human-only report`
+- Client / agent tooling: `<client-name>` / `N/A - human-only report`
+- Contribution skill revision: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`
+- Attribution status: `self-reported`
+
 **Describe the bug**
 
 <!-- A clear and concise description of what the bug is. -->

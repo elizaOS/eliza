@@ -57,6 +57,10 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Record patch base
+        id: link-base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Check and Fix Dead Links with Claude
         id: claude-fix-links
         # Don't fail docs CI when the Anthropic API is unavailable (low
@@ -104,7 +108,20 @@ jobs:
         if: steps.check-link-changes.outputs.changes == 'true'
         run: |
           git add packages/docs/
-          git commit -m "fix(docs): automated broken link fixes [skip ci]" || true
+          git commit -m "fix(docs): automated broken link fixes [skip ci]"
+
+      - name: Export link-fix patch
+        run: |
+          git diff --binary "${{ steps.link-base.outputs.sha }}" HEAD -- packages/docs/ \
+            > "$RUNNER_TEMP/docs-link-fixes.patch"
+
+      - name: Upload link-fix patch
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: docs-link-fixes-${{ github.run_id }}
+          path: ${{ runner.temp }}/docs-link-fixes.patch
+          if-no-files-found: error
+          retention-days: 1
 
   # ===========================================
   # Check Documentation Quality
@@ -127,6 +144,10 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Record patch base
+        id: quality-base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check and Fix Quality Issues with Claude
         id: claude-fix-quality
@@ -176,7 +197,20 @@ jobs:
         if: steps.check-quality-changes.outputs.changes == 'true'
         run: |
           git add packages/docs/
-          git commit -m "fix(docs): automated documentation quality improvements [skip ci]" || true
+          git commit -m "fix(docs): automated documentation quality improvements [skip ci]"
+
+      - name: Export quality-fix patch
+        run: |
+          git diff --binary "${{ steps.quality-base.outputs.sha }}" HEAD -- packages/docs/ \
+            > "$RUNNER_TEMP/docs-quality-fixes.patch"
+
+      - name: Upload quality-fix patch
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: docs-quality-fixes-${{ github.run_id }}
+          path: ${{ runner.temp }}/docs-quality-fixes.patch
+          if-no-files-found: error
+          retention-days: 1
 
   # ===========================================
   # Create PR with all fixes
@@ -190,14 +224,44 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: develop
           fetch-depth: 0
           filter: blob:none
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check for any uncommitted changes
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Download link-fix patch
+        if: needs.check-links.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: docs-link-fixes-${{ github.run_id }}
+          path: ${{ runner.temp }}/docs-fixes
+
+      - name: Download quality-fix patch
+        if: needs.check-quality.result == 'success'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: docs-quality-fixes-${{ github.run_id }}
+          path: ${{ runner.temp }}/docs-fixes
+
+      - name: Apply generated documentation patches
+        run: |
+          set -euo pipefail
+          for patch in \
+            "$RUNNER_TEMP/docs-fixes/docs-link-fixes.patch" \
+            "$RUNNER_TEMP/docs-fixes/docs-quality-fixes.patch"; do
+            if [ -s "$patch" ]; then
+              git apply --3way "$patch"
+            fi
+          done
+
+      - name: Check for carried documentation changes
         id: final-check
         run: |
-          git fetch origin
           if [ -n "$(git status --porcelain packages/docs/)" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
           else
@@ -214,13 +278,13 @@ jobs:
           git add packages/docs/
           git commit -m "fix(docs): automated documentation fixes" \
                      -m "- Fixed broken links" \
-                     -m "- Fixed quality issues" || exit 0
+                     -m "- Fixed quality issues"
 
           git push origin "$BRANCH_NAME"
 
-          gh pr create \
-            --title "fix(docs): automated documentation fixes" \
-            --body "## Automated Documentation Fixes
+          body_file="$(mktemp)"
+          cat > "$body_file" <<'EOF'
+          ## Automated Documentation Fixes
 
           This PR contains automated fixes for documentation issues.
 
@@ -231,9 +295,49 @@ jobs:
           ### Review Instructions:
           Please verify all changes are correct before merging.
 
-          ---
-          *Generated by docs-ci workflow*" \
-            --base main \
+          ## Evidence Gate
+
+          <!-- evidence-row:before-screenshots -->
+          - [x] N/A - automated link and Markdown quality fixes do not change a rendered application UI surface.
+          <!-- evidence-row:after-screenshots -->
+          - [x] N/A - this PR changes documentation source only and does not alter application pixels.
+          <!-- evidence-row:walkthrough-video -->
+          - [x] N/A - the non-interactive documentation rewrite is completely recorded by the workflow run.
+          <!-- evidence-row:backend-logs -->
+          - [x] N/A - documentation source rewriting does not execute an application backend code path.
+          <!-- evidence-row:frontend-logs -->
+          - [x] N/A - no frontend application request, response, console, or state transition is exercised.
+          <!-- evidence-row:llm-trajectory -->
+          - [x] N/A - this documentation-only PR does not change agent, action, provider, prompt, or model behavior.
+          <!-- evidence-row:domain-artifacts -->
+          - [x] N/A - the carried documentation patch is the reviewed source diff and creates no runtime domain state.
+
+          ## Contribution provenance
+
+          <!-- contribution-attribution:v1 -->
+          <!-- attribution-row:ai-assistance -->
+          - AI assistance: yes
+          <!-- attribution-row:models -->
+          - Model(s) used: anthropic/claude-sonnet-4-6
+          <!-- attribution-row:client -->
+          - Client / agent tooling: claude-code-action
+          <!-- attribution-row:skill-revision -->
+          - Skill revision: N/A - docs CI does not invoke the contribution skill
+          <!-- attribution-row:status -->
+          - Attribution status: self-reported
+
+          AI provider/model: Anthropic / claude-sonnet-4-6
+          Client / agent tooling: claude-code-action
+          Contribution skill revision: N/A - docs CI does not invoke the contribution skill
+          Attribution status: self-reported
+          — [docs-ci-agent]
+          <!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-sonnet-4-6","client":"claude-code-action","skill_revision":"N/A - docs CI does not invoke the contribution skill"} -->
+          EOF
+
+          gh pr create \
+            --title "fix(docs): automated documentation fixes" \
+            --body-file "$body_file" \
+            --base develop \
             --head "$BRANCH_NAME" \
             --label "documentation" \
             --label "automated"

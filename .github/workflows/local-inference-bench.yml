@@ -516,6 +516,37 @@ jobs:
             - Diff path: `${{ env.DIFF_PATH }}`
 
             W5-Catalog: please apply the diff to `packages/shared/src/local-inference/catalog.ts`.
+
+            ## Evidence Gate
+
+            <!-- evidence-row:before-screenshots -->
+            - [x] N/A - the generated catalog-diff report has no rendered UI surface.
+            <!-- evidence-row:after-screenshots -->
+            - [x] N/A - this PR contains machine-readable catalog metadata only and changes no application pixels.
+            <!-- evidence-row:walkthrough-video -->
+            - [x] N/A - the non-interactive publish, sync, and round-trip verification are recorded by the workflow.
+            <!-- evidence-row:backend-logs -->
+            - [x] N/A - the catalog report proposal does not change or execute an application backend path.
+            <!-- evidence-row:frontend-logs -->
+            - [x] N/A - no frontend client request, response, console, or state transition is changed.
+            <!-- evidence-row:llm-trajectory -->
+            - [x] N/A - the PR records catalog pointers and does not change agent, action, prompt, provider, or inference behavior.
+            <!-- evidence-row:domain-artifacts -->
+            - [x] N/A - the catalog diff is the reviewed source artifact and this PR mutates no runtime model registry.
+
+            ## Contribution provenance
+
+            <!-- contribution-attribution:v1 -->
+            <!-- attribution-row:ai-assistance -->
+            - AI assistance: no - deterministic workflow
+            <!-- attribution-row:models -->
+            - Model(s) used: None - deterministic workflow
+            <!-- attribution-row:client -->
+            - Client / agent tooling: None - deterministic workflow
+            <!-- attribution-row:skill-revision -->
+            - Skill revision: N/A - catalog sync does not invoke a contribution skill
+            <!-- attribution-row:status -->
+            - Attribution status: self-reported
           add-paths: |
             reports/porting/**/catalog-diff.json
           delete-branch: true

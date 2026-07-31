@@ -1,0 +1,259 @@
+name: eliza.army
+
+# Builds the contribution site from live elizaOS/eliza data, verifies the
+# canonical skill and browser surface, and publishes only trusted develop,
+# scheduled, or manually dispatched runs to Cloudflare Pages.
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "packages/eliza-computer/**"
+      - "packages/skills/skills/contribute-to-eliza/**"
+      - "packages/skills/test/contribute-to-eliza.test.ts"
+      - ".github/workflows/eliza-computer.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "packages/eliza-computer/**"
+      - "packages/skills/skills/contribute-to-eliza/**"
+      - "packages/skills/test/contribute-to-eliza.test.ts"
+      - ".github/workflows/eliza-computer.yml"
+  schedule:
+    # Offset from the hour so this refresh does not join the top-of-hour surge.
+    - cron: "17 */6 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: eliza-computer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+env:
+  CI: "true"
+  # Frozen-lockfile CI uses the repository contract in
+  # .github/ci-bun-version.json; packageManager's unreleased pin is not
+  # resolvable by setup-bun.
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
+
+jobs:
+  quality:
+    name: Skill, data, build, and browser checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.13"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install frozen workspace dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install pinned skill validator dependency
+        run: |
+          printf '%s\n' \
+            'PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6' \
+            > "$RUNNER_TEMP/eliza-computer-python-requirements.txt"
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --requirement "$RUNNER_TEMP/eliza-computer-python-requirements.txt"
+
+      - name: Validate canonical contribution skill
+        run: |
+          python packages/skills/skills/skill-creator/scripts/quick_validate.py \
+            packages/skills/skills/contribute-to-eliza
+          bun test packages/skills/test/contribute-to-eliza.test.ts
+
+      - name: Generate live contribution data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run --cwd packages/eliza-computer leaderboard:generate
+
+      - name: Check types
+        run: bun run --cwd packages/eliza-computer typecheck
+
+      - name: Check formatting and lint
+        run: |
+          bun run --cwd packages/eliza-computer format:check
+          bun run --cwd packages/eliza-computer lint:check
+
+      - name: Run unit tests
+        run: bun run --cwd packages/eliza-computer test
+
+      - name: Build production site
+        run: bun run --cwd packages/eliza-computer build
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run desktop and mobile browser tests
+        run: bun run --cwd packages/eliza-computer test:e2e
+
+      - name: Upload Cloudflare Pages bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-computer-pages-${{ github.run_id }}
+          path: packages/eliza-computer/dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-computer-browser-diagnostics-${{ github.run_id }}
+          path: |
+            packages/eliza-computer/playwright-report
+            packages/eliza-computer/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  deploy:
+    name: Deploy verified develop bundle
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: eliza-army-production
+      url: https://eliza.army
+    steps:
+      - name: Checkout develop deployment tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: develop
+          persist-credentials: false
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Download verified Pages bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: eliza-computer-pages-${{ github.run_id }}
+          path: packages/eliza-computer/dist
+
+      - name: Require scoped Cloudflare credentials
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_TOKEN" != "true" ] || [ "$HAS_ACCOUNT" != "true" ]; then
+            echo "::error::The eliza-army-production environment requires CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID."
+            exit 1
+          fi
+
+      - name: Ensure Pages project exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/eliza-computer-pages-project.json"
+          status="$(
+            curl --silent --show-error \
+              --output "$response" \
+              --write-out "%{http_code}" \
+              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/eliza-computer"
+          )"
+          case "$status" in
+            200)
+              production_branch="$(
+                node -e 'const value=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); if (!value.result || typeof value.result.production_branch !== "string") throw new TypeError("Cloudflare project response omitted result.production_branch"); process.stdout.write(value.result.production_branch)' "$response"
+              )"
+              if [ "$production_branch" != "develop" ]; then
+                echo "::error::The existing eliza-computer Pages project uses production branch '$production_branch'; expected 'develop'."
+                exit 1
+              fi
+              ;;
+            404)
+              bunx wrangler@4.100.0 pages project create eliza-computer \
+                --production-branch=develop
+              ;;
+            *)
+              echo "::error::Cloudflare Pages project lookup failed with HTTP $status."
+              exit 1
+              ;;
+          esac
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: packages/eliza-computer
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if bunx wrangler@4.100.0 pages deploy dist \
+              --project-name=eliza-computer \
+              --branch=develop; then
+              exit 0
+            fi
+            if [ "$attempt" = "3" ]; then
+              echo "::error::Cloudflare Pages deploy failed after ${attempt} attempts."
+              exit 1
+            fi
+            echo "::warning::Cloudflare Pages deploy attempt ${attempt} failed; retrying."
+            sleep $((attempt * 10))
+          done
+
+      - name: Verify published skill and leaderboard
+        run: |
+          set -euo pipefail
+          verify_download() {
+            local path="$1"
+            local expected="$2"
+            local received
+            local attempt=1
+            received="$RUNNER_TEMP/$(basename "$path")"
+            while [ "$attempt" -le 12 ]; do
+              if curl --fail --silent --show-error \
+                "https://eliza.army/$path" \
+                --output "$received" &&
+                cmp --silent "$expected" "$received"; then
+                return 0
+              fi
+              echo "::warning::$path verification attempt $attempt did not match the verified build."
+              attempt=$((attempt + 1))
+              sleep 5
+            done
+            echo "::error::Published $path did not match the verified build."
+            return 1
+          }
+          verify_download index.html packages/eliza-computer/dist/index.html
+          verify_download skill.md packages/eliza-computer/dist/skill.md
+          verify_download mission.md packages/eliza-computer/dist/mission.md
+          verify_download codex.md packages/eliza-computer/dist/codex.md
+          verify_download skill-manifest.json packages/eliza-computer/dist/skill-manifest.json
+          verify_download downloads/contribute-to-eliza.skill packages/eliza-computer/dist/downloads/contribute-to-eliza.skill
+          verify_download downloads/contribute-to-eliza.skill.sha256 packages/eliza-computer/dist/downloads/contribute-to-eliza.skill.sha256
+          verify_download data/leaderboard.json packages/eliza-computer/dist/data/leaderboard.json

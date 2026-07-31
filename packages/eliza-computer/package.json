@@ -1,0 +1,56 @@
+{
+  "name": "@elizaos/eliza-computer",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --bun vite --port 4466",
+    "build": "bun --bun vite build",
+    "preview": "bun --bun vite preview --port 4466",
+    "prepare:site": "node scripts/prepare-site.mjs",
+    "predev": "bun run prepare:site",
+    "prebuild": "bun run prepare:site",
+    "leaderboard:generate": "bun scripts/generate-leaderboard.ts",
+    "deploy": "bun run leaderboard:generate && bun run build && bunx wrangler@4.100.0 pages deploy dist --project-name eliza-computer --branch develop",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:e2e": "../../node_modules/.bin/playwright test",
+    "test:e2e:record": "node scripts/record-evidence.mjs",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "node ../scripts/rm-path-recursive.mjs dist"
+  },
+  "dependencies": {
+    "@fontsource/poppins": "^5.2.7",
+    "@vitejs/plugin-react": "^6.0.0",
+    "lucide-react": "^1.0.0",
+    "react": "19.2.5",
+    "react-dom": "19.2.7",
+    "vite": "^8.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
+    "@biomejs/biome": "2.5.6",
+    "@playwright/test": "^1.61.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "graphql": "^16.13.2",
+    "jsdom": "^29.0.0",
+    "playwright": "^1.61.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "client"
+      ]
+    }
+  }
+}
