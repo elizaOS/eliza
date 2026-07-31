@@ -706,6 +706,54 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("Navigated to Notes (gui).");
   });
 
+  it("keeps a visible action callback visible when its terminal receipt is internal", async () => {
+    const text = "Opened Notes.";
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        await callback?.({ text }, "VIEWS");
+        return {
+          didRespond: true,
+          responseContent: { text, transcriptVisibility: "internal" as const },
+          responseMessages: [],
+          mode: "actions" as const,
+          actionResults: [
+            {
+              success: true,
+              text,
+              transcriptVisibility: "internal" as const,
+              data: { actionName: "VIEWS" },
+            },
+          ],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "visible-callback-internal-receipt-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const chunks: string[] = [];
+    const snapshots: string[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("open notes"),
+      "Streaming Agent",
+      {
+        onChunk: (chunk) => chunks.push(chunk),
+        onSnapshot: (snapshot) => snapshots.push(snapshot),
+      },
+    );
+
+    expect(chunks).toEqual([]);
+    expect(snapshots).toEqual([text]);
+    expect(result.text).toBe(text);
+    expect(result.transcriptVisibility).toBeUndefined();
+  });
+
   it("uses authoritative accumulated text for an in-place stream revision", async () => {
     const service: MessageService = {
       async handleMessage(_runtime, _message, _callback, options) {
