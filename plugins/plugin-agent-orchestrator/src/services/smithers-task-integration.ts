@@ -128,6 +128,17 @@ export function smithersDurableRunMetadata(
   return { [SMITHERS_DURABLE_RUN_METADATA_KEY]: link };
 }
 
+/** Select the newest nonempty response preserved in durable turn history. */
+export function recoverDurableTaskResponse(
+  turns: ReturnType<typeof collectDurableTaskTurns>,
+): string | undefined {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const candidate = turns[index]?.output?.finalText;
+    if (nonEmptyString(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 /** Structural subset of `AcpService` the durable task path uses (methods optional, as on the real service). */
 export interface AcpTaskService {
   spawnSession?(opts: {
@@ -253,12 +264,9 @@ export async function runDurableTask(
       severity: "ephemeral",
     });
   }
-  const recoveredResponse = collectDurableTaskTurns(result.execution)
-    .map((turn) => turn.output?.finalText)
-    .findLast(
-      (value): value is string =>
-        typeof value === "string" && value.trim().length > 0,
-    );
+  const recoveredResponse = recoverDurableTaskResponse(
+    collectDurableTaskTurns(result.execution),
+  );
   const lastResponse = executor.lastResponse ?? recoveredResponse;
   if (typeof lastResponse !== "string" || lastResponse.trim().length === 0) {
     throw new ElizaError("Durable task completed without a response", {

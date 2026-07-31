@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   type AcpTaskService,
+  recoverDurableTaskResponse,
   runDurableTask,
   shouldUseSmithersTaskRunner,
 } from "../../src/services/smithers-task-integration";
@@ -73,10 +74,17 @@ describe("runDurableTask", () => {
   );
 
   it(
-    "recovers a completed response without another ACP prompt after restart",
+    "recovers the last nonempty response across turns and after restart",
     async () => {
       const session = uniqueSession();
       const durableResponse = `durable-${"x".repeat(128 * 1024)}-tail`;
+      expect(
+        recoverDurableTaskResponse([
+          { done: false, output: { finalText: "older response" } },
+          { done: false, output: { finalText: durableResponse } },
+          { done: true, output: { finalText: "  " } },
+        ]),
+      ).toBe(durableResponse);
       const sendPrompt = vi.fn(async () => ({
         stopReason: "end_turn",
         finalText: durableResponse,
