@@ -180,3 +180,26 @@ describe("stripEnvelopeSummaryLines", () => {
     expect(sanitizeCompletionRelay(prose)).toBe(prose);
   });
 });
+
+describe("stripStructuredProofLines", () => {
+  it("strips APP_CREATE_DONE proof lines and surfaces liveUrl as prose", () => {
+    const relayed = [
+      "App verification passed.",
+      "",
+      'APP_CREATE_DONE {"appName":"ocean-wave-loop","files":["src/index.tsx"],"tests":{"passed":2,"failed":0},"liveUrl":"https://nubilio.org/apps/ocean-wave-loop/"}',
+    ].join("\n");
+    const out = sanitizeCompletionRelay(relayed);
+    expect(out).not.toContain("APP_CREATE_DONE");
+    expect(out).toContain("Live at https://nubilio.org/apps/ocean-wave-loop/");
+  });
+
+  it("does not duplicate a URL already stated in prose", () => {
+    const relayed = [
+      "The app is live at https://nubilio.org/apps/foo/",
+      'APP_CREATE_DONE {"appName":"foo","liveUrl":"https://nubilio.org/apps/foo/"}',
+    ].join("\n");
+    const out = sanitizeCompletionRelay(relayed);
+    expect(out.match(/nubilio\.org\/apps\/foo/g)).toHaveLength(1);
+    expect(out).not.toContain("APP_CREATE_DONE");
+  });
+});
