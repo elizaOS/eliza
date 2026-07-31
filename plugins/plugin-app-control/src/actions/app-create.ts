@@ -542,8 +542,8 @@ function buildCreatePrompt(
 	];
 	if (publish && liveUrl) {
 		lines.push(
-			"deployRule: after the commands pass, run `bun run build` and copy the production build output (the built index.html and assets, NOT sources)",
-			`  to ${publish.dir}/${appName}/ so it is served at ${liveUrl} — then verify that URL returns HTTP 200 before completing`,
+			"deployRule: after the commands pass, run `bun run build -- --base ./` (the relative base is REQUIRED — an absolute /assets/ base white-screens under the publish path) and copy the production build output (the built index.html and assets, NOT sources)",
+			`  to ${publish.dir}/${appName}/ so it is served at ${liveUrl} — then verify that URL returns HTTP 200 AND that its referenced .js asset URL returns HTTP 200 before completing`,
 		);
 	}
 	lines.push(
