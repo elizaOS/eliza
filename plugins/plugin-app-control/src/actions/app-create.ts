@@ -272,6 +272,12 @@ async function extractNames(
 }
 
 interface DispatchInput {
+	/**
+	 * Verification profile for the dispatched build. Fresh directory scaffolds
+	 * use "build" (launch/browser checks need a runtime launcher these apps do
+	 * not have); edits to an installed, launchable app keep "full".
+	 */
+	verifyProfile: "build" | "full";
 	runtime: IAgentRuntime;
 	prompt: string;
 	label: string;
@@ -392,6 +398,7 @@ async function dispatchCodingAgent({
 	appName,
 	originRoomId,
 	callback,
+	verifyProfile,
 }: DispatchInput): Promise<DispatchResult> {
 	const createTaskName = findAsyncCodingDelegationActionName(runtime.actions);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
@@ -420,7 +427,7 @@ async function dispatchCodingAgent({
 			validator: {
 				service: "app-verification",
 				method: "verifyApp",
-				params: { workdir, appName, profile: "full" },
+				params: { workdir, appName, profile: verifyProfile },
 			},
 			maxRetries: 2,
 			onVerificationFail: "retry",
@@ -490,13 +497,36 @@ async function dispatchCodingAgent({
 	return { dispatched: true, agents };
 }
 
+/**
+ * Optional static-publish target for finished builds. When both are configured
+ * (settings or env), the builder is instructed to copy the production build to
+ * `<dir>/<appName>/` and report the resulting `<urlBase>/<appName>/` link in
+ * its completion line — this is what turns "verification passed" into a URL
+ * the user can open. Unset on installs with no static host: the prompt then
+ * omits the deploy step entirely.
+ */
+function resolvePublishTarget(
+	runtime: IAgentRuntime,
+): { dir: string; urlBase: string } | null {
+	const dir =
+		(runtime.getSetting("APP_PUBLISH_DIR") as string | undefined)?.trim() ||
+		process.env.ELIZA_APP_PUBLISH_DIR?.trim();
+	const urlBase =
+		(runtime.getSetting("APP_PUBLISH_URL_BASE") as string | undefined)?.trim() ||
+		process.env.ELIZA_APP_PUBLISH_URL_BASE?.trim();
+	if (!dir || !urlBase) return null;
+	return { dir, urlBase: urlBase.replace(/\/+$/, "") };
+}
+
 function buildCreatePrompt(
 	intent: string,
 	appName: string,
 	displayName: string,
 	workdir: string,
+	publish: { dir: string; urlBase: string } | null,
 ): string {
-	return [
+	const liveUrl = publish ? `${publish.urlBase}/${appName}/` : null;
+	const lines = [
 		"task: build_eliza_app",
 		`appName: ${appName}`,
 		`displayName: ${displayName}`,
@@ -509,10 +539,24 @@ function buildCreatePrompt(
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+	];
+	if (publish && liveUrl) {
+		lines.push(
+			"deployRule: after the commands pass, run `bun run build` and copy the production build output (the built index.html and assets, NOT sources)",
+			`  to ${publish.dir}/${appName}/ so it is served at ${liveUrl} — then verify that URL returns HTTP 200 before completing`,
+		);
+	}
+	lines.push(
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"${liveUrl ? `,"liveUrl":"${liveUrl}"` : ""}}`,
 		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
-	].join("\n");
+	);
+	if (liveUrl) {
+		lines.push(
+			`userReport: in your final summary, state the app is live at ${liveUrl}`,
+		);
+	}
+	return lines.join("\n");
 }
 
 function buildEditPrompt(
@@ -726,10 +770,12 @@ async function createNewApp({
 	// the create dispatch.
 	await snapshotAppWorkdir(runtime, workdir, name, true, originRoomId);
 
-	const prompt = buildCreatePrompt(intent, name, displayName, workdir);
+	const publish = resolvePublishTarget(runtime);
+	const prompt = buildCreatePrompt(intent, name, displayName, workdir, publish);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
+		verifyProfile: "build",
 		label: `create-app:${name}`,
 		workdir,
 		appName: name,
@@ -824,6 +870,7 @@ async function editExistingApp({
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
+		verifyProfile: "full",
 		label: `edit-app:${app.name}`,
 		workdir,
 		appName: app.name,
