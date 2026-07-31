@@ -10,8 +10,9 @@ import {
   selectLiveProvider,
 } from "../../../app-core/test/helpers/live-provider";
 import {
+  ExpectedDevSmokeFailureMatcher,
   isExpectedDevSmokeConsoleError,
-  isExpectedDevSmokeResponse,
+  isLifeOpsActivitySignals503,
 } from "./browser-failure-policy";
 
 export const API_PORT = Number(process.env.ELIZA_API_PORT || "31337");
@@ -23,8 +24,16 @@ export const CHAT_COMPOSER_SELECTOR =
 export type FirstRunStatus = { complete: boolean };
 export type HealthStatus = { ready?: boolean };
 
-export function browserFailureCollector(page: Page): string[] {
+export interface BrowserFailureCollector {
+  failures(): Promise<string[]>;
+}
+
+export function browserFailureCollector(page: Page): BrowserFailureCollector {
   const failures: string[] = [];
+  const pendingResponseChecks = new Set<Promise<void>>();
+  const expectedFailureMatcher = new ExpectedDevSmokeFailureMatcher();
+  const deferredConsoleErrors: Array<{ text: string; url: string }> = [];
+
   page.on("pageerror", (error) => {
     failures.push(`pageerror: ${error.message}`);
   });
@@ -33,7 +42,11 @@ export function browserFailureCollector(page: Page): string[] {
     const text = message.text();
     if (/^\[RenderTelemetry\]/.test(text)) return;
     if (/504 \(Outdated Optimize Dep\)/i.test(text)) return;
-    if (isExpectedDevSmokeConsoleError(text, message.location().url)) return;
+    const locationUrl = message.location().url;
+    if (isExpectedDevSmokeConsoleError(text, locationUrl)) {
+      deferredConsoleErrors.push({ text, url: locationUrl });
+      return;
+    }
     if (
       /^Failed to load resource: the server responded with a status of (401|404) /i.test(
         text,
@@ -47,11 +60,55 @@ export function browserFailureCollector(page: Page): string[] {
     if (response.status() === 504 && response.url().includes("/.vite/deps/")) {
       return;
     }
-    if (isExpectedDevSmokeResponse(response.status(), response.url())) return;
     if (response.status() < 500) return;
+    if (isLifeOpsActivitySignals503(response.status(), response.url())) {
+      let check: Promise<void>;
+      check = response
+        .text()
+        .then((body) => {
+          if (
+            expectedFailureMatcher.recordResponse(
+              response.status(),
+              response.url(),
+              body,
+            )
+          )
+            return;
+          failures.push(`${response.status()} ${response.url()}`);
+        })
+        .catch((error: unknown) => {
+          failures.push(
+            `${response.status()} ${response.url()} (body inspection failed: ${
+              error instanceof Error ? error.message : String(error)
+            })`,
+          );
+        })
+        .finally(() => pendingResponseChecks.delete(check));
+      pendingResponseChecks.add(check);
+      return;
+    }
     failures.push(`${response.status()} ${response.url()}`);
   });
-  return failures;
+
+  return {
+    async failures(): Promise<string[]> {
+      while (pendingResponseChecks.size > 0) {
+        await Promise.all([...pendingResponseChecks]);
+      }
+      for (const candidate of deferredConsoleErrors) {
+        if (
+          expectedFailureMatcher.consumeConsoleError(
+            candidate.text,
+            candidate.url,
+          )
+        )
+          continue;
+        failures.push(`console.error: ${candidate.text}`);
+      }
+      deferredConsoleErrors.length = 0;
+      return [...failures];
+    },
+  };
 }
 
 export async function fetchJson<T>(url: string): Promise<T> {
