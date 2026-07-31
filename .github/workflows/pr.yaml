@@ -21,7 +21,9 @@ jobs:
   check-pr-evidence:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # A full-history checkout is required for the merge-base evidence diff and
+    # regularly approaches five minutes in this large monorepo.
+    timeout-minutes: 15
     permissions:
       contents: read
 
