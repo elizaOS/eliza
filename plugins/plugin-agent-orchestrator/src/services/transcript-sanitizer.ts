@@ -104,7 +104,7 @@ export function stripEnvelopeSummaryLines(text: string): string {
  * carries a `liveUrl` the user-facing text keeps that one load-bearing fact as
  * plain prose (unless the surrounding text already states the URL).
  */
-const STRUCTURED_PROOF_LINE = /^(?:APP|PLUGIN)_CREATE_DONE\s*\{/;
+const STRUCTURED_PROOF_LINE = /(?:APP|PLUGIN)_CREATE_DONE\s*\{/;
 
 export function stripStructuredProofLines(text: string): string {
   if (!text) return "";
@@ -138,10 +138,18 @@ export function sanitizeCompletionRelay(
   maxChars: number = DEFAULT_MAX_RELAY_CHARS,
 ): string {
   if (!text) return "";
-  return elideLongBlocks(
-    stripStructuredProofLines(stripEnvelopeSummaryLines(stripToolTranscript(text))),
-    maxChars,
+  const stripped = stripStructuredProofLines(
+    stripEnvelopeSummaryLines(stripToolTranscript(text)),
   );
+  let out = elideLongBlocks(stripped, maxChars);
+  // The liveUrl rescue appends at the tail, which is exactly what elision
+  // truncates — re-assert it after the cap so the one load-bearing fact
+  // survives an oversized deliverable (bounded overshoot: one URL line).
+  const liveUrl = stripped.match(/^Live at (\S+)$/m)?.[1];
+  if (liveUrl && !out.includes(liveUrl)) {
+    out = `${out}\nLive at ${liveUrl}`;
+  }
+  return out;
 }
 
 export { TOOL_OUTPUT_END_MARKER };

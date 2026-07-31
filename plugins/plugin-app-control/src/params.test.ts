@@ -8,6 +8,7 @@ import {
 	extractCloseTarget,
 	extractLaunchTarget,
 	normalizeActionOptions,
+	readOptionalRefOption,
 	readStringOption,
 } from "./params.js";
 
@@ -90,18 +91,22 @@ describe("extractCloseTarget", () => {
 	});
 });
 
-describe("readStringOption sentinel handling", () => {
-	it("treats planner-emitted absent-value strings as not provided", () => {
+describe("option sentinel handling", () => {
+	it("readOptionalRefOption treats planner-emitted absent-value strings as not provided", () => {
 		for (const sentinel of ["None", "null", "undefined", " none "]) {
-			expect(readStringOption({ editTarget: sentinel }, "editTarget")).toBe(
-				null,
-			);
+			expect(
+				readOptionalRefOption({ editTarget: sentinel }, "editTarget"),
+			).toBe(null);
 		}
 	});
 
-	it("keeps real values intact", () => {
-		expect(readStringOption({ editTarget: "my-app" }, "editTarget")).toBe(
+	it("readOptionalRefOption keeps real values intact", () => {
+		expect(readOptionalRefOption({ editTarget: "my-app" }, "editTarget")).toBe(
 			"my-app",
 		);
+	});
+
+	it("readStringOption keeps literal 'none' — a legitimate value for settings/colors", () => {
+		expect(readStringOption({ value: "none" }, "value")).toBe("none");
 	});
 });

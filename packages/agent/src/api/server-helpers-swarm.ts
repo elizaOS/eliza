@@ -476,9 +476,17 @@ async function buildTaskResultLine(task: {
       : completionSummary;
   }
   if (validationSummary) return validationSummary;
+  // Same rule as the non-completed branch: originalTask can be the entire
+  // composed kickoff prompt — never echo it raw. Prefer the label; a
+  // kickoff-shaped task is unusable; otherwise one capped line.
+  const taskLine = task.originalTask.includes("--- Swarm Coordination ---")
+    ? task.label?.trim() || "Task completed."
+    : task.originalTask.split("\n", 1)[0]?.trim().slice(0, 140) ||
+      task.label?.trim() ||
+      "Task completed.";
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
   const port = portMatch?.[1];
-  if (!port) return task.originalTask;
+  if (!port) return taskLine;
   if (await isPortServing(port)) {
     const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
     return `built and serving at http://${host}:${port}`;
