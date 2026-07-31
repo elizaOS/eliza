@@ -1063,6 +1063,8 @@ function recoverSettledMutatingActionTurn(
       .reverse()
       .find((result) => hasAppliedUserFacingEffectProof(result, allReceipts));
   } catch (error) {
+    // error-policy:J4 conflicting receipt evidence degrades to the explicit
+    // post-commit interruption reply rather than inventing action-specific text.
     runtime.logger.warn(
       {
         src: "eliza-api",
@@ -3473,6 +3475,8 @@ async function generateChatResponseWithTiming(
               { phase: "message" },
             );
           } catch (error) {
+            // error-policy:J1 this API boundary preserves a proven committed
+            // effect while translating later turn failure into a durable reply.
             const recovery = recoverSettledMutatingActionTurn(
               runtime,
               settledActionResults,
