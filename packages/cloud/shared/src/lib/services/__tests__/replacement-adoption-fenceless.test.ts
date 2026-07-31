@@ -77,6 +77,26 @@ async function seedProvisioningAgent(params: {
   return { id: rec.id, orgId: org.id };
 }
 
+async function expectPrimaryPlacement(
+  id: string,
+  expected: {
+    status: "provisioning" | "running";
+    sandboxId: string;
+    nodeId: string;
+    containerName: string;
+  },
+): Promise<void> {
+  const row = await dbWrite.query.agentSandboxes.findFirst({
+    where: sql`${agentSandboxes.id} = ${id}`,
+  });
+  expect(row).toMatchObject({
+    status: expected.status,
+    sandbox_id: expected.sandboxId,
+    node_id: expected.nodeId,
+    container_name: expected.containerName,
+  });
+}
+
 beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     throw new Error("Replacement-adoption tests require an isolated PGlite database");
@@ -124,10 +144,12 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
       );
 
       expect(adopted.status).toBe("running");
-      const row = await dbWrite.query.agentSandboxes.findFirst({
-        where: sql`${agentSandboxes.id} = ${id}`,
+      await expectPrimaryPlacement(id, {
+        status: "running",
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
       });
-      expect(row?.status).toBe("running");
     },
     PGLITE_TIMEOUT,
   );
@@ -161,6 +183,12 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
           { status: "running" },
         ),
       ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+      await expectPrimaryPlacement(id, {
+        status: "provisioning",
+        sandboxId: "agent-original",
+        nodeId: "node-1",
+        containerName: "agent-original",
+      });
     },
     PGLITE_TIMEOUT,
   );
@@ -194,6 +222,12 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
           { status: "running" },
         ),
       ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+      await expectPrimaryPlacement(id, {
+        status: "provisioning",
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
     },
     PGLITE_TIMEOUT,
   );
@@ -226,6 +260,12 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
           { status: "running" },
         ),
       ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+      await expectPrimaryPlacement(id, {
+        status: "provisioning",
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
     },
     PGLITE_TIMEOUT,
   );
@@ -259,6 +299,12 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
           { status: "running" },
         ),
       ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+      await expectPrimaryPlacement(id, {
+        status: "provisioning",
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
     },
     PGLITE_TIMEOUT,
   );
