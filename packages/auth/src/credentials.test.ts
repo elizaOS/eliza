@@ -6,16 +6,25 @@ import {
   resetSubscriptionAuthProviders,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { listAccounts, loadAccount, saveAccount } from "./account-storage";
 import {
+  createIsolatedAccountStoragePolicy,
+  listAccounts,
+  loadAccount,
+  saveAccount as saveAccountWithPolicy,
+} from "./account-storage";
+import {
+  type AccessTokenOutcome,
   applySubscriptionCredentials,
-  deleteProviderCredentials,
-  getAccessToken,
+  deleteProviderCredentials as deleteProviderCredentialsWithPolicy,
+  type GetAccessTokenOptions,
+  type GetAccessTokenOutcomeOptions,
+  getAccessToken as getAccessTokenWithPolicy,
   getSubscriptionStatus,
   listProviderAccounts,
-  saveCredentials,
+  saveCredentials as saveCredentialsWithPolicy,
 } from "./credentials";
 import { refreshCodexToken } from "./openai-codex";
+import type { AccountCredentialProvider } from "./types";
 
 vi.mock("./openai-codex.ts", () => ({
   refreshCodexToken: vi.fn(),
@@ -27,10 +36,61 @@ function useTempElizaHome(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-test-"));
   tempHomes.push(dir);
   vi.stubEnv("ELIZA_HOME", dir);
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("HOME", dir);
   vi.stubEnv("USERPROFILE", dir);
   return dir;
 }
+
+function storagePolicy() {
+  const root = process.env.ELIZA_HOME;
+  if (!root) throw new Error("test storage root is not initialized");
+  return createIsolatedAccountStoragePolicy(root);
+}
+
+function saveAccount(record: Parameters<typeof saveAccountWithPolicy>[0]) {
+  return saveAccountWithPolicy(record, storagePolicy());
+}
+
+function saveCredentials(
+  ...args: OmitLast<Parameters<typeof saveCredentialsWithPolicy>>
+) {
+  return saveCredentialsWithPolicy(...args, storagePolicy());
+}
+
+function deleteProviderCredentials(
+  provider: Parameters<typeof deleteProviderCredentialsWithPolicy>[0],
+) {
+  return deleteProviderCredentialsWithPolicy(provider, storagePolicy());
+}
+
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  opts: GetAccessTokenOutcomeOptions,
+): Promise<AccessTokenOutcome>;
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId?: string,
+  opts?: GetAccessTokenOptions,
+): Promise<string | null>;
+function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId = "default",
+  opts?: GetAccessTokenOptions | GetAccessTokenOutcomeOptions,
+): Promise<string | null | AccessTokenOutcome> {
+  return getAccessTokenWithPolicy(provider, accountId, {
+    ...opts,
+    storagePolicy: storagePolicy(),
+  } as GetAccessTokenOutcomeOptions);
+}
+
+type OmitLast<T extends readonly unknown[]> = T extends readonly [
+  ...infer Head,
+  unknown,
+]
+  ? Head
+  : never;
 
 describe("applySubscriptionCredentials", () => {
   afterEach(() => {

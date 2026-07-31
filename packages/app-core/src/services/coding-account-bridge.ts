@@ -38,7 +38,10 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadAccount } from "@elizaos/auth/account-storage";
+import {
+  createRuntimeAccountStoragePolicy,
+  loadAccount,
+} from "@elizaos/auth/account-storage";
 import {
   type AccessTokenOutcome,
   getAccessToken,
@@ -81,6 +84,10 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "reset-soonest",
   "drain-soonest-reset",
 ]);
+
+function accountStoragePolicy() {
+  return createRuntimeAccountStoragePolicy(resolveStateDir());
+}
 
 /** Optional coding-only operator override from ELIZA_CODING_ACCOUNT_STRATEGY. */
 function getEnvCodingStrategy(): Strategy | undefined {
@@ -531,6 +538,7 @@ async function reconcileCodexTokensLocked(
     );
   }
   if (newest) {
+    const storagePolicy = accountStoragePolicy();
     const tokens = newest.auth.tokens;
     saveCredentials(
       "openai-codex",
@@ -541,8 +549,9 @@ async function reconcileCodexTokensLocked(
         ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
       },
       accountId,
+      storagePolicy,
     );
-    const adoptedRecord = loadAccount("openai-codex", accountId);
+    const adoptedRecord = loadAccount("openai-codex", accountId, storagePolicy);
     if (!adoptedRecord) {
       throw new ElizaError(
         `Adopted Codex credentials could not be reloaded for account "${accountId}"`,
@@ -878,6 +887,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             resolveOutcome = await getAccessToken(providerId, account.id, {
               ...resolveOpts,
               outcome: true,
+              storagePolicy: accountStoragePolicy(),
             });
             accessToken = resolveOutcome.ok ? resolveOutcome.accessToken : null;
             // A widened Claude resolve is only a freshness preference. The
@@ -892,6 +902,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             ) {
               const stillValid = await getAccessToken(providerId, account.id, {
                 outcome: true,
+                storagePolicy: accountStoragePolicy(),
               });
               resolveOutcome = stillValid;
               if (stillValid.ok) {
@@ -964,6 +975,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       try {
         const tokenOutcome = await getAccessToken(providerId, accountId, {
           outcome: true,
+          storagePolicy: accountStoragePolicy(),
         });
         if (tokenOutcome.ok) {
           const token = tokenOutcome.accessToken;

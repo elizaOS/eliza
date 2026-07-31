@@ -12,7 +12,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import {
   type AnthropicAccountPoolBridge,
   getAnthropicAccountPoolBridge,
@@ -66,19 +69,22 @@ describe("anthropic-bridge-seam", () => {
   });
 
   it("selects a stored subscription and resolves its access token", async () => {
-    saveAccount({
-      id: "primary",
-      providerId: "anthropic-subscription",
-      label: "primary",
-      source: "oauth",
-      credentials: {
-        access: "sk-ant-oat-PRIMARY",
-        refresh: "sk-ant-oat-PRIMARY-refresh",
-        expires: FAR_FUTURE,
+    saveAccount(
+      {
+        id: "primary",
+        providerId: "anthropic-subscription",
+        label: "primary",
+        source: "oauth",
+        credentials: {
+          access: "sk-ant-oat-PRIMARY",
+          refresh: "sk-ant-oat-PRIMARY-refresh",
+          expires: FAR_FUTURE,
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
+      createIsolatedAccountStoragePolicy(home),
+    );
     getDefaultAccountPool();
     const bridge = getAnthropicAccountPoolBridge();
     const selected = await bridge?.selectAnthropicSubscription();

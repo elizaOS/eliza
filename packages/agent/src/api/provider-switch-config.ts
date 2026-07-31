@@ -8,12 +8,17 @@
  * keeps openai.com default model ids off non-openai upstreams. Mutations are
  * applied in place; consumed by the first-run / config API routes.
  */
+
+import {
+  type AccountStoragePolicy,
+  commitAccountDeletions,
+} from "@elizaos/auth/account-storage";
 import {
   applySubscriptionCredentials,
-  deleteProviderCredentials,
+  preflightProviderCredentialDeletion,
 } from "@elizaos/auth/credentials";
 import {
-  SUBSCRIPTION_PROVIDER_IDS,
+  ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   SUBSCRIPTION_PROVIDER_MAP,
 } from "@elizaos/auth/types";
 import type {
@@ -699,7 +704,19 @@ export function clearSubscriptionProviderConfig(
  * Clear persisted first-run state that should force the UI back through the
  * first-run setup on the next load/reset.
  */
-export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
+export function clearPersistedFirstRunConfig(
+  config: MutableElizaConfig,
+  storagePolicy: AccountStoragePolicy,
+): void {
+  // Credential deletion is the only reset step that can be denied by storage
+  // ownership policy. Resolve and snapshot every target before mutating config,
+  // process.env, or account files, then commit the rollback-capable plan first.
+  const credentialDeletion = preflightProviderCredentialDeletion(
+    ACCOUNT_CREDENTIAL_PROVIDER_IDS,
+    storagePolicy,
+  );
+  commitAccountDeletions(credentialDeletion);
+
   if (config.meta && typeof config.meta === "object") {
     delete (config.meta as Record<string, unknown>).firstRunComplete;
   }
@@ -795,9 +812,6 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
   delete process.env.ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL;
   delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
   delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
-  for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
-    deleteProviderCredentials(provider);
-  }
 }
 
 export function createProviderSwitchConnection(args: {

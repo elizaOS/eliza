@@ -30,7 +30,10 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import type { IAgentRuntime } from "@elizaos/core";
 import { generateText } from "ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -68,16 +71,19 @@ interface FakeUpstream {
 }
 
 function messagesResponseBody(text: string): string {
-  return JSON.stringify({
-    id: "msg_e2e_fake_upstream",
-    type: "message",
-    role: "assistant",
-    model: MODEL,
-    content: [{ type: "text", text }],
-    stop_reason: "end_turn",
-    stop_sequence: null,
-    usage: { input_tokens: 12, output_tokens: 5 },
-  });
+  return JSON.stringify(
+    {
+      id: "msg_e2e_fake_upstream",
+      type: "message",
+      role: "assistant",
+      model: MODEL,
+      content: [{ type: "text", text }],
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 12, output_tokens: 5 },
+    },
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 // Each upstream instance takes a FRESH port from the assigned range. Reusing

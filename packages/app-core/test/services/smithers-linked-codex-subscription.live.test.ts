@@ -12,7 +12,11 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../../../../plugins/plugin-agent-orchestrator/src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../../../plugins/plugin-agent-orchestrator/src/services/orchestrator-task-service.js";
@@ -420,12 +424,15 @@ describeLive(
         const hostAuthFileDigest = createHash("sha256")
           .update(hostAuthRaw)
           .digest("hex");
-        const hostCredentialDigest = authDigest({
-          access: hostAuth.tokens.access_token,
-          refresh: hostAuth.tokens.refresh_token,
-          idToken: hostAuth.tokens.id_token,
-          accountId: hostAuth.tokens.account_id,
-        });
+        const hostCredentialDigest = authDigest(
+          {
+            access: hostAuth.tokens.access_token,
+            refresh: hostAuth.tokens.refresh_token,
+            idToken: hostAuth.tokens.id_token,
+            accountId: hostAuth.tokens.account_id,
+          },
+          createIsolatedAccountStoragePolicy(liveRoot),
+        );
 
         originalCwd = process.cwd();
         liveRoot = mkdtempSync(

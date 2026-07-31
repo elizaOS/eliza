@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { ElizaError, logger } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
+  type AccountStoragePolicy,
   listAccounts,
   loadAccount,
   saveAccount,
@@ -172,11 +173,12 @@ function buildAccountRecord(args: {
   organizationId?: string;
   providerAccountId?: string;
   email?: string;
+  storagePolicy: AccountStoragePolicy;
 }): { record: AccountCredentialRecord; previous?: AccountCredentialRecord } {
   const now = Date.now();
   const normalizedEmail = normalizeIdentity(args.email);
   const replacement = args.replaceAccountId
-    ? loadAccount(args.providerId, args.replaceAccountId)
+    ? loadAccount(args.providerId, args.replaceAccountId, args.storagePolicy)
     : null;
   if (args.replaceAccountId && !replacement) {
     throw new ElizaError("OAuth replacement account no longer exists", {
@@ -197,7 +199,7 @@ function buildAccountRecord(args: {
   }
   const deduplicated = replacement
     ? null
-    : listAccounts(args.providerId).find((account) => {
+    : listAccounts(args.providerId, args.storagePolicy).find((account) => {
         if (
           args.organizationId &&
           account.organizationId === args.organizationId
@@ -235,8 +237,9 @@ function buildAccountRecord(args: {
   return { record, ...(replacement ? { previous: replacement } : {}) };
 }
 
-interface StartOptions {
+export interface StartOptions {
   label: string;
+  storagePolicy: AccountStoragePolicy;
   accountId?: string;
   /** Existing same-provider account to replace only after OAuth succeeds. */
   replaceAccountId?: string;
@@ -463,15 +466,16 @@ async function startGenericFlow(args: {
         ...(organizationId ? { organizationId } : {}),
         ...(providerAccountId ? { providerAccountId } : {}),
         ...(email ? { email } : {}),
+        storagePolicy: opts.storagePolicy,
       });
-      saveAccount(record);
+      saveAccount(record, opts.storagePolicy);
       try {
         if (opts.onAccountSaved) {
           await opts.onAccountSaved(record);
         }
       } catch (cause) {
         if (previous) {
-          saveAccount(previous);
+          saveAccount(previous, opts.storagePolicy);
           await opts.onReplacementRollback?.(previous);
         }
         throw new ElizaError("OAuth credential adoption failed", {

@@ -9,7 +9,11 @@
  * `process.env` (TOS restriction).
  */
 import crypto from "node:crypto";
-import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createRuntimeAccountStoragePolicy,
+  loadAccount,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import type { AnthropicFlow } from "@elizaos/auth/anthropic";
 import type { CodexFlow } from "@elizaos/auth/openai-codex";
 import {
@@ -17,7 +21,11 @@ import {
   type OAuthCredentials,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
-import { logger, type RouteRequestContext } from "@elizaos/core";
+import {
+  logger,
+  type RouteRequestContext,
+  resolveStateDir,
+} from "@elizaos/core";
 import type {
   LinkedAccountConfig,
   LinkedAccountHealth,
@@ -81,6 +89,7 @@ export async function handleSubscriptionRoutes(
     loadSubscriptionAuth,
   } = ctx;
   if (!pathname.startsWith("/api/subscription/")) return false;
+  const storagePolicy = createRuntimeAccountStoragePolicy(resolveStateDir());
 
   if (method === "GET" && pathname === "/api/subscription/status") {
     try {
@@ -165,17 +174,29 @@ export async function handleSubscriptionRoutes(
         : await exchangeAnthropicAuthorizationCode(body.code);
       const profile = await fetchAnthropicOAuthProfile(credentials.access);
       const accountId = profile.accountId ?? crypto.randomUUID();
-      saveCredentials("anthropic-subscription", credentials, accountId);
-      const stored = loadAccount("anthropic-subscription", accountId);
+      saveCredentials(
+        "anthropic-subscription",
+        credentials,
+        accountId,
+        storagePolicy,
+      );
+      const stored = loadAccount(
+        "anthropic-subscription",
+        accountId,
+        storagePolicy,
+      );
       if (stored && profile.email) {
-        saveAccount({
-          ...stored,
-          label: profile.email,
-          email: profile.email,
-          ...(profile.organizationId
-            ? { organizationId: profile.organizationId }
-            : {}),
-        });
+        saveAccount(
+          {
+            ...stored,
+            label: profile.email,
+            email: profile.email,
+            ...(profile.organizationId
+              ? { organizationId: profile.organizationId }
+              : {}),
+          },
+          storagePolicy,
+        );
       }
       const pool = getAgentHostBridge().getDefaultAccountPool() as {
         list(providerId?: string): LinkedAccountConfig[];
@@ -379,7 +400,7 @@ export async function handleSubscriptionRoutes(
         error(res, "OpenAI exchange failed", 500);
         return true;
       }
-      saveCredentials("openai-codex", credentials);
+      saveCredentials("openai-codex", credentials, "default", storagePolicy);
       await applySubscriptionCredentials(state.config);
       flow.close();
       delete state._codexFlow;
@@ -404,7 +425,7 @@ export async function handleSubscriptionRoutes(
     if (isSubscriptionProvider(provider)) {
       try {
         const { deleteProviderCredentials } = await loadSubscriptionAuth();
-        deleteProviderCredentials(provider);
+        deleteProviderCredentials(provider, storagePolicy);
 
         if (provider === "anthropic-subscription" && state.config.env) {
           delete (state.config.env as Record<string, unknown>)

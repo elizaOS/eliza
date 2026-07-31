@@ -32,6 +32,7 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
+import { createIsolatedAccountStoragePolicy } from "@elizaos/auth/account-storage";
 import { createDeterministicLlmProxyPlugin } from "../../test/mocks/helpers/llm-proxy-plugin.ts";
 import {
   _clearCompatPgliteDataDirForTests,
@@ -165,7 +166,10 @@ async function main(): Promise<void> {
 
     // Clear the persisted first-run completion the same way the reset route
     // does, so the re-boot genuinely starts from a fresh first-run state.
-    clearPersistedFirstRunConfig(config);
+    clearPersistedFirstRunConfig(
+      config,
+      createIsolatedAccountStoragePolicy(dataRoot),
+    );
     saveElizaConfig(config);
 
     // Fully tear down the first runtime so its PGLite client manager (a

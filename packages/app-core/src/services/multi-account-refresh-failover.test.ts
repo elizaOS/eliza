@@ -26,7 +26,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { logger } from "@elizaos/core";
@@ -73,16 +77,19 @@ function writeAccount(
 ): void {
   // NOTE: saveAccount stamps updatedAt = Date.now() itself; tests that need
   // "materialized copy newer than canonical" order their writes accordingly.
-  saveAccount({
-    id,
-    providerId,
-    label: id,
-    source: "oauth",
-    credentials,
-    createdAt: Date.now() - 10 * HOUR_MS,
-    updatedAt: Date.now(),
-    ...(extra.organizationId ? { organizationId: extra.organizationId } : {}),
-  });
+  saveAccount(
+    {
+      id,
+      providerId,
+      label: id,
+      source: "oauth",
+      credentials,
+      createdAt: Date.now() - 10 * HOUR_MS,
+      updatedAt: Date.now(),
+      ...(extra.organizationId ? { organizationId: extra.organizationId } : {}),
+    },
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 /** Write the per-account CODEX_HOME auth.json the way a Codex CLI would. */

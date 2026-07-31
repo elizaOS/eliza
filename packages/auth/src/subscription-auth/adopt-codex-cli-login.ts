@@ -39,7 +39,11 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import { loadAccount, saveAccount } from "../account-storage.js";
+import {
+  type AccountStoragePolicy,
+  loadAccount,
+  saveAccount,
+} from "../account-storage.js";
 
 /** Every failure mode, as the `code` on the thrown {@link ElizaError}. */
 export const ADOPT_CODEX_ERROR_CODES = [
@@ -119,6 +123,7 @@ function jwtExpiryMs(token: string): number | undefined {
 }
 
 export interface AdoptCodexOptions {
+  storagePolicy: AccountStoragePolicy;
   /** Pool account id to create (default "default"). */
   accountId?: string;
   /** Overwrite an existing pool account with this id. Default false → error. */
@@ -250,9 +255,7 @@ export function restoreRetiredSource(
  * committed; where the source was already retired it is restored no-clobber, or
  * its retired location is surfaced in the error context.
  */
-export function adoptCodexCliLogin(
-  opts: AdoptCodexOptions = {},
-): AdoptCodexResult {
+export function adoptCodexCliLogin(opts: AdoptCodexOptions): AdoptCodexResult {
   const accountId = opts.accountId ?? "default";
   validateAccountId(accountId);
   const provider = "openai-codex" as const;
@@ -291,7 +294,7 @@ export function adoptCodexCliLogin(
 
   // No implicit overwrite of an existing pool account — checked before any
   // filesystem effect so a collision leaves the world untouched.
-  const existing = loadAccount(provider, accountId);
+  const existing = loadAccount(provider, accountId, opts.storagePolicy);
   if (existing && !opts.overwrite) {
     throw adoptError(
       "adopt_codex.account_exists",
@@ -371,21 +374,24 @@ export function adoptCodexCliLogin(
 
   try {
     const now = Date.now();
-    saveAccount({
-      id: accountId,
-      providerId: provider,
-      label: "Adopted Codex CLI login",
-      source: "oauth",
-      credentials: {
-        access: tokens.access_token,
-        refresh: tokens.refresh_token,
-        expires: jwtExpiryMs(tokens.access_token) ?? now,
-        ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+    saveAccount(
+      {
+        id: accountId,
+        providerId: provider,
+        label: "Adopted Codex CLI login",
+        source: "oauth",
+        credentials: {
+          access: tokens.access_token,
+          refresh: tokens.refresh_token,
+          expires: jwtExpiryMs(tokens.access_token) ?? now,
+          ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+        },
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        ...(tokens.account_id ? { organizationId: tokens.account_id } : {}),
       },
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      ...(tokens.account_id ? { organizationId: tokens.account_id } : {}),
-    });
+      opts.storagePolicy,
+    );
   } catch (err) {
     const restore = restoreRetiredSource(retiredTo, authPath);
     if (!restore.restored) {
