@@ -147,4 +147,19 @@ describe("stripJsonStructuralJunkReply — leaked pseudo-tool markup", () => {
 			stripJsonStructuralJunkReply("the <AI> label means artificial"),
 		).toBe("the <AI> label means artificial");
 	});
+
+	it("preserves plain uppercase technical tags regardless of length", () => {
+		expect(
+			stripJsonStructuralJunkReply(
+				"Use <HTML><BODY>content</BODY></HTML> and return <JSON> or <UUID> values over <HTTP>.",
+			),
+		).toBe(
+			"Use <HTML><BODY>content</BODY></HTML> and return <JSON> or <UUID> values over <HTTP>.",
+		);
+		expect(
+			stripJsonStructuralJunkReply(
+				"A truncated example such as <HTTP> GET /health remains prose",
+			),
+		).toBe("A truncated example such as <HTTP> GET /health remains prose");
+	});
 });
