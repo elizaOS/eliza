@@ -29,7 +29,6 @@ import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
-import { memoizeTurnWork } from "../../trajectory-context";
 import {
 	type AccessContext,
 	type Content,
@@ -249,49 +248,59 @@ export async function resolveDocumentRequester(
 	runtime: IAgentRuntime,
 	message?: Memory,
 ): Promise<DocumentRequester> {
-	// Search and inventory providers authorize the same immutable ingress
-	// message concurrently. Sharing that promise gives the entire turn one
-	// requester snapshot and avoids repeating role and membership reads.
-	const requesterKey = [
-		"documents:requester",
-		runtime.agentId,
-		message?.id ?? "no-message",
-		message?.entityId ?? runtime.agentId,
-		message?.roomId ?? "no-room",
-	].join(":");
-	return memoizeTurnWork(requesterKey, async () => {
-		const requester = await resolveDocumentRequesterRole(runtime, message);
-		if (documentRoleHasGlobalVisibility(requester.role)) {
-			return { ...requester, roomIds: [] };
-		}
-		try {
-			const roomIds = await runtime.getRoomsForParticipants([
-				requester.entityId,
-			]);
-			return {
-				...requester,
-				roomIds: [...new Set(roomIds)],
-			};
-		} catch (cause) {
-			// error-policy:J2 Preserve room-resolution context and fail the read.
-			const error = new ElizaError("Document requester room lookup failed", {
-				code: "DOCUMENT_ROOM_LOOKUP_FAILED",
-				cause,
-				context: {
-					agentId: runtime.agentId,
-					entityId: requester.entityId,
-					roomId: message?.roomId,
-				},
-				severity: "ephemeral",
-			});
-			runtime.reportError("DocumentService.resolveRequesterRooms", error, {
+	const requester = await resolveDocumentRequesterRole(runtime, message);
+	if (documentRoleHasGlobalVisibility(requester.role)) {
+		return { ...requester, roomIds: [] };
+	}
+	try {
+		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
+		return {
+			...requester,
+			roomIds: [...new Set(roomIds)],
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve room-resolution context and fail the read.
+		const error = new ElizaError("Document requester room lookup failed", {
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause,
+			context: {
 				agentId: runtime.agentId,
 				entityId: requester.entityId,
 				roomId: message?.roomId,
-			});
-			throw error;
-		}
-	});
+			},
+			severity: "ephemeral",
+		});
+		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
+			agentId: runtime.agentId,
+			entityId: requester.entityId,
+			roomId: message?.roomId,
+		});
+		throw error;
+	}
+}
+
+type DocumentRequesterResolver = () => Promise<DocumentRequester>;
+
+/**
+ * Coalesces requester authorization only for one caller-owned read composition.
+ * Rejections are evicted so a retry re-reads the authoritative role and room
+ * membership instead of retaining a transient authorization failure.
+ */
+export function createDocumentProviderRequesterResolver(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): DocumentRequesterResolver {
+	let pending: Promise<DocumentRequester> | undefined;
+	return () => {
+		if (pending) return pending;
+		const current = resolveDocumentRequester(runtime, message);
+		pending = current;
+		// error-policy:J5 callers await current; this observer only evicts a rejected read memo.
+		void current.catch(() => {
+			if (pending === current) pending = undefined;
+		});
+		return current;
+	};
 }
 
 function normalizeDocumentScope(
@@ -528,6 +537,15 @@ export class DocumentService extends Service {
 		message?: Memory,
 		options: DocumentListOptions = {},
 	): Promise<DocumentListResult> {
+		return this.listDocumentsDetailedWithRequester(options, () =>
+			resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	private async listDocumentsDetailedWithRequester(
+		options: DocumentListOptions,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<DocumentListResult> {
 		const limit =
 			typeof options.limit === "number" && Number.isFinite(options.limit)
 				? Math.max(
@@ -559,7 +577,7 @@ export class DocumentService extends Service {
 			);
 		}
 
-		const requester = await resolveDocumentRequester(this.runtime, message);
+		const requester = await resolveRequester();
 		const query = options.query?.trim();
 		const normalizedQuery = query?.toLowerCase();
 		const queryParams: DocumentListQueryParams = {
@@ -620,6 +638,29 @@ export class DocumentService extends Service {
 				? { availableNextCursor: stored.availableNextCursor }
 				: {}),
 		};
+	}
+
+	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
+	async composeProviderDocuments(
+		message: Memory,
+		listOptions: DocumentListOptions,
+	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+		const resolveRequester = createDocumentProviderRequesterResolver(
+			this.runtime,
+			message,
+		);
+		const [relevantFragments, listResult] = await Promise.all([
+			this.searchDocumentsWithRequester(
+				message,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				resolveRequester,
+			),
+			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
+		]);
+		return { relevantFragments, documents: listResult.documents };
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
@@ -1133,6 +1174,24 @@ export class DocumentService extends Service {
 		accessContext?: AccessContext,
 		options?: { turnMessageId?: UUID; signal?: AbortSignal },
 	): Promise<StoredDocument[]> {
+		return this.searchDocumentsWithRequester(
+			message,
+			scope,
+			searchMode,
+			accessContext,
+			options,
+			() => resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	private async searchDocumentsWithRequester(
+		message: Memory,
+		scope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } | undefined,
+		searchMode: SearchMode | undefined,
+		accessContext: AccessContext | undefined,
+		options: { turnMessageId?: UUID; signal?: AbortSignal } | undefined,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
 			return [];
@@ -1149,7 +1208,7 @@ export class DocumentService extends Service {
 					this.runtime,
 					accessContext,
 				)
-			: await resolveDocumentRequester(this.runtime, message);
+			: await resolveRequester();
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;

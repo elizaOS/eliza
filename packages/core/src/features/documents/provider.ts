@@ -73,12 +73,10 @@ export const documentsProvider: Provider = {
 			};
 		}
 
-		const [relevantFragments, documents] = await Promise.all([
-			service.searchDocuments(message),
-			service.listDocuments(message, {
+		const { relevantFragments, documents } =
+			await service.composeProviderDocuments(message, {
 				limit: MAX_AVAILABLE_DOCUMENTS,
-			}),
-		]);
+			});
 		const relevantSnippets = relevantFragments
 			.slice(0, MAX_RELEVANT_SNIPPETS)
 			.map((fragment, index) => {
