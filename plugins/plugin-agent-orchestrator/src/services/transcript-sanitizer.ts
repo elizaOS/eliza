@@ -118,7 +118,10 @@ export function stripStructuredProofLines(text: string): string {
     const url = line.match(/"liveUrl"\s*:\s*"([^"]+)"/)?.[1];
     if (url) liveUrls.push(url);
   }
-  let out = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  let out = kept
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
   for (const url of liveUrls) {
     if (!out.includes(url)) {
       out = out ? `${out}\nLive at ${url}` : `Live at ${url}`;
