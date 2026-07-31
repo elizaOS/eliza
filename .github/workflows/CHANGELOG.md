@@ -4,6 +4,26 @@ This changelog tracks meaningful CI policy and workflow-architecture changes.
 It is intentionally scoped to `.github/workflows` so product/package changelogs
 do not have to carry CI-only history.
 
+## 2026-07-31
+
+### Added
+
+- Added `eliza-computer.yml` as the exact-artifact Cloudflare Pages authority
+  for the eliza.army contribution site. It refreshes the public GitHub
+  leaderboard, packages the canonical contribution skill, deploys only a clean
+  `develop` revision, verifies Cloudflare commit metadata, and byte-compares the
+  public skill and leaderboard with the tested build.
+
+- Added contribution attribution checks for issue comments and hardened the
+  existing AI workflows so every automated GitHub text mutation carries an
+  exact provider/model/client declaration.
+
+### Changed
+
+- Documentation automation now reads instructions from the trusted base
+  revision, uses path-scoped read/edit permissions on ephemeral runners, and
+  rejects out-of-scope or oversized model output before proposing changes.
+
 ## 2026-07-21
 
 ### Changed

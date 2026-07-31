@@ -23,6 +23,7 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
+| `eliza-computer.yml` | Push to develop, schedule, manual | Build, deploy, and byte-verify the eliza.army contribution site, skill, and live leaderboard |
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `build-llama-ffi-android.yml` | Native-source push to develop, tag, manual, reusable | Canonical fused Android producer: arm64-v8a Vulkan and x86_64 CPU artifacts |
 | `build-android.yml` | Manual | Android app build; finds an input-compatible native producer run through the Actions API |
