@@ -5,13 +5,10 @@
  */
 
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
-import {
-  loadCachedOnboardingSession,
-  mirrorOnboardingSessionToCache,
-  type OnboardingChatInput,
-  type OnboardingChatResult,
-  type OnboardingSession,
-  runOnboardingChatWithStore,
+import type {
+  OnboardingChatInput,
+  OnboardingChatResult,
+  OnboardingSession,
 } from "@/lib/services/eliza-app/onboarding-chat";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -132,12 +129,20 @@ export class OnboardingSessionCoordinator {
         );
       }
     }
+    const { mirrorOnboardingSessionToCache } = await import(
+      "@/lib/services/eliza-app/onboarding-chat"
+    );
     await mirrorOnboardingSessionToCache(session);
   }
 
   private async runTurn(
     request: CoordinatorRequest,
   ): Promise<OnboardingChatResult> {
+    // The Worker entrypoint must remain free of global-scope service
+    // initialization. Loading onboarding inside the request preserves the
+    // bootstrap boundary used by the main Hono application.
+    const { loadCachedOnboardingSession, runOnboardingChatWithStore } =
+      await import("@/lib/services/eliza-app/onboarding-chat");
     const ledger = await this.state.storage.get<CoordinatorLedger>(LEDGER_KEY);
     if (ledger && request.input.idempotencyKey) {
       const replay = ledger.results.find(
