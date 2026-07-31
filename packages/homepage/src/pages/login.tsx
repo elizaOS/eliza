@@ -36,6 +36,8 @@ export default function LoginPage() {
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaBlack}`}
             alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
+            width={269}
+            height={99}
             draggable={false}
             className="app-brand-mark"
           />

@@ -1,19 +1,19 @@
 /**
  * Country flag renderer for the homepage phone-number picker.
  */
-import { hasFlag } from "country-flag-icons";
-import * as FlagComponents from "country-flag-icons/react/3x2";
-import type * as React from "react";
-
-const FlagMap = FlagComponents as Record<
-  string,
-  React.ComponentType<React.SVGAttributes<SVGSVGElement>>
->;
-
 interface CountryFlagProps {
   countryCode: string;
   className?: string;
   title?: string;
+}
+
+function getCountryFlag(countryCode: string): string {
+  const normalized = countryCode.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return countryCode;
+
+  return String.fromCodePoint(
+    ...normalized.split("").map((char) => 127397 + char.charCodeAt(0)),
+  );
 }
 
 export function CountryFlag({
@@ -21,20 +21,14 @@ export function CountryFlag({
   className,
   title,
 }: CountryFlagProps) {
-  const key = countryCode.replace(/-/g, "_");
-  const Flag = FlagMap[key];
-
-  if (!hasFlag(countryCode) || !Flag) {
-    return (
-      <span className={className} title={title ?? countryCode} aria-hidden>
-        {countryCode}
-      </span>
-    );
-  }
-
   return (
-    <span title={title ?? countryCode}>
-      <Flag className={className} />
+    <span
+      className={`${className ?? ""} inline-flex items-center justify-center text-base leading-none`}
+      title={title ?? countryCode}
+      role="img"
+      aria-label={title ?? countryCode}
+    >
+      {getCountryFlag(countryCode)}
     </span>
   );
 }

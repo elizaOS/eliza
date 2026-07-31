@@ -12,7 +12,21 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = resolve(__dirname, "../package.json");
+const pruneAssetsPath = resolve(
+  __dirname,
+  "../scripts/prune-unused-static-assets.mjs",
+);
 const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");
+const landingPath = resolve(__dirname, "../src/pages/landing.tsx");
+const modelViewerPath = resolve(
+  __dirname,
+  "../src/components/ModelViewers/ModelB.tsx",
+);
+const shaderBackgroundPath = resolve(
+  __dirname,
+  "../src/components/ShaderBackground/ShaderBackground.tsx",
+);
 const globalStylesPath = resolve(__dirname, "../src/index.css");
 const iphoneModelPath = resolve(
   __dirname,
@@ -40,8 +54,8 @@ test("landing ships compressed iPhone and WebP profile assets", () => {
   const model = readFileSync(iphoneModelPath);
   assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
   assert.ok(
-    statSync(iphoneModelPath).size < 750_000,
-    "phone model must stay under its 750 KB transfer budget",
+    statSync(iphoneModelPath).size < 550_000,
+    "phone model must stay under its 550 KB transfer budget",
   );
 
   for (const assetPath of [elizaAvatarPath, profileImagePath]) {
@@ -57,6 +71,26 @@ test("landing ships compressed iPhone and WebP profile assets", () => {
     statSync(profileImagePath).size < 25_000,
     "profile image must stay under its 25 KB transfer budget",
   );
+});
+
+test("landing keeps WebGL deferred and render loops demand-driven", () => {
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  const pruneAssets = readFileSync(pruneAssetsPath, "utf8");
+  const landing = readFileSync(landingPath, "utf8");
+  const modelViewer = readFileSync(modelViewerPath, "utf8");
+  const shaderBackground = readFileSync(shaderBackgroundPath, "utf8");
+
+  assert.equal(packageJson.dependencies["@react-three/drei"], undefined);
+  assert.equal(packageJson.dependencies["country-flag-icons"], undefined);
+  assert.match(
+    landing,
+    /const ModelB = lazy\(\(\) => import\("@\/components\/ModelViewers\/ModelB"\)\)/,
+  );
+  assert.match(modelViewer, /frameloop="demand"/);
+  assert.match(shaderBackground, /frameloop="demand"/);
+  assert.match(shaderBackground, /1000 \/ 30/);
+  assert.match(packageJson.scripts.postbuild, /prune-unused-static-assets/);
+  assert.match(pruneAssets, /"brand\/background", "product"/);
 });
 
 test("large visual assets receive a durable browser cache policy", () => {

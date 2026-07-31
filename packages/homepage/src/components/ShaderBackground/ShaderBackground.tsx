@@ -1,12 +1,12 @@
 /**
  * Full-viewport WebGL shader background for the homepage onboarding flow.
  */
-import { Canvas, useFrame } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import "./gradientWaveMaterial";
 
-function ShaderPlane() {
+function ShaderPlane({ interactive }: { interactive: boolean }) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
   const mouseRaw = useRef(new THREE.Vector2(0.5, 0.5));
   const mouseSmooth = useRef(new THREE.Vector2(0.5, 0.5));
@@ -15,13 +15,17 @@ function ShaderPlane() {
   const previousMouse = useRef(new THREE.Vector2(0.5, 0.5));
   const clickPos = useRef(new THREE.Vector2(0.5, 0.5));
   const clickTime = useRef(100);
+  const invalidate = useThree((state) => state.invalidate);
 
   useEffect(() => {
+    if (!interactive) return;
+
     const onMove = (e: PointerEvent) => {
       mouseRaw.current.set(
         e.clientX / window.innerWidth,
         1 - e.clientY / window.innerHeight,
       );
+      invalidate();
     };
     const onDown = (e: PointerEvent) => {
       clickPos.current.set(
@@ -29,6 +33,7 @@ function ShaderPlane() {
         1 - e.clientY / window.innerHeight,
       );
       clickTime.current = 0;
+      invalidate();
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerdown", onDown);
@@ -36,7 +41,7 @@ function ShaderPlane() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);
     };
-  }, []);
+  }, [interactive, invalidate]);
 
   useFrame((_state, delta) => {
     const mat = matRef.current;
@@ -73,7 +78,44 @@ function ShaderPlane() {
   );
 }
 
+function ShaderFrameDriver({ reducedMotion }: { reducedMotion: boolean }) {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      invalidate();
+      return;
+    }
+
+    let animationFrame = 0;
+    let previousFrame = 0;
+    const frameInterval = 1000 / 30;
+    const tick = (now: number) => {
+      if (now - previousFrame >= frameInterval) {
+        previousFrame = now;
+        invalidate();
+      }
+      animationFrame = requestAnimationFrame(tick);
+    };
+    animationFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [invalidate, reducedMotion]);
+
+  return null;
+}
+
 export default function ShaderBackground() {
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
   return (
     <div
       style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }}
@@ -81,15 +123,17 @@ export default function ShaderBackground() {
       <Canvas
         orthographic
         camera={{ position: [0, 0, 1] }}
-        dpr={[1, 1.25]}
+        dpr={1}
+        frameloop="demand"
         gl={{
           alpha: false,
           antialias: false,
           powerPreference: "high-performance",
         }}
-        style={{ pointerEvents: "auto" }}
+        style={{ pointerEvents: reducedMotion ? "none" : "auto" }}
       >
-        <ShaderPlane />
+        <ShaderPlane interactive={!reducedMotion} />
+        <ShaderFrameDriver reducedMotion={reducedMotion} />
       </Canvas>
     </div>
   );
