@@ -522,10 +522,11 @@ export async function runViewsShow({
 		text: result.text,
 		...(result.ok
 			? {
-					// The natural Stage 1 acknowledgement or the action callback is
-					// the visible response; the raw terminal receipt only closes the
-					// turn and must not persist as a second assistant row.
-					transcriptVisibility: "internal" as const,
+					// This text is the canonical user-facing completion, not an
+					// internal VIEWS diagnostic. Keep it visible at the terminal
+					// boundary so streaming clients still render one acknowledgement
+					// when an early action callback is not transported. The message
+					// service de-duplicates it when that callback was delivered.
 					userFacingText: result.text,
 					verifiedUserFacing: true,
 					turnComplete: true,
