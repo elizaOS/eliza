@@ -35,15 +35,30 @@ export interface SlackDmConfig {
 }
 
 /**
- * Channel-specific configuration
+ * Channel-specific configuration.
+ *
+ * Mirrors `SlackChannelSchema` in
+ * packages/agent/src/config/zod-schema.providers-core.ts so everything the
+ * config layer accepts under `channels.slack.channels[<id>]` has a home here.
+ * `skills` and `systemPrompt` are resolved by `./allowlist.ts` but not yet
+ * consumed by the service (they need per-channel context assembly, a separate
+ * slice); they are typed here so the resolution point stays singular.
  */
 export interface SlackChannelConfig {
   /** If false, ignore this channel */
   enabled?: boolean;
+  /** Legacy alias for `enabled: false`. */
+  allow?: boolean;
   /** Require bot mention to respond */
   requireMention?: boolean;
   /** User allowlist for this channel */
   users?: Array<string | number>;
+  /** Allow bot-authored messages to trigger replies in this channel */
+  allowBots?: boolean;
+  /** Skill filter for this channel. Resolved, not yet applied. */
+  skills?: string[];
+  /** System prompt for this channel. Resolved, not yet applied. */
+  systemPrompt?: string;
   /** Reply-to mode for this channel */
   replyToMode?: "off" | "first" | "all";
 }
@@ -127,8 +142,17 @@ export interface SlackAccountConfig {
   slashCommand?: SlackSlashCommandConfig;
   /** DM configuration */
   dm?: SlackDmConfig;
-  /** Per-channel configuration keyed by channel ID */
+  /**
+   * Per-channel configuration, keyed by channel ID (`C0123ABCD`), by channel
+   * name (`general`, matched once the name is known), or `"*"` for a default.
+   */
   channels?: Record<string, SlackChannelConfig>;
+  /**
+   * Account-level default mention requirement for channel messages. Overridden
+   * per channel by `channels.<id>.requireMention`; overrides the global
+   * `SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS` env flag.
+   */
+  requireMention?: boolean;
   /** Allowed channel IDs */
   allowedChannelIds?: string[];
   /** Whether to ignore bot messages */
@@ -169,6 +193,19 @@ export interface ResolvedSlackAccount {
   botTokenSource: SlackTokenSource;
   appTokenSource: SlackTokenSource;
   config: SlackAccountConfig;
+  /**
+   * Structured per-channel config for this account, hoisted out of `config`
+   * so `SlackService` reads one field instead of re-deriving the merge on
+   * every inbound event. Empty object when nothing is configured.
+   */
+  channels: Record<string, SlackChannelConfig>;
+  /** Structured DM config for this account, hoisted alongside `channels`. */
+  dm?: SlackDmConfig;
+  /**
+   * Account-level mention default, if the account sets one explicitly.
+   * `undefined` means "fall through to the global env flag".
+   */
+  requireMention?: boolean;
 }
 
 /**
@@ -417,6 +454,20 @@ export function resolveSlackAccount(
     : undefined;
   const role = normalizeSlackAccountRole(merged.role ?? envRole);
 
+  // Hoist the structured channel/DM config so the service can gate inbound
+  // messages without walking `config` per event. Filters out null/non-object
+  // entries up front — the zod schema marks each value optional, so an
+  // explicit `null` reaches us intact.
+  const channels: Record<string, SlackChannelConfig> = {};
+  if (merged.channels && typeof merged.channels === "object") {
+    for (const [channelKey, channelConfig] of Object.entries(merged.channels)) {
+      if (!channelConfig || typeof channelConfig !== "object") continue;
+      const trimmed = channelKey.trim();
+      if (!trimmed) continue;
+      channels[trimmed] = channelConfig;
+    }
+  }
+
   return {
     accountId: normalizedAccountId,
     enabled,
@@ -429,6 +480,9 @@ export function resolveSlackAccount(
     botTokenSource,
     appTokenSource,
     config: merged,
+    channels,
+    dm: merged.dm,
+    requireMention: merged.requireMention,
   };
 }
 

@@ -332,7 +332,14 @@ import {
   normalizeAccountId,
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
+  type SlackChannelConfig,
 } from "./accounts";
+import {
+  collectSlackConfiguredChannelIds,
+  resolveSlackChannelConfig,
+  resolveSlackInboundGate,
+  type SlackChannelConfigResolved,
+} from "./allowlist";
 import { markdownToSlackMrkdwn } from "./formatting";
 import {
   getSlackChannelType,
@@ -372,6 +379,11 @@ type SlackAccountRuntime = {
   settings: SlackSettings;
   allowedChannelIds: Set<string>;
   dynamicChannelIds: Set<string>;
+  /**
+   * Structured `channels.slack.channels` config for this account. Consulted
+   * per inbound message for requireMention / users / enabled overrides.
+   */
+  channelConfigs: Record<string, SlackChannelConfig>;
   userCache: Map<string, SlackUser>;
   channelCache: Map<string, SlackChannel>;
   isConnected: boolean;
@@ -442,6 +454,18 @@ export class SlackService extends Service implements ISlackService {
     };
   }
 
+  /**
+   * Builds the static inbound allowlist for an account.
+   *
+   * Two sources, unioned:
+   *  - `allowedChannelIds` / the `SLACK_CHANNEL_IDS` env var (legacy path)
+   *  - id-keyed entries in the structured `channels.slack.channels` config
+   *
+   * Folding the structured config in is what makes `channels: { C0123ABCD: {…} }`
+   * a working allowlist on its own; previously it was parsed and discarded, so
+   * an operator who configured only `channels` got "all channels allowed"
+   * instead of the restriction they wrote.
+   */
   private buildAllowedChannelSet(account?: ResolvedSlackAccount): Set<string> {
     const allowed = new Set<string>();
     const configuredIds = account?.config.allowedChannelIds;
@@ -450,19 +474,58 @@ export class SlackService extends Service implements ISlackService {
         ? configuredIds.join(",")
         : (this.runtime.getSetting("SLACK_CHANNEL_IDS") as string | undefined);
 
-    if (!channelIdsRaw?.trim()) {
-      return allowed;
+    if (channelIdsRaw?.trim()) {
+      channelIdsRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && isValidChannelId(s))
+        .forEach((id) => {
+          allowed.add(id);
+        });
     }
 
-    channelIdsRaw
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && isValidChannelId(s))
-      .forEach((id) => {
+    for (const id of collectSlackConfiguredChannelIds(account?.channels)) {
+      if (isValidChannelId(id)) {
         allowed.add(id);
-      });
+      }
+    }
 
     return allowed;
+  }
+
+  /**
+   * Returns the structured per-channel config record for an account.
+   */
+  private getChannelConfigsForAccount(
+    accountId?: string | null,
+  ): Record<string, SlackChannelConfig> {
+    return this.getAccountState(accountId)?.channelConfigs ?? {};
+  }
+
+  /**
+   * Resolves the config entry that applies to a channel.
+   *
+   * The channel name is read from the already-populated channel cache only:
+   * gating runs on every inbound event, so it must never trigger a
+   * `conversations.info` round-trip. Id-keyed and `"*"` entries therefore match
+   * immediately, while name-keyed entries begin matching once the channel has
+   * been resolved by some other code path.
+   */
+  private resolveChannelConfig(
+    channelId: string,
+    accountId?: string | null,
+  ): SlackChannelConfigResolved | null {
+    const channels = this.getChannelConfigsForAccount(accountId);
+    if (Object.keys(channels).length === 0) {
+      return null;
+    }
+    const cachedName =
+      this.getChannelCacheForAccount(accountId).get(channelId)?.name;
+    return resolveSlackChannelConfig({
+      channels,
+      channelId,
+      channelName: cachedName,
+    });
   }
 
   static async start(runtime: IAgentRuntime): Promise<SlackService> {
@@ -796,6 +859,7 @@ export class SlackService extends Service implements ISlackService {
         settings: this.loadSettings(account),
         allowedChannelIds: this.buildAllowedChannelSet(account),
         dynamicChannelIds: new Set(),
+        channelConfigs: account.channels ?? {},
         userCache: new Map(),
         channelCache: new Map(),
         isConnected: false,
@@ -1165,27 +1229,46 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    // Check channel restrictions
-    if (!this.isChannelAllowed(message.channel, accountId)) {
+    const isMentioned = Boolean(message.text?.includes(`<@${botUserId}>`));
+    // Skip @mentions in channels — handleAppMention handles those
+    if (isMentioned && message.channel_type !== "im") {
+      return;
+    }
+
+    // Structured per-channel config (requireMention / users / enabled) layered
+    // on top of the env allowlist. DMs are left alone in this slice: they have
+    // no `channels` surface, and DM policy is its own slice, so they keep the
+    // exact previous behaviour (global mention flag only).
+    const isDirectMessage = message.channel_type === "im";
+    const channelConfig = isDirectMessage
+      ? null
+      : this.resolveChannelConfig(message.channel, accountId);
+    const account = this.getAccountState(accountId)?.account;
+
+    const gate = resolveSlackInboundGate({
+      channelConfig,
+      isChannelAllowed: this.isChannelAllowed(message.channel, accountId),
+      isMentioned,
+      accountRequireMention: isDirectMessage
+        ? undefined
+        : account?.requireMention,
+      globalRequireMention: settings.shouldRespondOnlyToMentions,
+      userId: message.user,
+    });
+
+    if (!gate.allowed) {
       this.runtime.logger.debug(
         {
           src: "plugin:slack",
           agentId: this.runtime.agentId,
           accountId,
           channelId: message.channel,
+          reason: gate.reason,
+          matchKey: channelConfig?.matchKey,
+          matchSource: channelConfig?.matchSource,
         },
-        "Message received in non-allowed channel, ignoring",
+        "Inbound Slack message gated, ignoring",
       );
-      return;
-    }
-
-    // Check if we should only respond to mentions
-    const isMentioned = message.text?.includes(`<@${botUserId}>`);
-    // Skip @mentions in channels — handleAppMention handles those
-    if (isMentioned && message.channel_type !== "im") {
-      return;
-    }
-    if (settings.shouldRespondOnlyToMentions && !isMentioned) {
       return;
     }
 
@@ -1268,6 +1351,35 @@ export class SlackService extends Service implements ISlackService {
           userId: event.user,
         },
         "Ignoring malformed Slack app mention event",
+      );
+      return;
+    }
+
+    // Same gate as handleMessage, minus the mention check (an app_mention IS
+    // the mention). Without this, a channel marked `enabled: false` — or one
+    // outside the allowlist — stayed reachable by @-mentioning the bot, which
+    // makes the channel config unenforceable on the path operators care about.
+    const channelConfig = this.resolveChannelConfig(event.channel, accountId);
+    const gate = resolveSlackInboundGate({
+      channelConfig,
+      isChannelAllowed: this.isChannelAllowed(event.channel, accountId),
+      isMentioned: true,
+      skipMentionCheck: true,
+      userId: event.user,
+    });
+
+    if (!gate.allowed) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          channelId: event.channel,
+          reason: gate.reason,
+          matchKey: channelConfig?.matchKey,
+          matchSource: channelConfig?.matchSource,
+        },
+        "Inbound Slack app mention gated, ignoring",
       );
       return;
     }

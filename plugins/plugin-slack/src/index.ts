@@ -172,6 +172,22 @@ export {
   type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
+// Per-channel config resolution / inbound gating
+export {
+  collectSlackConfiguredChannelIds,
+  isSlackChannelIdKey,
+  normalizeSlackAllowList,
+  normalizeSlackSlug,
+  resolveSlackChannelConfig,
+  resolveSlackInboundGate,
+  resolveSlackShouldRequireMention,
+  resolveSlackUserAllowed,
+  type SlackAllowList,
+  type SlackChannelConfigResolved,
+  type SlackChannelMatchSource,
+  type SlackInboundDenyReason,
+  slackAllowListMatches,
+} from "./allowlist";
 // Channel configuration types
 export type {
   SlackConfig,
