@@ -549,22 +549,27 @@ async function runLiveCodexCredentialRoundtrip(
       return "~/.codex/auth.json is not a ChatGPT Codex login";
     }
 
-    const { saveAccount } = await import("@elizaos/auth/account-storage");
-    saveAccount({
-      id: "machine-codex-live-credential",
-      providerId: "openai-codex",
-      label: "Machine Codex (live credential)",
-      source: "oauth",
-      credentials: {
-        access,
-        refresh,
-        expires: jwtExpMs(access),
-        ...(idToken ? { idToken } : {}),
+    const { createIsolatedAccountStoragePolicy, saveAccount } = await import(
+      "@elizaos/auth/account-storage"
+    );
+    saveAccount(
+      {
+        id: "machine-codex-live-credential",
+        providerId: "openai-codex",
+        label: "Machine Codex (live credential)",
+        source: "oauth",
+        credentials: {
+          access,
+          refresh,
+          expires: jwtExpMs(access),
+          ...(idToken ? { idToken } : {}),
+        },
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        organizationId: accountId,
       },
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      organizationId: accountId,
-    });
+      createIsolatedAccountStoragePolicy(home),
+    );
     const { getDefaultAccountPool } = await import(
       "../../../app-core/src/services/account-pool"
     );

@@ -38,7 +38,12 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadAccount } from "@elizaos/auth/account-storage";
+import {
+  type AccountStoragePolicy,
+  createRuntimeAccountStoragePolicy,
+  loadAccount,
+  withAccountStorageMutation,
+} from "@elizaos/auth/account-storage";
 import {
   type AccessTokenOutcome,
   getAccessToken,
@@ -81,6 +86,10 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "reset-soonest",
   "drain-soonest-reset",
 ]);
+
+function accountStoragePolicy() {
+  return createRuntimeAccountStoragePolicy(resolveStateDir());
+}
 
 /** Optional coding-only operator override from ELIZA_CODING_ACCOUNT_STRATEGY. */
 function getEnvCodingStrategy(): Strategy | undefined {
@@ -423,6 +432,7 @@ function canonicalCodexAuth(
 async function createCanonicalCodexHome(
   accountId: string,
   record: NonNullable<ReturnType<typeof loadAccount>>,
+  storagePolicy: AccountStoragePolicy,
 ): Promise<MaterializedCodexAuthCandidate> {
   const refreshToken = record.credentials.refresh;
   if (!refreshToken) {
@@ -436,11 +446,17 @@ async function createCanonicalCodexHome(
     );
   }
   const homeDir = codexGenerationDir(accountId, refreshToken);
-  mkdirSync(homeDir, { recursive: true, mode: 0o700 });
   const authPath = path.join(homeDir, "auth.json");
-  if (!existsSync(authPath)) {
-    publishJsonExclusive(authPath, canonicalCodexAuth(accountId, record));
-  }
+  withAccountStorageMutation(
+    storagePolicy,
+    "materialize-codex-auth-generation",
+    () => {
+      mkdirSync(homeDir, { recursive: true, mode: 0o700 });
+      if (!existsSync(authPath)) {
+        publishJsonExclusive(authPath, canonicalCodexAuth(accountId, record));
+      }
+    },
+  );
   const candidate = await readStableCodexAuth(homeDir);
   if (candidate.auth.tokens.refresh_token !== refreshToken) {
     throw new ElizaError(
@@ -463,8 +479,9 @@ interface CodexReconciliation {
 
 async function reconcileCodexTokensLocked(
   accountId: string,
+  storagePolicy: AccountStoragePolicy,
 ): Promise<CodexReconciliation> {
-  const record = loadAccount("openai-codex", accountId);
+  const record = loadAccount("openai-codex", accountId, storagePolicy);
   if (!record) {
     throw new ElizaError(`openai-codex account "${accountId}" is missing`, {
       code: "CODEX_CANONICAL_CREDENTIAL_MISSING",
@@ -541,8 +558,9 @@ async function reconcileCodexTokensLocked(
         ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
       },
       accountId,
+      storagePolicy,
     );
-    const adoptedRecord = loadAccount("openai-codex", accountId);
+    const adoptedRecord = loadAccount("openai-codex", accountId, storagePolicy);
     if (!adoptedRecord) {
       throw new ElizaError(
         `Adopted Codex credentials could not be reloaded for account "${accountId}"`,
@@ -585,8 +603,12 @@ async function reconcileCodexTokensLocked(
 export async function adoptRotatedCodexTokens(
   accountId: string,
 ): Promise<boolean> {
+  const storagePolicy = accountStoragePolicy();
   return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
-    const reconciled = await reconcileCodexTokensLocked(accountId);
+    const reconciled = await reconcileCodexTokensLocked(
+      accountId,
+      storagePolicy,
+    );
     return reconciled.adopted;
   });
 }
@@ -681,62 +703,77 @@ function resolveCodexConfig(): string {
 function materializeRequiredTextFile(
   targetPath: string,
   contents: string,
+  storagePolicy: AccountStoragePolicy,
   errorCode:
     | "CODEX_CONFIG_MATERIALIZATION_FAILED"
     | "CODEX_ACTIVE_HOME_MATERIALIZATION_FAILED",
   description: string,
 ): void {
-  const tmpPath = `${targetPath}.tmp-${process.pid}-${randomUUID()}`;
-  try {
-    if (
-      existsSync(targetPath) &&
-      readFileSync(targetPath, "utf-8") === contents
-    ) {
-      return;
-    }
-    writeFileSync(tmpPath, contents, {
-      encoding: "utf-8",
-      mode: 0o600,
-      flag: "wx",
-    });
-    renameSync(tmpPath, targetPath);
-    if (readFileSync(targetPath, "utf-8") !== contents) {
-      throw new ElizaError(
-        `Codex ${description} verification failed after materialization: ${targetPath}`,
-        {
-          code: errorCode,
-          context: { targetPath },
-          severity: "fatal",
-        },
-      );
-    }
-  } catch (cause) {
-    // error-policy:J2 both config and active-home publication are part of the
-    // auth-safety boundary, so the spawn must not proceed on filesystem error.
-    throw new ElizaError(
-      `Could not materialize required Codex ${description}: ${targetPath}`,
-      {
-        code: errorCode,
-        cause,
-        context: { targetPath },
-        severity: "fatal",
-      },
-    );
-  } finally {
-    rmSync(tmpPath, { force: true });
-  }
+  withAccountStorageMutation(
+    storagePolicy,
+    `materialize-codex-${description}`,
+    () => {
+      const tmpPath = `${targetPath}.tmp-${process.pid}-${randomUUID()}`;
+      try {
+        if (
+          existsSync(targetPath) &&
+          readFileSync(targetPath, "utf-8") === contents
+        ) {
+          return;
+        }
+        writeFileSync(tmpPath, contents, {
+          encoding: "utf-8",
+          mode: 0o600,
+          flag: "wx",
+        });
+        renameSync(tmpPath, targetPath);
+        if (readFileSync(targetPath, "utf-8") !== contents) {
+          throw new ElizaError(
+            `Codex ${description} verification failed after materialization: ${targetPath}`,
+            {
+              code: errorCode,
+              context: { targetPath },
+              severity: "fatal",
+            },
+          );
+        }
+      } catch (cause) {
+        // error-policy:J2 both config and active-home publication are part of the
+        // auth-safety boundary, so the spawn must not proceed on filesystem error.
+        throw new ElizaError(
+          `Could not materialize required Codex ${description}: ${targetPath}`,
+          {
+            code: errorCode,
+            cause,
+            context: { targetPath },
+            severity: "fatal",
+          },
+        );
+      } finally {
+        rmSync(tmpPath, { force: true });
+      }
+    },
+  );
 }
 
-function materializeRequiredCodexConfig(homeDir: string): void {
+function materializeRequiredCodexConfig(
+  homeDir: string,
+  storagePolicy: AccountStoragePolicy,
+): void {
   materializeRequiredTextFile(
     path.join(homeDir, "config.toml"),
     resolveCodexConfig(),
+    storagePolicy,
     "CODEX_CONFIG_MATERIALIZATION_FAILED",
     "config",
   );
 }
 
-function publishActiveCodexHome(accountId: string, homeDir: string): void {
+function publishActiveCodexHome(
+  accountId: string,
+  homeDir: string,
+  storagePolicy: AccountStoragePolicy,
+): void {
   const accountHome = codexHomeDir(accountId);
   const relativeHome = path.relative(accountHome, homeDir);
   if (
@@ -755,6 +792,7 @@ function publishActiveCodexHome(accountId: string, homeDir: string): void {
   materializeRequiredTextFile(
     path.join(accountHome, CODEX_ACTIVE_HOME_FILE),
     `${relativeHome || "."}\n`,
+    storagePolicy,
     "CODEX_ACTIVE_HOME_MATERIALIZATION_FAILED",
     "active-home pointer",
   );
@@ -767,13 +805,21 @@ function publishActiveCodexHome(accountId: string, homeDir: string): void {
  * published generation. A newer canonical login gets a new generation path.
  */
 async function materializeCodexHome(accountId: string): Promise<string> {
+  const storagePolicy = accountStoragePolicy();
   return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
-    const reconciled = await reconcileCodexTokensLocked(accountId);
+    const reconciled = await reconcileCodexTokensLocked(
+      accountId,
+      storagePolicy,
+    );
     const candidate =
       reconciled.candidate ??
-      (await createCanonicalCodexHome(accountId, reconciled.record));
-    materializeRequiredCodexConfig(candidate.homeDir);
-    publishActiveCodexHome(accountId, candidate.homeDir);
+      (await createCanonicalCodexHome(
+        accountId,
+        reconciled.record,
+        storagePolicy,
+      ));
+    materializeRequiredCodexConfig(candidate.homeDir, storagePolicy);
+    publishActiveCodexHome(accountId, candidate.homeDir, storagePolicy);
     return candidate.homeDir;
   });
 }
@@ -878,6 +924,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             resolveOutcome = await getAccessToken(providerId, account.id, {
               ...resolveOpts,
               outcome: true,
+              storagePolicy: accountStoragePolicy(),
             });
             accessToken = resolveOutcome.ok ? resolveOutcome.accessToken : null;
             // A widened Claude resolve is only a freshness preference. The
@@ -892,6 +939,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             ) {
               const stillValid = await getAccessToken(providerId, account.id, {
                 outcome: true,
+                storagePolicy: accountStoragePolicy(),
               });
               resolveOutcome = stillValid;
               if (stillValid.ok) {
@@ -964,6 +1012,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       try {
         const tokenOutcome = await getAccessToken(providerId, accountId, {
           outcome: true,
+          storagePolicy: accountStoragePolicy(),
         });
         if (tokenOutcome.ok) {
           const token = tokenOutcome.accessToken;

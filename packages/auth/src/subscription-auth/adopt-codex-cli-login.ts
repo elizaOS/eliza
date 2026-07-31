@@ -30,6 +30,7 @@ import { randomBytes } from "node:crypto";
 import {
   closeSync,
   constants,
+  fsyncSync,
   linkSync,
   lstatSync,
   openSync,
@@ -39,7 +40,11 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
-import { loadAccount, saveAccount } from "../account-storage.js";
+import {
+  type AccountStorageMutationScope,
+  type AccountStoragePolicy,
+  withAccountStorageMutation,
+} from "../account-storage.js";
 
 /** Every failure mode, as the `code` on the thrown {@link ElizaError}. */
 export const ADOPT_CODEX_ERROR_CODES = [
@@ -119,6 +124,7 @@ function jwtExpiryMs(token: string): number | undefined {
 }
 
 export interface AdoptCodexOptions {
+  storagePolicy: AccountStoragePolicy;
   /** Pool account id to create (default "default"). */
   accountId?: string;
   /** Overwrite an existing pool account with this id. Default false → error. */
@@ -239,7 +245,21 @@ export function restoreRetiredSource(
     throw err;
   }
   unlinkSync(retiredTo);
+  fsyncParentDirectory(originalPath);
   return { restored: true };
+}
+
+function fsyncParentDirectory(filePath: string): void {
+  if (process.platform === "win32") return;
+  const descriptor = openSync(
+    path.dirname(filePath),
+    constants.O_RDONLY | (constants.O_DIRECTORY ?? 0),
+  );
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 /**
@@ -250,8 +270,9 @@ export function restoreRetiredSource(
  * committed; where the source was already retired it is restored no-clobber, or
  * its retired location is surfaced in the error context.
  */
-export function adoptCodexCliLogin(
-  opts: AdoptCodexOptions = {},
+function adoptCodexCliLoginLocked(
+  opts: AdoptCodexOptions,
+  storage: AccountStorageMutationScope,
 ): AdoptCodexResult {
   const accountId = opts.accountId ?? "default";
   validateAccountId(accountId);
@@ -291,7 +312,7 @@ export function adoptCodexCliLogin(
 
   // No implicit overwrite of an existing pool account — checked before any
   // filesystem effect so a collision leaves the world untouched.
-  const existing = loadAccount(provider, accountId);
+  const existing = storage.loadAccount(provider, accountId);
   if (existing && !opts.overwrite) {
     throw adoptError(
       "adopt_codex.account_exists",
@@ -307,6 +328,7 @@ export function adoptCodexCliLogin(
   const retiredTo = `${authPath}.adopted-${randomBytes(8).toString("hex")}`;
   try {
     renameSync(authPath, retiredTo);
+    fsyncParentDirectory(authPath);
   } catch (err) {
     throw adoptError(
       "adopt_codex.retire_failed",
@@ -371,7 +393,7 @@ export function adoptCodexCliLogin(
 
   try {
     const now = Date.now();
-    saveAccount({
+    storage.saveAccount({
       id: accountId,
       providerId: provider,
       label: "Adopted Codex CLI login",
@@ -410,4 +432,36 @@ export function adoptCodexCliLogin(
     ...(tokens.account_id ? { organizationId: tokens.account_id } : {}),
     retiredTo,
   };
+}
+
+export function adoptCodexCliLogin(opts: AdoptCodexOptions): AdoptCodexResult {
+  const accountId = opts.accountId ?? "default";
+  validateAccountId(accountId);
+  const authPath = opts.codexHome
+    ? path.join(opts.codexHome, "auth.json")
+    : codexAuthPath();
+  let transactionEntered = false;
+  try {
+    return withAccountStorageMutation(
+      opts.storagePolicy,
+      "adopt-codex-cli-login",
+      (storage) => {
+        transactionEntered = true;
+        return adoptCodexCliLoginLocked(opts, storage);
+      },
+    );
+  } catch (cause) {
+    if (
+      cause instanceof ElizaError &&
+      (ADOPT_CODEX_ERROR_CODES as readonly string[]).includes(cause.code)
+    ) {
+      throw cause;
+    }
+    throw adoptError(
+      "adopt_codex.pool_write_failed",
+      "Account storage was unavailable before Codex credential adoption could commit",
+      { accountId, path: authPath, restored: !transactionEntered },
+      cause,
+    );
+  }
 }

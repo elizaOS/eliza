@@ -6,9 +6,21 @@
  * Deterministic: it drives the pure config mutators and asserts against
  * process.env and the in-memory config object; no live provider is contacted.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  createIsolatedAccountStoragePolicy,
+  loadAccount,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
@@ -27,6 +39,12 @@ const ENV_KEYS_TO_RESTORE = ["ELIZA_HOME", "ELIZA_STATE_DIR"] as const;
 const originalEnv = new Map<string, string | undefined>();
 let isolatedElizaHome: string | undefined;
 
+function storagePolicy() {
+  if (!isolatedElizaHome)
+    throw new Error("isolated state root is not initialized");
+  return createIsolatedAccountStoragePolicy(isolatedElizaHome);
+}
+
 beforeEach(() => {
   for (const key of ENV_KEYS_TO_RESTORE) {
     originalEnv.set(key, process.env[key]);
@@ -35,6 +53,7 @@ beforeEach(() => {
     path.join(tmpdir(), "eliza-provider-switch-"),
   );
   process.env.ELIZA_HOME = isolatedElizaHome;
+  process.env.ELIZA_STATE_DIR = isolatedElizaHome;
 });
 
 afterEach(() => {
@@ -147,7 +166,7 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
 
     const config = buildFullyOnboardedConfig();
-    clearPersistedFirstRunConfig(config);
+    clearPersistedFirstRunConfig(config, storagePolicy());
 
     expect((config.meta as Record<string, unknown>)?.firstRunComplete).toBe(
       undefined,
@@ -167,16 +186,84 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
     process.env.OPENAI_API_KEY = "sk-config";
 
     const config = buildFullyOnboardedConfig();
-    clearPersistedFirstRunConfig(config);
+    clearPersistedFirstRunConfig(config, storagePolicy());
 
     expect(config.env).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
   });
 
+  it("deletes subscription and direct account files as one reset transaction", () => {
+    const policy = storagePolicy();
+    const now = Date.now();
+    for (const providerId of ["openai-codex", "cerebras-api"] as const) {
+      saveAccount(
+        {
+          id: `${providerId}-account`,
+          providerId,
+          label: providerId,
+          source: providerId === "openai-codex" ? "oauth" : "api-key",
+          credentials: {
+            access: "secret",
+            refresh: "",
+            expires: now + 60_000,
+          },
+          createdAt: now,
+          updatedAt: now,
+        },
+        policy,
+      );
+    }
+
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig(), policy);
+
+    expect(() =>
+      loadAccount("openai-codex", "openai-codex-account", policy),
+    ).toThrow(
+      expect.objectContaining({
+        code: "AUTH_CREDENTIAL_STORAGE_GENERATION_CHANGED",
+      }),
+    );
+    const currentPolicy = storagePolicy();
+    expect(
+      loadAccount("openai-codex", "openai-codex-account", currentPolicy),
+    ).toBeNull();
+    expect(
+      loadAccount("cerebras-api", "cerebras-api-account", currentPolicy),
+    ).toBeNull();
+  });
+
+  it("removes every credential artifact while preserving audit and JWKS state", () => {
+    if (!isolatedElizaHome)
+      throw new Error("isolated state root is not initialized");
+    const authRoot = path.join(isolatedElizaHome, "auth");
+    const artifacts = [
+      path.join(authRoot, "retired-provider", "retired.json"),
+      path.join(authRoot, "_codex-home", "account-a", "auth.json"),
+      path.join(authRoot, "_pool-metadata.json"),
+      path.join(authRoot, "_pool-metadata.json.interrupted.tmp"),
+    ];
+    for (const artifact of artifacts) {
+      mkdirSync(path.dirname(artifact), { recursive: true });
+      writeFileSync(artifact, "credential-material", { mode: 0o600 });
+    }
+    const preserved = [
+      path.join(authRoot, "audit.log"),
+      path.join(authRoot, "cloud-jwks.json"),
+    ];
+    for (const artifact of preserved) {
+      writeFileSync(artifact, "non-credential-state", { mode: 0o600 });
+    }
+
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig(), storagePolicy());
+
+    for (const artifact of artifacts) expect(existsSync(artifact)).toBe(false);
+    for (const artifact of preserved) expect(existsSync(artifact)).toBe(true);
+  });
+
   it("clears provider-specific default model env vars (no stale model leaks)", () => {
     for (const key of MODEL_ENV_KEYS) process.env[key] = "stale-model";
 
-    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig(), storagePolicy());
 
     for (const key of MODEL_ENV_KEYS) {
       expect(process.env[key]).toBeUndefined();
@@ -188,7 +275,7 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
       process.env[key] = "stale";
     }
 
-    clearPersistedFirstRunConfig(buildFullyOnboardedConfig());
+    clearPersistedFirstRunConfig(buildFullyOnboardedConfig(), storagePolicy());
 
     for (const key of CLOUD_ENV_KEYS) {
       expect(process.env[key]).toBeUndefined();
@@ -197,8 +284,34 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
 
   it("is a no-op-safe on an already-empty config", () => {
     const config: Partial<ElizaConfig> = {};
-    expect(() => clearPersistedFirstRunConfig(config)).not.toThrow();
+    expect(() =>
+      clearPersistedFirstRunConfig(config, storagePolicy()),
+    ).not.toThrow();
     expect(config.agents).toEqual({ list: [] });
+  });
+
+  it("leaves config and environment untouched when credential preflight is denied", () => {
+    if (!isolatedElizaHome)
+      throw new Error("isolated state root is not initialized");
+    const outside = mkdtempSync(path.join(tmpdir(), "eliza-reset-outside-"));
+    const authRoot = path.join(isolatedElizaHome, "auth");
+    mkdirSync(authRoot, { recursive: true });
+    symlinkSync(outside, path.join(authRoot, "openai-codex"), "dir");
+    process.env.OPENAI_API_KEY = "must-survive";
+    const config = buildFullyOnboardedConfig();
+    const before = structuredClone(config);
+
+    try {
+      expect(() =>
+        clearPersistedFirstRunConfig(config, storagePolicy()),
+      ).toThrow(
+        expect.objectContaining({ code: "AUTH_CREDENTIAL_PATH_ESCAPE" }),
+      );
+      expect(config).toEqual(before);
+      expect(process.env.OPENAI_API_KEY).toBe("must-survive");
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
 
@@ -379,7 +492,7 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
       },
     } as Partial<ElizaConfig>;
 
-    clearPersistedFirstRunConfig(config);
+    clearPersistedFirstRunConfig(config, storagePolicy());
 
     expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
     expect(process.env.CEREBRAS_MODEL).toBeUndefined();
