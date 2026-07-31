@@ -2,10 +2,8 @@ import {
   getSolanaParsedTransactions,
 } from "./helius";
 import { requireBlockchainConnector } from "./chains/registry";
-import {
-  getSolanaTokenPrices,
-  WRAPPED_SOL_MINT,
-} from "./providers/priceProvider";
+import { WRAPPED_NATIVE_ASSET_ID } from "./providers/priceProvider";
+import { getTokenPriceProvider } from "./providers/pricing/registry";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
 import { parseSolanaTransaction } from "./parsers/transaction";
@@ -210,10 +208,14 @@ const nftHoldingsResult =
 const nftHoldings: UniversalNftHolding[] =
   nftHoldingsResult?.data?.holdings ?? [];
 
-        const tokenPrices = await getSolanaTokenPrices([
-  ...tokenHoldings.map((token) => token.tokenId),
-  WRAPPED_SOL_MINT,
-]);
+        const nativeAssetId = WRAPPED_NATIVE_ASSET_ID[chain];
+        const priceProvider = getTokenPriceProvider(chain);
+        const tokenPrices = priceProvider
+          ? await priceProvider.getTokenPrices([
+              ...tokenHoldings.map((token) => token.tokenId),
+              ...(nativeAssetId ? [nativeAssetId] : []),
+            ])
+          : {};
 
         const walletBalance: WalletBalance = {
           nativeAmount: balance.sol,
