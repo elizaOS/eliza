@@ -349,28 +349,30 @@ export class SlackApiError extends SlackPluginError {
   }
 }
 
-/**
- * Validates a Slack channel ID format
- */
+function isValidSlackOpaqueId(id: string): boolean {
+  if (id.length === 0 || id.length > 255 || /\s/u.test(id)) return false;
+  for (const character of id) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint < 32 || codePoint === 127)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Validates a bounded opaque Slack conversation identifier. */
 export function isValidChannelId(id: string): boolean {
-  // Slack channel IDs start with C (public), G (private/group), or D (DM)
-  return /^[CGD][A-Z0-9]{8,}$/i.test(id);
+  return isValidSlackOpaqueId(id);
 }
 
-/**
- * Validates a Slack user ID format
- */
+/** Validates a bounded opaque Slack user identifier. */
 export function isValidUserId(id: string): boolean {
-  // Slack user IDs start with U or W (enterprise grid)
-  return /^[UW][A-Z0-9]{8,}$/i.test(id);
+  return isValidSlackOpaqueId(id);
 }
 
-/**
- * Validates a Slack team ID format
- */
+/** Validates a bounded opaque Slack workspace identifier. */
 export function isValidTeamId(id: string): boolean {
-  // Slack team IDs start with T
-  return /^T[A-Z0-9]{8,}$/i.test(id);
+  return isValidSlackOpaqueId(id);
 }
 
 /**

@@ -25,7 +25,49 @@ export type SlackInboundDenyReason =
   | "mention_required"
   | "pairing_required"
   | "user_not_allowed"
-  | "unknown_conversation";
+  | "unknown_conversation"
+  | "workspace_identity_missing"
+  | "workspace_identity_mismatch";
+
+export interface SlackWorkspaceIdentity {
+  teamId: string;
+  enterpriseId?: string;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Extracts the authenticated installation identity from a Bolt event body. */
+export function extractSlackEventWorkspace(body: unknown): {
+  teamId?: string;
+  enterpriseId?: string;
+} {
+  const root = readRecord(body);
+  if (!root) return {};
+  const event = readRecord(root.event);
+  const authorization = Array.isArray(root.authorizations)
+    ? readRecord(root.authorizations[0])
+    : undefined;
+  const teamId =
+    readNonEmptyString(root.team_id) ??
+    readNonEmptyString(authorization?.team_id) ??
+    readNonEmptyString(event?.team_id) ??
+    readNonEmptyString(event?.team);
+  const enterpriseId =
+    readNonEmptyString(root.enterprise_id) ??
+    readNonEmptyString(authorization?.enterprise_id);
+  return {
+    ...(teamId ? { teamId } : {}),
+    ...(enterpriseId ? { enterpriseId } : {}),
+  };
+}
 
 export interface SlackInboundEventContext {
   eventType: "message" | "app_mention";
@@ -36,6 +78,8 @@ export interface SlackInboundEventContext {
   isThread: boolean;
   isMentioned: boolean;
   isBotMessage: boolean;
+  teamId?: string;
+  enterpriseId?: string;
 }
 
 export interface SlackInboundPolicyDecision {
@@ -137,7 +181,51 @@ export class SlackPolicyConfigurationError extends ElizaError {
 export interface SlackAccountPolicyResolverOptions {
   account: ResolvedSlackAccount;
   client: SlackPolicyDirectoryClient;
+  workspace: SlackWorkspaceIdentity;
   checkPairing: (userId: string) => Promise<SlackPairingDecision>;
+  cache?: {
+    maxConversationKinds?: number;
+    conversationKindTtlMs?: number;
+    maxDynamicChannels?: number;
+    now?: () => number;
+  };
+}
+
+interface TimedValue<T> {
+  value: T;
+  expiresAt: number;
+}
+
+class BoundedTtlCache<K, V> {
+  private readonly entries = new Map<K, TimedValue<V>>();
+
+  constructor(
+    private readonly maxEntries: number,
+    private readonly ttlMs: number,
+    private readonly now: () => number,
+  ) {}
+
+  get(key: K): V | undefined {
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    if (entry.expiresAt <= this.now()) {
+      this.entries.delete(key);
+      return undefined;
+    }
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: K, value: V): void {
+    this.entries.delete(key);
+    while (this.entries.size >= this.maxEntries) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) break;
+      this.entries.delete(oldest);
+    }
+    this.entries.set(key, { value, expiresAt: this.now() + this.ttlMs });
+  }
 }
 
 /**
@@ -146,6 +234,7 @@ export interface SlackAccountPolicyResolverOptions {
 export class SlackAccountPolicyResolver {
   private readonly accountId: string;
   private readonly client: SlackPolicyDirectoryClient;
+  private readonly workspace: SlackWorkspaceIdentity;
   private readonly checkPairing: (
     userId: string,
   ) => Promise<SlackPairingDecision>;
@@ -155,10 +244,14 @@ export class SlackAccountPolicyResolver {
   private readonly allowBots: boolean;
   private readonly staticChannelIds: ReadonlySet<string>;
   private readonly dynamicChannelIds = new Set<string>();
+  private readonly maxDynamicChannels: number;
   private readonly channelsById: ReadonlyMap<string, CompiledChannelPolicy>;
   private readonly wildcardChannel?: CompiledChannelPolicy;
   private readonly dm: CompiledDmPolicy;
-  private readonly conversationKinds = new Map<string, SlackConversationKind>();
+  private readonly conversationKinds: BoundedTtlCache<
+    string,
+    SlackConversationKind
+  >;
 
   private constructor(params: {
     options: SlackAccountPolicyResolverOptions;
@@ -173,6 +266,7 @@ export class SlackAccountPolicyResolver {
   }) {
     this.accountId = params.options.account.accountId;
     this.client = params.options.client;
+    this.workspace = params.options.workspace;
     this.checkPairing = params.options.checkPairing;
     this.structured = params.options.account.hasStructuredPolicy;
     this.groupPolicy = params.groupPolicy;
@@ -182,6 +276,12 @@ export class SlackAccountPolicyResolver {
     this.channelsById = params.channelsById;
     this.wildcardChannel = params.wildcardChannel;
     this.dm = params.dm;
+    this.maxDynamicChannels = params.options.cache?.maxDynamicChannels ?? 1_024;
+    this.conversationKinds = new BoundedTtlCache(
+      params.options.cache?.maxConversationKinds ?? 1_024,
+      params.options.cache?.conversationKindTtlMs ?? 15 * 60_000,
+      params.options.cache?.now ?? Date.now,
+    );
     for (const [id, kind] of params.conversationKinds) {
       this.conversationKinds.set(id, kind);
     }
@@ -191,6 +291,25 @@ export class SlackAccountPolicyResolver {
     options: SlackAccountPolicyResolverOptions,
   ): Promise<SlackAccountPolicyResolver> {
     const { account, client } = options;
+    if (!options.workspace.teamId.trim()) {
+      throw new SlackPolicyConfigurationError(
+        "auth.test did not return a workspace team_id",
+        account.accountId,
+      );
+    }
+    for (const [key, value] of Object.entries({
+      maxConversationKinds: options.cache?.maxConversationKinds ?? 1_024,
+      conversationKindTtlMs:
+        options.cache?.conversationKindTtlMs ?? 15 * 60_000,
+      maxDynamicChannels: options.cache?.maxDynamicChannels ?? 1_024,
+    })) {
+      if (!Number.isSafeInteger(value) || value <= 0) {
+        throw new SlackPolicyConfigurationError(
+          `${key} must be a positive safe integer`,
+          account.accountId,
+        );
+      }
+    }
     assertSupportedSecurityPolicy(account);
 
     const channelEntries = Object.entries(account.channels);
@@ -203,14 +322,12 @@ export class SlackAccountPolicyResolver {
         requiresUserDirectory(config.users),
       ) || requiresUserDirectory(account.dm?.allowFrom);
 
-    const channels = needsChannelDirectory ? await listAllChannels(client) : [];
-    const users = needsUserDirectory ? await listAllUsers(client) : [];
-    const conversationKinds = new Map<string, SlackConversationKind>();
-    for (const channel of channels) {
-      if (channel.id) {
-        conversationKinds.set(channel.id, classifyDirectoryChannel(channel));
-      }
-    }
+    const channels = needsChannelDirectory
+      ? await listAllChannels(client, account.accountId)
+      : [];
+    const users = needsUserDirectory
+      ? await listAllUsers(client, account.accountId)
+      : [];
 
     const channelsById = new Map<string, CompiledChannelPolicy>();
     let wildcardChannel: CompiledChannelPolicy | undefined;
@@ -228,9 +345,9 @@ export class SlackAccountPolicyResolver {
         continue;
       }
 
-      const channelId = isSlackChannelIdKey(key)
-        ? key
-        : resolveUniqueChannelId(account.accountId, key, channels);
+      const channelId =
+        extractExplicitChannelId(key) ??
+        resolveUniqueChannelId(account.accountId, key, channels);
       if (channelsById.has(channelId)) {
         throw new SlackPolicyConfigurationError(
           `multiple channel policy entries resolve to ${channelId}`,
@@ -246,6 +363,14 @@ export class SlackAccountPolicyResolver {
         .filter(Boolean),
     );
     const dm = await compileDmPolicy(account, channels, users);
+    const conversationKinds = new Map<string, SlackConversationKind>();
+    const policyConversationIds = new Set(channelsById.keys());
+    for (const id of dm.groupChannels ?? []) policyConversationIds.add(id);
+    for (const channel of channels) {
+      if (channel.id && policyConversationIds.has(channel.id)) {
+        conversationKinds.set(channel.id, classifyDirectoryChannel(channel));
+      }
+    }
     const groupPolicy = account.hasStructuredPolicy
       ? (account.config.groupPolicy ?? "allowlist")
       : "legacy";
@@ -271,6 +396,8 @@ export class SlackAccountPolicyResolver {
   async authorize(
     event: SlackInboundEventContext,
   ): Promise<SlackInboundPolicyDecision> {
+    const workspaceDenial = this.workspaceDenial(event);
+    if (workspaceDenial) return this.denied(event, workspaceDenial);
     const kind = await this.resolveConversationKind(event);
     if (!kind) {
       return this.denied(event, "unknown_conversation");
@@ -285,8 +412,32 @@ export class SlackAccountPolicyResolver {
     return this.authorizeChannel(event, kind);
   }
 
+  workspaceDenial(input: {
+    teamId?: string;
+    enterpriseId?: string;
+  }): "workspace_identity_missing" | "workspace_identity_mismatch" | null {
+    if (!input.teamId?.trim()) return "workspace_identity_missing";
+    if (input.teamId !== this.workspace.teamId) {
+      return "workspace_identity_mismatch";
+    }
+    if (
+      input.enterpriseId &&
+      this.workspace.enterpriseId &&
+      input.enterpriseId !== this.workspace.enterpriseId
+    ) {
+      return "workspace_identity_mismatch";
+    }
+    return null;
+  }
+
   async registerBotJoin(channelId: string): Promise<boolean> {
     if (!this.structured) {
+      if (this.staticChannelIds.size === 0) return true;
+      while (this.dynamicChannelIds.size >= this.maxDynamicChannels) {
+        const oldest = this.dynamicChannelIds.values().next().value;
+        if (oldest === undefined) break;
+        this.dynamicChannelIds.delete(oldest);
+      }
       this.dynamicChannelIds.add(channelId);
       return true;
     }
@@ -413,10 +564,7 @@ export class SlackAccountPolicyResolver {
     event: SlackInboundEventContext,
   ): Promise<SlackConversationKind | null> {
     const inline = classifyEventShape(event.channelType, event.subtype);
-    if (inline) {
-      this.conversationKinds.set(event.channelId, inline);
-      return inline;
-    }
+    if (inline) return inline;
     const cached = this.conversationKinds.get(event.channelId);
     if (cached) return cached;
     const result = await this.client.conversations.info({
@@ -467,7 +615,14 @@ export function normalizeSlackSlug(value: string): string {
 }
 
 export function isSlackChannelIdKey(key: string): boolean {
-  return /^[CGD][A-Z0-9]{8,}$/i.test(key.trim());
+  return extractExplicitChannelId(key) !== null;
+}
+
+function extractExplicitChannelId(value: string): string | null {
+  const trimmed = value.trim();
+  const explicit = trimmed.match(/^(?:id|slack-id):(.+)$/i)?.[1]?.trim();
+  if (explicit) return explicit;
+  return /^[CGD][A-Z0-9]{8,}$/i.test(trimmed) ? trimmed : null;
 }
 
 function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
@@ -478,9 +633,14 @@ function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
     "actions",
     "commands",
     "configWrites",
+    "dms",
+    "heartbeat",
+    "historyLimit",
+    "dmHistoryLimit",
     "slashCommand",
     "reactionNotifications",
     "reactionAllowlist",
+    "thread",
   ] as const) {
     if (config[key] !== undefined) unsupported.push(key);
   }
@@ -571,9 +731,10 @@ async function compileDmPolicy(
                 account.accountId,
               );
             }
-            return isSlackChannelIdKey(value)
-              ? value
-              : resolveUniqueChannelId(account.accountId, value, channels);
+            return (
+              extractExplicitChannelId(value) ??
+              resolveUniqueChannelId(account.accountId, value, channels)
+            );
           }),
         );
 
@@ -715,6 +876,7 @@ function classifyDirectoryChannel(
 
 async function listAllChannels(
   client: SlackPolicyDirectoryClient,
+  accountId: string,
 ): Promise<SlackDirectoryChannel[]> {
   const result: SlackDirectoryChannel[] = [];
   const seenCursors = new Set<string>();
@@ -726,7 +888,14 @@ async function listAllChannels(
       types: "public_channel,private_channel,mpim,im",
       exclude_archived: true,
     });
-    result.push(...(page.channels ?? []));
+    const channels = page.channels ?? [];
+    if (result.length + channels.length > 50_000) {
+      throw new SlackPolicyConfigurationError(
+        "channel directory exceeds the 50,000-entry startup safety limit; use immutable IDs only",
+        accountId,
+      );
+    }
+    result.push(...channels);
     const next = page.response_metadata?.next_cursor?.trim() || undefined;
     if (next && seenCursors.has(next)) {
       throw new Error("Slack conversations.list returned a repeated cursor");
@@ -739,6 +908,7 @@ async function listAllChannels(
 
 async function listAllUsers(
   client: SlackPolicyDirectoryClient,
+  accountId: string,
 ): Promise<SlackDirectoryUser[]> {
   const result: SlackDirectoryUser[] = [];
   const seenCursors = new Set<string>();
@@ -748,7 +918,14 @@ async function listAllUsers(
       ...(cursor ? { cursor } : {}),
       limit: 200,
     });
-    result.push(...(page.members ?? []));
+    const members = page.members ?? [];
+    if (result.length + members.length > 50_000) {
+      throw new SlackPolicyConfigurationError(
+        "user directory exceeds the 50,000-entry startup safety limit; use explicit id:<opaque-slack-id> entries",
+        accountId,
+      );
+    }
+    result.push(...members);
     const next = page.response_metadata?.next_cursor?.trim() || undefined;
     if (next && seenCursors.has(next)) {
       throw new Error("Slack users.list returned a repeated cursor");
