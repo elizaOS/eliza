@@ -91,6 +91,7 @@ describe("AI workflow security policy", () => {
     assert.doesNotMatch(source, /runs-on:\s*\$\{\{[^\n]*fromJSON/i);
     assert.doesNotMatch(source, /id-token:\s*write/);
     assert.doesNotMatch(source, /allowed_bots:/);
+    assert.match(condition, /vars\.CLAUDE_INTERACTIVE_ENABLED == 'true'/);
     assert.match(condition, /github\.event\.sender\.type != 'Bot'/);
     assert.match(condition, /!endsWith\(github\.actor, '\[bot\]'\)/);
     for (const [eventName, association, mentionTargets] of [

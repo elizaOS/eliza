@@ -290,7 +290,12 @@ Dedicated security-focused review for code changes.
 
 ### Claude Interactive (`claude.yml`)
 
-Responds to `@claude` mentions in issues and PRs.
+Responds to authenticated maintainer and collaborator `@claude` mentions in
+issues and PRs. This lane is disabled by default; a repository administrator
+must set `CLAUDE_INTERACTIVE_ENABLED=true` only after accepting the pinned
+third-party action's broad repository-read boundary. When enabled, the workflow
+uses an ephemeral runner, signed GitHub file operations, no shell or web tools,
+and a separate read-only attribution audit.
 
 ## Documentation Workflows
 

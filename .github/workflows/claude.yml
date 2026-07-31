@@ -17,6 +17,7 @@ permissions:
 jobs:
   claude:
     if: |
+      vars.CLAUDE_INTERACTIVE_ENABLED == 'true' &&
       github.event.sender.type != 'Bot' &&
       !endsWith(github.actor, '[bot]') &&
       (
