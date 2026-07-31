@@ -1,0 +1,33 @@
+diff --git a/Capacitor/Capacitor/CapacitorBridge.swift b/Capacitor/Capacitor/CapacitorBridge.swift
+--- a/Capacitor/Capacitor/CapacitorBridge.swift
++++ b/Capacitor/Capacitor/CapacitorBridge.swift
+@@ -264,15 +264,23 @@ open class CapacitorBridge: NSObject, CAPBridgeProtocol {
+             registerCordovaPlugins()
+         } else {
+             observers.append(NotificationCenter.default.addObserver(forName: UIScene.willEnterForegroundNotification, object: nil, queue: OperationQueue.main) { [weak self] notification in
+-                if let scene = notification.object as? UIWindowScene, scene === self?.viewController?.view.window?.windowScene {
+-                    self?.triggerDocumentJSEvent(eventName: "resume")
+-                }
++                guard let self,
++                      let scene = notification.object as? UIWindowScene,
++                      scene === self.viewController?.view.window?.windowScene,
++                      case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {
++                    return
++                }
++                self.triggerDocumentJSEvent(eventName: "resume")
+ 
+             })
+             observers.append(NotificationCenter.default.addObserver(forName: UIScene.didEnterBackgroundNotification, object: nil, queue: OperationQueue.main) { [weak self] notification in
+-                if let scene = notification.object as? UIWindowScene, scene === self?.viewController?.view.window?.windowScene {
+-                    self?.triggerDocumentJSEvent(eventName: "pause")
+-                }
++                guard let self,
++                      let scene = notification.object as? UIWindowScene,
++                      scene === self.viewController?.view.window?.windowScene,
++                      case .subsequentLoad = self.webViewDelegationHandler.webViewLoadingState else {
++                    return
++                }
++                self.triggerDocumentJSEvent(eventName: "pause")
+             })
+         }
+     }

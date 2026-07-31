@@ -24,6 +24,9 @@
   },
   "unpkg": "dist/plugin.js",
   "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "android/proguard-rules.pro",
     "ios/Sources/",
     "ios/Tests/",
     "ElizaosCapacitorBunRuntime.podspec",
@@ -68,6 +71,9 @@
     "ios": {
       "src": "ios",
       "podName": "ElizaosCapacitorBunRuntime"
+    },
+    "android": {
+      "src": "android"
     }
   }
 }

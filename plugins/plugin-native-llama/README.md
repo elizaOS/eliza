@@ -28,9 +28,10 @@ so the `ActiveModelCoordinator` in `@elizaos/ui`
 
 ## What it does not do
 
-- It does not ship llama.cpp native binaries — `llama-cpp-capacitor`
-  handles iOS (arm64 + x86_64 with Metal) and Android (arm64-v8a,
-  armeabi-v7a, x86, x86_64) itself.
+- It does not ship llama.cpp native binaries — `llama-cpp-capacitor` supplies
+  them to consumers that register this adapter. The first-party Android app
+  uses its single fused `libelizainference` bionic runtime instead of this
+  WebView bridge.
 - It does not run on web. On Electrobun / Vite the desktop agent uses the
   standalone `node-llama-cpp` engine (`LocalInferenceEngine` in
   `@elizaos/ui`, `src/services/local-inference/engine.ts`).
@@ -61,9 +62,9 @@ Two ways to wire the adapter into a runtime:
 - **`capacitorLlama`** — the default singleton `LlamaAdapter`, used directly by
   callers that don't need per-role context separation.
 
-After adding native code, run `bunx cap sync` in `packages/app` to pick up the
-native plugin. iOS and Android builds pull in `llama-cpp-capacitor`'s prebuilt
-native libraries automatically.
+After adding native code, run `bunx cap sync ios` in `packages/app` to pick up
+the native plugin. Android deliberately excludes this package during sync so
+it cannot compile or package a second llama.cpp engine.
 
 ## Configuration
 

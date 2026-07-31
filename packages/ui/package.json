@@ -388,7 +388,7 @@
     "@elizaos/capacitor-camera": "workspace:*"
   },
   "dependencies": {
-    "@capacitor/core": "8.4.0",
+    "@capacitor/core": "8.5.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/contracts": "workspace:*",

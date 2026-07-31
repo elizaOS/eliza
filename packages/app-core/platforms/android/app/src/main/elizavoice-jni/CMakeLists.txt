@@ -23,14 +23,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #     in-tree fallback.
 
 if(NOT ANDROID_ABI STREQUAL "arm64-v8a")
-    # Phase 3a only validates arm64-v8a. Other ABIs get a no-op stub so the
-    # multi-ABI app build does not fail before the per-ABI .so is staged.
-    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/elizavoice-stub.cpp"
-        "extern \"C\" int elizavoice_jni_stub() { return 0; }\n")
-    add_library(elizavoicejni SHARED "${CMAKE_CURRENT_BINARY_DIR}/elizavoice-stub.cpp")
-    find_library(LOG_LIB log)
-    target_link_libraries(elizavoicejni PRIVATE ${LOG_LIB})
-    message(STATUS "[elizavoice-jni] building no-op stub for ${ANDROID_ABI} (Phase 3a: arm64-v8a only)")
+    # A JNI host without its fused engine cannot serve any method. Omitting the
+    # library makes that unsupported state explicit and avoids packaging a
+    # symbol-less binary that looks like a working runtime.
+    message(STATUS "[elizavoice-jni] ${ANDROID_ABI} has no fused engine; omitting JNI host")
     return()
 endif()
 

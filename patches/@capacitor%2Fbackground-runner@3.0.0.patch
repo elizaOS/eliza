@@ -1,0 +1,24 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 00ca7d848af920bf717aa5218f4185e008180137..10f54005f6eb4316a7e419c55779eaa08d6d782c 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -52,16 +52,14 @@ android {
+ repositories {
+     google()
+     mavenCentral()
+-    flatDir {
+-        dirs "./src/main/libs", "libs"
+-        dirs "$rootDir/../node_modules/@capacitor/background-runner/android/src/main/libs", "libs"
+-    }
+ }
+ 
+ dependencies {
+     implementation fileTree(dir: 'libs', include: ['*.jar'])
+     implementation project(':capacitor-android')
+-    implementation (name: "android-js-engine-release", ext: "aar")
++    // A file dependency binds the bundled engine to this package instead of
++    // relying on a root-relative flatDir repository that breaks in monorepos.
++    implementation files("src/main/libs/android-js-engine-release.aar")
+     implementation "androidx.work:work-runtime-ktx:$workManagerVersion"
+     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+     implementation "androidx.core:core-ktx:$androidxCoreKTXVersion"

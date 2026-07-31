@@ -54,8 +54,8 @@ scope for `SECURITY.md` because these scripts bootstrap user machines.
 Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 
 - `bun install` — 3075 packages resolved, 462 workspace symlinks set up,
-  postinstall pipeline (patch-nested-core-dist, patch-llama-cpp-capacitor,
-  ensure-workspace-symlinks, build-private-workspace-packages) runs clean.
+  postinstall pipeline (patch-nested-core-dist, ensure-workspace-symlinks,
+  build-private-workspace-packages) runs clean.
 - `bun run build` — full TypeScript build for `@elizaos/agent` and its
   cascade: **22 tasks succeed, ~2 minutes**.
 - `bun run typecheck` across @elizaos/core / @elizaos/shared /

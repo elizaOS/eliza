@@ -42,6 +42,7 @@ import {
   dumpAndroidArtifactManifest,
   findAndroidCloudAab,
   findAndroidCloudPackagedRuntimeOffenders,
+  findAndroidNativeRuntimeOwnershipOffenders,
   listAndroidArtifactEntries,
   readAndroidArtifactEntryBuffers,
   resolveAndroidBuildTool,
@@ -956,7 +957,7 @@ describe("pinned bundletool provisioning", () => {
       "refusing stale bundle because bundleRelease outcome was",
     );
     expect(ANDROID_APP_GRADLE).toMatch(
-      /onlyIf\('Cloud release build'\) \{\s*project\.findProperty\('elizaCloudBuild'\) == 'true'\s*\}/,
+      /onlyIf\('Cloud release build'\) \{\s*elizaCloudBuildForAssets\s*\}/,
     );
     expect(ANDROID_APP_GRADLE).toContain("providers.exec {");
     expect(ANDROID_APP_GRADLE).not.toContain("project.exec {");
@@ -1066,6 +1067,27 @@ describe("Android artifact boundary selection", () => {
         "base/lib/arm64-v8a/libc++_shared.so",
       ]),
     ).toEqual(forbiddenEntries);
+  });
+
+  it("rejects duplicate engines and JNI hosts without a real fused engine", () => {
+    expect(
+      findAndroidNativeRuntimeOwnershipOffenders([
+        "lib/arm64-v8a/libelizainference.so",
+        "lib/arm64-v8a/libelizavoicejni.so",
+        "lib/arm64-v8a/libllama-cpp-arm64.so",
+        "lib/x86_64/libelizavoicejni.so",
+        "lib/x86_64/libsurface_util_jni.so",
+      ]),
+    ).toEqual([
+      "lib/arm64-v8a/libllama-cpp-arm64.so",
+      "lib/x86_64/libelizavoicejni.so",
+    ]);
+    expect(
+      findAndroidNativeRuntimeOwnershipOffenders([
+        "base/lib/arm64-v8a/libelizainference.so",
+        "base/lib/arm64-v8a/libelizavoicejni.so",
+      ]),
+    ).toEqual([]);
   });
 
   it("lists and extracts only bounded safe entries from immutable ZIP bytes", () => {

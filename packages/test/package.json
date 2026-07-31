@@ -17,7 +17,7 @@
     "format:check": "bunx @biomejs/biome format package.json harness mocks"
   },
   "dependencies": {
-    "@capacitor/core": "8.4.0",
+    "@capacitor/core": "8.5.0",
     "@elizaos/corpus-tools": "workspace:*",
     "@elizaos/core": "workspace:*",
     "telegraf": "^4.16.3"

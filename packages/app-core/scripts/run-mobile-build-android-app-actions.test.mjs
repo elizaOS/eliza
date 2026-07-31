@@ -14,6 +14,7 @@ import {
   ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
+  injectAospAssetThinning,
   injectCopyForkLlamaLibTask,
   patchAndroidAppActionsXmlResource,
   removeInactiveAndroidJavaSourceRoots,
@@ -196,6 +197,22 @@ android {
 
   assert.match(repatched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
   assert.doesNotMatch(repatched, /skipped for cloud build/);
+});
+
+test("Android asset thinning resolves build properties before task execution", () => {
+  const gradle = `plugins { id 'com.android.application' }
+
+android {
+    namespace "ai.elizaos.app"
+}
+`;
+
+  const patched = injectAospAssetThinning(gradle);
+  const executionBlock = patched.slice(patched.indexOf("mergeTask.doLast"));
+
+  assert.match(patched, /def elizaCloudBuildForAssets = project\.findProperty/);
+  assert.doesNotMatch(executionBlock, /project\.findProperty/);
+  assert.equal(injectAospAssetThinning(patched), patched);
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {

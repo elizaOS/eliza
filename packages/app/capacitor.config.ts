@@ -3,7 +3,31 @@
  * runtime settings.
  */
 import type { CapacitorConfig } from "@capacitor/cli";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import appConfig from "./app.config";
+import appPackage from "./package.json" with { type: "json" };
+
+const RETIRED_ANDROID_CAPACITOR_PLUGINS = new Set(["llama-cpp-capacitor"]);
+
+export function resolveAndroidCapacitorPlugins(
+  dependencies: Record<string, string>,
+  devDependencies: Record<string, string>,
+): string[] {
+  return [
+    ...new Set([...Object.keys(dependencies), ...Object.keys(devDependencies)]),
+  ].filter((packageName) => {
+    if (RETIRED_ANDROID_CAPACITOR_PLUGINS.has(packageName)) return false;
+    // Capacitor evaluates this file with the app root as cwd; resolving from
+    // that boundary works in both its CommonJS loader and Bun's ESM test loader.
+    const packageRoot = path.join(process.cwd(), "node_modules", packageName);
+    return (
+      existsSync(path.join(packageRoot, "android", "build.gradle")) ||
+      existsSync(path.join(packageRoot, "android", "build.gradle.kts")) ||
+      existsSync(path.join(packageRoot, "plugin.xml"))
+    );
+  });
+}
 
 function isIosStoreBuild(): boolean {
   return (
@@ -122,6 +146,10 @@ const androidProjectPath = resolveAndroidProjectPath(
   process.env.ELIZA_ANDROID_USE_APP_DIR,
   appConfig.appId,
 );
+const androidCapacitorPlugins = resolveAndroidCapacitorPlugins(
+  appPackage.dependencies,
+  appPackage.devDependencies,
+);
 
 const config: CapacitorConfig = {
   appId: appConfig.appId,
@@ -197,6 +225,10 @@ const config: CapacitorConfig = {
     // package. Upstream elizaOS owns the shared app-core tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
     path: androidProjectPath,
+    // Android inference is owned by the fused libelizainference runtime. The
+    // WebView-side llama-cpp-capacitor bridge remains an iOS dependency, but
+    // admitting it here would compile and package a second llama.cpp engine.
+    includePlugins: androidCapacitorPlugins,
     backgroundColor: "#000000",
     allowMixedContent: false,
     captureInput: true,

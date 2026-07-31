@@ -368,7 +368,10 @@ App blocking for focus/productivity features (LifeOps). Allows the agent to bloc
 
 ### 11. Llama (`@elizaos/capacitor-llama`)
 
-On-device LLM inference via `llama-cpp-capacitor`. Enables local model execution without network access.
+On-device LLM inference without network access. iOS local mode uses the
+`llama-cpp-capacitor` bridge. Android uses the app-owned fused
+`libelizainference` bionic runtime and does not register or package the
+WebView-side bridge.
 
 - Available on native platforms with sufficient hardware.
 

@@ -1,10 +1,10 @@
 /**
  * Canonical Capacitor-llama adapter contract.
  *
- * This is the SAME shape used by `llama-cpp-capacitor` on mobile (iOS / Android,
- * including riscv64 once Wave 2's libllama.so is installed) and by the bun:ffi
- * backend on desktop. Every entry point in this plugin consumes one of these
- * interfaces — there is no `node-llama-cpp` import anywhere downstream.
+ * This is the same shape used by `llama-cpp-capacitor` on iOS and by the
+ * fused-runtime adapters on Android and desktop. Every entry point in this
+ * plugin consumes one of these interfaces; there is no `node-llama-cpp`
+ * import downstream.
  *
  * Shape rationale: the interface mirrors `llama-cpp-capacitor`'s
  * `LlamaContext` class verbatim so the mobile path can implement it with a

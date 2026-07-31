@@ -1,10 +1,10 @@
 # @elizaos/capacitor-llama
 
-Mobile llama.cpp adapter — maps `llama-cpp-capacitor`'s contextId-based API onto elizaOS's `LocalInferenceLoader` contract for iOS and Android native inference.
+Mobile llama.cpp adapter — maps `llama-cpp-capacitor`'s contextId-based API onto elizaOS's `LocalInferenceLoader` contract.
 
 ## Purpose / role
 
-This package is the mobile-side adapter that lets an Eliza agent run GGUF models locally on iOS and Android using the [`llama-cpp-capacitor`](https://github.com/arusatech/annadata-llama-cpp) Capacitor plugin. It is **not** a standard elizaOS `Plugin` object with registered actions/providers/evaluators — it is a low-level adapter library. Integration is opt-in: call `registerCapacitorLlamaLoader(runtime)` during the Capacitor mobile bootstrap to wire this as the runtime's `localInferenceLoader` service. On web it is unavailable (throws on `load()`).
+This package lets a mobile Eliza agent run GGUF models locally using the [`llama-cpp-capacitor`](https://github.com/arusatech/annadata-llama-cpp) Capacitor plugin. The first-party Android app uses its app-owned fused `libelizainference` bionic runtime and excludes this WebView bridge during Capacitor sync, so it never packages a second llama.cpp engine. Other consumers can still register the adapter on either native platform. This package is **not** a standard elizaOS `Plugin` object with registered actions/providers/evaluators — it is a low-level adapter library. Integration is opt-in: call `registerCapacitorLlamaLoader(runtime)` during Capacitor bootstrap to wire this as the runtime's `localInferenceLoader` service. On web it is unavailable (throws on `load()`).
 
 ## Plugin surface
 
@@ -86,7 +86,8 @@ Add a new variant to the `SamplerStage` union in `src/definitions.ts`. The nativ
 ## Conventions / gotchas
 
 - **One native context per adapter instance.** `CapacitorLlamaAdapter` allocates a unique `contextId` from a module-level counter. Never share one instance for both chat and embedding — `registerCapacitorLlamaLoader` creates two separate instances exactly for this reason.
-- **iOS GPU default: Metal on.** Android default: GPU off (Capacitor wrapper is CPU-only unless a Vulkan-capable fork is used). Controlled via `LoadOptions.useGpu`.
+- **iOS GPU default: Metal on.** Android defaults to CPU unless the consuming
+  app provides a Vulkan-capable native build. Controlled via `LoadOptions.useGpu`.
 - **`llama-cpp-capacitor` is dynamically imported** inside `loadPlugin()` so the adapter can be bundled into desktop builds without import-resolution errors. The native plugin is feature-detected at call time; missing methods warn and skip the unsupported operation.
 - **`buun-llama-cpp` fork** exposes `setCacheType`, `setSpecType`, and `getNativeKernels` methods not present in stock builds. The adapter feature-detects all three; stock builds silently skip them.
 - **`generateStream`** is the canonical generation path. `generate()` is a wrapper that drains the stream into a single `GenerateResult`.

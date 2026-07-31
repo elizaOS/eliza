@@ -1,5 +1,6 @@
 b0b53da3a1cffec57fcd52fbb86c6b7126f96582abe4eaa62eb25221a859339e  ./@capacitor%2Fbarcode-scanner@3.0.2.patch
-8bb9238b74638b2c4e4d8d6c47743d41809c001b620108adb811a3ba1b60d7ab  ./@capacitor%2Fios@8.4.1.patch
+ca237639ef3f656c570db308f1a91d7ae46c079a44f8e4610ab148fceb0db25a  ./@capacitor%2Fbackground-runner@3.0.0.patch
+aca06e141b5d6421b3c26875e50dae7decd14ecc9ff0ef79116639948dc5a79e  ./@capacitor%2Fios@8.5.0.patch
 4b6411a581bd77d73166fd05e458e8fe1bd6ab6fb6b57a9bdc5e522fe98f424c  ./@farcaster%2Fquick-auth@0.0.6.patch
 4b6411a581bd77d73166fd05e458e8fe1bd6ab6fb6b57a9bdc5e522fe98f424c  ./@farcaster%2Fquick-auth@0.0.8.patch
 b220b98ec8bed0731d240ee68752e7ca69bd5a8adfed2c78944a6df2099d1cd7  ./@orca-so%2Fcommon-sdk@0.7.0.patch
@@ -45,7 +46,6 @@ eb1e6558a98efff8652869c24268810f5ed63a177dc33e797a8a628706744574  ./@solana%2Ftr
 720037528b28e50ca0ceeda62099f2384a27a658457c210259aa5791dc75cddb  ./@vitest%2Fmocker@4.1.5.patch
 fa9033e52dfdaa941f137a52504117b0b5405490696a007d6fd8bab807a8dfea  ./bigint-buffer@1.1.5.patch
 314b2515247e1b93a4109e6b8726c56c4f2f7204d436a374dd423ecbfa8a17a2  ./electrobun@1.18.1.patch
-fe6846e573ce11b5d20319749acebafef1ad1f7fc502c13878159e5607396b26  ./llama-cpp-capacitor@0.1.5.patch
 c8536e56a0e84b373be54656c659db6b32065753503f9d60ac781b0709653037  ./telegraf@4.16.3.patch
 8ad81f17da40044c79bea7d63f64740bf6c066384fdc5ed10c34d3d70858b0b7  ./tsup@8.5.1.patch
 78b03448d1d42393e6073c3945ff7a0ee4c8167f3c5ee97559e80f1321626ddc  ./vitest@4.1.5.patch

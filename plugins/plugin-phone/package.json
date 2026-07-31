@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@capacitor/barcode-scanner": "^3.0.0",
-    "@capacitor/core": "8.4.0",
+    "@capacitor/core": "8.5.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",

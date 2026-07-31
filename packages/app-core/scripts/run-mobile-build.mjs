@@ -1543,64 +1543,6 @@ async function ensurePlatform(platform) {
  * No-op when both trees resolve to the same directory (standalone layout) or
  * when the synced public payload is missing.
  */
-// `@elizaos/capacitor-bun-runtime` is an app-core-only native module (it powers
-// the on-device Bun agent runtime) and is NOT a `packages/app` dependency, so
-// `cap sync` never emits it. Now that `android.path` makes cap sync regenerate
-// capacitor.settings.gradle / capacitor.build.gradle in place, those files would
-// lose bun-runtime on every sync. Re-register it idempotently after each sync so
-// the on-device agent keeps building (exact module name + projectDir the
-// committed files used).
-function ensureBunRuntimeRegistered() {
-  const MODULE = "elizaos-capacitor-bun-runtime";
-  // Resolve the projectDir relative to the ACTUAL androidDir, not a hardcoded
-  // `../../../../` that only happens to be right for the eliza tree's depth
-  // (`app-core/platforms/android`). A white-label consumer building in
-  // `apps/app/android` (ELIZA_ANDROID_USE_APP_DIR=1) sits at a different depth,
-  // so the hardcoded path resolved to a non-existent dir and gradle aborted
-  // ("projectDirectory … does not exist"). path.relative gives the correct
-  // hops from either androidDir to the bun-runtime plugin in the eliza checkout.
-  const PROJECT_DIR = path
-    .relative(
-      androidDir,
-      path.join(
-        elizaRepoRoot,
-        "plugins",
-        "plugin-native-bun-runtime",
-        "android",
-      ),
-    )
-    .split(path.sep)
-    .join("/");
-  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
-  const buildGradlePath = path.join(
-    androidDir,
-    "app",
-    "capacitor.build.gradle",
-  );
-
-  if (fs.existsSync(settingsPath)) {
-    let settings = fs.readFileSync(settingsPath, "utf8");
-    if (!settings.includes(`':${MODULE}'`)) {
-      settings = `${settings.trimEnd()}\ninclude ':${MODULE}'\nproject(':${MODULE}').projectDir = new File('${PROJECT_DIR}')\n`;
-      fs.writeFileSync(settingsPath, settings);
-      console.log(
-        `[mobile-build] Re-registered ${MODULE} (cap sync omits this app-core-only module).`,
-      );
-    }
-  }
-
-  if (fs.existsSync(buildGradlePath)) {
-    let build = fs.readFileSync(buildGradlePath, "utf8");
-    if (!build.includes(`project(':${MODULE}')`)) {
-      build = build.replace(
-        /dependencies\s*\{/,
-        `dependencies {\n    implementation project(':${MODULE}')`,
-      );
-      fs.writeFileSync(buildGradlePath, build);
-    }
-  }
-}
-
 function mirrorCapacitorWebPayloadIntoAndroidDir() {
   const syncedAssets = path.join(
     appDir,
@@ -1659,19 +1601,8 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
       `[mobile-build] Mirrored Capacitor web payload into ${path.relative(repoRoot, targetAssets)}`,
     );
   }
-  // `cap sync` generates capacitor.plugins.json from the
-  // FULL appDir dependency set, but androidDir ships a committed
-  // capacitor.settings.gradle that compiles only a curated subset of plugin
-  // modules (plus app-core additions like elizaos-capacitor-bun-runtime that
-  // cap sync never emits). Mirroring the full manifest into androidDir leaves
-  // it listing classes that aren't on the dex — and Capacitor's
-  // PluginManager.loadPluginClasses ABORTS the ENTIRE auto-registration on the
-  // first missing class (PluginLoadException). The net effect is that NONE of
-  // the auto-registered plugins load — including the compiled ones the app
-  // actually needs (Preferences, LlamaCpp, every @elizaos/capacitor-*) — so
-  // on-device local inference and Capacitor Preferences silently report
-  // "not implemented on android". Reconcile the manifest with what gradle
-  // actually compiles so loadPluginClasses succeeds.
+  // A mirrored manifest must describe the exact Gradle module set because one
+  // missing class aborts Capacitor's whole native plugin registration pass.
   // STALE-WEB GUARD: cap sync (even unified via android.path) has been observed
   // to leave a STALE assets/public — an old entry hash in the gradle-packaged
   // tree, shipping an "ancient" UI despite a fresh build. The freshly vite-built
@@ -1693,7 +1624,6 @@ function mirrorCapacitorWebPayloadIntoAndroidDir() {
       `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
     );
   }
-  dropRetiredLlamaCppFromAndroidGradle();
   reconcilePluginManifestWithGradle(targetAssets);
   // Verify the staged Android renderer is exactly the freshly built one. The
   // overlay above makes it so; this turns "should be fresh" into a hard,
@@ -1725,53 +1655,6 @@ function mirrorCapacitorWebPayloadIntoIosDir() {
   console.log(
     `[mobile-build] Stale-web guard: overlaid fresh ${path.relative(repoRoot, freshWeb)} → ${path.relative(repoRoot, targetPublic)}`,
   );
-}
-
-/**
- * Remove the RETIRED llama-cpp-capacitor Android module from the gradle build
- * entirely — the `include ':llama-cpp-capacitor'` + project line in
- * capacitor.settings.gradle and the `implementation project(':llama-cpp-capacitor')`
- * in app/capacitor.build.gradle. `cap sync` re-adds these on every sync because
- * the package ships an android/ dir, but agent inference runs solely through the
- * fused libelizainference.so and nothing on Android loads this plugin's separate
- * libllama-cpp-arm64.so. Leaving the gradle project in only made gradle configure
- * its CMake — which built a no-op stub and used to require the
- * ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out. Dropping the project removes the
- * stub build outright (no flag needed). iOS is untouched: ios-local-agent-kernel
- * loads the package via a dynamic import, so the npm dependency stays.
- *
- * Opt back into the full second library (not the stub) with
- * ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1. Idempotent.
- */
-function dropRetiredLlamaCppFromAndroidGradle() {
-  if (
-    process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR === "1" ||
-    process.env.elizaIncludeLlamaCppCapacitor === "true"
-  ) {
-    return;
-  }
-  const targets = [
-    path.join(androidDir, "capacitor.settings.gradle"),
-    path.join(androidDir, "app", "capacitor.build.gradle"),
-  ];
-  let dropped = false;
-  for (const target of targets) {
-    if (!fs.existsSync(target)) continue;
-    const before = fs.readFileSync(target, "utf8");
-    const after = before
-      .split("\n")
-      .filter((line) => !line.includes("llama-cpp-capacitor"))
-      .join("\n");
-    if (after !== before) {
-      fs.writeFileSync(target, after, "utf8");
-      dropped = true;
-    }
-  }
-  if (dropped) {
-    console.log(
-      "[mobile-build] Dropped retired llama-cpp-capacitor from the Android gradle build (no stub CMake; libelizainference is the sole in-process inference lib).",
-    );
-  }
 }
 
 /**
@@ -1810,40 +1693,8 @@ function reconcilePluginManifestWithGradle(targetAssets) {
     String(pkg ?? "")
       .replace(/@/g, "")
       .replace(/\//g, "-");
-  // The llama-cpp-capacitor plugin is RETIRED on Android: agent inference runs
-  // entirely through the single fused libelizainference.so, and nothing loads
-  // this plugin's separate libllama-cpp-arm64.so (its JS adapter is retired).
-  // dropRetiredLlamaCppFromAndroidGradle() (called above) removes its gradle
-  // project outright, so its CMake never runs — there is no stub to register
-  // and no ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB opt-out to set. We also drop it from
-  // the plugins manifest here so the LlamaCpp class never auto-registers. The
-  // device-bridge's optional LlamaCpp import resolves to a catchable "plugin not
-  // implemented" JS error, which costs nothing. Opt the full second library back
-  // in (gradle project + manifest) only with ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1.
-  const stubLlamaCpp =
-    process.env.ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR !== "1" &&
-    process.env.elizaIncludeLlamaCppCapacitor !== "true";
-  // Third-party Capacitor plugins that `cap sync` includes (they ship an
-  // android/ dir, so they ARE in capacitor.settings.gradle) but whose Kotlin
-  // plugin class never lands in the app dex on AGP 8.x: both rely on AGP's
-  // built-in Kotlin instead of applying `org.jetbrains.kotlin.android`, so the
-  // built-in kotlinc compiles the .kt but does NOT bundle the .class into the
-  // library AAR. PluginManager.loadPluginClasses then throws "Could not find
-  // class …" on the first one and aborts the ENTIRE plugin load, so EVERY
-  // plugin (Browser, Haptics, Keyboard, …) silently fails to register. We can't
-  // edit node_modules durably, and neither is needed for the core Android app —
-  // background work uses WorkManager (ElizaWorkScheduler) and barcode scanning
-  // is a companion-pairing-only feature — so drop them from the manifest. (Our
-  // own native plugins fix this properly by applying the Kotlin plugin in their
-  // android/build.gradle.)
-  const nonBundlingThirdPartyPlugins = new Set([
-    "@capacitor/background-runner",
-    "@capacitor/barcode-scanner",
-  ]);
   const isCompiledAndUsable = (plugin) => {
     if (!compiledProjects.has(gradleProjectFor(plugin?.pkg))) return false;
-    if (stubLlamaCpp && plugin?.pkg === "llama-cpp-capacitor") return false;
-    if (nonBundlingThirdPartyPlugins.has(plugin?.pkg)) return false;
     return true;
   };
   const kept = plugins.filter(isCompiledAndUsable);
@@ -2114,37 +1965,27 @@ export function injectNativeLibLegacyPackaging(content) {
 }
 
 /**
- * Inject an optional app-thinning hook for `assets/agent/`.
- *
- * Local mode on stock Capacitor APKs now depends on the staged bun runtime,
- * agent-bundle, and PGlite payload, so the default mobile build must keep
- * assets/agent/*. CI/release jobs that deliberately want a cloud-only slim APK
- * can opt into stripping with `-PelizaStripAgentAssets=true`.
- *
- * Idempotent: re-runs are no-ops once the block is present.
- */
-/**
- * Inject the `copyForkLlamaLib` Gradle task that bundles the buun-llama-cpp
- * fork's android-arm64 .so into the APK's jniLibs/. The fork's specialized
- * KV cache types (turbo3, turbo4, turbo3_tcq) and MTP spec-decoding kernels
- * live in this .so; without it, mobile only gets stock llama.cpp.
+ * Inject the Gradle task that stages the canonical fused Android inference
+ * runtime into the APK's jniLibs directory. The task name is retained because
+ * generated projects already use it, but it does not represent a second engine.
  *
  * Resolution order for the libdir:
  *   1. -Peliza.mtp.android.libdir=<path>   (gradle property)
  *   2. ELIZA_MTP_ANDROID_LIBDIR env var
  *   3. ~/.eliza/local-inference/bin/mtp/android-arm64-{cpu,vulkan}/
  *
- * Fails local builds when no path is configured or the dir doesn't exist. The
- * Android Capacitor JNI wrapper links against these MTP libraries and cannot
- * honestly support Eliza-1/Gemma 4 without them. Cloud builds skip the task.
- * A build with no fresh source dir falls back to the already-staged fused lib
- * set (the common dev case); only a genuinely missing arm64 lib is a hard error.
- *
- * Idempotent: re-runs are no-ops once the block is present.
+ * Local builds require the arm64 fused library because the JNI wrapper cannot
+ * provide local inference without it. Cloud and explicitly thinned smoke builds
+ * skip staging. Re-running this transformation is idempotent.
  */
 function ensureCopyForkLlamaLibGuards(content) {
   if (!/\[copyForkLlamaLib\]/.test(content)) return content;
-  if (/ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content)) return content;
+  if (/ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content)) {
+    return content.replace(
+      /\[copyForkLlamaLib\] skipped for cloud build/g,
+      "[copyForkLlamaLib] skipped for cloud/smoke build",
+    );
+  }
   const guards =
     `        if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
     `            println "[copyForkLlamaLib] skipped for cloud/smoke build"\n` +
@@ -2248,16 +2089,18 @@ export function injectCopyForkLlamaLibTask(content) {
     `// siblings (libggml*, libllama.so, libllama-common.so, libmtmd.so, libomp.so),\n` +
     `// which ARE libelizainference's GPU/CPU backends, NOT a separate llama.cpp fork.\n` +
     `// There is no second inference library; do NOT delete this task or its siblings.\n` +
+    `def skipForkLlamaLibCopy = project.findProperty('elizaCloudBuild') == 'true' ||\n` +
+    `    System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'\n` +
+    `def forkLlamaAbisForCopy = project.ext.elizaForkLlamaAbis.toList()\n` +
     `task copyForkLlamaLib {\n` +
     `    doLast {\n` +
-    `        if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+    `        if (skipForkLlamaLibCopy) {\n` +
     `            println "[copyForkLlamaLib] skipped for cloud/smoke build"\n` +
     `            return\n` +
     `        }\n` +
     `        boolean stagedArm64 = false\n` +
-    `        int totalCopied = 0\n` +
     `        boolean stagedKernels = false\n` +
-    `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
+    `        forkLlamaAbisForCopy.each { abi ->\n` +
     `            def libDir = resolveForkLlamaLibDir(abi)\n` +
     `            if (!libDir) {\n` +
     `                // No fresh source configured. If the fused lib set is already\n` +
@@ -2271,7 +2114,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `                }\n` +
     `                if (abi == 'arm64-v8a') {\n` +
     `                    // arm64-v8a is the mandatory baseline ABI; missing it (and no pre-staged lib) is a hard error.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no bionic fused inference lib for arm64-v8a (not configured, not pre-staged). Run node packages/app-core/scripts/stage-elizavoice-lib.mjs --variant cpu (or --variant vulkan), or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR to an NDK-built artifact directory. compile-libllama.mjs produces musl assets for the embedded Bun process and cannot satisfy this JNI requirement.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -2315,7 +2158,6 @@ export function injectCopyForkLlamaLibTask(content) {
     `                logger.lifecycle("[copyForkLlamaLib] no libomp.so found for \${abi}; the .so set may not link on-device")\n` +
     `            }\n` +
     `            println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
-    `            totalCopied += copied\n` +
     `            if (abi == 'arm64-v8a') stagedArm64 = true\n` +
     `        }\n` +
     `        if (!stagedArm64) {\n` +
@@ -2345,46 +2187,22 @@ export function injectCopyForkLlamaLibTask(content) {
   return content;
 }
 
-function ensureCloudBuildAssetThinning(content) {
-  if (/\[cloud-app-thinning\]/.test(content)) return content;
-  return (
-    content +
-    `\n// [cloud-app-thinning] Cloud builds must never package the local agent payload.\n` +
-    `// This second hook patches older generated projects whose existing\n` +
-    `// [app-thinning] block only honored -PelizaStripAndroidAgentAssets.\n` +
-    `afterEvaluate {\n` +
-    `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
-    `        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')\n` +
-    `        mergeTask.doLast {\n` +
-    `            if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
-    `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
-    `                def agentDir = new File(assetsDir, 'agent')\n` +
-    `                if (agentDir.exists()) {\n` +
-    `                    println "[cloud-app-thinning] removing assets/agent/ from \${mergeTask.name}"\n` +
-    `                    agentDir.deleteDir()\n` +
-    `                }\n` +
-    `            }\n` +
-    `        }\n` +
-    `    }\n` +
-    `}\n`
-  );
-}
-
 export function injectAospAssetThinning(content) {
-  if (/\[app-thinning\]/.test(content)) {
-    return ensureCloudBuildAssetThinning(content);
-  }
+  if (/\[app-thinning\]/.test(content)) return content;
   const block =
     `\n// Optional app thinning: keep assets/agent/ by default so stock\n` +
     `// Capacitor APKs can run the bundled local agent. Set\n` +
     `// -PelizaStripAgentAssets=true only for an explicitly cloud-only slim APK.\n` +
+    `def elizaAospBuildForAssets = project.findProperty('elizaAospBuild') == 'true'\n` +
+    `def elizaStripAgentAssets = project.findProperty('elizaStripAgentAssets') == 'true'\n` +
+    `def elizaCloudBuildForAssets = project.findProperty('elizaCloudBuild') == 'true'\n` +
     `afterEvaluate {\n` +
     `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
-    `        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')\n` +
-    `        mergeTask.inputs.property('elizaStripAgentAssets', project.findProperty('elizaStripAgentAssets') ?: 'false')\n` +
-    `        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')\n` +
+    `        mergeTask.inputs.property('elizaAospBuild', elizaAospBuildForAssets)\n` +
+    `        mergeTask.inputs.property('elizaStripAgentAssets', elizaStripAgentAssets)\n` +
+    `        mergeTask.inputs.property('elizaCloudBuild', elizaCloudBuildForAssets)\n` +
     `        mergeTask.doLast {\n` +
-    `            if (project.findProperty('elizaAospBuild') != 'true' && (project.findProperty('elizaStripAgentAssets') == 'true' || project.findProperty('elizaCloudBuild') == 'true')) {\n` +
+    `            if (!elizaAospBuildForAssets && (elizaStripAgentAssets || elizaCloudBuildForAssets)) {\n` +
     `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
     `                def agentDir = new File(assetsDir, 'agent')\n` +
     `                if (agentDir.exists()) {\n` +
@@ -2412,7 +2230,7 @@ export function injectAospAssetThinning(content) {
     }
     i += 1;
   }
-  return ensureCloudBuildAssetThinning(content);
+  return content;
 }
 
 function patchInstalledCapacitorPluginGradleForAgp9(pkgName) {
@@ -2428,92 +2246,6 @@ function patchOfficialCapacitorGradleForAgp9() {
   for (const pkgName of ANDROID_OFFICIAL_CAPACITOR_PACKAGES) {
     patchInstalledCapacitorPluginGradleForAgp9(pkgName);
   }
-}
-
-function patchLlamaCppCapacitorGradle() {
-  for (const pkgRoot of resolvePackageAbsolutePathCandidates(
-    "llama-cpp-capacitor",
-  )) {
-    const gradlePath = path.join(pkgRoot, "android", "build.gradle");
-    patchGradleFileForAgp9(gradlePath, "llama-cpp-capacitor");
-    restrictLlamaCapacitorToArm64(gradlePath);
-  }
-}
-
-// llama-cpp-capacitor@0.1.5 is an arm64-only native package: its
-// android/src/main/CMakeLists.txt unconditionally builds the arm64 target with
-// `-march=armv8-a -mtune=cortex-a76`, and it ships only a
-// jniLibs/arm64-v8a/libllama-cpp-arm64.so prebuilt — there is no x86_64 source
-// path or prebuilt. Its build.gradle nonetheless declares
-// `abiFilters 'arm64-v8a', 'x86_64'`, so AGP runs the arm64 NDK build under the
-// x86_64 toolchain and clang rejects `-march=armv8-a` (unknown target CPU). Drop
-// x86_64 from THIS library only, so the app still packages x86_64 for the other
-// native libs (bun runtime, ggml) — llama-cpp-capacitor is simply absent there,
-// which the plugin already tolerates.
-function restrictLlamaCapacitorToArm64(gradlePath) {
-  if (!fs.existsSync(gradlePath)) return;
-  const current = fs.readFileSync(gradlePath, "utf8");
-  const patched = current
-    .replace(/(abiFilters\s+'arm64-v8a')\s*,\s*'x86_64'/g, "$1")
-    .replace(
-      /abiFilters\s+'x86_64'\s*,\s*'arm64-v8a'/g,
-      "abiFilters 'arm64-v8a'",
-    );
-  if (patched !== current) {
-    fs.writeFileSync(gradlePath, patched, "utf8");
-    console.log(
-      "[mobile-build] Restricted llama-cpp-capacitor to arm64-v8a (package has no x86_64 native build).",
-    );
-  }
-}
-
-export function injectAndroidBackgroundRunnerAarFlatDir(content) {
-  if (/flatDir\s*\{[\s\S]*?dirs[\s\S]*?['"]libs['"][\s\S]*?\}/.test(content)) {
-    return content;
-  }
-  if (/flatDir\s*\{\s*\n\s*dirs\s+/.test(content)) {
-    return content.replace(
-      /(flatDir\s*\{\s*\n\s*dirs\s+)/,
-      "$1'libs',\n             ",
-    );
-  }
-  return content.replace(
-    /\nrepositories\s*\{\s*\n/,
-    "\nrepositories {\n    flatDir { dirs 'libs' }\n",
-  );
-}
-
-function stageBackgroundRunnerAndroidJsEngineAar() {
-  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
-  if (!fs.existsSync(settingsPath)) return;
-  const settings = fs.readFileSync(settingsPath, "utf8");
-  if (!settings.includes(":capacitor-background-runner")) return;
-
-  const aarName = "android-js-engine-release.aar";
-  const source = [
-    "@capacitor/background-runner",
-    "@capacitor-community/background-runner",
-  ]
-    .map((pkgName) => resolvePackageAbsolutePath(pkgName))
-    .filter(Boolean)
-    .map((pkgRoot) =>
-      path.join(pkgRoot, "android", "src", "main", "libs", aarName),
-    )
-    .find((candidate) => fs.existsSync(candidate));
-
-  if (!source) {
-    throw new Error(
-      `[mobile-build] ${aarName} not found in @capacitor/background-runner; reinstall dependencies or check the package tarball.`,
-    );
-  }
-
-  const targetDir = path.join(androidDir, "app", "libs");
-  const target = path.join(targetDir, aarName);
-  fs.mkdirSync(targetDir, { recursive: true });
-  fs.copyFileSync(source, target);
-  console.log(
-    `[mobile-build] Staged Background Runner JS engine AAR: ${path.relative(repoRoot, target)}`,
-  );
 }
 
 function patchGradleFileForAgp9(filePath, label) {
@@ -4051,85 +3783,10 @@ function patchAndroidGradleProperties() {
   }
 }
 
-// llama-cpp-capacitor 0.x ships Android Gradle DSL 8 syntax in its own
-// build.gradle. AGP 9 + Gradle 9 demand explicit `=` assignment for the
-// project-level DSL keys it uses (`namespace`, `version`, `ndkVersion`,
-// `lintOptions.abortOnError`) and rejects the legacy whitespace form, and
-// the legacy proguard file path is no longer shipped. Patch the installed
-// node_modules copy in place each build — modifying node_modules survives
-// the gradle invocation but a fresh `bun install` will re-clobber it,
-// which is fine because this function runs before every build.
-function patchInstalledLlamaCapacitorBuildGradle() {
-  const candidates = [
-    path.join(
-      appDir,
-      "node_modules",
-      "llama-cpp-capacitor",
-      "android",
-      "build.gradle",
-    ),
-    path.join(
-      repoRoot,
-      "node_modules",
-      "llama-cpp-capacitor",
-      "android",
-      "build.gradle",
-    ),
-  ];
-  const bunStores = [
-    path.join(appDir, "node_modules", ".bun"),
-    path.join(repoRoot, "node_modules", ".bun"),
-  ];
-  for (const bunStore of bunStores) {
-    if (!fs.existsSync(bunStore)) continue;
-    for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (!entry.name.startsWith("llama-cpp-capacitor@")) continue;
-      candidates.push(
-        path.join(
-          bunStore,
-          entry.name,
-          "node_modules",
-          "llama-cpp-capacitor",
-          "android",
-          "build.gradle",
-        ),
-      );
-    }
-  }
-  for (const gradlePath of candidates) {
-    if (!fs.existsSync(gradlePath)) continue;
-    const current = fs.readFileSync(gradlePath, "utf8");
-    let patched = current
-      .replaceAll(
-        'namespace "ai.annadata.plugin.capacitor"',
-        'namespace = "ai.annadata.plugin.capacitor"',
-      )
-      .replaceAll('version "3.22.1"', 'version = "3.22.1"')
-      .replaceAll('ndkVersion "29.0.13113456"', 'ndkVersion = "29.0.13113456"')
-      .replaceAll("abortOnError false", "abortOnError = false")
-      .replaceAll(
-        "getDefaultProguardFile('proguard-android.txt')",
-        "getDefaultProguardFile('proguard-android-optimize.txt')",
-      );
-    patched = patched.replace(
-      /\n\s*\/\/ Disable clean tasks[^\n]*\n\s*tasks\.whenTaskAdded\s*\{\s*task\s*->\s*\n\s*if\s*\(\s*task\.name\.contains\(["']Clean["']\)\s*&&\s*task\.name\.contains\(["']Debug["']\)\s*\)\s*\{\s*\n\s*task\.enabled\s*=\s*false\s*\n\s*\}\s*\n\s*\}\s*/g,
-      "\n",
-    );
-    if (patched !== current) {
-      fs.writeFileSync(gradlePath, patched, "utf8");
-      console.log(
-        `[mobile-build] Patched llama-cpp-capacitor build.gradle for AGP 9: ${path.relative(repoRoot, gradlePath)}`,
-      );
-    }
-  }
-}
-
 function patchAndroidGradle() {
   assertSharedTreeOnlyForEliza("patch gradle identity");
   patchAndroidGradleWrapperForReleaseCompat();
   patchAndroidGradleProperties();
-  patchInstalledLlamaCapacitorBuildGradle();
   syncAndroidAppActionsResources();
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
   const templateGradle = path.join(platformsDir, "android", "build.gradle");
@@ -4204,7 +3861,6 @@ function patchAndroidGradle() {
     patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
-    patched = injectAndroidBackgroundRunnerAarFlatDir(patched);
     // The template resolves `elizaRepoRoot` for the omnivoice FFI headers via a
     // relative `../../../..` walk from the gradle project dir. That only lands
     // on the eliza checkout when the android project is nested inside it (the
@@ -4230,9 +3886,7 @@ function patchAndroidGradle() {
   }
 
   patchOfficialCapacitorGradleForAgp9();
-  patchLlamaCppCapacitorGradle();
   patchNativePluginGradleForAgp9();
-  stageBackgroundRunnerAndroidJsEngineAar();
 
   const stringsPath = path.join(
     androidDir,
@@ -5690,6 +5344,58 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
   });
 }
 
+export function findAndroidNativeRuntimeOwnershipOffenders(entries) {
+  if (!Array.isArray(entries)) {
+    throw mobileBuildError(
+      "[mobile-build] Android artifact entries must be an array.",
+      {
+        code: "ANDROID_ARTIFACT_ARCHIVE_INVALID",
+        context: { entriesType: typeof entries },
+      },
+    );
+  }
+
+  const librariesByAbi = new Map();
+  const duplicateEngines = [];
+  for (const entry of entries) {
+    if (typeof entry !== "string") {
+      duplicateEngines.push(String(entry));
+      continue;
+    }
+    const normalized = entry.replaceAll("\\", "/");
+    const match = normalized.match(/(?:^|\/)lib\/([^/]+)\/([^/]+\.so)$/i);
+    if (!match) continue;
+    const [, abi, library] = match;
+    if (/^libllama-cpp-.*\.so$/i.test(library)) {
+      duplicateEngines.push(entry);
+    }
+    const abiLibraries = librariesByAbi.get(abi) ?? new Map();
+    abiLibraries.set(library.toLowerCase(), entry);
+    librariesByAbi.set(abi, abiLibraries);
+  }
+
+  for (const abiLibraries of librariesByAbi.values()) {
+    const bridge = abiLibraries.get("libelizavoicejni.so");
+    if (bridge && !abiLibraries.has("libelizainference.so")) {
+      duplicateEngines.push(bridge);
+    }
+  }
+  return duplicateEngines;
+}
+
+function assertAndroidNativeRuntimeOwnership(artifact, entries) {
+  const offenders = findAndroidNativeRuntimeOwnershipOffenders(entries);
+  if (offenders.length > 0) {
+    throw mobileBuildError(
+      `[mobile-build] Android artifact ${artifact} violates native inference ownership: ${offenders.join(", ")}`,
+      {
+        code: "ANDROID_NATIVE_INFERENCE_OWNERSHIP_INVALID",
+        context: { artifact, offenders },
+      },
+    );
+  }
+}
+
 function cloudBrandUserAgentMarkerLines() {
   const markers = [
     { systemProp: "ro.elizaos.product", uaPrefix: "ElizaOS/" },
@@ -6941,7 +6647,6 @@ export async function runAndroidBuild(
   await ensurePlatform("android");
   await ensureRendererDistMatchesLane(target.webTarget);
   await runCapacitor(["sync", "android"]);
-  ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 
   patchAndroidGradle();
@@ -7038,6 +6743,7 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
     requireAgent: true,
     label: "android",
   });
+  assertAndroidNativeRuntimeOwnership(artifact, entries);
   console.log(
     `[mobile-build] android sideload artifact audit passed: ${artifact}`,
   );
@@ -7083,6 +6789,7 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
     requireAgent: true,
     label: "android-system",
   });
+  assertAndroidNativeRuntimeOwnership(artifact, entries);
   console.log(
     `[mobile-build] android-system artifact audit passed: ${artifact}`,
   );

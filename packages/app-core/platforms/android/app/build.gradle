@@ -35,13 +35,13 @@ def resolveElizaVoiceProbePrebuilt = {
 }
 
 android {
-    namespace "ai.elizaos.app"
-    compileSdk rootProject.ext.compileSdkVersion
+    namespace = "ai.elizaos.app"
+    compileSdk = rootProject.ext.compileSdkVersion
     // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
     // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
     // scripts/elizaos/build-aosp.mjs. AGP 8+ defaults this to false.
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
     defaultConfig {
         // Direct-distribution LP3 builds opt in explicitly. Runtime device,
@@ -69,14 +69,14 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
 
         // Phase 3a fused-voice JNI bridge (libelizavoicejni.so). Built by the
         // NDK (bionic) from src/main/elizavoice-jni; links the prebuilt,
         // self-contained libelizainference.so staged into jniLibs/arm64-v8a by
         // stage-elizavoice-lib.mjs. Pass the fork FFI header dir to the shim's
-        // CMake. arm64-v8a only in Phase 3a (other ABIs build a no-op stub).
+        // CMake. arm64-v8a is the only ABI that emits this JNI host.
         externalNativeBuild {
             cmake {
                 arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include').absolutePath}"
@@ -129,7 +129,7 @@ android {
         externalNativeBuild {
             cmake {
                 path "src/main/elizavoice-jni/CMakeLists.txt"
-                version "3.22.1"
+                version = "3.22.1"
             }
         }
     } else if (elizavoiceBridgeSkipped) {
@@ -138,7 +138,7 @@ android {
         logger.warn("[elizavoice-jni] prebuilt libelizainference.so lacks fused-voice symbols (wakeword/speaker/diariz); skipping Phase 3a JNI bridge so the APK still builds. Rebuild via stage-elizavoice-lib.mjs to re-enable.")
     }
 
-    ndkVersion "28.2.13676358"
+    ndkVersion = "28.2.13676358"
 
     signingConfigs {
         debug {
@@ -149,10 +149,10 @@ android {
                 ? file(System.getenv("ELIZAOS_DEBUG_KEYSTORE_PATH"))
                 : new File(System.getProperty("user.home"), ".android/eliza-debug.keystore")
             if (pinnedDebugKeystore.isFile()) {
-                storeFile pinnedDebugKeystore
-                storePassword "android"
-                keyAlias "androiddebugkey"
-                keyPassword "android"
+                storeFile = pinnedDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
             } else {
                 logger.warn("[debug-signing] pinned Eliza debug keystore not found at ${pinnedDebugKeystore}; using Gradle's machine-local debug identity. See platforms/android/README.md for upgrade-compatible setup.")
             }
@@ -161,24 +161,24 @@ android {
             // For Google Play App Signing: use an upload keystore.
             // CI provides these via environment variables; local builds fall back to debug signing.
             if (System.getenv("ELIZAOS_KEYSTORE_PATH")) {
-                storeFile file(System.getenv("ELIZAOS_KEYSTORE_PATH"))
-                storePassword System.getenv("ELIZAOS_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("ELIZAOS_KEY_ALIAS")
-                keyPassword System.getenv("ELIZAOS_KEY_PASSWORD")
+                storeFile = file(System.getenv("ELIZAOS_KEYSTORE_PATH"))
+                storePassword = System.getenv("ELIZAOS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ELIZAOS_KEY_ALIAS")
+                keyPassword = System.getenv("ELIZAOS_KEY_PASSWORD")
             }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig signingConfigs.debug
+            signingConfig = signingConfigs.debug
         }
         release {
-            minifyEnabled true
-            shrinkResources true
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (signingConfigs.release.storeFile) {
-                signingConfig signingConfigs.release
+                signingConfig = signingConfigs.release
             }
         }
     }
@@ -223,15 +223,6 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols += ["**/libimage_processing_util_jni.so"]
-            // The retired llama-cpp-capacitor plugin is dropped from the manifest
-            // by default (stubLlamaCpp), so its separate libllama-cpp-arm64.so —
-            // a second, unused llama.cpp — is never loaded. Keep that dead 6.6 MB
-            // out of the APK too, so libelizainference is the ONLY inference lib
-            // shipped. Opt back in (plugin + its lib) with
-            // ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR=1.
-            if (System.getenv('ELIZA_ANDROID_INCLUDE_LLAMA_CPP_CAPACITOR') != '1') {
-                excludes += ["**/libllama-cpp-arm64.so"]
-            }
         }
     }
 
@@ -324,16 +315,18 @@ def resolveAndroidLibompForAbi = { String abi ->
 // There is no second inference library. Do NOT delete this task or its siblings —
 // that breaks on-device inference. (libelizainference also folds in MTP, omnivoice
 // TTS/Kokoro, ASR, VAD, vision; see verify-fused-symbols.mjs for the symbol gate.)
+def skipForkLlamaLibCopy = project.findProperty('elizaCloudBuild') == 'true' ||
+    System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'
+def forkLlamaAbisForCopy = project.ext.elizaForkLlamaAbis.toList()
 task copyForkLlamaLib {
     doLast {
-        if (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {
+        if (skipForkLlamaLibCopy) {
             println "[copyForkLlamaLib] skipped for cloud/smoke build"
             return
         }
         boolean stagedArm64 = false
-        int totalCopied = 0
         boolean stagedKernels = false
-        project.ext.elizaForkLlamaAbis.each { abi ->
+        forkLlamaAbisForCopy.each { abi ->
             def libDir = resolveForkLlamaLibDir(abi)
             if (!libDir) {
                 // No fresh source configured. If the fused lib set is already
@@ -348,7 +341,7 @@ task copyForkLlamaLib {
                 if (abi == 'arm64-v8a') {
                     // arm64-v8a is the mandatory baseline ABI; missing it (and no
                     // pre-staged lib) is a hard error.
-                    throw new GradleException("[copyForkLlamaLib] no fused inference lib for arm64-v8a (not configured, not pre-staged). Run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-arm64-vulkan-fused (the Android cross-compiler; build-llama-cpp-mtp.mjs has no Android targets) or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
+                    throw new GradleException("[copyForkLlamaLib] no bionic fused inference lib for arm64-v8a (not configured, not pre-staged). Run node packages/app-core/scripts/stage-elizavoice-lib.mjs --variant cpu (or --variant vulkan), or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR to an NDK-built artifact directory. compile-libllama.mjs produces musl assets for the embedded Bun process and cannot satisfy this JNI requirement.")
                 }
                 logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI ${abi}; skipping")
                 return
@@ -392,7 +385,6 @@ task copyForkLlamaLib {
                 logger.lifecycle("[copyForkLlamaLib] no libomp.so found for ${abi}; the .so set may not link on-device")
             }
             println "[copyForkLlamaLib] copied ${copied} .so file(s) from ${libDir} to ${jniDir}"
-            totalCopied += copied
             if (abi == 'arm64-v8a') stagedArm64 = true
         }
         if (!stagedArm64) {
@@ -413,13 +405,16 @@ afterEvaluate {
 // Optional app thinning: keep assets/agent/ by default so stock
 // Capacitor APKs can run the bundled local agent. Set
 // -PelizaStripAgentAssets=true only for an explicitly cloud-only slim APK.
+def elizaAospBuildForAssets = project.findProperty('elizaAospBuild') == 'true'
+def elizaStripAgentAssets = project.findProperty('elizaStripAgentAssets') == 'true'
+def elizaCloudBuildForAssets = project.findProperty('elizaCloudBuild') == 'true'
 afterEvaluate {
     tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->
-        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')
-        mergeTask.inputs.property('elizaStripAgentAssets', project.findProperty('elizaStripAgentAssets') ?: 'false')
-        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')
+        mergeTask.inputs.property('elizaAospBuild', elizaAospBuildForAssets)
+        mergeTask.inputs.property('elizaStripAgentAssets', elizaStripAgentAssets)
+        mergeTask.inputs.property('elizaCloudBuild', elizaCloudBuildForAssets)
         mergeTask.doLast {
-            if (project.findProperty('elizaAospBuild') != 'true' && (project.findProperty('elizaStripAgentAssets') == 'true' || project.findProperty('elizaCloudBuild') == 'true')) {
+            if (!elizaAospBuildForAssets && (elizaStripAgentAssets || elizaCloudBuildForAssets)) {
                 def assetsDir = mergeTask.outputDir.get().asFile
                 def agentDir = new File(assetsDir, 'agent')
                 if (agentDir.exists()) {
@@ -452,7 +447,7 @@ def auditCloudReleaseAab = tasks.register('auditCloudReleaseAab') {
     inputs.file(cloudReleaseAab)
     outputs.upToDateWhen { false }
     onlyIf('Cloud release build') {
-        project.findProperty('elizaCloudBuild') == 'true'
+        elizaCloudBuildForAssets
     }
     doFirst {
         def bundleTask = cloudBundleReleaseTasks.find {
@@ -533,24 +528,12 @@ def auditCloudReleaseAab = tasks.register('auditCloudReleaseAab') {
 
 afterEvaluate {
     cloudBundleReleaseTasks.configureEach { bundleTask ->
-        if (project.findProperty('elizaCloudBuild') == 'true') {
+        if (elizaCloudBuildForAssets) {
             bundleTask.finalizedBy(auditCloudReleaseAab)
         }
     }
 }
 
-
-repositories {
-    flatDir {
-        dirs 'libs',
-             '../../node_modules/@capacitor/background-runner/android/src/main/libs',
-             '../../node_modules/@capacitor-community/background-runner/android/src/main/libs',
-             '../../../../app/node_modules/@capacitor/background-runner/android/src/main/libs',
-             '../../../../app/node_modules/@capacitor-community/background-runner/android/src/main/libs',
-             '../../../../node_modules/@capacitor/background-runner/android/src/main/libs',
-             '../../../../node_modules/@capacitor-community/background-runner/android/src/main/libs'
-    }
-}
 
 dependencies {
     implementation "com.google.code.gson:gson:2.13.2"
@@ -589,23 +572,4 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}
-
-// [cloud-app-thinning] Cloud builds must never package the local agent payload.
-// This second hook patches older generated projects whose existing
-// [app-thinning] block only honored -PelizaStripAndroidAgentAssets.
-afterEvaluate {
-    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->
-        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')
-        mergeTask.doLast {
-            if (project.findProperty('elizaCloudBuild') == 'true') {
-                def assetsDir = mergeTask.outputDir.get().asFile
-                def agentDir = new File(assetsDir, 'agent')
-                if (agentDir.exists()) {
-                    println "[cloud-app-thinning] removing assets/agent/ from ${mergeTask.name}"
-                    agentDir.deleteDir()
-                }
-            }
-        }
-    }
 }
