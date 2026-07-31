@@ -50,6 +50,7 @@ interface ModelBProps {
   onWaitingChange?: (waiting: boolean) => void;
   onBackClick?: () => void;
   onVideoClick?: () => void;
+  onReady?: () => void;
   onSwitcherDone?: () => void;
   onSwitcherOpen?: () => void;
   loginTitle?: string;
@@ -84,6 +85,7 @@ interface ModelRuntime {
   onWaitingChange: ((waiting: boolean) => void) | null;
   onBackClick: (() => void) | null;
   onVideoClick: (() => void) | null;
+  onReady: (() => void) | null;
   onSwitcherDone: (() => void) | null;
   onSwitcherOpen: (() => void) | null;
   switcherOpenFiredEarly: boolean;
@@ -119,6 +121,7 @@ function createModelRuntime(): ModelRuntime {
     onWaitingChange: null,
     onBackClick: null,
     onVideoClick: null,
+    onReady: null,
     onSwitcherDone: null,
     onSwitcherOpen: null,
     switcherOpenFiredEarly: false,
@@ -925,6 +928,7 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
       if (!completed.current) {
         completed.current = true;
         runtime.cameraZoomDone = true;
+        runtime.onReady?.();
         state.invalidate();
       }
       return;
@@ -948,6 +952,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     onWaitingChange,
     onBackClick,
     onVideoClick,
+    onReady,
     onSwitcherDone,
     onSwitcherOpen,
     loginTitle,
@@ -1016,6 +1021,10 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   useEffect(() => {
     runtime.onVideoClick = onVideoClick ?? null;
   }, [onVideoClick, runtime]);
+
+  useEffect(() => {
+    runtime.onReady = onReady ?? null;
+  }, [onReady, runtime]);
 
   useEffect(() => {
     runtime.onSwitcherOpen = onSwitcherOpen ?? null;

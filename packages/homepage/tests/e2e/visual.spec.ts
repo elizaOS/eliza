@@ -26,10 +26,8 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The landing intro (SVG letter swap → spring-revealed tab bar) is
-  // react-spring/JS-driven, so `animations: "disabled"` cannot freeze it and
-  // a fixed wait races slow app-JS loads. Wait for the last spring-revealed
-  // control ("Try Now") instead, then give the springs time to reach rest.
+  // The phone camera and chat run outside CSS animation controls, so the model
+  // exposes its own capture boundary after the camera reaches its final pose.
   if (routePath === "/" || routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
     const tryButton = page.getByRole("button", { name: "Try Now" }).first();
@@ -45,7 +43,10 @@ async function prepare(page: Page, routePath?: string) {
         { timeout: 20_000 },
       )
       .toBeGreaterThan(0.98);
-    await page.waitForTimeout(750);
+    await page
+      .locator('[data-phone-model="settled"]')
+      .waitFor({ timeout: 20_000 });
+    await page.waitForTimeout(500);
     return;
   }
   if (routePath === "/login" || routePath === "/connected") {

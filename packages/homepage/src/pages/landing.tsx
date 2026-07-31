@@ -174,6 +174,7 @@ export default function Leaderboard() {
   const navigate = useNavigate();
   const t = useT();
   const modelRef = useRef<ModelBHandle>(null);
+  const [phoneSettled, setPhoneSettled] = useState(false);
   const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
   const [showUI, setShowUI] = useState(false);
@@ -751,6 +752,11 @@ export default function Leaderboard() {
         aria-hidden="true"
         className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')]"
       />
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none"
+        data-phone-model={phoneSettled ? "settled" : "loading"}
+      />
       <Suspense fallback={null}>
         <ModelB
           ref={modelRef}
@@ -758,6 +764,7 @@ export default function Leaderboard() {
           switcherOpen={switcherOpen}
           onWaitingChange={setWaiting}
           onVideoClick={handleVideoClick}
+          onReady={() => setPhoneSettled(true)}
           onBackClick={handleLoginClick}
           onSwitcherDone={handleSwitcherDone}
           onSwitcherOpen={handleSwitcherOpen}

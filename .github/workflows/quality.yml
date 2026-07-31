@@ -127,8 +127,8 @@ jobs:
         working-directory: packages/homepage
         run: |
           SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          # 5 routes × 2 viewports × 1 browser project = 10 expected snapshots
-          EXPECTED=10
+          # 6 routes × 2 viewports × 1 browser project = 12 expected snapshots
+          EXPECTED=12
           ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
           if [ "$ACTUAL" -lt "$EXPECTED" ]; then
             echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
