@@ -367,6 +367,38 @@ function createViewShortcutMessageService(): NonNullable<
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createVisibleCallbackWithInternalReceiptMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  const text = "Opened Notes.";
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text }, "VIEWS");
+      return {
+        didRespond: true,
+        responseContent: { text, transcriptVisibility: "internal" as const },
+        responseMessages: [],
+        mode: "actions" as const,
+        actionResults: [
+          {
+            success: true,
+            text,
+            transcriptVisibility: "internal" as const,
+            data: { actionName: "VIEWS" },
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "visible-callback-internal-receipt-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createPersistedCallbackMessageService(
   messageId: UUID,
 ): NonNullable<AgentRuntime["messageService"]> {
@@ -1023,6 +1055,50 @@ describe("conversation stream SSE contract (#10712)", () => {
         },
       ],
     });
+  });
+
+  it("streams one visible callback when the matching action receipt is internal", async () => {
+    requestStreamProtocol = "delta-v2";
+    const { ctx, record, state } = createCtx(
+      createVisibleCallbackWithInternalReceiptMessageService(),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    runtime.updateMemory = vi.fn(async () => true);
+    vi.mocked(runtime.getMemoriesByIds).mockImplementation(async (ids) =>
+      ids.map((id) => ({
+        id,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "Opened Notes." },
+        createdAt: Date.now(),
+      })),
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.filter((payload) => payload.type === "token")).toEqual([
+      {
+        type: "token",
+        fullText: "Opened Notes.",
+      },
+    ]);
+    const done = payloads.find((payload) => payload.type === "done");
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Opened Notes.",
+      historyRefreshRequired: true,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          text: "Opened Notes.",
+        },
+      ],
+    });
+    expect(done).not.toHaveProperty("transcriptVisibility");
   });
 
   it("uses this turn's exact persisted response id instead of a room-latest guess", async () => {
