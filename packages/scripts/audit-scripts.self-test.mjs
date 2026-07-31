@@ -345,4 +345,25 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 18. Dynamically inventoried script tests are not orphaned utilities.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/owned.test.mjs":
+        "it('runs through the inventory', () => {});\n",
+      "packages/scripts/orphan-utility.mjs": "export const orphan = true;\n",
+    },
+  });
+  assert(!report.ok, "the ordinary unreferenced script should remain orphaned");
+  assert(
+    hasFinding(report, "orphan-utility.mjs"),
+    "expected the ordinary script to remain an orphan",
+  );
+  assert(
+    !hasFinding(report, "owned.test.mjs"),
+    "script tests are executed by the dynamic inventory and cannot be orphaned",
+  );
+}
+
 console.log("audit-scripts self-test passed");
