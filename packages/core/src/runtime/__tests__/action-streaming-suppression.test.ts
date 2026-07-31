@@ -5,15 +5,17 @@
  * through the HandlerCallback, and any model call it makes to produce that
  * output (e.g. the conversation compactor's ledger extraction) is an
  * implementation detail the user must never see. `executePlannedToolCall`
- * enforces this by running the handler inside `runWithSuppressedModelStream`,
- * which shadows the chat-SSE `onStreamChunk` with a no-op while keeping the
- * abort signal and structured hooks.
+ * enforces this through the handler-settlement boundary, which keeps both the
+ * handler and its deferred callback delivery inside
+ * `runWithSuppressedModelStream`. The scope shadows chat-SSE `onStreamChunk`
+ * with a no-op while keeping the abort signal and structured hooks.
  *
  * The positive controls prove the negative assertions are not vacuous: the same
  * emission DOES reach the sink when it happens at the top level (outside the
  * suppression seam).
  */
 import { describe, expect, it, vi } from "vitest";
+import { wrapSingleTurnVisibleCallback } from "../../services/message";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
@@ -25,6 +27,7 @@ import { executePlannedToolCall } from "../execute-planned-tool-call";
 
 const LEDGER_JSON = '```json\n{ "state": { "facts": ["internal fact"] } }\n```';
 const CLEAN_SUMMARY = "Compacted 8 older message(s); preserved the latest 4.";
+const VOICE_REWRITE_JSON = '```json\n{"response":"opened notes."}\n```';
 
 function makeMessage(): Memory {
 	return {
@@ -113,6 +116,69 @@ describe("action streaming suppression (#16230)", () => {
 		expect(callbackReplies).toEqual([CLEAN_SUMMARY]);
 		expect(result.success).toBe(true);
 		expect(result.text).toBe(CLEAN_SUMMARY);
+	});
+
+	it("keeps a deferred action-callback voice rewrite off the visible stream while delivering its parsed text once", async () => {
+		const visibleSink = vi.fn();
+		const deliveredCallback = vi.fn(async () => []);
+		const action = {
+			name: "INSPECT_VIEW",
+			description: "Inspect a view",
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: "Current view: Notes." }, "INSPECT_VIEW");
+				return { success: true, text: "Current view: Notes." };
+			},
+		} as Action;
+		const runtime = {
+			...makeRuntime(action),
+			agentId: "agent-id",
+			character: { name: "Eliza", style: { all: ["warm", "concise"] } },
+			useModel: vi.fn(async () => {
+				const active = getStreamingContext();
+				await active?.onStreamChunk?.(
+					VOICE_REWRITE_JSON,
+					undefined,
+					VOICE_REWRITE_JSON,
+				);
+				return VOICE_REWRITE_JSON;
+			}),
+		} as unknown as IAgentRuntime;
+		const message = makeMessage();
+		const callback = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			deliveredCallback,
+		);
+
+		await runWithStreamingContext(
+			{
+				messageId: "msg-deferred-callback",
+				onStreamChunk: async (chunk: string) => {
+					visibleSink(chunk);
+				},
+			} as never,
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message, callback },
+					{ name: "INSPECT_VIEW", params: {} },
+				),
+		);
+
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		expect(visibleSink).not.toHaveBeenCalled();
+		expect(deliveredCallback).toHaveBeenCalledTimes(1);
+		expect(deliveredCallback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "opened notes.",
+				data: expect.objectContaining({
+					rawActionText: "Current view: Notes.",
+					voiceRewritten: true,
+				}),
+			}),
+			"INSPECT_VIEW",
+		);
 	});
 
 	it("positive control: the same internal emission DOES reach the sink at the top level (outside the action seam)", async () => {
