@@ -86,6 +86,7 @@ function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
     html_url: `https://github.com/elizaOS/eliza/pull/${number}`,
     user: account(`author-${number}`),
     labels: [],
+    assignees: [],
     draft: false,
     body: evidenceBody(),
     requested_reviewers: [],
@@ -729,6 +730,33 @@ describe("live report behavior", () => {
         comments: 0,
       },
       {
+        number: 5,
+        title: "Lane-labeled claim",
+        html_url: "https://github.com/elizaOS/eliza/issues/5",
+        user: account("human-four"),
+        labels: [{ name: "claimed:shaw-codex" }],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 6,
+        title: "Blocked issue",
+        html_url: "https://github.com/elizaOS/eliza/issues/6",
+        user: account("human-five"),
+        labels: [{ name: "status: blocked" }],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 7,
+        title: "Ghost-authored issue",
+        html_url: "https://github.com/elizaOS/eliza/issues/7",
+        user: null,
+        labels: [],
+        assignees: [],
+        comments: 0,
+      },
+      {
         number: 10,
         title: "PR shadow from issues endpoint",
         html_url: "https://github.com/elizaOS/eliza/pull/10",
@@ -762,6 +790,22 @@ describe("live report behavior", () => {
           "AI provider/model: OpenAI / gpt-5.6-codex",
           "- AI assistance: no - human-only contribution",
         ),
+      }),
+      pullRequest(15, {
+        title: "Sensitive pull request",
+        labels: [{ name: "credential-leak" }],
+      }),
+      pullRequest(16, {
+        title: "Assigned review",
+        assignees: [account("assigned-reviewer")],
+      }),
+      pullRequest(17, {
+        title: "Lane-labeled review",
+        labels: [{ name: "review-claimed:review-lane" }],
+      }),
+      pullRequest(18, {
+        title: "Ghost-authored pull request",
+        user: null,
       }),
     ];
     const calls: string[] = [];
@@ -815,6 +859,12 @@ describe("live report behavior", () => {
       ["repos/elizaOS/eliza/issues/14/comments?per_page=100", []],
       ["repos/elizaOS/eliza/pulls/14/comments?per_page=100", []],
       ["repos/elizaOS/eliza/pulls/14/reviews?per_page=100", []],
+      ["repos/elizaOS/eliza/issues/16/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/16/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/16/reviews?per_page=100", []],
+      ["repos/elizaOS/eliza/issues/17/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/17/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/17/reviews?per_page=100", []],
     ]);
 
     const report = collectLiveReport(
@@ -841,12 +891,16 @@ describe("live report behavior", () => {
       [1],
     );
     assert.deepStrictEqual(
+      report.filtered.unknownAuthorIssues.map((issue) => issue.number),
+      [7],
+    );
+    assert.deepStrictEqual(
       report.filtered.sensitiveIssues.map((issue) => issue.number),
       [4],
     );
     assert.deepStrictEqual(
       report.filtered.claimedIssues.map((issue) => issue.number),
-      [2],
+      [2, 5, 6],
     );
     assert.deepStrictEqual(
       report.filtered.draftPullRequests.map((pull) => pull.number),
@@ -854,11 +908,19 @@ describe("live report behavior", () => {
     );
     assert.deepStrictEqual(
       report.filtered.claimedPullRequests.map((pull) => pull.number),
-      [12],
+      [12, 16, 17],
+    );
+    assert.deepStrictEqual(
+      report.filtered.sensitivePullRequests.map((pull) => pull.number),
+      [15],
     );
     assert.deepStrictEqual(
       report.filtered.botPullRequests.map((pull) => pull.number),
       [13],
+    );
+    assert.deepStrictEqual(
+      report.filtered.unknownAuthorPullRequests.map((pull) => pull.number),
+      [18],
     );
     assert.deepStrictEqual(
       report.audits.issueComments.map((issue) => issue.number),
@@ -882,6 +944,10 @@ describe("live report behavior", () => {
     assert.ok(
       !calls.some((endpoint) => endpoint.includes("/13/")),
       "bot-authored PR detail endpoints should not be read",
+    );
+    assert.ok(
+      !calls.some((endpoint) => endpoint.includes("/15/")),
+      "security-sensitive PR detail endpoints should not be read",
     );
     assert.strictEqual(renderMarkdown(report), renderMarkdown(report));
     assert.match(
@@ -1019,7 +1085,7 @@ describe("live report behavior", () => {
     );
   });
 
-  it("uses live review requests and current-head review state without permanent starvation", () => {
+  it("treats live review requests as durable and uses current-head review state", () => {
     const pulls = [
       pullRequest(30, {
         requested_reviewers: [account("recent-reviewer")],
@@ -1078,44 +1144,6 @@ describe("live report behavior", () => {
       [33, [review(330, "requester", "CHANGES_REQUESTED")]],
       [34, [review(340, "past-reviewer", "APPROVED", PRIOR_SHA)]],
     ]);
-    const requestEvents = new Map<number, unknown[]>([
-      [
-        30,
-        [
-          {
-            id: 300,
-            event: "review_requested",
-            created_at: "2026-01-18T00:00:00.000Z",
-            requested_reviewer: account("recent-reviewer"),
-          },
-        ],
-      ],
-      [
-        31,
-        [
-          {
-            id: 310,
-            event: "review_requested",
-            created_at: "2026-01-01T00:00:00.000Z",
-            requested_reviewer: account("stale-reviewer"),
-          },
-        ],
-      ],
-      [
-        35,
-        [
-          {
-            id: 350,
-            event: "review_requested",
-            created_at: "2026-01-19T00:00:00.000Z",
-            requested_team: { slug: "core-maintainers" },
-          },
-        ],
-      ],
-      [39, []],
-      [40, []],
-    ]);
-
     const report = collectLiveReport(
       "elizaOS/eliza",
       (endpoint) => {
@@ -1129,12 +1157,6 @@ describe("live report behavior", () => {
         if (inlineComment) return [];
         const reviewList = endpoint.match(/pulls\/(\d+)\/reviews/);
         if (reviewList) return reviews.get(Number(reviewList[1])) ?? [];
-        const eventList = endpoint.match(/issues\/(\d+)\/events/);
-        if (eventList) {
-          const response = requestEvents.get(Number(eventList[1]));
-          assert.ok(response, `unexpected endpoint: ${endpoint}`);
-          return response;
-        }
         assert.fail(`unexpected endpoint: ${endpoint}`);
       },
       NOW,
@@ -1142,11 +1164,11 @@ describe("live report behavior", () => {
 
     assert.deepStrictEqual(
       report.reviewablePullRequests.map((pull) => pull.number),
-      [31, 34, 36, 38, 40],
+      [34, 36],
     );
     assert.deepStrictEqual(
       report.filtered.claimedPullRequests.map((pull) => pull.number),
-      [30, 35, 37, 39],
+      [30, 31, 35, 37, 38, 39, 40],
     );
     assert.deepStrictEqual(
       report.filtered.reviewedPullRequests.map((pull) => pull.number),
@@ -1157,8 +1179,8 @@ describe("live report behavior", () => {
       [33],
     );
     assert.deepStrictEqual(
-      report.reviewablePullRequests.find((pull) => pull.number === 31)
-        ?.reviewState.staleRequests,
+      report.filtered.claimedPullRequests.find((pull) => pull.number === 31)
+        ?.reviewState.activeRequests,
       ["stale-reviewer"],
     );
     assert.deepStrictEqual(
@@ -1166,10 +1188,11 @@ describe("live report behavior", () => {
         ?.reviewState.currentHeadApprovals,
       [],
     );
+    assert.doesNotMatch(renderMarkdown(report), /#31/);
+    assert.match(renderMarkdown(report), /comment claims expire after 7 days/);
     assert.match(
       renderMarkdown(report),
-      /#31.*stale review request: stale-reviewer \(reconfirm live state\)/,
+      /review requests persist until cleared/,
     );
-    assert.match(renderMarkdown(report), /expire after 7 days/);
   });
 });

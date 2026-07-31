@@ -257,7 +257,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
           number: 17326,
           title: "Launch the eliza.army contribution protocol",
           url: "https://github.com/elizaOS/eliza/issues/17326",
-          author: null,
+          author: leaderActor,
           createdAt: generatedAt,
           updatedAt: generatedAt,
           labels: ["website"],
@@ -265,13 +265,18 @@ export function snapshotFixture(): LeaderboardSnapshot {
           actionability: "actionable",
           isDraft: null,
           reviewDecision: null,
+          activeReviewRequestCount: null,
           commentCount: 1,
           claim: {
-            status: "claimed",
-            source: "label",
-            kind: "implementation",
+            status: "unclaimed",
+            source: "none",
+            kind: null,
             actors: [],
             claimedAt: null,
+          },
+          selection: {
+            status: "candidate",
+            reasons: [],
           },
           evidence: {
             status: "partial",
@@ -300,7 +305,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
           number: 17327,
           title: "Ship the public contribution ledger",
           url: "https://github.com/elizaOS/eliza/pull/17327",
-          author: null,
+          author: leaderActor,
           createdAt: generatedAt,
           updatedAt: generatedAt,
           labels: ["website"],
@@ -308,6 +313,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
           actionability: "actionable",
           isDraft: false,
           reviewDecision: "REVIEW_REQUIRED",
+          activeReviewRequestCount: 0,
           commentCount: 2,
           claim: {
             status: "unclaimed",
@@ -315,6 +321,10 @@ export function snapshotFixture(): LeaderboardSnapshot {
             kind: null,
             actors: [],
             claimedAt: null,
+          },
+          selection: {
+            status: "candidate",
+            reasons: [],
           },
           evidence: {
             status: "missing",
