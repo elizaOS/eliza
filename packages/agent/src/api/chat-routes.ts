@@ -128,6 +128,7 @@ import type { ChatImageAttachment } from "./server-types.ts";
 export type { ChatImageAttachment, LogEntry };
 
 const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
+const CHAT_APPEND_ONLY_STREAM_DIVERGENCE = "CHAT_APPEND_ONLY_STREAM_DIVERGENCE";
 
 type LocalInferenceChatApi = Pick<
   LocalInferenceRouteApi,
@@ -941,6 +942,15 @@ export interface ChatGenerateOptions {
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
   timeoutDuration?: number;
+}
+
+function isAppendOnlyStreamDivergenceError(
+  error: unknown,
+): error is ElizaError {
+  return (
+    error instanceof ElizaError &&
+    error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
+  );
 }
 
 // LogEntry is canonical in @elizaos/shared and re-exported above.
@@ -2846,8 +2856,9 @@ async function generateChatResponseWithTiming(
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
-    // Snapshot transports can replace responseText; SSE transports can only
-    // append, so their delivered prefix must be tracked independently.
+    // Snapshot consumers can replace prior text. Append-only transports need
+    // their independently observed prefix so finalization can prove the
+    // authoritative reply still matches bytes that have left the process.
     let appendOnlyText = "";
     let firstVisibleReplyMarked = false;
     let forcedWalletExecutionText = false;
@@ -2894,8 +2905,10 @@ async function generateChatResponseWithTiming(
       if (!chunk) return;
       markFirstVisibleReply();
       responseText += chunk;
-      appendOnlyText += chunk;
-      opts?.onChunk?.(chunk);
+      if (opts?.onChunk) {
+        opts.onChunk(chunk);
+        appendOnlyText += chunk;
+      }
     };
     const emitSnapshot = (text: string): void => {
       if (!text) return;
@@ -3692,31 +3705,30 @@ async function generateChatResponseWithTiming(
       result?.actionResults,
       resultContentCandidates,
     );
-    if (finalText && transcriptVisibility !== "internal") {
-      markFirstVisibleReply();
-    }
-    if (
-      !opts?.onSnapshot &&
-      opts?.onChunk &&
-      transcriptVisibility !== "internal" &&
-      finalText !== appendOnlyText
-    ) {
-      if (finalText.startsWith(appendOnlyText)) {
-        const delta = finalText.slice(appendOnlyText.length);
-        if (delta) {
-          appendOnlyText = finalText;
-          opts.onChunk(delta);
-        }
-      } else {
-        runtime.logger.debug(
+
+    if (opts?.onChunk && !opts.onSnapshot) {
+      const authoritativeText =
+        transcriptVisibility === "internal" ? "" : finalText;
+      if (!authoritativeText.startsWith(appendOnlyText)) {
+        throw new ElizaError(
+          "Append-only chat stream diverged from the authoritative final reply",
           {
-            src: "eliza-api",
-            emittedChars: appendOnlyText.length,
-            finalChars: finalText.length,
-            messageId: message.id,
+            code: CHAT_APPEND_ONLY_STREAM_DIVERGENCE,
+            severity: "fatal",
+            context: {
+              emittedChars: appendOnlyText.length,
+              finalChars: authoritativeText.length,
+              messageId: message.id,
+              roomId: message.roomId,
+            },
           },
-          "[eliza-api] Held final reply rewrite from append-only stream",
         );
+      }
+      const remainingText = authoritativeText.slice(appendOnlyText.length);
+      if (remainingText) {
+        markFirstVisibleReply();
+        opts.onChunk(remainingText);
+        appendOnlyText += remainingText;
       }
     }
 
@@ -4435,12 +4447,19 @@ export async function handleChatRoutes(
               JSON.stringify({
                 error: {
                   message: getErrorMessage(err),
-                  type: "server_error",
+                  type: isAppendOnlyStreamDivergenceError(err)
+                    ? "stream_error"
+                    : "server_error",
+                  ...(isAppendOnlyStreamDivergenceError(err)
+                    ? { code: err.code }
+                    : {}),
                 },
               }),
             );
           }
-          writeSseData(res, "[DONE]");
+          if (!isAppendOnlyStreamDivergenceError(err)) {
+            writeSseData(res, "[DONE]");
+          }
         }
       } finally {
         res.end();
@@ -4815,7 +4834,15 @@ export async function handleChatRoutes(
               res,
               {
                 type: "error",
-                error: { type: "server_error", message: getErrorMessage(err) },
+                error: {
+                  type: isAppendOnlyStreamDivergenceError(err)
+                    ? "stream_error"
+                    : "server_error",
+                  message: getErrorMessage(err),
+                  ...(isAppendOnlyStreamDivergenceError(err)
+                    ? { code: err.code }
+                    : {}),
+                },
               },
               "error",
             );

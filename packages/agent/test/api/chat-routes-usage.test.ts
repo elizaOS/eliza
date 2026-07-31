@@ -317,6 +317,82 @@ describe("generateChatResponse usage reporting", () => {
     expect(onChunk).toHaveBeenCalledWith("Search complete.");
   });
 
+  it("fails append-only finalization when emitted callback bytes diverge", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({
+            text: "provisional streamed reply",
+            actions: ["REPLY"],
+            merge: "append",
+          });
+          await callback?.({
+            text: "authoritative final reply",
+            actions: ["REPLY"],
+          });
+          return {
+            didRespond: true,
+            responseContent: {
+              actions: ["REPLY"],
+              text: "authoritative final reply",
+            },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    await expect(
+      generateChatResponse(runtime, createChatMessage("hello"), "Chat Agent", {
+        onChunk,
+      }),
+    ).rejects.toMatchObject({
+      code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
+    });
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
+  });
+
+  it("preserves divergent callback replacement for snapshot-capable consumers", async () => {
+    const onChunk = vi.fn();
+    const onSnapshot = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({
+            text: "provisional streamed reply",
+            actions: ["REPLY"],
+            merge: "append",
+          });
+          await callback?.({
+            text: "authoritative final reply",
+            actions: ["REPLY"],
+          });
+          return {
+            didRespond: true,
+            responseContent: {
+              actions: ["REPLY"],
+              text: "authoritative final reply",
+            },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { onChunk, onSnapshot },
+    );
+
+    expect(result.text).toBe("authoritative final reply");
+    expect(onChunk).toHaveBeenCalledWith("provisional streamed reply");
+    expect(onSnapshot).toHaveBeenLastCalledWith("authoritative final reply");
+  });
+
   it("records an attributed visible callback only when its action succeeded", async () => {
     const runtime = createRuntime({
       messageService: {
@@ -445,40 +521,6 @@ describe("generateChatResponse usage reporting", () => {
     expect(onChunk).toHaveBeenCalledWith("streamed final");
     expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
-  });
-
-  it("does not append a final rewrite to incompatible streamed bytes", async () => {
-    const onChunk = vi.fn();
-    const runtime = createRuntime({
-      messageService: {
-        handleMessage: vi.fn(async (_runtime, _message, _callback, options) => {
-          await options?.onStreamChunk?.("draft reply");
-          return {
-            didRespond: true,
-            responseContent: { text: "authoritative reply" },
-            responseMessages: [],
-          };
-        }),
-      } as NonNullable<AgentRuntime["messageService"]>,
-    });
-
-    const result = await generateChatResponse(
-      runtime,
-      createChatMessage("rewrite"),
-      "Chat Agent",
-      { onChunk },
-    );
-
-    expect(result.text).toBe("authoritative reply");
-    expect(onChunk).toHaveBeenCalledTimes(1);
-    expect(onChunk).toHaveBeenCalledWith("draft reply");
-    expect(runtime.logger.debug).toHaveBeenCalledWith(
-      expect.objectContaining({
-        emittedChars: "draft reply".length,
-        finalChars: "authoritative reply".length,
-      }),
-      "[eliza-api] Held final reply rewrite from append-only stream",
-    );
   });
 
   it("replaces progress delivery with the final result without action evidence", async () => {
