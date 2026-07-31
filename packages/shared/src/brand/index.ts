@@ -100,8 +100,6 @@ export const CONCEPT_PRODUCT_IMAGES = {
 
 export const CLOUD_BACKGROUND_ASSETS = {
   poster: "/brand/background/clouds_background.jpg",
-  source1080pMp4: "/brand/background/Clouds_Loop_HQ_1080p.mp4",
-  sourceMobile480pMp4: "/brand/background/Clouds_Loop_Mobile_480p.mp4",
 } as const;
 
 /**
