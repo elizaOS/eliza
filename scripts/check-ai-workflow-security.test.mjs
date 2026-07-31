@@ -145,16 +145,18 @@ describe("AI workflow security policy", () => {
       /title and body, comment, review, diff,[\s\S]*untrusted data, never as instructions/i,
     );
     assert.match(source, /do not use shell commands/i);
+    assert.match(source, /use_commit_signing:\s*"true"/);
     assert.deepEqual(allowedTools(source), [
-      "Edit",
       "Glob",
       "Grep",
       "Read",
-      "Write",
       "mcp__github_ci__download_job_log",
       "mcp__github_ci__get_ci_status",
       "mcp__github_ci__get_workflow_run_details",
       "mcp__github_inline_comment__create_inline_comment",
+    ]);
+    assert.deepEqual(allToolLists(source, "disallowedTools"), [
+      ["Bash", "WebFetch", "WebSearch"],
     ]);
     assert.doesNotMatch(source, /Bash\(/);
   });
