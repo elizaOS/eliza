@@ -1115,6 +1115,10 @@ export class MessageManager {
           source: "telegram",
           accountId: this.accountId,
           provider: "telegram",
+          // Trusted scope stamp at ingestion: a connector message belongs to
+          // its room. Fail-closed canonical recall withholds unstamped records
+          // instead of widening them.
+          scope: "room",
           timestamp: sentMessage.date * 1000,
           fromBot: true,
           fromId: this.runtime.agentId,
@@ -1410,6 +1414,10 @@ export class MessageManager {
           source: "telegram",
           accountId: this.accountId,
           provider: "telegram",
+          // Trusted scope stamp at ingestion: a connector message belongs to
+          // its room. Fail-closed canonical recall withholds unstamped records
+          // instead of widening them.
+          scope: "room",
           timestamp: message.date * 1000,
           entityName: ctx.from.first_name,
           entityUserName: ctx.from.username,
