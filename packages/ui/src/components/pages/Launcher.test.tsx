@@ -7,10 +7,16 @@
 // glyph (never probing API heroes) for dedicated cloud agents.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../../api";
-import type { ViewEntry } from "../../hooks/view-catalog";
+import { client, type RegistryAppInfo } from "../../api";
+import { withBuiltinShellViews } from "../../hooks/useAvailableViews";
+import {
+  mergeViewCatalog,
+  type ViewEntry,
+  viewToEntry,
+} from "../../hooks/view-catalog";
 import { readViewInteractions } from "../../view-telemetry";
 import { Launcher } from "./Launcher";
+import { curateLauncherPages } from "./launcher-curation";
 
 function entry(id: string, label: string): ViewEntry {
   return {
@@ -244,6 +250,69 @@ describe("Launcher tile imagery (glyph-only)", () => {
     expect(visual?.querySelector("svg")).toBeTruthy();
     // The launch button is still labelled for a11y + tap.
     expect(screen.getByRole("button", { name: "Notes" })).toBeTruthy();
+  });
+
+  it("renders the real Automations entry with its semantic clock glyph", () => {
+    const registryEntry = withBuiltinShellViews([]).find(
+      (candidate) => candidate.id === "automations",
+    );
+    expect(registryEntry).toBeDefined();
+    if (!registryEntry) {
+      throw new Error("builtin Automations view is missing");
+    }
+
+    const entries = curateLauncherPages([viewToEntry(registryEntry)], {
+      isAosp: false,
+      enabledKinds: { developer: false, preview: false },
+      cloudActive: false,
+    });
+    render(<Launcher entries={entries} onLaunch={() => {}} />);
+
+    const visual = document.querySelector('[data-view-visual="automations"]');
+    expect(visual?.querySelector("svg.lucide-clock-3")).toBeTruthy();
+    expect(visual?.querySelector("svg.lucide-layout-grid")).toBeNull();
+  });
+
+  it("keeps loaded Finances distinct from catalog Hyperliquid", () => {
+    const enabledKinds = { developer: false, preview: false };
+    const entries = curateLauncherPages(
+      mergeViewCatalog({
+        views: [
+          {
+            id: "finances",
+            label: "Finances",
+            icon: "CircleDollarSign",
+            path: "/finances",
+            available: true,
+            pluginName: "@elizaos/plugin-finances",
+            viewKind: "release",
+          },
+        ],
+        catalog: [
+          {
+            name: "@elizaos/plugin-hyperliquid",
+            displayName: "Hyperliquid",
+            viewKind: "release",
+          } as RegistryAppInfo,
+        ],
+        installed: [],
+        activeModality: "gui",
+        enabledKinds,
+        visibilityScope: "routable",
+      }),
+      { isAosp: false, enabledKinds, cloudActive: false },
+    );
+
+    render(<Launcher entries={entries} onLaunch={() => {}} />);
+
+    const finances = document.querySelector('[data-view-visual="finances"]');
+    const hyperliquid = document.querySelector(
+      '[data-view-visual="@elizaos/plugin-hyperliquid"]',
+    );
+    expect(
+      finances?.querySelector("svg.lucide-circle-dollar-sign"),
+    ).toBeTruthy();
+    expect(hyperliquid?.querySelector("svg.lucide-trending-up")).toBeTruthy();
   });
 
   it("renders the icon glyph when imageUrl is absent", () => {
