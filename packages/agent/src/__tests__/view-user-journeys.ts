@@ -296,12 +296,12 @@ export const BASE_VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "go-back",
-    description: "User asks to go back to the previous view",
+    description: "User asks to return to the canonical Home surface",
     userMessage: "go back",
-    expectedBehavior: "Agent navigates back or returns to the previous view",
+    expectedBehavior: "Agent opens Home through the canonical chat view",
     verificationCriteria: [
-      "response acknowledges the back navigation request",
-      "response does not open the view manager or a specific unrelated view",
+      "response confirms Home opened",
+      "response does not claim browser history or an arbitrary previous view changed",
     ],
     tags: ["navigation"],
   },
