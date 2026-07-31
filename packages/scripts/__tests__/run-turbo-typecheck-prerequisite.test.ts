@@ -193,6 +193,17 @@ describe("run-turbo generated-source prerequisites", () => {
 });
 
 describe("filtered build generated outputs", () => {
+  test("direct core builds never accept existing generated output as fresh", async () => {
+    const manifest = JSON.parse(
+      await readFile(join(repoRoot, "packages/core/package.json"), "utf8"),
+    );
+
+    expect(manifest.scripts.prebuild).toContain(
+      "node ../shared/scripts/generate-keywords.mjs",
+    );
+    expect(manifest.scripts.prebuild).not.toContain("[ -s");
+  });
+
   test("materializes every consumed output before the agent-image graph starts", async () => {
     const dir = await mkdtemp(join(tmpdir(), "run-turbo-filtered-build-"));
     tempDirs.push(dir);
