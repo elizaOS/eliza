@@ -112,8 +112,10 @@ describe("recoverStaleJobs threshold by job type", () => {
       "claimPendingJobsWithinSharedRunningLimit",
     ).mockResolvedValue([]);
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
-      async (filters: { type: string; staleThresholdMs: number }) => {
-        expect(filters).toEqual({ type, staleThresholdMs: staleLeaseMs });
+      async (filters: { type: string; staleThresholdMs: number; onPermanentFailure?: unknown }) => {
+        expect(filters.type).toBe(type);
+        expect(filters.staleThresholdMs).toBe(staleLeaseMs);
+        expect(filters.onPermanentFailure).toEqual(expect.any(Function));
         return 0;
       },
     );
