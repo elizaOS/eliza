@@ -1310,10 +1310,10 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
 
 /**
  * Register the device-bridge loader on the runtime. Accepts load/generate
- * calls whether or not a mobile device is currently connected — parked
- * calls resolve on reconnect (up to a timeout). Cheaper than waiting for
- * the first device register to register the service: ordering is already
- * handled inside `DeviceBridge.generate`.
+ * calls only while a mobile device is connected. A missing device fails
+ * immediately, while active calls remain owned by the caller until completion
+ * or cancellation. Registration happens before the first device so backend
+ * selection is deterministic rather than reconnect-order dependent.
  */
 function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 	const loader: LocalInferenceLoader = {

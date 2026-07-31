@@ -660,7 +660,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	isTrajectoriesEnabled(): boolean;
 
 	initialize(options?: { skipMigrations?: boolean }): Promise<void>;
-	isInitialized(): boolean;
 
 	/** Get the underlying database connection. Type depends on the adapter implementation. */
 	getConnection(): Promise<object>;

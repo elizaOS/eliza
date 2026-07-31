@@ -1220,7 +1220,6 @@ export class AgentRuntime implements IAgentRuntime {
 	private currentRunId?: UUID; // Track the current run ID
 	private currentRoomId?: UUID; // Track the current room for logging
 	public messageService: IMessageService | null = null; // Lazily initialized
-	private initialized = false;
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
 	private stopped = false;
@@ -2584,10 +2583,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	isInitialized(): boolean {
-		return this.initialized;
-	}
-
 	private async _initializeCore(options?: {
 		skipMigrations?: boolean;
 		allowNoDatabase?: boolean;
@@ -2939,7 +2934,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Resolve init promise to allow services to start
-		this.initialized = true;
 		if (this.initResolver) {
 			this.initResolver();
 			this.initResolver = undefined;
