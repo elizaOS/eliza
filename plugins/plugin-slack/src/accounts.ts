@@ -26,10 +26,19 @@ export type SlackTokenSource = "env" | "config" | "character" | "none";
 export interface SlackDmConfig {
   /** If false, ignore all incoming Slack DMs */
   enabled?: boolean;
-  /** Direct message access policy */
-  policy?: "open" | "disabled" | "allowlist";
+  /**
+   * Direct message access policy. Mirrors `DmPolicySchema`, which INCLUDES
+   * `pairing` — the schema's default once a `dm` block exists. The service
+   * implements no pairing handshake, so `pairing` fails closed with a loud
+   * startup warning rather than silently admitting every DM.
+   */
+  policy?: "pairing" | "open" | "disabled" | "allowlist";
   /** Allowlist for DM senders (ids or names) */
   allowFrom?: Array<string | number>;
+  /** Whether multi-person DMs (mpim) are processed */
+  groupEnabled?: boolean;
+  /** Explicit mpim allowlist (ids or names) */
+  groupChannels?: Array<string | number>;
   /** Reply-to mode for DMs */
   replyToMode?: "off" | "first" | "all";
 }
@@ -37,12 +46,18 @@ export interface SlackDmConfig {
 /**
  * Channel-specific configuration.
  *
- * Mirrors `SlackChannelSchema` in
- * packages/agent/src/config/zod-schema.providers-core.ts so everything the
- * config layer accepts under `channels.slack.channels[<id>]` has a home here.
- * `skills` and `systemPrompt` are resolved by `./allowlist.ts` but not yet
- * consumed by the service (they need per-channel context assembly, a separate
- * slice); they are typed here so the resolution point stays singular.
+ * MIRRORS `SlackChannelSchema` in
+ * `packages/agent/src/config/zod-schema.providers-core.ts` EXACTLY. That schema
+ * is `.strict()`, so a field here the schema does not accept can never arrive
+ * through the production config path (it was an invention), and a schema field
+ * missing here is a policy the operator wrote that the service silently
+ * discards. Both directions are bugs; keep the two in lockstep.
+ *
+ * `tools` / `toolsBySender` are declared because the schema accepts them, but
+ * the service does NOT enforce per-channel tool authorization — configuring
+ * them fails startup in `assertSlackPolicySupported()` rather than pretending
+ * an authorization boundary exists. `skills` / `systemPrompt` are resolved but
+ * not yet applied to message context; they raise a startup warning.
  */
 export interface SlackChannelConfig {
   /** If false, ignore this channel */
@@ -51,16 +66,18 @@ export interface SlackChannelConfig {
   allow?: boolean;
   /** Require bot mention to respond */
   requireMention?: boolean;
-  /** User allowlist for this channel */
-  users?: Array<string | number>;
+  /** Per-channel tool policy. NOT enforced — configuring it fails startup. */
+  tools?: unknown;
+  /** Per-sender tool policy. NOT enforced — configuring it fails startup. */
+  toolsBySender?: unknown;
   /** Allow bot-authored messages to trigger replies in this channel */
   allowBots?: boolean;
+  /** User allowlist for this channel */
+  users?: Array<string | number>;
   /** Skill filter for this channel. Resolved, not yet applied. */
   skills?: string[];
   /** System prompt for this channel. Resolved, not yet applied. */
   systemPrompt?: string;
-  /** Reply-to mode for this channel */
-  replyToMode?: "off" | "first" | "all";
 }
 
 /**
@@ -138,8 +155,16 @@ export interface SlackAccountConfig {
   replyToModeByChatType?: Record<string, "off" | "first" | "all">;
   /** Per-action toggles */
   actions?: SlackActionConfig;
-  /** Slash command configuration */
+  /** Slash command configuration. NOT implemented; warns at startup. */
   slashCommand?: SlackSlashCommandConfig;
+  /**
+   * Ingress mode. The service hardcodes Socket Mode; `"http"` FAILS startup
+   * rather than letting an operator believe a signing secret is validating
+   * requests that never arrive over HTTP.
+   */
+  mode?: "socket" | "http";
+  /** Account-level bot-message policy, overridden per channel. */
+  allowBots?: boolean;
   /** DM configuration */
   dm?: SlackDmConfig;
   /**
@@ -162,13 +187,18 @@ export interface SlackAccountConfig {
 }
 
 /**
- * Multi-account Slack configuration structure
+ * Multi-account Slack configuration structure.
+ *
+ * `SlackConfigSchema` is literally `SlackAccountSchema.extend({accounts})`:
+ * every top-level key IS an account key, acting as the base config that
+ * per-account entries override. Modelling that as `SlackAccountConfig &
+ * {accounts}` is what makes top-level `channels` / `dm` / `groupPolicy` /
+ * `requireMention` reach the gate at all — the previous shape kept only
+ * `enabled`, `botToken`, `appToken` and `accounts`, so the DOCUMENTED
+ * single-workspace config (`connectors.slack.channels.C0123ABCD.enabled=false`)
+ * was dropped on the floor before any policy could see it.
  */
-export interface SlackMultiAccountConfig {
-  /** Default/base configuration applied to all accounts */
-  enabled?: boolean;
-  botToken?: string;
-  appToken?: string;
+export interface SlackMultiAccountConfig extends SlackAccountConfig {
   /** Per-account configuration overrides */
   accounts?: Record<string, SlackAccountConfig>;
 }
@@ -266,21 +296,28 @@ export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
 }
 
 /**
- * Gets the multi-account configuration from runtime settings
+ * Gets the multi-account configuration from runtime settings.
+ *
+ * Reads `character.settings.slack` WHOLE. The previous implementation
+ * hand-picked four keys (`enabled`, `botToken`, `appToken`, `accounts`) and
+ * discarded everything else, which meant the entire documented top-level
+ * policy surface — `channels`, `dm`, `groupPolicy`, `requireMention`,
+ * `allowBots` — never reached the gate no matter how it was configured. Since
+ * `SlackConfigSchema` is `SlackAccountSchema.extend({accounts})`, the top level
+ * IS an account config; passing it through verbatim is both correct and the
+ * only way the schema's own shape can be honored.
  */
-function getMultiAccountConfig(
+export function getMultiAccountConfig(
   runtime: IAgentRuntime,
 ): SlackMultiAccountConfig {
-  const characterSlack = runtime.character.settings?.slack as
+  const characterSlack = runtime.character?.settings?.slack as
     | SlackMultiAccountConfig
     | undefined;
 
-  return {
-    enabled: characterSlack?.enabled,
-    botToken: characterSlack?.botToken,
-    appToken: characterSlack?.appToken,
-    accounts: characterSlack?.accounts,
-  };
+  if (!characterSlack || typeof characterSlack !== "object") {
+    return {};
+  }
+  return { ...characterSlack };
 }
 
 /**

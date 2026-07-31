@@ -12,6 +12,7 @@ import {
   type Character,
   type CharacterInput,
   defaultCharacterSystemTemplate,
+  type JsonValue,
   mergeCharacterDefaults,
 } from "@elizaos/core";
 import {
@@ -220,6 +221,40 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     }
   }
 
+  // Connector policy projection.
+  //
+  // Connector plugins read their structured policy from
+  // `character.settings.<connector>` (plugin-slack: `settings.slack`,
+  // plugin-discord: `settings.discord`). Only the connector CREDENTIALS were
+  // ever bridged, via the env-var map above, so a policy written under
+  // `connectors.slack.channels[...]` — the documented production shape — never
+  // reached the plugin: the gate saw `characterSlack: null` and admitted
+  // everything. Credentials keep flowing through `secrets` (redactable);
+  // this projects the non-credential POLICY object so the plugin can enforce
+  // what the operator actually configured.
+  //
+  // Explicit agent-entry settings still win: `agents.list[0].settings.slack`
+  // is merged last so an injected sandbox character can override file config.
+  const connectorPolicyKeys = ["slack"] as const;
+  const rawConnectors = (config.connectors ??
+    (config as unknown as Record<string, unknown>).channels ??
+    {}) as Record<string, unknown>;
+  // The connector block is deserialized from eliza.json, so it is
+  // JSON-serializable by construction; `CharacterSettings` values are
+  // `JsonValue`, and the object-shape guard below is what makes that safe.
+  const connectorPolicySettings: Record<string, JsonValue> = {};
+  for (const key of connectorPolicyKeys) {
+    const connectorConfig = rawConnectors[key];
+    if (
+      !connectorConfig ||
+      typeof connectorConfig !== "object" ||
+      Array.isArray(connectorConfig)
+    ) {
+      continue;
+    }
+    connectorPolicySettings[key] = connectorConfig as JsonValue;
+  }
+
   // Normalise messageExamples to the {examples: [{name,content}]} shape
   // that @elizaos/core expects.  Config may contain EITHER format:
   //   OLD (preset/first-run): [[{user, content}, ...], ...]
@@ -271,7 +306,15 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
       : systemPrompt;
   const mergedSettings = {
     ...(agentEntry?.settings ?? {}),
+    ...connectorPolicySettings,
     ...settings,
+    // Agent-entry connector policy is authoritative over the file-level
+    // connector block when both are present (injected sandbox characters).
+    ...Object.fromEntries(
+      connectorPolicyKeys
+        .filter((key) => agentEntry?.settings?.[key] !== undefined)
+        .map((key) => [key, agentEntry?.settings?.[key]]),
+    ),
   };
 
   return mergeCharacterDefaults({
