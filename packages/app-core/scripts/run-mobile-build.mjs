@@ -481,10 +481,26 @@ export function resolveCapacitorCli({
   return capacitorCli;
 }
 
-function runCapacitor(args) {
+function runCapacitor(args, { env = process.env } = {}) {
   return run(resolveNodeExecutable(), [resolveCapacitorCli(), ...args], {
     cwd: appDir,
+    env,
   });
+}
+
+/**
+ * Capacitor runs `pod install` during iOS sync before elizaOS can replace its
+ * generated Podfile with the complete native dependency graph. Conditional
+ * dependencies owned by that final Podfile must therefore stay inactive for
+ * the discovery pass; the authoritative install runs after the overlay.
+ */
+export function resolveCapacitorSyncEnvironment(platform, env = process.env) {
+  if (platform !== "ios") return env;
+  return {
+    ...env,
+    ELIZA_IOS_INCLUDE_LLAMA: "0",
+    ELIZA_IOS_FULL_BUN_ENGINE: "0",
+  };
 }
 
 function firstExisting(paths) {
@@ -8238,7 +8254,9 @@ async function buildIos({ local = false } = {}) {
   if (shouldSkipIosCapacitorSync()) {
     console.log("[mobile-build] Skipping Capacitor iOS sync.");
   } else {
-    await runCapacitor(["sync", "ios"]);
+    await runCapacitor(["sync", "ios"], {
+      env: resolveCapacitorSyncEnvironment("ios"),
+    });
   }
   // Overlay the freshly built renderer onto ios/App/App/public and assert it
   // matches the build — never ship a stale UI whether sync ran, was skipped, or

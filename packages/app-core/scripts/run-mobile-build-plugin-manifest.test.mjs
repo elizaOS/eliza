@@ -6,6 +6,7 @@ import {
   IOS_COCOAPODS_OWNED_SPM_PLUGINS,
   IOS_OFFICIAL_PODS,
   MOBILE_CAPACITOR_PLUGIN_MANIFEST,
+  resolveCapacitorSyncEnvironment,
   resolveIosCustomPods,
 } from "./run-mobile-build.mjs";
 
@@ -87,4 +88,20 @@ it("derives the iOS CocoaPods-owned SPM strip set from manifest annotations", ()
     "LlamaCpp",
     "LlamaCppCapacitor",
   ]);
+});
+
+it("keeps conditional native pods out of Capacitor's preliminary iOS install", () => {
+  const source = {
+    ELIZA_IOS_INCLUDE_LLAMA: "1",
+    ELIZA_IOS_FULL_BUN_ENGINE: "1",
+    UNRELATED: "preserved",
+  };
+
+  expect(resolveCapacitorSyncEnvironment("ios", source)).toEqual({
+    ELIZA_IOS_INCLUDE_LLAMA: "0",
+    ELIZA_IOS_FULL_BUN_ENGINE: "0",
+    UNRELATED: "preserved",
+  });
+  expect(source.ELIZA_IOS_INCLUDE_LLAMA).toBe("1");
+  expect(resolveCapacitorSyncEnvironment("android", source)).toBe(source);
 });

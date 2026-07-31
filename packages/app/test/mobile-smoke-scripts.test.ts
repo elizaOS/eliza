@@ -32,6 +32,13 @@ describe("mobile simulator smoke package scripts", () => {
       "node scripts/ios-e2e.mjs --cloud",
     );
   });
+
+  it("keeps conditional iOS pods out of Capacitor's preliminary install", () => {
+    for (const name of ["cap:sync", "cap:sync:ios"]) {
+      expect(script(name), name).toContain("ELIZA_IOS_INCLUDE_LLAMA=0");
+      expect(script(name), name).toContain("ELIZA_IOS_FULL_BUN_ENGINE=0");
+    }
+  });
 });
 
 describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
