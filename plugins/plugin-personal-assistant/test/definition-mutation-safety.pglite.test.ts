@@ -338,4 +338,200 @@ describe("definition mutation safety", () => {
       },
     });
   });
+
+  it("heals a crash between a committed update and its ledger completion", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const scope = ownerScope(runtime.agentId, OWNER_A);
+    const definition = await repository.createDefinition(
+      definitionInput(scope, "Crashed update reminder"),
+    );
+    const message = {
+      id: "00000000-0000-0000-0000-0000000000e5",
+      agentId: runtime.agentId,
+      entityId: OWNER_A,
+      roomId: ROOM_ID,
+      createdAt: Date.parse("2026-07-31T13:00:00.000Z"),
+      content: { text: "Update Crashed update reminder." },
+    } as Memory;
+    const options = {
+      parameters: {
+        subaction: "update",
+        kind: "definition",
+        target: "Crashed update reminder",
+        intent: "Update Crashed update reminder.",
+        details: {
+          description: "Post-crash description.",
+          cadence: definition.cadence,
+        },
+      },
+    } as HandlerOptions;
+
+    // Executor claims the mutation, exactly as the action does for this
+    // message id.
+    const claim = await repository.claimDefinitionMutation({
+      scope,
+      requestId: message.id as string,
+      operation: "update_definition",
+      definitionId: definition.id,
+      expectedRevision: definition.revision,
+      observedAt: "2026-07-31T13:00:00.000Z",
+    });
+    expect(claim.disposition).toBe("claimed");
+
+    // While the mutation has not committed, the outcome is not observable and
+    // a retry must still answer "in progress" — reconciliation is
+    // observation-based, never time-based.
+    const whilePending = await runLifeOperationHandler(
+      runtime,
+      message,
+      undefined,
+      options,
+    );
+    expect(whilePending.success).toBe(false);
+    expect(whilePending.text).toContain("already in progress");
+
+    // The mutation commits (revision 1 -> 2)... and then the executor dies
+    // before completeDefinitionMutation, leaving the ledger row pending.
+    await repository.updateDefinition(
+      { ...definition, description: "Post-crash description." },
+      { scope, expectedRevision: definition.revision },
+    );
+
+    // A retry with the same message must now observe the committed outcome:
+    // the reconciler resolves the stale pending row and the action answers
+    // with the deduplicated success instead of "in progress" forever.
+    const retry = await runLifeOperationHandler(
+      runtime,
+      message,
+      undefined,
+      options,
+    );
+    expect(retry).toMatchObject({
+      success: true,
+      data: { deduplicated: true },
+    });
+    const ledger = await repository.getDefinitionMutation({
+      scope,
+      requestId: message.id as string,
+      operation: "update_definition",
+    });
+    expect(ledger).toMatchObject({
+      status: "completed",
+      resultRevision: 2,
+      result: { definitionId: definition.id, reconciled: true },
+    });
+  });
+
+  it("heals a crash between a committed delete and its ledger completion", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const scope = ownerScope(runtime.agentId, OWNER_A);
+    const definition = await repository.createDefinition(
+      definitionInput(scope, "Crashed delete reminder"),
+    );
+    const message = {
+      id: "00000000-0000-0000-0000-0000000000f6",
+      agentId: runtime.agentId,
+      entityId: OWNER_A,
+      roomId: ROOM_ID,
+      createdAt: Date.parse("2026-07-31T14:00:00.000Z"),
+      content: { text: "Delete Crashed delete reminder." },
+    } as Memory;
+    const options = {
+      parameters: {
+        subaction: "delete",
+        kind: "definition",
+        target: "Crashed delete reminder",
+        intent: "Delete Crashed delete reminder.",
+      },
+    } as HandlerOptions;
+
+    const claim = await repository.claimDefinitionMutation({
+      scope,
+      requestId: message.id as string,
+      operation: "delete_definition",
+      definitionId: definition.id,
+      expectedRevision: definition.revision,
+      observedAt: "2026-07-31T14:00:00.000Z",
+    });
+    expect(claim.disposition).toBe("claimed");
+
+    // The delete commits through the domain (row delete + audit), then the
+    // executor dies before completing the ledger row.
+    const service = new LifeOpsService(runtime, { ownerEntityId: OWNER_A });
+    await service.deleteDefinition(definition.id, {
+      expectedRevision: definition.revision,
+    });
+
+    const retry = await runLifeOperationHandler(
+      runtime,
+      message,
+      undefined,
+      options,
+    );
+    expect(retry).toMatchObject({
+      success: true,
+      data: {
+        deduplicated: true,
+        deleted: { kind: "definition", id: definition.id },
+      },
+    });
+    const ledger = await repository.getDefinitionMutation({
+      scope,
+      requestId: message.id as string,
+      operation: "delete_definition",
+    });
+    expect(ledger).toMatchObject({
+      status: "completed",
+      result: { definitionId: definition.id, reconciled: true },
+    });
+  });
+
+  it("rejects a stale selection instead of overwriting a concurrent mutation", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const scope = ownerScope(runtime.agentId, OWNER_A);
+    const created = await repository.createDefinition(
+      definitionInput(scope, "Contested reminder"),
+    );
+    const service = new LifeOpsService(runtime, { ownerEntityId: OWNER_A });
+
+    // Both callers selected the definition at revision 1. The first mutation
+    // lands and advances the revision.
+    const first = await service.updateDefinition(
+      created.id,
+      { title: "First writer wins" },
+      { expectedRevision: created.revision },
+    );
+    expect(first.definition.title).toBe("First writer wins");
+
+    // The second caller's selection is now stale. The service must surface the
+    // typed conflict, not silently re-read the latest revision and overwrite.
+    await expect(
+      service.updateDefinition(
+        created.id,
+        { description: "Second writer overwrite attempt" },
+        { expectedRevision: created.revision },
+      ),
+    ).rejects.toBeInstanceOf(OptimisticLockError);
+
+    // Same contract for delete — and because the guarded row delete runs
+    // BEFORE the native provider delete, a stale conflict leaves the row (and
+    // the native reminder) fully intact.
+    await expect(
+      service.deleteDefinition(created.id, {
+        expectedRevision: created.revision,
+      }),
+    ).rejects.toBeInstanceOf(OptimisticLockError);
+    expect(
+      await repository.getDefinition(runtime.agentId, created.id, scope),
+    ).toMatchObject({ title: "First writer wins" });
+  });
 });

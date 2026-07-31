@@ -3706,25 +3706,6 @@ export class LifeOpsRepository {
     return rows[0] ? parseDefinitionEffectClaim(rows[0]) : null;
   }
 
-  /**
-   * Test-only: backdate a claim so a control can prove that age alone never
-   * releases an `in_flight` effect. Production code has no reason to move this
-   * column, and deliberately no method that expires a claim by time.
-   */
-  async markDefinitionEffectClaimedAtForTest(input: {
-    scope: LifeOpsDefinitionScope;
-    definitionId: string;
-    effectKey: string;
-    claimedAt: string;
-  }): Promise<void> {
-    await executeRawSql(
-      this.runtime,
-      `UPDATE app_lifeops.life_definition_effect_claims
-          SET claimed_at = ${sqlQuote(input.claimedAt)}
-        WHERE id = ${sqlQuote(definitionEffectClaimId(input))}`,
-    );
-  }
-
   async getDefinitionEffectClaim(input: {
     scope: LifeOpsDefinitionScope;
     definitionId: string;
@@ -3842,6 +3823,144 @@ export class LifeOpsRepository {
         severity: "fatal",
       },
     );
+  }
+
+  /**
+   * Resolve a `pending` mutation-ledger row abandoned by a dead executor.
+   *
+   * The claim, the mutation itself, and the ledger completion run as separate
+   * transactions, so a crash after the mutation commits but before
+   * `completeDefinitionMutation` leaves the row `pending` forever — and the
+   * request id would answer "already in progress" on every retry. Like
+   * {@link reconcileDefinitionEffectClaim}, recovery is observation-based, never
+   * time-based: the row is resolved ONLY when the mutation's outcome is
+   * observable in the definition row itself.
+   *
+   *   - update: the definition's revision advanced past the claim's
+   *     `expected_revision` → the guarded write committed → complete.
+   *   - update: the definition row is gone → the update can never commit →
+   *     fail (`RECONCILED_MISSING`).
+   *   - delete: the definition row is gone → the guarded delete committed →
+   *     complete.
+   *   - delete: the row exists at a revision other than `expected_revision` →
+   *     the guarded delete can never succeed → fail (`RECONCILED_STALE`).
+   *   - otherwise the outcome is not observable — the executor may simply be
+   *     slow, still inside its transaction — so the row stays `pending` and
+   *     this returns `null`.
+   *
+   * Every resolution here is guarded on `status = 'pending'`, so racing a live
+   * executor is safe: whoever writes first wins, and a lost race reloads the
+   * winner's terminal row.
+   */
+  async reconcileDefinitionMutation(input: {
+    entry: LifeOpsDefinitionMutationLedgerEntry;
+  }): Promise<LifeOpsDefinitionMutationLedgerEntry | null> {
+    const entry = input.entry;
+    if (entry.status !== "pending") {
+      return entry;
+    }
+    const scope: LifeOpsDefinitionScope = {
+      agentId: entry.agentId,
+      domain: entry.domain,
+      subjectType: entry.subjectType,
+      subjectId: entry.subjectId,
+    };
+    const definition = await this.getDefinition(
+      scope.agentId,
+      entry.definitionId,
+      scope,
+    );
+    const resolve = async (
+      resolution:
+        | {
+            status: "completed";
+            resultRevision: number | null;
+            result: Record<string, unknown>;
+          }
+        | { status: "failed"; failureCode: string },
+    ): Promise<LifeOpsDefinitionMutationLedgerEntry> => {
+      const timestamp = isoNow();
+      const rows = await executeRawSql(
+        this.runtime,
+        resolution.status === "completed"
+          ? `UPDATE app_lifeops.life_definition_mutation_ledger
+                SET status = 'completed',
+                    result_revision = ${sqlInteger(resolution.resultRevision)},
+                    result_json = ${sqlJson(resolution.result)},
+                    failure_code = NULL,
+                    updated_at = ${sqlQuote(timestamp)}
+              WHERE id = ${sqlQuote(entry.id)}
+                AND status = 'pending'
+              RETURNING *`
+          : `UPDATE app_lifeops.life_definition_mutation_ledger
+                SET status = 'failed',
+                    failure_code = ${sqlQuote(resolution.failureCode)},
+                    updated_at = ${sqlQuote(timestamp)}
+              WHERE id = ${sqlQuote(entry.id)}
+                AND status = 'pending'
+              RETURNING *`,
+      );
+      if (rows[0]) {
+        return parseDefinitionMutationLedger(rows[0]);
+      }
+      // Lost the race to a live executor: adopt its terminal resolution.
+      const existing = await this.getDefinitionMutation({
+        scope,
+        requestId: entry.requestId,
+        operation: entry.operation,
+      });
+      if (!existing) {
+        throw new ElizaError(
+          "[LifeOpsRepository] Reconciled definition mutation was not reloadable",
+          {
+            code: "LIFEOPS_DEFINITION_MUTATION_RELOAD_FAILED",
+            context: { ...scope, requestId: entry.requestId },
+            severity: "fatal",
+          },
+        );
+      }
+      return existing;
+    };
+    if (entry.operation === "update_definition") {
+      if (!definition) {
+        return resolve({
+          status: "failed",
+          failureCode: "LIFEOPS_DEFINITION_MUTATION_RECONCILED_MISSING",
+        });
+      }
+      if (
+        entry.expectedRevision !== null &&
+        definition.revision > entry.expectedRevision
+      ) {
+        return resolve({
+          status: "completed",
+          resultRevision: definition.revision,
+          result: {
+            definitionId: definition.id,
+            title: definition.title,
+            reconciled: true,
+          },
+        });
+      }
+      return null;
+    }
+    if (!definition) {
+      return resolve({
+        status: "completed",
+        resultRevision: null,
+        result: { definitionId: entry.definitionId, reconciled: true },
+      });
+    }
+    if (
+      entry.expectedRevision !== null &&
+      definition.revision !== entry.expectedRevision
+    ) {
+      return resolve({
+        status: "failed",
+        failureCode: "LIFEOPS_DEFINITION_MUTATION_RECONCILED_STALE",
+      });
+    }
+    return null;
   }
 
   async upsertOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {

@@ -1647,12 +1647,20 @@ export class LifeOpsService extends LifeOpsServiceBase {
   updateDefinition(
     definitionId: string,
     request: UpdateLifeOpsDefinitionRequest,
+    options?: { expectedRevision?: number },
   ): Promise<LifeOpsDefinitionRecord> {
-    return this.definitionsDomain.updateDefinition(definitionId, request);
+    return this.definitionsDomain.updateDefinition(
+      definitionId,
+      request,
+      options,
+    );
   }
 
-  deleteDefinition(definitionId: string): Promise<void> {
-    return this.definitionsDomain.deleteDefinition(definitionId);
+  deleteDefinition(
+    definitionId: string,
+    options?: { expectedRevision?: number },
+  ): Promise<void> {
+    return this.definitionsDomain.deleteDefinition(definitionId, options);
   }
 
   completeOccurrence(

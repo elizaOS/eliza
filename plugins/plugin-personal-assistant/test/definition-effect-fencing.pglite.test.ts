@@ -17,12 +17,14 @@
  * way a real executor does, with a provider stub that records every call, and
  * assert on the recorded call list rather than on return values.
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createLifeOpsTaskDefinition,
   type LifeOpsDefinitionScope,
   LifeOpsRepository,
 } from "../src/lifeops/repository.ts";
+import { executeRawSql, sqlQuote } from "../src/lifeops/sql.ts";
 import type { RealTestRuntimeResult } from "./helpers/runtime.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
@@ -89,6 +91,32 @@ function createProviderStub() {
   };
 }
 
+/**
+ * Backdate a claim so a control can prove that age alone never releases an
+ * `in_flight` effect. This writes the row directly because production code has
+ * no reason to move `claimed_at` — there is deliberately no repository method
+ * that expires a claim by time.
+ */
+async function backdateEffectClaim(args: {
+  runtime: IAgentRuntime;
+  scope: LifeOpsDefinitionScope;
+  definitionId: string;
+  effectKey: string;
+  claimedAt: string;
+}): Promise<void> {
+  await executeRawSql(
+    args.runtime,
+    `UPDATE app_lifeops.life_definition_effect_claims
+        SET claimed_at = ${sqlQuote(args.claimedAt)}
+      WHERE agent_id = ${sqlQuote(args.scope.agentId)}
+        AND domain = ${sqlQuote(args.scope.domain)}
+        AND subject_type = ${sqlQuote(args.scope.subjectType)}
+        AND subject_id = ${sqlQuote(args.scope.subjectId)}
+        AND definition_id = ${sqlQuote(args.definitionId)}
+        AND effect_key = ${sqlQuote(args.effectKey)}`,
+  );
+}
+
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((r) => {
@@ -135,7 +163,8 @@ describe("definition third-party-effect fencing", () => {
     // the lease has lapsed, but the side effect it was protecting is still
     // running. Backdating rather than sleeping keeps the control deterministic
     // and independent of whatever lease duration an implementation picks.
-    await repository.markDefinitionEffectClaimedAtForTest({
+    await backdateEffectClaim({
+      runtime,
       scope,
       definitionId: definition.id,
       effectKey: EFFECT_KEY,
@@ -211,7 +240,8 @@ describe("definition third-party-effect fencing", () => {
 
     // Backdate the claim far beyond any plausible lease horizon. A time-based
     // implementation would consider this claim abandoned and reissue it.
-    await repository.markDefinitionEffectClaimedAtForTest({
+    await backdateEffectClaim({
+      runtime,
       scope,
       definitionId: definition.id,
       effectKey: EFFECT_KEY,

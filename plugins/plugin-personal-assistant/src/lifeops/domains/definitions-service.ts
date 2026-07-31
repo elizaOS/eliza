@@ -356,6 +356,7 @@ export class DefinitionsDomain {
   async updateDefinition(
     definitionId: string,
     request: UpdateLifeOpsDefinitionRequest,
+    options?: { expectedRevision?: number },
   ): Promise<LifeOpsDefinitionRecord> {
     const current = await this.getOwnedDefinitionRecord(definitionId);
     const ownership = this.ctx.normalizeOwnership(
@@ -440,11 +441,17 @@ export class DefinitionsDomain {
       "update",
     );
     const scope = this.definitionScope(current.definition);
+    // The FIRST guarded write is fenced on the caller's selection, not on the
+    // freshly re-read revision. Guarding on the re-read would silently absorb
+    // any mutation that committed between the caller's selection and this
+    // write; a stale selection must instead surface as OptimisticLockError so
+    // the caller can answer with the designed stale-conflict reply.
     nextDefinition = await this.ctx.repository.updateDefinition(
       nextDefinition,
       {
         scope,
-        expectedRevision: current.definition.revision,
+        expectedRevision:
+          options?.expectedRevision ?? current.definition.revision,
       },
     );
     const reminderPlan = await this.deps.syncReminderPlan(
@@ -505,7 +512,10 @@ export class DefinitionsDomain {
     };
   }
 
-  async deleteDefinition(definitionId: string): Promise<void> {
+  async deleteDefinition(
+    definitionId: string,
+    options?: { expectedRevision?: number },
+  ): Promise<void> {
     const scope = this.definitionScope();
     const definition = await this.ctx.repository.getDefinition(
       scope.agentId,
@@ -515,15 +525,33 @@ export class DefinitionsDomain {
     if (!definition) {
       fail(404, "life-ops definition not found");
     }
-    await this.deps.syncNativeAppleReminderForDefinition({
-      definition: null,
-      previousDefinition: definition,
-    });
+    // The revision-guarded row delete goes FIRST. Deleting the native Apple
+    // reminder before the guard would strand an already-deleted native
+    // reminder whenever the guard rejects a stale selection: the provider
+    // effect is irreversible, so it must only run once the authoritative row
+    // delete has committed.
     await this.ctx.repository.deleteDefinition(
       scope,
       definitionId,
-      definition.revision,
+      options?.expectedRevision ?? definition.revision,
     );
+    try {
+      await this.deps.syncNativeAppleReminderForDefinition({
+        definition: null,
+        previousDefinition: definition,
+      });
+    } catch (error) {
+      // error-policy:J6 best-effort teardown — the authoritative row delete has
+      // committed, so rethrowing would mark a committed mutation failed. The
+      // fenced effect wrapper has already recorded the failure on the effect
+      // claim; surface it observably and leave the orphaned native reminder
+      // for the user (visible, harmless) rather than fabricating a rollback.
+      this.ctx.runtime.reportError(
+        "LifeOpsDefinitions.deleteDefinition.nativeReminderTeardown",
+        error instanceof Error ? error : new Error(String(error)),
+        { definitionId, title: definition.title },
+      );
+    }
     await this.ctx.recordAudit(
       "definition_deleted",
       "definition",

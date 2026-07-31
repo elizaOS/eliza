@@ -78,6 +78,7 @@ import {
 import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import type { LifeOpsDefinitionScope } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { OptimisticLockError } from "../lifeops/sql.js";
 import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 import {
   addDaysToLocalDate,
@@ -5062,11 +5063,21 @@ async function runLifeOperationHandlerInner(
         domain,
       });
       const requestId = lifeEffectRequestId(message);
-      const priorMutation = await service.repository.getDefinitionMutation({
+      const rawPriorMutation = await service.repository.getDefinitionMutation({
         scope: mutationScope,
         requestId,
         operation: "update_definition",
       });
+      // A pending row may be an abandoned claim from an executor that crashed
+      // after committing the mutation. Reconcile against the definition row
+      // before answering, so a retry after a crash reports the real outcome
+      // instead of "already in progress" forever.
+      const priorMutation =
+        rawPriorMutation?.status === "pending"
+          ? ((await service.repository.reconcileDefinitionMutation({
+              entry: rawPriorMutation,
+            })) ?? rawPriorMutation)
+          : rawPriorMutation;
       if (priorMutation?.status === "completed") {
         const updated = await service.getDefinition(priorMutation.definitionId);
         const fallback = `Updated "${updated.definition.title}".`;
@@ -5240,7 +5251,13 @@ async function runLifeOperationHandlerInner(
       }
       let updated: LifeOpsDefinitionRecord;
       try {
-        updated = await service.updateDefinition(target.definition.id, request);
+        updated = await service.updateDefinition(
+          target.definition.id,
+          request,
+          {
+            expectedRevision: definitionRevision(target) ?? undefined,
+          },
+        );
         await service.repository.completeDefinitionMutation({
           entry: claim.entry,
           resultRevision: definitionRevision(updated),
@@ -5254,6 +5271,15 @@ async function runLifeOperationHandlerInner(
           entry: claim.entry,
           failureCode: definitionMutationFailureCode(error),
         });
+        if (error instanceof OptimisticLockError) {
+          // The selection went stale between grounding and the guarded write:
+          // a concurrent mutation won. Answer with the designed conflict reply
+          // instead of overwriting or surfacing a raw failure.
+          return {
+            success: false,
+            text: `"${target.definition.title}" changed while I was applying that update, so I didn't overwrite the newer change. Take another look and tell me what to change.`,
+          };
+        }
         throw error;
       }
       const fallback = `Updated "${updated.definition.title}".`;
@@ -5417,11 +5443,19 @@ async function runLifeOperationHandlerInner(
         domain,
       });
       const requestId = lifeEffectRequestId(message);
-      const priorMutation = await service.repository.getDefinitionMutation({
+      const rawPriorMutation = await service.repository.getDefinitionMutation({
         scope: mutationScope,
         requestId,
         operation: "delete_definition",
       });
+      // See update_definition: resolve crash-abandoned pending claims from the
+      // observable definition row before answering "already in progress".
+      const priorMutation =
+        rawPriorMutation?.status === "pending"
+          ? ((await service.repository.reconcileDefinitionMutation({
+              entry: rawPriorMutation,
+            })) ?? rawPriorMutation)
+          : rawPriorMutation;
       if (priorMutation?.status === "completed") {
         const deletedTitle =
           typeof priorMutation.result?.title === "string"
@@ -5499,7 +5533,9 @@ async function runLifeOperationHandlerInner(
         };
       }
       try {
-        await service.deleteDefinition(target.definition.id);
+        await service.deleteDefinition(target.definition.id, {
+          expectedRevision: definitionRevision(target) ?? undefined,
+        });
         await service.repository.completeDefinitionMutation({
           entry: claim.entry,
           resultRevision: null,
@@ -5513,6 +5549,12 @@ async function runLifeOperationHandlerInner(
           entry: claim.entry,
           failureCode: definitionMutationFailureCode(error),
         });
+        if (error instanceof OptimisticLockError) {
+          return {
+            success: false,
+            text: `"${target.definition.title}" changed while I was deleting it, so I left it in place. Take another look and tell me if you still want it gone.`,
+          };
+        }
         throw error;
       }
       const fallback = `Deleted "${target.definition.title}" and its occurrences.`;

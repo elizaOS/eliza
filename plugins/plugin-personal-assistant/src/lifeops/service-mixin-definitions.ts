@@ -21,8 +21,12 @@ export interface LifeOpsDefinitionService {
   updateDefinition(
     definitionId: string,
     request: UpdateLifeOpsDefinitionRequest,
+    options?: { expectedRevision?: number },
   ): Promise<LifeOpsDefinitionRecord>;
-  deleteDefinition(definitionId: string): Promise<void>;
+  deleteDefinition(
+    definitionId: string,
+    options?: { expectedRevision?: number },
+  ): Promise<void>;
   completeOccurrence(
     occurrenceId: string,
     request: CompleteLifeOpsOccurrenceRequest,
