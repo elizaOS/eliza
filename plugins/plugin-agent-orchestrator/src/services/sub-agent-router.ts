@@ -3902,8 +3902,12 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
   while ((match = tagRe.exec(html)) !== null) {
     if ((match[1] ?? "").toLowerCase() === "link") {
       const relMatch = relAttrRe.exec(match[2] ?? "");
-      const rel = (relMatch?.[1] ?? relMatch?.[2] ?? relMatch?.[3] ?? "")
-        .toLowerCase();
+      const rel = (
+        relMatch?.[1] ??
+        relMatch?.[2] ??
+        relMatch?.[3] ??
+        ""
+      ).toLowerCase();
       // rel is a space-separated token list; any hint token disqualifies —
       // a rel mixing a hint with a real keyword is malformed boilerplate.
       if (rel.split(/\s+/).some((token) => HINT_LINK_RELS.has(token))) {
