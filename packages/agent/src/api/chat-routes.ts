@@ -3037,8 +3037,10 @@ async function generateChatResponseWithTiming(
           opts,
         }),
     );
-    generationAbortController.signal.throwIfAborted();
     if (androidDirectResult) {
+      // A successful model return commits the turn even when transport
+      // cancellation races with that return. Discarding it here would release
+      // the retry key and bill the same completed work a second time.
       try {
         if (
           androidDirectResult.responseContent &&
@@ -3071,6 +3073,7 @@ async function generateChatResponseWithTiming(
       }
       return androidDirectResult;
     }
+    generationAbortController.signal.throwIfAborted();
 
     let result:
       | Awaited<
@@ -3133,8 +3136,10 @@ async function generateChatResponseWithTiming(
             appendText: replaceCallbackText,
             replaceText: emitSnapshot,
           });
-          generationAbortController.signal.throwIfAborted();
           if (preHandlerResult) {
+            // A handler that returns a terminal reply owns completion. A late
+            // disconnect must not erase a completed direct dispatch and cause
+            // the client retry to execute it again.
             const directText = preHandlerResult.responseText;
             const finalText = isClientVisibleNoResponse(directText)
               ? directText || "(no response)"
@@ -3148,6 +3153,7 @@ async function generateChatResponseWithTiming(
             forcedWalletExecutionText = isClientVisibleNoResponse(directText);
             return;
           }
+          generationAbortController.signal.throwIfAborted();
 
           // Direct dispatch for explicit task creation intent from UI
           const contentMetadata = message.content.metadata as
@@ -3229,7 +3235,9 @@ async function generateChatResponseWithTiming(
                     abortSignal: generationAbortController.signal,
                   },
                 );
-                generationAbortController.signal.throwIfAborted();
+                // The action has already returned a committed result. Keep
+                // finalizing it if the transport disappears at this boundary
+                // so reconnect cannot repeat an external side effect.
                 const finalText =
                   actionResponseText ||
                   directActionResult.text ||
@@ -3374,7 +3382,10 @@ async function generateChatResponseWithTiming(
               ),
             { phase: "message" },
           );
-          generationAbortController.signal.throwIfAborted();
+          // handleMessage returning successfully is the turn's completion
+          // barrier. Providers and actions receive the owner signal and reject
+          // unfinished work; a successful return must survive a late transport
+          // abort so persistence and idempotent replay can finish exactly once.
 
           // Ensure MESSAGE_SENT hooks run for API chat flows.
           try {
