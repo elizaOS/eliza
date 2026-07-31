@@ -54,6 +54,7 @@ jobs:
       CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
       CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
       HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
+      HETZNER_E2E_DIAGNOSTIC_FILE: /tmp/hetzner-e2e-provision-diagnostic.json
     steps:
       - name: Check secret configuration
         id: secret_config
@@ -274,6 +275,7 @@ jobs:
         if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true' && steps.hcloud_auth.outputs.ready == 'true'
         run: |
           log=/tmp/hetzner-e2e-provision.log
+          rm -f "$HETZNER_E2E_DIAGNOSTIC_FILE"
           set +e
           bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
           rc=${PIPESTATUS[0]}
@@ -282,54 +284,21 @@ jobs:
             echo "provisioned=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # A rejected / expired / read-only HCLOUD_TOKEN_CI (or a deactivated project)
-          # surfaces as HTTP 401/403 missing_token / "permission denied" when CREATING the
-          # server — the read-only token preflight above can pass while this write fails.
-          # That is an operator secret problem, not a code regression, but the
-          # token is configured and rejected. Fail red for every event so the
-          # nightly cannot look healthy while real-infra coverage is disabled.
-          if grep -qE "Hetzner rejected the token|missing_token|permission denied|HTTP 401|HTTP 403|status: 401|status: 403" "$log"; then
-            echo "provisioned=false" >> "$GITHUB_OUTPUT"
-            echo "::error::Hetzner rejected HCLOUD_TOKEN_CI (HTTP 401/403); refresh the token in the ci-hetzner-e2e environment."
-            {
-              echo "### Hetzner E2E blocked by rejected Hetzner credential"
-              echo ""
-              echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` (HTTP 401/403 \`missing_token\` / permission denied) when creating the server."
-              echo ""
-              echo "The token may be read-only or expired for writes. Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment with a read-write CI token, or confirm the project is active."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          # Any other provision failure is real — surface it (red).
           echo "provisioned=false" >> "$GITHUB_OUTPUT"
           exit "$rc"
 
       - name: Surface provision failure diagnostic
         if: always() && steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true' && steps.hcloud_auth.outputs.ready == 'true' && steps.provision.outcome == 'failure'
         run: |
-          log=/tmp/hetzner-e2e-provision.log
-          {
-            echo "### Hetzner E2E provisioning failed"
-            echo ""
-            if [ -f "$log" ] && grep -qE "quota exhausted|server limit reached|limit_reached|resource_limit_exceeded|quota_exceeded" "$log"; then
-              echo "**Cause:** Hetzner project quota exhausted (server cap reached)."
+          if [ -f "$HETZNER_E2E_DIAGNOSTIC_FILE" ]; then
+            bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision-diagnostic.ts "$HETZNER_E2E_DIAGNOSTIC_FILE" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Hetzner E2E provisioning failed"
               echo ""
-              echo "Operator action:"
-              echo "1. Open https://console.hetzner.cloud/ and check the CI project for leaked servers (filter labels \`ci=true\`, \`workflow=hetzner-e2e\`)."
-              echo "2. Delete any leaked servers, or wait for the half-hourly reaper workflow to sweep them."
-              echo "3. Re-run this workflow."
-              echo ""
-              echo "If the project itself has a tighter cap than the fallback ladder can survive, request a quota increase from Hetzner support or rotate \`HCLOUD_TOKEN_CI\` to a project with capacity."
-            elif [ -f "$log" ] && grep -qE "Hetzner rejected the token|missing_token|HTTP 401|HTTP 403" "$log"; then
-              echo "**Cause:** Hetzner rejected the API token (HTTP 401/403)."
-              echo ""
-              echo "Operator action: refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` GitHub environment, or confirm the project is still active."
-            else
-              echo "**Cause:** see the \"Provision Hetzner server\" step log for the raw error."
-              echo ""
-              echo "If the error message is unfamiliar, check \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` and the fallback ladder in \`hetzner-e2e-provision.ts\`."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+              echo "The provisioner failed before it could write a structured diagnostic. See the \"Provision Hetzner server\" step for the preserved error."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Wait for host ready
         if: steps.provision.outputs.provisioned == 'true'
