@@ -258,10 +258,6 @@ export class SwarmCoordinatorService
   private swarmCompleteCallback: SwarmCompleteCallback | null = null;
   private readonly inFlightDecisionSessions = new Set<string>();
   private readonly synthesizedCompletionSessions = new Set<string>();
-  // Sessions that already posted a body-less "App verification passed."
-  // A multi-turn builder re-validates on every turn; repeating the bare
-  // verdict is noise, while a verdict carrying a deliverable always posts.
-  private readonly postedBareValidatorPass = new Set<string>();
   // Sessions whose validator PASS (bare or body-carrying) has posted. Unlike
   // the synthesis dedupe slot this never re-arms on resume: once a create/edit
   // task has publicly passed, its eventual teardown `stopped` is plumbing and
@@ -389,7 +385,6 @@ export class SwarmCoordinatorService
     this.swarmCompleteCallback = null;
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
-    this.postedBareValidatorPass.clear();
     this.validatorPassSessions.clear();
     this.routerCededTerminalSessions.clear();
     this.terminalCompletionChains.clear();
@@ -742,7 +737,6 @@ export class SwarmCoordinatorService
       // and the bare-pass feedback.
       this.routerCededTerminalSessions.delete(sessionId);
       this.validatorPassSessions.delete(sessionId);
-      this.postedBareValidatorPass.delete(sessionId);
     }
 
     const enrichedData = this.shouldEnrichEvent(event)
@@ -1137,11 +1131,12 @@ export class SwarmCoordinatorService
       : sanitizedBody;
     if (validatorVerdict && terminalStatus === "completed") {
       this.validatorPassSessions.add(sessionId);
+      // A body-less pass is machine plumbing — the user asked for an outcome,
+      // not a verifier status line. The deliverable-carrying completion (the
+      // "live at <url>" summary) is the sole chat post; fail verdicts still
+      // escalate below.
       if (!sanitizedBody) {
-        if (this.postedBareValidatorPass.has(sessionId)) {
-          return;
-        }
-        this.postedBareValidatorPass.add(sessionId);
+        return;
       }
     }
     const completionSummary =
