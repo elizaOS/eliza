@@ -42,7 +42,11 @@ const HEAD_SHA = "a".repeat(40);
 const PRIOR_SHA = "b".repeat(40);
 
 function account(login: string, type = "User") {
-  return { login, type };
+  const id = [...login.toLowerCase()].reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) % 1_000_000,
+    17,
+  );
+  return { id, login, type };
 }
 
 function comment(
@@ -63,7 +67,7 @@ function comment(
 
 function review(
   id: number,
-  author: string,
+  author: string | null,
   state: string,
   commitId = HEAD_SHA,
   submittedAt = "2026-01-18T12:00:00.000Z",
@@ -71,7 +75,7 @@ function review(
   return {
     id,
     html_url: `https://github.com/elizaOS/eliza/pull/1#pullrequestreview-${id}`,
-    user: account(author),
+    user: author === null ? null : account(author),
     body: "Substantive review findings.",
     submitted_at: submittedAt,
     state,
@@ -630,6 +634,8 @@ describe("live report parsing", () => {
           kind: "issue-comment",
           url: value.html_url,
           author: value.user.login,
+          authorId: value.user.id,
+          authorKnown: true,
           bot: value.user.type === "Bot",
           body: value.body ?? "",
           createdAt: value.created_at,
@@ -643,6 +649,7 @@ describe("live report parsing", () => {
   it("classifies bot accounts and parses only supported CLI arguments", () => {
     assert.strictEqual(isBotAccount(account("dependabot[bot]", "Bot")), true);
     assert.strictEqual(isBotAccount(account("release-bot")), true);
+    assert.strictEqual(isBotAccount(account("github-actions")), true);
     assert.strictEqual(isBotAccount(account("octocat")), false);
     assert.deepStrictEqual(
       parseCliArguments(["--repo", "elizaOS/eliza", "--json"]),
@@ -995,7 +1002,7 @@ describe("live report behavior", () => {
         title: "Durably labeled",
         html_url: "https://github.com/elizaOS/eliza/issues/23",
         user: account("author-23"),
-        labels: [{ name: "status: in-progress" }],
+        labels: [{ name: "  status: in-progress  " }],
         assignees: [],
         comments: 1,
       },
@@ -1112,6 +1119,20 @@ describe("live report behavior", () => {
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
       }),
+      pullRequest(41),
+      pullRequest(42),
+      pullRequest(43),
+      pullRequest(45),
+      pullRequest(46),
+      pullRequest(47),
+      pullRequest(48),
+      pullRequest(49, {
+        assignees: [account("AUTHOR-49")],
+      }),
+      pullRequest(50),
+      pullRequest(51),
+      pullRequest(52),
+      pullRequest(53),
     ];
     const issueComments = new Map<number, ReturnType<typeof comment>[]>([
       [
@@ -1138,11 +1159,125 @@ describe("live report behavior", () => {
           ),
         ],
       ],
+      [
+        47,
+        [
+          comment(
+            470,
+            "AUTHOR-47",
+            "CLAIMING REVIEW: self-review does not reserve the independent lane",
+          ),
+        ],
+      ],
+      [48, [comment(480, "empty-marker", "CLAIMING REVIEW:")]],
+      [
+        51,
+        [
+          {
+            ...comment(
+              510,
+              "deleted-reviewer",
+              "CLAIMING REVIEW: deleted authors cannot reserve work",
+            ),
+            user: null,
+          },
+        ],
+      ],
+      [
+        52,
+        [
+          comment(
+            520,
+            "spaced-marker",
+            "CLAIMING REVIEW : noncanonical marker",
+          ),
+        ],
+      ],
     ]);
     const reviews = new Map<number, ReturnType<typeof review>[]>([
       [32, [review(320, "approver", "APPROVED")]],
       [33, [review(330, "requester", "CHANGES_REQUESTED")]],
       [34, [review(340, "past-reviewer", "APPROVED", PRIOR_SHA)]],
+      [41, [review(410, null, "APPROVED")]],
+      [
+        42,
+        [
+          review(420, "tied-reviewer", "APPROVED"),
+          review(421, "tied-reviewer", "CHANGES_REQUESTED"),
+        ],
+      ],
+      [
+        43,
+        [
+          {
+            ...review(430, "github-actions", "CHANGES_REQUESTED"),
+            user: account("github-actions"),
+          },
+        ],
+      ],
+      [
+        45,
+        [
+          review(
+            450,
+            "commenting-reviewer",
+            "CHANGES_REQUESTED",
+            HEAD_SHA,
+            "2026-01-18T12:00:00.000Z",
+          ),
+          review(
+            451,
+            "commenting-reviewer",
+            "COMMENTED",
+            HEAD_SHA,
+            "2026-01-18T13:00:00.000Z",
+          ),
+        ],
+      ],
+      [
+        46,
+        [
+          review(
+            460,
+            "dismissed-reviewer",
+            "CHANGES_REQUESTED",
+            HEAD_SHA,
+            "2026-01-18T12:00:00.000Z",
+          ),
+          review(
+            461,
+            "dismissed-reviewer",
+            "DISMISSED",
+            HEAD_SHA,
+            "2026-01-18T13:00:00.000Z",
+          ),
+        ],
+      ],
+      [
+        53,
+        [
+          review(
+            530,
+            null,
+            "CHANGES_REQUESTED",
+            HEAD_SHA,
+            "2026-01-18T12:00:00.000Z",
+          ),
+          review(531, null, "APPROVED", HEAD_SHA, "2026-01-18T13:00:00.000Z"),
+        ],
+      ],
+    ]);
+    const inlineComments = new Map<number, ReturnType<typeof comment>[]>([
+      [
+        50,
+        [
+          comment(
+            500,
+            "inline-reviewer",
+            "CLAIMING REVIEW: inspecting this exact code path",
+          ),
+        ],
+      ],
     ]);
     const report = collectLiveReport(
       "elizaOS/eliza",
@@ -1154,7 +1289,9 @@ describe("live report behavior", () => {
           return issueComments.get(Number(issueComment[1])) ?? [];
         }
         const inlineComment = endpoint.match(/pulls\/(\d+)\/comments/);
-        if (inlineComment) return [];
+        if (inlineComment) {
+          return inlineComments.get(Number(inlineComment[1])) ?? [];
+        }
         const reviewList = endpoint.match(/pulls\/(\d+)\/reviews/);
         if (reviewList) return reviews.get(Number(reviewList[1])) ?? [];
         assert.fail(`unexpected endpoint: ${endpoint}`);
@@ -1164,19 +1301,19 @@ describe("live report behavior", () => {
 
     assert.deepStrictEqual(
       report.reviewablePullRequests.map((pull) => pull.number),
-      [34, 36],
+      [34, 36, 43, 46, 47, 48, 49, 51, 52],
     );
     assert.deepStrictEqual(
       report.filtered.claimedPullRequests.map((pull) => pull.number),
-      [30, 31, 35, 37, 38, 39, 40],
+      [30, 31, 35, 37, 38, 39, 40, 50],
     );
     assert.deepStrictEqual(
       report.filtered.reviewedPullRequests.map((pull) => pull.number),
-      [32],
+      [32, 41],
     );
     assert.deepStrictEqual(
       report.filtered.changesRequestedPullRequests.map((pull) => pull.number),
-      [33],
+      [33, 42, 45, 53],
     );
     assert.deepStrictEqual(
       report.filtered.claimedPullRequests.find((pull) => pull.number === 31)
@@ -1194,5 +1331,57 @@ describe("live report behavior", () => {
       renderMarkdown(report),
       /review requests persist until cleared/,
     );
+  });
+
+  it("rejects malformed review commit revisions", () => {
+    assert.throws(
+      () =>
+        collectLiveReport(
+          "elizaOS/eliza",
+          (endpoint) => {
+            if (endpoint.includes("/issues?state=open")) return [];
+            if (endpoint.includes("/pulls?state=open")) {
+              return [pullRequest(44)];
+            }
+            if (endpoint.includes("/issues/44/comments")) return [];
+            if (endpoint.includes("/pulls/44/comments")) return [];
+            if (endpoint.includes("/pulls/44/reviews")) {
+              return [review(440, "reviewer", "APPROVED", "short-sha")];
+            }
+            assert.fail(`unexpected endpoint: ${endpoint}`);
+          },
+          NOW,
+        ),
+      /commit_id must be a full commit SHA or null/,
+    );
+  });
+
+  it("rejects decision reviews without current-head provenance", () => {
+    const incompleteReviews = [
+      { ...review(450, "reviewer", "APPROVED"), commit_id: null },
+      { ...review(451, "reviewer", "CHANGES_REQUESTED"), submitted_at: null },
+    ];
+    for (const incompleteReview of incompleteReviews) {
+      assert.throws(
+        () =>
+          collectLiveReport(
+            "elizaOS/eliza",
+            (endpoint) => {
+              if (endpoint.includes("/issues?state=open")) return [];
+              if (endpoint.includes("/pulls?state=open")) {
+                return [pullRequest(45)];
+              }
+              if (endpoint.includes("/issues/45/comments")) return [];
+              if (endpoint.includes("/pulls/45/comments")) return [];
+              if (endpoint.includes("/pulls/45/reviews")) {
+                return [incompleteReview];
+              }
+              assert.fail(`unexpected endpoint: ${endpoint}`);
+            },
+            NOW,
+          ),
+        /cannot prove a current-head (?:APPROVED|CHANGES_REQUESTED) decision/,
+      );
+    }
   });
 });
