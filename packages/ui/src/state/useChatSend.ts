@@ -67,6 +67,7 @@ import { streamingRenderDelayMs } from "./streaming-render-cadence";
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+const CHAT_SEND_IDENTITY_OVERRIDE = Symbol("chat-send-identity-override");
 
 type ConversationStreamResult = Awaited<
   ReturnType<typeof client.sendConversationMessageStream>
@@ -478,9 +479,91 @@ export interface QueuedChatSend {
   images?: ImageAttachment[];
   metadata?: Record<string, unknown>;
   /** Stable idempotency key for the initial request and route-level recovery. */
-  clientMessageId?: string;
+  clientMessageId: string;
+  /** Stable local row identities for this queued logical turn. */
+  optimisticTurn: {
+    userMsgId: string;
+    assistantMsgId: string;
+    timestamp: number;
+  };
   resolve: () => void;
   reject: (error: unknown) => void;
+}
+
+/** Composer payload recovered when queued turns are cancelled before transport. */
+export interface RestoredQueuedDraft {
+  text: string;
+  images: ImageAttachment[];
+}
+
+/** Public options accepted by programmatic chat sends. */
+export interface ChatSendTextOptions {
+  channelType?: ConversationChannelType;
+  conversationId?: string | null;
+  images?: ImageAttachment[];
+  metadata?: Record<string, unknown>;
+}
+
+interface ChatSendTextInternalOptions extends ChatSendTextOptions {
+  [CHAT_SEND_IDENTITY_OVERRIDE]?: {
+    clientMessageId: string;
+    optimisticTurn: QueuedChatSend["optimisticTurn"];
+  };
+}
+
+/**
+ * Commands render only after the drain resolves whether they are local,
+ * rewritten, or regular chat. Painting them at enqueue would briefly expose a
+ * user-only row before the command result replaces it.
+ */
+function isDrainPaintedCommand(rawInput: string): boolean {
+  const prefix = rawInput.trimStart().charAt(0);
+  return prefix === "/" || prefix === "#" || prefix === "$";
+}
+
+function createOptimisticTurn(
+  clientMessageId: string,
+): QueuedChatSend["optimisticTurn"] {
+  return {
+    userMsgId: `temp-${clientMessageId}`,
+    assistantMsgId: `temp-resp-${clientMessageId}`,
+    timestamp: Date.now(),
+  };
+}
+
+function createOptimisticUserMessage(
+  turn: Pick<QueuedChatSend, "rawInput" | "images" | "optimisticTurn">,
+): ConversationMessage {
+  const { userMsgId, timestamp } = turn.optimisticTurn;
+  const rawText = turn.rawInput.trim();
+  const attachments = turn.images?.length
+    ? turn.images.map((image, index) => ({
+        id: `${userMsgId}-img-${index}`,
+        url: `data:${image.mimeType};base64,${image.data}`,
+        contentType: optimisticAttachmentKind(image.mimeType),
+        ...(image.name ? { title: image.name } : {}),
+        mimeType: image.mimeType,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+        ...(image.transcriptId ? { transcriptId: image.transcriptId } : {}),
+        ...(image.thumbnail
+          ? {
+              thumbnailUrl: `data:${image.thumbnail.mimeType};base64,${image.thumbnail.data}`,
+            }
+          : {}),
+      }))
+    : undefined;
+
+  return {
+    id: userMsgId,
+    clientRenderId: userMsgId,
+    role: "user",
+    text:
+      turn.images?.length && !rawText
+        ? "Please review the attached image."
+        : rawText,
+    timestamp,
+    ...(attachments ? { attachments } : {}),
+  };
 }
 
 // ── Deps interface ──────────────────────────────────────────────────
@@ -1015,65 +1098,89 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
   }, [chatAbortRef, chatSendBusyRef]);
 
-  const resolveQueuedChatSends = useCallback((): string => {
+  const resolveQueuedChatSends = useCallback((): RestoredQueuedDraft => {
     const queued = chatSendQueueRef.current.splice(0);
-    if (queued.length === 0) return "";
+    if (queued.length === 0) return { text: "", images: [] };
+    const cancelledMessageIds = new Set(
+      queued.flatMap((turn) => [
+        turn.optimisticTurn.userMsgId,
+        turn.optimisticTurn.assistantMsgId,
+      ]),
+    );
+    setConversationMessages((prev) =>
+      prev.filter((message) => !cancelledMessageIds.has(message.id)),
+    );
     for (const turn of queued) {
       turn.resolve();
     }
-    // These turns were accepted ("send another" while a reply streamed), the
-    // composer was cleared at enqueue, and their optimistic bubble only paints
-    // at drain — so an interrupt here (new chat / conversation switch) would
-    // otherwise vanish the user's words with no trace (#10700's "no message is
-    // lost" guarantee). Mirror the cold-open create-failure path: restore the
-    // text to the composer and say why. Returned so a caller that wipes the
-    // draft AFTER interrupting (new chat) can re-apply the restore.
+    // A queued turn already owns a visible user row, but has not reached the
+    // transport. Cancellation removes only those exact local identities, then
+    // restores their composer payload so stopping one pipeline never consumes a
+    // draft or attachment that the server did not receive.
     const restored = queued
       .map((turn) => turn.rawInput.trim())
       .filter((text) => text.length > 0)
       .join("\n");
+    const restoredImages = queued.flatMap((turn) => turn.images ?? []);
     if (restored) {
       setChatInput(restored);
+    }
+    if (restoredImages.length > 0) {
+      setChatPendingImages(restoredImages);
+    }
+    if (restored || restoredImages.length > 0) {
       setActionNotice(
-        "Your unsent message was restored to the input.",
+        restoredImages.length > 0
+          ? "Your unsent message and attachments were restored to the input."
+          : "Your unsent message was restored to the input.",
         "info",
         6_000,
       );
     }
-    return restored;
-  }, [setActionNotice, setChatInput]);
+    return { text: restored, images: restoredImages };
+  }, [
+    setActionNotice,
+    setChatInput,
+    setChatPendingImages,
+    setConversationMessages,
+  ]);
+
+  const interruptActiveChatPipelineWithDraft =
+    useCallback((): RestoredQueuedDraft => {
+      const restoredQueuedDraft = resolveQueuedChatSends();
+      const activeTurn = activeChatTurnRef.current;
+      if (activeTurn?.roomId) {
+        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
+      }
+      if (activeTurn?.abortServerTurn) {
+        activeTurn.controller.signal.removeEventListener(
+          "abort",
+          activeTurn.abortServerTurn,
+        );
+      }
+      activeTurn?.controller.abort();
+      chatAbortRef.current?.abort();
+      // Commit any parked partial text (so a stopped turn keeps what the user saw)
+      // and invalidate the pending scheduled flush so it can't fire after stop.
+      flushStreamingText();
+      activeChatTurnRef.current = null;
+      chatAbortRef.current = null;
+      setChatSending(false);
+      setChatFirstTokenReceived(false);
+      setServerTurnStatus(null);
+      return restoredQueuedDraft;
+    }, [
+      chatAbortRef,
+      flushStreamingText,
+      resolveQueuedChatSends,
+      setChatFirstTokenReceived,
+      setServerTurnStatus,
+      setChatSending,
+    ]);
 
   const interruptActiveChatPipeline = useCallback((): string => {
-    const restoredQueuedText = resolveQueuedChatSends();
-    const activeTurn = activeChatTurnRef.current;
-    if (activeTurn?.roomId) {
-      abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
-    }
-    if (activeTurn?.abortServerTurn) {
-      activeTurn.controller.signal.removeEventListener(
-        "abort",
-        activeTurn.abortServerTurn,
-      );
-    }
-    activeTurn?.controller.abort();
-    chatAbortRef.current?.abort();
-    // Commit any parked partial text (so a stopped turn keeps what the user saw)
-    // and invalidate the pending scheduled flush so it can't fire after stop.
-    flushStreamingText();
-    activeChatTurnRef.current = null;
-    chatAbortRef.current = null;
-    setChatSending(false);
-    setChatFirstTokenReceived(false);
-    setServerTurnStatus(null);
-    return restoredQueuedText;
-  }, [
-    chatAbortRef,
-    flushStreamingText,
-    resolveQueuedChatSends,
-    setChatFirstTokenReceived,
-    setServerTurnStatus,
-    setChatSending,
-  ]);
+    return interruptActiveChatPipelineWithDraft().text;
+  }, [interruptActiveChatPipelineWithDraft]);
 
   const appendLocalCommandTurn = useCallback(
     (userText: string, assistantText: string) => {
@@ -1424,9 +1531,7 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
-      // One idempotency key spans the initial request and route-level recovery.
-      const clientMessageId =
-        turn.clientMessageId ?? generateChatClientMessageId();
+      const clientMessageId = turn.clientMessageId;
       let controller: AbortController | null = null;
       let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
@@ -1456,39 +1561,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       }
 
-      const now = Date.now();
-      const userMsgId = `temp-${clientMessageId}`;
-      const assistantMsgId = `temp-resp-${clientMessageId}`;
-
-      // Paint the accepted turn before conversation creation / room discovery.
-      // Those calls can take seconds on a cold cloud agent; clearing the composer
-      // first and waiting to add this row made the user's message look lost.
-      const optimisticAttachments = imagesToSend?.length
-        ? imagesToSend.map((img, i) => ({
-            id: `${userMsgId}-img-${i}`,
-            url: `data:${img.mimeType};base64,${img.data}`,
-            contentType: optimisticAttachmentKind(img.mimeType),
-            ...(img.name ? { title: img.name } : {}),
-            mimeType: img.mimeType,
-            source: MESSAGE_SOURCE_CLIENT_CHAT,
-            ...(img.transcriptId ? { transcriptId: img.transcriptId } : {}),
-            ...(img.thumbnail
-              ? {
-                  thumbnailUrl: `data:${img.thumbnail.mimeType};base64,${img.thumbnail.data}`,
-                }
-              : {}),
-          }))
-        : undefined;
-      const optimisticUserMessage: ConversationMessage = {
-        id: userMsgId,
-        clientRenderId: userMsgId,
-        role: "user",
-        text,
-        timestamp: now,
-        ...(optimisticAttachments
-          ? { attachments: optimisticAttachments }
-          : {}),
-      };
+      const optimisticTurn = turn.optimisticTurn;
+      const { userMsgId, assistantMsgId, timestamp: now } = optimisticTurn;
+      const optimisticUserMessage = createOptimisticUserMessage({
+        ...turn,
+        rawInput: text,
+      });
+      const optimisticAttachments = optimisticUserMessage.attachments;
       const optimisticAssistantMessage: ConversationMessage = {
         id: assistantMsgId,
         clientRenderId: assistantMsgId,
@@ -1499,6 +1578,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       const optimisticOwnerConversationId =
         turn.conversationId ?? activeConversationIdRef.current ?? null;
       setCompanionMessageCutoffTs(now);
+      // The user row is painted at enqueue. Drain owns the assistant placeholder
+      // because only now do prefixed commands resolve to local output, rewritten
+      // chat, or a real model turn. The idempotent merge also covers a cold-start
+      // send accepted before the active conversation exists.
       setConversationMessagesForConversation(
         optimisticOwnerConversationId,
         (prev: ConversationMessage[]) => {
@@ -2166,16 +2249,8 @@ export function useChatSend(deps: UseChatSendDeps) {
   }, [flushQueuedChatSends]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationIdRef is a ref — its .current is read at ENQUEUE time (always latest) and must NOT be a dependency, or this callback's identity churns on every conversation switch.
-  const sendChatText = useCallback(
-    async (
-      rawInput: string,
-      options?: {
-        channelType?: ConversationChannelType;
-        conversationId?: string | null;
-        images?: ImageAttachment[];
-        metadata?: Record<string, unknown>;
-      },
-    ) => {
+  const sendChatTextInternal = useCallback(
+    async (rawInput: string, options?: ChatSendTextInternalOptions) => {
       const hasAttachedImages = Boolean(options?.images?.length);
       if (!rawInput.trim() && !hasAttachedImages) {
         return;
@@ -2198,24 +2273,49 @@ export function useChatSend(deps: UseChatSendDeps) {
         setChatReplyTarget(null);
       }
 
+      const identityOverride = options?.[CHAT_SEND_IDENTITY_OVERRIDE];
+      const clientMessageId =
+        identityOverride?.clientMessageId ?? generateChatClientMessageId();
+      const optimisticTurn =
+        identityOverride?.optimisticTurn ??
+        createOptimisticTurn(clientMessageId);
+      const conversationId =
+        options?.conversationId ?? activeConversationIdRef.current ?? null;
+      const queuedTurn = {
+        rawInput,
+        channelType: options?.channelType ?? "DM",
+        // Pin the target conversation at ENQUEUE, not at drain (#10700). The
+        // shell send() path (voice converse turns + tapped suggestions) omits
+        // conversationId, so without this the queued turn resolved its target
+        // LATE in runQueuedChatSend as `activeConversationIdRef.current` — and
+        // a new-chat between enqueue and drain rerouted it to the wrong (new)
+        // conversation. Snapshot the active conversation now so the turn lands
+        // where it was sent. When there is NO active conversation (cold open),
+        // stay null and let the drain-time create-or-join resolve it, so a
+        // rapid second cold-open turn still joins the one created conversation
+        // rather than spawning its own.
+        conversationId,
+        images: options?.images,
+        metadata: buildChatViewMetadata(tab, metadata),
+        clientMessageId,
+        optimisticTurn,
+      } satisfies Omit<QueuedChatSend, "resolve" | "reject">;
+
+      if (!isDrainPaintedCommand(rawInput)) {
+        const optimisticUserMessage = createOptimisticUserMessage(queuedTurn);
+        setCompanionMessageCutoffTs(optimisticTurn.timestamp);
+        setConversationMessagesForConversation(
+          conversationId,
+          (prev: ConversationMessage[]) =>
+            prev.some((message) => message.id === optimisticTurn.userMsgId)
+              ? prev
+              : [...prev, optimisticUserMessage],
+        );
+      }
+
       await new Promise<void>((resolve, reject) => {
         chatSendQueueRef.current.push({
-          rawInput,
-          channelType: options?.channelType ?? "DM",
-          // Pin the target conversation at ENQUEUE, not at drain (#10700). The
-          // shell send() path (voice converse turns + tapped suggestions) omits
-          // conversationId, so without this the queued turn resolved its target
-          // LATE in runQueuedChatSend as `activeConversationIdRef.current` — and
-          // a new-chat between enqueue and drain rerouted it to the wrong (new)
-          // conversation. Snapshot the active conversation now so the turn lands
-          // where it was sent. When there is NO active conversation (cold open),
-          // stay null and let the drain-time create-or-join resolve it, so a
-          // rapid second cold-open turn still joins the one created conversation
-          // rather than spawning its own.
-          conversationId:
-            options?.conversationId ?? activeConversationIdRef.current ?? null,
-          images: options?.images,
-          metadata: buildChatViewMetadata(tab, metadata),
+          ...queuedTurn,
           resolve,
           reject,
         });
@@ -2223,7 +2323,20 @@ export function useChatSend(deps: UseChatSendDeps) {
         void flushQueuedChatSends();
       });
     },
-    [flushQueuedChatSends, setChatSending, setChatReplyTarget, tab],
+    [
+      flushQueuedChatSends,
+      setChatReplyTarget,
+      setChatSending,
+      setCompanionMessageCutoffTs,
+      setConversationMessagesForConversation,
+      tab,
+    ],
+  );
+
+  const sendChatText = useCallback(
+    (rawInput: string, options?: ChatSendTextOptions): Promise<void> =>
+      sendChatTextInternal(rawInput, options),
+    [sendChatTextInternal],
   );
 
   const handleChatSend = useCallback(
@@ -2605,10 +2718,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
-      // Fallback (no conversation id yet, optimistic/local user turn): drop the
-      // failed assistant bubble — and the optimistic (temp-) user turn it
-      // retried, which the resend re-renders as a fresh optimistic bubble, so
-      // the thread doesn't show the message twice while the retry streams.
+      // Fallback (no persisted user id yet): replace only this local pair and
+      // reuse its logical idempotency/render identity. A request can reach the
+      // server while its terminal response is lost; minting a new identity on
+      // Retry could then duplicate the accepted turn.
+      const optimisticUserId = userMsg.clientRenderId ?? userMsg.id;
+      const clientMessageId = optimisticUserId.startsWith("temp-")
+        ? optimisticUserId.slice("temp-".length)
+        : "";
       setConversationMessages((prev) =>
         prev.filter(
           (m) =>
@@ -2616,10 +2733,24 @@ export function useChatSend(deps: UseChatSendDeps) {
             !(m.id === userMsg.id && m.id.startsWith("temp-")),
         ),
       );
-      void sendChatText(retryText);
+      void sendChatTextInternal(retryText, {
+        ...(clientMessageId
+          ? {
+              [CHAT_SEND_IDENTITY_OVERRIDE]: {
+                clientMessageId,
+                optimisticTurn: {
+                  userMsgId: optimisticUserId,
+                  assistantMsgId: `temp-resp-${clientMessageId}`,
+                  timestamp: userMsg.timestamp,
+                },
+              },
+            }
+          : {}),
+      });
     },
     [
       sendChatText,
+      sendChatTextInternal,
       setConversationMessages,
       conversationMessagesRef,
       activeConversationIdRef,
@@ -2663,8 +2794,10 @@ export function useChatSend(deps: UseChatSendDeps) {
         return false;
       }
 
-      interruptActiveChatPipeline();
-      setChatInput("");
+      const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
+      if (!restoredQueuedDraft.text) {
+        setChatInput("");
+      }
 
       const preservedMessages = currentMessages.slice(0, messageIndex);
       conversationMessagesRef.current = preservedMessages;
@@ -2692,7 +2825,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       setActionNotice,
       activeConversationIdRef.current,
       conversationMessagesRef,
-      interruptActiveChatPipeline,
+      interruptActiveChatPipelineWithDraft,
       setChatInput,
       setConversationMessages,
     ],
@@ -2821,6 +2954,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   return {
     chatSendQueueRef,
     interruptActiveChatPipeline,
+    interruptActiveChatPipelineWithDraft,
     appendLocalCommandTurn,
     tryHandlePrefixedChatCommand,
     sendChatText,
