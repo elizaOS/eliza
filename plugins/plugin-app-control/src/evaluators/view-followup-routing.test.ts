@@ -106,7 +106,7 @@ describe("viewFollowupRoutingEvaluator", () => {
 		});
 	});
 
-	it("ignores retrieved document verbs when routing the canonical request", async () => {
+	it("routes a canonical referential content tail without using retrieved document verbs", async () => {
 		mockLoopback({ viewId: "notes" });
 		const wrapped = [
 			"Answer the user request using the contextual documents below as the source of truth.",
@@ -119,8 +119,14 @@ describe("viewFollowupRoutingEvaluator", () => {
 		].join("\n");
 		const ctx = context(wrapped);
 
-		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(false);
-		expect(globalThis.fetch).not.toHaveBeenCalled();
+		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(true);
+		await expect(
+			viewFollowupRoutingEvaluator.evaluate(ctx),
+		).resolves.toMatchObject({
+			debug: [
+				"active view notes supports create; routing follow-up through VIEWS",
+			],
+		});
 	});
 
 	it("routes a delete follow-up that references the active view", async () => {
