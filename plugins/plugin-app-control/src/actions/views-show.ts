@@ -438,7 +438,8 @@ export async function runViewsShow({
 	// supplies the view id. Either source is enough to proceed.
 	const rigidIntentViewId = matchViewCommand(messageText);
 	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
-	let target = extractViewTarget(message, options) ?? intentViewId;
+	const extractedTarget = extractViewTarget(message, options);
+	let target = extractedTarget ?? intentViewId;
 	if (!target) {
 		const text =
 			'Tell me which view to open. Try: "open wallet" or "show settings".';
@@ -448,6 +449,14 @@ export async function runViewsShow({
 
 	const views = await client.listViews({ viewType });
 	let resolution = resolveView(target, views);
+	let explicitAliasViewId: string | null = null;
+	if (resolution.kind === "none" && extractedTarget) {
+		explicitAliasViewId = matchViewCommand(extractedTarget);
+		if (explicitAliasViewId) {
+			target = explicitAliasViewId;
+			resolution = resolveView(target, views);
+		}
+	}
 	if (
 		isStandaloneNotesSurfaceRequest(messageText) &&
 		resolution.kind === "match" &&
@@ -492,8 +501,9 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const canonicalTarget = rigidIntentViewId
-		? SHARED_NAV_TARGETS[rigidIntentViewId]
+	const canonicalViewId = rigidIntentViewId ?? explicitAliasViewId;
+	const canonicalTarget = canonicalViewId
+		? SHARED_NAV_TARGETS[canonicalViewId]
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
