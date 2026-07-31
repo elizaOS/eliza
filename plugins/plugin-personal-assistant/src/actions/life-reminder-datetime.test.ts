@@ -61,9 +61,29 @@ const serviceState = vi.hoisted(() => ({
   deleteDefinitionCalls: [] as string[],
   deleteGoalCalls: [] as string[],
   ownerEntityIds: [] as Array<string | undefined>,
+  definitionMutations: new Map<string, Record<string, unknown>>(),
 }));
 
 vi.mock("../lifeops/service.js", () => {
+  const mutationKey = (input: {
+    scope: {
+      agentId: string;
+      domain: string;
+      subjectType: string;
+      subjectId: string;
+    };
+    requestId: string;
+    operation: string;
+  }) =>
+    [
+      input.scope.agentId,
+      input.scope.domain,
+      input.scope.subjectType,
+      input.scope.subjectId,
+      input.requestId,
+      input.operation,
+    ].join(":");
+
   class LifeOpsServiceError extends Error {
     status: number;
     constructor(message: string, status = 500) {
@@ -100,6 +120,102 @@ vi.mock("../lifeops/service.js", () => {
             createdAt: "2026-07-01T18:00:00.000Z",
           },
         ];
+      },
+      getDefinitionMutation: async (input: {
+        scope: {
+          agentId: string;
+          domain: string;
+          subjectType: string;
+          subjectId: string;
+        };
+        requestId: string;
+        operation: string;
+      }) => serviceState.definitionMutations.get(mutationKey(input)) ?? null,
+      claimDefinitionMutation: async (input: {
+        scope: {
+          agentId: string;
+          domain: string;
+          subjectType: string;
+          subjectId: string;
+        };
+        requestId: string;
+        operation: string;
+        definitionId: string;
+        expectedRevision: number | null;
+        observedAt?: string;
+      }) => {
+        const key = mutationKey(input);
+        const existing = serviceState.definitionMutations.get(key);
+        if (existing) {
+          return { disposition: existing.status, entry: existing };
+        }
+        const entry = {
+          id: `mutation-${serviceState.definitionMutations.size + 1}`,
+          ...input.scope,
+          requestId: input.requestId,
+          operation: input.operation,
+          definitionId: input.definitionId,
+          expectedRevision: input.expectedRevision,
+          resultRevision: null,
+          result: null,
+          failureCode: null,
+          status: "pending",
+          observedAt: input.observedAt ?? "2026-07-01T18:00:00.000Z",
+          createdAt: "2026-07-01T18:00:00.000Z",
+          updatedAt: "2026-07-01T18:00:00.000Z",
+        };
+        serviceState.definitionMutations.set(key, entry);
+        return { disposition: "claimed", entry };
+      },
+      completeDefinitionMutation: async (input: {
+        entry: Record<string, unknown>;
+        resultRevision: number | null;
+        result: Record<string, unknown>;
+      }) => {
+        const entry = {
+          ...input.entry,
+          status: "completed",
+          resultRevision: input.resultRevision,
+          result: input.result,
+        };
+        serviceState.definitionMutations.set(
+          mutationKey({
+            scope: {
+              agentId: String(entry.agentId),
+              domain: String(entry.domain),
+              subjectType: String(entry.subjectType),
+              subjectId: String(entry.subjectId),
+            },
+            requestId: String(entry.requestId),
+            operation: String(entry.operation),
+          }),
+          entry,
+        );
+        return entry;
+      },
+      failDefinitionMutation: async (input: {
+        entry: Record<string, unknown>;
+        failureCode: string;
+      }) => {
+        const entry = {
+          ...input.entry,
+          status: "failed",
+          failureCode: input.failureCode,
+        };
+        serviceState.definitionMutations.set(
+          mutationKey({
+            scope: {
+              agentId: String(entry.agentId),
+              domain: String(entry.domain),
+              subjectType: String(entry.subjectType),
+              subjectId: String(entry.subjectId),
+            },
+            requestId: String(entry.requestId),
+            operation: String(entry.operation),
+          }),
+          entry,
+        );
+        return entry;
       },
     };
 
@@ -472,6 +588,23 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     ).not.toBe(currentCadence.dueAt);
   });
 
+  it("preserves the stored zoned date on a time-only edit", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "once",
+        dueAt: "2026-12-24T18:00:00.000Z",
+      },
+      currentWindowPolicy,
+      timeZone: DENVER,
+      update: { ...emptyUpdate, timeOfDay: "16:30" },
+    });
+
+    expect(built?.cadence).toEqual({
+      kind: "once",
+      dueAt: "2026-12-24T23:30:00.000Z",
+    });
+  });
+
   it("returns null (no silent no-op) when nothing reschedulable was extracted", () => {
     const built = buildCadenceFromUpdateFields({
       currentCadence,
@@ -629,6 +762,7 @@ describe("runLifeOperationHandler definition update targeting", () => {
   beforeEach(() => {
     serviceState.extraDefinitions.length = 0;
     serviceState.updateCalls.length = 0;
+    serviceState.definitionMutations.clear();
   });
 
   afterEach(() => {

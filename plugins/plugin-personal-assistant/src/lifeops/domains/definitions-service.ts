@@ -22,7 +22,11 @@ import {
   LIFEOPS_DEFINITION_STATUSES,
 } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
-import { createLifeOpsTaskDefinition } from "../repository.js";
+import {
+  createLifeOpsTaskDefinition,
+  type LifeOpsDefinitionScope,
+  type PersistedLifeOpsTaskDefinition,
+} from "../repository.js";
 import {
   cloneRecord,
   computeSnoozedUntil,
@@ -108,15 +112,92 @@ export type DefinitionsDeps = {
   }): Promise<void>;
 };
 
+type PersistedLifeOpsDefinitionRecord = Omit<
+  LifeOpsDefinitionRecord,
+  "definition"
+> & {
+  definition: PersistedLifeOpsTaskDefinition;
+};
+
 export class DefinitionsDomain {
   constructor(
     private readonly ctx: LifeOpsContext,
     private readonly deps: DefinitionsDeps,
   ) {}
 
+  private definitionScope(
+    ownership = this.ctx.normalizeOwnership(undefined),
+  ): LifeOpsDefinitionScope {
+    return {
+      agentId: this.ctx.agentId(),
+      domain: ownership.domain,
+      subjectType: ownership.subjectType,
+      subjectId: ownership.subjectId,
+    };
+  }
+
+  private async getOwnedDefinitionRecord(
+    definitionId: string,
+    now = new Date(),
+  ): Promise<PersistedLifeOpsDefinitionRecord> {
+    const scope = this.definitionScope();
+    const definition = await this.ctx.repository.getDefinition(
+      scope.agentId,
+      definitionId,
+      scope,
+    );
+    if (!definition) {
+      fail(404, "life-ops definition not found");
+    }
+    const reminderPlan = definition.reminderPlanId
+      ? await this.ctx.repository.getReminderPlan(
+          scope.agentId,
+          definition.reminderPlanId,
+        )
+      : null;
+    const occurrences = await this.ctx.repository.listOccurrencesForDefinition(
+      scope.agentId,
+      definition.id,
+    );
+    return {
+      definition,
+      reminderPlan,
+      performance: computeDefinitionPerformance(definition, occurrences, now),
+    };
+  }
+
+  private normalizeDefinitionTimePolicy(args: {
+    requestedTimezone: string | undefined;
+    requestedWindowPolicy: unknown;
+    current?: Pick<LifeOpsTaskDefinition, "timezone" | "windowPolicy">;
+  }): Pick<LifeOpsTaskDefinition, "timezone" | "windowPolicy"> {
+    const timezone = normalizeValidTimeZone(
+      args.requestedTimezone ?? args.current?.timezone,
+      "timezone",
+      args.current?.timezone,
+    );
+    const windowPolicy =
+      args.requestedWindowPolicy === undefined && args.current
+        ? {
+            ...args.current.windowPolicy,
+            timezone,
+          }
+        : normalizeWindowPolicyInput(
+            args.requestedWindowPolicy,
+            "windowPolicy",
+            timezone,
+          );
+    if (windowPolicy.timezone !== timezone) {
+      fail(400, "windowPolicy.timezone must match the definition timezone");
+    }
+    return { timezone, windowPolicy };
+  }
+
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
+    const scope = this.definitionScope();
     const definitions = await this.ctx.repository.listDefinitions(
-      this.ctx.agentId(),
+      scope.agentId,
+      scope,
     );
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
@@ -150,7 +231,7 @@ export class DefinitionsDomain {
   }
 
   async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
-    return this.deps.getDefinitionRecord(definitionId);
+    return this.getOwnedDefinitionRecord(definitionId);
   }
 
   async createDefinition(
@@ -167,12 +248,10 @@ export class DefinitionsDomain {
     const description = normalizeOptionalString(request.description) ?? "";
     const originalIntent =
       normalizeOptionalString(request.originalIntent) ?? title;
-    const timezone = normalizeValidTimeZone(request.timezone, "timezone");
-    const windowPolicy = normalizeWindowPolicyInput(
-      request.windowPolicy,
-      "windowPolicy",
-      timezone,
-    );
+    const { timezone, windowPolicy } = this.normalizeDefinitionTimePolicy({
+      requestedTimezone: request.timezone,
+      requestedWindowPolicy: request.windowPolicy,
+    });
     const cadence = normalizeCadence(request.cadence, windowPolicy);
     const progressionRule = normalizeProgressionRule(request.progressionRule);
     const reminderPlanDraft = normalizeReminderPlanDraft(
@@ -183,53 +262,66 @@ export class DefinitionsDomain {
       request.goalId ?? null,
       ownership,
     );
-    let definition = createLifeOpsTaskDefinition({
-      agentId,
-      ...ownership,
-      kind,
-      title,
-      description,
-      originalIntent,
-      timezone,
-      status: "active",
-      priority: normalizePriority(request.priority),
-      cadence,
-      windowPolicy,
-      progressionRule,
-      websiteAccess:
-        normalizeWebsiteAccessPolicy(request.websiteAccess, "websiteAccess") ??
-        null,
-      reminderPlanId: null,
-      goalId,
-      source: normalizeOptionalString(request.source) ?? "manual",
-      // A laddered progression rule is the structural form of the
-      // behavioral-activation "shrink the ask to one small step" transform. The
-      // `activationStrategy` marker is asserted last so request metadata cannot
-      // override it — when the rule is laddered, the definition is truthfully
-      // marked one_small_step. This replaces the old dead `metadata.framing`
-      // claim that no runtime code ever read.
-      metadata: mergeMetadata(
-        normalizeOptionalRecord(request.metadata, "metadata") ?? {},
-        progressionRule.kind === "laddered"
-          ? { activationStrategy: "one_small_step" }
-          : undefined,
-      ),
-    });
-    await this.ctx.repository.createDefinition(definition);
+    let definition = await this.ctx.repository.createDefinition(
+      createLifeOpsTaskDefinition({
+        agentId,
+        ...ownership,
+        kind,
+        title,
+        description,
+        originalIntent,
+        timezone,
+        status: "active",
+        priority: normalizePriority(request.priority),
+        cadence,
+        windowPolicy,
+        progressionRule,
+        websiteAccess:
+          normalizeWebsiteAccessPolicy(
+            request.websiteAccess,
+            "websiteAccess",
+          ) ?? null,
+        reminderPlanId: null,
+        goalId,
+        source: normalizeOptionalString(request.source) ?? "manual",
+        // A laddered progression rule is the structural form of the
+        // behavioral-activation "shrink the ask to one small step" transform. The
+        // `activationStrategy` marker is asserted last so request metadata cannot
+        // override it — when the rule is laddered, the definition is truthfully
+        // marked one_small_step. This replaces the old dead `metadata.framing`
+        // claim that no runtime code ever read.
+        metadata: mergeMetadata(
+          normalizeOptionalRecord(request.metadata, "metadata") ?? {},
+          progressionRule.kind === "laddered"
+            ? { activationStrategy: "one_small_step" }
+            : undefined,
+        ),
+      }),
+    );
+    const scope = this.definitionScope(ownership);
     const reminderPlan = await this.deps.syncReminderPlan(
       definition,
       reminderPlanDraft,
     );
     if (definition.reminderPlanId !== null) {
-      await this.ctx.repository.updateDefinition(definition);
+      definition = await this.ctx.repository.updateDefinition(definition, {
+        scope,
+        expectedRevision: definition.revision,
+      });
     }
     await this.deps.syncGoalLink(definition);
     await this.deps.refreshDefinitionOccurrences(definition);
-    definition =
-      (await this.deps.syncNativeAppleReminderForDefinition({
+    const nativeDefinition =
+      await this.deps.syncNativeAppleReminderForDefinition({
         definition,
-      })) ?? definition;
-    await this.ctx.repository.updateDefinition(definition);
+      });
+    definition = await this.ctx.repository.updateDefinition(
+      nativeDefinition ?? definition,
+      {
+        scope,
+        expectedRevision: definition.revision,
+      },
+    );
     await this.ctx.recordAudit(
       "definition_created",
       "definition",
@@ -265,21 +357,24 @@ export class DefinitionsDomain {
     definitionId: string,
     request: UpdateLifeOpsDefinitionRequest,
   ): Promise<LifeOpsDefinitionRecord> {
-    const current = await this.deps.getDefinitionRecord(definitionId);
+    const current = await this.getOwnedDefinitionRecord(definitionId);
     const ownership = this.ctx.normalizeOwnership(
       request.ownership,
       current.definition,
     );
-    const nextTimezone = normalizeValidTimeZone(
-      request.timezone ?? current.definition.timezone,
-      "timezone",
-      current.definition.timezone,
-    );
-    const nextWindowPolicy = normalizeWindowPolicyInput(
-      request.windowPolicy ?? current.definition.windowPolicy,
-      "windowPolicy",
-      nextTimezone,
-    );
+    if (
+      ownership.domain !== current.definition.domain ||
+      ownership.subjectType !== current.definition.subjectType ||
+      ownership.subjectId !== current.definition.subjectId
+    ) {
+      fail(400, "definition ownership is immutable");
+    }
+    const { timezone: nextTimezone, windowPolicy: nextWindowPolicy } =
+      this.normalizeDefinitionTimePolicy({
+        requestedTimezone: request.timezone,
+        requestedWindowPolicy: request.windowPolicy,
+        current: current.definition,
+      });
     const nextCadence = normalizeCadence(
       request.cadence ?? current.definition.cadence,
       nextWindowPolicy,
@@ -292,7 +387,7 @@ export class DefinitionsDomain {
             "status",
             LIFEOPS_DEFINITION_STATUSES,
           );
-    let nextDefinition: LifeOpsTaskDefinition = {
+    let nextDefinition: PersistedLifeOpsTaskDefinition = {
       ...current.definition,
       ...ownership,
       title:
@@ -344,22 +439,41 @@ export class DefinitionsDomain {
       request.reminderPlan,
       "update",
     );
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    const scope = this.definitionScope(current.definition);
+    nextDefinition = await this.ctx.repository.updateDefinition(
+      nextDefinition,
+      {
+        scope,
+        expectedRevision: current.definition.revision,
+      },
+    );
     const reminderPlan = await this.deps.syncReminderPlan(
       nextDefinition,
       reminderPlanDraft,
     );
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    nextDefinition = await this.ctx.repository.updateDefinition(
+      nextDefinition,
+      {
+        scope,
+        expectedRevision: nextDefinition.revision,
+      },
+    );
     await this.deps.syncGoalLink(nextDefinition);
     if (nextDefinition.status === "active") {
       await this.deps.refreshDefinitionOccurrences(nextDefinition);
     }
-    nextDefinition =
-      (await this.deps.syncNativeAppleReminderForDefinition({
+    const nativeDefinition =
+      await this.deps.syncNativeAppleReminderForDefinition({
         definition: nextDefinition,
         previousDefinition: current.definition,
-      })) ?? nextDefinition;
-    await this.ctx.repository.updateDefinition(nextDefinition);
+      });
+    nextDefinition = await this.ctx.repository.updateDefinition(
+      nativeDefinition ?? nextDefinition,
+      {
+        scope,
+        expectedRevision: nextDefinition.revision,
+      },
+    );
     await this.ctx.recordAudit(
       "definition_updated",
       "definition",
@@ -392,9 +506,11 @@ export class DefinitionsDomain {
   }
 
   async deleteDefinition(definitionId: string): Promise<void> {
+    const scope = this.definitionScope();
     const definition = await this.ctx.repository.getDefinition(
-      this.ctx.agentId(),
+      scope.agentId,
       definitionId,
+      scope,
     );
     if (!definition) {
       fail(404, "life-ops definition not found");
@@ -404,8 +520,9 @@ export class DefinitionsDomain {
       previousDefinition: definition,
     });
     await this.ctx.repository.deleteDefinition(
-      this.ctx.agentId(),
+      scope,
       definitionId,
+      definition.revision,
     );
     await this.ctx.recordAudit(
       "definition_deleted",
