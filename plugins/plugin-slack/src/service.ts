@@ -335,6 +335,11 @@ import {
 } from "./accounts";
 import { markdownToSlackMrkdwn } from "./formatting";
 import {
+  bridgeSlackReaction,
+  type SlackReactionBridgeHost,
+  type SlackReactionEvent,
+} from "./reaction-bridge";
+import {
   getSlackChannelType,
   getSlackUserDisplayName,
   type ISlackService,
@@ -1332,33 +1337,105 @@ export class SlackService extends Service implements ISlackService {
     );
   }
 
+  /**
+   * Adapter handing `reaction-bridge.ts` the service internals it needs.
+   * Every ID helper here is the same one the message path uses, so reactions
+   * resolve onto identical room/entity UUIDs rather than a parallel set.
+   */
+  private reactionBridgeHost(): SlackReactionBridgeHost {
+    return {
+      runtime: this.runtime,
+      getRoomId: (channelId, threadTs, accountId) =>
+        this.getRoomId(channelId, threadTs, accountId),
+      ensureRoomExists: (channelId, threadTs, accountId) =>
+        this.ensureRoomExists(channelId, threadTs, accountId),
+      getEntityId: (userId, accountId) => this.getEntityId(userId, accountId),
+      getMessageMemoryId: (messageTs, accountId) =>
+        createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack", messageTs, accountId),
+        ),
+      getReactionMemoryId: (key, accountId) =>
+        createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey("slack-reaction", key, accountId),
+        ),
+      parseSlackTimestamp: (ts) => this.parseSlackTimestamp(ts),
+      isChannelAllowed: (channelId, accountId) =>
+        this.isChannelAllowed(channelId, accountId),
+      teamId: (accountId) => this.getTeamIdForAccount(accountId) ?? undefined,
+      resolveUserNames: async (userId, accountId) => {
+        const user = await this.getUser(userId, accountId).catch(() => null);
+        return {
+          name: user ? getSlackUserDisplayName(user) : userId,
+          userName: user?.name ?? userId,
+        };
+      },
+      ensureEntityExists: async (entityId, slackUserId, accountId) => {
+        const existing = await this.runtime.getEntityById(entityId);
+        if (existing) return;
+        const user = await this.getUser(slackUserId, accountId).catch(
+          () => null,
+        );
+        const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
+        await this.runtime.createEntity({
+          id: entityId,
+          names: [displayName],
+          metadata: {
+            source: "slack",
+            accountId,
+            slack: {
+              accountId,
+              id: slackUserId,
+              name: displayName,
+              userName: user?.name || slackUserId,
+            },
+          },
+          agentId: this.runtime.agentId,
+        });
+      },
+      sendReply: async (channelId, text, threadTs, accountId) => {
+        // `SlackMessageSendOptions` has all-required (if optional-valued)
+        // fields, so spell every key out the way the message reply path does.
+        await this.sendMessage(
+          channelId,
+          text,
+          {
+            threadTs,
+            replyBroadcast: undefined,
+            unfurlLinks: undefined,
+            unfurlMedia: undefined,
+            mrkdwn: undefined,
+            attachments: undefined,
+            blocks: undefined,
+          },
+          accountId,
+        );
+      },
+    };
+  }
+
   private async handleReactionAdded(
-    _event: {
-      user: string;
-      reaction: string;
-      item: { type: string; channel: string; ts: string };
-      item_user?: string;
-    },
+    event: SlackReactionEvent,
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    await this.runtime.emitEvent(
-      SlackEventTypes.REACTION_ADDED as string,
-      this.buildEventPayload(accountId),
+    await bridgeSlackReaction(
+      this.reactionBridgeHost(),
+      event,
+      "added",
+      accountId,
     );
   }
 
   private async handleReactionRemoved(
-    _event: {
-      user: string;
-      reaction: string;
-      item: { type: string; channel: string; ts: string };
-      item_user?: string;
-    },
+    event: SlackReactionEvent,
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    await this.runtime.emitEvent(
-      SlackEventTypes.REACTION_REMOVED as string,
-      this.buildEventPayload(accountId),
+    await bridgeSlackReaction(
+      this.reactionBridgeHost(),
+      event,
+      "removed",
+      accountId,
     );
   }
 

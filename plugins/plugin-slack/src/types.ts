@@ -50,7 +50,15 @@ export interface SlackMessageSentPayload extends MessagePayload {
   messageTs: string;
 }
 
-export interface SlackReactionPayload extends EventPayload {
+/**
+ * Payload for `SLACK_REACTION_ADDED` / `SLACK_REACTION_REMOVED`.
+ *
+ * Extends `MessagePayload` (not bare `EventPayload`) so the reaction `Memory`
+ * rides along: this is the same shape core's `EventType.REACTION_RECEIVED`
+ * expects, which is what lets `reaction-bridge.ts` emit one payload onto both
+ * the plugin-local and the core event names.
+ */
+export interface SlackReactionPayload extends MessagePayload {
   reaction: string;
   userId: string;
   channelId: string;
