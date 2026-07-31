@@ -5,7 +5,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   and,
   asc,
@@ -119,6 +119,10 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   workspaceFiles: {},
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
+/**
+ * A reconstructed chain has to fit the same v1 restorable ceiling as any other
+ * backup wire payload — it is what gets handed to restore (#17172).
+ */
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
 /**
