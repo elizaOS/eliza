@@ -900,6 +900,120 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
+	it("keeps a failed action callback singular when the evaluator violates protocol", async () => {
+		const rawFailure = 'No view matches "home".';
+		const voicedFailure =
+			'I couldn\'t find a view called "home". Try opening Home instead.';
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: rawFailure }, "VIEWS");
+				return {
+					success: false,
+					text: rawFailure,
+					userFacingText: rawFailure,
+				};
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_failed_view",
+			priority: 10,
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "home" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["simple"],
+						replyText: "Went back.",
+						thought: "The model guessed navigation completed.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "home" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({ response: voicedFailure }),
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: '{"action":"show","view":"notes"}',
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("go back"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("go back"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+		});
+
+		expect(delivered).toEqual([voicedFailure]);
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
 	it("suppresses a speculative Stage 1 reply when a deterministic action owns the callback", async () => {
 		let viewCalls = 0;
 		const earlyReply = vi.fn(async () => undefined);
