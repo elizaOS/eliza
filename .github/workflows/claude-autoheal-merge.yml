@@ -1,0 +1,46 @@
+# Merges ci-autoheal pull requests once the Develop PR Gate — the same
+# aggregate every human PR must clear — reports success, and never over a human
+# CHANGES_REQUESTED review. This is a polling watcher because auto-merge is
+# disabled repo-wide; the readiness rules live in the tested
+# evaluateMergeReadiness() (packages/scripts/ci-autoheal-merge.mjs), not here.
+name: Claude Autoheal Merge
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Evaluate readiness without merging
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: claude-autoheal-merge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  merge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+    steps:
+      - name: Check out merge watcher
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: develop
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Merge green autoheal pull requests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MERGE_DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
+        run: node packages/scripts/ci-autoheal-merge.mjs
