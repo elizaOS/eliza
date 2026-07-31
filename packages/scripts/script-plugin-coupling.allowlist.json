@@ -235,7 +235,7 @@
       "plugins/plugin-phone",
       "plugins/plugin-todos"
     ],
-    "reason": "source plugins whose actions the LifeOps planner bench collects, tags, and scores"
+    "reason": "source plugins whose actions the LifeOps planner bench collects, tags, and scores; the two @elizaos/* package identities name the synthetic curated Plugin objects (a calendar-sources-only slice, and the platform-gated owner-screentime umbrella) that keep the manifest host-independent, so the exported action's owning package stays truthful"
   },
   {
     "file": "scripts/lifeops/collect-11632-live-validation-status.mjs",
