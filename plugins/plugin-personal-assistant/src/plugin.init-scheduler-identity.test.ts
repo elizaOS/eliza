@@ -31,6 +31,7 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   createDefaultCircadianInsightContract: vi.fn(() => ({})),
 }));
 
+import { getSignalSourceRegistry } from "./lifeops/registries/signal-source-registry.js";
 import { personalAssistantPlugin } from "./plugin.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ab" as UUID;
@@ -114,6 +115,18 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     expect(worker).toBeDefined();
     // Disabled worker keeps a valid identity but never executes.
     await expect(worker?.shouldRun?.(runtime)).resolves.toBe(false);
+  });
+
+  it("registers the activity-signal source vocabulary during full plugin initialization", async () => {
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+    const { runtime } = createRecordingRuntime();
+
+    await personalAssistantPlugin.init?.({}, runtime);
+
+    const registry = getSignalSourceRegistry(runtime);
+    expect(registry).not.toBeNull();
+    expect(registry?.has("app_lifecycle")).toBe(true);
+    expect(registry?.has("page_visibility")).toBe(true);
   });
 
   it("registers a LifeOps worker whose shouldRun is gated by app state when enabled", async () => {
