@@ -89,6 +89,12 @@ async function mergeInto(srcDir, destDir) {
     const from = path.join(srcDir, entry.name);
     const to = path.join(destDir, entry.name);
     if (entry.isDirectory()) {
+      // A same-name FILE at the destination blocks the recursive mkdir —
+      // clear it first, mirroring the non-directory branch.
+      const destStat = await fs.stat(to).catch(() => null);
+      if (destStat && !destStat.isDirectory()) {
+        await removePathRecursive(to);
+      }
       await mergeInto(from, to);
     } else {
       await removePathRecursive(to);
