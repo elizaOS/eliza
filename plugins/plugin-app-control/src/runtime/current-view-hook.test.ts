@@ -3,12 +3,8 @@
  */
 
 import type { PipelineHookContextForPhase } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { applyCurrentViewComposeHook } from "./current-view-hook.js";
-import {
-	__resetViewSwitchSignal,
-	markViewSwitch,
-} from "./view-switch-signal.js";
 
 type Ctx = PipelineHookContextForPhase<"compose_state_providers">;
 
@@ -41,24 +37,42 @@ function makeCtx(
 	} as unknown as Ctx;
 }
 
-describe("applyCurrentViewComposeHook (#8788)", () => {
-	afterEach(() => __resetViewSwitchSignal());
+function augmented(userRequest: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+		"<contextual_documents>",
+		'<source title="source-1">Open the inbox to review messages.</source>',
+		"</contextual_documents>",
+		"<user_request>",
+		userRequest,
+		"</user_request>",
+	].join("\n");
+}
 
+describe("applyCurrentViewComposeHook (#8788)", () => {
 	it("injects current_view on an imminent explicit command turn", () => {
 		const ctx = makeCtx({ text: "open my wallet" });
 		applyCurrentViewComposeHook(ctx);
 		expect(ctx.providers.current).toContain("current_view");
 	});
 
-	it("injects current_view when a switch was just recorded for the room", () => {
-		const roomId = "33333333-3333-3333-3333-333333333333";
-		markViewSwitch(roomId);
-		const ctx = makeCtx({ text: "thanks!", roomId });
-		applyCurrentViewComposeHook(ctx);
-		expect(ctx.providers.current).toContain("current_view");
+	it("routes the user request rather than navigation text in retrieved context", () => {
+		const explicit = makeCtx({ text: augmented("Open Notes") });
+		applyCurrentViewComposeHook(explicit);
+		expect(explicit.providers.current).toContain("current_view");
+
+		const ordinary = makeCtx({ text: augmented("How are you?") });
+		applyCurrentViewComposeHook(ordinary);
+		expect(ordinary.providers.current).not.toContain("current_view");
 	});
 
-	it("does NOT inject on a non-switch turn (no command, no recent switch)", () => {
+	it("does not replay prior-switch context on the next turn", () => {
+		const ctx = makeCtx({ text: "thanks!" });
+		applyCurrentViewComposeHook(ctx);
+		expect(ctx.providers.current).not.toContain("current_view");
+	});
+
+	it("does NOT inject on a non-switch turn", () => {
 		const ctx = makeCtx({ text: "what's the weather like today" });
 		applyCurrentViewComposeHook(ctx);
 		expect(ctx.providers.current).not.toContain("current_view");
