@@ -30,7 +30,14 @@ export type {
  * Supports basic JSON Schema properties for parameter definition.
  */
 export interface ActionParameterSchema {
-	type: string;
+	/**
+	 * JSON Schema instance type. Optional because a schema may instead be a
+	 * pure union (`oneOf`/`anyOf`) — a sibling `type` alongside union branches
+	 * of differing types contradicts the branches, and strict provider
+	 * grammars reject the contradiction. A schema should carry `type` or a
+	 * union keyword, never neither.
+	 */
+	type?: string;
 	description?: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
