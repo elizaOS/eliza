@@ -13,7 +13,7 @@ import {
   verifyReferencedArtifacts,
 } from "../../../scripts/check-pr-evidence.mjs";
 import {
-  assertLeaderboardSnapshot,
+  assertPublishableLeaderboardSnapshot,
   createLeaderboardSnapshot,
   dedupeByNodeId,
   type EvidenceCategory,
@@ -1239,32 +1239,6 @@ function parseIsoDate(value: Date, path: string): Date {
   return new Date(Math.floor(value.getTime() / 1000) * 1000);
 }
 
-export function buildUtcDaySlices(
-  fromValue: Date,
-  toValue: Date,
-): Array<{ from: Date; to: Date }> {
-  const from = parseIsoDate(fromValue, "from");
-  const to = parseIsoDate(toValue, "to");
-  if (from >= to) {
-    throw new Error("Search window start must precede its end");
-  }
-  const slices: Array<{ from: Date; to: Date }> = [];
-  let cursor = from;
-  while (cursor < to) {
-    const nextMidnight = new Date(
-      Date.UTC(
-        cursor.getUTCFullYear(),
-        cursor.getUTCMonth(),
-        cursor.getUTCDate() + 1,
-      ),
-    );
-    const sliceEnd = nextMidnight < to ? nextMidnight : to;
-    slices.push({ from: cursor, to: sliceEnd });
-    cursor = sliceEnd;
-  }
-  return slices;
-}
-
 function searchRange(from: Date, to: Date): string {
   const inclusiveEnd = new Date(to.getTime() - 1000);
   return `${from.toISOString()}..${inclusiveEnd.toISOString()}`;
@@ -1342,7 +1316,7 @@ async function preflightRepository(
   };
 }
 
-async function collectSearchReferences(
+export async function collectSearchReferences(
   client: GraphqlExecutor,
   from: Date,
   to: Date,
@@ -2655,7 +2629,7 @@ export async function writeLeaderboardAtomically(
   snapshot: LeaderboardSnapshot,
   outputPath = DEFAULT_OUTPUT_PATH,
 ): Promise<void> {
-  assertLeaderboardSnapshot(snapshot);
+  assertPublishableLeaderboardSnapshot(snapshot);
   await mkdir(dirname(outputPath), { recursive: true });
   const temporaryPath = `${outputPath}.${process.pid}.${Date.now()}.tmp`;
   try {

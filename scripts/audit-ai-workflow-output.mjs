@@ -8,8 +8,9 @@
  *
  * GitHub REST does not expose the last editor of an issue body or recover a
  * comment deleted before the audit reads it. Repository-scoped callers
- * therefore permit creation and comments, not edits or deletion; concurrent
- * writes by the same GitHub bot identity are conservatively audited too.
+ * therefore permit creation and comments, not edits or deletion. The audit
+ * considers only writes carrying both its machine marker and exact lane;
+ * workflow-source tests require those identifiers at the write boundary.
  */
 
 import { createHash } from "node:crypto";
@@ -27,6 +28,8 @@ const REPOSITORY_RE =
   /^[a-z0-9](?:[a-z0-9_.-]{0,99})\/[a-z0-9](?:[a-z0-9_.-]{0,99})$/i;
 const LOGIN_RE = /^[a-z0-9](?:[a-z0-9-]{0,38})?(?:\[bot\])?$/i;
 const LANE_RE = /^[a-z0-9][a-z0-9-]{1,48}$/i;
+const ATTRIBUTION_MARKER_RE =
+  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/im;
 
 function bodyHash(body) {
   return createHash("sha256")
@@ -418,7 +421,11 @@ export function findWorkflowMutations(
   snapshot,
   currentRecords,
   expectedAuthors,
+  expectedLane,
 ) {
+  if (!LANE_RE.test(expectedLane)) {
+    throw new TypeError("Expected lane has an invalid format");
+  }
   const authors = new Set(
     expectedAuthors.map((author) => {
       if (!LOGIN_RE.test(author)) {
@@ -438,6 +445,12 @@ export function findWorkflowMutations(
   for (const record of currentRecords.values()) {
     const before = previous.get(record.key);
     if (before?.bodyHash === record.bodyHash) continue;
+    if (
+      !ATTRIBUTION_MARKER_RE.test(record.body) ||
+      exactLaneCount(record.body, expectedLane) !== 1
+    ) {
+      continue;
+    }
     if (record.type === "issue-body") {
       if (
         !before &&
@@ -555,6 +568,7 @@ export async function verifyAuditSnapshot({
       snapshot,
       currentRecords,
       expectedAuthors,
+      expected.lane,
     );
     for (const mutation of mutations) {
       observedMutations.set(mutation.key, mutation);
