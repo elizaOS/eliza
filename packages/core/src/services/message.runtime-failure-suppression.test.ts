@@ -201,6 +201,40 @@ describe("v5 runtime failure before a respond decision", () => {
 		expect(result.didRespond).toBe(true);
 		expect(visibleTexts).toHaveLength(1);
 	});
+
+	it("propagates caller cancellation without generating a failure reply", async () => {
+		const runtime = makeFailingRuntime(makeRoom(ChannelType.DM));
+		const controller = new AbortController();
+		const abortReason = new DOMException("client disconnected", "AbortError");
+		const modelCallTypes: string[] = [];
+		runtime.useModel = vi.fn(async (modelType: unknown) => {
+			modelCallTypes.push(String(modelType));
+			if (String(modelType) !== "RESPONSE_HANDLER") return [];
+			controller.abort(abortReason);
+			throw abortReason;
+		}) as IAgentRuntime["useModel"];
+		const service = new DefaultMessageService();
+		const deliveries: Content[] = [];
+
+		await expect(
+			service.handleMessage(
+				runtime,
+				makeMessage({ channelType: ChannelType.DM }),
+				async (content) => {
+					deliveries.push(content);
+					return [];
+				},
+				{ abortSignal: controller.signal },
+			),
+		).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+			reason: "client disconnected",
+		});
+		expect(
+			modelCallTypes.filter((modelType) => modelType !== "TEXT_EMBEDDING"),
+		).toEqual(["RESPONSE_HANDLER"]);
+		expect(deliveries).toEqual([]);
+	});
 });
 
 describe("planner failure after a promoted stage-1 answer", () => {

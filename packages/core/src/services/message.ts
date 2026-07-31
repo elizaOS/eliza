@@ -11446,6 +11446,15 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				const callerSignal = getStreamingContext()?.abortSignal;
+				if (callerSignal?.aborted) {
+					const reason = callerSignal.reason;
+					throw reason instanceof TurnAbortedError
+						? reason
+						: new TurnAbortedError(
+								reason instanceof Error ? reason.message : String(reason),
+							);
+				}
 				if (
 					error instanceof TurnAbortedError ||
 					(isRecord(error) && error.code === "TURN_ABORTED")
