@@ -11,9 +11,12 @@ import {
   NotificationService,
   ServiceType,
 } from "@elizaos/core";
-import { ScheduledTaskRunnerService } from "@elizaos/plugin-scheduling";
+import {
+  getScheduledTaskChannelDispatcher,
+  ScheduledTaskRunnerService,
+} from "@elizaos/plugin-scheduling";
 import type { WalletBalancesResponse } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildWalletBalanceDeltaTaskInput,
   DEFAULT_MIN_DELTA_USD,
@@ -385,6 +388,26 @@ describe("materiality math (pure)", () => {
 });
 
 describe("balance-delta watcher — real runner + real notification inbox", () => {
+  it("stands down without partial registration when the scheduling runtime is inactive", async () => {
+    const reportError = vi.fn();
+    const source = vi.fn(async () => solanaBalances(100));
+    const runtime = {
+      agentId: AGENT_ID,
+      hasService: () => false,
+      reportError,
+    } as unknown as AgentRuntime;
+
+    await expect(
+      registerWalletBalanceDeltaProducer(runtime, { source }),
+    ).resolves.toBeUndefined();
+
+    expect(
+      getScheduledTaskChannelDispatcher(runtime, "wallet_balance_delta"),
+    ).toBeNull();
+    expect(source).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
   it("records a baseline, notifies on a material move, coalesces repeats, and keeps failures honest", async () => {
     const h = await makeHarness("2026-07-23T10:00:00.000Z");
 

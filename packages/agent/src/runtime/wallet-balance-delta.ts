@@ -60,6 +60,7 @@ import {
   registerScheduledTaskChannelDispatcher,
   type ScheduledTaskDispatchRecord,
   type ScheduledTaskInput,
+  ScheduledTaskRunnerService,
   waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import type { WalletBalancesResponse } from "@elizaos/shared";
@@ -864,6 +865,16 @@ export async function registerWalletBalanceDeltaProducer(
   runtime: AgentRuntime,
   options: { source?: WalletBalanceSampleSource } = {},
 ): Promise<void> {
+  if (!runtime.hasService(ScheduledTaskRunnerService.serviceType)) {
+    logger.debug(
+      {
+        src: "wallet-balance-delta",
+        agentId: runtime.agentId,
+      },
+      "[WalletBalanceDelta] watcher skipped because the scheduling runtime is inactive",
+    );
+    return;
+  }
   const source = options.source ?? createAgentWalletBalanceSource();
   registerScheduledTaskChannelDispatcher(runtime, {
     channelKey: WALLET_BALANCE_DELTA_CHANNEL,
