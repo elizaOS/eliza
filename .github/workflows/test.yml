@@ -85,7 +85,12 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs
 
+      - name: Install workflow-invariants parser dependency
+        run: npm install --prefix "$RUNNER_TEMP/workflow-invariants-deps" --no-save --no-package-lock --ignore-scripts yaml@2.9.0
+
       - name: Validate merge-critical workflow invariants
+        env:
+          NODE_PATH: ${{ runner.temp }}/workflow-invariants-deps/node_modules
         run: node packages/scripts/ci-workflow-invariants.mjs
 
       - name: Validate zero-key command ownership contract

@@ -7,9 +7,16 @@
  */
 
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { parseDocument } from "yaml";
+
+// createRequire, not a bare ESM import: the `changes` job runs this script
+// without a workspace install, providing the parser via NODE_PATH — which
+// only CommonJS resolution consults. With a workspace install the normal
+// upward node_modules walk finds the same package.
+const require = createRequire(import.meta.url);
+const { parseDocument } = require("yaml");
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const WORKFLOW_PATHS = Object.freeze({
