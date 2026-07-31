@@ -25,9 +25,7 @@ const BASE_URL =
   process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
 
 if (RUN_LIVE && !CEREBRAS_KEY) {
-  throw new Error(
-    "RUN_LIVE_ORCHESTRATOR_GEMMA=1 requires CEREBRAS_API_KEY",
-  );
+  throw new Error("RUN_LIVE_ORCHESTRATOR_GEMMA=1 requires CEREBRAS_API_KEY");
 }
 
 /** Faithful verifier: forwards the orchestrator's judge prompt to the live
