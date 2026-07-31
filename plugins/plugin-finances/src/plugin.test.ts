@@ -13,6 +13,7 @@ describe("financesPlugin view registration", () => {
     const view = financesPlugin.views?.[0];
     expect(view?.id).toBe("finances");
     expect(view?.path).toBe("/finances");
+    expect(view?.icon).toBe("CircleDollarSign");
     expect(view?.bundlePath).toBe("dist/views/bundle.js");
     expect(view?.componentExport).toBe("FinancesView");
   });
