@@ -2,17 +2,27 @@
 // small typed fetch functions, no SDK dependency (fetch() only, matching
 // the existing pattern rather than adding @moralisweb3/* to package.json).
 //
-// Live-spot-checked (PR 3.5) against Vitalik Buterin's address
+// Live-spot-checked against Vitalik Buterin's address
 // (0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045, cross-checkable on
-// Etherscan) - native balance, NFT holdings (normalized_metadata), and
-// transaction list/receipt_status all matched the docs-derived shapes
-// exactly. One real gap found and fixed: /wallets/{address}/tokens is
-// cursor-paginated and errors with "has too many ERC20 token balances"
-// once a wallet crosses an internal threshold if no limit/cursor is
-// passed - getEthereumTokenHoldings now pages through it. Pagination
-// cursor-threading on the transaction-history endpoint (getEthereumTransactions)
-// is still unverified live - the manual test hit a copy-paste issue with
-// the cursor string, not a confirmed bug.
+// Etherscan) - native balance, NFT holdings (normalized_metadata), token
+// balances pagination, order=ASC oldest-transaction lookup, and
+// transaction-history pagination cursor-threading all confirmed working.
+//
+// PR 4: transaction history (getEthereumTransactions, and therefore
+// getEthereumOldestTransaction/getOldestTransaction/getTransactions) moved
+// from GET /{address} to GET /wallets/{address}/history - live-confirmed to
+// return pre-decoded native_transfers[] and erc20_transfers[] per
+// transaction (from_address/to_address/value_formatted/direction, plus the
+// token contract address on erc20_transfers), including entries with
+// internal_transaction: true - i.e. native ETH moved via contract calls is
+// already captured there, no separate internal_transactions decode needed.
+// Confirmed on three real transaction shapes: a plain native receive, an
+// ERC-20 airdrop, and a multi-leg Uniswap V2 Router swap. The raw
+// internal_transactions field itself stayed empty even with
+// include=internal_transactions passed - unused by this connector.
+// Single-transaction-by-hash lookup (getEthereumTransaction, /transaction/
+// {hash}) has NOT been live-verified to return these same rich fields -
+// treated as a separate, still-partial path.
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
@@ -215,6 +225,36 @@ export async function getEthereumNftHoldings(
     }));
 }
 
+export type MoralisNativeTransfer = {
+  from_address?: string;
+  to_address?: string;
+  value?: string;
+  value_formatted?: string;
+  direction?: string;
+  internal_transaction?: boolean;
+  token_symbol?: string;
+};
+
+export type MoralisErc20Transfer = {
+  token_name?: string;
+  token_symbol?: string;
+  token_decimals?: string | number;
+  from_address?: string;
+  to_address?: string;
+  address?: string;
+  value?: string;
+  value_formatted?: string;
+  direction?: string;
+};
+
+// Shape unconfirmed live (docs describe it only as "approval/revocation
+// data") - read defensively in parseEthereumTransaction, never assumed.
+export type MoralisContractInteraction = {
+  address?: string;
+  contract_address?: string;
+  spender?: string;
+};
+
 export type MoralisWalletTransaction = {
   hash?: string;
   block_number?: string;
@@ -223,6 +263,11 @@ export type MoralisWalletTransaction = {
   to_address?: string;
   value?: string;
   receipt_status?: string;
+  category?: string;
+  summary?: string;
+  native_transfers?: MoralisNativeTransfer[];
+  erc20_transfers?: MoralisErc20Transfer[];
+  contract_interactions?: MoralisContractInteraction[] | null;
 };
 
 export type MoralisWalletTransactionsResponse = {
@@ -238,6 +283,9 @@ export type EthereumTransaction = {
   toAddress: string | null;
   valueWei: string | null;
   status: "success" | "failed" | "unknown";
+  nativeTransfers: MoralisNativeTransfer[];
+  tokenTransfers: MoralisErc20Transfer[];
+  contractInteractions: MoralisContractInteraction[];
 };
 
 function toUnixSeconds(isoTimestamp: string | undefined): number | null {
@@ -273,6 +321,15 @@ function toEthereumTransaction(
         : transaction.receipt_status === "0"
           ? "failed"
           : "unknown",
+    nativeTransfers: Array.isArray(transaction.native_transfers)
+      ? transaction.native_transfers
+      : [],
+    tokenTransfers: Array.isArray(transaction.erc20_transfers)
+      ? transaction.erc20_transfers
+      : [],
+    contractInteractions: Array.isArray(transaction.contract_interactions)
+      ? transaction.contract_interactions
+      : [],
   };
 }
 
@@ -302,7 +359,7 @@ export async function getEthereumTransactions(
   }
 
   const data = await callMoralisRest<MoralisWalletTransactionsResponse>(
-    `/${walletAddress}`,
+    `/wallets/${walletAddress}/history`,
     searchParams,
   );
 

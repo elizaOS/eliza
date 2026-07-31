@@ -4,13 +4,13 @@ import { collectProgramIdsFromTransaction } from "./instructions";
 export type ParsedNativeTransfer = {
   from: string | null;
   to: string | null;
-  amountSol: number | null;
+  amountNative: number | null;
 };
 
 export type ParsedTokenTransfer = {
   from: string | null;
   to: string | null;
-  mint: string | null;
+  contractAddress: string | null;
   amount: number | null;
 };
 
@@ -29,7 +29,7 @@ export function parseSolanaTransaction(
     ? transaction.nativeTransfers.map((transfer) => ({
         from: transfer.fromUserAccount ?? null,
         to: transfer.toUserAccount ?? null,
-        amountSol:
+        amountNative:
           typeof transfer.amount === "number"
             ? transfer.amount / 1_000_000_000
             : null,
@@ -40,7 +40,7 @@ export function parseSolanaTransaction(
     ? transaction.tokenTransfers.map((transfer) => ({
         from: transfer.fromUserAccount ?? null,
         to: transfer.toUserAccount ?? null,
-        mint: transfer.mint ?? null,
+        contractAddress: transfer.mint ?? null,
         amount:
           typeof transfer.tokenAmount === "number"
             ? transfer.tokenAmount

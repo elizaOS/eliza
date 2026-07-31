@@ -87,7 +87,7 @@ export function analyzeWalletRelationships(
       // Already denominated in the native asset by the parser, which also
       // yields null when the source transfer carried no usable amount.
       // Fall back to zero so totals stay numeric rather than becoming NaN.
-      const amountSol = transfer.amountSol ?? 0;
+      const amountNative = transfer.amountNative ?? 0;
 
       if (
         fromAddress === normalizedInvestigatedAddress &&
@@ -100,7 +100,7 @@ export function analyzeWalletRelationships(
         );
 
         relationship.outgoingTransferCount += 1;
-        relationship.totalNativeAmountSent += amountSol;
+        relationship.totalNativeAmountSent += amountNative;
         relationship.hasNativeTransfer = true;
 
         recordTransactionEvidence(
@@ -120,7 +120,7 @@ export function analyzeWalletRelationships(
         );
 
         relationship.incomingTransferCount += 1;
-        relationship.totalNativeAmountReceived += amountSol;
+        relationship.totalNativeAmountReceived += amountNative;
         relationship.hasNativeTransfer = true;
 
         recordTransactionEvidence(
