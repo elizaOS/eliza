@@ -7,7 +7,7 @@
  *   CI_SSH_PUBLIC_KEY_ID       - Numeric Hetzner SSH key id (one-time uploaded)
  *   GITHUB_RUN_ID              - run id, embedded in labels
  *   HETZNER_E2E_LOCATION       - default fsn1
- *   HETZNER_E2E_SERVER_TYPE    - default cx22 (cpx11 was deprecated)
+ *   HETZNER_E2E_SERVER_TYPE    - default cpx22
  *   HETZNER_E2E_IMAGE          - default ubuntu-24.04
  *
  * On success the CLI prints `{id, ip}` JSON and writes the canonical
