@@ -49,6 +49,7 @@
     "@feed/db": "workspace:*",
     "@feed/shared": "workspace:*",
     "ai": "6.0.207",
+    "ethers": "^6.16.0",
     "js-tiktoken": "^1.0.21",
     "posthog-node": "^5.17.0"
   },

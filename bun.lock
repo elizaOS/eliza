@@ -2073,6 +2073,7 @@
         "@feed/shared": "workspace:*",
         "@vercel/blob": "2.3.2",
         "ai": "6.0.207",
+        "ethers": "^6.16.0",
         "js-tiktoken": "^1.0.21",
         "posthog-node": "^5.17.0",
       },
@@ -2203,6 +2204,7 @@
         "@feed/shared": "workspace:*",
         "hono": "4.12.27",
         "xml2js": "^0.6.2",
+        "zod": "^4.3.6",
       },
       "devDependencies": {
         "@types/node": "^24.10.0",
