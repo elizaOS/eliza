@@ -2,6 +2,7 @@
 import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -22,6 +23,21 @@ import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
 import { organizations } from "../schemas/organizations";
 
+/** Serializes cache publication and invalidation for one app across processes. */
+export async function withAppCacheFence<T>(
+  appId: string,
+  operation: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  return await dbWrite.transaction(async (tx) => {
+    // The lock spans the authoritative read and cache write/delete. Every
+    // process therefore observes one order for a given app, including the
+    // stale-read/delete/refill crash window that a process-local epoch cannot
+    // close.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('app-cache'), hashtext(${appId}))`);
+    return await operation(tx);
+  });
+}
+
 /**
  * Evict all cache keys derived from the apps table for this row.
  * Called after every persisting mutation (except hot-path counters where we
@@ -32,13 +48,15 @@ async function invalidateAppCacheEntries(
   apiKeyId?: string | null,
   slug?: string | null,
 ): Promise<void> {
-  const keys: Promise<void>[] = [
-    cache.del(CacheKeys.app.byId(appId)),
-    cache.del(CacheKeys.app.costMarkup(appId)),
-  ];
-  if (apiKeyId) keys.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
-  if (slug) keys.push(cache.del(CacheKeys.app.bySlug(slug)));
-  await Promise.all(keys);
+  await withAppCacheFence(appId, async () => {
+    const keys: Promise<void>[] = [
+      cache.del(CacheKeys.app.byId(appId)),
+      cache.del(CacheKeys.app.costMarkup(appId)),
+    ];
+    if (apiKeyId) keys.push(cache.del(CacheKeys.app.byApiKeyId(apiKeyId)));
+    if (slug) keys.push(cache.del(CacheKeys.app.bySlug(slug)));
+    await Promise.all(keys);
+  });
 }
 
 export type {
@@ -78,6 +96,25 @@ export class AppsRepository {
     /* global-scope: by-id app lookup; route handlers authorize org ownership before use. */
     return await dbRead.query.apps.findFirst({
       where: eq(apps.id, id),
+    });
+  }
+
+  /**
+   * Reads primary app state and publishes it to cache under the same durable
+   * per-app fence used by invalidation. The callback remains inside the
+   * transaction so a separate worker cannot delete and then be overwritten by
+   * this hydration's older read.
+   */
+  async hydrateByIdForCache(
+    id: string,
+    publish: (app: App | undefined) => Promise<void>,
+  ): Promise<App | undefined> {
+    return await withAppCacheFence(id, async (tx) => {
+      const [app] = UUID_PATTERN.test(id)
+        ? await tx.select().from(apps).where(eq(apps.id, id)).limit(1)
+        : [];
+      await publish(app);
+      return app;
     });
   }
 

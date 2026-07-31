@@ -18,7 +18,15 @@ mock.module("../../db/repositories/apps", () => ({
       appReads += 1;
       return appRows.get(id);
     },
+    hydrateByIdForCache: async (id: string, publish: (app: App | undefined) => Promise<void>) => {
+      appReads += 1;
+      const row = appRows.get(id);
+      await publish(row);
+      return row;
+    },
   },
+  withAppCacheFence: async <T>(_appId: string, operation: (tx: unknown) => Promise<T>) =>
+    await operation({}),
 }));
 
 mock.module("./api-keys", () => ({

@@ -4,7 +4,7 @@
  * while the worker executor may retry cache deletion until it succeeds.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, redactSensitiveText } from "@elizaos/core";
 import { eq } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import type { DbTransaction } from "../../db/client";
@@ -31,6 +31,43 @@ export class AppCacheInvalidationRetryError extends ElizaError {
       severity: "ephemeral",
     });
   }
+}
+
+function errorCode(error: Error): string | undefined {
+  const code = (error as Error & { code?: unknown }).code;
+  return typeof code === "string" && code.length > 0 ? code : undefined;
+}
+
+/**
+ * Serializes a bounded, redacted cause chain for the durable job row and
+ * process logs. Names and stable codes retain classification while messages
+ * are scrubbed before crossing the worker boundary.
+ */
+export function formatAppCacheInvalidationError(error: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+
+  for (let depth = 0; current !== undefined && depth < 8; depth++) {
+    if (seen.has(current)) {
+      parts.push("[cause-cycle]");
+      break;
+    }
+    seen.add(current);
+
+    if (current instanceof Error) {
+      const code = errorCode(current);
+      const identity = code ? `${current.name}[${code}]` : current.name;
+      parts.push(`${identity}: ${redactSensitiveText(current.message)}`);
+      current = current.cause;
+    } else {
+      parts.push(`NonError: ${redactSensitiveText(String(current))}`);
+      current = undefined;
+    }
+  }
+
+  if (current !== undefined) parts.push("[cause-depth-exceeded]");
+  return parts.join(" <- ");
 }
 
 export function appCacheInvalidationJobId(sourceJobId: string): string {
@@ -117,7 +154,7 @@ export async function enqueueAppCacheInvalidation(
 export async function dispatchAppCacheInvalidationJob(job: Job): Promise<void> {
   const { appId, sourceJobId } = readAppCacheInvalidationJobData(job);
   try {
-    await appsService.invalidateCache(appId);
+    await appsService.invalidateCacheStrict(appId);
   } catch (cause) {
     // error-policy:J2 preserve the cache failure while adding durable task identity.
     throw new AppCacheInvalidationRetryError(appId, sourceJobId, cause);
