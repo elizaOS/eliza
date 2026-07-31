@@ -146,7 +146,6 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
-	runWithSuppressedModelStream,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -4087,15 +4086,13 @@ export class AgentRuntime implements IAgentRuntime {
 							runWithActionRoutingContext(
 								{ actionName: action.name, modelClass: action.modelClass },
 								() =>
-									runWithSuppressedModelStream(() =>
-										action.handler(
-											this,
-											message,
-											composedState,
-											{ mode },
-											actionCallback,
-											options?.responses,
-										),
+									action.handler(
+										this,
+										message,
+										composedState,
+										{ mode },
+										actionCallback,
+										options?.responses,
 									),
 							),
 					});
