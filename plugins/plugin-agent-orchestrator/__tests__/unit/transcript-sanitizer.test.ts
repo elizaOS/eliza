@@ -154,3 +154,29 @@ describe("sanitizeCompletionRelay", () => {
     expect(sanitizeCompletionRelay(null)).toBe("");
   });
 });
+
+describe("stripEnvelopeSummaryLines", () => {
+  it("strips summarizeEnvelope machine lines from a chat relay (live incident shape)", () => {
+    const relayed = [
+      "starfall is live.",
+      "",
+      "link: https://nubilio.org/apps/starfall/",
+      "workdir: /home/milady/.eliza/workspaces/task-241a6410",
+      "diff: 12 files changed",
+      "files: 12",
+      "tests: bun run test → exit 0",
+      "criteria: 3/3 met",
+    ].join("\n");
+    const out = sanitizeCompletionRelay(relayed);
+    expect(out).toContain("starfall is live.");
+    expect(out).toContain("link: https://nubilio.org/apps/starfall/");
+    expect(out).not.toContain("workdir:");
+    expect(out).not.toContain("diff:");
+    expect(out).not.toContain("criteria:");
+  });
+
+  it("leaves builder prose mentioning tests untouched", () => {
+    const prose = "All tests pass now; the tests: they were flaky before.";
+    expect(sanitizeCompletionRelay(prose)).toBe(prose);
+  });
+});
