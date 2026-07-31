@@ -576,7 +576,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("hi"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => {
           chunks.push(chunk);
         },
@@ -636,7 +635,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("repeat"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => {
           runningTotal += chunk;
         },
@@ -697,7 +695,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("open notes"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
         onSnapshot: (text) => snapshots.push(text),
       },
@@ -739,7 +736,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("typo"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
         onSnapshot: (text) => snapshots.push(text),
       },
@@ -782,7 +778,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("preserve repeated characters"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
         onSnapshot: (text) => snapshots.push(text),
       },
@@ -824,7 +819,6 @@ describe("generateChatResponse token streaming", () => {
       createChatMessage("preserve token boundaries"),
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => chunks.push(chunk),
       },
     );
@@ -859,7 +853,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(getActionResults).toHaveBeenCalledWith(message.id);
@@ -912,7 +905,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(result.actionResults).toEqual([
@@ -959,7 +951,6 @@ describe("generateChatResponse token streaming", () => {
       message,
       "Streaming Agent",
       {
-        timeoutDuration: 5_000,
         onChunk: (chunk) => {
           chunks.push(chunk);
         },
@@ -1045,9 +1036,7 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      {
-        timeoutDuration: 5_000,
-      },
+      {},
     );
 
     const params = useModel.mock.calls[0]?.[1] as {
@@ -1114,7 +1103,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       message,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(runtime.reportError).toHaveBeenCalledWith(
@@ -1163,14 +1151,11 @@ describe("generateChatResponse token streaming", () => {
     } as typeof withAttachment.content;
     const overlong = createChatMessage("x".repeat(701));
 
-    await generateChatResponse(runtime, withAttachment, "Streaming Agent", {
-      timeoutDuration: 5_000,
-    });
+    await generateChatResponse(runtime, withAttachment, "Streaming Agent", {});
     const result = await generateChatResponse(
       runtime,
       overlong,
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).not.toHaveBeenCalled();
@@ -1211,13 +1196,11 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("what is the weather today?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
     const local = await generateChatResponse(
       runtime,
       createChatMessage("are you running locally on this device today?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(handleMessage).toHaveBeenCalledTimes(1);
@@ -1259,7 +1242,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("say <end_of_turn> safely"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     const params = useModel.mock.calls[0]?.[1] as { prompt: string };
@@ -1287,7 +1269,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("can you answer locally?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).toHaveBeenCalledWith(
@@ -1337,7 +1318,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("what did I just say?"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).not.toHaveBeenCalled();
@@ -1377,7 +1357,6 @@ describe("generateChatResponse token streaming", () => {
       runtime,
       createChatMessage("remember that my favorite model is eliza"),
       "Streaming Agent",
-      { timeoutDuration: 5_000 },
     );
 
     expect(useModel).not.toHaveBeenCalled();
@@ -1385,23 +1364,23 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("I need the normal runtime for that.");
   });
 
-  it("aborts the message runtime when the chat generation timeout fires", async () => {
+  it("propagates caller cancellation into the message runtime", async () => {
     let signalFromOptions: AbortSignal | undefined;
-    let observedAbort: (() => void) | undefined;
-    const abortObserved = new Promise<void>((resolve) => {
-      observedAbort = resolve;
+    let runtimeStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      runtimeStarted = resolve;
     });
 
     const runtime = createRuntime({
       messageService: {
         async handleMessage(_runtime, _message, _callback, options) {
           signalFromOptions = options?.abortSignal;
-          await new Promise<void>((resolve) => {
+          runtimeStarted?.();
+          await new Promise<void>((_resolve, reject) => {
             options?.abortSignal?.addEventListener(
               "abort",
               () => {
-                observedAbort?.();
-                resolve();
+                reject(options.abortSignal?.reason);
               },
               { once: true },
             );
@@ -1422,19 +1401,51 @@ describe("generateChatResponse token streaming", () => {
       },
     });
 
+    const caller = new AbortController();
+    const generation = generateChatResponse(
+      runtime,
+      createChatMessage("cancel this request"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+    await started;
+    caller.abort(new DOMException("Client disconnected", "AbortError"));
+
+    await expect(generation).rejects.toThrow("Client disconnected");
+    expect(signalFromOptions?.aborted).toBe(true);
+  });
+
+  it("rejects ingress hook failures before starting message generation", async () => {
+    const hookFailure = new Error("trajectory persistence failed");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "must not be generated" },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      emitEvent: vi.fn(async () => {
+        throw hookFailure;
+      }),
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
     await expect(
       generateChatResponse(
         runtime,
-        createChatMessage("timeout"),
+        createChatMessage("persist ingress first"),
         "Streaming Agent",
-        {
-          timeoutDuration: 10,
-        },
       ),
-    ).rejects.toThrow("Chat generation timed out after 10ms");
-
-    await abortObserved;
-    expect(signalFromOptions?.aborted).toBe(true);
+    ).rejects.toBe(hookFailure);
+    expect(handleMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -1488,7 +1499,6 @@ describe("generateConversationTitle", () => {
         runtime,
         "Can you answer from the local voice backend?",
         "Streaming Agent",
-        { timeoutMs: 5_000 },
       ),
     ).resolves.toBe("Local Voice Chat");
     expect(useModel).toHaveBeenCalledWith(
@@ -1529,12 +1539,12 @@ describe("generateConversationTitle", () => {
       runtime,
       "Could you say hello?",
       "Streaming Agent",
-      { signal: controller.signal, timeoutMs: 30_000 },
+      { signal: controller.signal },
     );
 
     controller.abort(new DOMException("client left", "AbortError"));
 
-    await expect(pending).resolves.toBeNull();
+    await expect(pending).rejects.toThrow("client left");
     expect(signalFromParams?.aborted).toBe(true);
   });
 });
