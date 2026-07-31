@@ -29,6 +29,7 @@ import {
   requiresSurfaceArtifactsFromFiles,
   runSelfTest,
   SURFACE_ARTIFACT_ROW_IDS,
+  verifyReferencedArtifacts,
 } from "./check-pr-evidence.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -50,7 +51,7 @@ function buildBody(overrides = {}) {
       "- [ ] Backend logs: [backend.txt](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001)",
     "frontend-logs": "- [ ] Frontend logs `N/A - no frontend change`.",
     "llm-trajectory":
-      "- [ ] Real-LLM trajectory: [report](https://example.com/report.json)",
+      "- [ ] Real-LLM trajectory: [report](https://github.com/elizaOS/eliza/releases/download/pr-evidence/fixture-trajectory.json)",
     "domain-artifacts":
       "- [ ] Domain artifacts: OCR report https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000007",
   };
@@ -58,6 +59,55 @@ function buildBody(overrides = {}) {
   return REQUIRED_EVIDENCE_ROWS.map(
     ({ id }) => `<!-- evidence-row:${id} -->\n${merged[id] ?? ""}`,
   ).join("\n\n");
+}
+
+const uploadUrl = (suffix) =>
+  `https://github.com/user-attachments/assets/00000000-0000-0000-0000-${String(suffix).padStart(12, "0")}`;
+
+function buildSevenArtifactBody() {
+  return buildBody({
+    "before-screenshots": `- [x] ![before](${uploadUrl(1)})`,
+    "after-screenshots": `- [x] ![after](${uploadUrl(2)})`,
+    "walkthrough-video": `- [x] ${uploadUrl(3)}`,
+    "backend-logs": `- [x] [backend logs](${uploadUrl(4)})`,
+    "frontend-logs": `- [x] [frontend logs](${uploadUrl(5)})`,
+    "llm-trajectory": `- [x] [trajectory](${uploadUrl(6)})`,
+    "domain-artifacts": `- [x] [domain artifact](${uploadUrl(7)})`,
+  });
+}
+
+function buildSingleArtifactBody(id, text) {
+  const rows = Object.fromEntries(
+    REQUIRED_EVIDENCE_ROWS.map(({ id: rowId }) => [
+      rowId,
+      "- [ ] `N/A - this evidence type does not apply here`.",
+    ]),
+  );
+  rows[id] = text;
+  return buildBody(rows);
+}
+
+const PNG_BYTES = Uint8Array.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+const MP4_BYTES = Uint8Array.from([
+  0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d,
+]);
+
+function validArtifactResponse(url) {
+  if (url.endsWith("000000000001") || url.endsWith("000000000002")) {
+    return new Response(PNG_BYTES, {
+      headers: { "content-type": "image/png" },
+    });
+  }
+  if (url.endsWith("000000000003")) {
+    return new Response(MP4_BYTES, {
+      headers: { "content-type": "video/mp4" },
+    });
+  }
+  return new Response("2026-07-30 INFO verified evidence artifact\n", {
+    headers: { "content-type": "text/plain" },
+  });
 }
 
 describe("check-pr-evidence parser", () => {
@@ -110,6 +160,72 @@ describe("check-pr-evidence parser", () => {
     assert.ok(findings.every((finding) => finding.status === "blank"));
   });
 
+  it("fails fabricated URLs, tags, filenames, and local report links", () => {
+    const body = buildBody({
+      "before-screenshots": "- [x] ![before](not-a-url)",
+      "after-screenshots":
+        '- [x] <img src="https://example.invalid/after.jpg">',
+      "walkthrough-video": "- [x] walkthrough.mp4",
+      "backend-logs": "- [x] [backend](https://example.invalid/backend.log)",
+      "frontend-logs": "- [x] https://example.invalid/network.json",
+      "llm-trajectory": "- [x] [trajectory](trajectory.json)",
+      "domain-artifacts": "- [x] OCR report [ocr](ocr.txt)",
+    });
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+    });
+    assert.equal(ok, false);
+    assert.ok(
+      findings
+        .filter((finding) => finding.id !== "ocr-review")
+        .every((finding) => finding.status !== "ok"),
+    );
+    assert.equal(
+      findings.find((finding) => finding.id === "ocr-review")?.status,
+      "ocr-required",
+    );
+  });
+
+  it("fails duplicate evidence markers instead of choosing a convenient copy", () => {
+    const body = `${buildBody()}\n\n<!-- evidence-row:backend-logs -->\n- [ ] Backend logs \`N/A - duplicate marker should never be accepted\`.`;
+    const result = evaluatePrEvidence(body);
+    assert.equal(result.ok, false);
+    assert.equal(
+      result.findings.find((finding) => finding.id === "backend-logs")?.status,
+      "duplicate",
+    );
+  });
+
+  it("fails every row that reuses a trusted artifact from another row", () => {
+    const reused = uploadUrl(41);
+    const result = evaluatePrEvidence(
+      buildBody({
+        "backend-logs": `- [x] [backend logs](${reused}?download=backend)`,
+        "llm-trajectory": `- [x] [trajectory](${reused}?download=trajectory)`,
+      }),
+    );
+    assert.equal(result.ok, false);
+    for (const id of ["backend-logs", "llm-trajectory"]) {
+      const finding = result.findings.find((entry) => entry.id === id);
+      assert.equal(finding?.status, "duplicate-artifact");
+      assert.match(finding?.detail ?? "", /also used by/);
+    }
+  });
+
+  it("deduplicates repeated uses of an artifact within one row", () => {
+    const repeated = uploadUrl(42);
+    const result = evaluatePrEvidence(
+      buildBody({
+        "backend-logs": `- [x] [backend logs](${repeated}) and [the same logs again](${repeated})`,
+      }),
+    );
+    assert.equal(result.ok, true);
+    assert.equal(
+      result.findings.find((entry) => entry.id === "backend-logs")?.status,
+      "ok",
+    );
+  });
+
   it("passes when every row is marked `N/A - <reason>`", () => {
     const body = REQUIRED_EVIDENCE_ROWS.map(
       ({ id }) =>
@@ -143,9 +259,9 @@ describe("check-pr-evidence parser", () => {
     const { ok, findings } = evaluatePrEvidence(
       buildBody({
         "before-screenshots":
-          "- [ ] Before screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002",
+          "- [ ] Before screenshots: ![before](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002)",
         "after-screenshots":
-          "- [ ] After screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+          "- [ ] After screenshots: ![after](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003)",
         "walkthrough-video":
           "- [ ] Walkthrough video: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000004",
         "domain-artifacts":
@@ -162,9 +278,9 @@ describe("check-pr-evidence parser", () => {
     const { ok, findings } = evaluatePrEvidence(
       buildBody({
         "before-screenshots":
-          "- [ ] Before screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002",
+          "- [ ] Before screenshots: ![before](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002)",
         "after-screenshots":
-          "- [ ] After screenshots: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+          "- [ ] After screenshots: ![after](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003)",
         "walkthrough-video":
           "- [ ] Walkthrough video: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000004",
         "domain-artifacts":
@@ -252,14 +368,17 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(hasNaWithReason("N/A"), false);
     assert.equal(hasNaWithReason("N/A -"), false);
     assert.equal(hasNaWithReason("N/A - "), false);
+    assert.equal(hasNaWithReason("N/A - nope"), false);
+    assert.equal(hasNaWithReason("N/A - not applicable"), false);
+    assert.equal(hasNaWithReason("N/A - see https://example.invalid"), false);
     assert.equal(hasNaWithReason("N/A - <reason>."), false);
   });
 
-  it("detects links and URLs", () => {
-    assert.equal(hasArtifactReference("[report](https://x/y.json)"), true);
+  it("accepts only repository evidence uploads, not arbitrary links", () => {
+    assert.equal(hasArtifactReference("[report](https://x/y.json)"), false);
     assert.equal(
       hasArtifactReference("see https://github.com/o/r/assets/1"),
-      true,
+      false,
     );
     assert.equal(
       hasArtifactReference(
@@ -267,6 +386,21 @@ describe("check-pr-evidence row primitives", () => {
       ),
       true,
     );
+    assert.equal(
+      hasArtifactReference(
+        "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001",
+      ),
+      true,
+    );
+    for (const lookalike of [
+      "https://github.com.evil.invalid/user-attachments/assets/00000000-0000-0000-0000-000000000001",
+      "https://github.com/other/repo/releases/download/pr-evidence/report.json",
+      "https://github.com/elizaOS/eliza/releases/tag/pr-evidence",
+      "https://github.com/user-attachments/assets/not-a-uuid",
+      "https://github.com/elizaOS/eliza/releases/download/pr-evidence/%E0%A4%A",
+    ]) {
+      assert.equal(hasArtifactReference(lookalike), false, lookalike);
+    }
     assert.equal(hasArtifactReference("just words, no artifact"), false);
   });
 
@@ -356,7 +490,7 @@ describe("check-pr-evidence row primitives", () => {
       ),
       false,
     );
-    // Real media forms all count.
+    // GitHub-hosted uploads count; lookalike markup and filenames do not.
     assert.equal(
       hasVisualArtifactReference(
         "https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001",
@@ -365,18 +499,128 @@ describe("check-pr-evidence row primitives", () => {
     );
     assert.equal(
       hasVisualArtifactReference("![after](https://example.com/x/after)"),
-      true,
+      false,
     );
     assert.equal(
       hasVisualArtifactReference(
         '<img src="https://example.com/shot" width="400">',
       ),
-      true,
+      false,
     );
     assert.equal(
       hasVisualArtifactReference("see https://example.com/walkthrough.mp4"),
+      false,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        "![after](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002)",
+        "image",
+      ),
       true,
     );
+  });
+
+  it("does not let an image satisfy video or a video satisfy screenshot evidence", () => {
+    const release =
+      "https://github.com/elizaOS/eliza/releases/download/pr-evidence";
+    assert.equal(
+      hasVisualArtifactReference(`${release}/walkthrough.mp4`, "image"),
+      false,
+    );
+    assert.equal(
+      hasVisualArtifactReference(`${release}/after.jpg`, "video"),
+      false,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        "![after](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002)",
+        "video",
+      ),
+      false,
+    );
+  });
+
+  it("requires an OCR report rather than OCR text on an image embed", () => {
+    const imageOnly = new Map([
+      [
+        "after-screenshots",
+        "![OCR reviewed](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000002)",
+      ],
+    ]);
+    assert.equal(hasOcrEvidenceReference(imageOnly), false);
+    assert.equal(
+      hasEvidenceFileReference(`<video src="${uploadUrl(10)}"></video>`),
+      false,
+    );
+  });
+
+  it("accepts substantive inline logs but rejects placeholder details", () => {
+    const backend = [
+      "- [x] Backend logs:",
+      "<details><summary>Backend logs</summary>",
+      "```text",
+      "2026-07-30T18:01:12Z INFO GET /api/contributions request_id=abc123",
+      "2026-07-30T18:01:12Z INFO statusCode=200 count=313 duration_ms=84",
+      "2026-07-30T18:01:12Z INFO response bytes=42819 cache=miss",
+      "```",
+      "</details>",
+    ].join("\n");
+    assert.equal(
+      evaluatePrEvidence(buildBody({ "backend-logs": backend })).ok,
+      true,
+    );
+
+    const placeholder = [
+      "- [x] Backend logs:",
+      "<details><summary>Backend logs</summary>",
+      "```text",
+      "logs here",
+      "todo",
+      "placeholder",
+      "```",
+      "</details>",
+    ].join("\n");
+    const result = evaluatePrEvidence(
+      buildBody({ "backend-logs": placeholder }),
+    );
+    assert.equal(result.ok, false);
+    assert.equal(
+      result.findings.find((finding) => finding.id === "backend-logs")?.status,
+      "blank",
+    );
+  });
+
+  it("rejects inline logs that confess to non-real evidence", () => {
+    for (const term of [
+      "fabricated",
+      "invented",
+      "fake",
+      "mock",
+      "fixture",
+      "synthetic",
+      "dummy",
+    ]) {
+      const confessed = [
+        "- [x] Backend logs:",
+        "<details><summary>Backend logs</summary>",
+        "```text",
+        `2026-07-30T18:01:12Z INFO GET /api/contributions source=${term}`,
+        "2026-07-30T18:01:12Z INFO statusCode=200 count=313 duration_ms=84",
+        "2026-07-30T18:01:12Z INFO response bytes=42819 cache=miss",
+        "```",
+        "</details>",
+      ].join("\n");
+      const result = evaluatePrEvidence(
+        buildBody({ "backend-logs": confessed }),
+      );
+      assert.equal(result.ok, false, term);
+      assert.equal(
+        result.findings.find((finding) => finding.id === "backend-logs")
+          ?.status,
+        "blank",
+        term,
+      );
+    }
   });
 
   it("fails a UI-labeled PR whose visual rows link only to the PR/checks page", () => {
@@ -516,6 +760,16 @@ describe("check-pr-evidence row primitives", () => {
       ],
     });
     assert.equal(forced.ok, false);
+
+    const contributionSite = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      labels: "",
+      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+    });
+    assert.equal(
+      contributionSite.ok,
+      false,
+      "eliza.computer is a rendered UI surface and requires visual proof",
+    );
   });
 
   it("normalizes labels and detects surface labels", () => {
@@ -525,8 +779,14 @@ describe("check-pr-evidence row primitives", () => {
   });
 
   it("requires N/A-reason or artifact to satisfy a row", () => {
-    assert.equal(isRowSatisfied("- [ ] `N/A - not applicable`"), true);
-    assert.equal(isRowSatisfied("- [ ] [proof](https://e/x.png)"), true);
+    assert.equal(isRowSatisfied("- [ ] `N/A - no runtime path changed`"), true);
+    assert.equal(isRowSatisfied("- [ ] [proof](https://e/x.png)"), false);
+    assert.equal(
+      isRowSatisfied(
+        "- [ ] [proof](https://github.com/elizaOS/eliza/releases/download/pr-evidence/proof.png)",
+      ),
+      true,
+    );
     assert.equal(
       isRowSatisfied(
         "- [ ] Before screenshots are attached, or marked `N/A - <reason>`.",
@@ -848,6 +1108,184 @@ describe("evaluatePrEvidence verdicts", () => {
     assert.equal(ok, false);
     assert.equal(findings.length, REQUIRED_EVIDENCE_ROWS.length);
     assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
+});
+
+describe("remote artifact verification", () => {
+  it("fetches every distinct artifact with bounded concurrency, redirects, range, and an optional token", async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const calls = [];
+    const result = await verifyReferencedArtifacts(
+      buildSevenArtifactBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        concurrency: 2,
+        fetchImpl: async (url, init) => {
+          active += 1;
+          maximumActive = Math.max(maximumActive, active);
+          calls.push({ init, url });
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          active -= 1;
+          return validArtifactResponse(url);
+        },
+        token: "test-token",
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.findings.length, 7);
+    assert.equal(calls.length, 7);
+    assert.ok(maximumActive <= 2);
+    for (const { init } of calls) {
+      const headers = new Headers(init.headers);
+      assert.equal(init.method, "GET");
+      assert.equal(init.redirect, "follow");
+      assert.equal(headers.get("authorization"), "Bearer test-token");
+      assert.equal(headers.get("range"), "bytes=0-16383");
+    }
+  });
+
+  it("rejects seven distinct nonexistent but syntactically trusted UUIDs", async () => {
+    let requests = 0;
+    const result = await verifyReferencedArtifacts(
+      buildSevenArtifactBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async () => {
+          requests += 1;
+          return new Response("not found", { status: 404 });
+        },
+      },
+    );
+
+    assert.equal(requests, 7);
+    assert.equal(result.ok, false);
+    assert.equal(result.findings.length, 7);
+    assert.ok(
+      result.findings.every(
+        (finding) => finding.status === "artifact-http-error",
+      ),
+    );
+  });
+
+  it("deduplicates one remote request for a URL repeated within a row", async () => {
+    const repeated = uploadUrl(71);
+    let requests = 0;
+    const result = await verifyReferencedArtifacts(
+      buildSingleArtifactBody(
+        "backend-logs",
+        `- [x] [logs](${repeated}) and [logs again](${repeated})`,
+      ),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async (url) => {
+          requests += 1;
+          return validArtifactResponse(url);
+        },
+      },
+    );
+    assert.equal(result.ok, true);
+    assert.equal(requests, 1);
+    assert.equal(result.findings.length, 1);
+  });
+
+  it("never fetches arbitrary URLs that deterministic validation rejects", async () => {
+    const body = buildSingleArtifactBody(
+      "backend-logs",
+      "- [x] [logs](https://example.invalid/backend.log)",
+    );
+    let requests = 0;
+    const result = await verifyReferencedArtifacts(
+      body,
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async () => {
+          requests += 1;
+          throw new Error("untrusted URL must not reach fetch");
+        },
+      },
+    );
+    assert.equal(evaluatePrEvidence(body).ok, false);
+    assert.equal(result.ok, true);
+    assert.equal(result.findings.length, 0);
+    assert.equal(requests, 0);
+  });
+
+  it("rejects empty, HTML, disguised HTML, and mismatched media responses", async () => {
+    const cases = [
+      {
+        expectedStatus: "artifact-empty",
+        response: new Response(null),
+      },
+      {
+        expectedStatus: "artifact-html",
+        response: new Response("<!doctype html><html>login</html>", {
+          headers: { "content-type": "text/html" },
+        }),
+      },
+      {
+        expectedStatus: "artifact-html",
+        response: new Response("  <html>not an artifact</html>", {
+          headers: { "content-type": "application/octet-stream" },
+        }),
+      },
+      {
+        expectedStatus: "artifact-kind-mismatch",
+        response: new Response(MP4_BYTES, {
+          headers: { "content-type": "video/mp4" },
+        }),
+      },
+    ];
+
+    for (const { expectedStatus, response } of cases) {
+      const result = await verifyReferencedArtifacts(
+        buildSingleArtifactBody(
+          "after-screenshots",
+          `- [x] ![after](${uploadUrl(81)})`,
+        ),
+        REQUIRED_EVIDENCE_ROWS,
+        { fetchImpl: async () => response },
+      );
+      assert.equal(result.ok, false, expectedStatus);
+      assert.equal(result.findings[0]?.status, expectedStatus);
+    }
+  });
+
+  it("rejects an image served behind a bare URL claimed as an OCR report", async () => {
+    const result = await verifyReferencedArtifacts(
+      buildSingleArtifactBody(
+        "domain-artifacts",
+        `- [x] OCR text readout: ${uploadUrl(82)}`,
+      ),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async () =>
+          new Response(PNG_BYTES, {
+            headers: { "content-type": "image/png" },
+          }),
+      },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.findings[0]?.status, "artifact-kind-mismatch");
+  });
+
+  it("turns a timed-out fetch into an explicit row failure", async () => {
+    const result = await verifyReferencedArtifacts(
+      buildSingleArtifactBody("backend-logs", `- [x] [logs](${uploadUrl(91)})`),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: (_url, { signal }) =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+        timeoutMs: 5,
+      },
+    );
+    assert.equal(result.ok, false);
+    assert.equal(result.findings[0]?.status, "artifact-timeout");
   });
 });
 

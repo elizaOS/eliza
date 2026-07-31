@@ -16,6 +16,26 @@ Definition of Done: full standard in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - [ ] A reviewer can confirm the change works without reading the code, from the
       evidence attached below.
 
+# Contribution provenance
+
+Declare the actual assistance used for implementation and review. This is
+self-reported provenance, not a request for chain-of-thought. Never include
+prompts containing secrets, tokens, private session IDs, or hidden reasoning.
+Use exact `provider/model-id` values; `GPT`, `Claude`, or `AI` are not specific
+enough. Human-only work must say so explicitly.
+
+<!-- contribution-attribution:v1 -->
+<!-- attribution-row:ai-assistance -->
+- AI assistance: `yes` / `no - human-only contribution`
+<!-- attribution-row:models -->
+- Model(s) used: `provider/model-id` / `None - human-only contribution`
+<!-- attribution-row:client -->
+- Client / agent tooling: `client-name` / `None - human-only contribution`
+<!-- attribution-row:skill-revision -->
+- Skill revision: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`
+<!-- attribution-row:status -->
+- Attribution status: `self-reported`
+
 # Sync with develop
 
 - [ ] Rebased/merged onto the latest `origin/develop`; zero conflicts.
