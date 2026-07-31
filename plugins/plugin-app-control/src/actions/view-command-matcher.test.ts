@@ -37,6 +37,9 @@ describe("matchViewCommand — explicit user examples", () => {
 		["open knowledge", "documents"],
 		["open the knowledge base", "documents"],
 		["show my knowledge hub", "documents"],
+		["open cloud apps", "cloud-apps"],
+		["show my cloud applications", "cloud-apps"],
+		["go to the app studio", "cloud-apps"],
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
 		// coding cockpit — wins over task-coordinator's bare "coding"
@@ -59,27 +62,35 @@ describe("matchViewCommand — multilingual", () => {
 		["muéstrame mi calendario", "calendar"],
 		["abre mi correo", "inbox"],
 		["ir a mi cartera", "wallet"],
+		["abre aplicaciones en la nube", "cloud-apps"],
 		// pt
 		["abrir configurações", "settings"],
 		["mostre meu calendário", "calendar"],
+		["abra aplicações na nuvem", "cloud-apps"],
 		// fr
 		["ouvre les paramètres", "settings"],
 		["montre-moi mon calendrier", "calendar"],
+		["ouvre applications cloud", "cloud-apps"],
 		// de
 		["öffne die einstellungen", "settings"],
+		["öffne cloud-apps", "cloud-apps"],
 		// zh
 		["打开设置", "settings"],
 		["打开我的钱包", "wallet"],
 		["显示日历", "calendar"],
+		["打开云应用", "cloud-apps"],
 		// ja
 		["設定を開いて", "settings"],
 		["カレンダーを表示して", "calendar"],
+		["クラウドアプリを開いて", "cloud-apps"],
 		// ko
 		["설정 열어", "settings"],
 		["내 캘린더 보여줘", "calendar"],
 		["지갑 열어줘", "wallet"],
+		["클라우드 앱 열어줘", "cloud-apps"],
 		// vi
 		["mở cài đặt", "settings"],
+		["mở ứng dụng đám mây", "cloud-apps"],
 		// tl
 		["buksan ang settings", "settings"],
 	];
@@ -139,6 +150,7 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"thanks, that was helpful",
 		"can you summarize this article",
 		"i love using this app",
+		"open apps",
 		"showcase knowledge",
 		"open knowledgebase",
 		"open knowledgeable",
