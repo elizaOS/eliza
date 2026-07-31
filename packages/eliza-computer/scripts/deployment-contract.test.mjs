@@ -32,19 +32,58 @@ const qualityJob = workflow.slice(
 const deployJob = workflow.slice(workflow.indexOf("\n  deploy:"));
 
 describe("eliza.army deployment contract", () => {
-  it("deploys only the exact tested SHA through wrangler.toml", () => {
+  it("deploys only the admitted bundle SHA through wrangler.toml", () => {
     expect(qualityJob).toContain(`ref: ${"$"}{{ github.sha }}`);
     expect(qualityJob).toContain("does not match the event SHA $GITHUB_SHA");
-    expect(deployJob).toContain(`ref: ${"$"}{{ github.sha }}`);
     expect(deployJob).toContain('checked_out_sha="$(git rev-parse HEAD)"');
-    expect(deployJob).toContain("bunx wrangler@4.100.0 pages deploy \\");
+    expect(deployJob).toContain("./node_modules/.bin/wrangler pages deploy \\");
     expect(deployJob).not.toContain("pages deploy dist");
-    expect(deployJob).toContain('--commit-hash="$GITHUB_SHA"');
+    expect(deployJob).toContain('--commit-hash="$BUNDLE_SHA"');
     expect(deployJob).toContain("--commit-dirty=false");
     expect(deployJob).toContain("select-pages-deployment.mjs");
     expect(deployJob).toContain("new, successful, clean production deployment");
     expect(wranglerConfiguration).toContain(
       'pages_build_output_dir = "./dist"',
+    );
+  });
+
+  it("runs the secret-bearing lane from protected-branch code only", () => {
+    // The candidate ref must never supply the workflow definition, the
+    // admission check, or the deployment scripts that execute beside the
+    // production Cloudflare credentials.
+    expect(deployJob).toContain("ref: refs/heads/develop");
+    expect(deployJob).not.toContain(`ref: ${"$"}{{ github.sha }}`);
+    expect(deployJob).toContain("is not current origin/develop");
+    expect(deployJob).toContain(
+      "Production releases must be dispatched from develop",
+    );
+  });
+
+  it("resolves release tooling from the lockfile, never from a registry", () => {
+    expect(deployJob).toContain(
+      "bun install --frozen-lockfile --ignore-scripts",
+    );
+    expect(deployJob).toContain(
+      "packages/eliza-computer/node_modules/.bin/wrangler",
+    );
+    expect(deployJob).toContain('EXPECTED_WRANGLER_VERSION: "4.100.0"');
+    expect(deployJob).toContain("the release contract requires");
+    expect(deployJob).not.toContain("bunx wrangler");
+    expect(packageManifest.devDependencies.wrangler).toBe("4.100.0");
+  });
+
+  it("admits a candidate bundle by run identity, not by candidate code", () => {
+    expect(deployJob).toContain("candidate_run_id");
+    expect(deployJob).toContain('run.conclusion !== "success"');
+    expect(deployJob).toContain("run.path !== expectedWorkflowPath");
+    expect(deployJob).toContain(
+      "run.head_repository?.full_name !== run.repository?.full_name",
+    );
+    expect(deployJob).toContain(
+      "is not the current head of an open same-repository pull request into develop",
+    );
+    expect(deployJob).toContain(
+      `run-id: ${"$"}{{ steps.admit.outputs.bundle_run_id }}`,
     );
   });
 
@@ -64,23 +103,22 @@ describe("eliza.army deployment contract", () => {
     expect(deployJob).toContain("name: eliza-army-production");
   });
 
-  it("admits a manual non-develop candidate only from a current same-repository PR", () => {
+  it("admits a manual candidate bundle only from a current same-repository PR", () => {
     expect(workflow).toContain("default: quality-only");
     expect(workflow).toContain("- production-candidate");
-    expect(workflow).toContain("candidate_pr:");
-    expect(deployJob).toContain('if [ "$GITHUB_REF_TYPE" != "branch" ]; then');
+    expect(workflow).toContain("candidate_run_id:");
+    expect(workflow).not.toContain("candidate_pr:");
     expect(deployJob).toContain(
-      'if ! [[ "$CANDIDATE_PR" =~ ^[1-9][0-9]*$ ]]; then',
+      'if ! [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then',
     );
-    expect(deployJob).toContain('pullRequest.state !== "open"');
-    expect(deployJob).toContain('pullRequest.base?.ref !== "develop"');
+    expect(deployJob).toContain('pullRequest.state === "open"');
+    expect(deployJob).toContain('pullRequest.base?.ref === "develop"');
     expect(deployJob).toContain(
-      "pullRequest.head?.repo?.full_name !== expectedRepository",
+      "pullRequest.head?.repo?.full_name === expectedRepository",
     );
-    expect(deployJob).toContain("pullRequest.head?.sha !== expectedSha");
-    expect(deployJob).toContain("pullRequest.head?.ref !== expectedBranch");
+    expect(deployJob).toContain("pullRequest.head?.sha === candidateSha");
     expect(deployJob).toContain(
-      'git rev-list --count "$GITHUB_SHA..refs/remotes/origin/develop"',
+      'git rev-list --count "$candidate_sha..refs/remotes/origin/develop"',
     );
     expect(deployJob).toContain('if [ "$behind_count" != "0" ]; then');
   });
@@ -99,7 +137,7 @@ describe("eliza.army deployment contract", () => {
     expect(verificationStep).toContain('--header "Cache-Control: no-cache"');
     expect(verificationStep).toContain('--header "Pragma: no-cache"');
     expect(verificationStep).toContain(
-      "?verify=$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-$attempt",
+      "?verify=$BUNDLE_SHA-$GITHUB_RUN_ATTEMPT-$attempt",
     );
     expect(verificationStep).toContain("--connect-timeout 10");
     expect(verificationStep).toContain("--max-time 30");

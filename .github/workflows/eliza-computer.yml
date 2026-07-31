@@ -25,15 +25,15 @@ on:
   workflow_dispatch:
     inputs:
       release_mode:
-        description: "Run checks only, or promote this exact ref as a protected production candidate"
+        description: "Run checks only, or publish a bundle to production (production releases must be dispatched from develop)"
         required: true
         default: quality-only
         type: choice
         options:
           - quality-only
           - production-candidate
-      candidate_pr:
-        description: "Open same-repository PR number into develop (required for non-develop production candidates)"
+      candidate_run_id:
+        description: "Optional eliza.army run ID whose already-built bundle should be published instead of this run's bundle. The run must be a successful eliza.army run in this repository whose head SHA is the head of an open same-repository PR into develop."
         required: false
         default: ""
         type: string
@@ -46,6 +46,7 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  actions: read
 
 env:
   CI: "true"
@@ -172,28 +173,59 @@ jobs:
       name: eliza-army-production
       url: https://eliza.army
     steps:
-      - name: Checkout exact deployment tooling
+      # SECURITY BOUNDARY. Everything this job executes must come from the
+      # protected default branch, never from the ref under test. A candidate
+      # branch may not supply the workflow definition, the admission check, the
+      # deployment scripts, or the dependency manifest that runs beside
+      # production Cloudflare credentials. The candidate contributes exactly one
+      # thing: an immutable build artifact produced by a secretless quality job,
+      # which this job admits by identity and republishes byte-for-byte.
+      - name: Checkout protected deployment tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ github.sha }}
+          ref: refs/heads/develop
           fetch-depth: 0
           persist-credentials: false
           submodules: false
 
-      - name: Verify deployment checkout
+      - name: Verify deployment tooling is the protected branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          checked_out_sha="$(git rev-parse HEAD)"
-          if [ "$checked_out_sha" != "$GITHUB_SHA" ]; then
-            echo "::error::Deployment checkout $checked_out_sha does not match the verified workflow SHA $GITHUB_SHA."
+          response="$RUNNER_TEMP/eliza-computer-develop-ref.json"
+          status="$(
+            curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --output "$response" \
+              --write-out "%{http_code}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GITHUB_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/develop"
+          )"
+          if [ "$status" != "200" ]; then
+            echo "::error::Protected develop lookup failed with HTTP $status."
             exit 1
           fi
+          expected_sha="$(
+            node -e 'const value=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")); if (typeof value.sha !== "string" || !/^[0-9a-f]{40}$/.test(value.sha)) throw new TypeError("develop commit response omitted a valid sha"); process.stdout.write(value.sha)' "$response"
+          )"
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [ "$checked_out_sha" != "$expected_sha" ]; then
+            echo "::error::Deployment tooling checkout $checked_out_sha is not current origin/develop $expected_sha."
+            exit 1
+          fi
+          printf '%s\n' "Deployment tooling pinned to protected develop $checked_out_sha."
 
       - name: Admit release authority
+        id: admit
         env:
-          CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
           GITHUB_TOKEN: ${{ github.token }}
           RELEASE_MODE: ${{ inputs.release_mode }}
+          THIS_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -209,8 +241,8 @@ jobs:
                 echo "::error::A manual production release requires release_mode=production-candidate."
                 exit 1
               fi
-              if [ "$GITHUB_REF_TYPE" != "branch" ]; then
-                echo "::error::A production candidate must be dispatched from a branch, not $GITHUB_REF_TYPE."
+              if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+                echo "::error::Production releases must be dispatched from develop so the workflow definition, admission check, and deployment scripts are the protected ones. To publish a candidate branch bundle, dispatch from develop and pass its eliza.army run ID as candidate_run_id."
                 exit 1
               fi
               ;;
@@ -220,87 +252,165 @@ jobs:
               ;;
           esac
 
-          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
+          if [ -z "$CANDIDATE_RUN_ID" ]; then
+            printf '%s\n' "bundle_run_id=$THIS_RUN_ID" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "bundle_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            printf '%s\n' "Publishing this run's develop bundle for $GITHUB_SHA."
             exit 0
           fi
 
-          if ! [[ "$CANDIDATE_PR" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::A non-develop production candidate requires a numeric candidate_pr input."
+          if ! [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::candidate_run_id must be a numeric Actions run ID."
             exit 1
           fi
 
-          response="$RUNNER_TEMP/eliza-computer-candidate-pr.json"
-          status="$(
-            curl --silent --show-error \
-              --connect-timeout 10 \
-              --max-time 30 \
-              --output "$response" \
-              --write-out "%{http_code}" \
-              --header "Accept: application/vnd.github+json" \
-              --header "Authorization: Bearer $GITHUB_TOKEN" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$CANDIDATE_PR"
-          )"
-          if [ "$status" != "200" ]; then
-            echo "::error::Candidate PR #$CANDIDATE_PR lookup failed with HTTP $status."
-            exit 1
-          fi
+          fetch_json() {
+            local url="$1"
+            local destination="$2"
+            local status
+            status="$(
+              curl --silent --show-error \
+                --connect-timeout 10 \
+                --max-time 30 \
+                --output "$destination" \
+                --write-out "%{http_code}" \
+                --header "Accept: application/vnd.github+json" \
+                --header "Authorization: Bearer $GITHUB_TOKEN" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                "$url"
+            )"
+            if [ "$status" != "200" ]; then
+              echo "::error::$url lookup failed with HTTP $status."
+              return 1
+            fi
+          }
 
-          node --input-type=module - \
-            "$response" \
-            "$GITHUB_SHA" \
-            "$GITHUB_REF_NAME" \
-            "$GITHUB_REPOSITORY" <<'NODE'
+          run_response="$RUNNER_TEMP/eliza-computer-candidate-run.json"
+          fetch_json \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+            "$run_response"
+
+          candidate_sha="$(
+            node --input-type=module - "$run_response" "$GITHUB_WORKFLOW_REF" <<'NODE'
           import { readFileSync } from "node:fs";
 
-          const [responsePath, expectedSha, expectedBranch, expectedRepository] =
-            process.argv.slice(2);
-          const pullRequest = JSON.parse(readFileSync(responsePath, "utf8"));
+          const [responsePath, workflowRef] = process.argv.slice(2);
+          const run = JSON.parse(readFileSync(responsePath, "utf8"));
           const failures = [];
+          const expectedWorkflowPath = workflowRef.split("@")[0].split("/").slice(2).join("/");
 
-          if (pullRequest.state !== "open") failures.push("state is not open");
-          if (pullRequest.base?.ref !== "develop") failures.push("base is not develop");
-          if (pullRequest.base?.repo?.full_name !== expectedRepository) {
-            failures.push("base repository does not match this repository");
+          if (run.status !== "completed") failures.push("run is not completed");
+          if (run.conclusion !== "success") failures.push("run did not succeed");
+          if (run.path !== expectedWorkflowPath) {
+            failures.push(`run built ${run.path}, not ${expectedWorkflowPath}`);
           }
-          if (pullRequest.head?.repo?.full_name !== expectedRepository) {
-            failures.push("head repository is not this repository");
+          if (run.event === "pull_request" || run.event === "pull_request_target") {
+            failures.push(`run event ${run.event} is not an admissible bundle source`);
           }
-          if (pullRequest.head?.ref !== expectedBranch) {
-            failures.push("head branch does not match the dispatched branch");
+          if (typeof run.head_sha !== "string" || !/^[0-9a-f]{40}$/.test(run.head_sha)) {
+            failures.push("run head SHA is missing or malformed");
           }
-          if (pullRequest.head?.sha !== expectedSha) {
-            failures.push("head SHA does not match the quality-tested SHA");
+          if (run.head_repository?.full_name !== run.repository?.full_name) {
+            failures.push("run head repository is not this repository");
           }
 
           if (failures.length > 0) {
             process.stderr.write(
-              `::error::Candidate PR admission failed: ${failures.join("; ")}.\n`,
+              `::error::Candidate run admission failed: ${failures.join("; ")}.\n`,
+            );
+            process.exit(1);
+          }
+          process.stdout.write(run.head_sha);
+          NODE
+          )"
+
+          pulls_response="$RUNNER_TEMP/eliza-computer-candidate-pulls.json"
+          fetch_json \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$candidate_sha/pulls?per_page=100" \
+            "$pulls_response"
+
+          node --input-type=module - \
+            "$pulls_response" \
+            "$candidate_sha" \
+            "$GITHUB_REPOSITORY" <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const [responsePath, candidateSha, expectedRepository] = process.argv.slice(2);
+          const pullRequests = JSON.parse(readFileSync(responsePath, "utf8"));
+
+          if (!Array.isArray(pullRequests)) {
+            process.stderr.write("::error::Candidate pull-request lookup was malformed.\n");
+            process.exit(1);
+          }
+
+          const admissible = pullRequests.some(
+            (pullRequest) =>
+              pullRequest.state === "open" &&
+              pullRequest.base?.ref === "develop" &&
+              pullRequest.base?.repo?.full_name === expectedRepository &&
+              pullRequest.head?.repo?.full_name === expectedRepository &&
+              pullRequest.head?.sha === candidateSha,
+          );
+
+          if (!admissible) {
+            process.stderr.write(
+              `::error::${candidateSha} is not the current head of an open same-repository pull request into develop.\n`,
             );
             process.exit(1);
           }
           NODE
 
           git fetch --force --no-tags origin \
-            develop:refs/remotes/origin/develop
+            "$candidate_sha" develop:refs/remotes/origin/develop
           behind_count="$(
-            git rev-list --count "$GITHUB_SHA..refs/remotes/origin/develop"
+            git rev-list --count "$candidate_sha..refs/remotes/origin/develop"
           )"
           if [ "$behind_count" != "0" ]; then
-            echo "::error::Candidate $GITHUB_SHA is $behind_count commit(s) behind current origin/develop."
+            echo "::error::Candidate $candidate_sha is $behind_count commit(s) behind current origin/develop."
             exit 1
           fi
+
+          printf '%s\n' "bundle_run_id=$CANDIDATE_RUN_ID" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "bundle_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "Publishing candidate bundle from run $CANDIDATE_RUN_ID for $candidate_sha."
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Download verified Pages bundle
+      # The secret-bearing lane must never resolve executable content from a
+      # registry at deploy time. Install the locked wrangler from the protected
+      # branch's bun.lock and run that exact binary. Do not reintroduce bunx.
+      - name: Install locked release tooling
+        run: |
+          bun install --frozen-lockfile --ignore-scripts \
+            --filter @elizaos/eliza-computer
+
+      - name: Verify the locked wrangler executable
+        env:
+          EXPECTED_WRANGLER_VERSION: "4.100.0"
+        run: |
+          set -euo pipefail
+          wrangler_bin="packages/eliza-computer/node_modules/.bin/wrangler"
+          if [ ! -x "$wrangler_bin" ]; then
+            echo "::error::The locked wrangler executable is missing at $wrangler_bin; the frozen install did not provide release tooling."
+            exit 1
+          fi
+          installed_version="$("$wrangler_bin" --version | tail -n 1 | tr -d '[:space:]')"
+          if [ "$installed_version" != "$EXPECTED_WRANGLER_VERSION" ]; then
+            echo "::error::Locked wrangler is $installed_version; the release contract requires $EXPECTED_WRANGLER_VERSION."
+            exit 1
+          fi
+          printf '%s\n' "$PWD/packages/eliza-computer/node_modules/.bin" >> "$GITHUB_PATH"
+
+      - name: Download admitted Pages bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: eliza-computer-pages-${{ github.run_id }}
+          name: eliza-computer-pages-${{ steps.admit.outputs.bundle_run_id }}
           path: packages/eliza-computer/dist
+          run-id: ${{ steps.admit.outputs.bundle_run_id }}
+          github-token: ${{ github.token }}
 
       - name: Require scoped Cloudflare credentials
         env:
@@ -340,7 +450,8 @@ jobs:
               fi
               ;;
             404)
-              bunx wrangler@4.100.0 pages project create eliza-computer \
+              packages/eliza-computer/node_modules/.bin/wrangler \
+                pages project create eliza-computer \
                 --production-branch=develop
               ;;
             *)
@@ -355,16 +466,17 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          BUNDLE_SHA: ${{ steps.admit.outputs.bundle_sha }}
         # wrangler.toml owns pages_build_output_dir. A positional directory
         # bypasses that deployment contract and must not be added here.
         run: |
           set -euo pipefail
           printf '%s\n' "started_at=$(node -e 'process.stdout.write(Date.now().toString())')" >> "$GITHUB_OUTPUT"
           for attempt in 1 2 3; do
-            if bunx wrangler@4.100.0 pages deploy \
+            if ./node_modules/.bin/wrangler pages deploy \
               --project-name=eliza-computer \
               --branch=develop \
-              --commit-hash="$GITHUB_SHA" \
+              --commit-hash="$BUNDLE_SHA" \
               --commit-dirty=false; then
               exit 0
             fi
@@ -382,6 +494,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           DEPLOYMENT_NOT_BEFORE: ${{ steps.pages-deploy.outputs.started_at }}
+          BUNDLE_SHA: ${{ steps.admit.outputs.bundle_sha }}
         run: |
           set -euo pipefail
           response="$RUNNER_TEMP/eliza-computer-production-deployments.json"
@@ -399,12 +512,12 @@ jobs:
             if [ "$status" = "200" ]; then
               if deployment="$(
                 node packages/eliza-computer/scripts/select-pages-deployment.mjs \
-                  "$response" "$GITHUB_SHA" "$DEPLOYMENT_NOT_BEFORE"
+                  "$response" "$BUNDLE_SHA" "$DEPLOYMENT_NOT_BEFORE"
               )"; then
                 IFS=$'\t' read -r deployment_id deployment_url deployment_created_on <<< "$deployment"
                 printf '%s\n' "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
                 printf '%s\n' "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
-                echo "::notice::Cloudflare production deployment $deployment_id for $GITHUB_SHA is successful at $deployment_url"
+                echo "::notice::Cloudflare production deployment $deployment_id for $BUNDLE_SHA is successful at $deployment_url"
                 {
                   echo "Cloudflare deployment: \`$deployment_id\`"
                   echo
@@ -423,13 +536,15 @@ jobs:
             else
               echo "::warning::Cloudflare deployment metadata lookup returned HTTP $status."
             fi
-            echo "::warning::Successful production metadata for $GITHUB_SHA is not visible yet (attempt $attempt/18)."
+            echo "::warning::Successful production metadata for $BUNDLE_SHA is not visible yet (attempt $attempt/18)."
             sleep 5
           done
-          echo "::error::Cloudflare did not report a new, successful, clean production deployment for commit $GITHUB_SHA."
+          echo "::error::Cloudflare did not report a new, successful, clean production deployment for commit $BUNDLE_SHA."
           exit 1
 
       - name: Verify published skill and leaderboard
+        env:
+          BUNDLE_SHA: ${{ steps.admit.outputs.bundle_sha }}
         run: |
           set -euo pipefail
           verify_download() {
@@ -445,7 +560,7 @@ jobs:
                 --max-time 30 \
                 --header "Cache-Control: no-cache" \
                 --header "Pragma: no-cache" \
-                "https://eliza.army${remote_path}?verify=$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-$attempt" \
+                "https://eliza.army${remote_path}?verify=$BUNDLE_SHA-$GITHUB_RUN_ATTEMPT-$attempt" \
                 --output "$received" &&
                 cmp --silent "$expected" "$received"; then
                 return 0

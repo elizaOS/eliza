@@ -20,6 +20,27 @@ do not have to carry CI-only history.
 
 ### Changed
 
+- `eliza-computer.yml` no longer lets a candidate ref supply the code that runs
+  beside production Cloudflare credentials. The deploy job now checks out
+  `refs/heads/develop`, verifies through the API that the checkout is current
+  `origin/develop`, and rejects any `production-candidate` dispatch from another
+  ref. A candidate branch contributes only the immutable artifact built by the
+  secretless `quality` job; the protected admission step accepts it by run
+  identity (`candidate_run_id`) after checking the run is a completed,
+  successful, non-`pull_request`, same-repository run of this workflow whose
+  head SHA is the current head of an open same-repository PR into `develop`.
+  This replaces the previous `candidate_pr` flow, whose admission check ran
+  inside the candidate-controlled workflow definition and could be modified or
+  bypassed by the candidate it was meant to gate.
+
+- The `eliza-computer.yml` deploy job resolves Wrangler from `bun.lock` instead
+  of `bunx wrangler@4.100.0`. It runs `bun install --frozen-lockfile` for the
+  package, executes `packages/eliza-computer/node_modules/.bin/wrangler`, and
+  asserts the binary reports the pinned version before any credential is used,
+  so the secret-bearing lane can no longer re-resolve executable content from a
+  registry at deploy time. `wrangler@4.100.0` is now an explicit
+  `@elizaos/eliza-computer` devDependency matching the existing root override.
+
 - Interactive `@claude` assistance is opt-in behind
   `CLAUDE_INTERACTIVE_ENABLED=true`. Its pinned third-party action retains a
   broad runner filesystem-read boundary that is not confined to the repository,
