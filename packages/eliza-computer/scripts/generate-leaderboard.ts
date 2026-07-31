@@ -17,6 +17,7 @@ import {
   type GitHubLabel,
   type GitHubTextSource,
   type IssueRecord,
+  isBotActor,
   LEADERBOARD_REPOSITORY,
   type LeaderboardSnapshot,
   type LeaderboardSourceMetadata,
@@ -69,8 +70,14 @@ interface NestedPageState {
   pageInfo: PageInfo;
 }
 
-type PendingPullRequestReview = Omit<PullRequestReview, "inlineCommentCount">;
+type PendingPullRequestReview = Omit<
+  PullRequestReview,
+  "inlineCommentCount"
+> & {
+  commitId: string | null;
+};
 type PendingPullRequestRecord = Omit<PullRequestRecord, "reviews"> & {
+  headRefOid: string;
   reviews: PendingPullRequestReview[];
 };
 
@@ -98,6 +105,7 @@ interface NodeReference {
   id: string;
   kind: "Issue" | "PullRequest";
   outcome: MergedPullRequestOutcome | null;
+  openVersion: string | null;
 }
 
 type ExpectedRecordState = "closed" | "merged" | "open";
@@ -198,6 +206,7 @@ const REVIEW_FIELDS = `
     state
     submittedAt
     url
+    commit { oid }
     author { ...LeaderboardActor }
   }
 `;
@@ -225,6 +234,7 @@ const PULL_REQUEST_FRAGMENT = `
     lastEditedAt
     mergedAt
     isDraft
+    headRefOid
     reviewDecision
     reviewRequests(first: 1) { totalCount }
     author { ...LeaderboardActor }
@@ -355,7 +365,7 @@ const OPEN_PULL_REQUEST_REFERENCES_QUERY = `
       ) {
         totalCount
         pageInfo { hasNextPage endCursor }
-        nodes { id }
+        nodes { id updatedAt headRefOid }
       }
     }
     rateLimit { cost limit remaining resetAt }
@@ -374,7 +384,7 @@ const OPEN_ISSUE_REFERENCES_QUERY = `
       ) {
         totalCount
         pageInfo { hasNextPage endCursor }
-        nodes { id }
+        nodes { id updatedAt }
       }
     }
     rateLimit { cost limit remaining resetAt }
@@ -409,6 +419,8 @@ const MORE_REVIEWS_QUERY = `
   query LeaderboardMoreReviews($id: ID!, $after: String!) {
     node(id: $id) {
       ... on PullRequest {
+        id
+        headRefOid
         reviews(first: 100, after: $after) { ${REVIEW_FIELDS} }
       }
     }
@@ -533,6 +545,14 @@ function asNullableString(value: unknown, path: string): string | null {
     return null;
   }
   return asString(value, path);
+}
+
+function asFullCommitSha(value: unknown, path: string): string {
+  const commitId = asString(value, path);
+  if (!/^[a-f0-9]{40}$/i.test(commitId)) {
+    throw new Error(`${path} must be a full commit SHA`);
+  }
+  return commitId.toLowerCase();
 }
 
 function asNumber(value: unknown, path: string): number {
@@ -677,6 +697,13 @@ function parseReviews(
             `${nodePath}.submittedAt`,
           ),
           url: asString(node.url, `${nodePath}.url`),
+          commitId:
+            node.commit === null
+              ? null
+              : asFullCommitSha(
+                  child(node, "commit", nodePath).oid,
+                  `${nodePath}.commit.oid`,
+                ),
           author: parseActor(node.author, `${nodePath}.author`),
         };
       },
@@ -774,6 +801,7 @@ function parsePullRequest(value: unknown, path: string): ParsedPullRequest {
       lastEditedAt: asNullableString(node.lastEditedAt, `${path}.lastEditedAt`),
       mergedAt: asNullableString(node.mergedAt, `${path}.mergedAt`),
       isDraft: asBoolean(node.isDraft, `${path}.isDraft`),
+      headRefOid: asFullCommitSha(node.headRefOid, `${path}.headRefOid`),
       reviewDecision: asNullableString(
         node.reviewDecision,
         `${path}.reviewDecision`,
@@ -1202,6 +1230,7 @@ function parseSearchReference(
     kind,
     outcome:
       kind === "PullRequest" ? parsePullRequestOutcome(node, path) : null,
+    openVersion: null,
   };
 }
 
@@ -1211,7 +1240,17 @@ function parseOpenReference(
   kind: NodeReference["kind"],
 ): NodeReference {
   const node = asRecord(value, path);
-  return { id: asString(node.id, `${path}.id`), kind, outcome: null };
+  const updatedAt = asString(node.updatedAt, `${path}.updatedAt`);
+  const headRefOid =
+    kind === "PullRequest"
+      ? asFullCommitSha(node.headRefOid, `${path}.headRefOid`)
+      : null;
+  return {
+    id: asString(node.id, `${path}.id`),
+    kind,
+    outcome: null,
+    openVersion: `${updatedAt}:${headRefOid ?? ""}`,
+  };
 }
 
 function chunks<T>(values: T[], size: number): T[][] {
@@ -1503,10 +1542,21 @@ async function completePullRequestConnections(
       id: pullRequest.id,
       after: reviewsState.pageInfo.endCursor,
     });
-    const page = parseReviews(
-      child(data, "node", "data").reviews,
-      "data.node.reviews",
-    );
+    const node = child(data, "node", "data");
+    if (asString(node.id, "data.node.id") !== pullRequest.id) {
+      throw new Error(
+        `PR #${pullRequest.number} changed identity during review pagination`,
+      );
+    }
+    if (
+      asFullCommitSha(node.headRefOid, "data.node.headRefOid") !==
+      pullRequest.headRefOid
+    ) {
+      throw new OpenSetChangedError(
+        `PR #${pullRequest.number} changed head during review pagination`,
+      );
+    }
+    const page = parseReviews(node.reviews, "data.node.reviews");
     pullRequest.reviews.push(...page.nodes);
     reviewsState = pageState(page);
   }
@@ -1652,6 +1702,77 @@ async function completeInlineReviewComments(
   return deduped;
 }
 
+export function deriveCurrentHeadReviewDecision(
+  headRefOid: string,
+  pullRequestAuthor: GitHubActor | null,
+  reviews: Array<{
+    id: string;
+    state: string;
+    submittedAt: string | null;
+    commitId: string | null;
+    author: GitHubActor | null;
+  }>,
+): PullRequestRecord["reviewDecision"] {
+  const currentHead = asFullCommitSha(headRefOid, "Pull request headRefOid");
+  const latestReviewsByActor = new Map<
+    string,
+    { submittedAt: number; reviews: Array<(typeof reviews)[number]> }
+  >();
+  for (const review of reviews) {
+    const commitId =
+      review.commitId === null
+        ? null
+        : asFullCommitSha(review.commitId, `Review ${review.id} commitId`);
+    const isDecision = ["APPROVED", "CHANGES_REQUESTED"].includes(review.state);
+    const isSelfReview =
+      review.author !== null &&
+      pullRequestAuthor !== null &&
+      (review.author.id === pullRequestAuthor.id ||
+        review.author.login.toLowerCase() ===
+          pullRequestAuthor.login.toLowerCase());
+    if (isBotActor(review.author) || isSelfReview) {
+      continue;
+    }
+    if (isDecision && (!review.submittedAt || commitId === null)) {
+      throw new Error(
+        `Review ${review.id} cannot prove a current-head ${review.state} decision`,
+      );
+    }
+    if (
+      !["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state) ||
+      !review.submittedAt ||
+      commitId === null
+    ) {
+      continue;
+    }
+    const submittedAt = Date.parse(review.submittedAt);
+    if (!Number.isFinite(submittedAt)) {
+      throw new Error(`Review ${review.id} has an invalid submittedAt value`);
+    }
+    const actorKey = review.author
+      ? `actor:${review.author.id}`
+      : `ghost:${review.id}`;
+    const previous = latestReviewsByActor.get(actorKey);
+    if (!previous || submittedAt > previous.submittedAt) {
+      latestReviewsByActor.set(actorKey, {
+        submittedAt,
+        reviews: [{ ...review, commitId }],
+      });
+    } else if (submittedAt === previous.submittedAt) {
+      previous.reviews.push({ ...review, commitId });
+    }
+  }
+  const currentHeadStates = [...latestReviewsByActor.values()]
+    .flatMap((entry) => entry.reviews)
+    .filter((review) => review.commitId === currentHead)
+    .map((review) => review.state);
+  return currentHeadStates.includes("CHANGES_REQUESTED")
+    ? "CHANGES_REQUESTED"
+    : currentHeadStates.includes("APPROVED")
+      ? "APPROVED"
+      : null;
+}
+
 async function finalizePullRequests(
   client: GraphqlExecutor,
   pending: PendingPullRequestRecord[],
@@ -1707,17 +1828,39 @@ async function finalizePullRequests(
     }
   }
 
-  return pending.map((pullRequest) => ({
-    ...pullRequest,
-    comments: dedupeByNodeId(pullRequest.comments),
-    reviews: pullRequest.reviews.map((review) => {
+  return pending.map((pendingPullRequest) => {
+    const {
+      headRefOid,
+      reviews: pendingReviews,
+      ...pullRequest
+    } = pendingPullRequest;
+    const reviewDecision = deriveCurrentHeadReviewDecision(
+      headRefOid,
+      pullRequest.author,
+      pendingReviews,
+    );
+    const reviews = pendingReviews.map((review) => {
       const inlineCommentCount = commentCounts.get(review.id);
       if (inlineCommentCount === undefined) {
         throw new Error(`Review ${review.id} inline comments were not loaded`);
       }
-      return { ...review, inlineCommentCount };
-    }),
-  }));
+      return {
+        id: review.id,
+        body: review.body,
+        state: review.state,
+        submittedAt: review.submittedAt,
+        url: review.url,
+        author: review.author,
+        inlineCommentCount,
+      };
+    });
+    return {
+      ...pullRequest,
+      reviewDecision,
+      comments: dedupeByNodeId(pullRequest.comments),
+      reviews,
+    };
+  });
 }
 
 async function hydratePullRequests(
@@ -1776,7 +1919,7 @@ async function hydrateIssues(
   return issues;
 }
 
-function sameReferenceSet(
+export function sameReferenceSet(
   left: NodeReference[],
   right: NodeReference[],
 ): boolean {
@@ -1784,7 +1927,14 @@ function sameReferenceSet(
     return false;
   }
   const rightIds = new Set(right.map((reference) => reference.id));
-  return left.every((reference) => rightIds.has(reference.id));
+  const rightVersions = new Map(
+    right.map((reference) => [reference.id, reference.openVersion]),
+  );
+  return left.every(
+    (reference) =>
+      rightIds.has(reference.id) &&
+      rightVersions.get(reference.id) === reference.openVersion,
+  );
 }
 
 async function collectStableOpenIssues(

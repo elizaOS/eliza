@@ -5,9 +5,10 @@
 
 import { parse } from "graphql";
 import { describe, expect, it, vi } from "vitest";
-import type { LeaderboardSnapshot } from "../src/lib/leaderboard";
+import type { GitHubActor, LeaderboardSnapshot } from "../src/lib/leaderboard";
 import {
   buildUtcDaySlices,
+  deriveCurrentHeadReviewDecision,
   deriveSourceUpdatedAt,
   estimateFirstPageDetailCost,
   GitHubGraphqlClient,
@@ -16,7 +17,18 @@ import {
   resolveGitHubToken,
   runGenerator,
   SEARCH_SAFE_RESULT_LIMIT,
+  sameReferenceSet,
 } from "./generate-leaderboard";
+
+function actor(login: string, kind: GitHubActor["kind"] = "User"): GitHubActor {
+  return {
+    id: `ACTOR_${login}`,
+    login,
+    avatarUrl: `https://avatars.example/${login}`,
+    url: `https://github.com/${login}`,
+    kind,
+  };
+}
 
 function successResponse(
   data: Record<string, unknown> = { viewer: { login: "eliza" } },
@@ -290,6 +302,16 @@ describe("rate-efficient query plan", () => {
     expect(LEADERBOARD_QUERY_DOCUMENTS.pullRequestDetails).toContain(
       "reviews(first: 100)",
     );
+    expect(LEADERBOARD_QUERY_DOCUMENTS.pullRequestDetails).toContain(
+      "headRefOid",
+    );
+    expect(LEADERBOARD_QUERY_DOCUMENTS.pullRequestDetails).toContain(
+      "commit { oid }",
+    );
+    expect(LEADERBOARD_QUERY_DOCUMENTS.moreReviews).toContain("headRefOid");
+    expect(LEADERBOARD_QUERY_DOCUMENTS.openPullRequestReferences).toContain(
+      "nodes { id updatedAt headRefOid }",
+    );
     expect(LEADERBOARD_QUERY_DOCUMENTS.pullRequestDetails).not.toMatch(
       /author\s*\{[^}]+}\s*comments\s*\{/,
     );
@@ -305,6 +327,216 @@ describe("rate-efficient query plan", () => {
     expect(() => estimateFirstPageDetailCost(-1, 0)).toThrow(
       "non-negative integers",
     );
+  });
+
+  it("invalidates an open snapshot when a node changes version", () => {
+    const before = [
+      {
+        id: "PR_1",
+        kind: "PullRequest" as const,
+        outcome: null,
+        openVersion: `2026-07-30T10:00:00.000Z:${"a".repeat(40)}`,
+      },
+    ];
+    expect(sameReferenceSet(before, structuredClone(before))).toBe(true);
+    expect(
+      sameReferenceSet(before, [
+        {
+          ...before[0],
+          openVersion: `2026-07-30T10:01:00.000Z:${"b".repeat(40)}`,
+        },
+      ]),
+    ).toBe(false);
+  });
+});
+
+describe("current-head review selection", () => {
+  it("ignores stale-head, bot, and self reviews while honoring each reviewer's latest state", () => {
+    const head = "a".repeat(40);
+    const previousHead = "b".repeat(40);
+    const author = actor("author");
+    const reviewer = actor("reviewer");
+    const secondReviewer = actor("second-reviewer");
+    const reviews = [
+      {
+        id: "REVIEW_STALE_CHANGES",
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-07-30T10:00:00.000Z",
+        commitId: previousHead,
+        author: reviewer,
+      },
+      {
+        id: "REVIEW_CURRENT_APPROVAL",
+        state: "APPROVED",
+        submittedAt: "2026-07-30T11:00:00.000Z",
+        commitId: head,
+        author: secondReviewer,
+      },
+      {
+        id: "REVIEW_BOT_CHANGES",
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-07-30T12:00:00.000Z",
+        commitId: head,
+        author: actor("review-bot", "Bot"),
+      },
+      {
+        id: "REVIEW_SELF_CHANGES",
+        state: "CHANGES_REQUESTED",
+        submittedAt: "2026-07-30T12:30:00.000Z",
+        commitId: head,
+        author,
+      },
+    ];
+
+    expect(deriveCurrentHeadReviewDecision(head, author, reviews)).toBe(
+      "APPROVED",
+    );
+    expect(
+      deriveCurrentHeadReviewDecision(head, author, [
+        ...reviews,
+        {
+          id: "REVIEW_CURRENT_CHANGES",
+          state: "CHANGES_REQUESTED",
+          submittedAt: "2026-07-30T13:00:00.000Z",
+          commitId: head,
+          author: reviewer,
+        },
+      ]),
+    ).toBe("CHANGES_REQUESTED");
+    expect(
+      deriveCurrentHeadReviewDecision(head, author, [
+        ...reviews,
+        {
+          id: "REVIEW_APPROVAL_SUPERSEDED",
+          state: "COMMENTED",
+          submittedAt: "2026-07-30T14:00:00.000Z",
+          commitId: head,
+          author: secondReviewer,
+        },
+      ]),
+    ).toBe("APPROVED");
+    expect(
+      deriveCurrentHeadReviewDecision(head, author, [
+        {
+          id: "REVIEW_CHANGES_BEFORE_DISMISSAL",
+          state: "CHANGES_REQUESTED",
+          submittedAt: "2026-07-30T13:00:00.000Z",
+          commitId: head,
+          author: reviewer,
+        },
+        {
+          id: "REVIEW_DISMISSED",
+          state: "DISMISSED",
+          submittedAt: "2026-07-30T14:00:00.000Z",
+          commitId: head,
+          author: reviewer,
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("rejects a malformed head revision", () => {
+    expect(() =>
+      deriveCurrentHeadReviewDecision("not-a-full-sha", actor("author"), []),
+    ).toThrow("full commit SHA");
+  });
+
+  it("fails closed for deleted reviewers and same-timestamp decisions", () => {
+    const head = "a".repeat(40);
+    const submittedAt = "2026-07-30T10:00:00.000Z";
+    const reviewer = actor("reviewer");
+    expect(
+      deriveCurrentHeadReviewDecision(head, actor("author"), [
+        {
+          id: "REVIEW_GHOST_APPROVAL",
+          state: "APPROVED",
+          submittedAt,
+          commitId: head,
+          author: null,
+        },
+      ]),
+    ).toBe("APPROVED");
+    expect(
+      deriveCurrentHeadReviewDecision(head, actor("author"), [
+        {
+          id: "REVIEW_GHOST_CHANGES",
+          state: "CHANGES_REQUESTED",
+          submittedAt,
+          commitId: head,
+          author: null,
+        },
+        {
+          id: "REVIEW_OTHER_GHOST_APPROVAL",
+          state: "APPROVED",
+          submittedAt: "2026-07-30T11:00:00.000Z",
+          commitId: head,
+          author: null,
+        },
+      ]),
+    ).toBe("CHANGES_REQUESTED");
+    const tiedReviews = [
+      {
+        id: "REVIEW_TIED_APPROVAL",
+        state: "APPROVED",
+        submittedAt,
+        commitId: head,
+        author: reviewer,
+      },
+      {
+        id: "REVIEW_TIED_CHANGES",
+        state: "CHANGES_REQUESTED",
+        submittedAt,
+        commitId: head,
+        author: reviewer,
+      },
+    ];
+    expect(
+      deriveCurrentHeadReviewDecision(head, actor("author"), tiedReviews),
+    ).toBe("CHANGES_REQUESTED");
+    expect(
+      deriveCurrentHeadReviewDecision(
+        head,
+        actor("author"),
+        tiedReviews.toReversed(),
+      ),
+    ).toBe("CHANGES_REQUESTED");
+  });
+
+  it("rejects malformed non-null review commit revisions", () => {
+    expect(() =>
+      deriveCurrentHeadReviewDecision("a".repeat(40), actor("author"), [
+        {
+          id: "REVIEW_MALFORMED_COMMIT",
+          state: "APPROVED",
+          submittedAt: "2026-07-30T10:00:00.000Z",
+          commitId: "short-sha",
+          author: actor("reviewer"),
+        },
+      ]),
+    ).toThrow(
+      "Review REVIEW_MALFORMED_COMMIT commitId must be a full commit SHA",
+    );
+  });
+
+  it("rejects decision reviews without enough current-head provenance", () => {
+    const head = "a".repeat(40);
+    const base = {
+      id: "REVIEW_INCOMPLETE",
+      state: "CHANGES_REQUESTED",
+      submittedAt: "2026-07-30T10:00:00.000Z" as string | null,
+      commitId: head as string | null,
+      author: actor("reviewer"),
+    };
+    expect(() =>
+      deriveCurrentHeadReviewDecision(head, actor("author"), [
+        { ...base, commitId: null },
+      ]),
+    ).toThrow("cannot prove a current-head CHANGES_REQUESTED decision");
+    expect(() =>
+      deriveCurrentHeadReviewDecision(head, actor("author"), [
+        { ...base, submittedAt: null },
+      ]),
+    ).toThrow("cannot prove a current-head CHANGES_REQUESTED decision");
   });
 });
 

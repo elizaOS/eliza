@@ -957,7 +957,7 @@ describe("work queue claims and prioritization", () => {
       closedAt: null,
       stateReason: null,
       labels: [],
-      author: actor("automation-bot", "Bot"),
+      author: actor("renovate"),
     });
     const reviewCandidate = pullRequest({
       id: "PR_CANDIDATE",
@@ -1040,6 +1040,80 @@ describe("work queue claims and prioritization", () => {
     expect(selections.get("PR_LANE_CLAIM")?.reasons).toEqual(["claimed"]);
   });
 
+  it("normalizes every shared claim and blocked label spelling", () => {
+    for (const [index, name] of [
+      "status:in-progress",
+      "status: in-progress",
+      "status:claimed",
+      "status: claimed",
+      "claimed:lane-one",
+    ].entries()) {
+      const snapshot = createLeaderboardSnapshot(
+        input({
+          openIssues: [
+            issue({
+              id: `ISSUE_LABEL_${index}`,
+              number: 100 + index,
+              closedAt: null,
+              stateReason: null,
+              labels: [{ id: `LABEL_${index}`, name, color: "fff" }],
+            }),
+          ],
+        }),
+      );
+      expect(snapshot.workQueue.issues[0].selection.reasons).toContain(
+        "claimed",
+      );
+    }
+
+    for (const [index, name] of [
+      "review:claimed",
+      "review: claimed",
+      "review-in-progress:lane-one",
+    ].entries()) {
+      const snapshot = createLeaderboardSnapshot(
+        input({
+          openPullRequests: [
+            pullRequest({
+              id: `PR_LABEL_${index}`,
+              number: 200 + index,
+              mergedAt: null,
+              reviewDecision: null,
+              labels: [{ id: `REVIEW_LABEL_${index}`, name, color: "fff" }],
+            }),
+          ],
+        }),
+      );
+      expect(snapshot.workQueue.pullRequests[0].selection.reasons).toContain(
+        "claimed",
+      );
+    }
+
+    for (const [index, name] of [
+      "status:blocked",
+      "status: blocked",
+      "do-not-merge",
+    ].entries()) {
+      const snapshot = createLeaderboardSnapshot(
+        input({
+          openIssues: [
+            issue({
+              id: `ISSUE_BLOCKED_${index}`,
+              number: 300 + index,
+              closedAt: null,
+              stateReason: null,
+              labels: [{ id: `BLOCKED_LABEL_${index}`, name, color: "fff" }],
+            }),
+          ],
+        }),
+      );
+      expect(snapshot.workQueue.issues[0]).toMatchObject({
+        actionability: "blocked",
+        selection: { reasons: ["blocked"] },
+      });
+    }
+  });
+
   it("uses recent claim comments and never treats a PR author as its reviewer", () => {
     const issueClaimant = actor("issue-claimant");
     const reviewer = actor("review-claimant");
@@ -1097,6 +1171,39 @@ describe("work queue claims and prioritization", () => {
         },
       ],
     });
+    const unknownClaimIssue = issue({
+      id: "ISSUE_UNKNOWN_CLAIM",
+      number: 13,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_UNKNOWN_CLAIM",
+            "CLAIMING: deleted authors cannot reserve work",
+          ),
+          artifactId: "ISSUE_UNKNOWN_CLAIM",
+          author: null,
+        },
+      ],
+    });
+    const spacedMarkerIssue = issue({
+      id: "ISSUE_SPACED_MARKER",
+      number: 14,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_SPACED_MARKER",
+            "CLAIMING : noncanonical marker",
+          ),
+          artifactId: "ISSUE_SPACED_MARKER",
+        },
+      ],
+    });
     const openPullRequest = pullRequest({
       id: "PR_REVIEW",
       number: 20,
@@ -1150,7 +1257,13 @@ describe("work queue claims and prioritization", () => {
 
     const snapshot = createLeaderboardSnapshot(
       input({
-        openIssues: [recentIssue, staleIssue, fencedExampleIssue],
+        openIssues: [
+          recentIssue,
+          staleIssue,
+          fencedExampleIssue,
+          unknownClaimIssue,
+          spacedMarkerIssue,
+        ],
         openPullRequests: [openPullRequest, wrongClaimForm],
       }),
     );
@@ -1162,6 +1275,12 @@ describe("work queue claims and prioritization", () => {
     )?.claim;
     const fencedExampleClaim = snapshot.workQueue.issues.find(
       (item) => item.id === "ISSUE_FENCED_EXAMPLE",
+    )?.claim;
+    const unknownClaim = snapshot.workQueue.issues.find(
+      (item) => item.id === "ISSUE_UNKNOWN_CLAIM",
+    )?.claim;
+    const spacedMarkerClaim = snapshot.workQueue.issues.find(
+      (item) => item.id === "ISSUE_SPACED_MARKER",
     )?.claim;
     const reviewClaim = snapshot.workQueue.pullRequests.find(
       (item) => item.id === "PR_REVIEW",
@@ -1187,6 +1306,8 @@ describe("work queue claims and prioritization", () => {
       source: "none",
       kind: null,
     });
+    expect(unknownClaim?.status).toBe("unclaimed");
+    expect(spacedMarkerClaim?.status).toBe("unclaimed");
     expect(reviewClaim).toMatchObject({
       status: "claimed",
       source: "claim-comment",
@@ -1194,6 +1315,43 @@ describe("work queue claims and prioritization", () => {
       actors: [expect.objectContaining({ login: "review-claimant" })],
     });
     expect(implementationOnly?.status).toBe("unclaimed");
+  });
+
+  it("recognizes claims collected after the scoring cutoff", () => {
+    const generatedAt = "2026-07-30T12:05:00.000Z";
+    const duringCollection = issue({
+      id: "ISSUE_DURING_COLLECTION",
+      number: 22,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_DURING_COLLECTION",
+            "CLAIMING: work claimed while the snapshot was collecting",
+            actor("active-claimant"),
+          ),
+          artifactId: "ISSUE_DURING_COLLECTION",
+          createdAt: "2026-07-30T12:03:00.000Z",
+          updatedAt: "2026-07-30T12:03:00.000Z",
+        },
+      ],
+    });
+    const lateInput = input({
+      generatedAt,
+      openIssues: [duringCollection],
+    });
+    lateInput.source.fetchedAt = generatedAt;
+
+    const snapshot = createLeaderboardSnapshot(lateInput);
+
+    expect(snapshot.workQueue.issues[0].claim).toMatchObject({
+      status: "claimed",
+      source: "claim-comment",
+      actors: [expect.objectContaining({ login: "active-claimant" })],
+    });
+    expect(snapshot.workQueue.issues[0].selection.reasons).toContain("claimed");
   });
 
   it("sorts actionable unclaimed work before claims, blocks, and drafts", () => {

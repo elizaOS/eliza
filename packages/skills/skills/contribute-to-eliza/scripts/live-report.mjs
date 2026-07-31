@@ -43,9 +43,9 @@ const GENERIC_MODEL_IDS = new Set([
   "na",
   "none",
 ]);
-const ISSUE_CLAIM_RE = /^CLAIMING\s*:/i;
-const REVIEW_CLAIM_RE = /^CLAIMING\s+REVIEW\s*:/i;
-const CONTRIBUTION_CLAIM_RE = /^CLAIMING(?:\s+REVIEW|\s+LEVER)?\s*:/i;
+const ISSUE_CLAIM_RE = /^CLAIMING:\s*\S/i;
+const REVIEW_CLAIM_RE = /^CLAIMING\s+REVIEW:\s*\S/i;
+const CONTRIBUTION_CLAIM_RE = /^CLAIMING(?:\s+REVIEW|\s+LEVER)?:\s*\S/i;
 const AI_PROVENANCE_DECLARATION_RE =
   /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
 const AI_PROVENANCE_MARKER_LINE_RE =
@@ -255,14 +255,19 @@ function accountLogin(account) {
   return asStringField(record, "login", "account");
 }
 
+function accountId(account) {
+  if (account === null) return null;
+  return asNumberField(asRecord(account, "account"), "id", "account");
+}
+
 function labelNames(item, context) {
   return asArrayField(item, "labels", context).map((value, index) => {
-    if (typeof value === "string") return value;
+    if (typeof value === "string") return value.trim();
     return asStringField(
       asRecord(value, `${context}.labels[${index}]`),
       "name",
       `${context}.labels[${index}]`,
-    );
+    ).trim();
   });
 }
 
@@ -347,7 +352,7 @@ export function isBotAccount(account) {
   return (
     String(record.type).toLowerCase() === "bot" ||
     /\[bot\]$|(?:^|[-_])bot$/i.test(login) ||
-    /^(?:dependabot|renovate)(?:\[bot\])?$/i.test(login)
+    /^(?:dependabot|github-actions|renovate)(?:\[bot\])?$/i.test(login)
   );
 }
 
@@ -359,6 +364,8 @@ function normalizeComment(value, kind, index) {
     kind,
     url: asStringField(record, "html_url", context),
     author: accountLogin(record.user),
+    authorId: accountId(record.user),
+    authorKnown: record.user !== null,
     bot: isBotAccount(record.user),
     body: nullableText(record.body, `${context}.body`),
     createdAt: isoTime(record.created_at, `${context}.created_at`),
@@ -388,6 +395,7 @@ function normalizeReview(value, index) {
     kind: "review",
     url: asStringField(record, "html_url", context),
     author: accountLogin(record.user),
+    authorId: accountId(record.user),
     bot: isBotAccount(record.user),
     body: nullableText(record.body, `${context}.body`),
     createdAt: optionalIsoTime(record.submitted_at, `${context}.submitted_at`),
@@ -409,6 +417,7 @@ export function auditCommentDisclosures(comments) {
   return comments
     .filter(
       (comment) =>
+        comment.authorKnown &&
         !comment.bot &&
         comment.body.trim().length > 0 &&
         (hasClaimSignal(comment.body, CONTRIBUTION_CLAIM_RE) ||
@@ -713,10 +722,23 @@ function claimReasons(item, comments, mode, context, referenceTime) {
   }
 
   const author = accountLogin(item.user);
+  const authorId = accountId(item.user);
+  const authorKey = author.toLowerCase();
   const assignees = asArrayField(item, "assignees", context)
     .filter((assignee) => !isBotAccount(assignee))
-    .map((assignee) => accountLogin(assignee))
-    .filter((assignee) => mode === "issue" || assignee !== author);
+    .map((assignee) => ({
+      id: accountId(assignee),
+      login: accountLogin(assignee),
+    }))
+    .filter(
+      (assignee) =>
+        mode === "issue" ||
+        !(
+          (authorId !== null && assignee.id === authorId) ||
+          assignee.login.toLowerCase() === authorKey
+        ),
+    )
+    .map((assignee) => assignee.login);
   if (assignees.length > 0) {
     reasons.push(`assignees: ${assignees.sort().join(", ")}`);
   }
@@ -725,7 +747,13 @@ function claimReasons(item, comments, mode, context, referenceTime) {
   const claimers = comments
     .filter(
       (comment) =>
+        comment.authorKnown &&
         !comment.bot &&
+        (mode === "issue" ||
+          !(
+            (authorId !== null && comment.authorId === authorId) ||
+            comment.author.toLowerCase() === authorKey
+          )) &&
         hasClaimSignal(comment.body, claimPattern) &&
         isRecent(comment.createdAt, referenceTime),
     )
@@ -780,33 +808,52 @@ function currentHeadReviewStatus(item, reviews, context) {
     throw new TypeError(`${context}.head.sha must be a full commit SHA`);
   }
   const author = accountLogin(item.user).toLowerCase();
+  const authorId = accountId(item.user);
   const latestByReviewer = new Map();
   for (const review of reviews) {
     if (
       review.bot ||
-      review.author.toLowerCase() === author ||
-      review.createdAt === null
+      (authorId !== null && review.authorId === authorId) ||
+      review.author.toLowerCase() === author
     ) {
       continue;
     }
-    const key = review.author.toLowerCase();
-    const previous = latestByReviewer.get(key);
+    const isDecision = ["APPROVED", "CHANGES_REQUESTED"].includes(review.state);
+    if (isDecision && (review.createdAt === null || review.commitId === null)) {
+      throw new TypeError(
+        `${context} review ${review.id} cannot prove a current-head ${review.state} decision`,
+      );
+    }
     if (
-      !previous ||
-      Date.parse(review.createdAt) > Date.parse(previous.createdAt) ||
-      (review.createdAt === previous.createdAt && review.id > previous.id)
+      !["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(review.state) ||
+      review.createdAt === null ||
+      review.commitId === null
     ) {
-      latestByReviewer.set(key, review);
+      continue;
+    }
+    const key =
+      review.authorId === null
+        ? `ghost:${review.id}`
+        : `actor:${review.authorId}`;
+    const submittedAt = Date.parse(review.createdAt);
+    const previous = latestByReviewer.get(key);
+    if (!previous || submittedAt > previous.submittedAt) {
+      latestByReviewer.set(key, { submittedAt, reviews: [review] });
+    } else if (submittedAt === previous.submittedAt) {
+      previous.reviews.push(review);
     }
   }
 
   const approved = [];
   const changesRequested = [];
-  for (const review of latestByReviewer.values()) {
-    if (review.commitId !== headSha) continue;
-    if (review.state === "APPROVED") approved.push(review.author);
-    if (review.state === "CHANGES_REQUESTED") {
-      changesRequested.push(review.author);
+  for (const entry of latestByReviewer.values()) {
+    const currentHeadStates = entry.reviews
+      .filter((review) => review.commitId === headSha)
+      .map((review) => review.state);
+    if (currentHeadStates.includes("CHANGES_REQUESTED")) {
+      changesRequested.push(entry.reviews[0].author);
+    } else if (currentHeadStates.includes("APPROVED")) {
+      approved.push(entry.reviews[0].author);
     }
   }
   return {
@@ -974,7 +1021,7 @@ export function collectLiveReport(
 
     const reasons = claimReasons(
       item,
-      issueComments,
+      [...issueComments, ...inlineComments],
       "pull request",
       context,
       referenceTime,
