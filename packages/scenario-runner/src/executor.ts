@@ -1552,7 +1552,6 @@ async function executeMessageTurn(
 
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
-    agentId: runtime.agentId,
     entityId: room.userId,
     // Real transports stamp the receiving agent on every inbound turn, and the
     // owner-private disclosure gate REQUIRES it: an absent `agentId` is denied
@@ -1683,7 +1682,6 @@ async function executeActionTurn(
       : {};
   const message: Memory = createMessageMemory({
     id: crypto.randomUUID() as UUID,
-    agentId: runtime.agentId,
     entityId: room.userId,
     // See the message-turn construction above: the owner-private disclosure
     // gate denies an agentId-less turn as `agent_mismatch`.
