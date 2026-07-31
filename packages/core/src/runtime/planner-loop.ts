@@ -599,7 +599,7 @@ async function runPlannerLoopIterations(
 					if (protocolFailureRelay) {
 						params.runtime.logger?.warn?.(
 							{ iteration, protocolFailure: true },
-							"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+							"[planner-loop] evaluator violated its protocol after a tool result; relaying the authoritative result without replaying work",
 						);
 						return {
 							status: "finished",
@@ -1187,7 +1187,7 @@ async function runPlannerLoopIterations(
 		if (protocolFailureRelay) {
 			params.runtime.logger?.warn?.(
 				{ iteration, protocolFailure: true },
-				"[planner-loop] evaluator violated its protocol after a successful tool; relaying the completed result without replaying work",
+				"[planner-loop] evaluator violated its protocol after a tool result; relaying the authoritative result without replaying work",
 			);
 			return {
 				status: "finished",
@@ -3766,7 +3766,24 @@ function deterministicEvaluatorProtocolFailureRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	if (evaluator.protocolFailure !== true) return undefined;
-	if (latestUnresolvedFailedNonTerminalToolStep(trajectory)) return undefined;
+	const unresolvedFailure =
+		latestUnresolvedFailedNonTerminalToolStep(trajectory);
+	if (unresolvedFailure) {
+		const latestExecutedTool = [...trajectory.steps]
+			.reverse()
+			.find(
+				(step) =>
+					step.toolCall !== undefined &&
+					!isTerminalToolCall(step.toolCall) &&
+					step.result !== undefined,
+			);
+		// A malformed evaluator cannot safely invent a retry after the operation
+		// that just failed. Finish with that action-owned failure; an older failure
+		// followed by newer work still gets the normal replanning opportunity.
+		return latestExecutedTool === unresolvedFailure
+			? groundedFailedToolMessage(unresolvedFailure)
+			: undefined;
+	}
 	return deterministicSuccessfulToolRelay(trajectory);
 }
 
