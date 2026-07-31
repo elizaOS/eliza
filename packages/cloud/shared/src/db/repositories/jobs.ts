@@ -901,7 +901,7 @@ export class JobsRepository {
     maxAttempts?: number;
     /** Settles dependent rows for jobs this sweep flips to `failed`. */
     buildFailureWriteback?: RecoveryFailureWritebackBuilder;
-    /** Post-commit hook for a flip that committed (cache eviction, metrics). */
+    /** Post-commit hook for a committed flip (cache eviction); gets the hydrated job. */
     onPermanentFailure?: (failedJob: Job) => Promise<void>;
   }): Promise<number> {
     const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
@@ -1018,7 +1018,7 @@ export class JobsRepository {
     maxAttempts?: number;
     /** Settles dependent rows for jobs this sweep flips to `failed`. */
     buildFailureWriteback?: RecoveryFailureWritebackBuilder;
-    /** Post-commit hook for a flip that committed (cache eviction, metrics). */
+    /** Post-commit hook for a committed flip (cache eviction); gets the hydrated job. */
     onPermanentFailure?: (failedJob: Job) => Promise<void>;
   }): Promise<number> {
     const conditions = [
@@ -1117,7 +1117,9 @@ export class JobsRepository {
    * Resolves the dependent-row writeback for a job about to be flipped to
    * `failed`. Hydration happens HERE, outside the recovery transaction: the
    * blob store has no timeout and the transaction holds the agent-lifecycle
-   * advisory lock.
+   * advisory lock. A throw lands before the flip is attempted, so the job stays
+   * `in_progress` for the next sweep instead of reaching a terminal state with
+   * its dependent row unsettled — the live path fails the same way.
    */
   private async prepareRecoveryWriteback(
     job: Job,
@@ -1125,22 +1127,8 @@ export class JobsRepository {
     build: RecoveryFailureWritebackBuilder | undefined,
   ): Promise<{ onFailedInTx?: JobFailureWriteback; hydratedJob?: Job }> {
     if (!build) return {};
-    try {
-      const hydratedJob = await hydrateJob(job);
-      return { onFailedInTx: build(hydratedJob, error), hydratedJob };
-    } catch (buildError) {
-      // error-policy:J4/J7 degrade-with-signal — the flip must not be held
-      // hostage by an unbuildable writeback.
-      logger.error(
-        "[jobs] Failure-writeback build threw; flipping the job WITHOUT settling its dependent row",
-        {
-          jobId: job.id,
-          type: job.type,
-          error: buildError instanceof Error ? buildError.message : String(buildError),
-        },
-      );
-      return {};
-    }
+    const hydratedJob = await hydrateJob(job);
+    return { onFailedInTx: build(hydratedJob, error), hydratedJob };
   }
 
   private async recoverJobFromSnapshot(params: {
@@ -1263,23 +1251,25 @@ export class JobsRepository {
             ),
           );
       }
+      // `incrementAttempt` hands `hydrateJob(updated)` to its writeback AND to
+      // its caller, and the post-commit hook reads fields an offloaded row does
+      // not keep — container_provision's `containerId` is not on the inline
+      // allowlist. Rebuild that value without an in-transaction blob read:
+      // recovery never touches `data`/`result`, so the pre-transaction
+      // hydration of those two is byte-identical, and the fresh `error` is the
+      // plaintext just written, offloaded or not.
+      const recoveredJob: Job = params.hydratedJob
+        ? {
+            ...updated,
+            data: params.hydratedJob.data,
+            result: params.hydratedJob.result,
+            error: params.error,
+          }
+        : updated;
       if (params.isFailed && params.onFailedInTx) {
-        // `incrementAttempt` hands the writeback `hydrateJob(updated)`. Rebuild
-        // exactly that value without an in-transaction blob read: recovery
-        // never touches `data`/`result`, so the pre-transaction hydration of
-        // those two is byte-identical, and the fresh `error` is the plaintext
-        // just written — offloaded or not.
-        const failedJob: Job = params.hydratedJob
-          ? {
-              ...updated,
-              data: params.hydratedJob.data,
-              result: params.hydratedJob.result,
-              error: params.error,
-            }
-          : updated;
-        await params.onFailedInTx(tx, failedJob);
+        await params.onFailedInTx(tx, recoveredJob);
       }
-      return updated;
+      return recoveredJob;
     });
   }
 

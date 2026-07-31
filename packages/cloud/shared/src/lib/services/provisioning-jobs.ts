@@ -36,6 +36,7 @@ import {
   jobsRepository,
   type NewJob,
   prepareJobInsertData,
+  type RecoveryFailureWritebackBuilder,
   StaleJobExecutionError,
 } from "../../db/repositories/jobs";
 import {
@@ -1030,6 +1031,31 @@ const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
+
+/**
+ * Job types whose permanent failure has to settle a dependent status row. This
+ * list and the arms of `buildPermanentFailureWriteback` are ONE mapping; the
+ * exhaustiveness check in that switch fails the build if they drift apart.
+ * Recovery consults it per TYPE because resolving a writeback first hydrates
+ * the job's blob-offloaded payload, and a type owning no dependent row would
+ * pay those object-store reads only to be handed `undefined` — which would
+ * also make the stale sweep hydrate for lanes it deliberately leaves gated.
+ */
+const DEPENDENT_ROW_JOB_TYPES = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.APP_DEPLOY,
+  JOB_TYPES.CONTAINER_PROVISION,
+  JOB_TYPES.AGENT_DELETE,
+] as const satisfies readonly ProvisioningJobType[];
+
+type DependentRowJobType = (typeof DEPENDENT_ROW_JOB_TYPES)[number];
+
+function ownsDependentRow(jobType: string): jobType is DependentRowJobType {
+  return (DEPENDENT_ROW_JOB_TYPES as readonly string[]).includes(jobType);
+}
 export class ProvisioningJobService {
   private readonly executionOverride?: (job: Job) => Promise<void>;
   private readonly executionTimeoutMs: (jobType: string) => number;
@@ -2858,8 +2884,7 @@ export class ProvisioningJobService {
       const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
-        buildFailureWriteback: (hydratedJob, error) =>
-          this.buildPermanentFailureWriteback(hydratedJob, error),
+        buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
         onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
       totalRecovered += recovered;
@@ -3061,13 +3086,14 @@ export class ProvisioningJobService {
    * Builds the in-transaction dependent-row writeback for a job that has just
    * exhausted its retries. Returned callback runs INSIDE incrementAttempt's
    * transaction (atomic with the job-status `failed` flip). Returns undefined
-   * for job types that have no dependent status row to flip.
+   * for job types outside `DEPENDENT_ROW_JOB_TYPES`, which own no such row.
    */
   private buildPermanentFailureWriteback(
     job: Job,
     errorMsg: string,
     upgradeFailure?: UpgradeFailedError,
   ): ((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined {
+    if (!ownsDependentRow(job.type)) return undefined;
     switch (job.type) {
       // Mark the sandbox "error" so the UI reflects reality instead of staying
       // stuck in "provisioning".
@@ -3318,9 +3344,27 @@ export class ProvisioningJobService {
           );
         };
       }
-      default:
-        return undefined;
+      default: {
+        // The guard above already excluded every non-dependent type, so a new
+        // arm added to DEPENDENT_ROW_JOB_TYPES without a case here fails to
+        // compile rather than silently skipping its dependent row.
+        const unhandled: never = job.type;
+        throw new Error(`No permanent-failure writeback for job type ${String(unhandled)}`);
+      }
     }
+  }
+
+  /**
+   * Resolves the writeback builder for one job TYPE, before the sweep has a job
+   * in hand. A type owning no dependent row gets no builder at all: the
+   * repository must hydrate a job's blob-offloaded payload before it can call
+   * one, and the object store has no timeout.
+   */
+  private dependentRowWritebackBuilder(
+    jobType: string,
+  ): RecoveryFailureWritebackBuilder | undefined {
+    if (!ownsDependentRow(jobType)) return undefined;
+    return (hydratedJob, error) => this.buildPermanentFailureWriteback(hydratedJob, error);
   }
 
   private async assertNoConflictingLifecycleExecution(job: Job): Promise<void> {
@@ -5081,8 +5125,7 @@ export class ProvisioningJobService {
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
           : DEFAULT_STALE_JOB_THRESHOLD_MS,
-        buildFailureWriteback: (hydratedJob, error) =>
-          this.buildPermanentFailureWriteback(hydratedJob, error),
+        buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
         onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
       totalRecovered += recovered;
