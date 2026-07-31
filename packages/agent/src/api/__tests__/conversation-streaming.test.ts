@@ -9,6 +9,7 @@
 
 import type http from "node:http";
 import {
+  type Action,
   type AgentRuntime,
   ChannelType,
   type Content,
@@ -999,6 +1000,36 @@ describe("generateChatResponse token streaming", () => {
     );
   });
 
+  it("finalizes an Android local result that wins the cancellation race", async () => {
+    const caller = new AbortController();
+    const useModel = createUseModelMock(async () => {
+      caller.abort(new DOMException("socket closed", "AbortError"));
+      return "Local reply completed.";
+    });
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("answer locally"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("Local reply completed.");
+    expect(result.localInference?.provider).toBe("mobile-local-direct-reply");
+  });
+
   it("includes only six bounded recent messages and preserves multi-sentence replies", async () => {
     const roomId = stringToUuid("room");
     const memories = Array.from({ length: 8 }, (_, index) => {
@@ -1415,6 +1446,55 @@ describe("generateChatResponse token streaming", () => {
     expect(signalFromOptions?.aborted).toBe(true);
   });
 
+  it("finalizes a message result that wins the race with caller cancellation", async () => {
+    const caller = new AbortController();
+    const chunks: string[] = [];
+    const handleMessage = vi.fn(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: {
+          onStreamChunk?: (chunk: string) => Promise<void> | void;
+        },
+      ) => {
+        await options?.onStreamChunk?.("completed reply");
+        caller.abort(new DOMException("socket closed", "AbortError"));
+        return {
+          didRespond: true,
+          responseContent: { text: "completed reply" },
+          responseMessages: [],
+        };
+      },
+    );
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("finish this request"),
+      "Streaming Agent",
+      {
+        abortSignal: caller.signal,
+        onChunk: (chunk) => chunks.push(chunk),
+      },
+    );
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(chunks).toEqual(["completed reply"]);
+    expect(result.text).toBe("completed reply");
+  });
+
   it("propagates caller cancellation into chat pre-handlers", async () => {
     let preHandlerStarted: (() => void) | undefined;
     const started = new Promise<void>((resolve) => {
@@ -1460,6 +1540,81 @@ describe("generateChatResponse token streaming", () => {
     await expect(generation).rejects.toThrow("Client disconnected");
     expect(signalFromPreHandler?.aborted).toBe(true);
     expect(handleMessage).not.toHaveBeenCalled();
+  });
+
+  it("finalizes a pre-handler result that wins the cancellation race", async () => {
+    const caller = new AbortController();
+    const handleMessage = vi.fn();
+    const drainChatPreHandlers = vi.fn(async () => {
+      caller.abort(new DOMException("socket closed", "AbortError"));
+      return { responseText: "direct result completed" };
+    });
+    const runtime = createRuntime({
+      drainChatPreHandlers,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("run the direct handler"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(drainChatPreHandlers).toHaveBeenCalledTimes(1);
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(result.text).toBe("direct result completed");
+  });
+
+  it("finalizes a committed direct action across a late cancellation", async () => {
+    const caller = new AbortController();
+    const actionHandler = vi.fn(async () => {
+      caller.abort(new DOMException("socket closed", "AbortError"));
+      return {
+        success: true,
+        text: "Task committed.",
+        data: { actionName: "START_CODING_TASK" },
+      };
+    });
+    const action = {
+      name: "START_CODING_TASK",
+      description: "Create a coding task.",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: actionHandler,
+    } satisfies Action;
+    const runtime = createRuntime({
+      actions: [action],
+      getService: vi.fn((serviceType: string) =>
+        serviceType === "SWARM_COORDINATOR" ? ({} as never) : null,
+      ) as AgentRuntime["getService"],
+    });
+    const message = createChatMessage("build the durable fix");
+    message.entityId = runtime.agentId;
+    message.content = {
+      ...message.content,
+      metadata: { intent: "create_task" },
+    };
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(actionHandler).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("Task committed.");
   });
 
   it("rejects ingress hook failures before starting message generation", async () => {
