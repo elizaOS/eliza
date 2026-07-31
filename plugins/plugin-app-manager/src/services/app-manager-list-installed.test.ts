@@ -47,7 +47,10 @@ import { join } from "node:path";
 import { AppManager } from "./app-manager.ts";
 
 /** A registry entry the app-manager treats as an installable app. */
-function appRegistryEntry(name: string) {
+function appRegistryEntry(
+  name: string,
+  appMetaPatch: Record<string, unknown> = {},
+) {
   const pkg = `@elizaos/plugin-${name}`;
   return {
     name,
@@ -79,6 +82,7 @@ function appRegistryEntry(name: string) {
       category: "games",
       capabilities: [],
       runtimePlugin: pkg,
+      ...appMetaPatch,
     },
     app: {},
   };
@@ -297,6 +301,41 @@ describe("AppManager catalog surface", () => {
       displayName: "chess",
       launchType: "connect",
       launchUrl: "https://example.com/app",
+    });
+  });
+
+  it("listAvailable preserves owner-declared catalog visibility metadata", async () => {
+    registry.getRegistryPlugins.mockResolvedValue(
+      new Map([
+        [
+          "calendar",
+          appRegistryEntry("calendar", {
+            visibleInAppStore: false,
+            developerOnly: true,
+            mainTab: false,
+            catalogSection: "other",
+            featured: false,
+            defaultHidden: true,
+            scope: "calendar",
+          }),
+        ],
+      ]),
+    );
+    const manager = new AppManager({ stateDir });
+    const available = await manager.listAvailable(
+      makePluginManager("calendar").pluginManager,
+    );
+
+    expect(available).toHaveLength(1);
+    expect(available[0]).toMatchObject({
+      name: "calendar",
+      visibleInAppStore: false,
+      developerOnly: true,
+      mainTab: false,
+      catalogSection: "other",
+      featured: false,
+      defaultHidden: true,
+      scope: "calendar",
     });
   });
 
