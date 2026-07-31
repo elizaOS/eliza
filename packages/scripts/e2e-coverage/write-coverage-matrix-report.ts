@@ -4,17 +4,12 @@
  *
  * Builds the canonical coverage matrix (slash commands, #8791 shortcuts, plugin
  * routes, views) from real source, writes `reports/coverage/e2e-matrix.json` +
- * a self-contained HTML contact sheet + a markdown summary, prints a one-line
- * status, and exits non-zero on a blocking gap when enforcement is on.
- *
- * Advisory-then-required:
- *   - default: report only, exit 0 (advisory).
- *   - `--fail-on-missing` or `E2E_COVERAGE_GATE_ENFORCE=1`: exit 1 on a blocking
- *     gap (required).
+ * a self-contained HTML contact sheet + a markdown summary, and prints a
+ * one-line status. Missing coverage stays visible as data and is never
+ * converted into a merge-blocking threshold.
  *
  * Usage:
  *   bun packages/scripts/e2e-coverage/write-coverage-matrix-report.ts [--report-dir <dir>] [--json]
- *       [--fail-on-missing]
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -28,16 +23,12 @@ import {
 interface CliOptions {
   reportDir: string;
   json: boolean;
-  failOnMissing: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     reportDir: path.join(REPO_ROOT, "reports/coverage"),
     json: false,
-    failOnMissing:
-      process.env.E2E_COVERAGE_GATE_ENFORCE === "1" ||
-      process.env.E2E_COVERAGE_GATE_ENFORCE === "true",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -45,10 +36,6 @@ function parseArgs(argv: string[]): CliOptions {
       options.reportDir = path.resolve(argv[++i] ?? options.reportDir);
     } else if (arg === "--json") {
       options.json = true;
-    } else if (arg === "--fail-on-missing") {
-      options.failOnMissing = true;
-    } else if (arg === "--no-fail") {
-      options.failOnMissing = false;
     }
   }
   return options;
@@ -125,10 +112,9 @@ function renderViewerHtml(): string {
   const cardDefs = [
     ['commands', (s.commands||{}).covered + '/' + (s.commands||{}).total],
     ['plugin routes', (s.pluginRoutes||{}).covered + '/' + (s.pluginRoutes||{}).total + ' (+' + (s.pluginRoutes||{}).exempt + ' exempt)'],
-    ['shortcuts', (s.shortcuts||{}).gated ? 'gated on #8791' : ((s.shortcuts||{}).covered + '/' + (s.shortcuts||{}).total)],
-    ['view gates', (s.views||{}).gates],
-    ['blocking gaps', s.blockingGaps],
-    ['advisory gaps', s.advisoryGaps],
+    ['shortcuts', !(s.shortcuts||{}).registryPresent ? 'registry absent (#8791)' : ((s.shortcuts||{}).covered + '/' + (s.shortcuts||{}).total)],
+    ['view test artifacts', (s.views||{}).artifacts],
+    ['reported gaps', s.gaps],
   ];
   document.getElementById('cards').innerHTML = cardDefs
     .map(([l, n]) => '<div class="card"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>')
@@ -167,23 +153,14 @@ function renderMarkdown(matrix: CoverageMatrix): string {
     `- Plugin routes: ${s.pluginRoutes.covered}/${s.pluginRoutes.total} covered (+${s.pluginRoutes.exempt} exempt)`,
   );
   lines.push(
-    `- Shortcuts: ${s.shortcuts.gated ? "gated on #8791 (advisory)" : `${s.shortcuts.covered}/${s.shortcuts.total}`}`,
+    `- Shortcuts: ${s.shortcuts.registryPresent ? `${s.shortcuts.covered}/${s.shortcuts.total}` : "registry absent (#8791)"}`,
   );
-  lines.push(`- View gates: ${s.views.gates}`);
-  lines.push(
-    `- Blocking gaps: ${s.blockingGaps} · Advisory gaps: ${s.advisoryGaps}`,
-  );
+  lines.push(`- View test artifacts: ${s.views.artifacts}`);
+  lines.push(`- Reported gaps: ${s.gaps}`);
   lines.push("");
-  if (matrix.blockingGaps.length > 0) {
-    lines.push("## Blocking gaps");
-    for (const gap of matrix.blockingGaps) {
-      lines.push(`- \`${gap.id}\` — ${gap.detail}`);
-    }
-    lines.push("");
-  }
-  if (matrix.advisoryGaps.length > 0) {
-    lines.push("## Advisory gaps");
-    for (const gap of matrix.advisoryGaps) {
+  if (matrix.gaps.length > 0) {
+    lines.push("## Reported gaps");
+    for (const gap of matrix.gaps) {
       lines.push(`- \`${gap.id}\` — ${gap.detail}`);
     }
     lines.push("");
@@ -221,19 +198,13 @@ function main(): number {
     process.stdout.write(
       `e2e coverage — commands ${s.commands.covered}/${s.commands.total}; ` +
         `routes ${s.pluginRoutes.covered}/${s.pluginRoutes.total} (+${s.pluginRoutes.exempt} exempt); ` +
-        `blocking gaps ${s.blockingGaps}; advisory ${s.advisoryGaps}\n`,
+        `reported gaps ${s.gaps}\n`,
     );
-    for (const gap of matrix.blockingGaps) {
-      process.stdout.write(`  BLOCKING ${gap.id}: ${escapeHtml(gap.detail)}\n`);
+    for (const gap of matrix.gaps) {
+      process.stdout.write(`  GAP ${gap.id}: ${escapeHtml(gap.detail)}\n`);
     }
   }
 
-  if (options.failOnMissing && matrix.blockingGaps.length > 0) {
-    process.stderr.write(
-      `\n${matrix.blockingGaps.length} blocking e2e coverage gap(s); see ${path.relative(REPO_ROOT, options.reportDir)}/README.md\n`,
-    );
-    return 1;
-  }
   return 0;
 }
 

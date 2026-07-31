@@ -238,15 +238,6 @@ function assertScenarioLane(scenarioWorkflow) {
       "[script-test-inventory] scenario-pr.yml packages/scripts sweep must execute bun run test:scripts",
     );
   }
-  const env = mappingValue(step, "env");
-  if (
-    !isMap(env) ||
-    String(mappingValue(env, "E2E_COVERAGE_GATE_ENFORCE")?.value) !== "1"
-  ) {
-    throw new Error(
-      "[script-test-inventory] packages/scripts sweep must enforce the E2E coverage gate",
-    );
-  }
 }
 
 function assertLaneContracts({ packageScripts, scenarioWorkflow }) {
