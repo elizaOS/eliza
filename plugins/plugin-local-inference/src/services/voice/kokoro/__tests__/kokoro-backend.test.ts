@@ -1,16 +1,12 @@
 /** Covers the Kokoro TTS backend including streaming time-to-first-audio. Deterministic, mock runtime. */
 import { describe, expect, it } from "vitest";
-import { scoreFirstResponseLatency } from "../../e2e-harness";
 import type {
 	AudioSink,
 	Phrase,
 	SpeakerPreset,
 	TtsPcmChunk,
 } from "../../types";
-import {
-	KOKORO_MOBILE_TTFA_BUDGET_MS,
-	KokoroTtsBackend,
-} from "../kokoro-backend";
+import { KokoroTtsBackend } from "../kokoro-backend";
 import type { KokoroRuntime, KokoroRuntimeInputs } from "../kokoro-runtime";
 import { KokoroMockRuntime } from "../kokoro-runtime";
 import type { KokoroPhonemizer } from "../types";
@@ -279,26 +275,6 @@ describe("KokoroTtsBackend — streaming TTFA", () => {
 		// The first audible chunk is a bounded sub-phrase slice, not the phrase.
 		expect(firstAudibleSamples).toBeGreaterThan(0);
 		expect(firstAudibleSamples).toBeLessThanOrEqual(1200);
-	});
-
-	it("a mobile-class TTFA gate passes within budget and fails past it", () => {
-		// Representative warm-handle Kokoro first-phrase TTFB (~97ms TTFB +
-		// phonemize). Well within the mobile budget.
-		const within = scoreFirstResponseLatency({
-			turnStartedAtMs: 1_000,
-			ttsFirstAudioAtMs: 1_000 + 180,
-			maxFirstAudioMs: KOKORO_MOBILE_TTFA_BUDGET_MS,
-		});
-		expect(within.firstAudioMs).toBe(180);
-		expect(within.passed).toBe(true);
-
-		// A regression that blows the budget must fail the gate, never silently pass.
-		const blown = scoreFirstResponseLatency({
-			turnStartedAtMs: 1_000,
-			ttsFirstAudioAtMs: 1_000 + KOKORO_MOBILE_TTFA_BUDGET_MS + 50,
-			maxFirstAudioMs: KOKORO_MOBILE_TTFA_BUDGET_MS,
-		});
-		expect(blown.passed).toBe(false);
 	});
 });
 

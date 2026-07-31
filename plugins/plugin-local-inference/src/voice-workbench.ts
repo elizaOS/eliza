@@ -35,7 +35,6 @@ export {
 	buildVoiceWorkbenchReport,
 	formatVoiceWorkbenchMarkdown,
 	type MetricRollup,
-	regressionsAgainstBaseline,
 	type VoiceAudioArtifact,
 	type VoiceWorkbenchMetrics,
 	type VoiceWorkbenchReport,

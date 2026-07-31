@@ -45,7 +45,7 @@ reply, and holds on a mid-utterance pause — asserted by tests, not assumed.
 | --- | --- | --- |
 | **Scenario schema** | `voice-scenario.ts` | The declarative `VoiceScenario` format: named `participants` (voice→entity), ordered `turns` (`expectRespond`, `expectedTranscript`, `expectedSpeakerLabel`, `expectedEntity`, `pausesMs`), scenario `assertions` (WER/DER/EOT/latency ceilings), and `classes`. Pure `validateVoiceScenario` reports every consistency error at once. |
 | **Metric module (single source of truth)** | `e2e-harness.ts` | All voice scoring lives here. WER is delegated to `@elizaos/shared/voice-wer` (one definition for headless + headful). Added scorers: `scoreEotDecision` (latency p50/p95 + false-trigger/false-suppression rate), `scoreRespondDecision` (FP/FN split), `scoreDiarization` (DER + confusions/misses), `scoreEntityExtraction` (precision/recall/F1), `scoreVoiceEntityMatch` (recognized-voice→entity accuracy). |
-| **Benchmark report** | `voice-workbench-report.ts` | `buildVoiceWorkbenchReport` rolls a matrix of per-scenario scorer results into one gating report (per-metric mean/worst + percentiles, per-scenario verdict). `formatVoiceWorkbenchMarkdown` renders it; `regressionsAgainstBaseline` flags metrics that worsened past a tolerance. |
+| **Benchmark report** | `voice-workbench-report.ts` | `buildVoiceWorkbenchReport` rolls a matrix of per-scenario scorer results into exact per-metric mean/worst/percentile telemetry plus per-scenario diagnostic verdicts. `formatVoiceWorkbenchMarkdown` renders it. |
 | **WER consolidation** | `@elizaos/shared/voice-wer` | The previously-duplicated `wordErrorRate` (`e2e-harness.ts` **and** `voice-selftest-harness.ts`, with subtly different normalization) is now defined once — Unicode-aware, contraction-preserving — and imported by both. |
 | **Acoustic robustness corpus** | `corpus-augment.ts` | Seeded, deterministic degradation DSP: additive room noise (white/pink at a target SNR), Freeverb reverb, far-field attenuation, telephone/low-quality line (band-limit + µ-law), and competing background talkers. Wired into the corpus generator via a per-turn / per-scenario `environment` so a clean scenario and a noisy one share one schema. |
 | **Meeting acoustic stress matrix** | `meeting-acoustic-stress-matrix.ts` | `buildMeetingAcousticStressMatrix()` emits deterministic workbench scenarios plus source-manifest metadata for #12492: SNRs -5/0/5/10/20 dB, music/noise/babble/TV/outdoor backgrounds, close/far/reverb/room-mic rooms, clipping/telephone/compression/dropout quality artifacts, speech-structure stressors, 1/2/3/5/8-speaker single-stream cases, and negative expectations (`unknown`, `do_not_respond`, `needs_speaker_correction`). Generate WAVs + ground truth with `bun run scripts/generate-voice-corpus.ts --meeting-stress --out <dir>`. |
@@ -92,14 +92,12 @@ The sibling-behavior classes (#12258) each pin a settled ceiling:
 
 The 26 built-in scenarios in `workbench-scenarios.ts` span every class.
 
-### Assertion ceilings (parent decision #10)
+### Diagnostic reference values (parent decision #10)
 
-Ceilings live in each scenario's `assertions` (per lane), not in the scorer
-defaults (the scorer's permissive default stands only when a scenario declares
-nothing). `regressionsAgainstBaseline` gates the deterministic `--logic` lane at
-a flat 0.02 tolerance — every metric there is constant, so the tolerance is a
-"must stay byte-stable" gate; the `--real` lane's ms/dB metrics are reviewed
-against these ceilings by hand, not this gate.
+Reference values live in each scenario's `assertions` so reports show where a
+measurement sits relative to the intended behavior. CI uploads those exact
+numbers and diagnostic verdicts without comparing them to a committed baseline
+or failing on an arbitrary threshold. Operational failures still fail the run.
 
 | Ceiling | Value | Where asserted |
 | --- | --- | --- |
@@ -130,11 +128,10 @@ voice PR — loud-fail (#12253), latency (#12254), turn-taking (#12255), echo
 the PR (MP4/JPG/logs in `<details>`; stage locally under
 `test-results/evidence/<issue#>-*/`), citing ceilings from the table above:
 
-1. **Workbench reports (before + after)** — `voice:workbench --logic --baseline
-   src/services/voice/__fixtures__/voice-workbench-logic-baseline.json` (JSON +
-   MD). A sibling that tightens behavior refreshes the baseline in the SAME PR
-   and shows the metric moving in the right direction; a regression reds the
-   gate. The `--mock` report proves the wiring path end-to-end.
+1. **Workbench reports (before + after)** — `voice:workbench --logic` (JSON +
+   MD). Show the measured values moving in the intended direction and explain
+   any scenario verdict changes. The `--mock` report proves the wiring path
+   end-to-end.
 2. **Latency tables (before + after)** — `node
    packages/app-core/scripts/voice-latency-report.mjs --json` (or `bun run
    voice:latency-report`) against a running app, per-stage p50/p90/p99; required
@@ -175,16 +172,15 @@ metric is defined exactly once regardless of where the audio is driven.
 
 The workbench is the convergence point for these previously-disjoint harnesses:
 
-The metric module is the single source of scorer math: every new gate added for
+The metric module is the single source of scorer math: every scorer added for
 #12258 (`scoreBargeInGating`, `scoreErle`, `scorePartialMonotonicity`) lives in
-`e2e-harness.ts`, so the report + baseline + all lanes share one definition and
-no scorer math is duplicated in the new work.
+`e2e-harness.ts`, so every report and lane shares one definition.
 
 | Legacy harness | Convergence |
 | --- | --- |
 | `e2e-harness.ts:wordErrorRate` + `voice-selftest-harness.ts:wordErrorRate` | **Done** — one `@elizaos/shared/voice-wer`. |
 | Pure scoring lib (`e2e-harness.ts`) | **Promoted** to the single metric module (EOT/diarization/respond/entity + barge-in-gating/ERLE/partial scorers). |
-| `packages/benchmarks/interrupt-bench` (barge-in / interruption scoring) | **Wired into CI** — runs in the `voice-workbench.yml` PR lane alongside the `--logic` regression gate. |
+| `packages/benchmarks/interrupt-bench` (barge-in / interruption scoring) | **Wired into CI** — runs in the `voice-workbench.yml` PR lane alongside the `--logic` telemetry report. |
 | `packages/app-core/scripts/voice-duet.mjs` (`voice:duet`), `voice-e2e-hardware.ts`, `voice-attribution-smoke.ts`, `lib/duet-bridge.mjs` | **Planned** — route their measurements through the shared scorers + emit the schema-v1 report. Deferred (not merge-first per #12258): each is a 650–1355-line provisioned-hardware script consumed on its own CLI path; absorbing it means porting live measurements onto the observation shape without breaking the hardware lane. No new scorer math has been added inside them. |
 | `packages/benchmarks/voice/three-voice-scenario.mjs` | **Planned** — its synthetic-label DER precedent (its inline DER is trivially 0 on exact synthetic labels) is superseded by the corpus generator + `computeDiarizationErrorRate`; folding the `.mjs` corpus path in is deferred with the scripts above. |
 | `packages/benchmarks/voicebench/` (TS latency p95/p99) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |

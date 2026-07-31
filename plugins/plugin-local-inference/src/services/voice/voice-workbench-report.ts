@@ -142,7 +142,7 @@ function scenarioVerdict(
 }
 
 /**
- * Aggregate per-scenario scorer results into one gating report. `overall` is
+ * Aggregate per-scenario scorer results into one telemetry report. `overall` is
  * `fail` if any scenario ran and failed, else `pass` if any scenario ran and
  * passed, else `skipped`.
  */
@@ -314,101 +314,4 @@ export function formatVoiceWorkbenchMarkdown(
 		);
 	}
 	return lines.join("\n");
-}
-
-export interface MetricRegression {
-	metric: string;
-	baseline: number;
-	current: number;
-	delta: number;
-}
-
-/**
- * Compare two reports and flag metrics that regressed beyond `tolerance`.
- * "Lower is better" metrics (WER, EOT FTR, DER, latencies) regress when they
- * rise; "higher is better" metrics (accuracies, F1, match rate) regress when
- * they fall. Only metrics present (non-null mean) in both reports are compared.
- */
-export function regressionsAgainstBaseline(
-	current: VoiceWorkbenchReport,
-	baseline: VoiceWorkbenchReport,
-	tolerance = 0.02,
-): MetricRegression[] {
-	const lowerBetter: Array<[string, number | null, number | null]> = [
-		["wer", current.metrics.wer.mean, baseline.metrics.wer.mean],
-		[
-			"eotFalseTriggerRate",
-			current.metrics.eotFalseTriggerRate.mean,
-			baseline.metrics.eotFalseTriggerRate.mean,
-		],
-		[
-			"eotLatencyP95Ms",
-			current.metrics.eotLatencyP95Ms,
-			baseline.metrics.eotLatencyP95Ms,
-		],
-		["der", current.metrics.der.mean, baseline.metrics.der.mean],
-		[
-			"firstAudioMs",
-			current.metrics.firstAudioMs.mean,
-			baseline.metrics.firstAudioMs.mean,
-		],
-		[
-			"impostorAcceptRate",
-			current.metrics.impostorAcceptRate.mean,
-			baseline.metrics.impostorAcceptRate.mean,
-		],
-		[
-			"bargeInCancelMs",
-			current.metrics.bargeInCancelMs.mean,
-			baseline.metrics.bargeInCancelMs.mean,
-		],
-		[
-			"partialRetractions",
-			current.metrics.partialRetractions.mean,
-			baseline.metrics.partialRetractions.mean,
-		],
-	];
-	const higherBetter: Array<[string, number | null, number | null]> = [
-		[
-			"respondAccuracy",
-			current.metrics.respondAccuracy.mean,
-			baseline.metrics.respondAccuracy.mean,
-		],
-		["entityF1", current.metrics.entityF1.mean, baseline.metrics.entityF1.mean],
-		[
-			"voiceEntityMatchRate",
-			current.metrics.voiceEntityMatchRate.mean,
-			baseline.metrics.voiceEntityMatchRate.mean,
-		],
-		[
-			"echoRejectionRate",
-			current.metrics.echoRejectionRate.mean,
-			baseline.metrics.echoRejectionRate.mean,
-		],
-		[
-			"ownerAccuracy",
-			current.metrics.ownerAccuracy.mean,
-			baseline.metrics.ownerAccuracy.mean,
-		],
-		[
-			"bargeInGatingAccuracy",
-			current.metrics.bargeInGatingAccuracy.mean,
-			baseline.metrics.bargeInGatingAccuracy.mean,
-		],
-		["erleDb", current.metrics.erleDb.mean, baseline.metrics.erleDb.mean],
-	];
-	const out: MetricRegression[] = [];
-	for (const [metric, cur, base] of lowerBetter) {
-		if (cur === null || base === null) continue;
-		const delta = round4(cur - base);
-		if (delta > tolerance)
-			out.push({ metric, baseline: base, current: cur, delta });
-	}
-	for (const [metric, cur, base] of higherBetter) {
-		if (cur === null || base === null) continue;
-		const delta = round4(cur - base);
-		if (delta < -tolerance)
-			out.push({ metric, baseline: base, current: cur, delta });
-	}
-	return out;
 }

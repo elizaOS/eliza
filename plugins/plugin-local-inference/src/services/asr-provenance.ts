@@ -8,6 +8,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 
 export const QWEN_PROVENANCE_RE = /\bqwen/i;
 
@@ -50,8 +51,18 @@ export function readBundleAsrProvenanceBlockers(bundleRoot: string): string[] {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
-	} catch {
-		return [];
+	} catch (cause) {
+		// error-policy:J2 preserve the filesystem/parser cause while naming the
+		// exact bundle contract that could not be verified.
+		throw new ElizaError(
+			`Cannot verify local ASR provenance from ${manifestPath}.`,
+			{
+				code: "LOCAL_ASR_MANIFEST_UNREADABLE",
+				context: { bundleRoot, manifestPath },
+				cause,
+				severity: "fatal",
+			},
+		);
 	}
 	return collectQwenAsrProvenanceBlockers(parsed);
 }
@@ -68,9 +79,5 @@ function directoryHasRegularFile(dir: string): boolean {
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
 	if (!existsSync(asrDir)) return false;
-	try {
-		return directoryHasRegularFile(asrDir);
-	} catch {
-		return false;
-	}
+	return directoryHasRegularFile(asrDir);
 }

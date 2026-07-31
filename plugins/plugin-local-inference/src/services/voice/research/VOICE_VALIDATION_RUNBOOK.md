@@ -1,7 +1,7 @@
 # Voice Validation Runbook (#8785)
 
-Turn-key steps to execute the **gated** end-to-end validations once the
-corresponding resource is available. Everything that does NOT need a gated
+Turn-key steps to execute the end-to-end validations once the corresponding
+resource is available. Everything that does not need a hardware or service
 resource is already proven in CI (see [VOICE_8785_ASSESSMENT.md](./VOICE_8785_ASSESSMENT.md)
 §2–4). This runbook covers the remaining lanes: headful A/V capture (desktop /
 web / simulator / iOS), live cloud STT/TTS, and the real on-device model lane.
@@ -13,15 +13,14 @@ Each section states: **precondition → command → expected artifact → pass b
 ## 0. Always-runnable baseline (no resource needed) — run first
 
 ```bash
-# Decision logic over the full scenario matrix + regression gate (no models):
-bun run --cwd plugins/plugin-local-inference voice:workbench --logic \
-  --baseline src/services/voice/__fixtures__/voice-workbench-logic-baseline.json
+# Decision logic over the full scenario matrix (no models):
+bun run --cwd plugins/plugin-local-inference voice:workbench --logic
 
 # The labeled audio-sample corpus (listen to the degraded edge cases):
 bun run --cwd plugins/plugin-local-inference corpus:generate --out /tmp/voice-corpus
 ```
-Pass bar: `[voice:workbench] no regressions … PASS`; 14 scenarios under
-`/tmp/voice-corpus/<id>/audio.wav` + `ground-truth.json`.
+Review the JSON/Markdown telemetry and the 14 scenarios under
+`/tmp/voice-corpus/<id>/audio.wav` plus `ground-truth.json`.
 
 ---
 
@@ -86,13 +85,13 @@ budget. Capture the structured `[ClassName] …` backend logs + the network trac
 ## 4. Real on-device model lane (real WER / DER / EOT latency)
 
 **Precondition:** the native fused `libelizainference` built for the host
-platform + the Eliza-1 GGUF bundle (text + Qwen3-ASR + WeSpeaker + pyannote +
-Silero + openWakeWord + Kokoro) staged under the models dir.
+platform plus an Eliza-1 GGUF bundle with verified Gemma ASR, WeSpeaker,
+pyannote, Silero, openWakeWord, and Kokoro staged under the models directory.
+The retired Qwen compatibility bundle is not product evidence (#17477).
 
 ```bash
 # Build the fused lib (macOS example), then run the real lane:
 bun run --cwd plugins/plugin-local-inference voice:workbench --real \
-  --baseline src/services/voice/__fixtures__/voice-workbench-logic-baseline.json \
   --out /tmp/voice-workbench-real
 
 # Real ASR smoke (runs OUTSIDE `bun test` — coverage=true EMFILEs the GGUF mmap):
@@ -100,9 +99,8 @@ bun run --cwd plugins/plugin-local-inference test:asr:real
 ```
 **Artifacts:** `/tmp/voice-workbench-real/report.{json,md}` with REAL WER (on the
 degraded robustness corpus), diarization DER, EOT latency p50/p95, first-audio
-latency. **Pass bar:** WER/DER under the per-scenario ceilings; no regression vs
-the baseline. The corpus from §0 (with reverb/noise/far-field) is the input —
-this is where robustness is actually measured.
+latency. Review every scenario and the raw audio; the corpus from §0 (with
+reverb/noise/far-field) is the input where robustness is actually measured.
 
 ## 5. Wake word "hey eliza"
 
@@ -115,7 +113,7 @@ false-accept at training. Local-mode only; inert in cloud mode.
 
 ## Evidence checklist for closing #8785 (local + cloud)
 
-- [x] Decision logic (EOT / respond / echo×2 / bystander / wake / owner) — CI `--logic` + regression gate
+- [x] Decision logic (EOT / respond / echo×2 / bystander / wake / owner) — CI `--logic` telemetry
 - [x] Robustness corpus (noise/reverb/far-field/low-quality/babble/overlap) — DSP tests + corpus:generate
 - [x] Research (pause lengths, VAD, AEC, diarization, owner verification, model landscape, hybrid latency)
 - [x] Headful A/V — desktop + web  *(13/13 specs passed + recorded + adversarially verified; `.github/issue-evidence/8785-voice-headful/`)*

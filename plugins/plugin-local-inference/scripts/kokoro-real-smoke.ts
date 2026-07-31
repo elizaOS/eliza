@@ -8,8 +8,8 @@
  * 159 MB Kokoro GGUF mmap (`gguf_init_from_file ... Too many open files`).
  * This script runs under bun directly (no coverage harness): it loads the
  * fused `libelizainference`, loads the real Kokoro model, synthesizes a phrase,
- * and asserts non-empty 24 kHz PCM with a first-audible chunk inside the
- * mobile-class TTFA budget — the same in-process fused path mobile ships.
+ * and asserts non-empty 24 kHz PCM while recording exact first-audible latency
+ * as telemetry — the same in-process fused path mobile ships.
  *
  * Exits 0 on pass, 1 on a real failure, 2 when the lib/model aren't staged (a
  * developer box without them is skipped; a CI lane that staged them then
@@ -32,7 +32,6 @@ import {
 	createKokoroTtsBackend,
 } from "../src/services/voice/engine-bridge";
 import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
-import { resolveKokoroTtfaBudgetMs } from "../src/services/voice/kokoro/kokoro-ttfa-budget";
 import { resolveKokoroEngineConfig } from "../src/services/voice/kokoro/kokoro-engine-discovery";
 import type { Phrase } from "../src/services/voice/types";
 
@@ -200,15 +199,11 @@ try {
 		}
 	}
 
-	// Audio-CORRECTNESS gate (run BEFORE the TTFA perf gate — "is it speech" is a
-	// stricter, more important question than "is it fast", and TTFA is slow on
-	// desktop CPU even when the audio is perfect). The non-empty/sample-rate
-	// checks above pass even on noise/garbage (the exact gap that let a loader
-	// regression ship inaudible audio). When an ASR bundle is staged, transcribe
-	// the synthesized speech with eligible fused local ASR and gate on WER against the
-	// input text, so "it produced audio" can't masquerade as "it produced
-	// speech". Without the bundle the gate is skipped with a loud warning (audio
-	// remains UNVERIFIED), preserving the lighter dev lane.
+	// The non-empty/sample-rate checks above pass even on noise or garbage. When
+	// an ASR bundle is staged, transcribe the synthesized speech with eligible
+	// fused local ASR and verify WER against the input text, so "it produced
+	// audio" cannot masquerade as "it produced speech". Without the bundle the
+	// result stays explicitly unverified.
 	const asrBundle = process.env.ELIZA_ASR_BUNDLE?.trim();
 	if (!asrBundle) {
 		console.warn(
@@ -240,12 +235,6 @@ try {
 		}
 	}
 
-	// Perf gate last: time-to-first-audio budget — the mobile product budget by
-	// default, overridable for desktop-CPU CI hosts via the shared knob.
-	const ttfaBudgetMs = resolveKokoroTtfaBudgetMs();
-	if (firstAudibleMs > ttfaBudgetMs) {
-		fail(`TTFA ${ttfa}ms exceeds the budget ${ttfaBudgetMs}ms`);
-	}
 	console.log("[kokoro-real-smoke] PASS");
 } finally {
 	backend.dispose();

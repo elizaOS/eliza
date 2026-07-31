@@ -1098,21 +1098,12 @@ export class LocalInferenceEngine {
 	}
 
 	async canTranscribeLocally(): Promise<boolean> {
-		try {
-			const bridge = this.voiceBridge;
-			if (bridge?.asrAvailable) return true;
-			const bundle = await this.assignedLocalAsrBundle();
-			return (
-				bundle !== null && this.localAsrBlockersForBundle(bundle).length === 0
-			);
-		} catch (err) {
-			logger.warn(
-				`[voice] Local ASR readiness check failed: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-			return false;
-		}
+		const bridge = this.voiceBridge;
+		if (bridge?.asrAvailable) return true;
+		const bundle = await this.assignedLocalAsrBundle();
+		return (
+			bundle !== null && this.localAsrBlockersForBundle(bundle).length === 0
+		);
 	}
 
 	async ensureActiveBundleAsrReady(): Promise<EngineVoiceBridge> {

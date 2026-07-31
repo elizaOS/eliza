@@ -142,7 +142,7 @@ single entrypoint, scenario format, and metric module.
 
 ```bash
 bun run --cwd plugins/plugin-local-inference voice:workbench \
-  [--mock|--logic|--real] [--out <dir>] [--baseline <report.json>]
+  [--mock|--logic|--real] [--out <dir>]
 ```
 
 - `--mock` (default) — ground-truth mock services; the CI plumbing lane (no
@@ -152,13 +152,12 @@ bun run --cwd plugins/plugin-local-inference voice:workbench \
   CI-runnable; catches a regression in the decision layer.
 - `--real` — real local acoustic backend; any scenario without a provisioned
   real service reports `skipped`, never a false `pass` (the honesty contract).
-- `--baseline <path>` — compare metrics against a golden report; exit 1 on any
-  metric regression past tolerance (the regression gate).
 
 It writes one machine-readable `report.json` plus a Markdown rendering — WER,
 EOT latency + false-trigger rate, diarization DER, respond accuracy,
 entity-match, first-audio/TTFT latency — via `workbench-entrypoint.ts` +
-`voice-workbench-report.ts`.
+`voice-workbench-report.ts`. Scenario verdicts are diagnostic telemetry; the
+CLI fails only when the harness itself cannot execute or write its artifacts.
 
 ### Pieces
 

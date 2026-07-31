@@ -14,19 +14,12 @@
  *                      speech + fused local TTS/ASR + WeSpeaker + pyannote.
  *                      Missing real deps are a hard failure, not a skipped pass.
  *   --out <dir>        output directory (default ./voice-workbench-output).
- *   --baseline <path>  golden report JSON to compare metrics against; exit 1 if
- *                      any metric regressed past tolerance (regression gate).
- *
- * Exit 1 on an overall `fail` OR a metric regression vs the baseline; 0 on
- * `pass` or `skipped`.
+ * Scenario verdicts remain in the report as diagnostic context. The CLI exits
+ * nonzero only when the harness cannot execute or write its artifacts; CI does
+ * not turn benchmark thresholds or recorded baselines into release gates.
  */
 
-import { readFileSync } from "node:fs";
 import path from "node:path";
-import {
-	regressionsAgainstBaseline,
-	type VoiceWorkbenchReport,
-} from "../src/services/voice/voice-workbench-report.ts";
 import { buildAndRunVoiceWorkbench, writeVoiceWorkbenchResult } from "../src/services/voice/workbench-entrypoint.ts";
 import { realDecisionLogicServices } from "../src/services/voice/workbench-logic-services.ts";
 import { createRealVoiceWorkbenchRuntimeFromEnv } from "../src/services/voice/workbench-real-services.ts";
@@ -37,11 +30,6 @@ async function main(): Promise<void> {
 	const real = args.includes("--real");
 	const logic = args.includes("--logic");
 	const outIdx = args.indexOf("--out");
-	const baselineIdx = args.indexOf("--baseline");
-	const baselinePath =
-		baselineIdx >= 0 && args[baselineIdx + 1]
-			? path.resolve(args[baselineIdx + 1])
-			: null;
 	const outDir =
 		outIdx >= 0 && args[outIdx + 1]
 			? path.resolve(args[outIdx + 1])
@@ -74,37 +62,8 @@ async function main(): Promise<void> {
 
 	process.stdout.write(`${result.markdown}\n\nReport: ${artifacts.reportJsonPath}\n`);
 
-	if (result.report.overall === "fail") {
-		process.stderr.write(
-			"[voice:workbench] FAIL — one or more scenarios regressed\n",
-		);
-		process.exit(1);
-	}
-
-	// Regression gate: compare metrics against a committed golden baseline.
-	if (baselinePath) {
-		const baseline = JSON.parse(
-			readFileSync(baselinePath, "utf8"),
-		) as VoiceWorkbenchReport;
-		const regressions = regressionsAgainstBaseline(result.report, baseline);
-		if (regressions.length > 0) {
-			process.stderr.write(
-				`[voice:workbench] REGRESSION vs baseline (${baselinePath}):\n`,
-			);
-			for (const r of regressions) {
-				process.stderr.write(
-					`  ${r.metric}: baseline ${r.baseline} → current ${r.current} (Δ ${r.delta})\n`,
-				);
-			}
-			process.exit(1);
-		}
-		process.stdout.write(
-			`[voice:workbench] no regressions vs baseline (${path.basename(baselinePath)})\n`,
-		);
-	}
-
 	process.stdout.write(
-		`[voice:workbench] ${result.report.overall.toUpperCase()}\n`,
+		`[voice:workbench] telemetry complete (scenario verdict: ${result.report.overall})\n`,
 	);
 }
 

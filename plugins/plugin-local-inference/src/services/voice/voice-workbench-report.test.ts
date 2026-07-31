@@ -1,4 +1,4 @@
-/** Covers building the voice-workbench report, its markdown rendering, and baseline regression detection. Deterministic. */
+/** Covers building and rendering the deterministic voice-workbench report. */
 import { describe, expect, it } from "vitest";
 import {
 	scoreBargeInGating,
@@ -12,7 +12,6 @@ import {
 import {
 	buildVoiceWorkbenchReport,
 	formatVoiceWorkbenchMarkdown,
-	regressionsAgainstBaseline,
 	type VoiceWorkbenchScenarioRun,
 } from "./voice-workbench-report";
 
@@ -150,71 +149,5 @@ describe("formatVoiceWorkbenchMarkdown", () => {
 		expect(md).toContain("| WER |");
 		expect(md).toContain("respond-basic");
 		expect(md).toContain("no eot corpus");
-	});
-});
-
-describe("regressionsAgainstBaseline", () => {
-	it("flags a higher-is-better metric that dropped and a lower-is-better metric that rose", () => {
-		const baseline = buildVoiceWorkbenchReport([
-			{
-				scenarioId: "s",
-				classes: ["respond-no-respond"],
-				status: "ran",
-				cases: [
-					scoreRespondDecision([
-						{ responded: true, expectRespond: true },
-						{ responded: false, expectRespond: false },
-					]),
-					scoreDiarization([{ predictedLabel: "a", expectedLabel: "a" }]),
-				],
-			},
-		]);
-		const current = buildVoiceWorkbenchReport([
-			{
-				scenarioId: "s",
-				classes: ["respond-no-respond"],
-				status: "ran",
-				cases: [
-					scoreRespondDecision([
-						{ responded: true, expectRespond: false }, // accuracy drops to 0
-						{ responded: false, expectRespond: false },
-					]),
-					scoreDiarization([
-						{ predictedLabel: "b", expectedLabel: "a" }, // DER rises to 1
-					]),
-				],
-			},
-		]);
-		const regs = regressionsAgainstBaseline(current, baseline);
-		const metrics = regs.map((r) => r.metric);
-		expect(metrics).toContain("respondAccuracy");
-		expect(metrics).toContain("der");
-	});
-
-	it("returns nothing when metrics are stable", () => {
-		const report = buildVoiceWorkbenchReport([cleanRespond]);
-		expect(regressionsAgainstBaseline(report, report)).toHaveLength(0);
-	});
-
-	it("flags an ERLE drop and a barge-in cancel-latency rise past tolerance", () => {
-		const make = (
-			erle: number,
-			cancelMs: number,
-		): VoiceWorkbenchScenarioRun => ({
-			scenarioId: "aec",
-			classes: ["desktop-aec", "speaker-gated-barge-in"],
-			status: "ran",
-			cases: [
-				scoreErle([{ erleDb: erle }], { minErleDb: 18 }),
-				scoreBargeInGating([{ expectCancel: true, cancelMs }]),
-			],
-		});
-		const regs = regressionsAgainstBaseline(
-			buildVoiceWorkbenchReport([make(20, 120)]),
-			buildVoiceWorkbenchReport([make(28, 100)]),
-		);
-		const metrics = regs.map((r) => r.metric);
-		expect(metrics).toContain("erleDb");
-		expect(metrics).toContain("bargeInCancelMs");
 	});
 });

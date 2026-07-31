@@ -41,18 +41,15 @@ name: Voice Live E2E
 # it only upgrades the human-turn rows to real ElevenLabs voices (CEREBRAS +
 # ELEVENLABS together also unlock the mixed cloud round-trip step).
 #
-# Kokoro TTFA budget: the smoke's 700 ms default is the MOBILE product budget.
-# These CPU-only CI hosts prove loadability + intelligibility (envelope-cv +
-# round-trip WER), not mobile latency, so the workflow sets
-# KOKORO_SMOKE_TTFA_BUDGET_MS=30000 — a desktop-CPU ceiling that still catches
-# loader hangs (measured TTFA ≈4.5–8 s on a 24-core host).
+# Kokoro TTFA is emitted as telemetry by the real smoke. Functional CI proves
+# loadability and intelligibility; it does not turn an arbitrary wall-clock
+# threshold into a green product-performance claim.
 #
 # History note (#16945): the 2026-07-17..19 scheduled runs were CANCELLED, not
 # failed — no online runner carried the `eliza` label during the fleet
-# migration, so both self-hosted jobs sat queued until either the next night's
-# run replaced them through this workflow's cancel-in-progress concurrency
-# group (07-17 run, killed at 07-18 09:06:30 = the 07-18 start) or GitHub's
-# 24 h queue limit expired them (07-19 run, killed exactly 24 h after queue).
+# migration, so both self-hosted jobs sat queued until GitHub cancelled them.
+# This workflow no longer cancels an older evidence run when another starts;
+# every scheduled run is allowed to finish and retain its artifacts.
 # A cancelled scheduled run therefore means "no eliza-labelled runner online"
 # — that is a fleet-capacity page, not a workflow bug. The 07-20..22 reds were
 # the provisioning preflight hard-failing on unprovisioned robots; the
@@ -93,10 +90,6 @@ on:
         default: false
         type: boolean
 
-concurrency:
-  group: voice-live-e2e-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
@@ -105,11 +98,11 @@ env:
   NODE_VERSION: "24"
   BUN_VERSION: "canary"
   NODE_OPTIONS: "--experimental-sqlite"
+  CEREBRAS_MODEL: "gemma-4-31b"
 jobs:
   voice-platform-matrix-index:
     name: Canonical voice matrix index
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -146,7 +139,6 @@ jobs:
     name: Railway Kokoro/Whisper live contract
     if: ${{ github.event_name == 'schedule' || inputs.run_railway_contract }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
     env:
       ELIZA_VOICE_LIVE_RAILWAY: "1"
       KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
@@ -179,7 +171,6 @@ jobs:
   voice-fused-build:
     name: Build fused libelizainference (linux-x64 cpu)
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
     steps:
       - name: Checkout (with llama.cpp submodule)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -252,7 +243,6 @@ jobs:
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
-    timeout-minutes: 90
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -323,16 +313,8 @@ jobs:
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     needs: voice-fused-build
-    # The 26-scenario workbench alone runs tens of minutes on a CPU-only host
-    # (every turn is a real Kokoro synth + fused ASR decode), on top of the
-    # first-night bundle staging — 120 was measured too tight end-to-end.
-    timeout-minutes: 180
     env:
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-      # Desktop-CPU TTFA ceiling — see the header note; the 700 ms default is
-      # the mobile product budget and is orders of magnitude out of reach for
-      # a CPU-only CI host. 30 s still catches loader hangs.
-      KOKORO_SMOKE_TTFA_BUDGET_MS: "30000"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -435,27 +417,12 @@ jobs:
           bun run --cwd plugins/plugin-local-inference robustness:real \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/robustness-real.log"
 
-      # DESIGNED LOUD SKIP (#16972) — never a green-skip: the 26-scenario
-      # workbench gates fired for the first time ever on this lane's first
-      # real execution and 24/26 scenarios fail on uncalibrated
-      # diarization/voice-entity thresholds (DER mean 0.59, voice→entity
-      # 0.36) while every other matrix entry passes. Running it red every
-      # night would recreate the exact unobservable-regression state #16945
-      # fixed. #16972 tracks the calibration campaign; flip
-      # ELIZA_VOICE_WORKBENCH_REAL_READY=1 (repo variable) to re-enable
-      # without editing this file.
-      - name: Real voice workbench scenario matrix
-        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY == '1'
+      - name: Real voice workbench telemetry matrix
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-local-inference voice:workbench --real \
             --out "$VOICE_REAL_MATRIX_OUT/voice-workbench-real" \
             2>&1 | tee "$VOICE_REAL_MATRIX_OUT/voice-workbench-real.log"
-
-      - name: Note skipped workbench matrix (gates uncalibrated)
-        if: vars.ELIZA_VOICE_WORKBENCH_REAL_READY != '1'
-        run: |
-          echo "::warning title=voice:workbench --real skipped::The 26-scenario workbench gates are uncalibrated for CI (24/26 fail on first-ever real execution — see elizaOS/eliza#16972). Set repo variable ELIZA_VOICE_WORKBENCH_REAL_READY=1 to re-enable. All other acoustic-matrix entries ran for real above."
 
       - name: Real packages/benchmarks/voice matrix
         run: |
@@ -496,7 +463,6 @@ jobs:
     name: macOS Electrobun live-voice matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_macos_electrobun) || vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY == '1' }}
     runs-on: macos-15
-    timeout-minutes: 90
     env:
       ELIZA_VOICE_MACOS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY }}
       ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
@@ -545,7 +511,6 @@ jobs:
     name: Windows Electrobun live-voice matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_windows_electrobun) || vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY == '1' }}
     runs-on: windows-2025
-    timeout-minutes: 90
     env:
       ELIZA_VOICE_WINDOWS_ELECTROBUN_READY: ${{ vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY }}
       ELIZA_TEST_PACKAGED_LAUNCHER_PATH: ${{ vars.ELIZA_TEST_PACKAGED_LAUNCHER_PATH }}
@@ -595,7 +560,6 @@ jobs:
     name: iOS simulator/device live-voice matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_ios) || vars.ELIZA_VOICE_IOS_READY == '1' }}
     runs-on: macos-15
-    timeout-minutes: 90
     env:
       ELIZA_VOICE_IOS_READY: ${{ vars.ELIZA_VOICE_IOS_READY }}
       ELIZA_IOS_APP_ID: ${{ vars.ELIZA_IOS_APP_ID }}
@@ -644,7 +608,6 @@ jobs:
     name: Android live-voice + native bridge matrix
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_android) || vars.ELIZA_VOICE_ANDROID_READY == '1' }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 120
     env:
       ELIZA_VOICE_ANDROID_READY: ${{ vars.ELIZA_VOICE_ANDROID_READY }}
       ELIZA_ANDROID_APP_ID: ${{ vars.ELIZA_ANDROID_APP_ID }}

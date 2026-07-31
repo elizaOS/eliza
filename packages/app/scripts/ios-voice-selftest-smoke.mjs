@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 import { evaluateVoiceSelfTestReport } from "./ios-voice-selftest-lib.mjs";
 import {
   DEFAULT_HOST_AGENT_PORT,
+  liveCerebrasHostAgentEnv,
   startDeviceE2eHostAgent,
 } from "./lib/host-agent.mjs";
 import {
@@ -431,6 +432,7 @@ async function main() {
         preferredPort:
           process.env.ELIZA_IOS_HOST_AGENT_PORT ??
           DEFAULT_HOST_AGENT_PORT_STRING,
+        env: liveCerebrasHostAgentEnv(),
         log,
       });
   apiBase = apiBase ?? hostAgent.apiBase;

@@ -1,3 +1,5 @@
+/** Exercises device host process ownership and live-Cerebras lane selection. */
+
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -9,7 +11,11 @@ import {
   DEFAULT_HOST_AGENT_PORT,
   hostAgentApiBase,
   isPortAvailable,
+  LIVE_CEREBRAS_HOST_MODE,
+  LIVE_CEREBRAS_MODEL,
+  liveCerebrasHostAgentEnv,
   parsePort,
+  resolveHostAgentProcess,
   startDeviceE2eHostAgent,
 } from "./host-agent.mjs";
 
@@ -59,6 +65,71 @@ afterEach(() => {
 });
 
 describe("host-agent helper", () => {
+  it("pins live voice evidence to Cerebras gemma-4-31b and an exact bundle", () => {
+    const bundlePath = path.join(makeTmpDir(), "eliza-1-2b.bundle");
+    const resolved = liveCerebrasHostAgentEnv({
+      env: {
+        CEREBRAS_API_KEY: "test-secret",
+        ELIZA_E2E_LOCAL_VOICE_BUNDLE: bundlePath,
+      },
+    });
+
+    expect(resolved.ELIZA_DEVICE_E2E_MODEL_MODE).toBe(LIVE_CEREBRAS_HOST_MODE);
+    expect(resolved.ELIZA_PROVIDER).toBe("cerebras");
+    expect(resolved.OPENAI_BASE_URL).toBe("https://api.cerebras.ai/v1");
+    for (const key of [
+      "CEREBRAS_MODEL",
+      "CEREBRAS_SMALL_MODEL",
+      "CEREBRAS_LARGE_MODEL",
+      "OPENAI_SMALL_MODEL",
+      "OPENAI_MEDIUM_MODEL",
+      "OPENAI_LARGE_MODEL",
+      "OPENAI_RESPONSE_HANDLER_MODEL",
+      "OPENAI_ACTION_PLANNER_MODEL",
+    ]) {
+      expect(resolved[key]).toBe(LIVE_CEREBRAS_MODEL);
+    }
+  });
+
+  it("refuses to relabel a proxy or ambiguous bundle as live evidence", () => {
+    expect(() =>
+      liveCerebrasHostAgentEnv({
+        env: { ELIZA_E2E_LOCAL_VOICE_BUNDLE: "/tmp/bundle" },
+      }),
+    ).toThrow(/CEREBRAS_API_KEY/);
+    expect(() =>
+      liveCerebrasHostAgentEnv({
+        env: {
+          CEREBRAS_API_KEY: "test-secret",
+          ELIZA_E2E_LOCAL_VOICE_BUNDLE: "relative/bundle",
+        },
+      }),
+    ).toThrow(/absolute Eliza-1 bundle path/);
+  });
+
+  it("runs native voice with Bun while deterministic UI smokes stay on Node", () => {
+    const repoRoot = "/repo";
+    expect(
+      resolveHostAgentProcess({
+        repoRoot,
+        env: { ELIZA_DEVICE_E2E_MODEL_MODE: LIVE_CEREBRAS_HOST_MODE },
+        nodeCommand: "/node",
+      }),
+    ).toEqual({
+      command: "bun",
+      args: ["/repo/packages/app-core/scripts/serve-real-local-agent.ts"],
+    });
+    expect(
+      resolveHostAgentProcess({ repoRoot, env: {}, nodeCommand: "/node" }),
+    ).toEqual({
+      command: "/node",
+      args: [
+        "/repo/packages/app-core/scripts/run-node-tsx.mjs",
+        "/repo/packages/app-core/scripts/serve-real-local-agent.ts",
+      ],
+    });
+  });
+
   it("validates ports without coercing malformed values", () => {
     expect(parsePort("31338")).toBe(DEFAULT_HOST_AGENT_PORT);
     for (const value of ["", "0", "-1", "123abc", "70000"]) {
@@ -102,7 +173,6 @@ describe("host-agent helper", () => {
       repoRoot: process.cwd(),
       artifactDir,
       requestedPort,
-      readyAttempts: 50,
       readyDelayMs: 20,
       command: process.execPath,
       args: ["-e", fakeHostAgentScript()],
@@ -119,7 +189,7 @@ describe("host-agent helper", () => {
 
     await agent.stop();
     expect(fs.readFileSync(agent.logPath, "utf8")).toContain(
-      `fake host agent up on :${requestedPort}`,
+      `[device-e2e-host-agent] starting on ${agent.apiBase}`,
     );
 
     const probe = spawnSync(process.execPath, [
@@ -140,8 +210,7 @@ describe("host-agent helper", () => {
         repoRoot: process.cwd(),
         artifactDir,
         requestedPort: await chooseHostAgentPort(),
-        readyAttempts: 2,
-        readyDelayMs: 20,
+        readyDelayMs: 5_000,
         command: path.join(artifactDir, "missing-node"),
         args: ["--version"],
       }),
@@ -149,5 +218,39 @@ describe("host-agent helper", () => {
 
     fs.rmSync(path.join(artifactDir, "host-agent.log"));
     expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
+  });
+
+  it("surfaces a child exit without waiting for the health poll interval", async () => {
+    const artifactDir = makeTmpDir();
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        requestedPort: await chooseHostAgentPort(),
+        readyDelayMs: 5_000,
+        command: process.execPath,
+        args: ["-e", "process.exit(7)"],
+        env: {},
+      }),
+    ).rejects.toThrow(/Host agent exited/);
+  });
+
+  it("lets the owner cancel startup without an internal deadline", async () => {
+    const artifactDir = makeTmpDir();
+    const controller = new AbortController();
+    setImmediate(() => controller.abort(new Error("owner stopped startup")));
+
+    await expect(
+      startDeviceE2eHostAgent({
+        repoRoot: process.cwd(),
+        artifactDir,
+        requestedPort: await chooseHostAgentPort(),
+        readyDelayMs: 5_000,
+        signal: controller.signal,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1000)"],
+        env: {},
+      }),
+    ).rejects.toThrow("owner stopped startup");
   });
 });

@@ -18,7 +18,8 @@
  * when an artifact/key is missing; 1 on failure; 0 on a clean round-trip.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { readBundleAsrProvenanceBlockers } from "../src/services/asr-provenance";
 import { decodeMonoPcm16Wav } from "../src/services/voice/engine-bridge";
 import { loadElizaInferenceFfi } from "../src/services/voice/ffi-bindings";
 
@@ -42,6 +43,12 @@ if (!lib || !existsSync(lib)) skip("set ELIZA_INFERENCE_LIBRARY to the fused dyl
 if (!bundle || !existsSync(`${bundle}/asr`)) skip("set ELIZA_ASR_BUNDLE");
 if (!elKey) skip("set ELEVENLABS_API_KEY");
 if (!cbKey) skip("set CEREBRAS_API_KEY");
+const asrBlockers = readBundleAsrProvenanceBlockers(bundle);
+if (asrBlockers.length > 0) {
+	fail(
+		`ELIZA_ASR_BUNDLE is not verified Gemma ASR product evidence (#17477): ${asrBlockers.join("; ")}`,
+	);
+}
 
 /** Wrap raw mono PCM16LE @ sampleRate in a 44-byte WAV header. */
 function wavFromPcm16(pcm: Uint8Array, sampleRate: number): Uint8Array {
@@ -88,8 +95,7 @@ async function cerebras(userText: string): Promise<string> {
 		method: "POST",
 		headers: { authorization: `Bearer ${cbKey}`, "content-type": "application/json" },
 		body: JSON.stringify({
-			model: process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b",
-			// gpt-oss is a reasoning model — leave room for reasoning + the reply.
+			model: process.env.CEREBRAS_MODEL?.trim() || "gemma-4-31b",
 			max_tokens: 400,
 			messages: [
 				{
@@ -139,7 +145,7 @@ if (!transcript) fail("local STT produced an empty transcript");
 const l0 = performance.now();
 const reply = await cerebras(transcript);
 const llmMs = Math.round(performance.now() - l0);
-const cbModel = process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
+const cbModel = process.env.CEREBRAS_MODEL?.trim() || "gemma-4-31b";
 console.log(`[mixed-roundtrip] (cloud LLM, Cerebras ${cbModel}) ${llmMs}ms → "${reply}"`);
 if (!reply) fail("LLM produced an empty reply");
 

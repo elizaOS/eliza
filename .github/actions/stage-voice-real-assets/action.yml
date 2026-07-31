@@ -2,7 +2,7 @@ name: Stage real voice assets
 description: >-
   Self-provision the real-voice asset set on a runner: verify the fused
   libelizainference build (downloaded as a workflow artifact) and stage the
-  pinned eliza-1-2b voice bundle regions from Hugging Face into the canonical
+  pinned Eliza-1 voice bundle regions from Hugging Face into the canonical
   $HOME/.eliza/local-inference/models/eliza-1-2b.bundle cache. Every file is
   sha256-pinned; a present-and-matching file is never re-downloaded, so the
   first run per host pays ~2.5 GB once and later runs download nothing. Multiple
@@ -89,6 +89,24 @@ runs:
         # Serialize across runner slots on the same host (they share $HOME).
         exec 9>"$LOCK"
         flock 9
+
+        # Validate the published manifest before downloading gigabytes of
+        # weights. The live lane enters through the product contract, so a
+        # retired compatibility bundle cannot masquerade as release evidence.
+        stage eliza-1.manifest.json bundles/e2b/eliza-1.manifest.json d4875c65f7188586a9986699f712a99558d1e2e6fb4cc6e5e691beb0ed085ee5
+        BUNDLE_MANIFEST="$BUNDLE/eliza-1.manifest.json" bun -e '
+          import { readFileSync } from "node:fs";
+          import { collectQwenAsrProvenanceBlockers } from "./plugins/plugin-local-inference/src/services/asr-provenance.ts";
+          import { validateManifest } from "./plugins/plugin-local-inference/src/services/manifest/validator.ts";
+          const manifest = JSON.parse(readFileSync(process.env.BUNDLE_MANIFEST, "utf8"));
+          const validation = validateManifest(manifest);
+          const blockers = collectQwenAsrProvenanceBlockers(manifest);
+          if (!validation.ok) blockers.push(...validation.errors);
+          if (manifest.defaultEligible !== true) blockers.push("defaultEligible is not true");
+          if (manifest.evals?.asrWer?.passed !== true) blockers.push("evals.asrWer.passed is not true");
+          if (manifest.evals?.e2eLoopOk !== true) blockers.push("evals.e2eLoopOk is not true");
+          if (blockers.length > 0) throw new Error(`Published bundle is not production voice evidence (#17477): ${blockers.join("; ")}`);
+        '
 
         # Fused ASR (decoder head + audio projector — asr-real-smoke contract).
         stage asr/eliza-1-asr.gguf          bundles/e2b/asr/eliza-1-asr.gguf          bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971

@@ -103,9 +103,9 @@ What exists today, verified in code.
   `GET /api/dev/voice-latency` — per-turn checkpoints from "user makes a sound" to
   "agent's first audio plays" with p50/p90/p99
   (`plugins/plugin-local-inference/src/services/latency-trace.ts:1-30`).
-- Voice Workbench (`voice:workbench --mock|--logic|--real`, `--baseline` regression gate)
-  scores WER, EOT, diarization, and first-audio/TTFT; CI runs the `--logic` lane
-  (`.github/workflows/voice-workbench.yml`).
+- Voice Workbench (`voice:workbench --mock|--logic|--real`) records WER, EOT,
+  diarization, and first-audio/TTFT telemetry; CI runs the deterministic
+  `--logic` lane and uploads its report (`.github/workflows/voice-workbench.yml`).
 - `voice:matrix` (`packages/scripts/voice-matrix.mjs`) — the per-platform live-cell
   evidence matrix (`packages/ui/src/voice/VOICE_LIVE_MATRIX.md`).
 - `voice:cloud-bench` (`packages/scripts/voice-cloud-bench.mjs`) — the #14370 Railway

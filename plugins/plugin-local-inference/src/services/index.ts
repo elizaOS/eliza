@@ -76,6 +76,11 @@ export {
 	resolveMaxConcurrentSpeculativeResponses,
 } from "./engine";
 export {
+	bundleHasAsrModelFiles,
+	collectQwenAsrProvenanceBlockers,
+	readBundleAsrProvenanceBlockers,
+} from "./asr-provenance";
+export {
 	type HandlerRegistration,
 	handlerRegistry,
 	type PublicRegistration,
