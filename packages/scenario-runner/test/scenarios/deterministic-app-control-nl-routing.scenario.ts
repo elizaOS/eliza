@@ -524,7 +524,10 @@ export default scenario({
               editTarget: "feed",
               intent: "Tighten the feed app table density",
             },
-            `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification will run when it emits APP_CREATE_DONE.`,
+            // Deliberately distinct from the action's own callback text: the APP
+            // edit path opts into single delivery, so this planner bubble must
+            // never reach chat. The turn asserts the callback sentence instead.
+            "Planner re-render that must not be delivered for the APP edit turn.",
           ),
           handleResponseFixture("Delete the remote ledger view", "VIEWS"),
           plannerFixture(
@@ -786,7 +789,9 @@ export default scenario({
       kind: "message",
       name: "natural language edits an app",
       text: "Edit the feed app",
-      responseIncludesAny: ["Started app edit task for Feed"],
+      // The APP edit path delivers a single human sentence to chat; the dispatch
+      // detail below stays planner-facing in the action result text.
+      responseIncludesAny: ["Updating Feed now"],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "APP",
@@ -796,6 +801,7 @@ export default scenario({
             intent: "Tighten the feed app table density",
           },
           resultFields: {
+            text: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification runs when it emits APP_CREATE_DONE.`,
             "values.mode": "create",
             "values.subMode": "edit",
             "values.name": "feed",

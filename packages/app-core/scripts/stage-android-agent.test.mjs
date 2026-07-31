@@ -45,6 +45,59 @@ function withEnv(values, fn) {
   }
 }
 
+test("downloadFile retries transient fetch failures before writing the artifact", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-retry-"));
+  const priorFetch = globalThis.fetch;
+  const target = path.join(tmp, "bun-linux-aarch64-musl.zip");
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("other side closed"), {
+          code: "UND_ERR_SOCKET",
+        }),
+      });
+    }
+    return new Response(Buffer.from("ok"));
+  };
+  try {
+    await __testables.downloadFile("https://example.invalid/runtime.zip", target, {
+      retryDelayMs: 0,
+    });
+    assert.equal(calls, 2);
+    assert.equal(fs.readFileSync(target, "utf8"), "ok");
+  } finally {
+    globalThis.fetch = priorFetch;
+    removePathRecursive(tmp);
+  }
+});
+
+test("downloadFile does not retry permanent HTTP misses", async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-404-"));
+  const priorFetch = globalThis.fetch;
+  const target = path.join(tmp, "missing.zip");
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return new Response("missing", { status: 404 });
+  };
+  try {
+    await assert.rejects(
+      () =>
+        __testables.downloadFile("https://example.invalid/missing.zip", target, {
+          retryDelayMs: 0,
+        }),
+      /HTTP 404 fetching https:\/\/example\.invalid\/missing\.zip/,
+    );
+    assert.equal(calls, 1);
+    assert.equal(fs.existsSync(target), false);
+  } finally {
+    globalThis.fetch = priorFetch;
+    removePathRecursive(tmp);
+  }
+});
+
 test("riscv64 Bun artifact path resolves from the ELIZA_BUN_RISCV64_FILE env", () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-riscv64-bun-"));
   try {

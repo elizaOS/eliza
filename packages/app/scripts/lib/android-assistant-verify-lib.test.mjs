@@ -26,6 +26,7 @@ import {
   ASSISTANT_IME_COMPONENT,
   ASSISTANT_VIS_COMPONENT,
   assertDeepLinkLanded,
+  assistantSurfacesRegistered,
   classifyImeAsrOutcome,
   DEEP_LINK_SOURCES,
   detectSurfaceInvocation,
@@ -118,6 +119,33 @@ test("parseAssistantSurfaces treats a renamed VIS as ABSENT (regression canary)"
   assert.deepEqual(parsed.missing, ["voiceInteractionService"]);
   // The session service must still match despite sharing a prefix with the VIS.
   assert.equal(parsed.present.voiceInteractionSessionService, true);
+});
+
+test("assistantSurfacesRegistered accepts emulator dumps that prove the hidden session by launching VIS", () => {
+  const emulatorDump = `
+      ai.elizaos.app/.ElizaVoiceInteractionService
+      ai.elizaos.app/.ElizaRecognitionService
+      ai.elizaos.app/.ElizaVoiceInputMethodService
+      ai.elizaos.app/.ElizaAssistActivity
+`;
+  const surfaces = parseAssistantSurfaces(emulatorDump);
+  assert.deepEqual(surfaces.missing, ["voiceInteractionSessionService"]);
+  assert.equal(
+    assistantSurfacesRegistered({
+      surfaces,
+      visInvoked: { detected: true },
+      voiceinteractionLanded: { landed: true },
+    }),
+    true,
+  );
+  assert.equal(
+    assistantSurfacesRegistered({
+      surfaces,
+      visInvoked: { detected: false },
+      voiceinteractionLanded: { landed: true },
+    }),
+    false,
+  );
 });
 
 test("parseRoleHolders recognizes the held ROLE_ASSISTANT and rejects noise lines", () => {

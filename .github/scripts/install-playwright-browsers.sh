@@ -6,11 +6,15 @@ if [ "$#" -eq 0 ]; then
   exit 2
 fi
 
+if [ -n "${PLAYWRIGHT_INSTALL_CWD:-}" ]; then
+  cd "$PLAYWRIGHT_INSTALL_CWD"
+fi
+
 if [ "${RUNNER_OS:-}" = "Linux" ] || [ "$(uname -s 2>/dev/null || true)" = "Linux" ]; then
   if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-    exec bunx playwright install --with-deps "$@"
+    exec bunx --no-install playwright install --with-deps "$@"
   fi
   echo "::notice::passwordless sudo unavailable; installing Playwright browsers without OS deps"
 fi
 
-exec bunx playwright install "$@"
+exec bunx --no-install playwright install "$@"

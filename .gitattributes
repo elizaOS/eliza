@@ -19,5 +19,6 @@ patches/CHECKSUMS.sha256 -text
 *.mts text eol=lf
 *.cts text eol=lf
 *.json text eol=lf
+*.java text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf

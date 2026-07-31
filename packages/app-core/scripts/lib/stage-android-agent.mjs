@@ -390,6 +390,7 @@ class DownloadHttpError extends Error {
     this.name = "DownloadHttpError";
     this.retryable =
       status === 408 ||
+      status === 409 ||
       status === 425 ||
       status === 429 ||
       (status >= 500 && status <= 599);
@@ -445,8 +446,10 @@ async function fetchWithRetry(
       const retryable =
         !(error instanceof DownloadHttpError) || error.retryable === true;
       if (!retryable || attempt === maxAttempts) {
+        const details =
+          error instanceof Error ? error.message : String(error);
         throw new Error(
-          `Failed to download ${url} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
+          `${details}; Failed to download ${url} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
           { cause: error },
         );
       }
@@ -1659,4 +1662,5 @@ export const __testables = {
   riscv64BunSha256,
   resolveZigToolchain,
   provenancePath,
+  downloadFile,
 };

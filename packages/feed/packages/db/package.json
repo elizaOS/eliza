@@ -44,7 +44,7 @@
     "postgres": "^3.4.7"
   },
   "devDependencies": {
-    "@elizaos/plugin-sql": "2.0.0-alpha.17",
+    "@elizaos/plugin-sql": "workspace:*",
     "@types/node": "^24.10.0",
     "drizzle-kit": "^0.31.8",
     "tsx": "^4.19.4",

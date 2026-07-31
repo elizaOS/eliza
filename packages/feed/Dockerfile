@@ -5,7 +5,7 @@
 # context must be the repo root; a root .dockerignore prunes everything the feed
 # build does not need. `output: standalone` is disabled in next.config, so the
 # runtime image keeps node_modules + .next (single stage).
-FROM oven/bun:canary
+FROM oven/bun:1.3.14
 
 # git is used by next.config for the service-worker revision (falls back to a
 # random uuid if absent); bash runs the start wrapper.
@@ -21,14 +21,23 @@ COPY . .
 # Keep bun.lock — it encodes the workspace-override resolutions (e.g. the feed
 # app's npm-pinned @elizaos/core), which a fresh resolve would get wrong.
 RUN bun packages/feed/scripts/railway-prune-workspace.mjs
-RUN bun install --no-frozen-lockfile
+RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
+  bun install --no-frozen-lockfile --ignore-scripts \
+  --network-concurrency=8 --backend=copyfile
 
 # Build the @elizaos workspace packages the feed app consumes as built dist.
 # next.config only transpiles @elizaos/shared + @feed/*; @elizaos/core (and the
 # @elizaos/shared/* subpath exports) resolve to dist/, which is produced by each
-# package's own build, not by install. turbo builds them in dependency order
-# (contracts/logger/prompts -> core -> shared).
-RUN bunx turbo run build --filter=@elizaos/shared --filter=@elizaos/core
+# package's own build, not by install. The production model/storage plugins are
+# also built here so a missing workspace or shared plugin build input fails the
+# image instead of silently degrading at runtime.
+RUN bunx turbo run build \
+  --filter=@elizaos/shared \
+  --filter=@elizaos/core \
+  --filter=@elizaos/plugin-sql \
+  --filter=@elizaos/plugin-anthropic \
+  --filter=@elizaos/plugin-openai
+RUN bun packages/feed/scripts/verify-production-plugins.mjs
 
 # Build the Next.js app (webpack; standalone disabled). Heap capped at 6144 MB so
 # the build keeps ~2 GB of headroom on Railway's ~8 GB builder; 7168 left too

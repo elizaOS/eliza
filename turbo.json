@@ -161,6 +161,7 @@
       "dependsOn": [
         "@elizaos/cloud-sdk#build",
         "@elizaos/core#build",
+        "@elizaos/import-conversations#build",
         "@elizaos/shared#build"
       ],
       "env": ["LOG_LEVEL"],

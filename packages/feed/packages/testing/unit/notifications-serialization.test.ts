@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { serializeNotificationForApi } from "../../../apps/web/src/app/api/notifications/route";
+import { serializeNotificationForApi } from "../../../apps/web/src/app/api/notifications/serialization";
 
 describe("serializeNotificationForApi", () => {
   test("preserves structured notification data for market_resolved rows", () => {

@@ -61,6 +61,8 @@ import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
+import { useNativeGlassAnchor } from "../../glass/GlassSurface";
+import { useNativeGlassDiag } from "../../glass/native-backdrop";
 import {
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
@@ -1644,7 +1646,15 @@ export function ChatOverlay({
   // updates never cause a redundant re-render.
   const [isDragging, setDragging] = React.useState(false);
   const isDraggingRef = React.useRef(false);
+  // True only while the sheet is at TRUE rest: no finger down AND no height
+  // spring running (drag releases, detent taps, and programmatic opens all
+  // animate through `animateThreadHeight`, which owns the falling edge). The
+  // native glass anchor keys on this — anchoring at pointer-up would chase the
+  // settle spring with per-frame updateRect churn (measured ~68 calls/settle
+  // in the #16200 investigation).
+  const [sheetSettled, setSheetSettled] = React.useState(true);
   const setDraggingState = React.useCallback((dragging: boolean) => {
+    if (dragging) setSheetSettled(false);
     if (isDraggingRef.current === dragging) return;
     isDraggingRef.current = dragging;
     setDragging(dragging);
@@ -1660,17 +1670,20 @@ export function ChatOverlay({
   const animateThreadHeight = React.useCallback(
     (target: number) => {
       stopThreadAnimation();
+      setSheetSettled(false);
       const controls = animate(threadHeight, target, SHEET_SPRING);
       threadAnimationRef.current = controls;
       // Drop the drag-scoped GPU promotion only once the RELEASE spring has come
       // to rest — clearing it on release itself would strip `will-change` mid
       // settle-spring and repaint exactly when the panel is still moving. A stop
       // (a new gesture interrupting) rejects `.finished`, so keep the layer for
-      // the incoming drag; only a clean finish drops it.
+      // the incoming drag; only a clean finish drops it. The settled flag rides
+      // the same edge: only a clean, uninterrupted finish is "at rest".
       controls.finished
         .then(() => {
-          if (!isDraggingRef.current) return;
           if (draggingRef.current) return; // a new drag started meanwhile
+          setSheetSettled(true);
+          if (!isDraggingRef.current) return;
           setDraggingState(false);
         })
         .catch(() => {
@@ -1832,6 +1845,9 @@ export function ChatOverlay({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
+  // The SURFACE layer (not the transparent fieldset container): it carries the
+  // live corner radius the native glass region must mirror.
+  const glassSurfaceRef = React.useRef<HTMLDivElement | null>(null);
   const [panelElement, setPanelElement] =
     React.useState<HTMLFieldSetElement | null>(null);
   const bindPanelRef = React.useCallback((node: HTMLFieldSetElement | null) => {
@@ -5252,6 +5268,27 @@ export function ChatOverlay({
     return null;
   }, [firstRunOpen, messages]);
 
+  // Native material only for the OPEN sheet at TRUE rest (finger up AND the
+  // release spring finished — `sheetSettled`). Any motion reports a CSS tier
+  // on the same render, so the frost never lags the finger, and the anchor
+  // hook holds its CSS tier until BOTH the wallpaper and the region are
+  // acknowledged natively — no transparent frame at either handoff edge.
+  // Full-bleed stays opaque web paint (nothing to see through); onboarding
+  // keeps its bespoke masking. iOS-only inside the hook (see its header).
+  const nativeSheetTier = useNativeGlassAnchor(glassSurfaceRef, {
+    enabled:
+      sheetOpen &&
+      sheetSettled &&
+      !isDragging &&
+      !restoreDragging &&
+      !fullBleed &&
+      !firstRunOpen,
+  });
+  const nativeInsetSheet = nativeSheetTier === "native";
+  // Why-not-native, as a slug (glass/native-backdrop.ts) — the observable
+  // half of the tier system's J4 degrades, rendered into the AX probe below.
+  const nativeGlassDiag = useNativeGlassDiag();
+
   return (
     <motion.div
       ref={overlayRef}
@@ -5501,10 +5538,15 @@ export function ChatOverlay({
           )}
         >
           {/* SURFACE — absolute fill; the frosted-glass bg/border + the live
-              corner radius. Crossfades in by openProgress (compositor opacity). */}
+              corner radius. Crossfades in by openProgress (compositor opacity).
+              On the native tier the fill + blur drop and the OS material shows
+              through from below the WebView; border, bevel, and sheen stay —
+              they are the branded edge on every tier (GlassSurface contract). */}
           <motion.div
+            ref={glassSurfaceRef}
             aria-hidden="true"
             data-testid="chat-sheet-surface"
+            data-glass-tier={nativeSheetTier}
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               // SOLID warm-dark panel. The chat floats over the live ember field,
@@ -5540,17 +5582,20 @@ export function ChatOverlay({
               // fieldset, not the orange app theme behind. Full-bleed stays fully
               // opaque (it covers the whole screen — there is nothing to see
               // through, and the blur would be wasted battery).
-              backgroundColor: firstRunOpen
-                ? "transparent"
-                : fullBleed
-                  ? "var(--bg)"
-                  : GLASS_SHEET_FILL,
-              backdropFilter: fullBleed
-                ? undefined
-                : GLASS_SHEET_BACKDROP_FILTER,
-              WebkitBackdropFilter: fullBleed
-                ? undefined
-                : GLASS_SHEET_BACKDROP_FILTER,
+              backgroundColor:
+                firstRunOpen || nativeInsetSheet
+                  ? "transparent"
+                  : fullBleed
+                    ? "var(--bg)"
+                    : GLASS_SHEET_FILL,
+              backdropFilter:
+                fullBleed || nativeInsetSheet
+                  ? undefined
+                  : GLASS_SHEET_BACKDROP_FILTER,
+              WebkitBackdropFilter:
+                fullBleed || nativeInsetSheet
+                  ? undefined
+                  : GLASS_SHEET_BACKDROP_FILTER,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
@@ -5593,6 +5638,14 @@ export function ChatOverlay({
               chat committed to edge-to-edge full-bleed. */}
           <span className="sr-only" data-testid="chat-maximized-probe">
             {`chat-maximized:${fullBleed ? "true" : "false"}`}
+          </span>
+          {/* AX-tree mirror of data-glass-tier: the on-device XCUITest legs for
+              #15891 read this to prove the sheet adopted (or correctly refused)
+              the native material at each detent/drag state. The diag suffix
+              says WHY a css tier is showing (the observable half of the
+              tier system's silent J4 degrades). */}
+          <span className="sr-only" data-testid="chat-glass-tier-probe">
+            {`chat-glass-tier:${nativeSheetTier} chat-glass-diag:${nativeGlassDiag} chat-glass-gate:o${sheetOpen ? 1 : 0}s${sheetSettled ? 1 : 0}d${isDragging ? 1 : 0}r${restoreDragging ? 1 : 0}b${fullBleed ? 1 : 0}f${firstRunOpen ? 1 : 0}`}
           </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">

@@ -104,6 +104,34 @@ export default defineConfig({
           "node_modules/.bun/node_modules/react-dom/client.js",
         ),
       },
+      // These packages are exercised through source-level route tests. Put
+      // their exact aliases before the base package aliases so subpaths cannot
+      // be rewritten as an invalid suffix on an index.ts replacement.
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-app-control/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-app-control\/(.+)$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-app-control/src/$1",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-app-manager$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-app-manager/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-wallet\/(.+)$/,
+        replacement: path.join(monorepoRoot, "plugins/plugin-wallet/src/$1.ts"),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,
@@ -129,23 +157,6 @@ export default defineConfig({
           "typescript",
           "src",
           "index.ts",
-        ),
-      },
-      // Source-alias plugin-app-control so view-id drift tests see the current
-      // exports (MATCHER_VIEW_IDS / CONTEXT_VIEWS / INTENT_VIEW_IDS) instead of a
-      // stale dist build.
-      {
-        find: /^@elizaos\/plugin-app-control$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-app-control/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/plugin-app-control\/(.+)$/,
-        replacement: path.join(
-          monorepoRoot,
-          "plugins/plugin-app-control/src/$1",
         ),
       },
     ],

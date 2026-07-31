@@ -5,7 +5,6 @@
     "rootDir": ".",
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
       "@feed/contracts": ["./src/index.ts"],
       "@feed/contracts/*": ["./*"]
