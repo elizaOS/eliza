@@ -45,6 +45,68 @@ function notFound(kind: "note" | "calendar event", id: string): ElizaError {
   });
 }
 
+export type CalendarEventLookupSelector = "title" | "query";
+
+function normalizedLookup(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resolveCalendarEventIndex(
+  events: SimpleCalendarEvent[],
+  selector: CalendarEventLookupSelector,
+  value: string,
+): number {
+  const target = normalizedLookup(value);
+  const exactIndexes = events.flatMap((event, index) =>
+    normalizedLookup(event.title) === target ? [index] : [],
+  );
+  const candidateIndexes =
+    selector === "title" || exactIndexes.length > 0
+      ? exactIndexes
+      : events.flatMap((event, index) =>
+          normalizedLookup(
+            `${event.title} ${event.date} ${event.time} ${event.notes}`,
+          ).includes(target)
+            ? [index]
+            : [],
+        );
+  if (candidateIndexes.length === 0) {
+    throw new ElizaError(`No calendar event matches "${value}".`, {
+      code: "SIMPLE_VIEWS_NOT_FOUND",
+      context: { kind: "calendar-event", selector, target: value },
+      severity: "ephemeral",
+    });
+  }
+  if (candidateIndexes.length > 1) {
+    const candidates = candidateIndexes.flatMap((index) => {
+      const event = events[index];
+      return event ? [event] : [];
+    });
+    throw new ElizaError(
+      `"${value}" matches multiple calendar events: ${candidates
+        .map((event) => `${event.title} (${event.date} ${event.time})`)
+        .join(", ")}.`,
+      {
+        code: "SIMPLE_VIEWS_AMBIGUOUS_EVENT",
+        context: {
+          selector,
+          target: value,
+          candidateIds: candidates.map((event) => event.id),
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const candidateIndex = candidateIndexes[0];
+  if (candidateIndex === undefined) {
+    throw new ElizaError("Resolved calendar event was missing.", {
+      code: "SIMPLE_VIEWS_EVENT_RESOLUTION_FAILED",
+      severity: "fatal",
+    });
+  }
+  return candidateIndex;
+}
+
 export class SimpleViewsService extends Service {
   static override readonly serviceType = SIMPLE_VIEWS_SERVICE_TYPE;
 
@@ -298,6 +360,39 @@ export class SimpleViewsService extends Service {
       const index = draft.events.findIndex((event) => event.id === id);
       const existing = draft.events[index];
       if (index < 0 || !existing) throw notFound("calendar event", id);
+      draft.events.splice(index, 1);
+      return existing;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "calendar:event-deleted");
+    return transaction.value;
+  }
+
+  async deleteCalendarEventByLookup(
+    selector: CalendarEventLookupSelector,
+    value: string,
+  ): Promise<SimpleCalendarEvent> {
+    const lookup = value.trim();
+    if (lookup.length === 0) {
+      throw new ElizaError(
+        `delete-calendar-event ${selector} must be a nonblank string.`,
+        {
+          code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+          context: { field: selector },
+          severity: "ephemeral",
+        },
+      );
+    }
+    const transaction = await this.store.transact((draft) => {
+      // Lookup and removal share the store's write barrier so a concurrent
+      // rename or duplicate creation cannot invalidate the uniqueness proof.
+      const index = resolveCalendarEventIndex(draft.events, selector, lookup);
+      const existing = draft.events[index];
+      if (!existing) {
+        throw new ElizaError("Resolved calendar event was missing.", {
+          code: "SIMPLE_VIEWS_EVENT_RESOLUTION_FAILED",
+          severity: "fatal",
+        });
+      }
       draft.events.splice(index, 1);
       return existing;
     });
