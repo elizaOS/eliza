@@ -403,6 +403,46 @@ export function calculateProviderOverlaps(
 		}),
 	);
 }
+
+// Per-provider composeState budget. Without an enforced deadline a provider
+// doing synchronous network work can hold every message turn hostage for tens
+// of seconds and still count as healthy (a registry refetch measured 10.9s on
+// a live turn). The default defends interactive latency; a provider with
+// legitimately slow, turn-blocking work declares its own `timeoutMs`. On
+// expiry the provider degrades to a failure record for the turn
+// (`deadline_exceeded`) and composition proceeds without it.
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
+	const raw = Number.parseInt(
+		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
+		10,
+	);
+	if (Number.isFinite(raw) && raw >= 250) return raw;
+	return 3_000;
+})();
+
+// The budget is enforced at execution creation so coalesced awaiters share
+// one deadline. The rejection carries name "TimeoutError" so the composition
+// catch classifies it as `deadline_exceeded` and degrades that provider while
+// the turn proceeds.
+function withProviderDeadline<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+	providerName: string,
+): Promise<T> {
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_, reject) => {
+		timeoutHandle = setTimeout(() => {
+			const error = new Error(
+				`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
+			);
+			error.name = "TimeoutError";
+			reject(error);
+		}, timeoutMs);
+	});
+	return Promise.race([promise, deadline]).finally(() => {
+		if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+	});
+}
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
 	"bio",
@@ -4511,6 +4551,10 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 				const providerCoalesced = execution !== undefined;
 				if (!execution) {
+					const providerBudgetMs =
+						typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
+							? provider.timeoutMs
+							: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
 					const promise = providerSignal?.aborted
@@ -4518,10 +4562,14 @@ export class AgentRuntime implements IAgentRuntime {
 								providerSignal.reason ??
 									new Error("Provider execution aborted before start"),
 							)
-						: withProviderStep(providerRuntime, provider.name, () =>
-								provider.get(providerRuntime, message, cachedState, {
-									...(providerSignal ? { signal: providerSignal } : {}),
-								}),
+						: withProviderDeadline(
+								withProviderStep(providerRuntime, provider.name, () =>
+									provider.get(providerRuntime, message, cachedState, {
+										...(providerSignal ? { signal: providerSignal } : {}),
+									}),
+								),
+								providerBudgetMs,
+								provider.name,
 							);
 					execution = { promise, startedAt, startedAtMonotonic };
 					if (inFlightKey !== null) {
@@ -4598,6 +4646,26 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
+					if (outcome === "deadline_exceeded") {
+						// error-policy:J4 a budget overrun degrades to an empty
+						// contribution instead of failing the turn: the per-provider
+						// deadline exists to defend interactive latency, and a reply
+						// missing one provider's section is strictly better than no
+						// reply. The overrun stays observable via the span outcome and
+						// reportError above; genuine provider errors below keep the
+						// fail-fast composition contract.
+						return {
+							text: "",
+							values: {},
+							data: {},
+							providerName: provider.name,
+							providerStartedAt: execution.startedAt,
+							providerEndedAt: endedAt,
+							providerDurationMs: duration,
+							providerOutcome: outcome,
+							providerCoalesced,
+						};
+					}
 					return {
 						providerName: provider.name,
 						providerStartedAt: execution.startedAt,

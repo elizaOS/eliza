@@ -780,6 +780,17 @@ export interface Provider {
 	cacheScope?: CacheScope;
 
 	/**
+	 * Per-provider composeState time budget in milliseconds. When the budget
+	 * elapses the provider's contribution degrades to empty for that turn and
+	 * composition proceeds — a slow provider must never hold the message turn
+	 * hostage. Overrides the runtime default
+	 * (`ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS`); declare a higher budget only for
+	 * providers whose work is legitimately slow AND worth blocking the turn
+	 * for (e.g. corpus retrieval).
+	 */
+	timeoutMs?: number;
+
+	/**
 	 * Whether plugin registration should install this provider into the runtime.
 	 *
 	 * Defaults to true. Set to false for plugin-owned providers that are
