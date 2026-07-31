@@ -44,6 +44,8 @@ const DEFAULT_PACKAGING_HARNESS_PATH = resolve(
 const CI_BUN_VERSION_PATH = resolve(REPO_ROOT, ".github/ci-bun-version.json");
 const ROOT_MANIFEST_PATH = resolve(REPO_ROOT, "package.json");
 
+const CHECKOUT_ACTION =
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 const SETUP_BUN_ACTION =
   "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6";
 const SETUP_BUF_ACTION =
@@ -455,8 +457,7 @@ function validateSnapBuildJob(
 
   const checkout = findUniqueStep(steps, "Checkout");
   invariant(
-    checkout.uses ===
-      "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
+    checkout.uses === CHECKOUT_ACTION,
     `${label} checkout must be commit-pinned`,
   );
   invariant(
