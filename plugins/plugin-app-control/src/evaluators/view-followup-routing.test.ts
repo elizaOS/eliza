@@ -106,6 +106,23 @@ describe("viewFollowupRoutingEvaluator", () => {
 		});
 	});
 
+	it("ignores retrieved document verbs when routing the canonical request", async () => {
+		mockLoopback({ viewId: "notes" });
+		const wrapped = [
+			"Answer the user request using the contextual documents below as the source of truth.",
+			"<contextual_documents>",
+			"Update that note and set its title.",
+			"</contextual_documents>",
+			"<user_request>",
+			"create a new one to eat lunch",
+			"</user_request>",
+		].join("\n");
+		const ctx = context(wrapped);
+
+		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(false);
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
 	it("routes a delete follow-up that references the active view", async () => {
 		mockLoopback({ viewId: "notes" });
 		const ctx = context("delete that one");
