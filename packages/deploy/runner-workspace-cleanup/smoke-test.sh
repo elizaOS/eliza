@@ -139,9 +139,40 @@ node -e '
 test ! -e "$RUNNER_ROOT/runner-1/_work/stale-repo" || fail "stale checkout was not reclaimed"
 test -e "$RUNNER_ROOT/runner-1/_work/fresh-repo" || fail "fresh checkout must be preserved"
 
-# 9. If systemd-analyze is available, verify the rendered units parse.
+# 9. If systemd-analyze is available, verify rendered units whose paths point
+#    at a temp staging of the REAL shipped files. The normal rendering above
+#    targets the install-time /opt destinations, which do not exist pre-install,
+#    and systemd-analyze hard-fails an ExecStart whose executable is missing —
+#    so verifying that rendering would fail on every host that has the tool.
+#    Staging the actual helper/tool/env keeps the executable-existence check
+#    meaningful (it proves the shipped files are present and executable) while
+#    still writing nothing outside mktemp.
 if command -v systemd-analyze >/dev/null 2>&1; then
-  systemd-analyze verify "$svc" "$tmr" || fail "systemd-analyze rejected the rendered units"
+  STAGE_DIR="$TMP_DIR/stage"
+  VERIFY_UNIT_DIR="$TMP_DIR/verify-units"
+  mkdir -p "$STAGE_DIR" "$VERIFY_UNIT_DIR"
+  install -m 0755 "$TOOL_SRC" "$STAGE_DIR/prune-runner-workspaces.ts"
+  install -m 0755 "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" \
+    "$STAGE_DIR/eliza-prune-idle-runner-workspaces.sh"
+  cat > "$STAGE_DIR/cleanup.env" <<EOF_ENV
+RUNNER_WORKSPACE_ROOT=$RUNNER_ROOT
+PRUNE_MIN_AGE_HOURS=$MIN_AGE_HOURS
+BUN_BIN=$BUN_BIN
+PRUNE_TOOL=$STAGE_DIR/prune-runner-workspaces.ts
+EOF_ENV
+  for unit in "$SCRIPT_DIR"/units/*; do
+    sed -e "s|__BUN__|$BUN_BIN|g" \
+        -e "s|__TOOL__|$STAGE_DIR/prune-runner-workspaces.ts|g" \
+        -e "s|__HELPER__|$STAGE_DIR/eliza-prune-idle-runner-workspaces.sh|g" \
+        -e "s|__ENV_FILE__|$STAGE_DIR/cleanup.env|g" \
+        -e "s|__RUNNER_ROOT__|$RUNNER_ROOT|g" \
+        -e "s|__MIN_AGE_HOURS__|$MIN_AGE_HOURS|g" \
+        "$unit" > "$VERIFY_UNIT_DIR/$(basename "$unit")"
+  done
+  systemd-analyze verify \
+    "$VERIFY_UNIT_DIR/eliza-runner-workspace-prune.service" \
+    "$VERIFY_UNIT_DIR/eliza-runner-workspace-prune.timer" \
+    || fail "systemd-analyze rejected the rendered units"
 fi
 
 # 10. BEHAVIORAL: the idle helper sweeps EVERY orphaned runner — the exact
