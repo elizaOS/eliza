@@ -8964,11 +8964,17 @@ export class ElizaSandboxService {
         ) {
           throw new Error("Replacement cleanup ownership changed before adoption");
         }
-      } else if (
-        isDockerBackedMetadata(handle.metadata) &&
-        current.sandbox_id !== handle.sandboxId
-      ) {
-        throw new Error("Docker replacement has no durable cleanup ownership");
+      } else if (isDockerBackedMetadata(handle.metadata)) {
+        const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
+        if (
+          !dockerMeta?.nodeId ||
+          !dockerMeta.containerName ||
+          current.sandbox_id !== handle.sandboxId ||
+          current.node_id !== dockerMeta.nodeId ||
+          current.container_name !== dockerMeta.containerName
+        ) {
+          throw new Error("Docker replacement has no durable cleanup ownership");
+        }
       }
 
       const [adopted] = await tx

@@ -49,6 +49,8 @@ function uniq(p: string): string {
 
 async function seedProvisioningAgent(params: {
   sandboxId: string | null;
+  nodeId: string | null;
+  containerName: string | null;
 }): Promise<{ id: string; orgId: string }> {
   const [org] = await dbWrite
     .insert(organizations)
@@ -68,6 +70,8 @@ async function seedProvisioningAgent(params: {
       execution_tier: "dedicated-always",
       environment_revision: 0,
       sandbox_id: params.sandboxId,
+      node_id: params.nodeId,
+      container_name: params.containerName,
     })
     .returning();
   return { id: rec.id, orgId: org.id };
@@ -92,7 +96,11 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
   test(
     "an ADOPTED handle (no replacement metadata) completes the transfer",
     async () => {
-      const { id, orgId } = await seedProvisioningAgent({ sandboxId: "agent-preserved" });
+      const { id, orgId } = await seedProvisioningAgent({
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
       const svc = new ElizaSandboxService() as unknown as AdoptionInternals;
 
       // Preserved retry handles intentionally omit replacement metadata because
@@ -104,7 +112,12 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
           sandboxId: "agent-preserved",
           bridgeUrl: "https://runtime.example",
           healthUrl: "https://runtime.example/health",
-          metadata: { provider: "docker", nodeId: "node-1", containerName: "agent-preserved" },
+          metadata: {
+            provider: "docker",
+            nodeId: "node-1",
+            hostname: "node-1.example",
+            containerName: "agent-preserved",
+          },
         },
         0,
         { status: "running" },
@@ -122,7 +135,11 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
   test(
     "a fence-less docker handle whose sandboxId does NOT match is still refused",
     async () => {
-      const { id, orgId } = await seedProvisioningAgent({ sandboxId: "agent-original" });
+      const { id, orgId } = await seedProvisioningAgent({
+        sandboxId: "agent-original",
+        nodeId: "node-1",
+        containerName: "agent-original",
+      });
       const svc = new ElizaSandboxService() as unknown as AdoptionInternals;
 
       await expect(
@@ -133,7 +150,110 @@ describe("fence-less replacement adoption (#17253 §4)", () => {
             sandboxId: "agent-imposter",
             bridgeUrl: "https://runtime.example",
             healthUrl: "https://runtime.example/health",
-            metadata: { provider: "docker", nodeId: "node-1", containerName: "agent-imposter" },
+            metadata: {
+              provider: "docker",
+              nodeId: "node-1",
+              hostname: "node-1.example",
+              containerName: "agent-original",
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a fence-less docker handle on a different node is refused",
+    async () => {
+      const { id, orgId } = await seedProvisioningAgent({
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
+      const svc = new ElizaSandboxService() as unknown as AdoptionInternals;
+
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: "agent-preserved",
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-2",
+              hostname: "node-2.example",
+              containerName: "agent-preserved",
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a fence-less docker handle with incomplete placement metadata is refused",
+    async () => {
+      const { id, orgId } = await seedProvisioningAgent({
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
+      const svc = new ElizaSandboxService() as unknown as AdoptionInternals;
+
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: "agent-preserved",
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-1",
+              containerName: "agent-preserved",
+            },
+          },
+          0,
+          { status: "running" },
+        ),
+      ).rejects.toThrow("Docker replacement has no durable cleanup ownership");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a fence-less docker handle with a different container name is refused",
+    async () => {
+      const { id, orgId } = await seedProvisioningAgent({
+        sandboxId: "agent-preserved",
+        nodeId: "node-1",
+        containerName: "agent-preserved",
+      });
+      const svc = new ElizaSandboxService() as unknown as AdoptionInternals;
+
+      await expect(
+        svc.transferReplacementToPrimary(
+          id,
+          orgId,
+          {
+            sandboxId: "agent-preserved",
+            bridgeUrl: "https://runtime.example",
+            healthUrl: "https://runtime.example/health",
+            metadata: {
+              provider: "docker",
+              nodeId: "node-1",
+              hostname: "node-1.example",
+              containerName: "agent-imposter",
+            },
           },
           0,
           { status: "running" },
