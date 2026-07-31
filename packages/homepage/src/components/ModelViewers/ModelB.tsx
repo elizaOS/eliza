@@ -5,17 +5,19 @@
  * exposes imperative controls used by the surrounding onboarding flow.
  */
 import { animated, useSpring } from "@react-spring/three";
-import { Environment, Lightformer, useGLTF } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, useThree } from "@react-three/fiber";
 import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import * as THREE from "three";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
   BACK_BTN_CY,
   BACK_BTN_H,
@@ -76,6 +78,7 @@ interface ModelRuntime {
   triggerRestartMessages: (() => void) | null;
   triggerSendMessage: ((text: string) => void) | null;
   triggerSlideDown: (() => void) | null;
+  invalidate: (() => void) | null;
   tryActive: boolean;
   stopMessageAnimation: (() => void) | null;
   onWaitingChange: ((waiting: boolean) => void) | null;
@@ -92,10 +95,14 @@ interface ModelRuntime {
   switcherProgress: number;
   switcherShiftProgress: number;
   switcherFinalProgress: number;
+  chatDirty: boolean;
   botResponses: string[];
   botResponseIndex: number;
   backButtonRect: { x: number; y: number; w: number; h: number } | null;
   videoButtonPosition: { x: number; y: number } | null;
+  backButtonElement: HTMLButtonElement | null;
+  videoButtonElement: HTMLButtonElement | null;
+  platform: string | undefined;
   cameraZoomDone: boolean;
   introDelay: number;
 }
@@ -106,6 +113,7 @@ function createModelRuntime(): ModelRuntime {
     triggerRestartMessages: null,
     triggerSendMessage: null,
     triggerSlideDown: null,
+    invalidate: null,
     tryActive: false,
     stopMessageAnimation: null,
     onWaitingChange: null,
@@ -122,13 +130,111 @@ function createModelRuntime(): ModelRuntime {
     switcherProgress: 0,
     switcherShiftProgress: 0,
     switcherFinalProgress: 0,
+    chatDirty: true,
     botResponses: DEFAULT_BOT_RESPONSES,
     botResponseIndex: 0,
     backButtonRect: null,
     videoButtonPosition: null,
+    backButtonElement: null,
+    videoButtonElement: null,
+    platform: undefined,
     cameraZoomDone: false,
     introDelay: 3000,
   };
+}
+
+const OVERLAY_SIZE = 44;
+
+function syncButtonOverlays(runtime: ModelRuntime) {
+  const backElement = runtime.backButtonElement;
+  const videoElement = runtime.videoButtonElement;
+  const show = runtime.cameraZoomDone;
+  const isTelegram = (runtime.platform ?? "imessage") === "telegram";
+
+  if (backElement) {
+    const rect = runtime.backButtonRect;
+    if (rect && show) {
+      backElement.style.display = "block";
+      backElement.style.transform = isTelegram
+        ? `translate(${rect.x - 12}px, ${rect.y + 12}px)`
+        : `translate(${rect.x}px, ${rect.y}px)`;
+      backElement.style.width = `${rect.w}px`;
+      backElement.style.height = `${rect.h}px`;
+    } else {
+      backElement.style.display = "none";
+    }
+  }
+
+  if (!videoElement) return;
+  const position = runtime.videoButtonPosition;
+  if (position && show && runtime.switcherPhase === "idle" && !isTelegram) {
+    videoElement.style.display = "block";
+    videoElement.style.transform = `translate(${position.x - OVERLAY_SIZE / 2}px, ${position.y - OVERLAY_SIZE / 2}px)`;
+  } else {
+    videoElement.style.display = "none";
+  }
+}
+
+function configurePhoneLoader(loader: GLTFLoader) {
+  loader.setMeshoptDecoder(MeshoptDecoder);
+}
+
+/**
+ * Captures the three reflection cards once and assigns the resulting cubemap
+ * to the phone scene. Keeping this small environment local avoids shipping the
+ * HDR, EXR, gain-map, and Draco loaders required by general-purpose helpers.
+ */
+function PhoneEnvironment() {
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useLayoutEffect(() => {
+    const virtualScene = new THREE.Scene();
+    const renderTarget = new THREE.WebGLCubeRenderTarget(64);
+    renderTarget.texture.type = THREE.HalfFloatType;
+    const camera = new THREE.CubeCamera(0.1, 1000, renderTarget);
+    virtualScene.add(camera);
+
+    const cards = [
+      { intensity: 2, position: [0, 5, -6], scale: [10, 5, 1] },
+      { intensity: 1.2, position: [-6, 1, 2], scale: [4, 8, 1] },
+      { intensity: 0.8, position: [6, -2, 1], scale: [3, 5, 1] },
+    ] as const;
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const materials: THREE.MeshBasicMaterial[] = [];
+
+    for (const card of cards) {
+      const material = new THREE.MeshBasicMaterial({
+        color: new THREE.Color("white").multiplyScalar(card.intensity),
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(card.position[0], card.position[1], card.position[2]);
+      mesh.scale.set(card.scale[0], card.scale[1], card.scale[2]);
+      mesh.lookAt(0, 0, 0);
+      materials.push(material);
+      virtualScene.add(mesh);
+    }
+
+    const previousEnvironment = scene.environment;
+    const autoClear = gl.autoClear;
+    gl.autoClear = true;
+    camera.update(gl, virtualScene);
+    gl.autoClear = autoClear;
+    scene.environment = renderTarget.texture;
+    invalidate();
+
+    return () => {
+      scene.environment = previousEnvironment;
+      geometry.dispose();
+      for (const material of materials) material.dispose();
+      renderTarget.dispose();
+    };
+  }, [gl, invalidate, scene]);
+
+  return null;
 }
 
 /** Find the 3D local-space position on a mesh for a given UV coordinate. */
@@ -192,7 +298,11 @@ function projectToScreen(
 }
 
 function Model({ runtime }: { runtime: ModelRuntime }) {
-  const { scene: sourceScene } = useGLTF("/models/iphone-meshopt.glb");
+  const { scene: sourceScene } = useLoader(
+    GLTFLoader,
+    "/models/iphone-meshopt.glb",
+    configurePhoneLoader,
+  );
   const scene = useMemo(() => sourceScene.clone(true), [sourceScene]);
   const cumulative = useRef(0);
   const [target, setTarget] = useState(0);
@@ -216,6 +326,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
   const typingAnimFrameRef = useRef(0);
   const responseAnimFrameRef = useRef(0);
   const spinTimeoutRef = useRef(0);
+  const invalidate = useThree((state) => state.invalidate);
 
   const { rotation } = useSpring({
     rotation: target,
@@ -233,6 +344,13 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
     slideY: slidingDown ? 200 : 0,
     config: { mass: 1, tension: 120, friction: 20 },
   });
+
+  useEffect(() => {
+    runtime.invalidate = invalidate;
+    return () => {
+      runtime.invalidate = null;
+    };
+  }, [invalidate, runtime]);
 
   useEffect(() => {
     runtime.triggerSlideDown = () => setSlidingDown(true);
@@ -358,6 +476,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
           offset,
         );
         chatTexture.needsUpdate = true;
+        invalidate();
 
         if (t < 1) {
           animFrame = requestAnimationFrame(animateOffset);
@@ -395,6 +514,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
               eased,
             );
             chatTexture.needsUpdate = true;
+            invalidate();
 
             if (t < 1) {
               msgAnimFrameRef.current = requestAnimationFrame(tick);
@@ -434,6 +554,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
           1,
         );
         chatTexture.needsUpdate = true;
+        invalidate();
         startMessages(500);
       };
 
@@ -459,6 +580,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
             extraMessagesRef.current,
           );
           chatTexture.needsUpdate = true;
+          invalidate();
 
           if (t < 1) {
             sendAnimFrameRef.current = requestAnimationFrame(tick);
@@ -497,6 +619,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
               extraMessagesRef.current,
             );
             chatTexture.needsUpdate = true;
+            invalidate();
             if (t < 1)
               typingAnimFrameRef.current = requestAnimationFrame(animTyping);
           };
@@ -541,6 +664,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
                 extraMessagesRef.current,
               );
               chatTexture.needsUpdate = true;
+              invalidate();
               if (t < 1) {
                 responseAnimFrameRef.current =
                   requestAnimationFrame(animResponse);
@@ -587,10 +711,10 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
         chatTextureRef.current?.dispose();
       }
     };
-  }, [runtime, scene]);
+  }, [runtime, scene, invalidate]);
 
   // Animate scroll when tryActive changes + continuous render for typing dots + switcher
-  useFrame(({ camera, size }, delta) => {
+  useFrame(({ camera, size, invalidate: scheduleFrame }, delta) => {
     // Project button 3D positions → screen pixels
     if (screenMeshRef.current) {
       const mesh = screenMeshRef.current;
@@ -695,10 +819,10 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
           runtime.switcherShiftProgress = 0;
           runtime.switcherFinalProgress = 0;
         }
+        runtime.chatDirty = true;
       }
     }
 
-    const switcherActive = runtime.switcherPhase !== "idle";
     const switcherAnimating =
       runtime.switcherPhase === "opening" ||
       runtime.switcherPhase === "closing";
@@ -722,7 +846,7 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
       scrollYRef.current !== current ||
       hasTyping ||
       switcherAnimating ||
-      switcherActive
+      runtime.chatDirty
     ) {
       if (chatTextureRef.current && avatarImgRef.current) {
         chatTextureRef.current.image = renderChatToCanvas(
@@ -741,7 +865,14 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
           runtime.loginSubtitle,
         );
         chatTextureRef.current.needsUpdate = true;
+        runtime.chatDirty = false;
       }
+    }
+
+    syncButtonOverlays(runtime);
+
+    if (needsScroll || hasTyping || switcherAnimating) {
+      scheduleFrame();
     }
   });
 
@@ -756,7 +887,11 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
   );
 }
 
-useGLTF.preload("/models/iphone-meshopt.glb");
+useLoader.preload(
+  GLTFLoader,
+  "/models/iphone-meshopt.glb",
+  configurePhoneLoader,
+);
 
 function FovZoom({ runtime }: { runtime: ModelRuntime }) {
   const startFov = 2.8;
@@ -765,8 +900,17 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
   const endY = 8;
   const progress = useRef(0);
   const initialized = useRef(false);
-  const elapsed = useRef(0);
-  const delay = runtime.introDelay / 1000;
+  const started = useRef(false);
+  const completed = useRef(false);
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      started.current = true;
+      invalidate();
+    }, runtime.introDelay);
+    return () => window.clearTimeout(timeout);
+  }, [invalidate, runtime]);
 
   useFrame((state, delta) => {
     const cam = state.camera as THREE.PerspectiveCamera;
@@ -776,12 +920,13 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
       cam.updateProjectionMatrix();
       initialized.current = true;
     }
-    if (elapsed.current < delay) {
-      elapsed.current += delta;
-      return;
-    }
+    if (!started.current) return;
     if (progress.current >= 1) {
-      if (!runtime.cameraZoomDone) runtime.cameraZoomDone = true;
+      if (!completed.current) {
+        completed.current = true;
+        runtime.cameraZoomDone = true;
+        state.invalidate();
+      }
       return;
     }
     progress.current = Math.min(progress.current + delta * 0.9, 1);
@@ -790,12 +935,11 @@ function FovZoom({ runtime }: { runtime: ModelRuntime }) {
     cam.fov = startFov + (endFov - startFov) * t;
     cam.position.y = startY + (endY - startY) * t;
     cam.updateProjectionMatrix();
+    state.invalidate();
   });
 
   return null;
 }
-
-const OVERLAY_SIZE = 44;
 
 const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   {
@@ -815,15 +959,17 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
 ) {
   const t = useT();
   const runtime = useMemo(createModelRuntime, []);
+  runtime.introDelay = introDelayMs ?? 3000;
   const backBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const vidBtnOverlayRef = useRef<HTMLButtonElement>(null);
-  const platformRef = useRef(platform);
 
   useEffect(() => {
     runtime.tryActive = tryActive;
+    runtime.chatDirty = true;
     if (tryActive) {
       runtime.stopMessageAnimation?.();
     }
+    runtime.invalidate?.();
   }, [runtime, tryActive]);
 
   useEffect(() => {
@@ -836,14 +982,20 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
 
   useEffect(() => {
     runtime.switcherOpen = switcherOpen;
+    runtime.chatDirty = true;
+    runtime.invalidate?.();
   }, [runtime, switcherOpen]);
 
   useEffect(() => {
     runtime.loginTitle = loginTitle;
+    runtime.chatDirty = true;
+    runtime.invalidate?.();
   }, [loginTitle, runtime]);
 
   useEffect(() => {
     runtime.loginSubtitle = loginSubtitle;
+    runtime.chatDirty = true;
+    runtime.invalidate?.();
   }, [loginSubtitle, runtime]);
 
   useEffect(() => {
@@ -853,15 +1005,13 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   }, [runtime, t]);
 
   useEffect(() => {
-    platformRef.current = platform;
+    runtime.platform = platform;
+    runtime.chatDirty = true;
     if (platform && platform !== "try") {
       setChatPlatform(platform);
     }
-  }, [platform]);
-
-  useEffect(() => {
-    if (introDelayMs != null) runtime.introDelay = introDelayMs;
-  }, [introDelayMs, runtime]);
+    runtime.invalidate?.();
+  }, [platform, runtime]);
 
   useEffect(() => {
     runtime.onVideoClick = onVideoClick ?? null;
@@ -875,50 +1025,13 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     runtime.onSwitcherDone = onSwitcherDone ?? null;
   }, [onSwitcherDone, runtime]);
 
-  // Sync overlay div positions every frame from projected 3D coords
   useEffect(() => {
-    let raf: number;
-    const update = () => {
-      const backEl = backBtnOverlayRef.current;
-      const vidEl = vidBtnOverlayRef.current;
-      const show = runtime.cameraZoomDone;
-
-      if (backEl) {
-        if (runtime.backButtonRect && show) {
-          const rect = runtime.backButtonRect;
-          const plat = platformRef.current ?? "imessage";
-          const isTG = plat === "telegram";
-          backEl.style.display = "block";
-          backEl.style.transform = isTG
-            ? `translate(${rect.x - 12}px, ${rect.y + 12}px)`
-            : `translate(${rect.x}px, ${rect.y}px)`;
-          backEl.style.width = `${rect.w}px`;
-          backEl.style.height = `${rect.h}px`;
-          backEl.style.backgroundColor = "";
-        } else {
-          backEl.style.display = "none";
-        }
-      }
-      if (vidEl) {
-        const isTG = (platformRef.current ?? "imessage") === "telegram";
-        if (
-          runtime.videoButtonPosition &&
-          show &&
-          runtime.switcherPhase === "idle" &&
-          !isTG
-        ) {
-          const position = runtime.videoButtonPosition;
-          vidEl.style.display = "block";
-          vidEl.style.transform = `translate(${position.x - OVERLAY_SIZE / 2}px, ${position.y - OVERLAY_SIZE / 2}px)`;
-        } else {
-          vidEl.style.display = "none";
-        }
-      }
-
-      raf = requestAnimationFrame(update);
+    runtime.backButtonElement = backBtnOverlayRef.current;
+    runtime.videoButtonElement = vidBtnOverlayRef.current;
+    return () => {
+      runtime.backButtonElement = null;
+      runtime.videoButtonElement = null;
     };
-    raf = requestAnimationFrame(update);
-    return () => cancelAnimationFrame(raf);
   }, [runtime]);
 
   useImperativeHandle(ref, () => ({
@@ -941,6 +1054,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
       <Canvas
         camera={{ position: [0, 8, 0.6], fov: 45 }}
         dpr={[1, 1.5]}
+        frameloop="demand"
         gl={{
           alpha: true,
           powerPreference: "high-performance",
@@ -949,22 +1063,10 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
       >
         <ambientLight intensity={0.5} />
         <Model runtime={runtime} />
-        <Environment resolution={64}>
-          <Lightformer intensity={2} position={[0, 5, -6]} scale={[10, 5, 1]} />
-          <Lightformer
-            intensity={1.2}
-            position={[-6, 1, 2]}
-            scale={[4, 8, 1]}
-          />
-          <Lightformer
-            intensity={0.8}
-            position={[6, -2, 1]}
-            scale={[3, 5, 1]}
-          />
-        </Environment>
+        <PhoneEnvironment />
         <FovZoom runtime={runtime} />
       </Canvas>
-      {/* Back button overlay — pill shaped, size set dynamically via rAF */}
+      {/* The invisible hit target follows its projected position in the phone canvas. */}
       <button
         type="button"
         ref={backBtnOverlayRef}
@@ -987,7 +1089,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
           zIndex: 25,
         }}
       />
-      {/* Video button overlay */}
+      {/* The 3D screen needs a real DOM button to remain keyboard-accessible. */}
       <button
         type="button"
         ref={vidBtnOverlayRef}

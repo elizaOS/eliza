@@ -11,6 +11,8 @@ export function ElizaLogo({ className }: ElizaLogoProps) {
     <img
       src="/eliza-logo.webp"
       alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
+      width={512}
+      height={216}
       className={className}
       draggable={false}
     />

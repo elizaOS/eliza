@@ -100,8 +100,10 @@ bun run --cwd packages/homepage check:release-data  # Validate generated release
 ```
 
 **predev / prebuild** run automatically before `dev` and `build`:
-1. `node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --background --background-videos` — syncs brand assets into `public/`.
+1. `node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds` — syncs only the brand assets referenced by the homepage into `public/`.
 2. `node ../app-core/scripts/write-homepage-release-data.mjs` — fetches GitHub Releases and writes `src/generated/release-data.ts`.
+
+**postbuild** runs `scripts/prune-unused-static-assets.mjs` so optional artifact-bundle backgrounds and product concepts cannot inflate the Cloudflare Pages upload when a developer checkout has hydrated them into `public/`.
 
 ## Config / env vars
 

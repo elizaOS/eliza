@@ -37,11 +37,12 @@ import {
 import { useNavigate } from "react-router-dom";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
-import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
+import type { ModelBHandle } from "@/components/ModelViewers/ModelB";
 import { useT } from "@/providers/I18nProvider";
 
 // Heavy WebGL bundles stay behind Suspense so the interactive route chrome can
 // appear without waiting for the shader, phone model, or video-call canvas.
+const ModelB = lazy(() => import("@/components/ModelViewers/ModelB"));
 const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
@@ -855,7 +856,16 @@ export default function Leaderboard() {
                   (p, i) => (
                     <AnimatedButton
                       key={p}
+                      type="button"
                       onClick={() => changePlatform(p)}
+                      aria-label={
+                        p === "imessage"
+                          ? "iMessage"
+                          : p === "telegram"
+                            ? "Telegram"
+                            : "Discord"
+                      }
+                      aria-pressed={platform === p}
                       className="relative z-20 flex size-12 cursor-pointer items-center justify-center rounded-full"
                       style={{
                         opacity: iconSprings[i].opacity,
@@ -901,6 +911,7 @@ export default function Leaderboard() {
                   }}
                 />
                 <AnimatedButton
+                  type="button"
                   onClick={() => navigate("/get-started")}
                   className="relative z-2 flex h-full w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-full text-base font-semibold text-neutral-900"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
