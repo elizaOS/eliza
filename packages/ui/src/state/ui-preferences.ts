@@ -85,8 +85,8 @@ export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
 /**
  * The shader-mode config for the black ember field: the fallback when an
  * image background is cleared or fails to load, and the base the color
- * swatches and the glsl fallback resolve to. (The boot default is the Canopy
- * wallpaper — see {@link DEFAULT_BACKGROUND_CONFIG}.)
+ * swatches and the glsl fallback resolve to. (The boot default is the Ember
+ * Night sunset wallpaper — see {@link DEFAULT_BACKGROUND_CONFIG}.)
  */
 export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
@@ -94,16 +94,10 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
 };
 
 /**
- * The curated "Ember Night" wallpaper: a warm sunset in the clouds, served as
- * a same-origin static asset from `packages/app/public`. It renders the
- * `ember-night` gallery tile (no longer the boot default — the app boots to
- * the Canopy wallpaper). A served, code-free, same-origin image the apply
- * channel already trusts (same class as the gradient data URLs and the
- * `/api/media/<hash>` uploads) — it carries no GLSL source or preset id, so the
- * confinement invariants (#11088 / #13523) hold. The bytes live in `public/`
- * (served, cacheable), never in the JS bundle. When the image is cleared or
- * fails to load the shell falls back to the shader field
- * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}).
+ * The curated "Ember Night" wallpaper is both the gallery tile and the
+ * fresh-install background. Serving this code-free asset from the app origin
+ * keeps it outside the JS bundle and within the image confinement boundary.
+ * The shader field remains the fallback when the image cannot render.
  */
 const SUNSET_WALLPAPER_URL = "/bg-sunset.webp";
 
@@ -134,20 +128,17 @@ const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The boot default background: the "Canopy" photo wallpaper — a misty jungle
- * river valley in deep, layered greens — over the black base color. The base
- * stays {@link DEFAULT_BACKGROUND_COLOR} so every piece of host chrome that
- * tracks it (launch FOUC guard, PWA theme-color, manifest, native splashes)
- * keeps its black baseline, and canopy's near-black darkest tones make the
- * black→image settle invisible at boot. If the image is cleared or fails to
- * load the shell falls back to the shader ember field
- * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}); every other curated scene stays
- * a user-selectable gallery option.
+ * Fresh installs use the "Ember Night" sunset wallpaper over the same black
+ * base used by host chrome and native launch surfaces, preventing a bright
+ * transition while the asset loads. Persisted backgrounds remain authoritative:
+ * without selected-vs-default provenance, changing an existing wallpaper would
+ * overwrite an intentional choice. The catalog default id and this fallback
+ * therefore describe new state only and must stay aligned.
  */
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "image",
   color: DEFAULT_BACKGROUND_COLOR,
-  imageUrl: photoWallpaperUrl("canopy"),
+  imageUrl: SUNSET_WALLPAPER_URL,
 };
 
 /* ── Background catalog (curated + metadata) ──────────────────────────── */
