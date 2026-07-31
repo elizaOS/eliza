@@ -40,7 +40,7 @@ export const SURFACE_OCR_EVIDENCE_ROW = {
  * editing its `*.test.tsx` or `*.stories.tsx` does not.
  */
 const SURFACE_PATH_RE =
-  /(^|\/)(packages\/(app|ui|tui|homepage)|apps\/app|packages\/cloud\/frontend|packages\/os\/landing)\//i;
+  /(^|\/)(packages\/(app|ui|tui|homepage|eliza-computer)|apps\/app|packages\/cloud\/frontend|packages\/os\/landing)\//i;
 const SURFACE_VISUAL_EXT_RE = /\.(tsx|jsx|css|scss|sass|less|svg|html|vue)$/i;
 const SURFACE_NON_VISUAL_RE =
   /(\.(test|spec|stories|story|bench)\.|\.d\.ts$|(^|\/)(__tests__|__e2e__|__mocks__|__fixtures__|test|tests|e2e|stories)\/)/i;
@@ -88,10 +88,6 @@ const RETIRED_REPO_EVIDENCE_PATH = [
   ".github",
   ["issue", "evidence"].join("-"),
 ].join("/");
-const RETIRED_REPO_EVIDENCE_RE = new RegExp(
-  `${RETIRED_REPO_EVIDENCE_PATH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\/\\S+`,
-  "i",
-);
 
 export function parseLabels(value) {
   if (Array.isArray(value)) {
@@ -112,57 +108,228 @@ export function requiresSurfaceArtifacts(labels) {
 
 export function hasOcrEvidenceReference(rows) {
   for (const rowText of rows.values()) {
-    // OCR proof must reference real evidence, not a page link: either an
-    // actual media artifact or a linked report/log file next to OCR keywords.
-    if (
-      OCR_EVIDENCE_RE.test(rowText) &&
-      (hasVisualArtifactReference(rowText) || hasEvidenceFileReference(rowText))
-    ) {
+    // OCR proof must name the review method and point at an accepted uploaded
+    // report. A screenshot whose alt text merely says "OCR" is not a readout.
+    if (OCR_EVIDENCE_RE.test(rowText) && hasEvidenceFileReference(rowText)) {
       return true;
     }
   }
   return false;
 }
 
-// Linked non-media evidence file (an OCR report/JSON/log) — still stricter
-// than "any URL": the link target must look like a file, not a web page, OR live
-// on the pr-evidence release family (`PR_EVIDENCE_RELEASE_RE`), where every URL
-// is by construction an uploaded asset rather than a page.
-const EVIDENCE_FILE_RE = /\.(json|txt|log|csv|md)(\?\S*)?(\s|$|\)|"|')/i;
-
-export function hasEvidenceFileReference(text) {
-  const value = String(text ?? "");
-  return (
-    (EVIDENCE_FILE_RE.test(value) ||
-      GITHUB_ATTACHMENT_RE.test(value) ||
-      PR_EVIDENCE_RELEASE_RE.test(value)) &&
-    !RETIRED_REPO_EVIDENCE_RE.test(value)
-  );
-}
-
 export function hasNaWithReason(text) {
   const match = text.match(/\bN\/?A\b\s*[-:\u2013\u2014]\s*(\S[\s\S]*?)$/im);
   if (!match) return false;
-  const reason = match[1].trim();
-  if (reason.length < 3) return false;
-  const stripped = reason.replace(/[`*_]+/g, "").trim();
-  return !/^<[^>]*>[.\s]*$/.test(stripped);
+  const reason = match[1]
+    .replace(/[`*_]+/g, "")
+    .replace(/[.)\]}]+$/g, "")
+    .trim();
+  if (reason.length < 12 || /^<[^>]*>[.\s]*$/.test(reason)) return false;
+  if (/<(?:reason|explanation|details)>/i.test(reason)) return false;
+  if (/https?:\/\//i.test(reason)) return false;
+  return (reason.match(/[a-z0-9][a-z0-9'.-]*/gi) ?? []).length >= 3;
+}
+
+const IMAGE_EXTENSIONS = new Set([
+  ".avif",
+  ".gif",
+  ".jpeg",
+  ".jpg",
+  ".png",
+  ".webp",
+]);
+const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".webm"]);
+const EVIDENCE_FILE_EXTENSIONS = new Set([
+  ".csv",
+  ".html",
+  ".json",
+  ".jsonl",
+  ".log",
+  ".md",
+  ".txt",
+  ".zip",
+]);
+const UUID_PATH =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const USER_ATTACHMENT_PATH_RE = new RegExp(
+  `^/user-attachments/assets/${UUID_PATH}$`,
+  "i",
+);
+const LEGACY_REPO_ASSET_PATH_RE = new RegExp(
+  `^/elizaOS/eliza/assets/[0-9]+/${UUID_PATH}$`,
+  "i",
+);
+const PR_EVIDENCE_RELEASE_PATH_RE =
+  /^\/elizaOS\/eliza\/releases\/download\/pr-evidence(?:-[1-9][0-9]*)?\/([^/]+)$/i;
+const LEGACY_USER_IMAGE_PATH_RE = /^\/[0-9]+\/[^/].+$/;
+
+function extensionFromPath(pathname) {
+  let filename;
+  try {
+    filename = decodeURIComponent(pathname.split("/").at(-1) ?? "");
+  } catch {
+    return null;
+  }
+  const match = filename.toLowerCase().match(/(\.[a-z0-9]+)$/);
+  return match?.[1] ?? "";
+}
+
+function urlReferences(text) {
+  const source = String(text ?? "");
+  const references = [];
+  const seen = new Set();
+  const add = (rawUrl, presentation) => {
+    const normalized = rawUrl.trim().replace(/^<|>$/g, "");
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      references.push({ url: normalized, presentation });
+    }
+  };
+
+  for (const match of source.matchAll(
+    /(!?)\[[^\]]*\]\(\s*<?(https:\/\/[^)\s>]+)>?(?:\s+["'][^)]*["'])?\s*\)/gi,
+  )) {
+    add(match[2], match[1] === "!" ? "image" : "link");
+  }
+  for (const match of source.matchAll(
+    /<(img|video|source)\b[^>]*\bsrc\s*=\s*["'](https:\/\/[^"']+)["'][^>]*>/gi,
+  )) {
+    add(match[2], match[1].toLowerCase() === "img" ? "image" : "video");
+  }
+  for (const match of source.matchAll(/https:\/\/[^\s<>"'`)\]]+/gi)) {
+    add(match[0].replace(/[.,;:!?]+$/g, ""), "link");
+  }
+  return references;
+}
+
+function trustedArtifact(reference) {
+  let url;
+  try {
+    url = new URL(reference.url);
+  } catch {
+    // error-policy:J3 URL parsing is an untrusted PR-body boundary; malformed
+    // values are explicitly invalid evidence.
+    return null;
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.hash
+  ) {
+    return null;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const extension = extensionFromPath(url.pathname);
+  if (extension === null) return null;
+  const normalizedReference = {
+    ...reference,
+    url: url.href,
+    identity: `${url.origin}${url.pathname}`,
+  };
+  if (hostname === "github.com") {
+    if (USER_ATTACHMENT_PATH_RE.test(url.pathname)) {
+      return {
+        extension,
+        kind: "opaque-upload",
+        ...normalizedReference,
+      };
+    }
+    if (LEGACY_REPO_ASSET_PATH_RE.test(url.pathname)) {
+      return {
+        extension,
+        kind: "opaque-upload",
+        ...normalizedReference,
+      };
+    }
+    if (PR_EVIDENCE_RELEASE_PATH_RE.test(url.pathname)) {
+      return {
+        extension,
+        kind: "release-upload",
+        ...normalizedReference,
+      };
+    }
+    return null;
+  }
+  if (
+    hostname === "user-images.githubusercontent.com" &&
+    LEGACY_USER_IMAGE_PATH_RE.test(url.pathname) &&
+    IMAGE_EXTENSIONS.has(extension)
+  ) {
+    return {
+      extension,
+      kind: "legacy-image",
+      ...normalizedReference,
+    };
+  }
+  return null;
+}
+
+function trustedArtifacts(text) {
+  const artifacts = new Map();
+  for (const reference of urlReferences(text)) {
+    const artifact = trustedArtifact(reference);
+    if (!artifact) continue;
+    const existing = artifacts.get(artifact.identity);
+    if (
+      !existing ||
+      (existing.presentation === "link" && artifact.presentation !== "link")
+    ) {
+      artifacts.set(artifact.identity, artifact);
+    }
+  }
+  return [...artifacts.values()];
 }
 
 export function hasArtifactReference(text) {
-  const markdownLinks = [
-    ...String(text ?? "").matchAll(/\[[^\]]+\]\(\s*(\S+)\s*\)/g),
-  ];
-  if (markdownLinks.some((match) => !RETIRED_REPO_EVIDENCE_RE.test(match[1]))) {
-    return true;
-  }
-  if (/https?:\/\/\S+/i.test(text)) return true;
-  if (
-    /user-images\.githubusercontent\.com|github\.com\/[^)\s]+\/assets\//i.test(
-      text,
-    )
-  ) {
-    return true;
+  return trustedArtifacts(text).length > 0;
+}
+
+function artifactCanBeEvidenceFile({ extension, kind, presentation }) {
+  return (
+    (kind === "opaque-upload" && presentation === "link") ||
+    EVIDENCE_FILE_EXTENSIONS.has(extension)
+  );
+}
+
+export function hasEvidenceFileReference(text) {
+  return trustedArtifacts(text).some(artifactCanBeEvidenceFile);
+}
+
+const NON_REAL_EVIDENCE_RE =
+  /\b(?:placeholder|example output|logs? here|todo|tbd|fabricated|invented|fake|mocks?|fixtures?|synthetic|dummy)\b/i;
+
+function hasSubstantiveInlineLog(text) {
+  const source = String(text ?? "");
+  for (const details of source.matchAll(
+    /<details\b[^>]*>([\s\S]*?)<\/details>/gi,
+  )) {
+    const block = details[1];
+    const summary =
+      block.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/i)?.[1] ?? "";
+    if (
+      !/\b(logs?|console|network|request|response|output|trace)\b/i.test(
+        summary,
+      )
+    ) {
+      continue;
+    }
+    for (const fence of block.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
+      const content = fence[1].trim();
+      const lines = content.split(/\r?\n/).filter((line) => line.trim());
+      if (
+        content.length >= 80 &&
+        lines.length >= 3 &&
+        !NON_REAL_EVIDENCE_RE.test(content) &&
+        /(?:\b(?:GET|POST|PUT|PATCH|DELETE)\s+\/|\b(?:INFO|WARN|ERROR|DEBUG)\b|HTTP\/[12](?:\.\d)?\s+\d{3}|\bstatus(?:Code)?["'=:\s]+\d{3}\b|^\s*[{[])/im.test(
+          content,
+        )
+      ) {
+        return true;
+      }
+    }
   }
   return false;
 }
@@ -203,53 +370,29 @@ export function hasInlineTranscriptEvidence(text) {
       .filter((line) => line.length > 0);
     return (
       lines.length >= INLINE_TRANSCRIPT_MIN_LINES &&
-      lines.join("").length >= INLINE_TRANSCRIPT_MIN_CHARS
+      lines.join("").length >= INLINE_TRANSCRIPT_MIN_CHARS &&
+      !NON_REAL_EVIDENCE_RE.test(content)
     );
   });
 }
 
-// A GitHub-uploaded attachment (drag-and-drop) lands on one of these hosts;
-// these URLs are the unforgeable signal that a real image/video is embedded.
-const GITHUB_ATTACHMENT_RE =
-  /(https?:\/\/)?(github\.com\/user-attachments\/assets\/|user-images\.githubusercontent\.com\/|github\.com\/[^/\s)]+\/[^/\s)]+\/assets\/)/i;
-// A URL/path whose tail is an image or video file — a directly-linked media file.
-const MEDIA_EXT_RE =
-  /\.(png|jpe?g|gif|webp|apng|avif|bmp|svg|mp4|mov|webm|m4v|ogg)(\?\S*)?(\s|$|\)|"|')/i;
-// The canonical CLI evidence store: the shared `pr-evidence` release plus its
-// `pr-evidence-2`, `pr-evidence-3`, … overflow releases (scripts/pr-evidence.mjs
-// rolls uploads into the next release once GitHub's hard 1000-assets-per-release
-// cap is hit). A `/releases/download/` URL there points at an uploaded asset, not
-// a web page, so the whole family is a first-class evidence host — matched here
-// so an overflow-release link is accepted identically to a primary-release one.
-// The trailing slash after the tag keeps a link to the release *page*
-// (`/releases/tag/pr-evidence`) from matching.
-const PR_EVIDENCE_RELEASE_RE =
-  /(https?:\/\/)?github\.com\/[^/\s)]+\/[^/\s)]+\/releases\/download\/pr-evidence(-\d+)?\//i;
-
 /**
- * Strict media check for the VISUAL evidence rows (screenshots, walkthrough
- * video, OCR readout). Unlike `hasArtifactReference`, a bare link to a page —
- * the PR itself, a `/checks` tab, a commit, a job log — does NOT count: those
- * are how an author games the loose check while attaching no pixels. Only a
- * real embedded/linked image or video satisfies it: a GitHub attachment-host
- * URL, a markdown image embed `![](…)`, an `<img>`/`<video>` tag, or a URL/path
- * ending in a known media extension. This is the difference between "here is a
- * link" and "here is the picture".
+ * Accepts only media uploaded to GitHub's attachment hosts or the repository's
+ * canonical evidence release. Opaque GitHub upload URLs must use image markup
+ * for screenshot rows; video rows accept the bare URL form GitHub emits.
  */
-export function hasVisualArtifactReference(text) {
-  const value = String(text ?? "");
-  if (GITHUB_ATTACHMENT_RE.test(value)) return true;
-  if (/!\[[^\]]*\]\(\s*\S+\s*\)/.test(value)) return true; // ![alt](url) embed
-  if (/<(img|video|source|picture)\b[^>]*>/i.test(value)) return true;
-  // A directly-linked media file — including screenshots/videos uploaded to the
-  // pr-evidence release family (primary or `pr-evidence-N` overflow), whose asset
-  // URLs carry a media extension. The extension is required so a non-image
-  // release asset cannot satisfy a screenshot/video row; the retired repo-local
-  // evidence path never counts.
-  if (MEDIA_EXT_RE.test(value) && !RETIRED_REPO_EVIDENCE_RE.test(value)) {
-    return true;
-  }
-  return false;
+export function hasVisualArtifactReference(text, expected = "media") {
+  return trustedArtifacts(text).some((artifact) => {
+    const image =
+      IMAGE_EXTENSIONS.has(artifact.extension) ||
+      (artifact.kind === "opaque-upload" && artifact.presentation === "image");
+    const video =
+      VIDEO_EXTENSIONS.has(artifact.extension) ||
+      (artifact.kind === "opaque-upload" && artifact.presentation !== "image");
+    if (expected === "image") return image;
+    if (expected === "video") return video;
+    return image || video;
+  });
 }
 
 export function parseChangedFiles(value) {
@@ -287,11 +430,36 @@ export function isRowSatisfiedForContext(
   return isRowSatisfied(rowText);
 }
 
+function isEvidenceRowSatisfied(id, rowText) {
+  if (hasNaWithReason(rowText)) return true;
+  if (id === "before-screenshots" || id === "after-screenshots") {
+    return hasVisualArtifactReference(rowText, "image");
+  }
+  if (id === "walkthrough-video") {
+    return hasVisualArtifactReference(rowText, "video");
+  }
+  if (id === "backend-logs" || id === "frontend-logs") {
+    return (
+      hasEvidenceFileReference(rowText) ||
+      hasSubstantiveInlineLog(rowText) ||
+      hasInlineTranscriptEvidence(rowText)
+    );
+  }
+  if (id === "llm-trajectory") {
+    return (
+      hasEvidenceFileReference(rowText) || hasInlineTranscriptEvidence(rowText)
+    );
+  }
+  return hasArtifactReference(rowText) || hasInlineTranscriptEvidence(rowText);
+}
+
 export function boundRowBlock(block) {
   const lines = block.split(/\r?\n/);
   const out = [];
   let started = false;
-  for (const line of lines) {
+  let detailsDepth = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (!started) {
       if (line.trim() === "") continue;
       started = true;
@@ -300,11 +468,27 @@ export function boundRowBlock(block) {
     }
 
     const trimmed = line.trim();
-    if (trimmed === "") break;
-    if (/^#/.test(trimmed)) break;
+    if (trimmed === "") {
+      if (detailsDepth > 0) {
+        out.push(line);
+        continue;
+      }
+      const next = lines.slice(index + 1).find((candidate) => candidate.trim());
+      if (next && /^<details\b/i.test(next.trim())) {
+        out.push(line);
+        continue;
+      }
+      break;
+    }
+    if (detailsDepth === 0 && /^#/.test(trimmed)) break;
     if (/<!--\s*evidence-row:/i.test(trimmed)) break;
-    if (/^[-*]\s/.test(line) && !/^\s/.test(line)) break;
+    if (detailsDepth === 0 && /^[-*]\s/.test(line) && !/^\s/.test(line)) {
+      break;
+    }
     out.push(line);
+    detailsDepth += (line.match(/<details\b/gi) ?? []).length;
+    detailsDepth -= (line.match(/<\/details>/gi) ?? []).length;
+    detailsDepth = Math.max(0, detailsDepth);
   }
   return out.join("\n").trim();
 }
@@ -334,12 +518,45 @@ export function extractEvidenceRows(body) {
   return rows;
 }
 
+function duplicateArtifactsByRow(rows, requiredRows) {
+  const owners = new Map();
+  for (const { id } of requiredRows) {
+    const rowText = rows.get(id);
+    if (rowText === undefined) continue;
+    for (const artifact of trustedArtifacts(rowText)) {
+      const record = owners.get(artifact.identity) ?? {
+        rows: new Set(),
+        url: artifact.url,
+      };
+      record.rows.add(id);
+      owners.set(artifact.identity, record);
+    }
+  }
+
+  const duplicates = new Map();
+  for (const { rows: rowIds, url } of owners.values()) {
+    if (rowIds.size < 2) continue;
+    for (const id of rowIds) {
+      const rowDuplicates = duplicates.get(id) ?? [];
+      rowDuplicates.push({ rowIds: [...rowIds], url });
+      duplicates.set(id, rowDuplicates);
+    }
+  }
+  return duplicates;
+}
+
 export function evaluatePrEvidence(
   body,
   requiredRows = REQUIRED_EVIDENCE_ROWS,
   options = {},
 ) {
-  const rows = extractEvidenceRows(body ?? "");
+  const source = String(body ?? "");
+  const rows = extractEvidenceRows(source);
+  const markerCounts = new Map();
+  for (const match of source.matchAll(MARKER_RE)) {
+    const id = match[1].toLowerCase();
+    markerCounts.set(id, (markerCounts.get(id) ?? 0) + 1);
+  }
   // When a changed-file list is available, path detection is the sole surface
   // trigger: the auto-labeler applies `ui` to ANY packages/ui path, so the
   // label alone forces screenshots onto non-visual .ts changes. The label
@@ -355,8 +572,25 @@ export function evaluatePrEvidence(
     options.changedFiles,
     options.addedFiles,
   );
+  const duplicateArtifacts = duplicateArtifactsByRow(rows, requiredRows);
   const findings = requiredRows.map(({ id, label }) => {
+    const rowDuplicates = duplicateArtifacts.get(id);
+    if (rowDuplicates) {
+      const details = rowDuplicates.map(({ rowIds, url }) => {
+        const otherRows = rowIds.filter((rowId) => rowId !== id).join(", ");
+        return `${url} is also used by ${otherRows}`;
+      });
+      return {
+        id,
+        label,
+        status: "duplicate-artifact",
+        detail: details.join("; "),
+      };
+    }
     if (!rows.has(id)) return { id, label, status: "missing" };
+    if (markerCounts.get(id) !== 1) {
+      return { id, label, status: "duplicate" };
+    }
     const rowText = rows.get(id);
     if (rowText.length === 0) return { id, label, status: "blank" };
     const artifactRequired =
@@ -369,13 +603,20 @@ export function evaluatePrEvidence(
       );
     // Visual rows on a surface PR demand REAL media (attachment/embed/media
     // URL) — a link to the PR page or a /checks tab is not a screenshot.
-    if (artifactRequired && !hasVisualArtifactReference(rowText)) {
+    const expectedMedia = id === "walkthrough-video" ? "video" : "image";
+    if (
+      artifactRequired &&
+      !hasVisualArtifactReference(rowText, expectedMedia)
+    ) {
       return { id, label, status: "artifact-required" };
     }
     return {
       id,
       label,
-      status: artifactRequired || isRowSatisfied(rowText) ? "ok" : "blank",
+      status:
+        artifactRequired || isEvidenceRowSatisfied(id, rowText)
+          ? "ok"
+          : "blank",
     };
   });
   if (surfaceArtifactsRequired && !hasOcrEvidenceReference(rows)) {
@@ -386,6 +627,352 @@ export function evaluatePrEvidence(
     ok: findings.every((finding) => finding.status === "ok"),
     findings,
   };
+}
+
+const ARTIFACT_READ_LIMIT_BYTES = 16 * 1024;
+const DEFAULT_ARTIFACT_CONCURRENCY = 4;
+const DEFAULT_ARTIFACT_TIMEOUT_MS = 10_000;
+const UNRELIABLE_CONTENT_TYPES = new Set([
+  "",
+  "application/octet-stream",
+  "binary/octet-stream",
+]);
+
+function expectedArtifactKind(rowId, artifact, rowText) {
+  if (rowId === "before-screenshots" || rowId === "after-screenshots") {
+    return "image";
+  }
+  if (rowId === "walkthrough-video") return "video";
+  if (
+    rowId === "backend-logs" ||
+    rowId === "frontend-logs" ||
+    rowId === "llm-trajectory"
+  ) {
+    return "document";
+  }
+  if (
+    rowId === "domain-artifacts" &&
+    OCR_EVIDENCE_RE.test(rowText) &&
+    artifactCanBeEvidenceFile(artifact)
+  ) {
+    return "document";
+  }
+  if (IMAGE_EXTENSIONS.has(artifact.extension)) return "image";
+  if (VIDEO_EXTENSIONS.has(artifact.extension)) return "video";
+  if (EVIDENCE_FILE_EXTENSIONS.has(artifact.extension)) return "document";
+  if (artifact.presentation === "image") return "image";
+  if (artifact.presentation === "video") return "video";
+  return null;
+}
+
+function mediaKindFromBytes(bytes) {
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return "image";
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    return "image";
+  }
+  if (
+    bytes.length >= 6 &&
+    new TextDecoder().decode(bytes.subarray(0, 6)).match(/^GIF8[79]a$/)
+  ) {
+    return "image";
+  }
+  if (
+    bytes.length >= 12 &&
+    new TextDecoder().decode(bytes.subarray(0, 4)) === "RIFF" &&
+    new TextDecoder().decode(bytes.subarray(8, 12)) === "WEBP"
+  ) {
+    return "image";
+  }
+  if (
+    bytes.length >= 4 &&
+    bytes[0] === 0x1a &&
+    bytes[1] === 0x45 &&
+    bytes[2] === 0xdf &&
+    bytes[3] === 0xa3
+  ) {
+    return "video";
+  }
+  if (
+    bytes.length >= 12 &&
+    new TextDecoder().decode(bytes.subarray(4, 8)) === "ftyp"
+  ) {
+    const brand = new TextDecoder().decode(bytes.subarray(8, 12));
+    return brand === "avif" || brand === "avis" ? "image" : "video";
+  }
+  return null;
+}
+
+function contentKind(contentType, bytes) {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (!UNRELIABLE_CONTENT_TYPES.has(contentType)) return "document";
+  return mediaKindFromBytes(bytes);
+}
+
+function isHtmlResponse(contentType, bytes) {
+  if (contentType === "text/html" || contentType === "application/xhtml+xml") {
+    return true;
+  }
+  const prefix = new TextDecoder()
+    .decode(bytes.subarray(0, 512))
+    .replace(/^\uFEFF/, "")
+    .trimStart()
+    .toLowerCase();
+  return (
+    prefix.startsWith("<!doctype html") ||
+    prefix.startsWith("<html") ||
+    prefix.startsWith("<head")
+  );
+}
+
+async function readResponsePrefix(response) {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks = [];
+  let length = 0;
+  let complete = false;
+  try {
+    while (length < ARTIFACT_READ_LIMIT_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) {
+        complete = true;
+        break;
+      }
+      if (!value || value.length === 0) continue;
+      const remaining = ARTIFACT_READ_LIMIT_BYTES - length;
+      const chunk = value.subarray(0, remaining);
+      chunks.push(chunk);
+      length += chunk.length;
+    }
+  } finally {
+    if (!complete) {
+      try {
+        await reader.cancel();
+      } catch {
+        // error-policy:J6 response cancellation is best-effort after the
+        // validator has already captured the bounded prefix it needs.
+      }
+    }
+  }
+
+  const prefix = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    prefix.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return prefix;
+}
+
+async function verifyArtifact(artifact, fetchImpl, token, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = new Headers({
+    Accept: "*/*",
+    Range: `bytes=0-${ARTIFACT_READ_LIMIT_BYTES - 1}`,
+  });
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  try {
+    const response = await fetchImpl(artifact.url, {
+      headers,
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return {
+        status: "artifact-http-error",
+        detail: `HTTP ${response.status}`,
+      };
+    }
+
+    const bytes = await readResponsePrefix(response);
+    if (bytes.length === 0) {
+      return {
+        status: "artifact-empty",
+        detail: "response body is empty",
+      };
+    }
+
+    const contentType = (response.headers.get("content-type") ?? "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    if (isHtmlResponse(contentType, bytes)) {
+      return {
+        status: "artifact-html",
+        detail: "response is HTML, not an uploaded artifact",
+      };
+    }
+
+    const actualKind = contentKind(contentType, bytes);
+    if (
+      artifact.expectedKind &&
+      actualKind &&
+      artifact.expectedKind !== actualKind
+    ) {
+      return {
+        status: "artifact-kind-mismatch",
+        detail: `expected ${artifact.expectedKind}, received ${actualKind}`,
+      };
+    }
+    return { status: "ok" };
+  } catch (error) {
+    // error-policy:J1 the CLI boundary translates transport failures into a
+    // row-level verification failure instead of accepting unreachable proof.
+    const timedOut = controller.signal.aborted;
+    return {
+      status: timedOut ? "artifact-timeout" : "artifact-fetch-error",
+      detail: timedOut
+        ? `request exceeded ${timeoutMs}ms`
+        : error instanceof Error
+          ? error.message
+          : "artifact request failed",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Resolves every trusted artifact referenced by an evidence row. Fetch is
+ * injected for deterministic tests; the CLI uses the runtime implementation.
+ */
+export async function verifyReferencedArtifacts(
+  body,
+  requiredRows = REQUIRED_EVIDENCE_ROWS,
+  options = {},
+) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  if (typeof fetchImpl !== "function") {
+    throw new TypeError(
+      "Artifact verification requires a fetch implementation",
+    );
+  }
+  const concurrency = Math.max(
+    1,
+    Math.min(
+      16,
+      Math.trunc(options.concurrency ?? DEFAULT_ARTIFACT_CONCURRENCY),
+    ),
+  );
+  const timeoutMs = Math.max(
+    1,
+    Math.trunc(options.timeoutMs ?? DEFAULT_ARTIFACT_TIMEOUT_MS),
+  );
+  // This standalone script runs outside Turbo task caching; credentials affect
+  // transport access, never the deterministic evidence verdict.
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: optional standalone CLI credential
+  const githubToken = process.env.GITHUB_TOKEN;
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: optional standalone CLI credential
+  const ghToken = process.env.GH_TOKEN;
+  const token = options.token ?? githubToken ?? ghToken ?? "";
+  const rows = extractEvidenceRows(String(body ?? ""));
+  const references = [];
+  const uniqueArtifacts = new Map();
+
+  for (const { id, label } of requiredRows) {
+    const rowText = rows.get(id);
+    if (rowText === undefined) continue;
+    for (const artifact of trustedArtifacts(rowText)) {
+      const reference = {
+        ...artifact,
+        expectedKind: expectedArtifactKind(id, artifact, rowText),
+        id,
+        label,
+      };
+      references.push(reference);
+      if (!uniqueArtifacts.has(artifact.identity)) {
+        uniqueArtifacts.set(artifact.identity, reference);
+      }
+    }
+  }
+
+  const artifacts = [...uniqueArtifacts.values()];
+  const results = await mapWithConcurrency(artifacts, concurrency, (artifact) =>
+    verifyArtifact(artifact, fetchImpl, token, timeoutMs),
+  );
+  const resultsByIdentity = new Map(
+    artifacts.map((artifact, index) => [artifact.identity, results[index]]),
+  );
+  const findings = references.map(({ id, identity, label, url }) => {
+    const result = resultsByIdentity.get(identity);
+    return {
+      id,
+      label,
+      url,
+      ...result,
+    };
+  });
+  return {
+    ok: findings.every((finding) => finding.status === "ok"),
+    findings,
+  };
+}
+
+function combineVerificationFindings(evaluationFindings, remoteFindings) {
+  const failuresByRow = new Map();
+  for (const finding of remoteFindings) {
+    if (finding.status === "ok") continue;
+    const failures = failuresByRow.get(finding.id) ?? [];
+    failures.push(finding);
+    failuresByRow.set(finding.id, failures);
+  }
+
+  return evaluationFindings.map((finding) => {
+    const failures = failuresByRow.get(finding.id);
+    if (!failures) return finding;
+    const verificationDetail = failures
+      .map(({ detail, status, url }) => `${status}: ${url} (${detail})`)
+      .join("; ");
+    if (finding.status !== "ok") {
+      return {
+        ...finding,
+        detail: [finding.detail, verificationDetail].filter(Boolean).join("; "),
+        verificationFailures: failures,
+      };
+    }
+    const statuses = new Set(failures.map(({ status }) => status));
+    return {
+      ...finding,
+      status:
+        statuses.size === 1
+          ? failures[0].status
+          : "artifact-verification-failed",
+      detail: verificationDetail,
+      verificationFailures: failures,
+    };
+  });
 }
 
 function readBody(args) {
@@ -437,6 +1024,10 @@ Options:
   --json              Print machine-readable findings JSON.
   --self-test         Run the planted-fixture self-check.
   --help, -h          Show this help.
+
+Environment:
+  GITHUB_TOKEN or GH_TOKEN
+                      Optional token sent while resolving trusted artifacts.
 `);
 }
 
@@ -452,7 +1043,7 @@ function buildFixtureBody(overrides = {}) {
       "- [ ] Backend logs: [backend.txt](https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000001)",
     "frontend-logs": "- [ ] Frontend logs `N/A - no frontend change`.",
     "llm-trajectory":
-      "- [ ] Real-LLM trajectory: [report](https://example.com/report.json)",
+      "- [ ] Real-LLM trajectory: [report](https://github.com/elizaOS/eliza/releases/download/pr-evidence/fixture-trajectory.json)",
     "domain-artifacts":
       "- [ ] Domain artifacts: OCR report https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000007",
   };
@@ -733,7 +1324,7 @@ Or copy the \`<!-- evidence-row:* -->\` block from .github/pull_request_template
 into the PR description and fill each row.`;
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) {
     usage();
@@ -750,22 +1341,38 @@ function main() {
   const changedFiles = readFileListArg(args, "--changed-files-file");
   const addedFiles = readFileListArg(args, "--added-files-file");
   const retiredEvidenceFiles = findRetiredRepoEvidenceFiles(changedFiles);
-  const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+  const evaluation = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
     labels,
     changedFiles,
     addedFiles,
   });
-  const allOk = ok && retiredEvidenceFiles.length === 0;
+  const verification = await verifyReferencedArtifacts(body);
+  const findings = combineVerificationFindings(
+    evaluation.findings,
+    verification.findings,
+  );
+  const allOk =
+    evaluation.ok && verification.ok && retiredEvidenceFiles.length === 0;
 
   if (args.includes("--json")) {
     console.log(
-      JSON.stringify({ ok: allOk, findings, retiredEvidenceFiles }, null, 2),
+      JSON.stringify(
+        {
+          ok: allOk,
+          findings,
+          artifactFindings: verification.findings,
+          retiredEvidenceFiles,
+        },
+        null,
+        2,
+      ),
     );
   } else {
     for (const finding of findings) {
       const symbol = finding.status === "ok" ? "ok  " : "FAIL";
+      const detail = finding.detail ? ` — ${finding.detail}` : "";
       console.log(
-        `  [${symbol}] ${finding.label} (${finding.id}): ${finding.status}`,
+        `  [${symbol}] ${finding.label} (${finding.id}): ${finding.status}${detail}`,
       );
     }
     if (retiredEvidenceFiles.length > 0) {
@@ -811,5 +1418,5 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  main();
+  await main();
 }

@@ -1,0 +1,982 @@
+/**
+ * Verifies the bundled contributor skill, its local references, and its
+ * read-only GitHub report using deterministic API fixtures.
+ */
+
+import assert from "node:assert";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import {
+  auditCommentDisclosures,
+  auditPrEvidence,
+  CLAIM_RECENCY_DAYS,
+  collectLiveReport,
+  isBotAccount,
+  parseCliArguments,
+  parseModelDisclosure,
+  parsePaginatedJson,
+  REQUIRED_EVIDENCE_ROWS,
+  readGhPages,
+  renderMarkdown,
+} from "../skills/contribute-to-eliza/scripts/live-report.mjs";
+
+const testDir = dirname(fileURLToPath(import.meta.url));
+const skillDir = join(testDir, "..", "skills", "contribute-to-eliza");
+const skillPath = join(skillDir, "SKILL.md");
+const NOW = new Date("2026-01-20T12:00:00.000Z");
+const HEAD_SHA = "a".repeat(40);
+const PRIOR_SHA = "b".repeat(40);
+
+function account(login: string, type = "User") {
+  return { login, type };
+}
+
+function comment(
+  id: number,
+  author: string,
+  body: string | null,
+  kind = "User",
+  createdAt = "2026-01-18T12:00:00.000Z",
+) {
+  return {
+    id,
+    html_url: `https://github.com/elizaOS/eliza/comments/${id}`,
+    user: account(author, kind),
+    body,
+    created_at: createdAt,
+  };
+}
+
+function review(
+  id: number,
+  author: string,
+  state: string,
+  commitId = HEAD_SHA,
+  submittedAt = "2026-01-18T12:00:00.000Z",
+) {
+  return {
+    id,
+    html_url: `https://github.com/elizaOS/eliza/pull/1#pullrequestreview-${id}`,
+    user: account(author),
+    body: "Substantive review findings.",
+    submitted_at: submittedAt,
+    state,
+    commit_id: commitId,
+  };
+}
+
+function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
+  return {
+    number,
+    title: `Pull request ${number}`,
+    html_url: `https://github.com/elizaOS/eliza/pull/${number}`,
+    user: account(`author-${number}`),
+    labels: [],
+    draft: false,
+    body: evidenceBody(),
+    requested_reviewers: [],
+    requested_teams: [],
+    created_at: "2026-01-18T12:00:00.000Z",
+    updated_at: "2026-01-18T12:00:00.000Z",
+    head: { sha: HEAD_SHA },
+    ...overrides,
+  };
+}
+
+function evidenceBody() {
+  const rows = REQUIRED_EVIDENCE_ROWS.map(
+    (id) =>
+      `<!-- evidence-row:${id} -->\n- [x] ${id}: N/A - no affected ${id} surface.`,
+  ).join("\n\n");
+  return `${rows}\n\nAI provider/model: OpenAI / gpt-5.6-codex`;
+}
+
+describe("contribute-to-eliza skill structure", () => {
+  it("has valid, trigger-rich frontmatter and no scaffold placeholders", () => {
+    const source = readFileSync(skillPath, "utf8");
+    const frontmatter = source.match(/^---\n([\s\S]*?)\n---\n/);
+    assert.ok(frontmatter, "SKILL.md must begin with YAML frontmatter");
+    const keys = frontmatter[1]
+      .split(/\r?\n/)
+      .map((line) => line.match(/^([a-z-]+):/)?.[1])
+      .filter((key): key is string => key !== undefined);
+    const name = frontmatter[1].match(/^name:\s*(.+)$/m)?.[1];
+    const description = frontmatter[1].match(
+      /^description:\s*"?(.+?)"?$/m,
+    )?.[1];
+
+    assert.deepStrictEqual(keys.sort(), ["description", "name"]);
+    assert.strictEqual(name, "contribute-to-eliza");
+    assert.match(
+      String(description),
+      /issue.*pull request|pull request.*issue/i,
+    );
+    assert.doesNotMatch(source, /\[TODO[:\]]/);
+  });
+
+  it("encodes both modes, disclosure, security, sync, proof, and authority", () => {
+    const source = readFileSync(skillPath, "utf8");
+
+    assert.match(source, /Mode A: finish a scoped issue/);
+    assert.match(source, /Mode B: independently review and repair/);
+    assert.match(source, /AI provider\/model: <provider> \/ <exact-model-id>/);
+    assert.match(
+      source,
+      /every issue body, issue comment, PR body, PR comment, and review body/i,
+    );
+    assert.match(source, /— \[<lane-tag>\]/);
+    assert.match(source, /lane signature must be immediately before/i);
+    assert.match(source, /eliza-computer-attribution:v1/);
+    assert.match(source, /Contribution skill revision:/);
+    assert.match(source, /PROVENANCE\.json/);
+    assert.match(source, /source\.sha256/);
+    assert.match(source, /revisionStatus.*committed/);
+    assert.match(source, /never substitute.*guessed SHA/i);
+    assert.match(source, /SECURITY\.md/);
+    assert.match(source, /origin\/develop/);
+    assert.match(source, /package-local `AGENTS\.md` or `CLAUDE\.md`/);
+    assert.match(source, /manually inspect every trajectory, log, screenshot/);
+    assert.match(source, /Never self-approve or self-merge/);
+  });
+
+  it("links only existing local references and ships UI metadata", () => {
+    const source = readFileSync(skillPath, "utf8");
+    const references = [...source.matchAll(/\]\((references\/[^)]+)\)/g)].map(
+      (match) => match[1],
+    );
+
+    assert.deepStrictEqual(references.sort(), [
+      "references/evidence-review-rubric.md",
+      "references/repository-contract.md",
+    ]);
+    for (const reference of references) {
+      assert.ok(existsSync(join(skillDir, reference)), reference);
+    }
+
+    const openaiYaml = readFileSync(
+      join(skillDir, "agents", "openai.yaml"),
+      "utf8",
+    );
+    assert.match(openaiYaml, /display_name: "Contribute to elizaOS"/);
+    assert.match(openaiYaml, /default_prompt: "Use \$contribute-to-eliza/);
+    assert.match(openaiYaml, /one scoped elizaOS issue/);
+    assert.match(openaiYaml, /independently review one open pull request/);
+  });
+});
+
+describe("live report parsing", () => {
+  it("flattens paginated gh output and rejects malformed pages", () => {
+    assert.deepStrictEqual(
+      parsePaginatedJson('[[{"number":1}],[{"number":2}]]'),
+      [{ number: 1 }, { number: 2 }],
+    );
+    assert.throws(() => parsePaginatedJson('{"number":1}'), /array of pages/);
+    assert.throws(() => parsePaginatedJson('[[{"number":1}],{}]'), /page 2/);
+  });
+
+  it("accepts exact provider/model pairs and rejects placeholders", () => {
+    assert.deepStrictEqual(
+      parseModelDisclosure("**AI provider/model:** OpenAI / gpt-5.6-codex"),
+      { provider: "OpenAI", model: "gpt-5.6-codex" },
+    );
+    assert.deepStrictEqual(
+      parseModelDisclosure(
+        "AI provider/model: OpenRouter / anthropic/claude-opus-4.1",
+      ),
+      {
+        provider: "OpenRouter",
+        model: "anthropic/claude-opus-4.1",
+      },
+    );
+    assert.strictEqual(
+      parseModelDisclosure("AI provider/model: unknown / model"),
+      null,
+    );
+    assert.strictEqual(
+      parseModelDisclosure("AI provider/model: OpenAI/gpt-5"),
+      null,
+    );
+  });
+
+  it("accepts only trusted category-scoped evidence or a specific N/A reason", () => {
+    assert.strictEqual(auditPrEvidence(evidenceBody()).ok, true);
+
+    const trustedRows = new Map([
+      [
+        "before-screenshots",
+        "https://github.com/user-attachments/assets/11111111-1111-1111-1111-111111111111",
+      ],
+      [
+        "after-screenshots",
+        "https://github.com/user-attachments/assets/22222222-2222-2222-2222-222222222222",
+      ],
+      [
+        "walkthrough-video",
+        "https://github.com/user-attachments/assets/33333333-3333-3333-3333-333333333333",
+      ],
+      [
+        "backend-logs",
+        `https://github.com/elizaOS/eliza/blob/${HEAD_SHA}/evidence/backend.log`,
+      ],
+      [
+        "frontend-logs",
+        "https://github.com/elizaOS/eliza/actions/runs/123456/artifacts/7890",
+      ],
+      [
+        "llm-trajectory",
+        `https://raw.githubusercontent.com/elizaOS/eliza/${HEAD_SHA}/trajectory.json`,
+      ],
+      ["domain-artifacts", `https://etherscan.io/tx/0x${"c".repeat(64)}`],
+    ]);
+    const trustedBody = REQUIRED_EVIDENCE_ROWS.map(
+      (id) =>
+        `<!-- evidence-row:${id} -->\n- [x] ${id}: ${trustedRows.get(id)}`,
+    ).join("\n\n");
+    assert.strictEqual(auditPrEvidence(trustedBody).ok, true);
+
+    const placeholderBody = REQUIRED_EVIDENCE_ROWS.map(
+      (id) =>
+        `<!-- evidence-row:${id} -->\n- [ ] ${id}, or marked N/A - <reason>.`,
+    ).join("\n\n");
+    const audit = auditPrEvidence(placeholderBody);
+    assert.strictEqual(audit.ok, false);
+    assert.ok(
+      audit.findings.every((finding) => finding.status === "unsatisfied"),
+    );
+
+    for (const untrusted of [
+      "https://example.com/proof.png",
+      "https://github.com/elizaOS/eliza/issues/123",
+      "https://github.com/elizaOS/eliza/blob/develop/evidence/proof.json",
+      `https://etherscan.io/tx/0x${"d".repeat(64)}`,
+    ]) {
+      const body = REQUIRED_EVIDENCE_ROWS.map(
+        (id) => `<!-- evidence-row:${id} -->\n- [x] ${id}: ${untrusted}`,
+      ).join("\n\n");
+      const findings = auditPrEvidence(body).findings;
+      if (untrusted.includes("etherscan.io")) {
+        assert.ok(
+          findings
+            .filter((finding) => finding.id !== "domain-artifacts")
+            .every((finding) => finding.status === "unsatisfied"),
+        );
+      } else {
+        assert.ok(
+          findings.every((finding) => finding.status === "unsatisfied"),
+        );
+      }
+    }
+
+    const vagueNa = REQUIRED_EVIDENCE_ROWS.map(
+      (id) => `<!-- evidence-row:${id} -->\n- [ ] ${id}: N/A - none`,
+    ).join("\n\n");
+    assert.ok(
+      auditPrEvidence(vagueNa).findings.every(
+        (finding) => finding.status === "unsatisfied",
+      ),
+    );
+
+    const missing = auditPrEvidence(
+      evidenceBody().replace(
+        /<!-- evidence-row:backend-logs -->[\s\S]*?(?=<!-- evidence-row:frontend-logs -->)/,
+        "",
+      ),
+    );
+    assert.strictEqual(
+      missing.findings.find((finding) => finding.id === "backend-logs")?.status,
+      "missing",
+    );
+  });
+
+  it("accepts substantive inline details only for backend and frontend logs", () => {
+    const withEvidenceRow = (target: string, value: string) =>
+      REQUIRED_EVIDENCE_ROWS.map((id) =>
+        id === target
+          ? `<!-- evidence-row:${id} -->\n${value}`
+          : `<!-- evidence-row:${id} -->\n- [x] ${id}: N/A - no affected ${id} surface.`,
+      ).join("\n\n");
+    const backendDetails = [
+      "- [x] Backend logs from the exercised request:",
+      "",
+      "<details>",
+      "<summary>Structured backend log output</summary>",
+      "",
+      "```text",
+      "2026-01-18T12:00:00.100Z INFO [AgentRuntime] request started roomId=room-42 action=REPLY",
+      "2026-01-18T12:00:00.480Z INFO [AgentRuntime] request completed roomId=room-42 status=success",
+      "```",
+      "</details>",
+    ].join("\n");
+    const frontendDetails = [
+      "- [x] Frontend console and network output:",
+      "<details>",
+      "<summary>Browser output</summary>",
+      "```text",
+      "[2026-01-18T12:00:00.500Z] console.info [ElizaComputer] leaderboard loaded entries=25",
+      "GET https://eliza.army/data/leaderboard.json 200 duration=84ms",
+      "```",
+      "</details>",
+    ].join("\n");
+
+    assert.strictEqual(
+      auditPrEvidence(withEvidenceRow("backend-logs", backendDetails)).ok,
+      true,
+    );
+    assert.strictEqual(
+      auditPrEvidence(withEvidenceRow("frontend-logs", frontendDetails)).ok,
+      true,
+    );
+    assert.strictEqual(
+      auditPrEvidence(
+        withEvidenceRow("frontend-logs", backendDetails),
+      ).findings.find((finding) => finding.id === "frontend-logs")?.status,
+      "unsatisfied",
+    );
+    assert.strictEqual(
+      auditPrEvidence(
+        withEvidenceRow("backend-logs", frontendDetails),
+      ).findings.find((finding) => finding.id === "backend-logs")?.status,
+      "unsatisfied",
+    );
+
+    for (const invalidDetails of [
+      "- [x] Logs\n<details><summary>Logs</summary></details>",
+      [
+        "- [x] Logs",
+        "<details>",
+        "<summary>Logs</summary>",
+        "```text",
+        "<paste logs here>",
+        "```",
+        "</details>",
+      ].join("\n"),
+      [
+        "- [x] Logs",
+        "<details>",
+        "<summary>Review notes</summary>",
+        "This prose says that logs were captured and carefully reviewed.",
+        "It contains no structured output from the exercised runtime path.",
+        "</details>",
+      ].join("\n"),
+      [
+        "- [x] Logs",
+        "<details>",
+        "<summary>Long prose in a code block</summary>",
+        "```text",
+        "The feature was opened in a browser and appeared to behave correctly.",
+        "The reviewer checked the result twice but included no runtime output.",
+        "```",
+        "</details>",
+      ].join("\n"),
+    ]) {
+      for (const rowId of ["backend-logs", "frontend-logs"]) {
+        assert.strictEqual(
+          auditPrEvidence(withEvidenceRow(rowId, invalidDetails)).findings.find(
+            (finding) => finding.id === rowId,
+          )?.status,
+          "unsatisfied",
+        );
+      }
+    }
+
+    for (const rowId of [
+      "before-screenshots",
+      "after-screenshots",
+      "walkthrough-video",
+      "llm-trajectory",
+      "domain-artifacts",
+    ]) {
+      assert.strictEqual(
+        auditPrEvidence(withEvidenceRow(rowId, backendDetails)).findings.find(
+          (finding) => finding.id === rowId,
+        )?.status,
+        "unsatisfied",
+      );
+    }
+  });
+
+  it("audits only claims or explicit AI provenance and accepts human-only claims", () => {
+    const comments = [
+      comment(1, "human", "Ordinary human discussion needs no footer."),
+      comment(
+        2,
+        "human-claimer",
+        [
+          "CLAIMING: documentation cleanup",
+          "",
+          "AI assistance: no - human-only claim",
+          "Attribution status: self-reported",
+        ].join("\n"),
+      ),
+      comment(3, "missing-claimer", "CLAIMING REVIEW: test coverage"),
+      comment(
+        4,
+        "invalid-ai",
+        "AI provider/model: unknown / model\nAttribution status: self-reported",
+      ),
+      comment(5, "valid-ai", "AI provider/model: OpenAI / gpt-5.6-codex"),
+      comment(
+        6,
+        "nonterminal-human",
+        [
+          "CLAIMING LEVER: staging deployment",
+          "AI assistance: no - human-only claim",
+          "Attribution status: self-reported",
+          "This text invalidates the terminal footer.",
+        ].join("\n"),
+      ),
+      comment(
+        7,
+        "automation-bot",
+        "CLAIMING: automated update without provenance",
+        "Bot",
+      ),
+    ];
+
+    assert.deepStrictEqual(
+      auditCommentDisclosures(
+        comments.map((value, index) => ({
+          id: value.id,
+          kind: "issue-comment",
+          url: value.html_url,
+          author: value.user.login,
+          bot: value.user.type === "Bot",
+          body: value.body ?? "",
+          createdAt: value.created_at,
+          index,
+        })),
+      ).map((finding) => finding.id),
+      [3, 4, 6],
+    );
+  });
+
+  it("classifies bot accounts and parses only supported CLI arguments", () => {
+    assert.strictEqual(isBotAccount(account("dependabot[bot]", "Bot")), true);
+    assert.strictEqual(isBotAccount(account("release-bot")), true);
+    assert.strictEqual(isBotAccount(account("octocat")), false);
+    assert.deepStrictEqual(
+      parseCliArguments(["--repo", "elizaOS/eliza", "--json"]),
+      { repo: "elizaOS/eliza", json: true, help: false },
+    );
+    assert.throws(
+      () => parseCliArguments(["--repo", "invalid"]),
+      /owner\/name/,
+    );
+    assert.throws(() => parseCliArguments(["--write"]), /Unknown argument/);
+  });
+});
+
+describe("live report behavior", () => {
+  it("invokes gh only through paginated GET requests", () => {
+    let invocation:
+      | {
+          command: string;
+          args: string[];
+          options: Record<string, unknown>;
+        }
+      | undefined;
+    const pages = readGhPages(
+      "repos/elizaOS/eliza/issues?state=open&per_page=100",
+      (command, args, options) => {
+        invocation = { command, args, options };
+        return {
+          status: 0,
+          stdout: '[[{"number":1}],[{"number":2}]]',
+          stderr: "",
+        };
+      },
+    );
+
+    assert.deepStrictEqual(pages, [{ number: 1 }, { number: 2 }]);
+    assert.strictEqual(invocation?.command, "gh");
+    assert.deepStrictEqual(invocation?.args.slice(0, 5), [
+      "api",
+      "--method",
+      "GET",
+      "--paginate",
+      "--slurp",
+    ]);
+    assert.ok(
+      !invocation?.args.some((argument) => /POST|PATCH|DELETE/.test(argument)),
+    );
+  });
+
+  it("filters bots, sensitive or claimed work and audits disclosures and evidence", () => {
+    const openIssues = [
+      {
+        number: 1,
+        title: "Bot issue",
+        html_url: "https://github.com/elizaOS/eliza/issues/1",
+        user: account("dependabot[bot]", "Bot"),
+        labels: [],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 2,
+        title: "Claimed issue",
+        html_url: "https://github.com/elizaOS/eliza/issues/2",
+        user: account("human-one"),
+        labels: [],
+        assignees: [],
+        comments: 1,
+      },
+      {
+        number: 3,
+        title: "Candidate issue",
+        html_url: "https://github.com/elizaOS/eliza/issues/3",
+        user: account("human-two"),
+        labels: [{ name: "good first issue" }],
+        assignees: [],
+        comments: 1,
+      },
+      {
+        number: 4,
+        title: "Sensitive report",
+        html_url: "https://github.com/elizaOS/eliza/issues/4",
+        user: account("human-three"),
+        labels: [{ name: "security" }],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 10,
+        title: "PR shadow from issues endpoint",
+        html_url: "https://github.com/elizaOS/eliza/pull/10",
+        user: account("author"),
+        labels: [],
+        assignees: [],
+        comments: 0,
+        pull_request: {},
+      },
+    ];
+    const openPulls = [
+      pullRequest(10, { title: "Ready PR", user: account("author") }),
+      pullRequest(11, {
+        title: "Draft PR",
+        user: account("draft-author"),
+        draft: true,
+        body: null,
+      }),
+      pullRequest(12, {
+        title: "Claimed review",
+        user: account("review-author"),
+      }),
+      pullRequest(13, {
+        title: "Bot PR",
+        user: account("renovate[bot]", "Bot"),
+      }),
+      pullRequest(14, {
+        title: "Human-only PR",
+        user: account("human-author"),
+        body: evidenceBody().replace(
+          "AI provider/model: OpenAI / gpt-5.6-codex",
+          "- AI assistance: no - human-only contribution",
+        ),
+      }),
+    ];
+    const calls: string[] = [];
+    const responses = new Map<string, unknown[]>([
+      [
+        "repos/elizaOS/eliza/issues?state=open&per_page=100&sort=created&direction=asc",
+        openIssues,
+      ],
+      [
+        "repos/elizaOS/eliza/pulls?state=open&per_page=100&sort=created&direction=asc",
+        openPulls,
+      ],
+      [
+        "repos/elizaOS/eliza/issues/2/comments?per_page=100",
+        [
+          comment(
+            20,
+            "worker",
+            "CLAIMING: scoped fix\n\nAI provider/model: OpenAI / gpt-5.6-codex",
+          ),
+        ],
+      ],
+      [
+        "repos/elizaOS/eliza/issues/3/comments?per_page=100",
+        [comment(30, "visitor", "Can reproduce this.")],
+      ],
+      ["repos/elizaOS/eliza/issues/10/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/10/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/10/reviews?per_page=100", []],
+      ["repos/elizaOS/eliza/issues/11/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/11/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/11/reviews?per_page=100", []],
+      [
+        "repos/elizaOS/eliza/issues/12/comments?per_page=100",
+        [
+          comment(
+            120,
+            "reviewer",
+            "CLAIMING REVIEW: tests and evidence\n\nAI provider/model: Anthropic / claude-opus-4.1",
+          ),
+        ],
+      ],
+      ["repos/elizaOS/eliza/pulls/12/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/12/reviews?per_page=100", []],
+      ["repos/elizaOS/eliza/issues/14/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/14/comments?per_page=100", []],
+      ["repos/elizaOS/eliza/pulls/14/reviews?per_page=100", []],
+    ]);
+
+    const report = collectLiveReport(
+      "elizaOS/eliza",
+      (endpoint) => {
+        calls.push(endpoint);
+        const response = responses.get(endpoint);
+        assert.ok(response, `unexpected endpoint: ${endpoint}`);
+        return response;
+      },
+      NOW,
+    );
+
+    assert.deepStrictEqual(
+      report.candidateIssues.map((issue) => issue.number),
+      [3],
+    );
+    assert.deepStrictEqual(
+      report.reviewablePullRequests.map((pull) => pull.number),
+      [10, 14],
+    );
+    assert.deepStrictEqual(
+      report.filtered.botIssues.map((issue) => issue.number),
+      [1],
+    );
+    assert.deepStrictEqual(
+      report.filtered.sensitiveIssues.map((issue) => issue.number),
+      [4],
+    );
+    assert.deepStrictEqual(
+      report.filtered.claimedIssues.map((issue) => issue.number),
+      [2],
+    );
+    assert.deepStrictEqual(
+      report.filtered.draftPullRequests.map((pull) => pull.number),
+      [11],
+    );
+    assert.deepStrictEqual(
+      report.filtered.claimedPullRequests.map((pull) => pull.number),
+      [12],
+    );
+    assert.deepStrictEqual(
+      report.filtered.botPullRequests.map((pull) => pull.number),
+      [13],
+    );
+    assert.deepStrictEqual(
+      report.audits.issueComments.map((issue) => issue.number),
+      [],
+    );
+    assert.strictEqual(
+      report.audits.pullRequests.find((pull) => pull.number === 10)?.evidence
+        .ok,
+      true,
+    );
+    assert.strictEqual(
+      report.audits.pullRequests.find((pull) => pull.number === 11)
+        ?.bodyProviderModel,
+      null,
+    );
+    assert.strictEqual(
+      report.audits.pullRequests.find((pull) => pull.number === 14)
+        ?.bodyHumanOnly,
+      true,
+    );
+    assert.ok(
+      !calls.some((endpoint) => endpoint.includes("/13/")),
+      "bot-authored PR detail endpoints should not be read",
+    );
+    assert.strictEqual(renderMarkdown(report), renderMarkdown(report));
+    assert.match(
+      renderMarkdown(report),
+      /PR \[#11\].*lacks exact provider\/model/,
+    );
+    assert.doesNotMatch(
+      renderMarkdown(report),
+      /PR \[#14\].*lacks exact provider\/model/,
+    );
+  });
+
+  it("expires comment claims after seven days but preserves durable issue state", () => {
+    assert.strictEqual(CLAIM_RECENCY_DAYS, 7);
+    const issues = [
+      {
+        number: 20,
+        title: "Recent comment claim",
+        html_url: "https://github.com/elizaOS/eliza/issues/20",
+        user: account("author-20"),
+        labels: [],
+        assignees: [],
+        comments: 1,
+      },
+      {
+        number: 21,
+        title: "Expired comment claim",
+        html_url: "https://github.com/elizaOS/eliza/issues/21",
+        user: account("author-21"),
+        labels: [],
+        assignees: [],
+        comments: 1,
+      },
+      {
+        number: 22,
+        title: "Durably assigned",
+        html_url: "https://github.com/elizaOS/eliza/issues/22",
+        user: account("author-22"),
+        labels: [],
+        assignees: [account("maintainer")],
+        comments: 1,
+      },
+      {
+        number: 23,
+        title: "Durably labeled",
+        html_url: "https://github.com/elizaOS/eliza/issues/23",
+        user: account("author-23"),
+        labels: [{ name: "status: in-progress" }],
+        assignees: [],
+        comments: 1,
+      },
+    ];
+    const comments = new Map([
+      [
+        20,
+        [
+          comment(
+            200,
+            "worker",
+            "CLAIMING: recent work",
+            "User",
+            "2026-01-14T12:00:01.000Z",
+          ),
+        ],
+      ],
+      [
+        21,
+        [
+          comment(
+            210,
+            "worker",
+            "CLAIMING: abandoned work",
+            "User",
+            "2026-01-13T11:59:59.000Z",
+          ),
+        ],
+      ],
+      [
+        22,
+        [
+          comment(
+            220,
+            "worker",
+            "CLAIMING: abandoned work",
+            "User",
+            "2026-01-01T00:00:00.000Z",
+          ),
+        ],
+      ],
+      [
+        23,
+        [
+          comment(
+            230,
+            "worker",
+            "CLAIMING: abandoned work",
+            "User",
+            "2026-01-01T00:00:00.000Z",
+          ),
+        ],
+      ],
+    ]);
+    const report = collectLiveReport(
+      "elizaOS/eliza",
+      (endpoint) => {
+        if (endpoint.includes("/issues?state=open")) return issues;
+        if (endpoint.includes("/pulls?state=open")) return [];
+        const number = Number(endpoint.match(/issues\/(\d+)\/comments/)?.[1]);
+        const response = comments.get(number);
+        assert.ok(response, `unexpected endpoint: ${endpoint}`);
+        return response;
+      },
+      NOW,
+    );
+
+    assert.deepStrictEqual(
+      report.candidateIssues.map((issue) => issue.number),
+      [21],
+    );
+    assert.deepStrictEqual(
+      report.filtered.claimedIssues.map((issue) => issue.number),
+      [20, 22, 23],
+    );
+    assert.match(
+      report.filtered.claimedIssues
+        .find((issue) => issue.number === 22)
+        ?.claimReasons.join(" "),
+      /assignees: maintainer/,
+    );
+    assert.match(
+      report.filtered.claimedIssues
+        .find((issue) => issue.number === 23)
+        ?.claimReasons.join(" "),
+      /labels: status: in-progress/,
+    );
+  });
+
+  it("uses live review requests and current-head review state without permanent starvation", () => {
+    const pulls = [
+      pullRequest(30, {
+        requested_reviewers: [account("recent-reviewer")],
+      }),
+      pullRequest(31, {
+        requested_reviewers: [account("stale-reviewer")],
+      }),
+      pullRequest(32),
+      pullRequest(33),
+      pullRequest(34),
+      pullRequest(35, {
+        requested_teams: [{ slug: "core-maintainers" }],
+      }),
+      pullRequest(36),
+      pullRequest(37),
+      pullRequest(38, {
+        requested_reviewers: [account("automation-bot", "Bot")],
+      }),
+      pullRequest(39, {
+        requested_reviewers: [account("recent-fallback")],
+      }),
+      pullRequest(40, {
+        requested_reviewers: [account("stale-fallback")],
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+      }),
+    ];
+    const issueComments = new Map<number, ReturnType<typeof comment>[]>([
+      [
+        36,
+        [
+          comment(
+            360,
+            "old-reviewer",
+            "CLAIMING REVIEW: abandoned review",
+            "User",
+            "2026-01-01T00:00:00.000Z",
+          ),
+        ],
+      ],
+      [
+        37,
+        [
+          comment(
+            370,
+            "active-reviewer",
+            "CLAIMING REVIEW: current review",
+            "User",
+            "2026-01-18T00:00:00.000Z",
+          ),
+        ],
+      ],
+    ]);
+    const reviews = new Map<number, ReturnType<typeof review>[]>([
+      [32, [review(320, "approver", "APPROVED")]],
+      [33, [review(330, "requester", "CHANGES_REQUESTED")]],
+      [34, [review(340, "past-reviewer", "APPROVED", PRIOR_SHA)]],
+    ]);
+    const requestEvents = new Map<number, unknown[]>([
+      [
+        30,
+        [
+          {
+            id: 300,
+            event: "review_requested",
+            created_at: "2026-01-18T00:00:00.000Z",
+            requested_reviewer: account("recent-reviewer"),
+          },
+        ],
+      ],
+      [
+        31,
+        [
+          {
+            id: 310,
+            event: "review_requested",
+            created_at: "2026-01-01T00:00:00.000Z",
+            requested_reviewer: account("stale-reviewer"),
+          },
+        ],
+      ],
+      [
+        35,
+        [
+          {
+            id: 350,
+            event: "review_requested",
+            created_at: "2026-01-19T00:00:00.000Z",
+            requested_team: { slug: "core-maintainers" },
+          },
+        ],
+      ],
+      [39, []],
+      [40, []],
+    ]);
+
+    const report = collectLiveReport(
+      "elizaOS/eliza",
+      (endpoint) => {
+        if (endpoint.includes("/issues?state=open")) return [];
+        if (endpoint.includes("/pulls?state=open")) return pulls;
+        const issueComment = endpoint.match(/issues\/(\d+)\/comments/);
+        if (issueComment) {
+          return issueComments.get(Number(issueComment[1])) ?? [];
+        }
+        const inlineComment = endpoint.match(/pulls\/(\d+)\/comments/);
+        if (inlineComment) return [];
+        const reviewList = endpoint.match(/pulls\/(\d+)\/reviews/);
+        if (reviewList) return reviews.get(Number(reviewList[1])) ?? [];
+        const eventList = endpoint.match(/issues\/(\d+)\/events/);
+        if (eventList) {
+          const response = requestEvents.get(Number(eventList[1]));
+          assert.ok(response, `unexpected endpoint: ${endpoint}`);
+          return response;
+        }
+        assert.fail(`unexpected endpoint: ${endpoint}`);
+      },
+      NOW,
+    );
+
+    assert.deepStrictEqual(
+      report.reviewablePullRequests.map((pull) => pull.number),
+      [31, 34, 36, 38, 40],
+    );
+    assert.deepStrictEqual(
+      report.filtered.claimedPullRequests.map((pull) => pull.number),
+      [30, 35, 37, 39],
+    );
+    assert.deepStrictEqual(
+      report.filtered.reviewedPullRequests.map((pull) => pull.number),
+      [32],
+    );
+    assert.deepStrictEqual(
+      report.filtered.changesRequestedPullRequests.map((pull) => pull.number),
+      [33],
+    );
+    assert.deepStrictEqual(
+      report.reviewablePullRequests.find((pull) => pull.number === 31)
+        ?.reviewState.staleRequests,
+      ["stale-reviewer"],
+    );
+    assert.deepStrictEqual(
+      report.reviewablePullRequests.find((pull) => pull.number === 34)
+        ?.reviewState.currentHeadApprovals,
+      [],
+    );
+    assert.match(
+      renderMarkdown(report),
+      /#31.*stale review request: stale-reviewer \(reconfirm live state\)/,
+    );
+    assert.match(renderMarkdown(report), /expire after 7 days/);
+  });
+});
