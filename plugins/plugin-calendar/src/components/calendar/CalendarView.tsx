@@ -137,6 +137,9 @@ export function CalendarView() {
   const sourcePreferences = useCalendarSources();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
+  const [expandedSourceIds, setExpandedSourceIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const [joiningIds, setJoiningIds] = useState<ReadonlySet<string>>(new Set());
   const [liveEventIds, setLiveEventIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -245,6 +248,7 @@ export function CalendarView() {
         const identityKey = source ? calendarSourceIdentityKey(source) : null;
         return {
           ...row,
+          detailsOpen: expandedSourceIds.has(row.actionId),
           pending: identityKey
             ? sourcePreferences.pendingKeys.has(identityKey)
             : false,
@@ -254,6 +258,7 @@ export function CalendarView() {
         };
       }),
     [
+      expandedSourceIds,
       sourceManagerModel,
       sourcePreferences.mutationErrors,
       sourcePreferences.pendingKeys,
@@ -275,6 +280,16 @@ export function CalendarView() {
 
   const onAction = useCallback(
     (action: string) => {
+      if (action.startsWith("source-details:")) {
+        const actionId = action.slice("source-details:".length);
+        setExpandedSourceIds((current) => {
+          const next = new Set(current);
+          if (next.has(actionId)) next.delete(actionId);
+          else next.add(actionId);
+          return next;
+        });
+        return;
+      }
       if (action.startsWith("source-toggle:")) {
         void toggleCalendarSource(action.slice("source-toggle:".length));
         return;

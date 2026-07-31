@@ -440,9 +440,15 @@ describe("CalendarView (unified spatial wrapper)", () => {
     fireEvent.click(agent("manage-sources"));
 
     const manager = agent("calendar-source-manager");
-    expect(manager.textContent).toContain(
-      "New calendars are included automatically",
+    expect(manager.textContent).toContain("New calendars join automatically");
+    expect(manager.textContent).not.toContain("work@example.com");
+    const detailButtons = manager.querySelectorAll(
+      '[data-agent-id^="source-details:calendar-source-"]',
     );
+    expect(detailButtons).toHaveLength(2);
+    for (const details of detailButtons) {
+      fireEvent.click(details);
+    }
     expect(manager.textContent).toContain("Google Calendar");
     expect(manager.textContent).toContain("work@example.com");
     expect(manager.textContent).toContain("Owner");
@@ -457,6 +463,30 @@ describe("CalendarView (unified spatial wrapper)", () => {
     expect(toggles).toHaveLength(2);
     expect(document.body.innerHTML).not.toContain("grant-family");
     expect(document.body.innerHTML).not.toContain("account-family");
+  });
+
+  it("replaces duplicate source-health rows with the expanded source hierarchy", () => {
+    render(<CalendarView />);
+
+    const sources = agent("calendar-sources");
+    expect(within(sources).getByText("Google · Work")).toBeTruthy();
+
+    fireEvent.click(agent("manage-sources"));
+
+    expect(within(sources).queryByText("Google · Work")).toBeNull();
+    const manager = agent("calendar-source-manager");
+    expect(manager.textContent).not.toContain("work@example.com");
+    const details = manager.querySelector(
+      '[data-agent-id^="source-details:calendar-source-"]',
+    ) as HTMLElement | null;
+    expect(details).toBeTruthy();
+    fireEvent.click(details as HTMLElement);
+    expect(
+      within(manager).getByText("Google Calendar · work@example.com"),
+    ).toBeTruthy();
+    expect(manager.textContent).toContain(
+      "Owner · Event details · Current · just now",
+    );
   });
 
   it("routes a safe spatial source action to the exact account and refreshes feed truth", async () => {
@@ -543,6 +573,13 @@ describe("CalendarView (unified spatial wrapper)", () => {
 
     render(<CalendarView />);
     fireEvent.click(agent("manage-sources"));
+    const details = document.querySelectorAll(
+      '[data-agent-id^="source-details:calendar-source-"]',
+    );
+    expect(details).toHaveLength(2);
+    for (const button of details) {
+      fireEvent.click(button);
+    }
     const reconnect = document.querySelector(
       '[data-agent-id^="source-reconnect:calendar-source-"]',
     ) as HTMLElement | null;
