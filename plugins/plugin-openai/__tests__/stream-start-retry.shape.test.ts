@@ -34,7 +34,10 @@ function createRuntime() {
     emitEvent: vi.fn(),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
-    getSetting: vi.fn(() => undefined),
+    // This suite exercises the OpenAI structured-output transport. Pin that
+    // provider explicitly so a developer's live Cerebras key cannot silently
+    // select the schema-less compatibility path.
+    getSetting: vi.fn((key: string) => (key === "OPENAI_API_KEY" ? "test-openai-key" : undefined)),
   } as never;
 }
 

@@ -20,6 +20,8 @@ function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
 
+const LIVE_EXTENSION_SENTINEL_URL = "https://example.invalid/electric";
+
 describe("PGlite live query extension", () => {
   const cleanups: Array<{ dir: string; manager?: PGliteClientManager }> = [];
 
@@ -50,6 +52,9 @@ describe("PGlite live query extension", () => {
     const manager = new PGliteClientManager({
       dataDir: dir,
       agentId,
+      // Loading `pg.live` follows the Electric-enabled production shape. Raw
+      // Drizzle operations in this suite never start a network sync.
+      syncUrl: LIVE_EXTENSION_SENTINEL_URL,
     });
     await manager.initialize();
     cleanups.push({ dir, manager });
@@ -84,7 +89,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return; // Extensions disabled
+    expect(liveNs).not.toBeNull();
+    if (!liveNs) throw new Error("PGlite live query extension is unavailable.");
 
     const roomId = v4();
     const now = Date.now() / 1000.0;
@@ -144,7 +150,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return;
+    expect(liveNs).not.toBeNull();
+    if (!liveNs) throw new Error("PGlite live query extension is unavailable.");
 
     const roomId = v4();
     const now = Date.now() / 1000.0;
@@ -203,7 +210,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return;
+    expect(liveNs).not.toBeNull();
+    if (!liveNs) throw new Error("PGlite live query extension is unavailable.");
 
     const roomId = v4();
     const now = Date.now() / 1000.0;
@@ -252,7 +260,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return;
+    expect(liveNs).not.toBeNull();
+    if (!liveNs) throw new Error("PGlite live query extension is unavailable.");
 
     const roomId = v4();
     const now = Date.now() / 1000.0;
@@ -308,7 +317,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return;
+    expect(liveNs).not.toBeNull();
+    if (!liveNs) throw new Error("PGlite live query extension is unavailable.");
 
     const roomId = v4();
     const now = Date.now() / 1000.0;
@@ -356,7 +366,8 @@ describe("PGlite live query extension", () => {
     const { manager, db, agentId } = await setupPGlite();
 
     const liveNs = manager.liveQuery();
-    if (!liveNs) return;
+    expect(liveNs).not.toBeNull();
+    if (!liveNs) throw new Error("PGlite live query extension is unavailable.");
 
     const roomId = v4();
     const now = Date.now() / 1000.0;

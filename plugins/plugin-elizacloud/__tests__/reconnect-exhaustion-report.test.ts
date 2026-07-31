@@ -1,14 +1,7 @@
 /**
- * Coverage for #14415 (observability): when the cloud ConnectionMonitor
- * exhausts every reconnect attempt, the link is durably down — a failure that
- * previously vanished into a single `logger.error` line. This drives the
- * monitor to full exhaustion with a client whose heartbeat + provision always
- * fail and asserts:
- *   1. `onReconnectExhausted` fires exactly once (report-once, no per-attempt
- *      spam — the #14387 idempotency class of bug).
- *   2. It carries the attempt count so the host can wire it into
- *      `runtime.reportError` with structured context.
- *   3. A throwing exhaustion handler cannot break the monitor.
+ * Exercises reconnect exhaustion, heartbeat serialization, and cancellation
+ * with virtual time. The client boundary is deterministic so the monitor's
+ * asynchronous lifecycle can be verified without waiting through backoff.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionMonitor } from "../src/cloud/reconnect";
@@ -18,7 +11,7 @@ function deadClient() {
   return {
     heartbeat: vi.fn().mockResolvedValue(false),
     provision: vi.fn().mockRejectedValue(new Error("provision failed")),
-  } as unknown as ConstructorParameters<typeof ConnectionMonitor>[0];
+  };
 }
 
 describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => {
@@ -32,16 +25,20 @@ describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => 
 
   it("fires onReconnectExhausted exactly once with the attempt count", async () => {
     const onReconnectExhausted = vi.fn();
+    let monitor: ConnectionMonitor;
     // Tiny heartbeat interval + maxFailures=1 so a single failed tick trips
     // the reconnect loop immediately.
-    const monitor = new ConnectionMonitor(
+    monitor = new ConnectionMonitor(
       deadClient(),
       "agent-1",
       {
         onDisconnect: vi.fn(),
         onReconnect: vi.fn(),
         onStatusChange: vi.fn(),
-        onReconnectExhausted,
+        onReconnectExhausted: (context) => {
+          onReconnectExhausted(context);
+          monitor.stop();
+        },
       },
       10, // heartbeatIntervalMs
       1 // maxFailures
@@ -50,23 +47,22 @@ describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => 
     monitor.start();
     // Fire the first heartbeat tick (heartbeat resolves false → reconnect).
     await vi.advanceTimersByTimeAsync(10);
-    // Drive all 10 reconnect attempts + their exponential backoff sleeps to
-    // completion. Backoff is capped at 60s/attempt; advancing well past the
-    // worst-case total flushes the loop.
+    // Drive all reconnect attempts and their backoff to completion. The
+    // exhaustion callback stops the monitor so another cycle cannot start.
     await vi.advanceTimersByTimeAsync(10 * 60_000);
 
     expect(onReconnectExhausted).toHaveBeenCalledTimes(1);
     expect(onReconnectExhausted).toHaveBeenCalledWith({ attempts: 10 });
-
-    monitor.stop();
   });
 
   it("a throwing onReconnectExhausted handler does not break the monitor", async () => {
+    let monitor: ConnectionMonitor;
     const onReconnectExhausted = vi.fn(() => {
+      monitor.stop();
       throw new Error("host handler blew up");
     });
     const onStatusChange = vi.fn();
-    const monitor = new ConnectionMonitor(
+    monitor = new ConnectionMonitor(
       deadClient(),
       "agent-2",
       {
@@ -95,7 +91,90 @@ describe("ConnectionMonitor reconnect-exhaustion observability (#14415)", () => 
     // The monitor still reached the terminal "disconnected" status despite the
     // handler throwing.
     expect(onStatusChange).toHaveBeenCalledWith("disconnected");
+  });
+
+  it("does not overlap heartbeat requests", async () => {
+    let resolveHeartbeat: ((alive: boolean) => void) | undefined;
+    const heartbeat = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveHeartbeat = resolve;
+        })
+    );
+    const monitor = new ConnectionMonitor(
+      {
+        heartbeat,
+        provision: vi.fn().mockResolvedValue(undefined),
+      },
+      "agent-3",
+      {
+        onDisconnect: vi.fn(),
+        onReconnect: vi.fn(),
+      },
+      10,
+      1
+    );
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+
+    resolveHeartbeat?.(true);
+    await vi.advanceTimersByTimeAsync(9);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(heartbeat).toHaveBeenCalledTimes(2);
+    monitor.stop();
+  });
+
+  it("keeps scheduling health checks after a callback throws", async () => {
+    const heartbeat = vi.fn().mockResolvedValue(false);
+    const monitor = new ConnectionMonitor(
+      {
+        heartbeat,
+        provision: vi.fn().mockResolvedValue(undefined),
+      },
+      "agent-4",
+      {
+        onDisconnect: vi.fn(() => {
+          throw new Error("host callback failed");
+        }),
+        onReconnect: vi.fn(),
+      },
+      10,
+      1
+    );
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(heartbeat).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(heartbeat).toHaveBeenCalledTimes(2);
+    monitor.stop();
+  });
+
+  it("stops an in-flight reconnect without waiting for its backoff", async () => {
+    const client = deadClient();
+    const onReconnectExhausted = vi.fn();
+    const monitor = new ConnectionMonitor(
+      client,
+      "agent-5",
+      {
+        onDisconnect: vi.fn(),
+        onReconnect: vi.fn(),
+        onReconnectExhausted,
+      },
+      10,
+      1
+    );
+
+    monitor.start();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(client.provision).toHaveBeenCalledTimes(1);
 
     monitor.stop();
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(client.provision).toHaveBeenCalledTimes(1);
+    expect(onReconnectExhausted).not.toHaveBeenCalled();
   });
 });
