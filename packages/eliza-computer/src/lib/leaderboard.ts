@@ -407,37 +407,14 @@ const CONFIRMATION_LABELS = new Set([
   "validated",
 ]);
 
-const CLAIM_LABELS = new Set([
-  "claimed",
-  "in progress",
-  "in-progress",
-  "status: in progress",
-  "status: claimed",
-  "working",
-]);
+const ISSUE_CLAIM_LABEL_PATTERN =
+  /^(?:(?:claimed|in[- ]progress|working)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|status:\s*(?:claimed|in[- ]progress))$/i;
 
-const CLAIM_LABEL_WITH_LANE_PATTERN =
-  /^(?:claimed|in[- ]progress|working)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)$/i;
+const REVIEW_CLAIM_LABEL_PATTERN =
+  /^(?:(?:review[- ]claimed|review[- ]in[- ]progress)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|review:\s*claimed)$/i;
 
-const REVIEW_CLAIM_LABELS = new Set([
-  "review claimed",
-  "review-claimed",
-  "review in progress",
-  "review-in-progress",
-  "review: claimed",
-]);
-
-const REVIEW_CLAIM_LABEL_WITH_LANE_PATTERN =
-  /^(?:review[- ]claimed|review[- ]in[- ]progress)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)$/i;
-
-const BLOCKED_LABELS = new Set([
-  "blocked",
-  "do not merge",
-  "do-not-merge",
-  "needs human input",
-  "needs-human-input",
-  "status: blocked",
-]);
+const BLOCKED_LABEL_PATTERN =
+  /^(?:blocked|do[- ]not[- ]merge|needs[- ]human[- ]input|status:\s*blocked)$/i;
 
 const SECURITY_SENSITIVE_LABEL_PATTERN =
   /(?:^|[-_ ])(?:security|vulnerability|credential[-_ ]?leak|secret[-_ ]?leak|cve)(?:$|[-_ ])/i;
@@ -676,7 +653,7 @@ export function isBotActor(actor: GitHubActor | null): boolean {
   return (
     /\[bot\]$/i.test(actor.login) ||
     /(?:^|[-_])bot$/i.test(actor.login) ||
-    /^(?:dependabot|github-actions)$/i.test(actor.login)
+    /^(?:dependabot|github-actions|renovate)$/i.test(actor.login)
   );
 }
 
@@ -1625,10 +1602,8 @@ function isClaimLabel(
 ): boolean {
   const normalized = normalizeLabel(label.name);
   return kind === "implementation"
-    ? CLAIM_LABELS.has(normalized) ||
-        CLAIM_LABEL_WITH_LANE_PATTERN.test(normalized)
-    : REVIEW_CLAIM_LABELS.has(normalized) ||
-        REVIEW_CLAIM_LABEL_WITH_LANE_PATTERN.test(normalized);
+    ? ISSUE_CLAIM_LABEL_PATTERN.test(normalized)
+    : REVIEW_CLAIM_LABEL_PATTERN.test(normalized);
 }
 
 function issueClaim(
@@ -1752,7 +1727,9 @@ function workItemActionability(
   if (isDraft) {
     return "draft";
   }
-  return labels.some((label) => BLOCKED_LABELS.has(normalizeLabel(label.name)))
+  return labels.some((label) =>
+    BLOCKED_LABEL_PATTERN.test(normalizeLabel(label.name)),
+  )
     ? "blocked"
     : "actionable";
 }
@@ -1964,9 +1941,13 @@ export function createLeaderboardSnapshot(
   );
   const verificationWindowFrom = parseIsoTime(input.verificationWindowFrom);
   const windowTo = parseIsoTime(input.windowTo);
+  const generatedAt = parseIsoTime(input.generatedAt);
 
   if (verificationWindowFrom >= windowTo) {
     throw new Error("verificationWindowFrom must precede windowTo");
+  }
+  if (generatedAt < windowTo) {
+    throw new Error("generatedAt cannot precede windowTo");
   }
   for (const pullRequest of mergedPullRequests) {
     if (!outcomeIds.has(pullRequest.id)) {
@@ -2134,10 +2115,10 @@ export function createLeaderboardSnapshot(
   }
 
   const issueQueue = openIssues.map((record) =>
-    issueWorkItem(record, input.windowTo),
+    issueWorkItem(record, input.generatedAt),
   );
   const pullRequestQueue = openPullRequests.map((record) =>
-    pullRequestWorkItem(record, input.windowTo),
+    pullRequestWorkItem(record, input.generatedAt),
   );
   const overallAttribution = assessModelAttribution([
     ...mergedPullRequestOutcomes.map<GitHubTextSource>((pullRequest) => ({
@@ -3208,6 +3189,14 @@ export function assertLeaderboardSnapshot(
   }
   assertSourceValue(snapshot.source, "snapshot.source");
   const source = assertObject(snapshot.source, "snapshot.source");
+  if (
+    source.fetchedAt !== snapshot.generatedAt ||
+    source.cutoffAt !== window.to
+  ) {
+    throw new Error(
+      "snapshot source timestamps must match generatedAt and the scoring cutoff",
+    );
+  }
   const counts = assertObject(source.counts, "snapshot.source.counts");
   const verificationWindow = assertObject(
     source.verificationWindow,
