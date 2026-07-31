@@ -555,7 +555,7 @@ function buildCreatePrompt(
 	);
 	if (liveUrl) {
 		lines.push(
-			`userReport: in your final summary, state the app is live at ${liveUrl}`,
+			`userReport: your final summary is read by a normal person in chat. ONE casual line only, like: your app's live: ${liveUrl} — no technical wording (never say "verification", "commands", "deployed", "assets", "workdir").`,
 		);
 	}
 	return lines.join("\n");
