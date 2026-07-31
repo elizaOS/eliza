@@ -6,9 +6,13 @@
  * budget, and an unborn HEAD (a fresh repo with zero commits) is diffed against
  * the canonical empty-tree hash so the whole working tree reads as added.
  */
+
+import { spawnSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   statSync,
@@ -64,7 +68,7 @@ export function parseWorkspaceStatus(output: string): WorkspaceStatusEntry[] {
   return entries;
 }
 
-/** Git subprocess boundary with real captured output under Bun. */
+/** Git subprocess boundary with file-backed output to avoid pipe buffer limits. */
 export async function runWorkspaceGit(
   workdir: string,
   args: string[],
@@ -76,32 +80,44 @@ export async function runWorkspaceGit(
   writeFileSync(stdoutPath, "");
   writeFileSync(stderrPath, "");
   try {
-    const child = Bun.spawn(["git", ...args], {
-      cwd: workdir,
-      env: { ...process.env, ...envPatch },
-      stdin: "ignore",
-      stdout: Bun.file(stdoutPath),
-      stderr: Bun.file(stderrPath),
-    });
-    const timer = setTimeout(() => child.kill(), GIT_TIMEOUT_MS);
+    const stdoutFd = openSync(stdoutPath, "w");
+    const stderrFd = openSync(stderrPath, "w");
+    let result: ReturnType<typeof spawnSync>;
     try {
-      const exitCode = await child.exited;
-      if (
-        statSync(stdoutPath).size > GIT_MAX_OUTPUT_BYTES ||
-        statSync(stderrPath).size > GIT_MAX_OUTPUT_BYTES
-      ) {
-        return {
-          ok: false,
-          stdout: "",
-          stderr: `git output exceeded ${GIT_MAX_OUTPUT_BYTES} bytes`,
-        };
-      }
-      const stdout = readFileSync(stdoutPath, "utf8");
-      const stderr = readFileSync(stderrPath, "utf8");
-      return { ok: exitCode === 0, stdout, stderr };
+      result = spawnSync("git", args, {
+        cwd: workdir,
+        env: { ...process.env, ...envPatch },
+        stdio: ["ignore", stdoutFd, stderrFd],
+        timeout: GIT_TIMEOUT_MS,
+      });
     } finally {
-      clearTimeout(timer);
+      closeSync(stdoutFd);
+      closeSync(stderrFd);
     }
+    if (result.error) {
+      return {
+        ok: false,
+        stdout: "",
+        stderr: result.error.message,
+      };
+    }
+    if (
+      statSync(stdoutPath).size > GIT_MAX_OUTPUT_BYTES ||
+      statSync(stderrPath).size > GIT_MAX_OUTPUT_BYTES
+    ) {
+      return {
+        ok: false,
+        stdout: "",
+        stderr: `git output exceeded ${GIT_MAX_OUTPUT_BYTES} bytes`,
+      };
+    }
+    const stdout = readFileSync(stdoutPath, "utf8");
+    const stderr = readFileSync(stderrPath, "utf8");
+    return {
+      ok: result.status === 0,
+      stdout,
+      stderr,
+    };
   } catch (error) {
     // error-policy:J3 process-spawn failure is an explicit failed probe.
     return {
