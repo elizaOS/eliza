@@ -268,7 +268,7 @@ bun run --cwd packages/app test:e2e
 ## Conventions / gotchas
 
 - **No exports.** This is a private app shell. Nothing else should import from it.
-- **`app.config.ts` is the white-label seam.** To create a new branded app: copy this package, change `app.config.ts` values, update `capacitor.config.ts` if targeting mobile.
+- **`app.config.ts` is the white-label seam.** To create a new branded app: copy this package, change `app.config.ts` values, update `capacitor.config.ts` if targeting mobile. Keep the host-seeded `--launch-bg` and `--launch-foreground` tokens in `index.html` paired with the branded startup surface.
 - **Plugin module caching.** `main.tsx` resolves each plugin module exactly once via the `initializeAppModules()` Promise.all; `React.lazy()` consumers share the same promise via `lazyNamedComponent()`.
 - **`@elizaos/app-core` must be evaluated before the boot config is assembled** — it owns the `AppBootConfig` singleton. `main.tsx` statically imports its desktop bindings, so the package loads with the entry chunk; never re-add a dynamic `import("@elizaos/app-core")` on the boot path — its escaping namespace anchors the whole `@elizaos/ui/browser` barrel into the entry chunk (#13187).
 - **Desktop API base injection.** Electrobun injects `window.__ELIZA_APP_API_BASE__` before React boots via its static server; Vite dev uses a `<script>` tag injected by `appDevWsBasePlugin()`.
