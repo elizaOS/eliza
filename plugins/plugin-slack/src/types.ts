@@ -50,7 +50,7 @@ export interface SlackMessageSentPayload extends MessagePayload {
   messageTs: string;
 }
 
-export interface SlackReactionPayload extends EventPayload {
+export interface SlackReactionPayload extends MessagePayload {
   reaction: string;
   userId: string;
   channelId: string;

@@ -1,7 +1,7 @@
 /**
  * Compiles one Slack account's persisted authorization settings into immutable
  * channel and user identifiers, then classifies and authorizes every inbound
- * message event. Name-based policy is resolved before Bolt starts so a cold
+ * event. Name-based policy is resolved before Bolt starts so a cold
  * cache, rename, duplicate display name, or dynamic join cannot widen access.
  */
 import { ElizaError } from "@elizaos/core";
@@ -24,6 +24,9 @@ export type SlackInboundDenyReason =
   | "group_dm_not_allowed"
   | "mention_required"
   | "pairing_required"
+  | "reaction_disabled"
+  | "reaction_not_allowed"
+  | "reaction_not_owned"
   | "user_not_allowed"
   | "unknown_conversation"
   | "workspace_identity_missing"
@@ -31,6 +34,7 @@ export type SlackInboundDenyReason =
 
 export interface SlackWorkspaceIdentity {
   teamId: string;
+  botUserId: string;
   enterpriseId?: string;
 }
 
@@ -70,7 +74,7 @@ export function extractSlackEventWorkspace(body: unknown): {
 }
 
 export interface SlackInboundEventContext {
-  eventType: "message" | "app_mention";
+  eventType: "message" | "app_mention" | "reaction";
   channelId: string;
   userId: string;
   channelType?: string;
@@ -242,6 +246,8 @@ export class SlackAccountPolicyResolver {
   private readonly groupPolicy: "legacy" | "open" | "disabled" | "allowlist";
   private readonly requireMention: boolean;
   private readonly allowBots: boolean;
+  private readonly reactionMode: "off" | "own" | "all" | "allowlist";
+  private readonly reactionAllowlist: ReadonlySet<string>;
   private readonly staticChannelIds: ReadonlySet<string>;
   private readonly dynamicChannelIds = new Set<string>();
   private readonly maxDynamicChannels: number;
@@ -258,6 +264,8 @@ export class SlackAccountPolicyResolver {
     groupPolicy: "legacy" | "open" | "disabled" | "allowlist";
     requireMention: boolean;
     allowBots: boolean;
+    reactionMode: "off" | "own" | "all" | "allowlist";
+    reactionAllowlist: ReadonlySet<string>;
     staticChannelIds: ReadonlySet<string>;
     channelsById: ReadonlyMap<string, CompiledChannelPolicy>;
     wildcardChannel?: CompiledChannelPolicy;
@@ -272,6 +280,8 @@ export class SlackAccountPolicyResolver {
     this.groupPolicy = params.groupPolicy;
     this.requireMention = params.requireMention;
     this.allowBots = params.allowBots;
+    this.reactionMode = params.reactionMode;
+    this.reactionAllowlist = params.reactionAllowlist;
     this.staticChannelIds = params.staticChannelIds;
     this.channelsById = params.channelsById;
     this.wildcardChannel = params.wildcardChannel;
@@ -291,9 +301,12 @@ export class SlackAccountPolicyResolver {
     options: SlackAccountPolicyResolverOptions,
   ): Promise<SlackAccountPolicyResolver> {
     const { account, client } = options;
-    if (!options.workspace.teamId.trim()) {
+    if (
+      !options.workspace.teamId.trim() ||
+      !options.workspace.botUserId.trim()
+    ) {
       throw new SlackPolicyConfigurationError(
-        "auth.test did not return a workspace team_id",
+        "auth.test did not return a workspace team_id and bot user_id",
         account.accountId,
       );
     }
@@ -363,6 +376,7 @@ export class SlackAccountPolicyResolver {
         .filter(Boolean),
     );
     const dm = await compileDmPolicy(account, channels, users);
+    const reactionPolicy = compileReactionPolicy(account);
     const conversationKinds = new Map<string, SlackConversationKind>();
     const policyConversationIds = new Set(channelsById.keys());
     for (const id of dm.groupChannels ?? []) policyConversationIds.add(id);
@@ -385,6 +399,8 @@ export class SlackAccountPolicyResolver {
       allowBots: account.hasStructuredPolicy
         ? (account.config.allowBots ?? false)
         : !(account.config.shouldIgnoreBotMessages ?? false),
+      reactionMode: reactionPolicy.mode,
+      reactionAllowlist: reactionPolicy.allowlist,
       staticChannelIds,
       channelsById,
       ...(wildcardChannel ? { wildcardChannel } : {}),
@@ -410,6 +426,49 @@ export class SlackAccountPolicyResolver {
       return this.authorizeGroupDirectMessage(event, kind);
     }
     return this.authorizeChannel(event, kind);
+  }
+
+  async authorizeReaction(
+    event: SlackInboundEventContext,
+    reaction: string,
+    itemUserId?: string,
+  ): Promise<SlackInboundPolicyDecision> {
+    if (event.userId === this.workspace.botUserId) {
+      return this.denied(event, "bot_not_allowed");
+    }
+    const decision = await this.authorize(event);
+    if (!decision.allowed) return decision;
+    if (this.reactionMode === "off") {
+      return this.denied(
+        event,
+        "reaction_disabled",
+        decision.conversationKind,
+        decision.channelPolicyKey,
+      );
+    }
+    if (
+      this.reactionMode === "own" &&
+      itemUserId !== this.workspace.botUserId
+    ) {
+      return this.denied(
+        event,
+        "reaction_not_owned",
+        decision.conversationKind,
+        decision.channelPolicyKey,
+      );
+    }
+    if (
+      this.reactionMode === "allowlist" &&
+      !this.reactionAllowlist.has(reaction)
+    ) {
+      return this.denied(
+        event,
+        "reaction_not_allowed",
+        decision.conversationKind,
+        decision.channelPolicyKey,
+      );
+    }
+    return decision;
   }
 
   workspaceDenial(input: {
@@ -551,7 +610,7 @@ export class SlackAccountPolicyResolver {
       return this.denied(event, "user_not_allowed", kind, channel.key);
     }
     if (
-      event.eventType !== "app_mention" &&
+      event.eventType === "message" &&
       (channel?.requireMention ?? this.requireMention) &&
       !event.isMentioned
     ) {
@@ -638,8 +697,6 @@ function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
     "historyLimit",
     "dmHistoryLimit",
     "slashCommand",
-    "reactionNotifications",
-    "reactionAllowlist",
     "thread",
   ] as const) {
     if (config[key] !== undefined) unsupported.push(key);
@@ -661,6 +718,45 @@ function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
       account.accountId,
     );
   }
+}
+
+function compileReactionPolicy(account: ResolvedSlackAccount): {
+  mode: "off" | "own" | "all" | "allowlist";
+  allowlist: ReadonlySet<string>;
+} {
+  const mode = account.config.reactionNotifications ?? "own";
+  const rawAllowlist = account.config.reactionAllowlist;
+  if (mode !== "allowlist" && rawAllowlist !== undefined) {
+    throw new SlackPolicyConfigurationError(
+      "reactionAllowlist requires reactionNotifications=allowlist",
+      account.accountId,
+    );
+  }
+  if (mode === "allowlist" && (!rawAllowlist || rawAllowlist.length === 0)) {
+    throw new SlackPolicyConfigurationError(
+      "reactionNotifications=allowlist requires at least one reaction name",
+      account.accountId,
+    );
+  }
+
+  const allowlist = new Set<string>();
+  for (const raw of rawAllowlist ?? []) {
+    if (typeof raw !== "string") {
+      throw new SlackPolicyConfigurationError(
+        "reactionAllowlist entries must be Slack reaction names",
+        account.accountId,
+      );
+    }
+    const reaction = raw.trim().toLowerCase().replace(/^:|:$/g, "");
+    if (!/^[a-z0-9_+-]+(?:::skin-tone-[2-6])?$/.test(reaction)) {
+      throw new SlackPolicyConfigurationError(
+        `reactionAllowlist contains invalid Slack reaction name ${JSON.stringify(raw)}`,
+        account.accountId,
+      );
+    }
+    allowlist.add(reaction);
+  }
+  return { mode, allowlist };
 }
 
 async function compileChannelPolicy(
