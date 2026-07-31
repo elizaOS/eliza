@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
 /**
  * Chat/touch/gesture interaction-coverage gate (#12188, vitest, boot-free).
  *
- * Sibling to launcher-view-coverage.test.ts, but gesture-SPECIFIC: it discovers
- * every gesture-handler site in `packages/ui/src` (files that implement a real
+ * This gesture-specific inventory discovers every gesture-handler site in
+ * `packages/ui/src` (files that implement a real
  * pointer/touch gesture — a pointer-capture drag, a custom touch handler, or a
  * gesture-engine hook) and proves each one is accounted for by a row in the
  * checked-in CHAT_GESTURE_MATRIX. That matrix is the enforced twin of

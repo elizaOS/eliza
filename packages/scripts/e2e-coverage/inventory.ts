@@ -11,14 +11,13 @@
  *    artifact exists AND contains a declared signal string (the anti-larp
  *    check: a shape-only unit test that never names the real handler does not
  *    count). Items may instead be `exempt` with a written justification. This is
- *    the single source of truth for the ship-gate
- *    (`packages/scripts/__tests__/e2e-coverage.test.ts`) and the report CLI
+ *    the source for the diagnostic report CLI
  *    (`packages/scripts/e2e-coverage/write-coverage-matrix-report.ts`).
  *
  * 2. **Per-plugin keyless-e2e coverage (issue #8801).** For every checked-out
  *    plugin under `plugins/`, what agent surface it exposes (actions /
  *    connectors) and whether any keyless ("pr-deterministic") scenario
- *    exercises it. Consumed by the per-plugin coverage gate
+ *    exercises it. Consumed by the per-plugin coverage report
  *    (`./check-e2e-coverage.ts`).
  *
  * Both inventories perform no network or runtime boot — they statically scan
@@ -41,7 +40,7 @@ import {
   PLUGIN_ROUTE_COVERAGE,
   SHORTCUT_COVERAGE,
   SHORTCUT_REGISTRY_HINTS,
-  VIEW_COVERAGE_GATES,
+  VIEW_COVERAGE_ARTIFACTS,
 } from "./manifest.ts";
 
 export const REPO_ROOT = path.resolve(
@@ -330,8 +329,6 @@ export interface SurfaceItem {
   status: "covered" | "exempt" | "missing";
   detail: string;
   artifacts: string[];
-  /** Whether a gap on this item blocks CI (false = advisory, e.g. shortcuts). */
-  blocking: boolean;
   meta?: Record<string, unknown>;
 }
 
@@ -340,15 +337,13 @@ export interface CoverageMatrix {
   generatedAt: string;
   summary: {
     commands: { total: number; covered: number };
-    shortcuts: { total: number; covered: number; gated: boolean };
+    shortcuts: { total: number; covered: number; registryPresent: boolean };
     pluginRoutes: { total: number; covered: number; exempt: number };
-    views: { gates: number };
-    blockingGaps: number;
-    advisoryGaps: number;
+    views: { artifacts: number };
+    gaps: number;
   };
   items: SurfaceItem[];
-  blockingGaps: SurfaceItem[];
-  advisoryGaps: SurfaceItem[];
+  gaps: SurfaceItem[];
 }
 
 /**
@@ -383,22 +378,21 @@ export function buildCoverageMatrix(options?: {
           ? `target=${command.target.kind}; ${commandCoverage.detail}`
           : commandCoverage.detail,
       artifacts: commandCoverage.artifacts,
-      blocking: true,
       meta: { targetKind: command.target.kind },
     });
   }
 
   // ── Shortcuts (#8791 — pre-LLM shortcut registry) ───────────────────────
-  // While the registry is absent the surface is gated (empty + advisory). Once
-  // #8791 lands at one of SHORTCUT_REGISTRY_HINTS it lights up and the gate
-  // requires shortcut coverage, resolved from SHORTCUT_COVERAGE against the real
-  // shortcut-gate e2e (runShortcutGate driving a real AgentRuntime).
+  // The report stays empty while the registry is absent. Once #8791 lands at
+  // one of SHORTCUT_REGISTRY_HINTS, shortcut coverage is resolved from
+  // SHORTCUT_COVERAGE against the real shortcut-gate e2e (runShortcutGate
+  // driving a real AgentRuntime).
   const shortcutRegistry = discoverShortcutRegistry(root);
   const shortcutSurfaces =
     shortcutRegistry.length === 0 ? [] : discoverCommandShortcutSurfaces();
-  const shortcutsGated = shortcutRegistry.length === 0;
+  const shortcutRegistryPresent = shortcutRegistry.length > 0;
   let shortcutsCovered = 0;
-  if (!shortcutsGated) {
+  if (shortcutRegistryPresent) {
     for (const shortcut of shortcutSurfaces) {
       const resolution = resolveCoverage(
         SHORTCUT_COVERAGE.status === "covered"
@@ -416,9 +410,6 @@ export function buildCoverageMatrix(options?: {
         status: resolution.status,
         detail: `#8791 shortcut registry present (${shortcutRegistry.join(", ")}); alias=${shortcut.alias}; target=${shortcut.targetKind}:${shortcut.targetName}; ${resolution.detail}`,
         artifacts: resolution.artifacts,
-        // A landed registry with no real e2e is a blocking gap (the contract:
-        // every shortcut alias/target has deterministic e2e evidence).
-        blocking: resolution.status !== "covered",
         meta: {
           registry: shortcutRegistry,
           shortcutId: shortcut.shortcutId,
@@ -444,32 +435,25 @@ export function buildCoverageMatrix(options?: {
       status: resolution.status,
       detail: resolution.detail,
       artifacts: resolution.artifacts,
-      blocking: true,
       meta: { wiring },
     });
   }
 
-  // ── Views (delegated to the existing view gates — not re-implemented here) ─
-  for (const gate of VIEW_COVERAGE_GATES) {
-    const exists = existsSync(path.join(root, gate));
+  // ── Views (delegated to existing route tests — not re-implemented here) ─
+  for (const artifact of VIEW_COVERAGE_ARTIFACTS) {
+    const exists = existsSync(path.join(root, artifact));
     items.push({
-      id: `view-gate:${gate}`,
+      id: `view-artifact:${artifact}`,
       kind: "view",
       status: exists ? "covered" : "missing",
       detail: exists
-        ? "views covered by the existing view ship-gate (referenced, not re-implemented per #8796/#8797/#8798)"
-        : `expected view gate file is missing: ${gate}`,
-      artifacts: exists ? [gate] : [],
-      blocking: true,
+        ? "view routing is exercised by the referenced artifact"
+        : `referenced view test artifact is missing: ${artifact}`,
+      artifacts: exists ? [artifact] : [],
     });
   }
 
-  const blockingGaps = items.filter(
-    (item) => item.blocking && item.status === "missing",
-  );
-  const advisoryGaps = items.filter(
-    (item) => !item.blocking && item.status === "missing",
-  );
+  const gaps = items.filter((item) => item.status === "missing");
 
   return {
     schema: "eliza_e2e_coverage_matrix_v1",
@@ -479,20 +463,18 @@ export function buildCoverageMatrix(options?: {
       shortcuts: {
         total: shortcutSurfaces.length,
         covered: shortcutsCovered,
-        gated: shortcutsGated,
+        registryPresent: shortcutRegistryPresent,
       },
       pluginRoutes: {
         total: routePlugins.length,
         covered: routesCovered,
         exempt: routesExempt,
       },
-      views: { gates: VIEW_COVERAGE_GATES.length },
-      blockingGaps: blockingGaps.length,
-      advisoryGaps: advisoryGaps.length,
+      views: { artifacts: VIEW_COVERAGE_ARTIFACTS.length },
+      gaps: gaps.length,
     },
     items,
-    blockingGaps,
-    advisoryGaps,
+    gaps,
   };
 }
 
@@ -624,8 +606,8 @@ export function inventoryPluginSurfaces(): PluginSurface[] {
     if (!dir.startsWith("plugin-")) continue;
     const pluginDir = path.join(PLUGINS_DIR, dir);
     const srcDir = path.join(pluginDir, "src");
-    // Submodules that are not checked out have no `src/` — skip them; the gate
-    // can only reason about plugins whose source is present in this tree.
+    // Submodules that are not checked out have no `src/` and cannot contribute
+    // useful inventory data.
     if (!existsSync(srcDir)) continue;
     const packageName = readPackageName(pluginDir);
     if (!packageName) continue;

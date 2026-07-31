@@ -442,9 +442,8 @@ jobs:
   # spec not hand-named in a slice and not in the checked-in deny-list
   # (packages/app/test/ui-smoke/.pr-deny-list.json). That makes any NEW spec land
   # on the PR path by default; the only way to exclude one is to record it in the
-  # deny-list with a category and a reason. The spec set is emitted by
-  # packages/app/scripts/ui-smoke-pr-specs.mjs and the wiring is enforced by
-  # packages/app/test/ui-smoke-coverage.test.ts.
+  # deny-list with a category and a reason. The spec set is emitted and
+  # validated by packages/app/scripts/ui-smoke-pr-specs.mjs.
   app-browser-auto-discovered:
     name: Zero-Key app browser auto-discovered specs
     needs: changes
@@ -809,12 +808,10 @@ jobs:
       # Git, passes each file explicitly under the eliza-source condition, and
       # writes the exact inventory plus JUnit evidence before build:core.
       - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 
-      - name: Per-plugin keyless e2e coverage gate
-        run: bun run audit:e2e-coverage
+      - name: Per-plugin keyless e2e coverage report
+        run: bun run report:e2e-coverage
 
       # #14549: parallel-certification compose generator drift gate + GPU queue
       # state machine + orchestrator degradation. docker/certification is

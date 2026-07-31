@@ -10,10 +10,7 @@
  * (viewKind gate) AND `visibleInManager !== false` AND not a native-OS surface —
  * so a plugin/view flipping its declared `viewKind` to `system`/`release`, or
  * dropping `visibleInManager: false`, and thereby leaking a non-MVP surface into
- * the fresh-user grid, fails here instead of shipping. The companion
- * `launcher-view-coverage.test.ts` guards the launcher tile roster; this guards
- * the manager grid, the two must not diverge (they did for `relationships` /
- * `feed` before #14356).
+ * the fresh-user grid, fails here instead of shipping.
  */
 import { type EnabledViewKinds, isViewVisible } from "@elizaos/core";
 import { describe, expect, it } from "vitest";

@@ -6,8 +6,7 @@
 // `mobile-chromium` lanes, so every assertion below is a viewport-independent
 // semantic outcome: populated content from the mocked lifeops endpoints plus a
 // real state-changing interaction (channel/kind/status filters, the calendar
-// mode control). This is the interaction owner that closes INTERACTION_DEBT in
-// view-interaction-coverage.test.ts.
+// mode control).
 
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
@@ -89,8 +88,7 @@ test("calendar decomposed view: day/week/month view-mode control switches", asyn
 
 // NOTE: "documents" is intentionally not covered here — its `/documents` view
 // path collides with the built-in "documents" tab (which is /character/documents),
-// so registering it in the stub hijacks that route. Tracked as documented debt in
-// view-interaction-coverage.test.ts.
+// so registering it in the stub hijacks that route.
 
 test("inbox decomposed view: channel filters toggle", async ({ page }) => {
   // /inbox renders the populated triage list from the inbox mock: an Email

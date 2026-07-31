@@ -36,8 +36,6 @@ jobs:
     if: needs.changes.outputs.run_scenario_pr == 'true'
     steps:
       - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 `;
 const tempDirs: string[] = [];
@@ -217,8 +215,6 @@ jobs:
     steps:
       - name: Complete packages/scripts test sweep
         if: false
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 `,
       }),
@@ -233,8 +229,6 @@ jobs:
     continue-on-error: true
     steps:
       - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 `,
       }),
@@ -248,8 +242,6 @@ jobs:
     if: needs.changes.outputs.run_scenario_pr == 'true'
     steps:
       - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
 `,
       }),
     ).toThrow("must be a string scalar");
@@ -277,8 +269,6 @@ jobs:
     if: "needs.changes.outputs.run_scenario_pr == 'true'"
     steps:
       - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun run test:scripts
 `,
       }),
@@ -292,8 +282,6 @@ jobs:
     if: needs.changes.outputs.run_scenario_pr == 'true'
     steps:
       - name: Complete packages/scripts test sweep
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: |
           echo "bun run test:scripts"
 `,
@@ -319,8 +307,6 @@ jobs:
     steps:
       - name: Complete packages/scripts test sweep
         <<: *base
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
 `,
       }),
     ).toThrow(/aliases|merge keys/);

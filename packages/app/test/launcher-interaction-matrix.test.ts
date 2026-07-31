@@ -11,8 +11,8 @@ import { describe, expect, it } from "vitest";
  * disk, and every launcher gesture-handler source site is mapped by the doc. The
  * matrix is per-platform coverage prose; a reader trusts it only if a renamed or
  * deleted spec, or a new launcher gesture handler with no row, fails CI here
- * rather than rotting silently. Sibling to chat-gesture-coverage.test.ts and
- * launcher-view-coverage.test.ts — file reads + set diffs, no renderer boot.
+ * rather than rotting silently. It uses file reads and set diffs without a
+ * renderer boot.
  */
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
