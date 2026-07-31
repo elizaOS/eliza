@@ -70,6 +70,9 @@ export interface Bindings {
    */
   ANONYMOUS_CHAT_GATES?: RuntimeDurableObjectNamespace;
 
+  /** One strongly ordered transcript and replay ledger per onboarding session. */
+  ONBOARDING_SESSIONS?: RuntimeDurableObjectNamespace;
+
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;

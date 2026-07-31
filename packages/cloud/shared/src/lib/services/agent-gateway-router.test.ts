@@ -438,6 +438,7 @@ describe("AgentGatewayRouterService phone routing", () => {
         platformUserId: "+1 (555) 555-0100",
         sessionId: "platform:blooio:+1 (555) 555-0100",
         trustedPlatformIdentity: true,
+        idempotencyKey: "blooio:msg-1",
       }),
     );
   });
@@ -465,6 +466,7 @@ describe("AgentGatewayRouterService phone routing", () => {
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
         trustedPlatformIdentity: true,
+        idempotencyKey: "blooio:msg-1",
       }),
     );
   });
@@ -503,6 +505,8 @@ describe("AgentGatewayRouterService phone routing", () => {
           userId: "known-user",
           organizationId: "known-org",
         },
+        trustedPlatformIdentity: true,
+        idempotencyKey: "blooio:msg-1",
       }),
     );
   });
@@ -586,6 +590,8 @@ describe("AgentGatewayRouterService phone routing", () => {
           userId: "known-user",
           organizationId: "known-org",
         },
+        trustedPlatformIdentity: true,
+        idempotencyKey: "blooio:msg-1",
       }),
     );
   });
@@ -659,6 +665,7 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
         platformDisplayName: "New User",
         sessionId: "platform:discord:discord-user-1",
         trustedPlatformIdentity: true,
+        idempotencyKey: "discord:msg-1",
       }),
     );
   });
@@ -684,6 +691,8 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
       expect.objectContaining({
         platform: "discord",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        trustedPlatformIdentity: true,
+        idempotencyKey: "discord:msg-1",
       }),
     );
   });

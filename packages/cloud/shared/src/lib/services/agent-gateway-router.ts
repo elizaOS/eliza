@@ -655,6 +655,7 @@ export class AgentGatewayRouterService {
           platformDisplayName: args.sender.displayName ?? args.sender.username,
           sessionId: `platform:discord:${args.sender.id}`,
           trustedPlatformIdentity: true,
+          idempotencyKey: `discord:${args.messageId}`,
         });
         return {
           handled: true,
@@ -681,10 +682,12 @@ export class AgentGatewayRouterService {
           platformUserId: args.sender.id,
           platformDisplayName: args.sender.displayName ?? args.sender.username,
           sessionId: `platform:discord:${args.sender.id}`,
+          trustedPlatformIdentity: true,
           authenticatedUser: {
             userId: resolved.userId,
             organizationId: resolved.organizationId,
           },
+          idempotencyKey: `discord:${args.messageId}`,
         });
         return {
           handled: true,
@@ -779,6 +782,9 @@ export class AgentGatewayRouterService {
         platformUserId: args.from,
         sessionId: `platform:${args.provider}:${args.from}`,
         trustedPlatformIdentity: true,
+        idempotencyKey: args.providerMessageId
+          ? `${args.provider}:${args.providerMessageId}`
+          : undefined,
       });
 
       return {
@@ -799,6 +805,9 @@ export class AgentGatewayRouterService {
           platformUserId: args.from,
           sessionId: `platform:${args.provider}:${args.from}`,
           trustedPlatformIdentity: true,
+          idempotencyKey: args.providerMessageId
+            ? `${args.provider}:${args.providerMessageId}`
+            : undefined,
         });
 
         return {
@@ -822,10 +831,14 @@ export class AgentGatewayRouterService {
           platform: args.provider,
           platformUserId: args.from,
           sessionId: `platform:${args.provider}:${args.from}`,
+          trustedPlatformIdentity: true,
           authenticatedUser: {
             userId: resolved.userId,
             organizationId: resolved.organizationId,
           },
+          idempotencyKey: args.providerMessageId
+            ? `${args.provider}:${args.providerMessageId}`
+            : undefined,
         });
 
         return {
@@ -924,10 +937,14 @@ export class AgentGatewayRouterService {
         platform: args.provider,
         platformUserId: args.from,
         sessionId: `platform:${args.provider}:${args.from}`,
+        trustedPlatformIdentity: true,
         authenticatedUser: {
           userId: resolved.userId,
           organizationId: resolved.organizationId,
         },
+        idempotencyKey: args.providerMessageId
+          ? `${args.provider}:${args.providerMessageId}`
+          : undefined,
       });
 
       return {
