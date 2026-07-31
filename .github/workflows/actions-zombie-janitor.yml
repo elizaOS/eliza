@@ -128,7 +128,11 @@ jobs:
           PENDING_ZERO_JOB_MINUTES: ${{ vars.ACTIONS_JANITOR_PENDING_ZERO_JOB_MINUTES || '15' }}
           SELF_QUEUED_MINUTES: ${{ vars.ACTIONS_JANITOR_SELF_QUEUED_MINUTES || '60' }}
           WAITING_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_WAITING_MAX_AGE_HOURS || '48' }}
-          EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC)' }}
+          # Live Scenarios drives real models and real connectors: a single
+          # scenario step can legitimately run past the 120-minute max-age and
+          # sit longer than the 90-minute idle threshold without emitting a step
+          # transition, which is indistinguishable from a zombie to this janitor.
+          EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC),Live Scenarios' }}
           DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
           LANE: ${{ matrix.lane }}
         with:

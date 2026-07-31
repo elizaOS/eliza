@@ -2,9 +2,13 @@
 #
 # Executes the executive-assistant, connector certification, plugin-health,
 # app-control, and scenario-runner view-chat scenarios against a live LLM
-# runtime with real credentials. Scheduled runs are enforcing: once the runner
-# reaches scenario execution, any scenario failure or aggregate LLM-judge score
-# below LIFEOPS_JUDGE_THRESHOLD fails the lane. Manual dispatch can select one
+# runtime with real credentials. Each shard is one job in a matrix fanned out
+# from packages/scripts/live-scenario-shards.json, and a terminal aggregate gate
+# re-reads every shard's outcome artifact, so the lane's wall clock is its
+# slowest shard and a shard that fails or is cancelled cannot read as a pass.
+# Scheduled runs are enforcing: once the runner reaches scenario execution, any
+# scenario failure or aggregate LLM-judge score below LIFEOPS_JUDGE_THRESHOLD
+# fails the lane. Manual dispatch can select one
 # named shard and filter inside that shard; it can also opt into report-only mode
 # while debugging by leaving `enforce_gate` false. Missing setup prerequisites
 # fail loudly and still upload a placeholder report artifact.
@@ -102,10 +106,42 @@ permissions:
   actions: read
 
 jobs:
-  live-scenarios:
-    name: Live scenarios (EA + connectors + health + app-control + view-chat)
+  plan:
+    name: Resolve requested shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      shards: ${{ steps.matrix.outputs.shards }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          submodules: false
+
+      - name: Resolve shard matrix
+        id: matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCENARIO_SHARD: ${{ inputs.scenario_shard }}
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+        run: node packages/scripts/live-scenario-contract.mjs matrix
+
+  shard:
+    name: Live scenarios (${{ matrix.shard }})
+    needs: plan
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 120
+    # Shards run as independent jobs because a GitHub-hosted runner caps a
+    # single job at six hours: the four shards run serially exceed that ceiling,
+    # so no workflow-level timeout could ever let the serial lane finish. Each
+    # shard's ceiling comes from the manifest and stays inside the hosted cap.
+    timeout-minutes: ${{ matrix.timeout_minutes }}
+    strategy:
+      # One failing shard must not cancel the others: this lane's product is
+      # live evidence, and a sibling's failure is not a reason to discard it.
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -130,67 +166,28 @@ jobs:
             { echo "scenario-runner CLI missing"; exit 1; }
 
       - name: Prepare live scenario report placeholder
+        env:
+          SCENARIO_SHARD: ${{ matrix.shard }}
+          REPORT_PATH: ${{ matrix.report }}
+          RUN_DIR: ${{ matrix.run_dir }}
         run: |
-          mkdir -p \
-            artifacts/scenario-runs/live \
-            artifacts/scenario-runs/plugin-health \
-            artifacts/scenario-runs/app-control \
-            artifacts/scenario-runs/scenario-runner-view-chat
+          mkdir -p "$RUN_DIR"
           node - <<'NODE'
           const fs = require("node:fs");
-          for (const [shard, output] of [
-            ["lifeops-connectors", "artifacts/lifeops-scenario-report.json"],
-            ["plugin-health", "artifacts/plugin-health-scenario-report.json"],
-            ["app-control", "artifacts/app-control-scenario-report.json"],
-            ["scenario-runner-view-chat", "artifacts/scenario-runner-view-chat-report.json"],
-          ]) {
-            const report = {
-              schema: "eliza_live_scenario_setup_v1",
-              shard,
-              status: "setup_not_completed",
-              generatedAt: new Date().toISOString(),
-              note:
-                "Placeholder written before build/setup. If this file is uploaded unchanged, the workflow failed before scenario execution and no live model trajectory was produced.",
-              scenarios: [],
-              totalCount: 0,
-              passedCount: 0,
-              failedCount: 0
-            };
-            fs.writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
-          }
+          const report = {
+            schema: "eliza_live_scenario_setup_v1",
+            shard: process.env.SCENARIO_SHARD,
+            status: "setup_not_completed",
+            generatedAt: new Date().toISOString(),
+            note:
+              "Placeholder written before build/setup. If this file is uploaded unchanged, the workflow failed before scenario execution and no live model trajectory was produced.",
+            scenarios: [],
+            totalCount: 0,
+            passedCount: 0,
+            failedCount: 0
+          };
+          fs.writeFileSync(process.env.REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
           NODE
-
-      - name: Resolve manual shard selection
-        id: selection
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        env:
-          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
-          SCENARIO_SHARD: ${{ inputs.scenario_shard }}
-        run: |
-          selected="${SCENARIO_SHARD:-lifeops-connectors}"
-          # A workflow_dispatch request is validated against the default-branch
-          # input schema. The prefix lets an exact-head run select a new shard
-          # before this workflow revision itself reaches the default branch.
-          case "$SCENARIO_FILTER" in
-            lifeops-connectors:*) selected="lifeops-connectors" ;;
-            plugin-health:*) selected="plugin-health" ;;
-            app-control:*) selected="app-control" ;;
-            scenario-runner-view-chat:*) selected="scenario-runner-view-chat" ;;
-          esac
-
-          case "$selected" in
-            all|lifeops-connectors|plugin-health|app-control|scenario-runner-view-chat) ;;
-            *)
-              echo "unknown scenario_shard: $selected" >&2
-              exit 2
-              ;;
-          esac
-
-          if [ -n "$SCENARIO_FILTER" ] && [ "$selected" = "all" ]; then
-            echo "scenario_filter requires one named scenario_shard; 'all' is ambiguous" >&2
-            exit 2
-          fi
-          echo "shard=$selected" >> "$GITHUB_OUTPUT"
 
       - name: Validate authoritative shard prerequisites
         id: preflight
@@ -203,12 +200,7 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-        run: |
-          status=0
-          for shard in lifeops-connectors plugin-health app-control scenario-runner-view-chat; do
-            node packages/scripts/live-scenario-contract.mjs preflight "$shard" || status=$?
-          done
-          exit "$status"
+        run: node packages/scripts/live-scenario-contract.mjs preflight "${{ matrix.shard }}"
 
       - name: Build live scenario runtime packages
         id: build
@@ -314,9 +306,9 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: Run EA + connector live scenarios
+      - name: Run live scenarios
         id: run
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'lifeops-connectors') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         continue-on-error: true
         env:
           # The runner and ordinary workspace dependencies stay on checkout
@@ -374,180 +366,101 @@ jobs:
           NOTIFICATION_RELAY_TOKEN: ${{ secrets.NOTIFICATION_RELAY_TOKEN }}
           TRAVEL_BOOKING_API_KEY: ${{ secrets.TRAVEL_BOOKING_API_KEY }}
           # Run controls
-          SCENARIO_SHARD: lifeops-connectors
-          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          SCENARIO_ROOT: ${{ matrix.root }}
+          SCENARIO_SHARD: ${{ matrix.shard }}
+          SCENARIO_FILTER: ${{ matrix.scenario_filter }}
+          LANE_ARGS: ${{ matrix.lane_args }}
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
           SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
           SKIP_REASON: ${{ inputs.skip_reason }}
-          REPORT_PATH: artifacts/lifeops-scenario-report.json
-          RUN_DIR: artifacts/scenario-runs/live
+          REPORT_PATH: ${{ matrix.report }}
+          RUN_DIR: ${{ matrix.run_dir }}
         run: |
           set -o pipefail
-          mkdir -p artifacts/scenario-runs/live
-          node packages/scripts/run-live-scenarios.mjs 2>&1 | tee artifacts/scenario-runs/live/runner.log
+          mkdir -p "$RUN_DIR"
+          # shellcheck disable=SC2086 # LANE_ARGS is a controlled manifest value
+          node packages/scripts/run-live-scenarios.mjs $LANE_ARGS 2>&1 | tee "$RUN_DIR/runner.log"
 
-      - name: Run plugin-health live scenarios
-        id: run-health
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'plugin-health') }}
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--conditions=eliza-source"
-          # LLM providers
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          # Independent LLM judge (#9310): judge on Cerebras, never the model
-          # under test.
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
-          # Run controls
-          SCENARIO_ROOT: plugins/plugin-health/test/scenarios
-          SCENARIO_SHARD: plugin-health
-          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
-          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
-          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
-          SKIP_REASON: ${{ inputs.skip_reason }}
-          REPORT_PATH: artifacts/plugin-health-scenario-report.json
-          RUN_DIR: artifacts/scenario-runs/plugin-health
-          EXPORT_NATIVE_PATH: artifacts/scenario-runs/plugin-health/native.jsonl
-        run: |
-          set -o pipefail
-          mkdir -p artifacts/scenario-runs/plugin-health
-          node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/plugin-health/runner.log
-
-      - name: Run app-control live scenarios
-        id: run-app-control
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'app-control') }}
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--conditions=eliza-source"
-          # LLM providers
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          # Independent LLM judge (#9310): judge on Cerebras, never the model
-          # under test.
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
-          # Run controls
-          SCENARIO_ROOT: plugins/plugin-app-control/test/scenarios
-          SCENARIO_SHARD: app-control
-          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
-          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
-          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
-          SKIP_REASON: ${{ inputs.skip_reason }}
-          REPORT_PATH: artifacts/app-control-scenario-report.json
-          RUN_DIR: artifacts/scenario-runs/app-control
-          EXPORT_NATIVE_PATH: artifacts/scenario-runs/app-control/native.jsonl
-        run: |
-          set -o pipefail
-          mkdir -p artifacts/scenario-runs/app-control
-          node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/app-control/runner.log
-
-      - name: Run scenario-runner view-chat live scenarios
-        id: run-view-chat
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && (github.event_name == 'schedule' || steps.selection.outputs.shard == 'all' || steps.selection.outputs.shard == 'scenario-runner-view-chat') }}
-        continue-on-error: true
-        env:
-          NODE_OPTIONS: "--conditions=eliza-source"
-          # LLM providers
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          # Independent LLM judge (#9310): judge on Cerebras, never the model
-          # under test.
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
-          # This shard deliberately owns a bounded subset of the runner's
-          # mixed-purpose live catalog. A selected manual filter may narrow it
-          # further; scheduled/all runs execute the declared shard default.
-          SCENARIO_ROOT: packages/scenario-runner/test/scenarios
-          SCENARIO_SHARD: scenario-runner-view-chat
-          SCENARIO_FILTER: ${{ inputs.scenario_filter || 'live-document-delete' }}
-          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
-          SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
-          SKIP_REASON: ${{ inputs.skip_reason }}
-          REPORT_PATH: artifacts/scenario-runner-view-chat-report.json
-          RUN_DIR: artifacts/scenario-runs/scenario-runner-view-chat
-          EXPORT_NATIVE_PATH: artifacts/scenario-runs/scenario-runner-view-chat/native.jsonl
-        run: |
-          set -o pipefail
-          mkdir -p artifacts/scenario-runs/scenario-runner-view-chat
-          node packages/scripts/run-live-scenarios.mjs --lane live-only 2>&1 | tee artifacts/scenario-runs/scenario-runner-view-chat/runner.log
-
-      - name: Verify every requested shard published its evidence contract
+      - name: Verify this shard published its evidence contract
         id: verify-evidence
         if: ${{ always() && steps.preflight.outcome == 'success' && steps.build.outcome == 'success' }}
+        run: node packages/scripts/live-scenario-contract.mjs verify "${{ matrix.shard }}"
+
+      - name: Record shard outcome
+        if: always()
         env:
-          SCENARIO_SHARD: ${{ github.event_name == 'schedule' && 'all' || steps.selection.outputs.shard }}
+          SCENARIO_SHARD: ${{ matrix.shard }}
+          RUN_DIR: ${{ matrix.run_dir }}
+          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+          EVIDENCE_OUTCOME: ${{ steps.verify-evidence.outcome }}
         run: |
-          for shard in lifeops-connectors plugin-health app-control scenario-runner-view-chat; do
-            if [ "$SCENARIO_SHARD" = "all" ] || [ "$SCENARIO_SHARD" = "$shard" ]; then
-              node packages/scripts/live-scenario-contract.mjs verify "$shard"
-            fi
-          done
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const steps = {
+            preflight: process.env.PREFLIGHT_OUTCOME,
+            build: process.env.BUILD_OUTCOME,
+            run: process.env.RUN_OUTCOME,
+            evidence: process.env.EVIDENCE_OUTCOME,
+          };
+          const failures = Object.entries(steps).filter(([, value]) => value !== "success");
+          const outcome = {
+            schema: "eliza_live_scenario_shard_outcome_v1",
+            shard: process.env.SCENARIO_SHARD,
+            status: failures.length === 0 ? "success" : "failure",
+            steps,
+            generatedAt: new Date().toISOString(),
+          };
+          fs.mkdirSync(process.env.RUN_DIR, { recursive: true });
+          fs.writeFileSync(`${process.env.RUN_DIR}/shard-outcome.json`, `${JSON.stringify(outcome, null, 2)}\n`);
+          if (failures.length) {
+            console.error(`Live scenario shard failed: ${failures.map(([name, value]) => `${name}=${value || "missing"}`).join(", ")}`);
+            process.exit(1);
+          }
+          console.log(`Live scenario shard ${outcome.shard} passed: ${Object.keys(steps).join(", ")}`);
+          NODE
 
       - name: Upload scenario report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: lifeops-scenario-report
+          name: live-scenario-report-${{ matrix.shard }}
           path: |
-            artifacts/lifeops-scenario-report.json
-            artifacts/plugin-health-scenario-report.json
-            artifacts/app-control-scenario-report.json
-            artifacts/scenario-runner-view-chat-report.json
-            artifacts/scenario-runs/live/
-            artifacts/scenario-runs/plugin-health/
-            artifacts/scenario-runs/app-control/
-            artifacts/scenario-runs/scenario-runner-view-chat/
+            ${{ matrix.report }}
+            ${{ matrix.run_dir }}/
           if-no-files-found: error
           retention-days: 30
 
+  live-scenarios:
+    name: Live scenarios aggregate gate
+    needs: [plan, shard]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          filter: blob:none
+          submodules: false
+
+      - name: Download shard outcomes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          pattern: live-scenario-report-*
+          path: artifacts/shard-outcomes
+
       - name: Enforce aggregate shard result
-        if: always()
         env:
-          PREFLIGHT_OUTCOME: ${{ steps.preflight.outcome }}
-          BUILD_OUTCOME: ${{ steps.build.outcome }}
-          LIFEOPS_OUTCOME: ${{ steps.run.outcome }}
-          HEALTH_OUTCOME: ${{ steps.run-health.outcome }}
-          APP_CONTROL_OUTCOME: ${{ steps.run-app-control.outcome }}
-          VIEW_CHAT_OUTCOME: ${{ steps.run-view-chat.outcome }}
-          EVIDENCE_OUTCOME: ${{ steps.verify-evidence.outcome }}
-          SCENARIO_SHARD: ${{ github.event_name == 'schedule' && 'all' || steps.selection.outputs.shard }}
+          EXPECTED_SHARDS: ${{ needs.plan.outputs.shards }}
+          ARTIFACT_DIR: artifacts/shard-outcomes
+          PLAN_RESULT: ${{ needs.plan.result }}
+          SHARD_RESULT: ${{ needs.shard.result }}
         run: |
-          node - <<'NODE'
-          const required = ["PREFLIGHT_OUTCOME", "BUILD_OUTCOME", "EVIDENCE_OUTCOME"];
-          const shardOutcome = {
-            "lifeops-connectors": "LIFEOPS_OUTCOME",
-            "plugin-health": "HEALTH_OUTCOME",
-            "app-control": "APP_CONTROL_OUTCOME",
-            "scenario-runner-view-chat": "VIEW_CHAT_OUTCOME",
-          };
-          const selected = process.env.SCENARIO_SHARD || "all";
-          if (selected === "all") {
-            required.push(...Object.values(shardOutcome));
-          } else {
-            const outcome = shardOutcome[selected];
-            if (!outcome) {
-              console.error(`Unknown live scenario shard: ${selected}`);
-              process.exit(2);
-            }
-            required.push(outcome);
-          }
-          const failures = required.filter((name) => process.env[name] !== "success");
-          if (failures.length) {
-            console.error(`Live scenario authority failed: ${failures.map((name) => `${name}=${process.env[name] || "missing"}`).join(", ")}`);
-            process.exit(1);
-          }
-          console.log(`All requested live scenario shards and evidence contracts succeeded: ${required.join(", ")}`);
-          NODE
+          if [ "$PLAN_RESULT" != "success" ] || [ "$SHARD_RESULT" != "success" ]; then
+            echo "Live scenario authority failed: plan=$PLAN_RESULT shard=$SHARD_RESULT" >&2
+            exit 1
+          fi
+          node packages/scripts/live-scenario-contract.mjs gate
