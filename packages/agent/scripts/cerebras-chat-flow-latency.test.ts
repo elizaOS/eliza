@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   distribution,
   percentile,
+  verifyExactResponseParity,
   verifyProofResponse,
 } from "./cerebras-chat-flow-latency";
 
@@ -36,6 +37,15 @@ describe("Cerebras chat-flow latency helpers", () => {
     ).not.toThrow();
     expect(() => verifyProofResponse("SPEED-S-3", "SPEED-S-4")).toThrow(
       "did not contain the requested proof",
+    );
+  });
+
+  it("requires the append-only stream to equal the authoritative final reply", () => {
+    expect(() =>
+      verifyExactResponseParity("SPEED-S-4", "SPEED-S-4"),
+    ).not.toThrow();
+    expect(() => verifyExactResponseParity("SPEED-", "SPEED-S-4")).toThrow(
+      "did not exactly match",
     );
   });
 });

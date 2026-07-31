@@ -86,6 +86,19 @@ export function verifyProofResponse(response: string, proof: string): void {
   }
 }
 
+export function verifyExactResponseParity(
+  streamedResponse: string,
+  finalResponse: string,
+): void {
+  if (streamedResponse !== finalResponse) {
+    throw new Error(
+      `Streamed response did not exactly match the final response: ${JSON.stringify(
+        { streamedResponse, finalResponse },
+      )}`,
+    );
+  }
+}
+
 function positiveIntegerSetting(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
@@ -197,6 +210,7 @@ async function main(): Promise<void> {
       try {
         verifyProofResponse(result.text, proof);
         verifyProofResponse(streamedText, proof);
+        verifyExactResponseParity(streamedText, result.text);
       } catch (cause) {
         throw new Error(
           `Live chat proof validation failed: ${JSON.stringify({
@@ -211,6 +225,43 @@ async function main(): Promise<void> {
       const quiescenceStartedAt = performance.now();
       const backgroundTasks = await drainPostDeliveryTasks(runtime);
       const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
+      const totalToQuiescenceMs = performance.now() - startedAt;
+      const recentMessages = await runtime.getMemories({
+        roomId,
+        tableName: "messages",
+        limit: 12,
+      });
+      const persistedResponse = recentMessages.find((memory) => {
+        const text = (memory.content as { text?: unknown }).text;
+        return (
+          memory.entityId === runtime.agentId &&
+          typeof text === "string" &&
+          text === result.text
+        );
+      });
+      if (!persistedResponse?.id) {
+        throw new Error(
+          `Live assistant response was not persisted: ${JSON.stringify({
+            proof,
+            output: result.text,
+            returnedPersistenceIds: result.persistedResponseMessageIds ?? [],
+          })}`,
+        );
+      }
+      if (
+        result.persistedResponseMessageIds?.length &&
+        !result.persistedResponseMessageIds.includes(persistedResponse.id)
+      ) {
+        throw new Error(
+          `Returned persistence ids do not contain the exact assistant memory: ${JSON.stringify(
+            {
+              proof,
+              persistedResponseId: persistedResponse.id,
+              returnedPersistenceIds: result.persistedResponseMessageIds,
+            },
+          )}`,
+        );
+      }
       return {
         index,
         proof,
@@ -219,11 +270,22 @@ async function main(): Promise<void> {
         wallMs: rounded(wallMs),
         backgroundTasks,
         backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
-        totalToQuiescenceMs: rounded(performance.now() - startedAt),
+        totalToQuiescenceMs: rounded(totalToQuiescenceMs),
+        streamedOutput: streamedText,
         streamedCharacters: streamedText.length,
         outputCharacters: result.text.length,
         usage: result.usage,
         failureKind: result.failureKind ?? null,
+        persistedResponse: {
+          id: persistedResponse.id,
+          entityId: persistedResponse.entityId,
+          roomId: persistedResponse.roomId,
+          text: (persistedResponse.content as { text: string }).text,
+          returnedByMessageService:
+            result.persistedResponseMessageIds?.includes(
+              persistedResponse.id,
+            ) ?? false,
+        },
       };
     };
 

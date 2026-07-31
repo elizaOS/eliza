@@ -447,6 +447,40 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.actionCallbackHistory).toBeUndefined();
   });
 
+  it("does not append a final rewrite to incompatible streamed bytes", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, _callback, options) => {
+          await options?.onStreamChunk?.("draft reply");
+          return {
+            didRespond: true,
+            responseContent: { text: "authoritative reply" },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("rewrite"),
+      "Chat Agent",
+      { onChunk },
+    );
+
+    expect(result.text).toBe("authoritative reply");
+    expect(onChunk).toHaveBeenCalledTimes(1);
+    expect(onChunk).toHaveBeenCalledWith("draft reply");
+    expect(runtime.logger.debug).toHaveBeenCalledWith(
+      expect.objectContaining({
+        emittedChars: "draft reply".length,
+        finalChars: "authoritative reply".length,
+      }),
+      "[eliza-api] Held final reply rewrite from append-only stream",
+    );
+  });
+
   it("replaces progress delivery with the final result without action evidence", async () => {
     const onSnapshot = vi.fn();
     const runtime = createRuntime({
