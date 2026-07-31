@@ -1044,6 +1044,7 @@ export async function handleViewsRoutes(
         viewPath,
         viewLabel,
         viewType: resolvedViewType,
+        source: reportedSource,
         ...(action ? { action } : {}),
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
