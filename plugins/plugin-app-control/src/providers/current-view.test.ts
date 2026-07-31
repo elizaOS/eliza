@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({ getCurrentView: vi.fn() }));
 
 vi.mock("../actions/views-client.js", () => ({
 	createViewsClient: () => ({ getCurrentView: h.getCurrentView }),
+	readViewClientId: (message: Memory) => message.metadata?.clientId,
 }));
 
 import { currentViewProvider } from "./current-view.js";

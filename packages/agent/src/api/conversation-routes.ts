@@ -32,6 +32,7 @@ import {
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  MemoryType,
   type RolesWorldMetadata,
   recordOwnerGrant,
   recordRoleGrant,
@@ -112,6 +113,7 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
+import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
 import {
   resolveWaifuChatAccess,
@@ -125,6 +127,37 @@ interface DiscordProfileLike {
   displayName?: string;
   rawUserId?: string;
   username?: string;
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+/**
+ * Attach the validated shell identity only to the in-memory turn. Persisted
+ * conversation history deliberately excludes renderer-specific routing data.
+ */
+type RequestClientScope = { ok: true; clientId?: string } | { ok: false };
+
+function readRequestClientScope(
+  req: Pick<http.IncomingMessage, "headers">,
+): RequestClientScope {
+  const header = req.headers["x-elizaos-client-id"];
+  if (header === undefined) return { ok: true };
+  const clientId = normalizeWsClientId(firstHeaderValue(header));
+  return clientId ? { ok: true, clientId } : { ok: false };
+}
+
+function scopeMessageToRequestClient(
+  message: Memory,
+  clientId: string | undefined,
+): Memory {
+  if (!clientId) return message;
+  return {
+    ...message,
+    metadata: { ...message.metadata, type: MemoryType.MESSAGE, clientId },
+  };
 }
 
 // Lazy memoized loader: @elizaos/plugin-discord (and its transitive deps) loads
@@ -2799,6 +2832,12 @@ export async function handleConversationRoutes(
       return true;
     }
 
+    const requestClientScope = readRequestClientScope(req);
+    if (!requestClientScope.ok) {
+      error(res, "Invalid X-ElizaOS-Client-Id header", 400);
+      return true;
+    }
+
     const disconnectTracker = createConversationStreamDisconnectTracker({
       req,
       res,
@@ -2929,7 +2968,11 @@ export async function handleConversationRoutes(
       );
     }
     bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
-    const { userMessage, messageToStore } = userMessages;
+    const { messageToStore } = userMessages;
+    const userMessage = scopeMessageToRequestClient(
+      userMessages.userMessage,
+      requestClientScope.clientId,
+    );
 
     const connectionDescriptor = captureConversationConnection(
       state,
@@ -3523,6 +3566,11 @@ export async function handleConversationRoutes(
     if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
       return true;
     }
+    const requestClientScope = readRequestClientScope(req);
+    if (!requestClientScope.ok) {
+      error(res, "Invalid X-ElizaOS-Client-Id header", 400);
+      return true;
+    }
     const chatPayload = await readChatRequestPayload(req, res, {
       readJsonBody,
       error,
@@ -3617,7 +3665,11 @@ export async function handleConversationRoutes(
       return true;
     }
     bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
-    const { userMessage, messageToStore } = userMessages;
+    const { messageToStore } = userMessages;
+    const userMessage = scopeMessageToRequestClient(
+      userMessages.userMessage,
+      requestClientScope.clientId,
+    );
     try {
       await attestAuthenticatedApiDeliveryAudience(
         runtime,

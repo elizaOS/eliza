@@ -1642,6 +1642,10 @@ import {
   wireCodingAgentWsBridge,
   wireCoordinatorEventRouting,
 } from "./server-helpers-swarm.ts";
+import {
+  registerViewScopeConnection,
+  scheduleViewScopeClearAfterGrace,
+} from "./view-scope-ws-lifecycle.ts";
 
 import {
   asObject,
@@ -3447,6 +3451,7 @@ async function handleRequest(
       json,
       error,
       broadcastWs: state.broadcastWs ?? undefined,
+      broadcastWsRecipientCount: state.broadcastWsRecipientCount ?? undefined,
       broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
       runtime: state.runtime,
     })
@@ -3892,6 +3897,7 @@ export async function startApiServer(opts?: {
     shareIngestQueue: [],
     broadcastStatus: null,
     broadcastWs: null,
+    broadcastWsRecipientCount: null,
     broadcastWsToClientId: null,
     broadcastWsToConversation: null,
     activeConversationId: null,
@@ -4173,12 +4179,14 @@ export async function startApiServer(opts?: {
     "[eliza-api] Server lifecycle: requestTimeout=300000ms, idleTimeout=disabled, headersTimeout=60000ms, keepAliveTimeout=60000ms",
   );
 
-  const broadcastWs = (payload: unknown): void => {
+  const broadcastWs = (payload: unknown): number => {
     const message = JSON.stringify(payload);
+    let delivered = 0;
     for (const client of wsClients) {
       if (client.readyState === 1) {
         try {
           client.send(message);
+          delivered += 1;
         } catch (err) {
           logger.error(
             `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
@@ -4186,6 +4194,7 @@ export async function startApiServer(opts?: {
         }
       }
     }
+    return delivered;
   };
 
   const pushEvent = (
@@ -4652,6 +4661,11 @@ export async function startApiServer(opts?: {
   const wsPtyDisconnectGraceMs = resolvePtyDisconnectGraceMs(
     process.env.ELIZA_PTY_WS_DISCONNECT_GRACE_MS,
   );
+  const wsViewScopePendingClears = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  let serverSideResourcesStopping = false;
   /**
    * Short-window idempotency cache for client-tagged WS messages, keyed by
    * `${clientId}:${msgId}`. A message resent after a reconnect (same id) is
@@ -4782,13 +4796,33 @@ export async function startApiServer(opts?: {
 
     const activateAuthenticatedConnection = () => {
       wsClients.add(ws);
-      if (
-        wsClientId &&
-        cancelPendingPtySessionStop(wsClientId, wsPtyPendingStops)
-      ) {
-        logger.info(
-          `[eliza-api] client ${wsClientId} reconnected within the PTY grace window; keeping its PTY sessions alive`,
-        );
+      if (wsClientId) {
+        if (cancelPendingPtySessionStop(wsClientId, wsPtyPendingStops)) {
+          logger.info(
+            `[eliza-api] client ${wsClientId} reconnected within the PTY grace window; keeping its PTY sessions alive`,
+          );
+        }
+        const viewScopeReconnected = registerViewScopeConnection({
+          clientId: wsClientId,
+          pendingClears: wsViewScopePendingClears,
+          markViewScopeConnected: (clientId) => {
+            void import("./views-routes.ts")
+              .then(({ registerCurrentViewScopeWebSocket }) => {
+                registerCurrentViewScopeWebSocket(clientId);
+              })
+              .catch((err) => {
+                // error-policy:J1 The WS connection boundary observes registration failures.
+                logger.error(
+                  `[eliza-api] failed to register connected client view scope: ${err instanceof Error ? err.message : err}`,
+                );
+              });
+          },
+        });
+        if (viewScopeReconnected) {
+          logger.info(
+            `[eliza-api] client ${wsClientId} reconnected within the view-scope grace window; keeping its active view`,
+          );
+        }
       }
       addLog("info", "WebSocket client connected", "websocket", [
         "server",
@@ -4857,6 +4891,20 @@ export async function startApiServer(opts?: {
       }
     };
 
+    const currentClientHasLiveConnection = (): boolean => {
+      if (!wsClientId) return false;
+      for (const other of wsClients) {
+        if (
+          other !== ws &&
+          other.readyState === 1 &&
+          wsClientIds.get(other) === wsClientId
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     /**
      * Reap this client's PTY sessions only after the disconnect grace window,
      * and only if no other live authenticated socket carries the same
@@ -4865,24 +4913,36 @@ export async function startApiServer(opts?: {
     const scheduleStopOwnedPtySessions = (reason: string): void => {
       if (!wsClientId) return;
       const clientId = wsClientId;
-      const clientHasLiveConnection = (): boolean => {
-        for (const other of wsClients) {
-          if (
-            other !== ws &&
-            other.readyState === 1 &&
-            wsClientIds.get(other) === clientId
-          ) {
-            return true;
-          }
-        }
-        return false;
-      };
       schedulePtySessionStopAfterGrace({
         clientId,
         graceMs: wsPtyDisconnectGraceMs,
         pendingStops: wsPtyPendingStops,
-        clientHasLiveConnection,
+        clientHasLiveConnection: currentClientHasLiveConnection,
         stopOwnedSessions: () => stopOwnedPtySessions(reason),
+      });
+    };
+
+    const scheduleClearCurrentViewScope = (): void => {
+      if (!isAuthenticated || !wsClientId) return;
+      const clientId = wsClientId;
+      scheduleViewScopeClearAfterGrace({
+        clientId,
+        pendingClears: wsViewScopePendingClears,
+        shouldSchedule: () => !serverSideResourcesStopping,
+        clientHasLiveConnection: currentClientHasLiveConnection,
+        clearViewScope: () => {
+          void import("./views-routes.ts")
+            .then(({ releaseCurrentViewScope }) => {
+              if (currentClientHasLiveConnection()) return;
+              releaseCurrentViewScope(clientId);
+            })
+            .catch((err) => {
+              // error-policy:J6 WebSocket teardown cannot await optional route-module cleanup.
+              logger.warn(
+                `[eliza-api] failed to clear disconnected client view scope: ${err instanceof Error ? err.message : err}`,
+              );
+            });
+        },
       });
     };
 
@@ -5081,6 +5141,7 @@ export async function startApiServer(opts?: {
         subs.clear();
       }
       scheduleStopOwnedPtySessions("websocket close");
+      scheduleClearCurrentViewScope();
       addLog("info", "WebSocket client disconnected", "websocket", [
         "server",
         "websocket",
@@ -5100,6 +5161,7 @@ export async function startApiServer(opts?: {
         subs.clear();
       }
       scheduleStopOwnedPtySessions("websocket error");
+      scheduleClearCurrentViewScope();
     });
   });
 
@@ -5160,10 +5222,12 @@ export async function startApiServer(opts?: {
   // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
   state.broadcastWs = (data: object) => {
     const message = JSON.stringify(data);
+    let delivered = 0;
     for (const client of wsClients) {
       if (client.readyState === 1) {
         try {
           client.send(message);
+          delivered += 1;
         } catch (err) {
           logger.error(
             `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
@@ -5171,6 +5235,14 @@ export async function startApiServer(opts?: {
         }
       }
     }
+    return delivered;
+  };
+  state.broadcastWsRecipientCount = () => {
+    let recipients = 0;
+    for (const client of wsClients) {
+      if (client.readyState === 1) recipients += 1;
+    }
+    return recipients;
   };
 
   // Give the views module a process-level broadcaster so the view-scoped action
@@ -5178,7 +5250,11 @@ export async function startApiServer(opts?: {
   // drive a mounted shell through the same `view:interact` path the route uses.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
-      setViewsBroadcastWs(state.broadcastWs ?? null);
+      setViewsBroadcastWs(
+        state.broadcastWs ?? null,
+        (clientId, payload) =>
+          state.broadcastWsToClientId?.(clientId, payload) ?? 0,
+      );
     })
     .catch((err) => {
       logger.error(
@@ -5459,7 +5535,12 @@ export async function startApiServer(opts?: {
   // whether a TCP listener was bound. Kept as a closure so the skip-listen path
   // and the listening path perform identical cleanup minus the socket close.
   const stopServerSideResources = (): void => {
+    serverSideResourcesStopping = true;
     clearInterval(statusInterval);
+    for (const timer of wsViewScopePendingClears.values()) {
+      clearTimeout(timer);
+    }
+    wsViewScopePendingClears.clear();
     if (state.connectorHealthMonitor) {
       state.connectorHealthMonitor.stop();
       state.connectorHealthMonitor = null;

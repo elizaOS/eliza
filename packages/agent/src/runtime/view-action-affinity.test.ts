@@ -32,6 +32,7 @@ import {
   viewActionAffinityMap,
   viewScopedActionNames,
   viewScopedNamedActions,
+  visiblePaneActionNames,
 } from "./view-action-affinity.ts";
 
 const AWARE_VIEW = {
@@ -51,6 +52,7 @@ beforeEach(async () => {
       {
         id: "wallet",
         label: "Wallet",
+        surface: { capabilities: ["agent-surface"] },
         relatedActions: [
           "WALLET",
           "EVM_SWAP",
@@ -119,6 +121,23 @@ beforeEach(async () => {
         label: "Documents",
         relatedActions: ["OWNER_DOCUMENTS"],
       },
+      {
+        id: "hybrid",
+        label: "Hybrid GUI",
+        viewType: "gui",
+        relatedActions: ["EVM_SWAP"],
+      },
+      {
+        id: "hybrid",
+        label: "Hybrid TUI",
+        viewType: "tui",
+        relatedActions: ["SOLANA_TRANSFER"],
+      },
+      {
+        id: "secondary",
+        label: "Secondary",
+        relatedActions: ["CALENDAR"],
+      },
     ],
   });
 });
@@ -139,6 +158,45 @@ describe("view-action-affinity", () => {
     });
     expect(getActiveViewContext()?.viewId).toBe("wallet");
     clearActiveViewContext();
+    expect(getActiveViewContext()).toBeNull();
+  });
+
+  it("isolates active view context and element snapshots by renderer", () => {
+    setActiveViewContext(AWARE_VIEW, "client-a");
+    setActiveViewContext(
+      {
+        viewId: "calendar",
+        viewLabel: "Calendar",
+        viewType: "gui",
+        viewPath: "/calendar",
+      },
+      "client-b",
+    );
+
+    expect(
+      setActiveViewElements(
+        "wallet",
+        [{ id: "send", role: "button", label: "Send" }],
+        "client-a",
+        "gui",
+        "client-a",
+      ),
+    ).toBe(true);
+    expect(
+      setActiveViewElements(
+        "wallet",
+        [{ id: "wrong", role: "button", label: "Wrong" }],
+        "client-b",
+        "gui",
+        "client-b",
+      ),
+    ).toBe(false);
+
+    expect(getActiveViewContext("client-a")).toMatchObject({
+      viewId: "wallet",
+      elements: [{ id: "send" }],
+    });
+    expect(getActiveViewContext("client-b")?.viewId).toBe("calendar");
     expect(getActiveViewContext()).toBeNull();
   });
 
@@ -416,12 +474,12 @@ describe("active-view element snapshot", () => {
     });
     expect(block).toContain("Addressable elements currently in this view");
     // Focused element is listed first.
-    const sendIdx = block.indexOf("- send [button]");
-    const amountIdx = block.indexOf("- amount [text-input]");
+    const sendIdx = block.indexOf('"id":"send"');
+    const amountIdx = block.indexOf('"id":"amount"');
     expect(sendIdx).toBeGreaterThan(-1);
     expect(amountIdx).toBeGreaterThan(sendIdx);
-    expect(block).toContain('"Send" (focused)');
-    expect(block).toContain('"Amount" = "5"');
+    expect(block).toContain('"label":"Send","focused":true');
+    expect(block).toContain('"label":"Amount","value":"5"');
   });
 
   it("caps the rendered element list and notes the remainder", () => {
@@ -508,6 +566,10 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     "  parameters: { fromToken: string, amount: number }",
     "- WHATEVER: some unrelated action",
     "  parameters: { foo: string }",
+    "- SOLANA_TRANSFER: transfer solana tokens",
+    "  parameters: { recipient: string, amount: number }",
+    "- CALENDAR: manage calendar entries",
+    "  parameters: { title: string, startsAt: string }",
     "",
     "# Received Message",
     "12:00 User: hello there",
@@ -547,7 +609,7 @@ describe("compactActionsForIntent with view-scoped actions", () => {
     const active = getActiveViewContext();
     let prompt = compactActionsForIntent(
       PROMPT,
-      viewScopedActionNames(active?.viewId),
+      visiblePaneActionNames(active),
     );
     if (active && prompt.includes("# Available Actions")) {
       prompt = applyActiveViewAwareness(prompt, active);
@@ -562,6 +624,39 @@ describe("compactActionsForIntent with view-scoped actions", () => {
       prompt.indexOf("# Available Actions"),
     );
     expect(prompt.match(/# Active View/g)).toHaveLength(1);
+  });
+
+  it("keeps exact same-id modality and secondary-pane actions without leaking another client", () => {
+    setActiveViewContext(
+      {
+        viewId: "hybrid",
+        viewLabel: "Hybrid TUI",
+        viewType: "tui",
+        viewPath: "/hybrid-tui",
+        panes: [
+          { viewId: "hybrid", viewType: "tui" },
+          { viewId: "secondary", viewType: "gui" },
+        ],
+      },
+      "client-a",
+    );
+    setActiveViewContext(
+      {
+        viewId: "hybrid",
+        viewLabel: "Hybrid GUI",
+        viewType: "gui",
+        viewPath: "/hybrid",
+      },
+      "client-b",
+    );
+
+    const scoped = visiblePaneActionNames(getActiveViewContext("client-a"));
+    const prompt = compactActionsForIntent(PROMPT, scoped);
+
+    expect(scoped).toEqual(new Set(["SOLANA_TRANSFER", "CALENDAR"]));
+    expect(prompt).toContain("recipient: string, amount: number");
+    expect(prompt).toContain("title: string, startsAt: string");
+    expect(prompt).not.toContain("fromToken: string, amount: number");
   });
 });
 

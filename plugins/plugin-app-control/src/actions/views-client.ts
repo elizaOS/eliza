@@ -7,7 +7,9 @@
  * the full AppControlClient (different concern, different surface).
  */
 
+import { createHash } from "node:crypto";
 import type {
+	Memory,
 	ViewCapability,
 	ViewCapabilityParameter,
 	ViewType,
@@ -43,6 +45,7 @@ export interface CurrentViewSummary {
 	viewType: ViewType;
 	action?: string;
 	views?: string[];
+	panes?: ViewPaneSummary[];
 	layout?: string;
 	placement?: string;
 	/** Sub-section the view is focused on (Settings = its section id, e.g. "voice"). */
@@ -56,13 +59,91 @@ export interface CurrentViewSummary {
 	updatedAt: string;
 }
 
+export interface ViewPaneSummary {
+	viewId: string;
+	viewType: ViewType;
+}
+
+export interface ViewNavigationReceipt {
+	accepted: true;
+	delivery: "client-owned" | "delivered" | "pending";
+	revision: number;
+	operationId?: string;
+	operationRevision?: number;
+	deliveryOwner?: "outbox";
+	acknowledged?: true;
+}
+
+/** Active shell state plus the server-owned navigation revision. */
+export interface CurrentViewSnapshot {
+	currentView: CurrentViewSummary | null;
+	revision: number;
+}
+
 function getApiBase(): string {
 	const port = resolveServerOnlyPort(process.env);
 	return `http://127.0.0.1:${port}`;
 }
 
+export function readViewClientId(
+	message: Pick<Memory, "metadata">,
+): string | undefined {
+	const clientId = message.metadata?.clientId;
+	return typeof clientId === "string" && clientId.trim()
+		? clientId.trim()
+		: undefined;
+}
+
+function viewRequestHeaders(clientId?: string): Record<string, string> {
+	return {
+		...createViewsRequestHeaders(),
+		...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+	};
+}
+
 function isObject(v: unknown): v is Record<string, unknown> {
 	return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+function canonicalJson(value: unknown): string {
+	if (value === undefined) return "null";
+	if (value === null || typeof value !== "object") {
+		return JSON.stringify(value) ?? "null";
+	}
+	if (Array.isArray(value)) {
+		return `[${value.map(canonicalJson).join(",")}]`;
+	}
+	const record = value as Record<string, unknown>;
+	return `{${Object.keys(record)
+		.sort()
+		.filter((key) => record[key] !== undefined)
+		.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+		.join(",")}}`;
+}
+
+function createViewOperationId(
+	operationScope: string,
+	viewId: string,
+	opts: Parameters<ViewsClient["navigate"]>[1],
+): string {
+	const descriptor = {
+		operationScope,
+		viewId,
+		path: opts?.path,
+		viewType: opts?.viewType,
+		action: opts?.action,
+		subview: opts?.subview,
+		views: opts?.views,
+		panes: opts?.panes,
+		layout: opts?.layout,
+		placement: opts?.placement,
+		alwaysOnTop: opts?.alwaysOnTop,
+		payload: opts?.payload,
+	};
+	const digest = createHash("sha256")
+		.update(canonicalJson(descriptor))
+		.digest("hex");
+	return `views:${digest}`;
 }
 
 export type ParsedViewInteractionResponse =
@@ -336,6 +417,39 @@ function parseViewList(body: unknown): ViewSummary[] {
 	return views.filter(isObject).map(parseViewSummary);
 }
 
+function parseCurrentViewPanes(value: unknown): ViewPaneSummary[] {
+	if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
+		throw new Error(
+			"Malformed currentView.panes: expected 1 to 16 exact viewId/viewType pairs",
+		);
+	}
+	const panes: ViewPaneSummary[] = [];
+	const identities = new Set<string>();
+	for (const rawPane of value) {
+		if (!isObject(rawPane)) {
+			throw new Error("Malformed currentView.panes: expected pane objects");
+		}
+		const viewId =
+			typeof rawPane.viewId === "string" ? rawPane.viewId.trim() : "";
+		const viewType = rawPane.viewType;
+		if (
+			!viewId ||
+			!(viewType === "gui" || viewType === "tui" || viewType === "xr")
+		) {
+			throw new Error(
+				"Malformed currentView.panes: expected exact viewId/viewType pairs",
+			);
+		}
+		const identity = `${viewType}:${viewId}`;
+		if (identities.has(identity)) {
+			throw new Error("Malformed currentView.panes: duplicate pane identity");
+		}
+		identities.add(identity);
+		panes.push({ viewId, viewType });
+	}
+	return panes;
+}
+
 function parseCurrentView(body: unknown): CurrentViewSummary | null {
 	if (!isObject(body)) {
 		throw new Error("Malformed /api/views/current response: expected object");
@@ -366,6 +480,9 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 				(view): view is string => typeof view === "string",
 			)
 		: undefined;
+	const panes = Object.hasOwn(currentView, "panes")
+		? parseCurrentViewPanes(currentView.panes)
+		: undefined;
 	const layout =
 		typeof currentView.layout === "string" ? currentView.layout : undefined;
 	const placement =
@@ -394,6 +511,7 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		viewType,
 		action,
 		views,
+		panes,
 		layout,
 		placement,
 		subview,
@@ -402,6 +520,37 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 		justSwitched,
 		updatedAt,
 	};
+}
+
+function parseCurrentViewSnapshot(body: unknown): CurrentViewSnapshot {
+	if (!isObject(body)) {
+		throw new Error("Malformed /api/views/current response: expected object");
+	}
+	const revision = body.revision;
+	if (
+		typeof revision !== "number" ||
+		!Number.isSafeInteger(revision) ||
+		revision < 0
+	) {
+		throw new Error("Malformed /api/views/current response: missing revision");
+	}
+	return { currentView: parseCurrentView(body), revision };
+}
+
+/** Read the active view and revision required for conditional navigation. */
+export async function getCurrentViewSnapshot(
+	clientId?: string,
+): Promise<CurrentViewSnapshot> {
+	const response = await fetch(`${getApiBase()}/api/views/current`, {
+		method: "GET",
+		headers: viewRequestHeaders(clientId),
+		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to get current view: HTTP ${response.status}`);
+	}
+	const body: unknown = await response.json();
+	return parseCurrentViewSnapshot(body);
 }
 
 export interface ViewsClient {
@@ -414,16 +563,32 @@ export interface ViewsClient {
 	 * Navigate the active shell to a view. Shared by the VIEWS action's show
 	 * handler and the contextual view evaluator so both go through one loopback
 	 * seam (`POST /api/views/:id/navigate`). Returns true when the shell
-	 * confirmed (or the route is unsupported — a soft success), false on a real
-	 * failure.
+	 * accepted the conditional request. Non-2xx and malformed responses reject;
+	 * callers must never claim navigation when the shell did not accept it.
 	 */
 	navigate(
 		viewId: string,
-		opts?: { path?: string; viewType?: ViewType },
-	): Promise<boolean>;
+		opts?: {
+			path?: string;
+			viewType?: ViewType;
+			expectedRevision?: number;
+			subview?: string;
+			action?: string;
+			views?: string[];
+			panes?: ViewPaneSummary[];
+			layout?: string;
+			placement?: string;
+			alwaysOnTop?: boolean;
+			payload?: unknown;
+		},
+	): Promise<ViewNavigationReceipt>;
 }
 
-export function createViewsClient(): ViewsClient {
+export function createViewsClient(
+	options: { clientId?: string; navigationOperationScope?: string } = {},
+): ViewsClient {
+	const { clientId, navigationOperationScope } = options;
+	let observedRevision: number | undefined;
 	return {
 		async listViews(opts = {}) {
 			const params = new URLSearchParams();
@@ -433,7 +598,7 @@ export function createViewsClient(): ViewsClient {
 			const url = `${getApiBase()}/api/views${qs}`;
 			const response = await fetch(url, {
 				method: "GET",
-				headers: createViewsRequestHeaders(),
+				headers: viewRequestHeaders(clientId),
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
@@ -444,30 +609,124 @@ export function createViewsClient(): ViewsClient {
 		},
 
 		async getCurrentView() {
-			const response = await fetch(`${getApiBase()}/api/views/current`, {
-				method: "GET",
-				headers: createViewsRequestHeaders(),
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-			});
-			if (!response.ok) {
-				throw new Error(`Failed to get current view: HTTP ${response.status}`);
-			}
-			const body: unknown = await response.json();
-			return parseCurrentView(body);
+			const snapshot = await getCurrentViewSnapshot(clientId);
+			observedRevision = snapshot.revision;
+			return snapshot.currentView;
 		},
 
 		async navigate(viewId, opts = {}) {
+			const operationId = navigationOperationScope
+				? createViewOperationId(navigationOperationScope, viewId, opts)
+				: undefined;
+			const expectedRevision =
+				opts.expectedRevision ??
+				observedRevision ??
+				(await getCurrentViewSnapshot(clientId)).revision;
+			observedRevision = undefined;
+			const viewTypeQuery = opts.viewType
+				? `?viewType=${encodeURIComponent(opts.viewType)}`
+				: "";
 			const response = await fetch(
-				`${getApiBase()}/api/views/${encodeURIComponent(viewId)}/navigate`,
+				`${getApiBase()}/api/views/${encodeURIComponent(viewId)}/navigate${viewTypeQuery}`,
 				{
 					method: "POST",
-					headers: createViewsRequestHeaders(),
-					body: JSON.stringify({ path: opts.path, viewType: opts.viewType }),
+					headers: viewRequestHeaders(clientId),
+					body: JSON.stringify({
+						...(operationId ? { operationId, deliveryOwner: "outbox" } : {}),
+						expectedRevision,
+						path: opts.path,
+						action: opts.action,
+						viewType: opts.viewType,
+						subview: opts.subview,
+						views: opts.views,
+						panes: opts.panes,
+						layout: opts.layout,
+						placement: opts.placement,
+						alwaysOnTop: opts.alwaysOnTop,
+						payload: opts.payload,
+						...(clientId ? { clientId } : {}),
+					}),
 					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 				},
 			);
-			// 501/404 = the shell has no navigate route; opening still succeeded.
-			return response.ok || response.status === 501 || response.status === 404;
+			if (!response.ok) {
+				throw new Error(`Failed to navigate view: HTTP ${response.status}`);
+			}
+			let result: unknown;
+			try {
+				result = await response.json();
+			} catch (cause) {
+				// error-policy:J2 preserve the transport parse failure for the action boundary.
+				throw new Error("Malformed view navigation response: invalid JSON", {
+					cause,
+				});
+			}
+			if (!isObject(result) || result.ok !== true || result.accepted !== true) {
+				throw new Error("Malformed view navigation response: not accepted");
+			}
+			const delivery = result.delivery;
+			const revision = result.revision;
+			const resultOperationId = result.operationId;
+			const operationRevision = result.operationRevision;
+			const resultDeliveryOwner = result.deliveryOwner;
+			const acknowledged = result.acknowledged;
+			if (
+				(delivery !== "client-owned" &&
+					delivery !== "delivered" &&
+					delivery !== "pending") ||
+				typeof revision !== "number" ||
+				!Number.isSafeInteger(revision) ||
+				revision < 0
+			) {
+				throw new Error("Malformed view navigation response: invalid receipt");
+			}
+			const hasOperationReceipt =
+				resultDeliveryOwner === "outbox" &&
+				typeof resultOperationId === "string" &&
+				/^[A-Za-z0-9._:-]{1,128}$/.test(resultOperationId) &&
+				typeof operationRevision === "number" &&
+				Number.isSafeInteger(operationRevision) &&
+				operationRevision > 0 &&
+				revision > 0;
+			if (
+				(resultDeliveryOwner !== undefined ||
+					resultOperationId !== undefined ||
+					operationRevision !== undefined) &&
+				!hasOperationReceipt
+			) {
+				throw new Error(
+					"Malformed view navigation response: invalid operation",
+				);
+			}
+			if (
+				acknowledged !== undefined &&
+				(acknowledged !== true || !hasOperationReceipt)
+			) {
+				throw new Error(
+					"Malformed view navigation response: invalid acknowledgement",
+				);
+			}
+			if (
+				operationId &&
+				(!hasOperationReceipt || resultOperationId !== operationId)
+			) {
+				throw new Error(
+					"Malformed view navigation response: missing operation receipt",
+				);
+			}
+			return {
+				accepted: true,
+				delivery,
+				revision,
+				...(hasOperationReceipt
+					? {
+							deliveryOwner: "outbox" as const,
+							operationId: resultOperationId,
+							operationRevision,
+						}
+					: {}),
+				...(acknowledged === true ? { acknowledged: true as const } : {}),
+			};
 		},
 	};
 }

@@ -43,8 +43,10 @@ import {
 } from "@elizaos/shared/views/view-interact-protocol";
 import {
   type ActiveViewElement,
+  type ActiveViewPane,
   clearActiveViewContext,
   getActiveViewContext,
+  resolveVisiblePane,
   setActiveViewContext,
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
@@ -61,6 +63,17 @@ import {
   isDynamicLoadingAllowed,
 } from "./platform-detect.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
+import {
+  acknowledgeViewOperation,
+  appendViewOperation,
+  createViewNavigationOutboxState,
+  hasRetainedViewOperations,
+  listPendingViewOperations,
+  MAX_PENDING_VIEW_OPERATIONS,
+  MAX_VIEW_OPERATION_BYTES,
+  prepareViewOperation,
+  type ViewNavigationOutboxState,
+} from "./view-navigation-outbox.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import {
   findHeroOnDisk,
@@ -84,8 +97,158 @@ function parseViewTypeValue(value: unknown): ViewType | undefined {
     : undefined;
 }
 
+const VIEW_TYPES: readonly ViewType[] = ["gui", "xr", "tui"];
+const VIEW_OPERATION_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
+const OUTBOX_VIEW_ACTIONS = new Set([
+  "pin-tab",
+  "open-window",
+  "close",
+  "close-all",
+  "split-view",
+  "tile-views",
+]);
+
+function parseViewOperationId(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") return null;
+  const operationId = value.trim();
+  return VIEW_OPERATION_ID_RE.test(operationId) ? operationId : null;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .filter((key) => record[key] !== undefined)
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
+}
+
+function serializeViewOperation(payload: ShellNavigateViewPayload): {
+  fingerprint: string;
+  serializedBytes: number;
+} {
+  const serialized = canonicalJson(payload);
+  return {
+    fingerprint: createHash("sha256").update(serialized).digest("hex"),
+    serializedBytes: Buffer.byteLength(serialized, "utf8"),
+  };
+}
+
+function hasExactView(viewId: string, viewType: ViewType): boolean {
+  return getView(viewId, { viewType })?.viewType === viewType;
+}
+
+function getExactRequestedView(
+  viewId: string,
+  viewType: ViewType | undefined,
+): ViewRegistryEntry | undefined {
+  const entry = getView(viewId, { viewType });
+  return viewType === undefined || entry?.viewType === viewType
+    ? entry
+    : undefined;
+}
+
+interface RequestedLayoutPane {
+  viewId: string;
+  viewType: ViewType;
+}
+
+function parseRequestedLayoutPanes(
+  value: unknown,
+): RequestedLayoutPane[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
+    return null;
+  }
+  const panes: RequestedLayoutPane[] = [];
+  const identities = new Set<string>();
+  for (const valuePane of value) {
+    if (
+      !valuePane ||
+      typeof valuePane !== "object" ||
+      Array.isArray(valuePane)
+    ) {
+      return null;
+    }
+    const rawPane = valuePane as Record<string, unknown>;
+    const viewId =
+      typeof rawPane.viewId === "string" ? rawPane.viewId.trim() : "";
+    const viewType = parseViewTypeValue(rawPane.viewType);
+    if (!viewId || !viewType || !hasExactView(viewId, viewType)) return null;
+    const identity = `${viewType}:${viewId}`;
+    if (identities.has(identity)) return null;
+    identities.add(identity);
+    panes.push({ viewId, viewType });
+  }
+  return panes;
+}
+
+/** Resolve a split/tile layout to exact modality-qualified pane identities. */
+function resolveLayoutPanes(
+  primaryViewId: string,
+  primaryViewType: ViewType,
+  viewIds: readonly string[],
+  rawViewTypes: unknown,
+  requestedPanes: readonly RequestedLayoutPane[] | undefined,
+  clientId: string | null,
+): ActiveViewPane[] {
+  if (requestedPanes) {
+    const primaryIdentity = `${primaryViewType}:${primaryViewId}`;
+    const hasPrimary = requestedPanes.some(
+      (pane) => `${pane.viewType}:${pane.viewId}` === primaryIdentity,
+    );
+    if (!hasPrimary) return [];
+    return requestedPanes.map((pane) => ({
+      ...pane,
+      ...(clientId ? { clientId } : {}),
+    }));
+  }
+  const hintedTypes =
+    rawViewTypes &&
+    typeof rawViewTypes === "object" &&
+    !Array.isArray(rawViewTypes)
+      ? (rawViewTypes as Record<string, unknown>)
+      : {};
+  const panes: ActiveViewPane[] = [];
+
+  for (const viewId of viewIds) {
+    let resolvedType: ViewType | undefined;
+    if (viewId === primaryViewId) {
+      resolvedType = primaryViewType;
+    } else {
+      const hinted = parseViewTypeValue(hintedTypes[viewId]);
+      if (hinted && hasExactView(viewId, hinted)) {
+        resolvedType = hinted;
+      } else if (!hinted) {
+        const declaredTypes = VIEW_TYPES.filter((candidate) =>
+          hasExactView(viewId, candidate),
+        );
+        if (declaredTypes.length === 1) resolvedType = declaredTypes[0];
+      }
+    }
+    if (!resolvedType) continue;
+    panes.push({
+      viewId,
+      viewType: resolvedType,
+      ...(clientId ? { clientId } : {}),
+    });
+  }
+  return panes;
+}
+
 /** Hard cap on accepted element reports to bound memory + prompt growth. */
 const MAX_REPORTED_VIEW_ELEMENTS = 200;
+const MAX_REPORTED_ELEMENT_ID_LENGTH = 128;
+const MAX_REPORTED_ELEMENT_ROLE_LENGTH = 64;
+const MAX_REPORTED_ELEMENT_LABEL_LENGTH = 256;
+const MAX_REPORTED_ELEMENT_VALUE_LENGTH = 1_024;
 
 /**
  * Validate + normalize an untrusted element-snapshot body into the strict
@@ -98,14 +261,25 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
-    if (typeof r.id !== "string" || r.id.length === 0) continue;
+    if (typeof r.id !== "string") continue;
+    const id = r.id.trim();
+    if (id.length === 0 || id.length > MAX_REPORTED_ELEMENT_ID_LENGTH) continue;
+    const role =
+      typeof r.role === "string" && r.role.trim().length > 0
+        ? r.role.trim().slice(0, MAX_REPORTED_ELEMENT_ROLE_LENGTH)
+        : "element";
+    const label =
+      typeof r.label === "string" && r.label.trim().length > 0
+        ? r.label.trim().slice(0, MAX_REPORTED_ELEMENT_LABEL_LENGTH)
+        : id;
     const el: ActiveViewElement = {
-      id: r.id,
-      role:
-        typeof r.role === "string" && r.role.length > 0 ? r.role : "element",
-      label: typeof r.label === "string" && r.label.length > 0 ? r.label : r.id,
+      id,
+      role,
+      label,
     };
-    if (typeof r.value === "string") el.value = r.value;
+    if (typeof r.value === "string") {
+      el.value = r.value.slice(0, MAX_REPORTED_ELEMENT_VALUE_LENGTH);
+    }
     if (r.focused === true) el.focused = true;
     out.push(el);
     if (out.length >= MAX_REPORTED_VIEW_ELEMENTS) break;
@@ -207,17 +381,29 @@ const pendingInteractRequests = new PendingRequestMap();
  * result rather than silently succeeding when it is unset.
  */
 let moduleBroadcastWs: ((payload: object) => void) | null = null;
+let moduleBroadcastWsToClientId:
+  | ((clientId: string, payload: object) => number)
+  | null = null;
 
 /** Wire the process WS broadcaster into the views module. Called once at boot. */
 export function setViewsBroadcastWs(
   broadcast: ((payload: object) => void) | null,
+  broadcastToClientId?: ((clientId: string, payload: object) => number) | null,
 ): void {
   moduleBroadcastWs = broadcast;
+  moduleBroadcastWsToClientId = broadcastToClientId ?? null;
 }
 
 /** The wired process WS broadcaster, or null when none is installed. */
 export function getViewsBroadcastWs(): ((payload: object) => void) | null {
   return moduleBroadcastWs;
+}
+
+/** The wired targeted broadcaster, or null when none is installed. */
+export function getViewsBroadcastWsToClientId():
+  | ((clientId: string, payload: object) => number)
+  | null {
+  return moduleBroadcastWsToClientId;
 }
 
 export interface CurrentViewState {
@@ -227,8 +413,11 @@ export interface CurrentViewState {
   viewType: ViewType;
   action?: string;
   views?: string[];
+  /** Typed pane identities retained for unambiguous routing and reconnects. */
+  panes?: Array<Pick<ActiveViewPane, "viewId" | "viewType">>;
   layout?: string;
   placement?: string;
+  alwaysOnTop?: boolean;
   /**
    * Sub-section the view is focused on, when the view has addressable
    * sub-sections (Settings = its section id, e.g. "voice"). Carried so the
@@ -245,6 +434,39 @@ export interface CurrentViewState {
   /** Who initiated the switch: the agent (default) or the user clicking the UI. */
   source?: "agent" | "user";
   updatedAt: string;
+}
+
+function sameViewPanes(
+  left: CurrentViewState["panes"],
+  right: CurrentViewState["panes"],
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return (
+    left.length === right.length &&
+    left.every(
+      (pane, index) =>
+        pane.viewId === right[index]?.viewId &&
+        pane.viewType === right[index]?.viewType,
+    )
+  );
+}
+
+/** Compare the shell destination fields that a reconnect must restore. */
+function sameViewDestination(
+  previous: CurrentViewState | null,
+  next: Omit<CurrentViewState, "switchedAt" | "source" | "updatedAt">,
+): boolean {
+  return (
+    previous?.viewId === next.viewId &&
+    previous.viewType === next.viewType &&
+    previous.viewPath === next.viewPath &&
+    previous.action === next.action &&
+    previous.subview === next.subview &&
+    previous.layout === next.layout &&
+    previous.placement === next.placement &&
+    previous.alwaysOnTop === next.alwaysOnTop &&
+    sameViewPanes(previous.panes, next.panes)
+  );
 }
 
 /**
@@ -265,15 +487,192 @@ export function isViewSwitchFresh(
   return now - t <= VIEW_SWITCH_FRESH_MS;
 }
 
-let currentViewState: CurrentViewState | null = null;
+const DEFAULT_VIEW_STATE_SCOPE = "__default__";
+export const VIEW_SCOPE_IDLE_TTL_MS = 30 * 60_000;
+export const MAX_VIEW_STATE_SCOPES = 256;
+const VIEW_SCOPE_PRUNE_INTERVAL_MS = 60_000;
 
-export function getCurrentViewState(): CurrentViewState | null {
-  return currentViewState;
+interface CurrentViewScopeState {
+  currentView: CurrentViewState | null;
+  revision: number;
+  outbox: ViewNavigationOutboxState;
+  lastAccessedAt: number;
 }
 
-export function clearCurrentViewState(): void {
-  currentViewState = null;
-  clearActiveViewContext();
+const currentViewsByScope = new Map<string, CurrentViewScopeState>();
+const connectedWebSocketViewScopes = new Set<string>();
+let lastViewScopePruneAt = 0;
+
+function viewStateScope(scopeId?: string | null): string {
+  return scopeId?.trim() || DEFAULT_VIEW_STATE_SCOPE;
+}
+
+/** Reclaim REST-only scopes after their inactivity lease. */
+export function pruneIdleCurrentViewScopes(now: number = Date.now()): void {
+  lastViewScopePruneAt = now;
+  for (const [scope, state] of currentViewsByScope) {
+    if (
+      scope !== DEFAULT_VIEW_STATE_SCOPE &&
+      !connectedWebSocketViewScopes.has(scope) &&
+      !hasRetainedViewOperations(state.outbox, now) &&
+      now - state.lastAccessedAt >= VIEW_SCOPE_IDLE_TTL_MS
+    ) {
+      releaseCurrentViewScope(scope);
+    }
+  }
+}
+
+/**
+ * Make room only when a new scope is about to be committed. Reads never evict
+ * another client, and connected scopes are never capacity candidates.
+ */
+function ensureCapacityForNewViewScope(
+  scopeId: string,
+  now: number = Date.now(),
+): boolean {
+  const protectedScope = viewStateScope(scopeId);
+  if (currentViewsByScope.has(protectedScope)) return true;
+  pruneIdleCurrentViewScopes(now);
+  if (currentViewsByScope.size < MAX_VIEW_STATE_SCOPES) return true;
+  const oldest = [...currentViewsByScope.entries()]
+    .filter(
+      ([scope, state]) =>
+        scope !== DEFAULT_VIEW_STATE_SCOPE &&
+        scope !== protectedScope &&
+        !connectedWebSocketViewScopes.has(scope) &&
+        !hasRetainedViewOperations(state.outbox, now),
+    )
+    .sort(([, left], [, right]) => left.lastAccessedAt - right.lastAccessedAt);
+  for (const [scope] of oldest) {
+    if (currentViewsByScope.size < MAX_VIEW_STATE_SCOPES) break;
+    releaseCurrentViewScope(scope);
+  }
+  return currentViewsByScope.size < MAX_VIEW_STATE_SCOPES;
+}
+
+function currentViewScopeState(
+  scopeId?: string | null,
+  now: number = Date.now(),
+): CurrentViewScopeState {
+  if (
+    now < lastViewScopePruneAt ||
+    now - lastViewScopePruneAt >= VIEW_SCOPE_PRUNE_INTERVAL_MS
+  ) {
+    pruneIdleCurrentViewScopes(now);
+  }
+  const existing = currentViewsByScope.get(viewStateScope(scopeId));
+  if (existing) {
+    existing.lastAccessedAt = now;
+    return existing;
+  }
+  return {
+    currentView: null,
+    revision: 0,
+    outbox: createViewNavigationOutboxState(),
+    lastAccessedAt: now,
+  };
+}
+
+function storeCurrentViewScopeState(
+  scopeId: string,
+  state: Pick<CurrentViewScopeState, "currentView" | "revision"> & {
+    outbox?: ViewNavigationOutboxState;
+  },
+): boolean {
+  const scope = viewStateScope(scopeId);
+  if (!ensureCapacityForNewViewScope(scope)) return false;
+  const previous = currentViewsByScope.get(scope);
+  currentViewsByScope.set(scope, {
+    ...state,
+    outbox:
+      state.outbox ?? previous?.outbox ?? createViewNavigationOutboxState(),
+    lastAccessedAt: Date.now(),
+  });
+  return true;
+}
+
+export function getCurrentViewState(
+  scopeId?: string | null,
+): CurrentViewState | null {
+  return currentViewScopeState(scopeId).currentView;
+}
+
+/** Monotonic ownership token for conditional client navigation. */
+export function getCurrentViewRevision(scopeId?: string | null): number {
+  return currentViewScopeState(scopeId).revision;
+}
+
+/** Ordered unacknowledged shell commands for terminal and reconnect recovery. */
+export function getPendingViewOperations(scopeId?: string | null) {
+  return listPendingViewOperations(currentViewScopeState(scopeId).outbox);
+}
+
+function restoreActiveViewContextAfterOperationAck(
+  scopeId: string,
+  currentView: CurrentViewState | null,
+): void {
+  if (!currentView) {
+    clearActiveViewContext(scopeId);
+    return;
+  }
+  const panes = currentView.panes?.map((pane) => ({
+    ...pane,
+    clientId: scopeId,
+  }));
+  setActiveViewContext(
+    {
+      viewId: currentView.viewId,
+      viewLabel: currentView.viewLabel,
+      viewType: currentView.viewType,
+      viewPath: currentView.viewPath,
+      clientId: scopeId,
+      ...(currentView.views ? { viewIds: currentView.views } : {}),
+      ...(panes ? { panes } : {}),
+      ...(currentView.layout ? { layout: currentView.layout } : {}),
+      ...(currentView.placement ? { placement: currentView.placement } : {}),
+      ...(currentView.switchedAt ? { switchedAt: currentView.switchedAt } : {}),
+      ...(currentView.source ? { source: currentView.source } : {}),
+    },
+    scopeId,
+  );
+}
+
+export function clearCurrentViewState(scopeId?: string | null): void {
+  if (scopeId === undefined) {
+    currentViewsByScope.clear();
+    connectedWebSocketViewScopes.clear();
+    lastViewScopePruneAt = 0;
+    clearActiveViewContext();
+    return;
+  }
+  const scope = viewStateScope(scopeId);
+  const previous = currentViewScopeState(scope);
+  storeCurrentViewScopeState(scope, {
+    currentView: null,
+    revision: previous.revision + 1,
+  });
+  clearActiveViewContext(scope);
+}
+
+/** Exclude a live authenticated WebSocket scope from inactivity/capacity reap. */
+export function registerCurrentViewScopeWebSocket(scopeId: string): void {
+  const scope = scopeId.trim();
+  if (scope) connectedWebSocketViewScopes.add(scope);
+}
+
+/** Release a disconnected or expired client scope and its active-view context. */
+export function releaseCurrentViewScope(scopeId: string): void {
+  const scope = scopeId.trim();
+  if (!scope) return;
+  const state = currentViewsByScope.get(scope);
+  if (state && hasRetainedViewOperations(state.outbox)) {
+    connectedWebSocketViewScopes.delete(scope);
+    clearActiveViewContext(scope);
+    return;
+  }
+  currentViewsByScope.delete(scope);
+  connectedWebSocketViewScopes.delete(scope);
+  clearActiveViewContext(scope);
 }
 
 /**
@@ -291,6 +690,8 @@ export interface ViewsRouteContext
   developerMode?: boolean;
   /** Broadcast an arbitrary payload to all connected WebSocket clients. */
   broadcastWs?: (payload: object) => void;
+  /** Count live global recipients without emitting a frame. */
+  broadcastWsRecipientCount?: () => number;
   /** Broadcast a payload only to WebSocket clients bound to one client id. */
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   /** Agent runtime — used by the semantic search endpoint. */
@@ -423,9 +824,18 @@ export async function handleViewsRoutes(
   // current view): true only briefly after a navigate so the `current_view`
   // provider can phrase the just-happened switch as an acknowledgement.
   if (method === "GET" && pathname === `${PREFIX}/current`) {
+    const identity = resolveViewClientIdentity(req, null);
+    if (identity.error) {
+      error(res, identity.error, 400);
+      return true;
+    }
+    const scopeId = identity.clientId;
+    const currentView = getCurrentViewState(scopeId);
     json(res, {
-      currentView: currentViewState,
-      justSwitched: isViewSwitchFresh(currentViewState),
+      currentView,
+      justSwitched: isViewSwitchFresh(currentView),
+      revision: getCurrentViewRevision(scopeId),
+      pendingOperations: getPendingViewOperations(scopeId),
     });
     return true;
   }
@@ -483,9 +893,96 @@ export async function handleViewsRoutes(
   }
   if (!id) return false;
 
+  // ── POST /api/views/operations/:operationId/ack ─────────────────────────
+  if (
+    method === "POST" &&
+    id === "operations" &&
+    subResource.endsWith("/ack")
+  ) {
+    const rawOperationId = subResource.slice(0, -"/ack".length);
+    let decodedOperationId: string;
+    try {
+      decodedOperationId = decodeURIComponent(rawOperationId);
+    } catch {
+      // error-policy:J3 malformed URL input is rejected as an explicit client error.
+      error(res, "Malformed view operation id", 400);
+      return true;
+    }
+    const operationId = parseViewOperationId(decodedOperationId);
+    if (!operationId) {
+      error(res, "Malformed view operation id", 400);
+      return true;
+    }
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const expectedOperationRevision = body.expectedOperationRevision;
+    if (
+      typeof expectedOperationRevision !== "number" ||
+      !Number.isSafeInteger(expectedOperationRevision) ||
+      expectedOperationRevision <= 0
+    ) {
+      error(
+        res,
+        'Invalid "expectedOperationRevision"; expected a positive integer',
+        400,
+      );
+      return true;
+    }
+    const identity = resolveViewClientIdentity(req, body);
+    if (identity.error) {
+      error(res, identity.error, 400);
+      return true;
+    }
+    if (!identity.clientId) {
+      error(res, "View operation acknowledgement requires a client id", 400);
+      return true;
+    }
+    const scopeState = currentViewScopeState(identity.clientId);
+    const result = acknowledgeViewOperation(
+      scopeState.outbox,
+      operationId,
+      expectedOperationRevision,
+    );
+    if (result.kind === "unknown") {
+      error(res, `View operation "${operationId}" not found`, 404);
+      return true;
+    }
+    if (result.kind === "conflict") {
+      error(res, `View operation "${operationId}" revision conflict`, 409);
+      return true;
+    }
+    if (result.kind === "full") {
+      error(
+        res,
+        "View operation acknowledgement retention is full; retry later",
+        503,
+      );
+      return true;
+    }
+    if (result.kind === "acked") {
+      storeCurrentViewScopeState(identity.clientId, {
+        currentView: scopeState.currentView,
+        revision: scopeState.revision,
+        outbox: result.state,
+      });
+      restoreActiveViewContextAfterOperationAck(
+        identity.clientId,
+        scopeState.currentView,
+      );
+    }
+    json(res, {
+      ok: true,
+      acked: true,
+      alreadyAcked: result.kind === "already-acked",
+      operationId: result.operationId,
+      operationRevision: result.operationRevision,
+    });
+    return true;
+  }
+
   if (method === "GET" && subResource === "") {
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -508,7 +1005,7 @@ export async function handleViewsRoutes(
     }
 
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -648,7 +1145,7 @@ export async function handleViewsRoutes(
     }
 
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -768,7 +1265,7 @@ export async function handleViewsRoutes(
     }
 
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -862,7 +1359,7 @@ export async function handleViewsRoutes(
   // ── GET /api/views/:id/hero ───────────────────────────────────────────────
   if (method === "GET" && subResource === "hero") {
     const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -889,7 +1386,7 @@ export async function handleViewsRoutes(
   }
 
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
-  // Broadcasts a shell:navigate:view WebSocket event to all connected clients.
+  // Sends a shell:navigate:view event to the owning client scope.
   // The frontend's startup-phase-hydrate WS handler dispatches eliza:navigate:view
   // on window when it receives this message, which App.tsx handles.
   //
@@ -901,19 +1398,101 @@ export async function handleViewsRoutes(
   //   action: "split-view" — asks the shell to split multiple views
   //   action: "tile-views" — asks the shell to tile multiple views
   //   views: string[]      — view ids participating in split/tile actions
+  //   viewTypes: object    — optional view-id -> modality hints for layout panes
   //   layout: string       — split/tile layout hint: horizontal, vertical, grid
   //   placement: string    — optional split placement hint: left/right/top/bottom
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   //   payload: unknown     — opaque deep-link state consumed by the target view
+  //   expectedRevision: number — compare-and-set token for agent navigation
+  //   rehydrate: true      — restore client-owned state without an event echo
   if (method === "POST" && subResource === "navigate") {
-    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
-    );
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const identity = resolveViewClientIdentity(req, body);
+    if (identity.error) {
+      error(res, identity.error, 400);
+      return true;
+    }
+    const requestedClientId = identity.clientId;
+    const scopeId = requestedClientId ?? DEFAULT_VIEW_STATE_SCOPE;
+    const initialScopeState = currentViewScopeState(scopeId);
+    let currentViewState = initialScopeState.currentView;
+    let currentViewRevision = initialScopeState.revision;
+    const previousActiveViewContext = getActiveViewContext(scopeId);
     const viewType =
-      parseViewTypeValue(body?.viewType) ??
+      parseViewTypeValue(body.viewType) ??
       parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const rawExpectedRevision = body?.expectedRevision;
+    if (
+      rawExpectedRevision !== undefined &&
+      (typeof rawExpectedRevision !== "number" ||
+        !Number.isSafeInteger(rawExpectedRevision) ||
+        rawExpectedRevision < 0)
+    ) {
+      error(
+        res,
+        'Invalid "expectedRevision"; expected a non-negative integer',
+        400,
+      );
+      return true;
+    }
+    const isShellRehydrate = body.rehydrate === true;
+    const reportedSource =
+      body.source === "user" || isShellRehydrate ? "user" : "agent";
+    const deliveryOwner = body.deliveryOwner;
+    if (deliveryOwner !== undefined && deliveryOwner !== "outbox") {
+      error(res, 'Invalid "deliveryOwner"; expected "outbox"', 400);
+      return true;
+    }
+    const operationId = parseViewOperationId(body.operationId);
+    if (operationId === null) {
+      error(res, "Malformed view operation id", 400);
+      return true;
+    }
+    const usesOutbox = deliveryOwner === "outbox";
+    if (usesOutbox && !operationId) {
+      error(res, 'Missing "operationId" for outbox-owned navigation', 400);
+      return true;
+    }
+    if (!usesOutbox && operationId !== undefined) {
+      error(res, '"operationId" requires deliveryOwner="outbox"', 400);
+      return true;
+    }
+    if (usesOutbox && reportedSource !== "agent") {
+      error(res, "Only agent-owned navigation may use the outbox", 400);
+      return true;
+    }
+    if (usesOutbox && id.length > 128) {
+      error(res, "Outbox view id exceeds the 128-character limit", 400);
+      return true;
+    }
+    if (reportedSource === "agent" && rawExpectedRevision === undefined) {
+      error(res, 'Missing "expectedRevision" for agent-owned navigation', 400);
+      return true;
+    }
+    if (reportedSource === "user" && !requestedClientId) {
+      error(
+        res,
+        "User-owned navigation and rehydration require X-ElizaOS-Client-Id",
+        400,
+      );
+      return true;
+    }
+    if (isShellRehydrate && rawExpectedRevision === undefined) {
+      error(res, 'Missing "expectedRevision" for shell rehydration', 400);
+      return true;
+    }
+    if (reportedSource === "agent" && !requestedClientId) {
+      error(res, "Agent-owned navigation requires X-ElizaOS-Client-Id", 400);
+      return true;
+    }
+    const entry = getExactRequestedView(id, viewType);
+    if (viewType !== undefined && getView(id) && !entry) {
+      error(res, `View "${id}" does not support viewType "${viewType}"`, 404);
+      return true;
+    }
+    const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
     const viewPath =
@@ -922,12 +1501,19 @@ export async function handleViewsRoutes(
       (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
     const action = typeof body?.action === "string" ? body.action : undefined;
+    if (
+      usesOutbox &&
+      action !== undefined &&
+      !OUTBOX_VIEW_ACTIONS.has(action)
+    ) {
+      error(res, `Unsupported outbox view action "${action}"`, 400);
+      return true;
+    }
     // `source` distinguishes an agent-initiated switch (the default) from a user
     // manually clicking a tab/tile/slash-command, which the client *reports* with
     // `source: "user"`. A user-reported switch must NOT re-broadcast
     // the shell navigation WS event (the client already navigated locally) — that would
     // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
-    const reportedSource = body?.source === "user" ? "user" : "agent";
     const subview =
       typeof body?.subview === "string" && body.subview.trim().length > 0
         ? body.subview.trim()
@@ -935,12 +1521,71 @@ export async function handleViewsRoutes(
           ? body.section.trim()
           : undefined;
     const alwaysOnTop = body?.alwaysOnTop === true;
-    const layoutViews = Array.isArray(body?.views)
-      ? body.views.filter(
-          (value): value is string =>
-            typeof value === "string" && value.trim().length > 0,
+    const requestedLayoutViews = Array.isArray(body.views)
+      ? body.views.flatMap((value) => {
+          if (typeof value !== "string") return [];
+          const normalized = value.trim();
+          return normalized ? [normalized] : [];
+        })
+      : undefined;
+    if (
+      usesOutbox &&
+      body.views !== undefined &&
+      (!Array.isArray(body.views) ||
+        body.views.length === 0 ||
+        body.views.length > 16 ||
+        body.views.some(
+          (value) =>
+            typeof value !== "string" ||
+            value.trim().length === 0 ||
+            value.trim().length > 128,
+        ))
+    ) {
+      error(res, "Malformed outbox navigation views", 400);
+      return true;
+    }
+    const requestedLayoutPanes = parseRequestedLayoutPanes(body.panes);
+    if (requestedLayoutPanes === null) {
+      error(
+        res,
+        'Invalid "panes"; expected exact registered viewId/viewType pairs',
+        400,
+      );
+      return true;
+    }
+    const layoutViews = requestedLayoutPanes
+      ? requestedLayoutPanes.map((pane) => pane.viewId)
+      : requestedLayoutViews && requestedLayoutViews.length > 0
+        ? [...new Set([id, ...requestedLayoutViews])]
+        : undefined;
+    const layoutPanes = layoutViews
+      ? resolveLayoutPanes(
+          id,
+          resolvedViewType,
+          layoutViews,
+          body.viewTypes,
+          requestedLayoutPanes,
+          requestedClientId,
         )
       : undefined;
+    if (layoutViews && layoutPanes?.length !== layoutViews.length) {
+      const resolvedPaneIds = new Set(
+        layoutPanes?.map(({ viewId }) => viewId) ?? [],
+      );
+      const unresolvedViewIds = layoutViews.filter(
+        (viewId) => !resolvedPaneIds.has(viewId),
+      );
+      error(
+        res,
+        `Cannot resolve an exact view type for layout pane${unresolvedViewIds.length === 1 ? "" : "s"}: ${unresolvedViewIds.join(", ")}. Supply a valid viewTypes hint for every ambiguous pane.`,
+        400,
+      );
+      return true;
+    }
+    const layoutStatePanes = layoutPanes?.map(({ viewId, viewType }) => ({
+      viewId,
+      viewType,
+    }));
     const layout =
       typeof body?.layout === "string" && body.layout.trim().length > 0
         ? body.layout.trim()
@@ -957,32 +1602,276 @@ export async function handleViewsRoutes(
       ...(placement ? { placement } : {}),
     };
     const deepLinkPayload = payload !== undefined ? { payload } : {};
+    const isCloseNavigation = action === "close" || action === "close-all";
+
+    if (
+      usesOutbox &&
+      ((action === "close-all" && id !== "__all__") ||
+        ((action === "split-view" || action === "tile-views") &&
+          !layoutStatePanes))
+    ) {
+      error(res, "Malformed outbox navigation topology", 400);
+      return true;
+    }
+
+    // Validate any surviving pane before capacity changes or shell delivery.
+    // The commit path repeats the lookup only to materialize the next state.
+    if (isCloseNavigation && action !== "close-all" && id !== "__all__") {
+      const visiblePanes =
+        currentViewState?.panes ??
+        (currentViewState
+          ? [
+              {
+                viewId: currentViewState.viewId,
+                viewType: currentViewState.viewType,
+              },
+            ]
+          : []);
+      const remainingPanes = visiblePanes.filter(
+        (pane) => !(pane.viewId === id && pane.viewType === resolvedViewType),
+      );
+      const closesVisiblePane = remainingPanes.length !== visiblePanes.length;
+      if (closesVisiblePane && remainingPanes.length > 0) {
+        const focusedPane =
+          remainingPanes.find(
+            (pane) =>
+              pane.viewId === currentViewState?.viewId &&
+              pane.viewType === currentViewState.viewType,
+          ) ?? remainingPanes[0];
+        if (!getExactRequestedView(focusedPane.viewId, focusedPane.viewType)) {
+          error(
+            res,
+            `Cannot retain remaining view "${focusedPane.viewId}" after closing "${id}"`,
+            409,
+          );
+          return true;
+        }
+      }
+    }
+
+    const navigatePayload: ShellNavigateViewPayload = {
+      ...(usesOutbox ? { deliveryOwner: "outbox" as const } : {}),
+      viewId: id,
+      viewPath,
+      viewLabel,
+      viewType: resolvedViewType,
+      source: reportedSource,
+      ...(action ? { action } : {}),
+      ...(subview ? { subview } : {}),
+      ...(alwaysOnTop ? { alwaysOnTop } : {}),
+      ...(layoutStatePanes ? { panes: layoutStatePanes } : {}),
+      ...layoutPayload,
+      ...deepLinkPayload,
+    };
+    const serializedOperation = usesOutbox
+      ? serializeViewOperation(navigatePayload)
+      : undefined;
+    let preparedOutboxState = initialScopeState.outbox;
+    if (usesOutbox && operationId && serializedOperation) {
+      const prepared = prepareViewOperation(
+        initialScopeState.outbox,
+        operationId,
+        serializedOperation.fingerprint,
+        serializedOperation.serializedBytes,
+      );
+      if (prepared.kind === "retry" || prepared.kind === "acknowledged-retry") {
+        json(res, {
+          ok: true,
+          accepted: true,
+          delivery:
+            prepared.kind === "acknowledged-retry" ? "client-owned" : "pending",
+          acknowledged: prepared.kind === "acknowledged-retry",
+          ...prepared.operation,
+        });
+        return true;
+      }
+      if (prepared.kind === "conflict") {
+        error(
+          res,
+          `View operation "${operationId}" conflicts with an existing operation`,
+          409,
+        );
+        return true;
+      }
+      if (prepared.kind === "too-large") {
+        error(
+          res,
+          `View operation exceeds the ${MAX_VIEW_OPERATION_BYTES}-byte limit`,
+          413,
+        );
+        return true;
+      }
+      if (prepared.kind === "full") {
+        error(
+          res,
+          `View operation outbox is full (${MAX_PENDING_VIEW_OPERATIONS} unacknowledged operations)`,
+          503,
+        );
+        return true;
+      }
+      preparedOutboxState = prepared.state;
+    }
+    if (
+      (reportedSource === "agent" || isShellRehydrate) &&
+      typeof rawExpectedRevision === "number" &&
+      rawExpectedRevision !== currentViewRevision
+    ) {
+      json(
+        res,
+        {
+          ok: false,
+          conflict: true,
+          currentView: currentViewState,
+          revision: currentViewRevision,
+        },
+        409,
+      );
+      return true;
+    }
+    if (!ensureCapacityForNewViewScope(scopeId)) {
+      error(
+        res,
+        "View state capacity is occupied by connected clients; retry after a client disconnects",
+        503,
+      );
+      return true;
+    }
+    let delivery: "client-owned" | "delivered" | "pending" =
+      reportedSource === "user" ? "client-owned" : "pending";
 
     logger.info(
       { src: "ViewsRoutes", viewId: id, viewPath, action, subview },
       `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}${subview ? ` (subview=${subview})` : ""}`,
     );
 
-    const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
-    // Closing a view must NOT stamp it (or the synthetic "__all__" close-all id)
-    // as the active view: that left the planner upweighting a dismissed view's
-    // scoped actions and made "what view am I on" report a closed view forever.
-    // Clear the active-view context on close instead; the next real navigation
-    // re-stamps it.
-    const isCloseNavigation = action === "close" || action === "close-all";
     if (isCloseNavigation) {
-      clearCurrentViewState();
+      const closesEveryView = action === "close-all" || id === "__all__";
+      const visiblePanes =
+        currentViewState?.panes ??
+        (currentViewState
+          ? [
+              {
+                viewId: currentViewState.viewId,
+                viewType: currentViewState.viewType,
+              },
+            ]
+          : []);
+      const remainingPanes = closesEveryView
+        ? []
+        : visiblePanes.filter(
+            (pane) =>
+              !(pane.viewId === id && pane.viewType === resolvedViewType),
+          );
+      const closesVisibleView = remainingPanes.length !== visiblePanes.length;
+      const remainingViewIds = remainingPanes.map((pane) => pane.viewId);
+
+      if (!closesEveryView && !closesVisibleView) {
+        currentViewRevision = getCurrentViewRevision(scopeId);
+      } else if (remainingViewIds.length === 0) {
+        clearCurrentViewState(scopeId);
+        currentViewState = null;
+        currentViewRevision = getCurrentViewRevision(scopeId);
+      } else {
+        const focusedPane =
+          remainingPanes.find(
+            (pane) =>
+              pane.viewId === currentViewState?.viewId &&
+              pane.viewType === currentViewState.viewType,
+          ) ?? remainingPanes[0];
+        const focusedEntry = getExactRequestedView(
+          focusedPane.viewId,
+          focusedPane.viewType,
+        );
+        if (!focusedEntry) {
+          error(
+            res,
+            `Cannot retain remaining view "${focusedPane.viewId}" after closing "${id}"`,
+            409,
+          );
+          return true;
+        }
+        const remainingActivePanes = remainingPanes.map((pane) => {
+          const mounted = resolveVisiblePane(
+            pane.viewId,
+            previousActiveViewContext,
+            pane.viewType,
+          );
+          return {
+            ...pane,
+            ...(mounted?.clientId
+              ? { clientId: mounted.clientId }
+              : requestedClientId
+                ? { clientId: requestedClientId }
+                : {}),
+            ...(mounted?.elements ? { elements: mounted.elements } : {}),
+          };
+        });
+        const focusedMountedPane = resolveVisiblePane(
+          focusedPane.viewId,
+          previousActiveViewContext,
+          focusedPane.viewType,
+        );
+        const now = new Date().toISOString();
+        const remainsLayout = remainingPanes.length > 1;
+        currentViewState = {
+          viewId: focusedEntry.id,
+          viewPath: focusedEntry.path ?? null,
+          viewLabel: focusedEntry.label,
+          viewType: focusedEntry.viewType,
+          ...(remainsLayout && currentViewState?.action
+            ? { action: currentViewState.action }
+            : {}),
+          ...(remainsLayout ? { views: remainingViewIds } : {}),
+          ...(remainsLayout ? { panes: remainingPanes } : {}),
+          ...(remainsLayout && currentViewState?.layout
+            ? { layout: currentViewState.layout }
+            : {}),
+          ...(remainsLayout && currentViewState?.placement
+            ? { placement: currentViewState.placement }
+            : {}),
+          switchedAt: now,
+          source: reportedSource,
+          updatedAt: now,
+        };
+        currentViewRevision += 1;
+        storeCurrentViewScopeState(scopeId, {
+          currentView: currentViewState,
+          revision: currentViewRevision,
+        });
+        setActiveViewContext(
+          {
+            viewId: focusedEntry.id,
+            viewLabel: focusedEntry.label,
+            viewType: focusedEntry.viewType,
+            viewPath: focusedEntry.path ?? null,
+            ...(requestedClientId ? { clientId: requestedClientId } : {}),
+            ...(remainsLayout ? { viewIds: remainingViewIds } : {}),
+            ...(remainsLayout && remainingActivePanes.length
+              ? { panes: remainingActivePanes }
+              : {}),
+            ...(focusedMountedPane?.elements
+              ? { elements: focusedMountedPane.elements }
+              : {}),
+            ...(remainsLayout && currentViewState.layout
+              ? { layout: currentViewState.layout }
+              : {}),
+            ...(remainsLayout && currentViewState.placement
+              ? { placement: currentViewState.placement }
+              : {}),
+            switchedAt: now,
+            source: reportedSource,
+          },
+          scopeId,
+        );
+      }
     } else {
       const now = new Date().toISOString();
       const source = reportedSource;
-      // Stamp `switchedAt` only when the view actually changes; a re-navigate to
-      // the same view should not re-trigger an acknowledgement.
+      // Stamp `switchedAt` only when the exact view identity changes; a
+      // re-navigate to the same id and modality must not re-trigger an
+      // acknowledgement.
       const previousViewId = currentViewState?.viewId ?? null;
-      const viewChanged = previousViewId !== id;
-      const switchedAt = viewChanged
-        ? now
-        : (currentViewState?.switchedAt ?? now);
-      currentViewState = {
+      const nextDestination = {
         viewId: id,
         viewPath,
         viewLabel,
@@ -991,25 +1880,74 @@ export async function handleViewsRoutes(
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
+        ...(layoutStatePanes ? { panes: layoutStatePanes } : {}),
+      } satisfies Omit<CurrentViewState, "switchedAt" | "source" | "updatedAt">;
+      const destinationChanged = !sameViewDestination(
+        currentViewState,
+        nextDestination,
+      );
+      const primaryViewChanged =
+        previousViewId !== id ||
+        currentViewState?.viewType !== resolvedViewType;
+      const switchedAt = destinationChanged
+        ? now
+        : (currentViewState?.switchedAt ?? now);
+      currentViewState = {
+        ...nextDestination,
         switchedAt,
         source,
         updatedAt: now,
       };
+      currentViewRevision += 1;
+      storeCurrentViewScopeState(scopeId, {
+        currentView: currentViewState,
+        revision: currentViewRevision,
+      });
+      const previousFocusedPane = resolveVisiblePane(
+        id,
+        previousActiveViewContext,
+        resolvedViewType,
+      );
+      const activeLayoutPanes = layoutPanes?.map((pane) => {
+        const mounted = resolveVisiblePane(
+          pane.viewId,
+          previousActiveViewContext,
+          pane.viewType,
+        );
+        return {
+          ...pane,
+          ...(mounted?.clientId && !pane.clientId
+            ? { clientId: mounted.clientId }
+            : {}),
+          ...(mounted?.elements ? { elements: mounted.elements } : {}),
+        };
+      });
       // Publish to the prompt-optimization layer so the planner upweights this
       // view's scoped actions while it is on screen.
-      setActiveViewContext({
-        viewId: id,
-        viewLabel,
-        viewType: resolvedViewType,
-        viewPath,
-        // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
-        ...(switchedAt ? { switchedAt } : {}),
-        ...(source ? { source } : {}),
-      });
+      setActiveViewContext(
+        {
+          viewId: id,
+          viewLabel,
+          viewType: resolvedViewType,
+          viewPath,
+          ...(requestedClientId ? { clientId: requestedClientId } : {}),
+          ...(layoutViews ? { viewIds: layoutViews } : {}),
+          ...(activeLayoutPanes ? { panes: activeLayoutPanes } : {}),
+          ...(previousFocusedPane?.elements
+            ? { elements: previousFocusedPane.elements }
+            : {}),
+          ...(layout ? { layout } : {}),
+          ...(placement ? { placement } : {}),
+          // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
+          ...(switchedAt ? { switchedAt } : {}),
+          ...(source ? { source } : {}),
+        },
+        scopeId,
+      );
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
-      if (viewChanged && ctx.runtime) {
+      if (primaryViewChanged && ctx.runtime && !isShellRehydrate) {
         void ctx.runtime
           .emitEvent(EventType.VIEW_SWITCHED, {
             runtime: ctx.runtime,
@@ -1037,32 +1975,71 @@ export async function handleViewsRoutes(
       }
     }
 
-    // Skip the echo for user-reported switches (the client already navigated).
-    if (reportedSource !== "user") {
-      const navigatePayload: ShellNavigateViewPayload = {
-        viewId: id,
-        viewPath,
-        viewLabel,
-        viewType: resolvedViewType,
-        ...(action ? { action } : {}),
-        ...(subview ? { subview } : {}),
-        ...(alwaysOnTop ? { alwaysOnTop } : {}),
-        ...layoutPayload,
-        ...deepLinkPayload,
-      };
-      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
+    // An accepted outbox command needs its own positive current-state revision
+    // even when the destination is already absent (for example, a repeated
+    // close). The renderer uses that revision to reject malformed envelopes,
+    // while operationRevision independently preserves edge ordering.
+    if (usesOutbox && currentViewRevision === initialScopeState.revision) {
+      currentViewRevision += 1;
+      storeCurrentViewScopeState(scopeId, {
+        currentView: currentViewState,
+        revision: currentViewRevision,
+      });
+    }
+
+    let pendingOperation:
+      | ReturnType<typeof listPendingViewOperations>[number]
+      | undefined;
+    if (usesOutbox && operationId && serializedOperation) {
+      const appended = appendViewOperation(preparedOutboxState, {
+        operationId,
+        fingerprint: serializedOperation.fingerprint,
+        serializedBytes: serializedOperation.serializedBytes,
+        revision: currentViewRevision,
+        payload: navigatePayload,
+      });
+      pendingOperation = appended.operation;
+      storeCurrentViewScopeState(scopeId, {
+        currentView: currentViewState,
+        revision: currentViewRevision,
+        outbox: appended.state,
+      });
+    }
+
+    if (reportedSource === "agent") {
+      const frame = createShellNavigateViewWsFrame(
+        pendingOperation ?? {
+          ...navigatePayload,
+          revision: currentViewRevision,
+        },
+      );
+      ctx.broadcastWsToClientId?.(scopeId, frame);
+      // Socket send only enqueues bytes. Renderer acknowledgement is the sole
+      // proof of application, so agent navigation remains pending here.
+      delivery = "pending";
     }
 
     json(res, {
       ok: true,
+      accepted: true,
+      delivery,
+      ...(pendingOperation
+        ? {
+            deliveryOwner: "outbox",
+            operationId: pendingOperation.operationId,
+            operationRevision: pendingOperation.operationRevision,
+          }
+        : {}),
       viewId: id,
       viewPath,
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
       ...(subview ? { subview } : {}),
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
+      ...(layoutStatePanes ? { panes: layoutStatePanes } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      revision: currentViewRevision,
     });
     return true;
   }
@@ -1076,12 +2053,25 @@ export async function handleViewsRoutes(
   // overwrite the foreground view's elements (accepted=false when it doesn't
   // match — the report is simply dropped).
   if (method === "POST" && subResource === "elements") {
-    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const identity = resolveViewClientIdentity(req, body);
+    if (identity.error) {
+      error(res, identity.error, 400);
+      return true;
+    }
+    const elements = normalizeActiveViewElements(body.elements);
+    const clientId = identity.clientId;
+    const viewType =
+      parseViewTypeValue(body.viewType) ??
+      parseViewTypeParam(url.searchParams.get("viewType"));
+    const accepted = setActiveViewElements(
+      id,
+      elements,
+      clientId,
+      viewType,
+      clientId ?? DEFAULT_VIEW_STATE_SCOPE,
     );
-    const elements = normalizeActiveViewElements(body?.elements);
-    const clientId = resolveViewInteractClientId(req, body);
-    const accepted = setActiveViewElements(id, elements, clientId);
     json(res, { ok: true, viewId: id, accepted, count: elements.length });
     return true;
   }
@@ -1105,6 +2095,11 @@ export async function handleViewsRoutes(
   if (method === "POST" && subResource === "activate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    const identity = resolveViewClientIdentity(req, body);
+    if (identity.error) {
+      error(res, identity.error, 400);
+      return true;
+    }
 
     const elementId =
       typeof body.elementId === "string" && body.elementId.length > 0
@@ -1118,7 +2113,7 @@ export async function handleViewsRoutes(
     const viewType =
       parseViewTypeValue(body.viewType) ??
       parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -1127,11 +2122,13 @@ export async function handleViewsRoutes(
     // Resolve the element from the active-view snapshot for context (the planner
     // reports it via /:id/elements). Only used when this view is the foreground
     // active view; absent otherwise — the click still dispatches by id.
-    const active = getActiveViewContext();
-    const element =
-      active?.viewId === id
-        ? active.elements?.find((el) => el.id === elementId)
-        : undefined;
+    const requestClientId = identity.clientId;
+    const active = getActiveViewContext(requestClientId);
+    const element = resolveVisiblePane(
+      id,
+      active,
+      entry.viewType,
+    )?.elements?.find((candidate) => candidate.id === elementId);
 
     const capability = STANDARD_CAPABILITIES.CLICK_ELEMENT;
     const params: Record<string, unknown> = { elementId, id: elementId };
@@ -1144,7 +2141,7 @@ export async function handleViewsRoutes(
     const dispatch = await dispatchViewInteract(entry, id, capability, params, {
       broadcastWs: ctx.broadcastWs,
       broadcastWsToClientId: ctx.broadcastWsToClientId,
-      clientId: resolveTargetViewClientId(id, req, body),
+      clientId: resolveTargetViewClientId(id, entry.viewType, requestClientId),
       runtime: ctx.runtime ?? undefined,
     });
 
@@ -1194,11 +2191,16 @@ export async function handleViewsRoutes(
 
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+    const identity = resolveViewClientIdentity(req, body);
+    if (identity.error) {
+      error(res, identity.error, 400);
+      return true;
+    }
 
     const viewType =
       parseViewTypeValue(body.viewType) ??
       parseViewTypeParam(url.searchParams.get("viewType"));
-    const entry = getView(id, { viewType });
+    const entry = getExactRequestedView(id, viewType);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -1255,8 +2257,10 @@ export async function handleViewsRoutes(
 
     if (typeof entry.serverInteract === "function") {
       try {
+        const clientId = identity.clientId;
         const result = await entry.serverInteract(capability, params, {
           runtime: ctx.runtime ?? undefined,
+          clientId: clientId ?? undefined,
         });
         ctx.broadcastWs?.({
           type: "view:event",
@@ -1290,7 +2294,11 @@ export async function handleViewsRoutes(
 
     // Register the pending slot before broadcasting — avoids a race where the
     // frontend responds before we start waiting.
-    const targetClientId = resolveTargetViewClientId(id, req, body);
+    const targetClientId = resolveTargetViewClientId(
+      id,
+      entry.viewType,
+      identity.clientId,
+    );
     const frame = {
       type: "view:interact",
       viewId: id,
@@ -1402,6 +2410,7 @@ export async function dispatchViewInteract(
     try {
       const result = await entry.serverInteract(capability, params, {
         runtime: transport.runtime,
+        clientId: transport.clientId ?? undefined,
       });
       transport.broadcastWs?.({
         type: "view:event",
@@ -1480,26 +2489,59 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
   return value ?? null;
 }
 
-function resolveViewInteractClientId(
+interface ResolvedViewClientIdentity {
+  clientId: string | null;
+  error?: string;
+}
+
+function resolveViewClientIdentity(
   req: Pick<http.IncomingMessage, "headers">,
   body: Record<string, unknown> | null | undefined,
-): string | null {
-  return (
-    normalizeWsClientId(firstHeaderValue(req.headers["x-elizaos-client-id"])) ??
-    normalizeWsClientId(firstHeaderValue(req.headers["x-eliza-client-id"])) ??
-    normalizeWsClientId(body?.clientId)
-  );
+): ResolvedViewClientIdentity {
+  const headers = req.headers ?? {};
+  const rawPrimary = firstHeaderValue(headers["x-elizaos-client-id"]);
+  const rawLegacy = firstHeaderValue(headers["x-eliza-client-id"]);
+  const primary = normalizeWsClientId(rawPrimary);
+  const legacy = normalizeWsClientId(rawLegacy);
+  if (rawPrimary !== null && !primary) {
+    return { clientId: null, error: "Invalid X-ElizaOS-Client-Id header" };
+  }
+  if (rawLegacy !== null && !legacy) {
+    return { clientId: null, error: "Invalid X-Eliza-Client-Id header" };
+  }
+  if (primary && legacy && primary !== legacy) {
+    return { clientId: null, error: "View client-id headers must match" };
+  }
+
+  const rawBodyClientId = body?.clientId;
+  const bodyClientId = normalizeWsClientId(rawBodyClientId);
+  if (rawBodyClientId !== undefined && !bodyClientId) {
+    return { clientId: null, error: "Invalid clientId in request body" };
+  }
+  const headerClientId = primary ?? legacy;
+  if (headerClientId && bodyClientId && headerClientId !== bodyClientId) {
+    return {
+      clientId: null,
+      error: "Header and body view client ids must match",
+    };
+  }
+  if (!headerClientId && bodyClientId) {
+    return {
+      clientId: null,
+      error: "Provide clientId through X-ElizaOS-Client-Id",
+    };
+  }
+  return { clientId: headerClientId ?? null };
 }
 
 function resolveTargetViewClientId(
   viewId: string,
-  req: Pick<http.IncomingMessage, "headers">,
-  body: Record<string, unknown> | null | undefined,
+  viewType: ViewType,
+  explicit: string | null,
 ): string | null {
-  const explicit = resolveViewInteractClientId(req, body);
-  const active = getActiveViewContext();
+  const active = getActiveViewContext(explicit ?? DEFAULT_VIEW_STATE_SCOPE);
   const mountedOwner =
-    active?.viewId === viewId ? (active.clientId ?? null) : null;
+    resolveVisiblePane(viewId, active, viewType)?.clientId ?? null;
   if (!mountedOwner) return explicit;
   return !explicit || explicit === mountedOwner ? mountedOwner : null;
 }

@@ -20,6 +20,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { getCatalogCommands } from "@elizaos/plugin-commands";
+import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import { getCurrentViewState } from "./views-routes.js";
 
 const VALID_SURFACES: ReadonlySet<string> = new Set([
@@ -45,7 +46,7 @@ export interface CommandsRouteContext {
 export async function handleCommandsRoutes(
   ctx: CommandsRouteContext,
 ): Promise<boolean> {
-  const { res, method, pathname, url, json, error, runtime } = ctx;
+  const { req, res, method, pathname, url, json, error, runtime } = ctx;
   if (pathname !== "/api/commands") return false;
   if (method !== "GET") {
     error(res, "Method not allowed", 405);
@@ -62,7 +63,15 @@ export async function handleCommandsRoutes(
   // Prefer an explicit ?view= (the client knows what it is rendering), else fall
   // back to the agent's server-side current view.
   const activeViewId =
-    url.searchParams.get("view") ?? getCurrentViewState()?.viewId ?? null;
+    url.searchParams.get("view") ??
+    getCurrentViewState(
+      normalizeWsClientId(
+        Array.isArray(req.headers?.["x-elizaos-client-id"])
+          ? req.headers["x-elizaos-client-id"][0]
+          : req.headers?.["x-elizaos-client-id"],
+      ),
+    )?.viewId ??
+    null;
 
   // Absent `?surface=` defaults to the web composer's surface (its historical
   // consumer); an explicit surface filters to exactly that surface's commands.

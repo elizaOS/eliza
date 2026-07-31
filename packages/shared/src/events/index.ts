@@ -204,7 +204,18 @@ export const SHELL_NAVIGATE_VIEW_WS_EVENT = "shell:navigate:view" as const;
 
 export type ShellNavigateViewType = "gui" | "tui" | "xr";
 
+export interface ShellNavigateViewPane {
+  viewId: string;
+  viewType: ShellNavigateViewType;
+}
+
 export interface ShellNavigateViewPayload {
+  /** Reliable renderer outbox owns delivery until the client acknowledges it. */
+  deliveryOwner?: "outbox";
+  /** Stable caller-minted identity shared by WS, chat terminal, and recovery. */
+  operationId?: string;
+  /** Per-client outbox order, independent of current-view CAS revisions. */
+  operationRevision?: number;
   viewId?: string;
   viewPath?: string | null;
   viewLabel?: string;
@@ -212,9 +223,15 @@ export interface ShellNavigateViewPayload {
   action?: string;
   subview?: string;
   views?: string[];
+  /** Exact modality for every visible pane in a split or tiled layout. */
+  panes?: ShellNavigateViewPane[];
   layout?: string;
   placement?: string;
   alwaysOnTop?: boolean;
+  /** Origin of the navigation, retained through transport for echo handling. */
+  source?: "agent" | "user";
+  /** Per-client monotonic server revision committed for this destination. */
+  revision?: number;
   /** Opaque target-view deep-link state, validated by the receiving view. */
   payload?: unknown;
 }
@@ -233,6 +250,95 @@ function readViewType(value: unknown): ShellNavigateViewType | undefined {
     : undefined;
 }
 
+function normalizeShellNavigationOperation(data: Record<string, unknown>): {
+  deliveryOwner?: "outbox";
+  operationId?: string;
+  operationRevision?: number;
+} {
+  const hasOperationId = Object.hasOwn(data, "operationId");
+  const hasOperationRevision = Object.hasOwn(data, "operationRevision");
+  const hasDeliveryOwner = Object.hasOwn(data, "deliveryOwner");
+  if (!hasOperationId && !hasOperationRevision && !hasDeliveryOwner) return {};
+  const operationId = data.operationId;
+  const operationRevision = data.operationRevision;
+  const viewId = data.viewId;
+  const viewType = data.viewType;
+  const revision = data.revision;
+  const action = data.action;
+  if (
+    data.deliveryOwner !== "outbox" ||
+    typeof operationId !== "string" ||
+    !/^[A-Za-z0-9._:-]{1,128}$/.test(operationId) ||
+    typeof operationRevision !== "number" ||
+    !Number.isSafeInteger(operationRevision) ||
+    operationRevision <= 0 ||
+    typeof viewId !== "string" ||
+    viewId.length === 0 ||
+    viewId.length > 128 ||
+    readViewType(viewType) === undefined ||
+    typeof revision !== "number" ||
+    !Number.isSafeInteger(revision) ||
+    revision <= 0 ||
+    !(
+      action === undefined ||
+      action === "pin-tab" ||
+      action === "open-window" ||
+      action === "close" ||
+      action === "close-all" ||
+      action === "split-view" ||
+      action === "tile-views"
+    ) ||
+    (action === "close-all" && viewId !== "__all__") ||
+    ((action === "split-view" || action === "tile-views") &&
+      !Object.hasOwn(data, "panes"))
+  ) {
+    throw new Error(
+      "Malformed shell navigation operation: expected an exact operationId/operationRevision pair",
+    );
+  }
+  return { deliveryOwner: "outbox", operationId, operationRevision };
+}
+
+function normalizeShellNavigateViewPanes(
+  value: unknown,
+): ShellNavigateViewPane[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 16) {
+    throw new Error(
+      "Malformed shell navigation panes: expected 1 to 16 exact viewId/viewType pairs",
+    );
+  }
+  const panes: ShellNavigateViewPane[] = [];
+  const identities = new Set<string>();
+  for (const valuePane of value) {
+    if (
+      !valuePane ||
+      typeof valuePane !== "object" ||
+      Array.isArray(valuePane)
+    ) {
+      throw new Error(
+        "Malformed shell navigation panes: expected pane objects",
+      );
+    }
+    const pane = valuePane as Record<string, unknown>;
+    const viewId = typeof pane.viewId === "string" ? pane.viewId.trim() : "";
+    const viewType = readViewType(pane.viewType);
+    if (!viewId || !viewType) {
+      throw new Error(
+        "Malformed shell navigation panes: expected exact viewId/viewType pairs",
+      );
+    }
+    const identity = `${viewType}:${viewId}`;
+    if (identities.has(identity)) {
+      throw new Error(
+        "Malformed shell navigation panes: duplicate pane identity",
+      );
+    }
+    identities.add(identity);
+    panes.push({ viewId, viewType });
+  }
+  return panes;
+}
+
 export function normalizeShellNavigateViewPayload(
   data: Record<string, unknown>,
 ): ShellNavigateViewPayload {
@@ -242,8 +348,13 @@ export function normalizeShellNavigateViewPayload(
           typeof value === "string" && value.length > 0,
       )
     : undefined;
+  const panes = Object.hasOwn(data, "panes")
+    ? normalizeShellNavigateViewPanes(data.panes)
+    : undefined;
+  const operation = normalizeShellNavigationOperation(data);
 
   return {
+    ...operation,
     viewId: typeof data.viewId === "string" ? data.viewId : undefined,
     viewPath: typeof data.viewPath === "string" ? data.viewPath : undefined,
     viewLabel: typeof data.viewLabel === "string" ? data.viewLabel : undefined,
@@ -251,9 +362,20 @@ export function normalizeShellNavigateViewPayload(
     action: typeof data.action === "string" ? data.action : undefined,
     subview: readNonEmptyString(data.subview),
     views: views && views.length > 0 ? views : undefined,
+    panes: panes && panes.length > 0 ? panes : undefined,
     layout: readNonEmptyString(data.layout),
     placement: readNonEmptyString(data.placement),
     alwaysOnTop: data.alwaysOnTop === true,
+    source:
+      data.source === "agent" || data.source === "user"
+        ? data.source
+        : undefined,
+    revision:
+      typeof data.revision === "number" &&
+      Number.isSafeInteger(data.revision) &&
+      data.revision >= 0
+        ? data.revision
+        : undefined,
     ...(Object.hasOwn(data, "payload") ? { payload: data.payload } : {}),
   };
 }

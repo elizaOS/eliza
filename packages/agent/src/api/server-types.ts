@@ -192,6 +192,8 @@ export interface ServerState {
   broadcastStatus: (() => void) | null;
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
   broadcastWs: ((data: object) => void) | null;
+  /** Count currently open generic WebSocket recipients without sending. */
+  broadcastWsRecipientCount: (() => number) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
   broadcastWsToClientId: ((clientId: string, data: object) => number) | null;
   /**

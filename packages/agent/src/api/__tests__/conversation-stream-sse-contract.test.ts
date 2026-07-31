@@ -846,6 +846,59 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
   });
 
+  it("scopes processing to the request client without persisting that transport identity", async () => {
+    const processedMessages: Memory[] = [];
+    const messageService: NonNullable<AgentRuntime["messageService"]> = {
+      async handleMessage(_runtime, message) {
+        processedMessages.push(message);
+        return {
+          didRespond: true,
+          responseContent: { text: "Scoped response." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "client-scope-contract-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const { ctx } = createCtx(messageService);
+    ctx.req.headers["x-elizaos-client-id"] = " shell-client-a ";
+
+    await handleConversationRoutes(ctx);
+
+    expect(processedMessages[0]?.metadata?.clientId).toBe("shell-client-a");
+    expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+    const persisted = vi.mocked(persistConversationMemory).mock.calls[0]?.[1];
+    expect(persisted?.metadata?.clientId).toBeUndefined();
+  });
+
+  it.each([
+    ["stream", "/api/conversations/conv-1/messages/stream"],
+    ["json", "/api/conversations/conv-1/messages"],
+  ])(
+    "rejects a present malformed renderer identity before the %s turn has side effects",
+    async (_mode, pathname) => {
+      const { ctx, record, state, useModel } = createCtx();
+      ctx.pathname = pathname;
+      ctx.req.url = pathname;
+      ctx.req.headers["x-elizaos-client-id"] = "renderer id with spaces";
+
+      await handleConversationRoutes(ctx);
+
+      expect(record.headers["Content-Type"]).toBeUndefined();
+      expect(record.writes.join("")).toContain(
+        "error 400: Invalid X-ElizaOS-Client-Id header",
+      );
+      expect(persistConversationMemory).not.toHaveBeenCalled();
+      expect(useModel).not.toHaveBeenCalled();
+      expect(state.runtime?.ensureConnection).not.toHaveBeenCalled();
+    },
+  );
+
   it("awaits connection reconciliation before persistence and generation", async () => {
     const fixture = createCtx();
     const runtime = fixture.state.runtime;

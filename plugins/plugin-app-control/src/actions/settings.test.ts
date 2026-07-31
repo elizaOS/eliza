@@ -52,7 +52,26 @@ async function invoke(
 	options: Record<string, unknown>,
 	routeFetch?: SettingsRouteFetch,
 ) {
-	const action = createSettingsAction(routeFetch ? { routeFetch } : {});
+	const action = createSettingsAction(
+		routeFetch
+			? {
+					routeFetch,
+					navigateSettingsPermissions: async ({ permission }) =>
+						(
+							await routeFetch({
+								method: "POST",
+								path: "/api/views/settings/navigate",
+								body: {
+									path: "/settings",
+									subview: "permissions",
+									source: "settings-action",
+									payload: { permissionRequest: { permission } },
+								},
+							})
+						).ok,
+				}
+			: {},
+	);
 	const { cb, texts } = makeCallback();
 	const result = await action.handler(
 		runtime,

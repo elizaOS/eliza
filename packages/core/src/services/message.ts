@@ -359,6 +359,24 @@ export {
 	inferWebSearchQueryFromMessageText,
 };
 
+/**
+ * Remove request-transport routing identity from the database/embedding copy.
+ * The live turn retains it for scoped providers and actions, but it must never
+ * become durable conversation history.
+ */
+function stripTransientRoutingMetadataForPersistence(message: Memory): Memory {
+	const persistableMessage = stripAugmentationForPersistence(message);
+	if (
+		!persistableMessage.metadata ||
+		!Object.hasOwn(persistableMessage.metadata, "clientId")
+	) {
+		return persistableMessage;
+	}
+	const metadata = { ...persistableMessage.metadata };
+	delete metadata.clientId;
+	return { ...persistableMessage, metadata };
+}
+
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 
 /**
@@ -10389,6 +10407,10 @@ export class DefaultMessageService implements IMessageService {
 			traceId,
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
+			...(typeof message.metadata?.clientId === "string" &&
+			message.metadata.clientId.trim().length > 0
+				? { clientId: message.metadata.clientId.trim() }
+				: {}),
 			messageId: message.id,
 			turnMemo: new Map<string, Promise<unknown>>(),
 		};
@@ -10980,7 +11002,8 @@ export class DefaultMessageService implements IMessageService {
 			// wrapper XML back into the user's chat bubble or re-enter context as
 			// history on later turns. `message` (used downstream this turn) keeps its
 			// wrap.
-			const persistableMessage = stripAugmentationForPersistence(message);
+			const persistableMessage =
+				stripTransientRoutingMetadataForPersistence(message);
 
 			if (message.id) {
 				const createdMemoryId = await runtime.createMemory(

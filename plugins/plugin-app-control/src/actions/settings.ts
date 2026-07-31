@@ -51,6 +51,7 @@ import {
 	SETTINGS_SECTION_META,
 } from "@elizaos/ui/components/settings/settings-section-meta";
 import { normalizeActionOptions, readStringOption } from "../params.js";
+import { createViewsClient, readViewClientId } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 /** The three verbs SETTINGS understands. */
@@ -80,6 +81,11 @@ export type SettingsRouteFetch = (
 	request: SettingsRouteRequest,
 ) => Promise<SettingsRouteOutcome>;
 
+export type SettingsPermissionNavigator = (args: {
+	permission: PermissionId;
+	clientId?: string;
+}) => Promise<boolean>;
+
 /**
  * A single writable key on an owned (`route`) section: how to parse the value,
  * how to turn it into a backend request, and how to narrate success. Kept per
@@ -100,6 +106,8 @@ export interface SettingsWritableKey {
 		keyName: string;
 		request: SettingsRequest;
 		routeFetch: SettingsRouteFetch;
+		navigateSettingsPermissions: SettingsPermissionNavigator;
+		clientId?: string;
 		value: boolean | null;
 	}) => Promise<SettingsRouteOutcome>;
 	/** Confirmation text once the route returns ok. */
@@ -268,7 +276,13 @@ const PERMISSIONS_REQUEST_KEY: SettingsWritableKey = {
 	description:
 		"Request an OS/system permission by id or alias. Use key=request permission=<id>, or key=mic|camera|location|notifications|screen-recording.",
 	valueType: "command",
-	apply: async ({ keyName, request, routeFetch }) => {
+	apply: async ({
+		keyName,
+		request,
+		routeFetch,
+		navigateSettingsPermissions,
+		clientId,
+	}) => {
 		const permission = resolveSystemPermissionId(
 			keyName === "request"
 				? (request.permission ?? request.value)
@@ -297,17 +311,7 @@ const PERMISSIONS_REQUEST_KEY: SettingsWritableKey = {
 
 		let handoff = false;
 		if (isPermissionStateNeedingHandoff(requestOutcome.data)) {
-			const handoffOutcome = await routeFetch({
-				method: "POST",
-				path: "/api/views/settings/navigate",
-				body: {
-					path: "/settings",
-					subview: "permissions",
-					source: "settings-action",
-					payload: { permissionRequest: { permission } },
-				},
-			});
-			handoff = handoffOutcome.ok;
+			handoff = await navigateSettingsPermissions({ permission, clientId });
 		}
 
 		return {
@@ -1758,6 +1762,22 @@ async function defaultRouteFetch(
 
 export interface SettingsActionDeps {
 	routeFetch?: SettingsRouteFetch;
+	navigateSettingsPermissions?: SettingsPermissionNavigator;
+}
+
+async function defaultNavigateSettingsPermissions({
+	permission,
+	clientId,
+}: {
+	permission: PermissionId;
+	clientId?: string;
+}): Promise<boolean> {
+	const receipt = await createViewsClient({ clientId }).navigate("settings", {
+		path: "/settings",
+		subview: "permissions",
+		payload: { permissionRequest: { permission } },
+	});
+	return receipt.accepted;
 }
 
 /** Machine-readable capability list for `action=list`. */
@@ -1801,6 +1821,8 @@ function narrateList(listing: SettingsSectionListing[]): string {
 async function handleSet(
 	request: SettingsRequest,
 	routeFetch: SettingsRouteFetch,
+	navigateSettingsPermissions: SettingsPermissionNavigator,
+	clientId: string | undefined,
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
 	if (!request.sectionId) {
@@ -1880,6 +1902,8 @@ async function handleSet(
 				keyName,
 				request,
 				routeFetch,
+				navigateSettingsPermissions,
+				clientId,
 				value: parsedValue,
 			})
 		: writable.buildRequest && parsedValue !== null
@@ -1953,6 +1977,8 @@ function handleGet(
 
 export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 	const routeFetch = deps.routeFetch ?? defaultRouteFetch;
+	const navigateSettingsPermissions =
+		deps.navigateSettingsPermissions ?? defaultNavigateSettingsPermissions;
 
 	return {
 		name: "SETTINGS",
@@ -2179,7 +2205,13 @@ export function createSettingsAction(deps: SettingsActionDeps = {}): Action {
 				return handleGet(request, callback);
 			}
 
-			return handleSet(request, routeFetch, callback);
+			return handleSet(
+				request,
+				routeFetch,
+				navigateSettingsPermissions,
+				readViewClientId(_message),
+				callback,
+			);
 		},
 	};
 }

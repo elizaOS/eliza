@@ -14,17 +14,16 @@ import type {
 	Memory,
 	ViewType,
 } from "@elizaos/core";
-import {
-	getUserMessageText,
-	logger,
-	resolveServerOnlyPort,
-} from "@elizaos/core";
+import { getUserMessageText, logger } from "@elizaos/core";
 import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
 import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
-import type { ViewSummary, ViewsClient } from "./views-client.js";
-import { createViewsRequestHeaders } from "./views-request-auth.js";
+import type {
+	ViewNavigationReceipt,
+	ViewSummary,
+	ViewsClient,
+} from "./views-client.js";
 import { scoreView } from "./views-search.js";
 
 const SHOW_VERBS = [
@@ -335,8 +334,27 @@ function resolveRegisteredNotesView(
 interface NavigateResult {
 	ok: boolean;
 	text: string;
+	delivery?: ViewNavigationReceipt["delivery"];
+	revision?: number;
+	operationId?: string;
+	operationRevision?: number;
+	deliveryOwner?: "outbox";
+	acknowledged?: true;
 	/** Resolved sub-section the renderer was asked to focus (settings only). */
 	subview?: string;
+}
+
+function navigationReceiptFields(result: NavigateResult) {
+	return {
+		...(result.delivery ? { delivery: result.delivery } : {}),
+		...(result.revision !== undefined ? { revision: result.revision } : {}),
+		...(result.operationId ? { operationId: result.operationId } : {}),
+		...(result.deliveryOwner ? { deliveryOwner: result.deliveryOwner } : {}),
+		...(result.operationRevision !== undefined
+			? { operationRevision: result.operationRevision }
+			: {}),
+		...(result.acknowledged ? { acknowledged: true } : {}),
+	};
 }
 
 /**
@@ -360,55 +378,43 @@ function resolveSubviewForView(
 }
 
 async function navigateToView(
+	client: ViewsClient,
 	view: ViewSummary,
 	requestedViewType?: ViewType,
 	subview?: string,
 	navigationLabel = view.label,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
-	// A 501/404 means this shell doesn't implement the navigate route — opening
-	// the view still counts as a soft success (the user can click through). A
-	// real transport failure (other non-2xx, network, timeout) is NOT success:
-	// reporting "Switched to X" when nothing happened misleads the user and the
-	// chain's verifiedUserFacing logic.
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
+	// A scoped offline renderer can durably accept the request for reconnect, but
+	// the transcript must distinguish that pending handoff from visible delivery.
 	const resolvedSubview = resolveSubviewForView(view, subview);
 
 	try {
-		const resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(view.id)}/navigate${requestedViewType ? `?viewType=${requestedViewType}` : ""}`,
-			{
-				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({
-					path: view.path,
-					viewType: requestedViewType,
-					...(resolvedSubview ? { subview: resolvedSubview } : {}),
-				}),
-				signal: AbortSignal.timeout(5_000),
-			},
-		);
 		const sectionSuffix = resolvedSubview ? ` — ${resolvedSubview}` : "";
 		const openedText = `Opened ${navigationLabel}${sectionSuffix}.`;
-		if (resp.ok)
-			return {
-				ok: true,
-				text: openedText,
-				subview: resolvedSubview,
-			};
-		// 501/404 = navigation route unsupported by this shell; opening succeeds.
-		if (resp.status === 501 || resp.status === 404)
-			return {
-				ok: true,
-				text: openedText,
-				subview: resolvedSubview,
-			};
-
-		const body = await resp.text().catch(() => "");
-		logger.warn(
-			`[plugin-app-control] VIEWS/show navigate returned ${resp.status}: ${body}`,
-		);
+		const receipt = await client.navigate(view.id, {
+			path: view.path,
+			viewType: requestedViewType,
+			subview: resolvedSubview,
+		});
+		return {
+			ok: true,
+			delivery: receipt.delivery,
+			revision: receipt.revision,
+			...(receipt.operationId ? { operationId: receipt.operationId } : {}),
+			...(receipt.deliveryOwner
+				? { deliveryOwner: receipt.deliveryOwner }
+				: {}),
+			...(receipt.operationRevision !== undefined
+				? { operationRevision: receipt.operationRevision }
+				: {}),
+			...(receipt.acknowledged ? { acknowledged: true } : {}),
+			text:
+				receipt.delivery === "pending"
+					? `Opening ${navigationLabel}${sectionSuffix} when your app reconnects.`
+					: openedText,
+			subview: resolvedSubview,
+		};
 	} catch (err) {
 		logger.warn(
 			`[plugin-app-control] VIEWS/show navigate failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -503,6 +509,7 @@ export async function runViewsShow({
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;
 	const result = await navigateToView(
+		client,
 		view,
 		viewType,
 		subview ?? undefined,
@@ -537,7 +544,12 @@ export async function runViewsShow({
 			viewType: view.viewType ?? viewType ?? "gui",
 			label: navigationLabel,
 			...(result.subview ? { subview: result.subview } : {}),
+			...navigationReceiptFields(result),
 		},
-		data: { view, ...(result.subview ? { subview: result.subview } : {}) },
+		data: {
+			view,
+			...(result.subview ? { subview: result.subview } : {}),
+			...navigationReceiptFields(result),
+		},
 	};
 }

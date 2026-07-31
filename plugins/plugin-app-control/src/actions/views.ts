@@ -30,7 +30,9 @@ import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
+	readViewClientId,
 	readViewInteractionReceipt,
+	type ViewNavigationReceipt,
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
@@ -74,6 +76,8 @@ export type ViewsMode =
 	| "window"
 	| "split"
 	| "tile";
+
+const VIEW_MODALITIES: readonly ViewType[] = ["gui", "tui", "xr"];
 
 // Connectors that deliver the agent's turn over an EXTERNAL chat surface which
 // does NOT render Eliza desktop views to the person who sent the message. On
@@ -848,6 +852,20 @@ function capabilityCandidates(
 		);
 }
 
+async function listAllViewModalities(
+	client: ViewsClient,
+): Promise<ViewSummary[]> {
+	const projections = await Promise.all(
+		VIEW_MODALITIES.map((viewType) => client.listViews({ viewType })),
+	);
+	const byIdentity = new Map<string, ViewSummary>();
+	for (const view of projections.flat()) {
+		const viewType = view.viewType ?? "gui";
+		byIdentity.set(`${viewType}:${view.id}`, { ...view, viewType });
+	}
+	return [...byIdentity.values()];
+}
+
 function resolveViewTarget(
 	target: string | null,
 	views: readonly ViewSummary[],
@@ -962,12 +980,14 @@ function resolveViewCapability({
 	options,
 	viewType,
 	currentViewId,
+	currentViewType,
 }: {
 	views: readonly ViewSummary[];
 	text: string;
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	currentViewId?: string | null;
+	currentViewType?: ViewType | null;
 }): ResolvedViewCapability | null {
 	const explicitCapability = readStringOption(options, "capability");
 	const explicitAction =
@@ -985,7 +1005,11 @@ function resolveViewCapability({
 	// foregrounded (#17299).
 	const currentView = requestedTarget
 		? null
-		: (views.find((view) => view.id === currentViewId) ?? null);
+		: (views.find(
+				(view) =>
+					view.id === currentViewId &&
+					(!currentViewType || view.viewType === currentViewType),
+			) ?? null);
 	const candidates = capabilityCandidates(views, viewType);
 
 	if (explicitCapability) {
@@ -997,7 +1021,9 @@ function resolveViewCapability({
 		);
 		if (requestedView && exactCandidates[0]) return exactCandidates[0];
 		const currentExact = exactCandidates.find(
-			(candidate) => candidate.view.id === currentView?.id,
+			(candidate) =>
+				candidate.view.id === currentView?.id &&
+				candidate.view.viewType === currentView?.viewType,
 		);
 		if (currentExact) return currentExact;
 		if (exactCandidates.length === 1) return exactCandidates[0];
@@ -1031,7 +1057,12 @@ function resolveViewCapability({
 
 		let score = 0;
 		if (requestedView?.id === candidate.view.id) score += 5;
-		if (currentViewId === candidate.view.id) score += 2;
+		if (
+			currentViewId === candidate.view.id &&
+			(!currentViewType || currentViewType === candidate.view.viewType)
+		) {
+			score += 2;
+		}
 		score += countIntersection(sourceTokens, vTokens) * 2;
 		score += countIntersection(sourceTokens, cTokens);
 		if (sourceOperation && capOperation === sourceOperation) score += 4;
@@ -1621,13 +1652,13 @@ function resolveLayoutTargets(
 		}
 	}
 
-	const explicitUnique = uniqueByViewId(explicitResolved);
-	const textUnique = uniqueByViewId(textResolved);
+	const explicitUnique = uniqueByViewIdentity(explicitResolved);
+	const textUnique = uniqueByViewIdentity(textResolved);
 	return textUnique.length >= 2
 		? textUnique
 		: textUnique.length === 1 && explicitUnique.length <= 1
 			? textUnique
-			: uniqueByViewId([...explicitUnique, ...textUnique]);
+			: uniqueByViewIdentity([...explicitUnique, ...textUnique]);
 }
 
 function isLayoutOnlyFollowupRequest(
@@ -1689,10 +1720,16 @@ async function resolveSingleShellTargetView({
 	return { kind: "none" };
 }
 
-function uniqueByViewId(views: readonly ViewSummary[]): ViewSummary[] {
-	const byId = new Map<string, ViewSummary>();
-	for (const view of views) byId.set(view.id, view);
-	return [...byId.values()];
+function viewIdentityKey(viewId: string, viewType: ViewType): string {
+	return `${viewId}\u0000${viewType}`;
+}
+
+function uniqueByViewIdentity(views: readonly ViewSummary[]): ViewSummary[] {
+	const byIdentity = new Map<string, ViewSummary>();
+	for (const view of views) {
+		byIdentity.set(viewIdentityKey(view.id, view.viewType ?? "gui"), view);
+	}
+	return [...byIdentity.values()];
 }
 
 function readLayoutValue(
@@ -1802,22 +1839,44 @@ async function completeSplitTargetsFromCurrentLayout({
 }): Promise<ViewSummary[]> {
 	// error-policy:J4 current-view read over loopback; unreachable -> null -> no layout completion
 	const currentView = await client.getCurrentView().catch(() => null);
-	const currentLayoutIds = currentView?.views ?? [];
-	const byId = new Map(views.map((view) => [view.id, view]));
-	if (currentLayoutIds.some((viewId) => !byId.has(viewId))) {
+	const currentLayoutPanes =
+		currentView?.panes ??
+		(currentView?.views ?? []).map((viewId) => ({
+			viewId,
+			viewType:
+				viewId === currentView?.viewId
+					? (currentView.viewType ?? "gui")
+					: "gui",
+		}));
+	const byIdentity = new Map(
+		views.map((view) => [
+			viewIdentityKey(view.id, view.viewType ?? "gui"),
+			view,
+		]),
+	);
+	if (
+		currentLayoutPanes.some(
+			(pane) => !byIdentity.has(viewIdentityKey(pane.viewId, pane.viewType)),
+		)
+	) {
 		const unfilteredViews = await client.listViews().catch(() => []);
-		for (const view of unfilteredViews) byId.set(view.id, view);
+		for (const view of unfilteredViews) {
+			byIdentity.set(viewIdentityKey(view.id, view.viewType ?? "gui"), view);
+		}
 	}
-	const currentTargets = currentLayoutIds.map((viewId) => {
-		const summary = byId.get(viewId);
+	const currentTargets = currentLayoutPanes.map((pane) => {
+		const summary = byIdentity.get(viewIdentityKey(pane.viewId, pane.viewType));
 		if (summary) return summary;
 		return {
-			id: viewId,
-			label: viewId === currentView?.viewId ? currentView.viewLabel : viewId,
+			id: pane.viewId,
+			label:
+				pane.viewId === currentView?.viewId
+					? currentView.viewLabel
+					: pane.viewId,
 			available: true,
 			pluginName: "current-layout",
-			viewType: currentView?.viewType ?? "gui",
-			...(viewId === currentView?.viewId && currentView.viewPath
+			viewType: pane.viewType,
+			...(pane.viewId === currentView?.viewId && currentView.viewPath
 				? { path: currentView.viewPath }
 				: {}),
 		};
@@ -1843,6 +1902,7 @@ async function runViewsClose({
 	const text = message.content.text ?? "";
 	if (isCloseAllRequest(text, options)) {
 		const result = await navigateViewWithShellAction(
+			client,
 			"__all__",
 			"close-all",
 			"Closed all views.",
@@ -1852,8 +1912,18 @@ async function runViewsClose({
 		return {
 			success: result.ok,
 			text: result.text,
-			values: { mode: "close", scope: "all" },
-			data: { viewId: "__all__", action: "close-all" },
+			values: {
+				mode: "close",
+				scope: "all",
+				viewId: "__all__",
+				viewType: "gui",
+				...shellNavigationReceiptFields(result),
+			},
+			data: {
+				viewId: "__all__",
+				action: "close-all",
+				...shellNavigationReceiptFields(result),
+			},
 		};
 	}
 
@@ -1899,6 +1969,7 @@ async function runViewsClose({
 	}
 
 	const result = await navigateViewWithShellAction(
+		client,
 		viewId,
 		"close",
 		`Closed ${label ?? viewId}.`,
@@ -1914,8 +1985,14 @@ async function runViewsClose({
 			viewId,
 			viewType: resolvedViewType ?? "gui",
 			label: label ?? viewId,
+			...shellNavigationReceiptFields(result),
 		},
-		data: { viewId, viewType: resolvedViewType ?? "gui", action: "close" },
+		data: {
+			viewId,
+			viewType: resolvedViewType ?? "gui",
+			action: "close",
+			...shellNavigationReceiptFields(result),
+		},
 	};
 }
 
@@ -1983,10 +2060,17 @@ async function runViewsLayout({
 	const resolvedViewType = layoutOnlyFollowup
 		? (primary.viewType ?? viewType)
 		: (viewType ?? primary.viewType);
+	const panes = targets.map((view) => ({
+		viewId: view.id,
+		viewType: view.viewType ?? "gui",
+	}));
+	const primaryViewType = resolvedViewType ?? "gui";
 	const result = await navigateViewLayout({
+		client,
 		viewId: primary.id,
 		action,
 		viewIds,
+		panes,
 		layout,
 		placement,
 		viewType: resolvedViewType === "gui" ? undefined : resolvedViewType,
@@ -2008,16 +2092,24 @@ async function runViewsLayout({
 		continueChain: false,
 		values: {
 			mode,
+			viewId: primary.id,
+			viewType: primaryViewType,
+			action,
 			viewIds,
+			panes,
 			layout,
 			...(placement ? { placement } : {}),
+			...shellNavigationReceiptFields(result),
 		},
 		data: {
 			viewId: primary.id,
+			viewType: primaryViewType,
 			viewIds,
+			panes,
 			action,
 			layout,
 			...(placement ? { placement } : {}),
+			...shellNavigationReceiptFields(result),
 		},
 	};
 }
@@ -2042,7 +2134,13 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 }
 
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
-	const clientFactory = () => deps.client ?? createViewsClient();
+	const clientFactory = (
+		clientId?: string,
+		navigationOperationScope?: string,
+	): ViewsClient => ({
+		...createViewsClient({ clientId, navigationOperationScope }),
+		...deps.client,
+	});
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
 	const getRepoRoot = () => deps.repoRoot ?? defaultRepoRoot();
 
@@ -2512,7 +2610,8 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		): Promise<ActionResult> => {
 			const run = async (): Promise<ActionResult> => {
 				const actionOptions = normalizeActionOptions(options);
-				const client = clientFactory();
+				const clientId = readViewClientId(message);
+				const client = clientFactory(clientId, message.id);
 				const text = message.content.text ?? "";
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
@@ -2561,6 +2660,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 				let effectiveMode = mode;
 				let prefetchedViews: ViewSummary[] | null = null;
+				let prefetchedCapabilityViews: ViewSummary[] | null = null;
 				let prefetchedCurrentView:
 					| Awaited<ReturnType<ViewsClient["getCurrentView"]>>
 					| null
@@ -2569,6 +2669,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				const getViews = async () => {
 					prefetchedViews ??= await client.listViews();
 					return prefetchedViews;
+				};
+				const getCapabilityViews = async () => {
+					prefetchedCapabilityViews ??= await listAllViewModalities(client);
+					return prefetchedCapabilityViews;
 				};
 				const getCurrentView = async () => {
 					// error-policy:J4 current-view read over loopback; unreachable -> null -> resolver degrades to no current-view context
@@ -2589,7 +2693,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				if (shouldResolveModeAsCapability(effectiveMode, text, actionOptions)) {
-					const views = await getViews().catch(() => []);
+					const views = await getCapabilityViews();
 					const currentView = await getCurrentView();
 					forcedResolvedCapability = resolveViewCapability({
 						views,
@@ -2597,6 +2701,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						options: actionOptions,
 						viewType,
 						currentViewId: currentView?.viewId,
+						currentViewType: currentView?.viewType,
 					});
 					if (forcedResolvedCapability) {
 						effectiveMode = "interact";
@@ -2662,6 +2767,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							available: true,
 						};
 						const result = await navigateToPath(
+							client,
 							managerView.path,
 							managerView.label,
 						);
@@ -2669,8 +2775,16 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						return {
 							success: result.ok,
 							text: result.text,
-							values: { mode: "manager" },
-							data: { view: managerView },
+							values: {
+								mode: "manager",
+								viewId: managerView.id,
+								viewType: "gui",
+								...shellNavigationReceiptFields(result),
+							},
+							data: {
+								view: managerView,
+								...shellNavigationReceiptFields(result),
+							},
 						};
 					}
 
@@ -2705,7 +2819,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						let viewId = readCatalogViewTargetOption(actionOptions);
 						let capability = readStringOption(actionOptions, "capability");
 						let resolvedViewType = viewType;
-						const views = await getViews().catch(() => []);
+						const views = await getCapabilityViews();
 						if (!viewId && /\bcurrent\b/i.test(text)) {
 							const currentView = await getCurrentView();
 							viewId = currentView?.viewId ?? null;
@@ -2735,6 +2849,8 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										options: actionOptions,
 										viewType,
 										currentViewId: viewId ?? currentViewForResolution?.viewId,
+										currentViewType:
+											resolvedViewType ?? currentViewForResolution?.viewType,
 									})
 								: null);
 						if (!resolvedCapability && (!viewId || !capability)) {
@@ -2745,6 +2861,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								options: actionOptions,
 								viewType,
 								currentViewId: currentView?.viewId,
+								currentViewType: currentView?.viewType,
 							});
 							if (!viewId && currentView?.viewId) {
 								resolvedViewType = viewType ?? currentView.viewType;
@@ -2795,6 +2912,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									},
 									viewType,
 									currentViewId: viewId,
+									currentViewType: resolvedViewType,
 								});
 								if (alias?.view.id === resolvedView.id) {
 									resolvedCapability = alias;
@@ -2834,6 +2952,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							params,
 							timeoutMs,
 							resolvedViewType,
+							clientId,
 						);
 						const resultText = interaction.text;
 						const receipt = interaction.success
@@ -2955,6 +3074,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							pinView.viewType ??
 							(await resolveViewTypeForId(client, pinView.id));
 						const pinResult = await pinViewAsTab(
+							client,
 							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 						);
@@ -2966,8 +3086,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								mode: "pin",
 								viewId: pinView.id,
 								viewType: resolvedViewType ?? "gui",
+								...shellNavigationReceiptFields(pinResult),
 							},
-							data: { viewId: pinView.id, viewType: resolvedViewType ?? "gui" },
+							data: {
+								viewId: pinView.id,
+								viewType: resolvedViewType ?? "gui",
+								...shellNavigationReceiptFields(pinResult),
+							},
 						};
 					}
 
@@ -3004,6 +3129,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							windowView.viewType ??
 							(await resolveViewTypeForId(client, windowView.id));
 						const windowResult = await openViewInWindow(
+							client,
 							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 							alwaysOnTop,
@@ -3017,11 +3143,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								viewId: windowView.id,
 								viewType: resolvedViewType ?? "gui",
 								alwaysOnTop,
+								...shellNavigationReceiptFields(windowResult),
 							},
 							data: {
 								viewId: windowView.id,
 								viewType: resolvedViewType ?? "gui",
 								alwaysOnTop,
+								...shellNavigationReceiptFields(windowResult),
 							},
 						};
 					}
@@ -3296,38 +3424,65 @@ export function createViewsAliasAction(
 // ---------------------------------------------------------------------------
 
 /**
- * Outcome of a shell-navigation request. `ok` is true when the shell accepted
- * the request (2xx) or genuinely does not implement the route (501/404) — the
- * latter is a soft success on shells that don't support a given capability.
- * `ok` is false for real transport failures (other non-2xx, network, timeout)
- * so the action surfaces a failure instead of claiming the UI changed.
+ * Outcome of a shell-navigation request. Accepted-but-pending requests use
+ * pending copy so the transcript never claims a disconnected shell rendered.
  */
 interface ShellNavResult {
 	ok: boolean;
 	text: string;
+	delivery?: ViewNavigationReceipt["delivery"];
+	revision?: number;
+	operationId?: string;
+	operationRevision?: number;
+	deliveryOwner?: "outbox";
+	acknowledged?: true;
+}
+
+function shellNavigationReceiptFields(result: ShellNavResult) {
+	return {
+		...(result.delivery ? { delivery: result.delivery } : {}),
+		...(result.revision !== undefined ? { revision: result.revision } : {}),
+		...(result.operationId ? { operationId: result.operationId } : {}),
+		...(result.deliveryOwner ? { deliveryOwner: result.deliveryOwner } : {}),
+		...(result.operationRevision !== undefined
+			? { operationRevision: result.operationRevision }
+			: {}),
+		...(result.acknowledged ? { acknowledged: true } : {}),
+	};
+}
+
+function shellNavigationReceipt(
+	receipt: ViewNavigationReceipt,
+): Omit<ShellNavResult, "ok" | "text"> {
+	return {
+		delivery: receipt.delivery,
+		revision: receipt.revision,
+		...(receipt.operationId ? { operationId: receipt.operationId } : {}),
+		...(receipt.deliveryOwner ? { deliveryOwner: receipt.deliveryOwner } : {}),
+		...(receipt.operationRevision !== undefined
+			? { operationRevision: receipt.operationRevision }
+			: {}),
+		...(receipt.acknowledged ? { acknowledged: true } : {}),
+	};
 }
 
 async function navigateToPath(
+	client: ViewsClient,
 	pathStr: string,
 	label: string,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
-
 	try {
-		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
-			method: "POST",
-			headers: createViewsRequestHeaders(),
-			body: JSON.stringify({ path: pathStr }),
-			signal: AbortSignal.timeout(5_000),
+		const receipt = await client.navigate("__view-manager__", {
+			path: pathStr,
 		});
-		if (resp.ok || resp.status === 501 || resp.status === 404) {
-			return { ok: true, text: `Navigated to ${label}.` };
-		}
-		logger.warn(
-			`[plugin-app-control] VIEWS/manager navigate returned ${resp.status}`,
-		);
+		return {
+			ok: true,
+			...shellNavigationReceipt(receipt),
+			text:
+				receipt.delivery === "pending"
+					? `Selected ${label} for opening when your app reconnects.`
+					: `Navigated to ${label}.`,
+		};
 	} catch (err) {
 		logger.warn(
 			`[plugin-app-control] VIEWS/manager navigate failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -3341,6 +3496,7 @@ async function navigateToPath(
 }
 
 async function navigateViewWithShellAction(
+	client: ViewsClient,
 	viewId: string,
 	action: "pin-tab" | "open-window" | "close" | "close-all",
 	successText: string,
@@ -3348,26 +3504,17 @@ async function navigateViewWithShellAction(
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
-
 	try {
-		const resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
-			{
-				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({ action, viewType, alwaysOnTop }),
-				signal: AbortSignal.timeout(5_000),
-			},
-		);
-		if (resp.ok || resp.status === 501 || resp.status === 404) {
-			return { ok: true, text: successText };
-		}
-		logger.warn(
-			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
-		);
+		const receipt = await client.navigate(viewId, {
+			action,
+			viewType,
+			alwaysOnTop,
+		});
+		return {
+			ok: true,
+			...shellNavigationReceipt(receipt),
+			text: receipt.delivery === "pending" ? fallbackText : successText,
+		};
 	} catch (err) {
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -3378,50 +3525,42 @@ async function navigateViewWithShellAction(
 }
 
 async function navigateViewLayout({
+	client,
 	viewId,
 	action,
 	viewIds,
+	panes,
 	layout,
 	placement,
 	viewType,
 	successText,
 	fallbackText,
 }: {
+	client: ViewsClient;
 	viewId: string;
 	action: "split-view" | "tile-views";
 	viewIds: string[];
+	panes: Array<{ viewId: string; viewType: ViewType }>;
 	layout: "horizontal" | "vertical" | "grid";
 	placement?: "left" | "right" | "top" | "bottom";
 	viewType?: ViewType;
 	successText: string;
 	fallbackText: string;
 }): Promise<ShellNavResult> {
-	const { resolveServerOnlyPort } = await import("@elizaos/core");
-	const port = resolveServerOnlyPort(process.env);
-	const base = `http://127.0.0.1:${port}`;
-
 	try {
-		const resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
-			{
-				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({
-					action,
-					views: viewIds,
-					layout,
-					...(placement ? { placement } : {}),
-					...(viewType ? { viewType } : {}),
-				}),
-				signal: AbortSignal.timeout(5_000),
-			},
-		);
-		if (resp.ok || resp.status === 501 || resp.status === 404) {
-			return { ok: true, text: successText };
-		}
-		logger.warn(
-			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
-		);
+		const receipt = await client.navigate(viewId, {
+			action,
+			views: viewIds,
+			panes,
+			layout,
+			placement,
+			viewType,
+		});
+		return {
+			ok: true,
+			...shellNavigationReceipt(receipt),
+			text: receipt.delivery === "pending" ? fallbackText : successText,
+		};
 	} catch (err) {
 		logger.warn(
 			`[plugin-app-control] VIEWS/${action} navigate failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -3432,10 +3571,12 @@ async function navigateViewLayout({
 }
 
 function pinViewAsTab(
+	client: ViewsClient,
 	viewId: string,
 	viewType?: ViewType,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
+		client,
 		viewId,
 		"pin-tab",
 		`Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`,
@@ -3445,11 +3586,13 @@ function pinViewAsTab(
 }
 
 function openViewInWindow(
+	client: ViewsClient,
 	viewId: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
+		client,
 		viewId,
 		"open-window",
 		`Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`,
@@ -3469,6 +3612,7 @@ async function interactWithView(
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3480,8 +3624,17 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
+				headers: {
+					...createViewsRequestHeaders(),
+					...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+				},
+				body: JSON.stringify({
+					capability,
+					params,
+					timeoutMs,
+					viewType,
+					...(clientId ? { clientId } : {}),
+				}),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},
 		);

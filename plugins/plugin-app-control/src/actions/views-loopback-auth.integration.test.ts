@@ -133,6 +133,7 @@ async function startAuthenticatedViewsServer(
 				request.pathname === "/api/views/current"
 			) {
 				sendJson(res, 200, {
+					revision: 0,
 					currentView: {
 						viewId: "settings",
 						viewPath: "/settings",
@@ -148,7 +149,12 @@ async function startAuthenticatedViewsServer(
 				request.pathname.startsWith("/api/views/") &&
 				request.pathname.endsWith("/navigate")
 			) {
-				sendJson(res, 200, { ok: true });
+				sendJson(res, 200, {
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				});
 				return;
 			}
 			if (
@@ -297,7 +303,11 @@ describe("authenticated view loopback requests", () => {
 		});
 		await expect(
 			client.navigate("settings", { path: "/settings", viewType: "gui" }),
-		).resolves.toBe(true);
+		).resolves.toEqual({
+			accepted: true,
+			delivery: "delivered",
+			revision: 1,
+		});
 
 		const authenticated = server.requests.filter(
 			(request) => request.authorization !== undefined,
@@ -315,7 +325,11 @@ describe("authenticated view loopback requests", () => {
 			),
 		).toBe(true);
 		expect(authenticated[2]?.body).toBe(
-			JSON.stringify({ path: "/settings", viewType: "gui" }),
+			JSON.stringify({
+				expectedRevision: 0,
+				path: "/settings",
+				viewType: "gui",
+			}),
 		);
 		for (const request of authenticated) {
 			expect(`${request.pathname}\n${request.body}`).not.toContain(token);
@@ -329,9 +343,8 @@ describe("authenticated view loopback requests", () => {
 		process.env.ELIZA_API_AUTH_TOKEN = token;
 
 		const client: ViewsClient = {
+			...createViewsClient(),
 			listViews: async () => [SETTINGS_VIEW],
-			getCurrentView: async () => null,
-			navigate: async () => false,
 		};
 		const result = await runViewsShow({
 			client,
@@ -345,17 +358,24 @@ describe("authenticated view loopback requests", () => {
 
 		expect(result.success).toBe(true);
 		expect(result.values?.viewId).toBe("settings");
-		expect(server.requests).toHaveLength(1);
+		expect(server.requests).toHaveLength(2);
 		expect(server.requests[0]).toMatchObject({
+			method: "GET",
+			pathname: "/api/views/current",
+			authorization: `Bearer ${token}`,
+		});
+		expect(server.requests[1]).toMatchObject({
 			method: "POST",
 			pathname: "/api/views/settings/navigate",
 			authorization: `Bearer ${token}`,
 		});
-		expect(server.requests[0]?.body).toBe(
-			JSON.stringify({ path: "/settings" }),
+		expect(server.requests[1]?.body).toBe(
+			JSON.stringify({ expectedRevision: 0, path: "/settings" }),
 		);
 		expect(
-			`${server.requests[0]?.pathname}\n${server.requests[0]?.body}`,
+			server.requests
+				.map((request) => `${request.pathname}\n${request.body}`)
+				.join("\n"),
 		).not.toContain(token);
 	});
 

@@ -41,6 +41,7 @@ import type {
 } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
+import { createViewsClient, readViewClientId } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export type {
@@ -561,7 +562,10 @@ export type BackgroundEmitter = (
 /** Generates a background image from a prompt; returns a served URL. */
 export type BackgroundImageGenerator = (prompt: string) => Promise<string>;
 /** Navigates the frontend to a view (the chat→background-view handoff). */
-export type BackgroundNavigator = (detail: NavigateViewDetail) => Promise<void>;
+export type BackgroundNavigator = (
+	detail: NavigateViewDetail,
+	clientId?: string,
+) => Promise<void>;
 
 export interface BackgroundActionDeps {
 	emit?: BackgroundEmitter;
@@ -612,43 +616,15 @@ async function defaultGenerateImage(prompt: string): Promise<string> {
 	return data.url;
 }
 
-async function defaultNavigate(detail: NavigateViewDetail): Promise<void> {
-	const port = await loopbackPort();
-	// Drive the SAME shell navigate path the VIEWS action uses. When a concrete
-	// view id is supplied, POST to that view's own navigate route
-	// (`/api/views/<id>/navigate`) so the shell stamps the ACTUAL view as current
-	// (current-view state, view-switched events, action affinity all report the
-	// Background view, not the synthetic view-manager). Fall back to the
-	// view-manager path-navigate only when we have just a path. The generic
-	// view-event bus is NOT wired to navigation, so neither uses it. A 501/404
-	// means the host doesn't implement navigation (headless/test) — best-effort
-	// no-op, not a failure; any other non-2xx is a real error.
-	const base = `http://127.0.0.1:${port}`;
-	const { url, body } = detail.viewId
-		? {
-				url: `${base}/api/views/${encodeURIComponent(detail.viewId)}/navigate`,
-				// Carry the explicit path too: `background` is a built-in TAB, not a
-				// registered view, so without `path` the server broadcasts a null
-				// viewPath and the client falls back to `/apps/<id>` instead of the
-				// canonical `/background` route.
-				body: JSON.stringify({
-					...(detail.viewPath ? { path: detail.viewPath } : {}),
-					...(detail.viewType ? { viewType: detail.viewType } : {}),
-				}),
-			}
-		: {
-				url: `${base}/api/views/__view-manager__/navigate`,
-				body: JSON.stringify({ path: detail.viewPath ?? "/" }),
-			};
-	const resp = await fetch(url, {
-		method: "POST",
-		headers: createViewsRequestHeaders(),
-		body,
-		signal: AbortSignal.timeout(5_000),
+async function defaultNavigate(
+	detail: NavigateViewDetail,
+	clientId?: string,
+): Promise<void> {
+	const client = createViewsClient({ clientId });
+	await client.navigate(detail.viewId ?? "__view-manager__", {
+		path: detail.viewPath ?? "/",
+		viewType: detail.viewType,
 	});
-	if (!resp.ok && resp.status !== 501 && resp.status !== 404) {
-		throw new Error(`navigate returned ${resp.status}`);
-	}
 }
 
 export function createBackgroundAction(
@@ -821,7 +797,10 @@ export function createBackgroundAction(
 				if (plan.op === "navigate-upload") {
 					// No image to apply — take the user to the Background view, where
 					// upload/generate/gallery live (#13538 chat→background handoff).
-					await navigate({ viewId: "background", viewPath: "/background" });
+					await navigate(
+						{ viewId: "background", viewPath: "/background" },
+						readViewClientId(message),
+					);
 					const reply =
 						"Opening the Background view — you can upload or pick a wallpaper there.";
 					await callback?.({ text: reply });

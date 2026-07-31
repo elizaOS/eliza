@@ -28,7 +28,10 @@ import type {
 	ProviderResult,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { createViewsClient } from "../actions/views-client.js";
+import {
+	createViewsClient,
+	readViewClientId,
+} from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
@@ -60,7 +63,9 @@ export const currentViewProvider: Provider = {
 			// exact phrase, so the reply being generated now can acknowledge it.
 			const intentTargetId = resolveIntentView(text);
 
-			const current = await createViewsClient().getCurrentView();
+			const current = await createViewsClient({
+				clientId: readViewClientId(message),
+			}).getCurrentView();
 
 			if (intentTargetId && intentTargetId !== current?.viewId) {
 				const label = humanizeViewId(intentTargetId);

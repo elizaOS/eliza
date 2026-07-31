@@ -184,6 +184,45 @@ function evaluatorContext(
 	} as ResponseHandlerEvaluatorContext;
 }
 
+function successfulViewResponse(
+	body: Record<string, unknown> = {
+		ok: true,
+		accepted: true,
+		delivery: "delivered",
+		revision: 1,
+	},
+) {
+	return {
+		ok: true,
+		status: 200,
+		json: async () => body,
+	} as Response;
+}
+
+/**
+ * Navigation now reads the authoritative revision before every mutation. Keep
+ * queued route responses attached to the mutation request so existing tests can
+ * model its result without accidentally consuming them during the CAS read.
+ */
+function createViewAwareFetchMock() {
+	const downstream = vi.fn(async () => successfulViewResponse());
+	const fetchMock = vi.fn(async (url: unknown, init?: unknown) => {
+		if (String(url).endsWith("/api/views/current")) {
+			return successfulViewResponse({ currentView: null, revision: 0 });
+		}
+		return downstream(url, init);
+	});
+	const queueMutationResponse =
+		downstream.mockResolvedValueOnce.bind(downstream);
+	Object.defineProperty(fetchMock, "mockResolvedValueOnce", {
+		value: (response: Response) => {
+			queueMutationResponse(response);
+			return fetchMock;
+		},
+	});
+	return fetchMock;
+}
+
 function createRepoFixture() {
 	const repoRoot = mkdtempSync(path.join(tmpdir(), "views-actions-"));
 	const templateDir = path.join(
@@ -230,7 +269,7 @@ describe("view management actions", () => {
 	beforeEach(() => {
 		coreMock.spawnWithTrajectoryLink.mockClear();
 		coreMock.resolveServerOnlyPort.mockClear();
-		vi.stubGlobal("fetch", vi.fn());
+		vi.stubGlobal("fetch", createViewAwareFetchMock());
 	});
 
 	afterEach(() => {
@@ -243,7 +282,13 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValue({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				currentView: null,
+				revision: 0,
+			}),
 		} as Response);
 		const { runtime } = createRuntime();
 		const action = createViewsAction({
@@ -266,9 +311,13 @@ describe("view management actions", () => {
 		);
 
 		expect(managerResult?.success).toBe(true);
+		expect(managerResult?.values).toMatchObject({
+			viewId: "__view-manager__",
+			viewType: "gui",
+		});
 		expect(broadcastResult?.success).toBe(true);
 		expect(globalThis.fetch).toHaveBeenNthCalledWith(
-			1,
+			2,
 			"http://127.0.0.1:3456/api/views/__view-manager__/navigate",
 			expect.objectContaining({
 				method: "POST",
@@ -279,7 +328,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenNthCalledWith(
-			2,
+			3,
 			"http://127.0.0.1:3456/api/views/events/broadcast",
 			expect.objectContaining({
 				method: "POST",
@@ -324,6 +373,7 @@ describe("view management actions", () => {
 					ok: true,
 					status: 200,
 					json: async () => ({
+						revision: 0,
 						currentView: {
 							viewId: "notes",
 							viewPath: "/notes",
@@ -772,12 +822,22 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -800,12 +860,15 @@ describe("view management actions", () => {
 			viewId: "remote-ledger",
 			viewType: "gui",
 			alwaysOnTop: true,
+			delivery: "delivered",
 		});
+		expect(result?.data).toMatchObject({ delivery: "delivered" });
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/remote-ledger/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "open-window",
 					alwaysOnTop: true,
 				}),
@@ -845,32 +908,62 @@ describe("view management actions", () => {
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response);
 
 		const windowResult = await action.handler(
@@ -893,6 +986,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "open-window",
 					alwaysOnTop: false,
 				}),
@@ -922,6 +1016,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "open-window",
 					alwaysOnTop: false,
 				}),
@@ -947,6 +1042,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "pin-tab",
 					alwaysOnTop: false,
 				}),
@@ -975,6 +1071,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "pin-tab",
 					alwaysOnTop: false,
 				}),
@@ -1003,8 +1100,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["orchestrator", "views-manager"],
+					panes: [
+						{ viewId: "orchestrator", viewType: "gui" },
+						{ viewId: "views-manager", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -1030,12 +1132,22 @@ describe("view management actions", () => {
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response);
 
 		const splitResult = await action.handler(
@@ -1049,16 +1161,38 @@ describe("view management actions", () => {
 		expect(splitResult?.success).toBe(true);
 		expect(splitResult?.values).toMatchObject({
 			mode: "split",
+			viewId: "notes",
+			viewType: "gui",
+			action: "split-view",
 			viewIds: ["notes", "calendar"],
+			panes: [
+				{ viewId: "notes", viewType: "gui" },
+				{ viewId: "calendar", viewType: "gui" },
+			],
 			layout: "horizontal",
+		});
+		expect(splitResult?.data).toMatchObject({
+			viewId: "notes",
+			viewType: "gui",
+			action: "split-view",
+			viewIds: ["notes", "calendar"],
+			panes: [
+				{ viewId: "notes", viewType: "gui" },
+				{ viewId: "calendar", viewType: "gui" },
+			],
 		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -1091,8 +1225,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "tile-views",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "grid",
 				}),
 			}),
@@ -1142,22 +1281,42 @@ describe("view management actions", () => {
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response)
 			.mockResolvedValueOnce({
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response);
 
 		const splitResult = await action.handler(
@@ -1179,8 +1338,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["orchestrator", "views-manager"],
+					panes: [
+						{ viewId: "orchestrator", viewType: "gui" },
+						{ viewId: "views-manager", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -1205,8 +1369,15 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "tile-views",
 					views: ["chat", "settings", "orchestrator", "views-manager"],
+					panes: [
+						{ viewId: "chat", viewType: "gui" },
+						{ viewId: "settings", viewType: "gui" },
+						{ viewId: "orchestrator", viewType: "gui" },
+						{ viewId: "views-manager", viewType: "gui" },
+					],
 					layout: "grid",
 				}),
 			}),
@@ -1234,8 +1405,15 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "tile-views",
 					views: ["chat", "settings", "orchestrator", "views-manager"],
+					panes: [
+						{ viewId: "chat", viewType: "gui" },
+						{ viewId: "settings", viewType: "gui" },
+						{ viewId: "orchestrator", viewType: "gui" },
+						{ viewId: "views-manager", viewType: "gui" },
+					],
 					layout: "grid",
 				}),
 			}),
@@ -1263,8 +1441,15 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "tile-views",
 					views: ["chat", "settings", "orchestrator", "views-manager"],
+					panes: [
+						{ viewId: "chat", viewType: "gui" },
+						{ viewId: "settings", viewType: "gui" },
+						{ viewId: "orchestrator", viewType: "gui" },
+						{ viewId: "views-manager", viewType: "gui" },
+					],
 					layout: "grid",
 				}),
 			}),
@@ -1307,7 +1492,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1334,8 +1524,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["orchestrator", "views-manager"],
+					panes: [
+						{ viewId: "orchestrator", viewType: "gui" },
+						{ viewId: "views-manager", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -1364,7 +1559,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1386,8 +1586,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -1422,7 +1627,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1452,8 +1662,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 					placement: "right",
 				}),
@@ -1483,7 +1698,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1509,8 +1729,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -1531,12 +1756,6 @@ describe("view management actions", () => {
 			},
 			hasOwnerAccess: vi.fn(async () => true),
 		});
-
-		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
-			ok: true,
-			status: 200,
-			text: async () => "",
-		} as Response);
 
 		// No explicit action option — this exercises inferMode on the raw text.
 		const result = await action.handler(
@@ -1667,7 +1886,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1697,6 +1921,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "open-window",
 					viewType: "tui",
 					alwaysOnTop: false,
@@ -1724,7 +1949,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1752,6 +1982,7 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "open-window",
 					viewType: "xr",
 					alwaysOnTop: false,
@@ -1954,7 +2185,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -1975,7 +2211,11 @@ describe("view management actions", () => {
 			"http://127.0.0.1:3456/api/views/settings/navigate",
 			expect.objectContaining({
 				method: "POST",
-				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
+				body: JSON.stringify({
+					expectedRevision: 0,
+					action: "close",
+					alwaysOnTop: false,
+				}),
 			}),
 		);
 		expect(callback).toHaveBeenCalledWith(
@@ -1998,7 +2238,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -2013,12 +2258,18 @@ describe("view management actions", () => {
 		expect(result?.values).toMatchObject({
 			mode: "close",
 			scope: "all",
+			viewId: "__all__",
+			viewType: "gui",
 		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/__all__/navigate",
 			expect.objectContaining({
 				method: "POST",
-				body: JSON.stringify({ action: "close-all", alwaysOnTop: false }),
+				body: JSON.stringify({
+					expectedRevision: 0,
+					action: "close-all",
+					alwaysOnTop: false,
+				}),
 			}),
 		);
 		expect(callback).toHaveBeenCalledWith(
@@ -2043,7 +2294,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -2064,7 +2320,11 @@ describe("view management actions", () => {
 			"http://127.0.0.1:3456/api/views/calendar/navigate",
 			expect.objectContaining({
 				method: "POST",
-				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
+				body: JSON.stringify({
+					expectedRevision: 0,
+					action: "close",
+					alwaysOnTop: false,
+				}),
 			}),
 		);
 		expect(callback).toHaveBeenCalledWith(
@@ -2102,12 +2362,6 @@ describe("view management actions", () => {
 			},
 			hasOwnerAccess: vi.fn(async () => true),
 		});
-
-		vi.mocked(globalThis.fetch).mockResolvedValue({
-			ok: true,
-			status: 200,
-			text: async () => "",
-		} as Response);
 
 		const notesResult = await action.handler(
 			runtime as never,
@@ -2182,12 +2436,6 @@ describe("view management actions", () => {
 			},
 			hasOwnerAccess: vi.fn(async () => true),
 		});
-
-		vi.mocked(globalThis.fetch).mockResolvedValue({
-			ok: true,
-			status: 200,
-			text: async () => "",
-		} as Response);
 
 		const result = await action.handler(
 			runtime as never,
@@ -2677,6 +2925,71 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("dispatches an implicit same-id capability through the focused modality only", async () => {
+		const { runtime } = createRuntime();
+		const gui = view({
+			id: "hybrid",
+			label: "Hybrid GUI",
+			viewType: "gui",
+			capabilities: [
+				{ id: "create-gui-item", description: "Create a GUI item" },
+			],
+		});
+		const tui = view({
+			id: "hybrid",
+			label: "Hybrid TUI",
+			viewType: "tui",
+			capabilities: [
+				{ id: "create-tui-item", description: "Create a terminal item" },
+			],
+		});
+		const listViews = vi.fn(async ({ viewType }: { viewType?: string } = {}) =>
+			viewType === "tui" ? [tui] : viewType === "gui" ? [gui] : [],
+		);
+		const action = createViewsAction({
+			client: {
+				listViews,
+				getCurrentView: vi.fn(async () => ({
+					viewId: "hybrid",
+					viewPath: "/hybrid-tui",
+					viewLabel: "Hybrid TUI",
+					viewType: "tui" as const,
+					updatedAt: "2026-07-31T00:00:00.000Z",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+			successfulViewResponse({
+				success: true,
+				result: { text: "Created terminal item" },
+			}),
+		);
+
+		const result = await action.handler(
+			runtime as never,
+			message("create another one saying hello") as never,
+			undefined,
+			{ action: "interact", capability: "create-tui-item" },
+			vi.fn(),
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			viewId: "hybrid",
+			viewType: "tui",
+			capability: "create-tui-item",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/hybrid/interact?viewType=tui",
+			expect.anything(),
+		);
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
+			expect.stringContaining("viewType=gui"),
+			expect.anything(),
+		);
+	});
+
 	it("summarizes structured interaction results without dumping JSON into chat", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
@@ -2758,7 +3071,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -2780,8 +3098,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 				}),
 			}),
@@ -2815,7 +3138,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -2838,8 +3166,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 					placement: "right",
 				}),
@@ -2880,7 +3213,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -2903,14 +3241,19 @@ describe("view management actions", () => {
 			layout: "horizontal",
 			placement: "right",
 		});
-		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes", "calendar"],
+					panes: [
+						{ viewId: "notes", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 					placement: "right",
 				}),
@@ -2938,6 +3281,10 @@ describe("view management actions", () => {
 					viewType: "gui",
 					action: "split-view",
 					views: ["plugins-page", "calendar"],
+					panes: [
+						{ viewId: "plugins-page", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "horizontal",
 				})),
 			},
@@ -2947,7 +3294,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -2973,8 +3325,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["plugins-page", "calendar"],
+					panes: [
+						{ viewId: "plugins-page", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "vertical",
 				}),
 			}),
@@ -3010,7 +3367,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -3032,8 +3394,84 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["plugins-page", "calendar"],
+					panes: [
+						{ viewId: "plugins-page", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
+					layout: "vertical",
+				}),
+			}),
+		);
+	});
+
+	it("preserves same-id multimodal panes in terminal and wire layout payloads", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({ id: "hybrid", label: "Hybrid", viewType: "gui" }),
+					view({ id: "hybrid", label: "Hybrid TUI", viewType: "tui" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "hybrid",
+					viewLabel: "Hybrid",
+					viewPath: "/views/hybrid",
+					viewType: "gui" as const,
+					action: "split-view",
+					views: ["hybrid", "hybrid"],
+					panes: [
+						{ viewId: "hybrid", viewType: "gui" as const },
+						{ viewId: "hybrid", viewType: "tui" as const },
+					],
+					layout: "horizontal",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce(successfulViewResponse());
+		const result = await action.handler(
+			runtime as never,
+			message("split vertical instead") as never,
+			undefined,
+			undefined,
+			callback,
+		);
+		const panes = [
+			{ viewId: "hybrid", viewType: "gui" },
+			{ viewId: "hybrid", viewType: "tui" },
+		];
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "split",
+			viewId: "hybrid",
+			viewType: "gui",
+			action: "split-view",
+			viewIds: ["hybrid", "hybrid"],
+			panes,
+			layout: "vertical",
+		});
+		expect(result?.data).toMatchObject({
+			viewId: "hybrid",
+			viewType: "gui",
+			action: "split-view",
+			viewIds: ["hybrid", "hybrid"],
+			panes,
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/hybrid/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					expectedRevision: 0,
+					action: "split-view",
+					views: ["hybrid", "hybrid"],
+					panes,
 					layout: "vertical",
 				}),
 			}),
@@ -3074,7 +3512,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -3102,8 +3545,13 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["plugins-page", "calendar"],
+					panes: [
+						{ viewId: "plugins-page", viewType: "gui" },
+						{ viewId: "calendar", viewType: "gui" },
+					],
 					layout: "vertical",
 				}),
 			}),
@@ -3131,7 +3579,12 @@ describe("view management actions", () => {
 		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
 			ok: true,
 			status: 200,
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response);
 
 		const result = await action.handler(
@@ -3154,8 +3607,10 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
+					expectedRevision: 0,
 					action: "split-view",
 					views: ["notes"],
+					panes: [{ viewId: "notes", viewType: "gui" }],
 					layout: "horizontal",
 					placement: "left",
 				}),

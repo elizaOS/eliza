@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import {
 	createViewsClient,
+	readViewClientId,
 	type ViewSummary,
 } from "../actions/views-client.js";
 
@@ -129,6 +130,7 @@ function shouldConsiderViewFollowup(
 
 async function resolveActiveViewForFamily(
 	family: CapabilityFamily,
+	context: ResponseHandlerEvaluatorContext,
 ): Promise<ViewSummary | null> {
 	// The intent gate (family verb + reference token, plus a content marker for
 	// create/update) is enforced in shouldConsiderViewFollowup. Here we only need
@@ -136,12 +138,17 @@ async function resolveActiveViewForFamily(
 	// A loopback failure means we can't confirm the active view — degrade to "no
 	// route" so the agent's normal reply stands rather than crashing the evaluator.
 	try {
-		const client = createViewsClient();
+		const client = createViewsClient({
+			clientId: readViewClientId(context.message),
+		});
 		const current = await client.getCurrentView();
 		if (!current) return null;
 
-		const views = await client.listViews();
-		const activeView = views.find((view) => view.id === current.viewId);
+		const views = await client.listViews({ viewType: current.viewType });
+		const activeView = views.find(
+			(view) =>
+				view.id === current.viewId && view.viewType === current.viewType,
+		);
 		if (!activeView || !viewSupportsFamily(activeView, family)) {
 			return null;
 		}
@@ -163,7 +170,7 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		const family = shouldConsiderViewFollowup(context);
 		if (!family) return undefined;
 
-		const activeView = await resolveActiveViewForFamily(family);
+		const activeView = await resolveActiveViewForFamily(family, context);
 		if (!activeView) return undefined;
 
 		return {

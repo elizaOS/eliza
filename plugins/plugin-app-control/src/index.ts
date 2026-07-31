@@ -246,8 +246,8 @@ export const appControlPlugin: Plugin = {
 					description: "Return the available view list as structured data",
 				},
 			],
-			serverInteract: async (capability, params) => {
-				const client = createViewsClient();
+			serverInteract: async (capability, params, context) => {
+				const client = createViewsClient({ clientId: context?.clientId });
 				if (capability === "list-views") {
 					return { views: await client.listViews() };
 				}
@@ -259,8 +259,12 @@ export const appControlPlugin: Plugin = {
 					if (!viewId) {
 						return { success: false, error: "viewId is required" };
 					}
-					const ok = await client.navigate(viewId);
-					return { success: ok, viewId };
+					const receipt = await client.navigate(viewId);
+					return {
+						success: receipt.accepted,
+						viewId,
+						delivery: receipt.delivery,
+					};
 				}
 				return { success: false, error: `unknown capability: ${capability}` };
 			},

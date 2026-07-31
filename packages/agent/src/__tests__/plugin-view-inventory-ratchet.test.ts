@@ -7,10 +7,8 @@
  * infrastructure — the views-registry and `handleViewsRoutes` still accept
  * non-GUI requests — so this file also registers the real gui inventory through
  * the real views-registry, drives navigate / interact dispatch in gui mode, and
- * proves the designed degrade for non-GUI requests against a gui-only inventory:
- * `getView` falls back to the gui declaration (the broadcast + response carry
- * viewType "gui"), and unknown ids 404. No crash, no fabricated non-GUI
- * success.
+ * proves explicit non-GUI requests against a GUI-only inventory fail closed
+ * instead of serving or dispatching the GUI declaration.
  *
  * Harness realism: manifests are read off disk and the registry + route
  * dispatch are the real modules; a fake `IncomingMessage` and a
@@ -30,6 +28,7 @@ import {
 } from "../api/views-registry.js";
 import {
   clearCurrentViewState,
+  getCurrentViewRevision,
   handleViewsRoutes,
   resolveViewInteractResult,
   type ViewsRouteContext,
@@ -43,6 +42,7 @@ const repoRoot = resolve(
 );
 
 const VIEW_MANIFESTS = discoverPluginViewManifestPaths();
+const ROUTE_CLIENT_ID = "plugin-view-inventory-ratchet-client";
 
 function readManifest(path: string): string {
   return readFileSync(resolve(repoRoot, path), "utf8");
@@ -195,7 +195,7 @@ function makeCtx(
   const url = new URL(`http://localhost${pathname}`);
   const req = new EventEmitter() as http.IncomingMessage;
   req.headers = {
-    "x-elizaos-client-id": "plugin-view-inventory-ratchet-client",
+    "x-elizaos-client-id": ROUTE_CLIENT_ID,
   };
   if (body !== undefined) {
     const chunk = Buffer.from(JSON.stringify(body));
@@ -281,6 +281,7 @@ describe("plugin view coverage", () => {
             "POST",
             `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=gui`,
             (payload) => broadcasts.push(payload),
+            { expectedRevision: getCurrentViewRevision(ROUTE_CLIENT_ID) },
           ),
         );
         const event = broadcasts[0] as
@@ -386,12 +387,7 @@ describe("plugin view coverage", () => {
     }
   });
 
-  // The viewType routing contract survives the tui/xr inventory removal:
-  // `getView(id, { viewType })` falls back to the gui ("default") declaration
-  // when the requested modality has no entry, so tui/xr requests against the
-  // gui-only inventory resolve to the gui view — the broadcast and JSON
-  // response carry viewType "gui". This is the designed degrade, not an error.
-  it("resolves tui/xr navigate requests against the gui-only inventory to the gui view", async () => {
+  it("rejects tui/xr navigate requests against the gui-only inventory", async () => {
     const { pluginNames, views } = await registerAllManifests();
     try {
       const failures: string[] = [];
@@ -399,36 +395,25 @@ describe("plugin view coverage", () => {
         for (const view of views) {
           const broadcasts: object[] = [];
           let resultBody: unknown = null;
-          let errorBody: { message: string; status?: number } | null = null;
+          const errors: Array<{ message: string; status?: number }> = [];
           await handleViewsRoutes(
             makeCtx(
               "POST",
               `/api/views/${encodeURIComponent(view.id)}/navigate?viewType=${viewType}`,
               (payload) => broadcasts.push(payload),
-              undefined,
+              { expectedRevision: getCurrentViewRevision(ROUTE_CLIENT_ID) },
               (_res, body) => {
                 resultBody = body;
               },
               (_res, message, status) => {
-                errorBody = { message, status };
+                errors.push({ message, status });
               },
             ),
           );
-          const event = broadcasts[0] as
-            | { type?: string; viewId?: string; viewType?: string }
-            | undefined;
-          const result = resultBody as {
-            ok?: boolean;
-            viewId?: string;
-            viewType?: string;
-          } | null;
           if (
-            errorBody ||
-            event?.type !== "shell:navigate:view" ||
-            event.viewId !== view.id ||
-            event.viewType !== "gui" ||
-            result?.ok !== true ||
-            result.viewType !== "gui"
+            errors[0]?.status !== 404 ||
+            resultBody !== null ||
+            broadcasts.length !== 0
           ) {
             failures.push(`${view.manifestPath}:${viewType}:${view.id}`);
           }
@@ -441,7 +426,7 @@ describe("plugin view coverage", () => {
     }
   });
 
-  it("dispatches tui/xr interact requests against the gui-only inventory as the gui view", async () => {
+  it("rejects tui/xr interact requests against the gui-only inventory", async () => {
     const { pluginNames, views } = await registerAllManifests();
     try {
       const failures: string[] = [];
@@ -449,7 +434,7 @@ describe("plugin view coverage", () => {
         for (const view of views) {
           const broadcasts: object[] = [];
           let resultBody: unknown = null;
-          let errorBody: { message: string; status?: number } | null = null;
+          const errors: Array<{ message: string; status?: number }> = [];
           await handleViewsRoutes(
             makeCtx(
               "POST",
@@ -478,26 +463,14 @@ describe("plugin view coverage", () => {
                 resultBody = body;
               },
               (_res, message, status) => {
-                errorBody = { message, status };
+                errors.push({ message, status });
               },
             ),
           );
-          const event = broadcasts[0] as
-            | { type?: string; viewId?: string; viewType?: string }
-            | undefined;
-          const result = resultBody as {
-            success?: boolean;
-            result?: { viewType?: string };
-          } | null;
-          // The dispatched frame carries the resolved entry's viewType ("gui"),
-          // never a fabricated tui/xr surface.
           if (
-            errorBody ||
-            event?.type !== "view:interact" ||
-            event.viewId !== view.id ||
-            event.viewType !== "gui" ||
-            result?.success !== true ||
-            result.result?.viewType !== "gui"
+            errors[0]?.status !== 404 ||
+            resultBody !== null ||
+            broadcasts.length !== 0
           ) {
             failures.push(`${view.manifestPath}:${viewType}:${view.id}`);
           }

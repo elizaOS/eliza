@@ -1034,13 +1034,13 @@ export interface ViewDeclaration {
 	/**
 	 * Optional backend capability handler for operations that do not require a
 	 * mounted UI surface. The view route invokes this before falling back to the
-	 * frontend `view:interact` WebSocket round-trip. Runtime context keeps
-	 * service-backed handlers scoped to the agent that owns the request.
+	 * frontend `view:interact` WebSocket round-trip. Request context identifies
+	 * the runtime and client that own the interaction.
 	 */
 	serverInteract?: (
 		capability: string,
 		params?: Record<string, unknown>,
-		context?: { runtime?: IAgentRuntime },
+		context?: { runtime?: IAgentRuntime; clientId?: string },
 	) => Promise<unknown>;
 	/** Allow this view to be pinned as a desktop tab. Default true. */
 	desktopTabEnabled?: boolean;

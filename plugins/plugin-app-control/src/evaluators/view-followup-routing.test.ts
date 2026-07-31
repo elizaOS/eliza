@@ -11,6 +11,7 @@ import { viewFollowupRoutingEvaluator } from "./view-followup-routing.js";
 const NOTES_VIEW = {
 	id: "notes",
 	label: "Notes",
+	viewType: "gui" as const,
 	description: "Sticky notes board",
 	pluginName: "@local/plugin-notes",
 	available: true,
@@ -62,6 +63,7 @@ function mockLoopback(current: { viewId: string } | null) {
 				ok: true,
 				status: 200,
 				json: async () => ({
+					revision: 2,
 					currentView: current
 						? {
 								viewId: current.viewId,
@@ -154,5 +156,56 @@ describe("viewFollowupRoutingEvaluator", () => {
 		await expect(
 			viewFollowupRoutingEvaluator.evaluate(ctx),
 		).resolves.toBeUndefined();
+	});
+
+	it("routes a same-id follow-up only through the focused modality", async () => {
+		const guiView = {
+			...NOTES_VIEW,
+			viewType: "gui" as const,
+			capabilities: [{ id: "delete-note", description: "Delete a note" }],
+		};
+		const tuiView = {
+			...NOTES_VIEW,
+			viewType: "tui" as const,
+			capabilities: [
+				{ id: "create-note", description: "Create a note in the terminal" },
+			],
+		};
+		vi.mocked(globalThis.fetch).mockImplementation(async (url) => {
+			const requestUrl = String(url);
+			if (requestUrl.endsWith("/api/views/current")) {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({
+						revision: 4,
+						currentView: {
+							viewId: "notes",
+							viewPath: "/notes-tui",
+							viewLabel: "Notes TUI",
+							viewType: "tui",
+							updatedAt: "2026-06-08T00:00:00.000Z",
+						},
+					}),
+				} as Response;
+			}
+			return {
+				ok: true,
+				status: 200,
+				json: async () => ({
+					views: requestUrl.includes("viewType=tui") ? [tuiView] : [guiView],
+				}),
+			} as Response;
+		});
+
+		await expect(
+			viewFollowupRoutingEvaluator.evaluate(
+				context("make another one saying eat lunch"),
+			),
+		).resolves.toMatchObject({ addCandidateActions: ["VIEWS"] });
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			expect.stringContaining("viewType=tui"),
+			expect.anything(),
+		);
 	});
 });

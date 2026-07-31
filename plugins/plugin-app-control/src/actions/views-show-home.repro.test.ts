@@ -127,18 +127,21 @@ const chatView = (): ViewSummary =>
 
 function makeAction(views: ViewSummary[]) {
 	const fetchMock = vi.fn(
-		async () =>
+		async (url: unknown) =>
 			({
 				ok: true,
 				status: 200,
 				text: async () => "",
-				json: async () => ({
-					success: true,
-					result: {
-						text: "Check Twitter: Check Twitter 1x a day.",
-						success: true,
-					},
-				}),
+				json: async () =>
+					String(url).endsWith("/api/views/current")
+						? { currentView: null, revision: 0 }
+						: {
+								success: true,
+								result: {
+									text: "Check Twitter: Check Twitter 1x a day.",
+									success: true,
+								},
+							},
 			}) as unknown as Response,
 	);
 	vi.stubGlobal("fetch", fetchMock);

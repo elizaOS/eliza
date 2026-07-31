@@ -67,6 +67,28 @@ function makeRuntime() {
 }
 
 describe("DefaultMessageService message persistence", () => {
+	it("keeps client routing identity in-flight but strips it from memory and embedding writes", async () => {
+		const service = new DefaultMessageService();
+		const { runtime, createMemory, queueEmbeddingGeneration } = makeRuntime();
+		const message = {
+			entityId: USER_ID,
+			agentId: AGENT_ID,
+			roomId: ROOM_ID,
+			content: { text: "open notes", source: "client_chat" },
+			metadata: { type: "message", clientId: "browser-client-a" },
+		} as Memory;
+
+		await service.handleMessage(runtime, message);
+
+		expect(message.metadata?.clientId).toBe("browser-client-a");
+		const persisted = createMemory.mock.calls[0]?.[0] as Memory;
+		const embedded = queueEmbeddingGeneration.mock.calls[0]?.[0] as Memory;
+		expect(persisted.metadata?.clientId).toBeUndefined();
+		expect(embedded.metadata?.clientId).toBeUndefined();
+		expect(persisted.metadata?.type).toBe("message");
+		expect(embedded.metadata?.type).toBe("message");
+	});
+
 	it("strips document augmentation from stored memories and embeddings only", async () => {
 		const service = new DefaultMessageService();
 		const { runtime, createMemory, queueEmbeddingGeneration } = makeRuntime();

@@ -8,7 +8,11 @@ import {
 	ModelType,
 	resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
-import { createViewsClient } from "../actions/views-client.js";
+import {
+	createViewsClient,
+	getCurrentViewSnapshot,
+	readViewClientId,
+} from "../actions/views-client.js";
 import {
 	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
@@ -101,28 +105,42 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 			return undefined;
 		}
 
-		const client = createViewsClient();
+		const clientId = readViewClientId(message);
+		const client = createViewsClient({ clientId });
+		let startingRevision: number;
+		let startingView: Awaited<
+			ReturnType<typeof getCurrentViewSnapshot>
+		>["currentView"];
+		try {
+			const starting = await getCurrentViewSnapshot(clientId);
+			startingView = starting.currentView;
+			startingRevision = starting.revision;
+		} catch {
+			// error-policy:J4 without authoritative shell state, contextual navigation is unavailable.
+			return undefined;
+		}
 		let views: Awaited<ReturnType<typeof client.listViews>>;
 		try {
 			views = await client.listViews();
 		} catch {
+			// error-policy:J4 a non-view-capable surface keeps the normal reply unchanged.
 			return undefined; // not a view-capable surface / loopback down
 		}
 		const target = views.find((view) => view.id === viewId);
 		if (!target) return undefined; // model named a view this deployment lacks
-
-		try {
-			const current = await client.getCurrentView();
-			if (current?.viewId === viewId) return undefined; // already there
-		} catch {
-			// couldn't read current view — proceed; navigate is idempotent
+		const targetViewType = target.viewType ?? "gui";
+		if (
+			startingView?.viewId === target.id &&
+			startingView.viewType === targetViewType
+		) {
+			return undefined;
 		}
 
-		const ok = await client.navigate(viewId, {
+		await client.navigate(viewId, {
 			path: target.path,
-			viewType: target.viewType,
+			viewType: targetViewType,
+			expectedRevision: startingRevision,
 		});
-		if (!ok) return undefined;
 		// This evaluator runs *after* the reply, so it cannot acknowledge the
 		// switch in the just-sent message. Record the switch (and the server
 		// stamps it on navigate): the `current_view` provider then acknowledges it

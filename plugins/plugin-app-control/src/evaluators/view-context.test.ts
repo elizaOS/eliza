@@ -44,6 +44,7 @@ function viewSummary(id: string) {
 function mockLoopback(opts: {
 	ids?: readonly string[];
 	current?: string | null;
+	currentViewType?: "gui" | "tui" | "xr";
 }) {
 	const navigated: string[] = [];
 	const ids = opts.ids ?? REGISTERED_VIEW_IDS;
@@ -55,7 +56,12 @@ function mockLoopback(opts: {
 			return {
 				ok: true,
 				status: 200,
-				json: async () => ({ ok: true }),
+				json: async () => ({
+					ok: true,
+					accepted: true,
+					delivery: "delivered",
+					revision: 1,
+				}),
 			} as Response;
 		}
 		if (u.endsWith("/api/views/current")) {
@@ -63,12 +69,13 @@ function mockLoopback(opts: {
 				ok: true,
 				status: 200,
 				json: async () => ({
+					revision: 0,
 					currentView: opts.current
 						? {
 								viewId: opts.current,
 								viewPath: `/${opts.current}`,
 								viewLabel: opts.current,
-								viewType: "gui",
+								viewType: opts.currentViewType ?? "gui",
 								updatedAt: "2026-06-18T00:00:00.000Z",
 							}
 						: null,
@@ -266,6 +273,19 @@ describe("viewContextEvaluator processor — navigates on the (mock-LLM) decisio
 		const result = await runProcessor({ viewId: "calendar" });
 		expect(navigated).toEqual([]);
 		expect(result).toBeUndefined();
+	});
+
+	it("navigates when the target id matches but its modality differs", async () => {
+		const { navigated } = mockLoopback({
+			current: "calendar",
+			currentViewType: "tui",
+		});
+		const result = await runProcessor({ viewId: "calendar" });
+		expect(navigated).toEqual(["calendar"]);
+		expect(result).toMatchObject({
+			success: true,
+			values: { contextualView: "calendar" },
+		});
 	});
 
 	it("degrades to no-op when the loopback is unreachable", async () => {

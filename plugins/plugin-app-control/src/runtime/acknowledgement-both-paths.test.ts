@@ -30,6 +30,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({ getCurrentView: vi.fn() }));
 vi.mock("../actions/views-client.js", () => ({
 	createViewsClient: () => ({ getCurrentView: h.getCurrentView }),
+	readViewClientId: () => undefined,
 }));
 
 import { currentViewProvider } from "../providers/current-view.js";

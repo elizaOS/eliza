@@ -221,13 +221,25 @@ function installNavigateCapture(): { navigated: string[] } {
 	const navigated: string[] = [];
 	vi.mocked(globalThis.fetch).mockImplementation(async (url: unknown) => {
 		const requestUrl = String(url);
+		if (requestUrl.endsWith("/api/views/current")) {
+			return {
+				ok: true,
+				status: 200,
+				json: async () => ({ currentView: null, revision: 0 }),
+			} as Response;
+		}
 		const match = /\/api\/views\/([^/?]+)\/navigate/.exec(requestUrl);
 		if (match) navigated.push(decodeURIComponent(match[1]));
 		return {
 			ok: true,
 			status: 200,
 			text: async () => "",
-			json: async () => ({ ok: true }),
+			json: async () => ({
+				ok: true,
+				accepted: true,
+				delivery: "delivered",
+				revision: 1,
+			}),
 		} as Response;
 	});
 	return { navigated };
@@ -1015,6 +1027,52 @@ describe("view switching — VIEWS action resolver", () => {
 				sourcedMessage("yes", "discord") as never,
 			);
 			expect(denied).toBe(false);
+		});
+	});
+
+	it("propagates the exact outbox receipt into terminal action values and data", async () => {
+		const receipt = {
+			accepted: true as const,
+			delivery: "pending" as const,
+			deliveryOwner: "outbox" as const,
+			operationId: "views:operation-1",
+			operationRevision: 7,
+			revision: 12,
+		};
+		const client: ViewsClient = {
+			listViews: vi.fn(async () => REGISTRY),
+			getCurrentView: vi.fn(async () => null),
+			navigate: vi.fn(async () => receipt),
+		};
+		const action = createViewsAction({
+			client,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			{ agentId: "agent-1" } as never,
+			message("open calendar") as never,
+			undefined,
+			{ action: "show", view: "calendar" },
+			vi.fn(),
+		);
+
+		expect(result?.values).toMatchObject({
+			viewId: "calendar",
+			viewType: "gui",
+			delivery: receipt.delivery,
+			deliveryOwner: receipt.deliveryOwner,
+			operationId: receipt.operationId,
+			operationRevision: receipt.operationRevision,
+			revision: receipt.revision,
+		});
+		expect(result?.data).toMatchObject({
+			view: { id: "calendar", viewType: "gui" },
+			delivery: receipt.delivery,
+			deliveryOwner: receipt.deliveryOwner,
+			operationId: receipt.operationId,
+			operationRevision: receipt.operationRevision,
+			revision: receipt.revision,
 		});
 	});
 
