@@ -224,6 +224,12 @@ export interface PlannerLoopParams {
 		context: {
 			trajectory: PlannerTrajectory;
 			iteration: number;
+			/**
+			 * The planner's explicit completion declaration for the batch that
+			 * produced this call. `false` means any handler callback is an
+			 * intermediate implementation detail rather than the turn's reply.
+			 */
+			plannerCompleted?: boolean;
 		},
 	) => Promise<PlannerToolResult> | PlannerToolResult;
 	evaluate?: (params: {
