@@ -63,6 +63,7 @@ jobs:
           # ref. The action receives PR context separately and manages its target
           # branch; the working instruction chain must come from the trusted base.
           ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Capture attribution audit boundary
         id: attribution-boundary
@@ -88,10 +89,14 @@ jobs:
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # Allow cursor bot to trigger reviews
-          allowed_bots: "cursor"
+          # ANTHROPIC_API_KEY is the credential that actually exists in this
+          # repository's secrets. The OAuth-token secret this workflow used to
+          # reference was never configured, which left every @claude mention
+          # silently dead behind continue-on-error.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          additional_permissions: |
+            actions: read
 
           # Claude CLI arguments for model, allowed tools, and system prompt
           claude_args: |
