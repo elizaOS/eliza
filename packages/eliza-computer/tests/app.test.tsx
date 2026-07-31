@@ -53,14 +53,12 @@ describe("App", () => {
       screen.getByRole("link", { name: /set payout address/i }),
     ).toHaveAttribute("href", "https://eliza.app/profile/edit");
     expect(
-      screen.getByText(/public Solana or Ethereum payout address/i),
+      screen.getByText(/public Solana or Ethereum address to receive USDC/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/hidden README comment for you to copy and commit/i),
+      screen.getByText(/README comment that is hidden when rendered/i),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/public in README source, Git history/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/address is still public/i)).toBeInTheDocument();
     expect(screen.getByText(/never share a private key/i)).toBeInTheDocument();
     expect(screen.getByText(/seed phrase/i)).toBeInTheDocument();
     expect(
