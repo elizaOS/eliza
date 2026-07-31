@@ -45,8 +45,10 @@ function memoryBucket(objects: Map<string, string>): RuntimeR2Bucket {
       objects.set(key, typeof value === "string" ? value : String(value ?? ""));
       return {};
     },
-    async delete(key) {
-      objects.delete(key);
+    async delete(keys: string | string[]) {
+      for (const key of Array.isArray(keys) ? keys : [keys]) {
+        objects.delete(key);
+      }
       return {};
     },
   };
