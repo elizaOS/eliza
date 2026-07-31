@@ -13,7 +13,7 @@ for it. So it never ran: prod-2 (`eliza-prod-robot-2`, a 98 GB root) refilled to
 to reclaim, and an operator had to clear `_work` by hand (again) on 2026-07-15.
 This bundle is the missing recurring call site.
 
-The tool prunes only per-runner `_work` checkouts older than `--min-age` hours
+The tool prunes only per-runner `_work` checkouts older than `--min-age-hours`
 and **refuses to delete while a `Runner.Worker` process is active** (its built-in
 guard), so a scheduled run never interrupts a live CI job.
 
@@ -97,7 +97,7 @@ systemctl start eliza-runner-workspace-prune.service          # run once now
 journalctl -u eliza-runner-workspace-prune.service -n 50
 # dry-run, no deletions:
 bun /opt/eliza-runner-workspace-cleanup/prune-runner-workspaces.ts \
-  --root /opt/actions-runners --min-age 6 --dry-run
+  --root /opt/actions-runners --min-age-hours 6 --dry-run
 ```
 
 The `.service` `ConditionPathExists=<runner root>` makes it a clean no-op on a
