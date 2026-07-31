@@ -280,6 +280,7 @@ export async function getEthereumTransactions(
   address: string,
   limit = 20,
   cursor?: string | null,
+  order?: "ASC" | "DESC",
 ): Promise<{ transactions: EthereumTransaction[]; nextCursor: string | null }> {
   const walletAddress = address.trim();
 
@@ -294,6 +295,10 @@ export async function getEthereumTransactions(
 
   if (cursor) {
     searchParams.cursor = cursor;
+  }
+
+  if (order) {
+    searchParams.order = order;
   }
 
   const data = await callMoralisRest<MoralisWalletTransactionsResponse>(
@@ -311,6 +316,21 @@ export async function getEthereumTransactions(
     transactions,
     nextCursor: data.cursor ?? null,
   };
+}
+
+// Live-verified (against Vitalik's address, matching Etherscan's actual
+// 2015-09-28 first-transaction date): order=ASC&limit=1 returns the
+// wallet's oldest transaction directly in a single call. This replaced
+// an earlier page-walking-with-a-cap approach that silently returned
+// the last transaction seen within a capped scan window as "oldest" -
+// which is wrong for any wallet with more history than the cap covers
+// (confirmed broken on this exact wallet before this fix).
+export async function getEthereumOldestTransaction(
+  address: string,
+): Promise<EthereumTransaction | null> {
+  const { transactions } = await getEthereumTransactions(address, 1, null, "ASC");
+
+  return transactions[0] ?? null;
 }
 
 export async function getEthereumTransaction(

@@ -9,6 +9,7 @@ import {
   EthereumTransaction,
   getEthereumBalance,
   getEthereumNftHoldings,
+  getEthereumOldestTransaction,
   getEthereumTokenHoldings,
   getEthereumTransaction,
   getEthereumTransactions,
@@ -393,33 +394,15 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     address: string,
   ): Promise<ChainOperationResult<OldestTransactionResult>> {
     try {
-      // Moralis's wallet-history endpoint doesn't expose a direct
-      // "oldest transaction" lookup the way Helius's paginated
-      // getSignaturesForAddress does - approximating it here by walking
-      // pages forward via cursor until the last page is reached. This
-      // is a real implementation, not a stub, but it's the one piece of
-      // this connector's transaction retrieval that's genuinely more
-      // expensive per-call than Solana's equivalent, since Moralis
-      // doesn't offer a native "walk from genesis" direction.
-      let cursor: string | null = null;
-      let lastPage: Awaited<ReturnType<typeof getEthereumTransactions>> | null =
-        null;
-
-      for (let page = 0; page < 20; page += 1) {
-        const result: Awaited<ReturnType<typeof getEthereumTransactions>> =
-          await getEthereumTransactions(address, 100, cursor);
-
-        lastPage = result;
-
-        if (!result.nextCursor) {
-          break;
-        }
-
-        cursor = result.nextCursor;
-      }
-
-      const oldestTransaction =
-        lastPage?.transactions[lastPage.transactions.length - 1] ?? null;
+      // Moralis's wallet-history endpoint accepts order=ASC, which
+      // returns the oldest transaction directly in a single call -
+      // live-verified against a wallet with 10 years of history. An
+      // earlier version of this method walked pages forward via cursor
+      // with a capped scan window and returned the last transaction it
+      // happened to see, which silently mislabeled a transaction from
+      // deep in the capped window as "oldest" for any wallet with more
+      // history than the cap covered - confirmed broken before this fix.
+      const oldestTransaction = await getEthereumOldestTransaction(address);
 
       if (!oldestTransaction) {
         return createSuccessResult({
