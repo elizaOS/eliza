@@ -11,7 +11,11 @@ import {
   isElizaError,
   toElizaError,
 } from "@elizaos/core";
-import { getSimpleViewsService, type SimpleViewsService } from "./service.js";
+import {
+  type CalendarEventLookupSelector,
+  getSimpleViewsService,
+  type SimpleViewsService,
+} from "./service.js";
 import type {
   SimpleCalendarEvent,
   SimpleViewsSnapshot,
@@ -34,6 +38,7 @@ const EXPECTED_FAILURE_CODES = new Set([
   "SIMPLE_VIEWS_VALIDATION_FAILED",
   "SIMPLE_VIEWS_NOT_FOUND",
   "SIMPLE_VIEWS_AMBIGUOUS_NOTE",
+  "SIMPLE_VIEWS_AMBIGUOUS_EVENT",
   "SIMPLE_VIEWS_SERVICE_UNAVAILABLE",
   "SIMPLE_VIEWS_STORE_UNAVAILABLE",
 ]);
@@ -189,6 +194,47 @@ function resolveNoteTarget(
   return candidate.id;
 }
 
+function parseCalendarEventTarget(
+  params: Record<string, unknown>,
+):
+  | { selector: "id"; value: string }
+  | { selector: CalendarEventLookupSelector; value: string } {
+  const selectorNames = ["id", "title", "query"] as const;
+  const providedSelectors = selectorNames.filter((name) =>
+    Object.hasOwn(params, name),
+  );
+  if (providedSelectors.length !== 1) {
+    throw new ElizaError(
+      "delete-calendar-event requires exactly one of id, title, or query.",
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: {
+          fields: selectorNames,
+          providedFields: providedSelectors,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const selector = providedSelectors[0];
+  const selectorValue = selector ? params[selector] : undefined;
+  if (
+    !selector ||
+    typeof selectorValue !== "string" ||
+    selectorValue.trim().length === 0
+  ) {
+    throw new ElizaError(
+      `delete-calendar-event ${selector ?? "selector"} must be a nonblank string.`,
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: { field: selector ?? "selector" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return { selector, value: selectorValue.trim() };
+}
+
 function success(
   service: SimpleViewsService,
   text: string,
@@ -282,10 +328,15 @@ async function dispatchCapability(
     });
   }
   if (capability === "delete-calendar-event") {
-    assertOnlyParams(params, ["id"]);
-    const event = await service.deleteCalendarEvent(
-      requiredParam(params, "id"),
-    );
+    assertOnlyParams(params, ["id", "title", "query"]);
+    const target = parseCalendarEventTarget(params);
+    const event =
+      target.selector === "id"
+        ? await service.deleteCalendarEvent(target.value)
+        : await service.deleteCalendarEventByLookup(
+            target.selector,
+            target.value,
+          );
     return success(service, `Deleted calendar event "${event.title}".`, {
       event,
     });
