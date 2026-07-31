@@ -14,11 +14,7 @@ import {
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
 } from "../security/trusted-delivery-audience";
-import {
-	emitStreamingHook,
-	getStreamingContext,
-	runWithSuppressedModelStream,
-} from "../streaming-context";
+import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -568,15 +564,13 @@ export async function executePlannedToolCall(
 						{ actionName: action.name, modelClass: action.modelClass },
 						() =>
 							withActionStep(runtime, action.name, () =>
-								runWithSuppressedModelStream(() =>
-									action.handler(
-										runtime,
-										executorCtx.message,
-										executorCtx.state,
-										handlerOptions,
-										actionCallback,
-										executorCtx.responses,
-									),
+								action.handler(
+									runtime,
+									executorCtx.message,
+									executorCtx.state,
+									handlerOptions,
+									actionCallback,
+									executorCtx.responses,
 								),
 							),
 					);
