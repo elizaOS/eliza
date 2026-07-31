@@ -67,6 +67,7 @@ export interface ResponseHandlerEvaluationRunResult {
 	activeEvaluators: string[];
 	appliedPatches: ResponseHandlerPatchTrace[];
 	candidateActionsAddedByEvaluators: string[];
+	candidateActionsClearedByEvaluators: boolean;
 	errors: Array<{ evaluatorName: string; error: string }>;
 }
 
@@ -254,6 +255,7 @@ export async function runResponseHandlerEvaluators(args: {
 		activeEvaluators: [],
 		appliedPatches: [],
 		candidateActionsAddedByEvaluators: [],
+		candidateActionsClearedByEvaluators: false,
 		errors: [],
 	};
 	if (candidates.length === 0) {
@@ -278,6 +280,9 @@ export async function runResponseHandlerEvaluators(args: {
 			const patch = await evaluator.evaluate(context);
 			if (!patch) {
 				continue;
+			}
+			if (patch.clearCandidateActions === true) {
+				result.candidateActionsClearedByEvaluators = true;
 			}
 			const applied = applyResponseHandlerPatch(
 				args.messageHandler,
