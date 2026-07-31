@@ -94,8 +94,11 @@ describe("formatCountdown", () => {
   });
 
   it("returns days remaining for >= 24h", () => {
+    // One minute past the 72h boundary: formatCountdown re-reads Date.now(),
+    // so a timestamp at exactly +72h floors to 71h ("2d") unless both reads
+    // land in the same millisecond — this test only ever passed by that race.
     const threeDaysFromNow = new Date(
-      Date.now() + 3 * 24 * 60 * 60 * 1000,
+      Date.now() + (3 * 24 * 60 + 1) * 60 * 1000,
     ).toISOString();
     expect(formatCountdown(threeDaysFromNow)).toBe("3d remaining");
   });
