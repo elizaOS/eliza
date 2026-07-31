@@ -1,9 +1,19 @@
-// Coordinates cloud service onboarding chat behavior behind route handlers.
-import { createOpenAI } from "@ai-sdk/openai";
-import { generateText } from "ai";
+/**
+ * Runs the onboarding state machine and persists its transcript. Worker
+ * deployments delegate each session to one Durable Object; local callers use
+ * an in-process keyed queue over the cache-backed store.
+ */
+
+import type {
+  RuntimeDurableObjectNamespace,
+  RuntimeDurableObjectStub,
+} from "../../../types/cloud-worker-env";
 import { cache } from "../../cache/client";
-import { CEREBRAS_DEFAULT_TEXT_MODEL } from "../../models";
-import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
+import {
+  getCloudAwareEnv,
+  getCloudBinding,
+  hasCloudBindingsContext,
+} from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
 import {
@@ -17,6 +27,8 @@ export type OnboardingChatRole = "user" | "assistant";
 export type OnboardingPlatform = "web" | "telegram" | "discord" | "whatsapp" | "twilio" | "blooio";
 
 export interface OnboardingChatMessage {
+  /** Stable marker used to reconstruct idempotent response snapshots. */
+  id?: string;
   role: OnboardingChatRole;
   content: string;
   createdAt: string;
@@ -61,6 +73,8 @@ export interface OnboardingChatInput {
     organizationId: string;
   } | null;
   trustedPlatformIdentity?: boolean;
+  /** Stable transport delivery id. Replays return the original result. */
+  idempotencyKey?: string;
 }
 
 export interface OnboardingChatResult {
@@ -82,8 +96,6 @@ const MAX_HISTORY_MESSAGES = 200;
  * raw connector payloads, so the session store enforces its own bound.
  */
 const MAX_MESSAGE_LENGTH = 4000;
-const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 const ELIZA_APP_PRICING_SUMMARY =
@@ -95,6 +107,10 @@ function sessionCacheKey(sessionId: string): string {
 
 function continuationCacheKey(token: string): string {
   return `eliza-app:onboarding-continuation:${token}`;
+}
+
+function resultCacheKey(sessionId: string, idempotencyKey: string): string {
+  return `eliza-app:onboarding-result:${sessionId}:${idempotencyKey}`;
 }
 
 function nowIso(): string {
@@ -170,6 +186,18 @@ async function resolveSessionId(input: OnboardingChatInput): Promise<string> {
     input.trustedPlatformIdentity !== true &&
     input.sessionId?.trim() === sessionId
   ) {
+    const coordinator = onboardingCoordinator();
+    if (coordinator) {
+      const response = await coordinator
+        .getByName(sessionId)
+        .fetch("https://onboarding.internal/resolve", { method: "POST" });
+      if (response.ok) {
+        const resolved: unknown = await response.json();
+        if (isOnboardingContinuation(resolved)) {
+          return resolved.sessionId;
+        }
+      }
+    }
     const continuation = await cache.get<unknown>(continuationCacheKey(sessionId));
     if (isOnboardingContinuation(continuation)) {
       return continuation.sessionId;
@@ -178,11 +206,13 @@ async function resolveSessionId(input: OnboardingChatInput): Promise<string> {
   return sessionId;
 }
 
-async function loadSession(sessionId: string): Promise<OnboardingSession | null> {
+export async function loadCachedOnboardingSession(
+  sessionId: string,
+): Promise<OnboardingSession | null> {
   return cache.get<OnboardingSession>(sessionCacheKey(sessionId));
 }
 
-async function saveSession(session: OnboardingSession): Promise<void> {
+export async function mirrorOnboardingSessionToCache(session: OnboardingSession): Promise<void> {
   if (session.continuationToken && session.id.startsWith(PLATFORM_SESSION_PREFIX)) {
     await cache.set(
       continuationCacheKey(session.continuationToken),
@@ -209,7 +239,10 @@ function appendMessage(
   return {
     ...session,
     updatedAt: nowIso(),
-    history: trimHistory([...session.history, { role, content: message, createdAt: nowIso() }]),
+    history: trimHistory([
+      ...session.history,
+      { id: crypto.randomUUID(), role, content: message, createdAt: nowIso() },
+    ]),
   };
 }
 
@@ -393,15 +426,6 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   return session;
 }
 
-function getCerebrasClient(): ReturnType<typeof createOpenAI> | null {
-  const env = getCloudAwareEnv();
-  if (!env.CEREBRAS_API_KEY) return null;
-  return createOpenAI({
-    apiKey: env.CEREBRAS_API_KEY,
-    baseURL: CEREBRAS_BASE_URL,
-  });
-}
-
 function getOnboardingAppUrl(): string {
   const env = getCloudAwareEnv();
   const configured =
@@ -459,90 +483,17 @@ function sanitizeReplyText(reply: string): string {
     .trim();
 }
 
-function mentionsStarterCredit(text: string): boolean {
-  return /\$5\b[\s\S]{0,80}\bfree\b[\s\S]{0,80}\bcredits?\b/i.test(text);
-}
-
-function ensureExactLoginUrl(reply: string, loginUrl: string): string {
-  const sanitized = sanitizeReplyText(reply);
-
-  let withoutGeneratedUrls = sanitized
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/^\s*[*_`~]+\s*$/gm, "")
-    .replace(/[ \t]+$/gm, "")
-    .trim();
-  if (!mentionsStarterCredit(withoutGeneratedUrls)) {
-    withoutGeneratedUrls = `${withoutGeneratedUrls ? `${withoutGeneratedUrls}\n\n` : ""}You get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it.`;
-  }
-  return `${withoutGeneratedUrls ? `${withoutGeneratedUrls}\n\n` : ""}Connect Eliza Cloud here: ${loginUrl}`;
-}
-
-async function generateOnboardingReply(args: {
+function generateOnboardingReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
   requiresLogin: boolean;
   loginUrl: string;
-  controlPanelUrl: string;
-  launchUrl: string | null;
   handoffComplete: boolean;
-  preferredNameCaptured: boolean;
-}): Promise<string> {
-  // Fallback replies go through the same ASCII/markdown sanitizer as
-  // generated ones so the SMS-safety invariant holds on every reply path
-  // (session names captured before sanitization could carry non-ASCII).
-  if (!args.preferredNameCaptured) {
-    return sanitizeReplyText(fallbackReply(args));
-  }
-
-  // Out-of-credits is a money-state reply: keep it deterministic (exact
-  // billing link, no invented amounts) instead of letting the model
-  // improvise billing copy.
-  if (args.provisioning.status === "insufficient_credits") {
-    return sanitizeReplyText(fallbackReply(args));
-  }
-
-  const client = getCerebrasClient();
-  if (!client) return sanitizeReplyText(fallbackReply(args));
-
-  try {
-    const { text } = await generateText({
-      model: client.chat(CEREBRAS_MODEL),
-      system: `You are the Eliza Cloud onboarding agent. Keep onboarding smooth and conversational.
-
-Goals:
-- Learn the user's preferred name.
-- Briefly explain the product: a private Eliza Cloud agent in its own cloud container that can text, remember context, and work for the user.
-- Briefly explain pricing: usage-based cloud credits; new users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it.
-- If the user's preferred name is unknown, ask what to call them and do not claim their container is provisioning or running yet.
-- If not logged in, ask them to connect Eliza Cloud and give this private link: ${args.loginUrl}
-- If logged in, explain that their personal Eliza container is provisioning and their starter credit is available.
-- If running, announce the container is running and that the onboarding conversation was copied into agent memory.
-- Keep responses short, warm, and direct.
-
-State:
-- Known name: ${args.session.name ?? "unknown"}
-- Preferred name captured: ${args.preferredNameCaptured ? "yes" : "no"}
-- Logged in: ${args.requiresLogin ? "no" : "yes"}
-- Container status: ${args.provisioning.status}
-- Control panel: ${args.controlPanelUrl}
-- Agent launch URL: ${args.launchUrl ?? "not ready"}`,
-      messages: args.session.history.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
-    });
-    const sanitized = sanitizeReplyText(text);
-    if (!sanitized) return fallbackReply(args);
-    return args.requiresLogin ? ensureExactLoginUrl(sanitized, args.loginUrl) : sanitized;
-  } catch (error) {
-    // error-policy:J4 the model is a non-essential enhancement over the always-
-    // valid deterministic fallbackReply; an LLM/transport failure degrades to
-    // that designed reply instead of failing the onboarding turn.
-    logger.warn("[eliza-app onboarding] generation failed; using fallback", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return sanitizeReplyText(fallbackReply(args));
-  }
+}): string {
+  // This is a finite product state machine, not an open-ended generation task.
+  // Deterministic copy prevents model latency, cost amplification, invented
+  // billing claims, and non-repeatable responses on transport replay.
+  return sanitizeReplyText(fallbackReply(args));
 }
 
 function transcriptText(session: OnboardingSession): string {
@@ -588,8 +539,10 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
           Authorization: `Bearer ${launch.connection.token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ text: transcriptText(session) }),
-        signal: AbortSignal.timeout(20_000),
+        body: JSON.stringify({
+          text: transcriptText(session),
+          idempotencyKey: `onboarding-handoff:${session.id}`,
+        }),
       },
     );
 
@@ -646,9 +599,18 @@ function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
   };
 }
 
-export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
-  let sessionId = await resolveSessionId(input);
-  let session = await loadSession(sessionId);
+export interface OnboardingSessionStore {
+  load(sessionId: string): Promise<OnboardingSession | null>;
+  save(session: OnboardingSession): Promise<void>;
+}
+
+export async function runOnboardingChatWithStore(
+  input: OnboardingChatInput,
+  resolvedSessionId: string,
+  store: OnboardingSessionStore,
+): Promise<OnboardingChatResult> {
+  let sessionId = resolvedSessionId;
+  let session = await store.load(sessionId);
 
   // An untrusted caller must never create a platform-scoped session. Opaque
   // browser credentials resolve to an existing platform session above.
@@ -769,19 +731,16 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     )}`,
   );
   const panelUrl = controlPanelUrl(session.agentId);
-  const reply = await generateOnboardingReply({
+  const reply = generateOnboardingReply({
     session,
     provisioning,
     requiresLogin,
     loginUrl,
-    controlPanelUrl: panelUrl,
-    launchUrl,
     handoffComplete,
-    preferredNameCaptured,
   });
 
   session = appendMessage(session, "assistant", reply);
-  await saveSession(session);
+  await store.save(session);
 
   return {
     session,
@@ -793,4 +752,90 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     provisioning,
     handoffComplete,
   };
+}
+
+const localQueues = new Map<string, Promise<void>>();
+
+async function serializeLocal<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+  const previous = localQueues.get(sessionId) ?? Promise.resolve();
+  let release: () => void = () => undefined;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous.then(() => current);
+  localQueues.set(sessionId, queued);
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (localQueues.get(sessionId) === queued) {
+      localQueues.delete(sessionId);
+    }
+  }
+}
+
+function onboardingCoordinator(): RuntimeDurableObjectNamespace | undefined {
+  return getCloudBinding<RuntimeDurableObjectNamespace>("ONBOARDING_SESSIONS");
+}
+
+async function readCoordinatorResult(response: Response): Promise<OnboardingChatResult> {
+  if (!response.ok) {
+    throw new Error(`onboarding session coordinator failed (${response.status})`);
+  }
+  return (await response.json()) as OnboardingChatResult;
+}
+
+async function runViaCoordinator(
+  stub: RuntimeDurableObjectStub,
+  input: OnboardingChatInput,
+  sessionId: string,
+): Promise<OnboardingChatResult> {
+  return readCoordinatorResult(
+    await stub.fetch("https://onboarding.internal/turn", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input, sessionId }),
+    }),
+  );
+}
+
+export async function runOnboardingChat(input: OnboardingChatInput): Promise<OnboardingChatResult> {
+  const idempotencyKey = input.idempotencyKey?.trim();
+  if (idempotencyKey && idempotencyKey.length > 256) {
+    throw new Error("Onboarding idempotency key exceeds 256 characters");
+  }
+  const normalizedInput = {
+    ...input,
+    idempotencyKey: idempotencyKey || undefined,
+  };
+  const sessionId = await resolveSessionId(normalizedInput);
+  const coordinator = onboardingCoordinator();
+  if (coordinator) {
+    return runViaCoordinator(coordinator.getByName(sessionId), normalizedInput, sessionId);
+  }
+  if (hasCloudBindingsContext()) {
+    throw new Error("ONBOARDING_SESSIONS binding is required in Worker deployments");
+  }
+
+  return serializeLocal(sessionId, async () => {
+    if (normalizedInput.idempotencyKey) {
+      const replay = await cache.get<OnboardingChatResult>(
+        resultCacheKey(sessionId, normalizedInput.idempotencyKey),
+      );
+      if (replay) return replay;
+    }
+    const result = await runOnboardingChatWithStore(normalizedInput, sessionId, {
+      load: loadCachedOnboardingSession,
+      save: mirrorOnboardingSessionToCache,
+    });
+    if (normalizedInput.idempotencyKey) {
+      await cache.set(
+        resultCacheKey(sessionId, normalizedInput.idempotencyKey),
+        result,
+        SESSION_TTL_SECONDS,
+      );
+    }
+    return result;
+  });
 }

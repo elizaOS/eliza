@@ -82,6 +82,7 @@ app.post("/", async (c) => {
     }
 
     const caller = await resolveCaller(c);
+    const idempotencyKey = c.req.header("Idempotency-Key")?.trim();
     const result = await runOnboardingChat({
       sessionId: parsed.data.sessionId,
       message: parsed.data.message,
@@ -90,6 +91,7 @@ app.post("/", async (c) => {
       platformDisplayName: parsed.data.platformDisplayName,
       authenticatedUser: caller.authenticatedUser,
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
+      idempotencyKey: idempotencyKey || undefined,
     });
 
     return c.json({
