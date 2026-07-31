@@ -315,6 +315,58 @@ interface SlackAppMentionEventType {
   event_ts: string;
 }
 
+/**
+ * The bolt envelope + context around an inbound event. Carries the fields the
+ * event payload itself does not: `event_id` (stable across redeliveries),
+ * `retry_num` / `retryNum`, and the `api_app_id` / `team_id` used for
+ * workspace isolation.
+ */
+interface SlackInboundEnvelope {
+  body?: unknown;
+  context?: unknown;
+}
+
+/** Terminal state of one inbound handler run, reported to the lane tracker. */
+type SlackDispatchOutcomeLocal = "dispatched" | "skipped" | "failed";
+
+type SlackSocketEmitter = {
+  on: (event: string, listener: (...args: unknown[]) => void) => unknown;
+};
+
+/**
+ * Reaches the Socket Mode client's event emitter through the bolt receiver.
+ *
+ * Bolt does not expose socket lifecycle events on the `App`, so the receiver's
+ * client is the only place to observe disconnects. Every hop is checked
+ * because this is an internal shape: if a future bolt release moves it, this
+ * returns `null` and reconnect handling degrades to bolt's own behaviour
+ * rather than throwing at startup.
+ */
+function getSlackSocketEmitter(app: unknown): SlackSocketEmitter | null {
+  const receiver = (app as { receiver?: unknown } | null)?.receiver;
+  if (!receiver || typeof receiver !== "object") {
+    return null;
+  }
+  const client = (receiver as { client?: unknown }).client;
+  if (!client || typeof client !== "object") {
+    return null;
+  }
+  const on = (client as { on?: unknown }).on;
+  if (typeof on !== "function") {
+    return null;
+  }
+  return {
+    on: (event, listener) =>
+      (
+        on as (
+          this: unknown,
+          event: string,
+          listener: (...args: unknown[]) => void,
+        ) => unknown
+      ).call(client, event, listener),
+  };
+}
+
 // Helper to get message service from runtime
 const getMessageService = (runtime: IAgentRuntime): IMessageService | null => {
   if ("messageService" in runtime) {
@@ -333,7 +385,23 @@ import {
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
 } from "./accounts";
+import {
+  type SlackAccountIdentity,
+  shouldDropMismatchedSlackEvent,
+} from "./event-isolation";
 import { markdownToSlackMrkdwn } from "./formatting";
+import {
+  extractSlackEventId,
+  extractSlackRetryNum,
+  SlackInboundReliability,
+} from "./inbound-reliability";
+import {
+  decideSlackReconnect,
+  formatSlackError,
+  isNonRecoverableSlackAuthError,
+  type SlackLivenessSnapshot,
+  SlackLivenessTracker,
+} from "./reconnect-policy";
 import {
   getSlackChannelType,
   getSlackUserDisplayName,
@@ -375,6 +443,16 @@ type SlackAccountRuntime = {
   userCache: Map<string, SlackUser>;
   channelCache: Map<string, SlackChannel>;
   isConnected: boolean;
+  /**
+   * `api_app_id` / `enterprise_id` learned from `auth.test`, compared against
+   * every inbound envelope so cross-workspace bleed is detected rather than
+   * assumed away. See `event-isolation.ts`.
+   */
+  identity: SlackAccountIdentity;
+  /** Dedupe + `app_mention`/`message` race coordinator for this workspace. */
+  reliability: SlackInboundReliability;
+  /** Connection + `lastEventAt` liveness, surfaced through `getHealth()`. */
+  liveness: SlackLivenessTracker;
 };
 
 /**
@@ -799,11 +877,22 @@ export class SlackService extends Service implements ISlackService {
         userCache: new Map(),
         channelCache: new Map(),
         isConnected: false,
+        identity: {},
+        reliability: new SlackInboundReliability(),
+        liveness: new SlackLivenessTracker(),
       };
 
       const authResult = await state.client.auth.test();
       state.botUserId = authResult.user_id as string;
       state.teamId = authResult.team_id as string;
+      // Workspace identity for the isolation guard. `auth.test` is the only
+      // authoritative source for which app + team these tokens belong to.
+      state.identity = {
+        apiAppId: (authResult as { api_app_id?: string }).api_app_id ?? null,
+        teamId: state.teamId,
+        enterpriseId:
+          (authResult as { enterprise_id?: string }).enterprise_id ?? null,
+      };
 
       this.accountStates.set(accountId, state);
       this.syncDefaultAccountAliases();
@@ -824,11 +913,26 @@ export class SlackService extends Service implements ISlackService {
       try {
         await app.start();
       } catch (error) {
+        // A revoked token or missing scope will fail identically forever.
+        // Record it as a permanent failure so health reports say *why* the
+        // connector is down instead of leaving it looking merely unstarted.
+        if (isNonRecoverableSlackAuthError(error)) {
+          const message = `Slack account ${accountId} could not start: non-recoverable auth error (${formatSlackError(error)}). Check the bot/app tokens and granted scopes.`;
+          state.liveness.markPermanentFailure(message);
+          this.runtime.logger.error(
+            { src: "plugin:slack", agentId: this.runtime.agentId, accountId },
+            message,
+          );
+        } else {
+          state.liveness.markDisconnected(error);
+        }
         this.accountStates.delete(accountId);
         this.syncDefaultAccountAliases();
         throw error;
       }
       state.isConnected = true;
+      state.liveness.markConnected();
+      this.registerSocketLifecycleHandlers(state);
       this.syncDefaultAccountAliases();
 
       this.runtime.logger.info(
@@ -884,51 +988,220 @@ export class SlackService extends Service implements ISlackService {
     }
   }
 
+  /**
+   * Registers the bolt listeners for an account.
+   *
+   * Every family runs the workspace-isolation guard first. It is cheap (two
+   * string compares against the envelope) and it is the only thing standing
+   * between a foreign workspace's events and this account's memory, so it is
+   * applied uniformly rather than only on the paths that felt risky.
+   */
   private registerEventHandlers(state?: SlackAccountRuntime): void {
     const app = state?.app ?? this.app;
     const accountId = state?.accountId ?? this.defaultAccountId;
     if (!app) return;
 
     // Handle regular messages
-    app.message(async ({ message, client }) => {
+    app.message(async ({ message, client, body, context }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "message")) return;
+      this.markInboundEvent(accountId);
       await this.handleMessage(
         message as SlackMessageEventType,
         client,
         accountId,
+        { body, context },
       );
     });
 
     // Handle app mentions
-    app.event("app_mention", async ({ event, client }) => {
+    app.event("app_mention", async ({ event, client, body, context }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "app_mention")) return;
+      this.markInboundEvent(accountId);
       await this.handleAppMention(
         event as SlackAppMentionEventType,
         client,
         accountId,
+        { body, context },
       );
     });
 
     // Handle reactions
-    app.event("reaction_added", async ({ event }) => {
+    app.event("reaction_added", async ({ event, body }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "reaction_added"))
+        return;
+      this.markInboundEvent(accountId);
+      if (!this.admitNonMessageEvent(body, accountId)) return;
       await this.handleReactionAdded(event, accountId);
     });
 
-    app.event("reaction_removed", async ({ event }) => {
+    app.event("reaction_removed", async ({ event, body }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "reaction_removed"))
+        return;
+      this.markInboundEvent(accountId);
+      if (!this.admitNonMessageEvent(body, accountId)) return;
       await this.handleReactionRemoved(event, accountId);
     });
 
     // Handle channel joins/leaves
-    app.event("member_joined_channel", async ({ event }) => {
+    app.event("member_joined_channel", async ({ event, body }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "member_joined_channel"))
+        return;
+      this.markInboundEvent(accountId);
+      if (!this.admitNonMessageEvent(body, accountId)) return;
       await this.handleMemberJoinedChannel(event, accountId);
     });
 
-    app.event("member_left_channel", async ({ event }) => {
+    app.event("member_left_channel", async ({ event, body }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "member_left_channel"))
+        return;
+      this.markInboundEvent(accountId);
+      if (!this.admitNonMessageEvent(body, accountId)) return;
       await this.handleMemberLeftChannel(event, accountId);
     });
 
     // Handle file shares
-    app.event("file_shared", async ({ event }) => {
+    app.event("file_shared", async ({ event, body }) => {
+      if (this.shouldDropInboundEvent(body, accountId, "file_shared")) return;
+      this.markInboundEvent(accountId);
+      if (!this.admitNonMessageEvent(body, accountId)) return;
       await this.handleFileShared(event, accountId);
     });
+  }
+
+  /**
+   * Attaches reconnect + liveness handling to an account's Socket Mode client.
+   *
+   * Bolt already retries on its own, so this does not drive reconnection; it
+   * observes it. The value added is the bail: when the socket dies from a
+   * revoked token or a removed scope, bolt would keep retrying forever against
+   * a credential that can never work. Here that stops the loop and records a
+   * permanent failure an operator can actually see.
+   */
+  private registerSocketLifecycleHandlers(state: SlackAccountRuntime): void {
+    const emitter = getSlackSocketEmitter(state.app);
+    if (!emitter) {
+      return;
+    }
+    const accountId = state.accountId;
+
+    emitter.on("authenticated", () => {
+      state.liveness.markConnected();
+      state.isConnected = true;
+    });
+
+    const onFailure = (error: unknown) => {
+      state.isConnected = false;
+      state.liveness.markDisconnected(error);
+      const attempt = state.liveness.snapshot().reconnectAttempts + 1;
+      const decision = decideSlackReconnect({ error, attempt });
+
+      if (decision.action === "abort") {
+        state.liveness.markPermanentFailure(decision.message);
+        this.runtime.logger.error(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            reason: decision.reason,
+            attempt: decision.attempt,
+          },
+          decision.message,
+        );
+        if (decision.reason === "auth") {
+          // Stop the socket so bolt's own retry loop cannot keep hammering a
+          // credential that will never authenticate.
+          void state.app.stop().catch(() => undefined);
+        }
+        return;
+      }
+
+      state.liveness.markReconnectAttempt(decision.attempt);
+      this.runtime.logger.warn(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          attempt: decision.attempt,
+          delayMs: decision.delayMs,
+        },
+        `Slack socket disconnected; reconnect attempt ${decision.attempt} in ${Math.round(decision.delayMs / 1000)}s (${formatSlackError(error)})`,
+      );
+    };
+
+    emitter.on("disconnected", (error: unknown) => {
+      onFailure(error);
+    });
+    emitter.on("unable_to_socket_mode_start", (error: unknown) => {
+      onFailure(error);
+    });
+  }
+
+  /**
+   * Workspace-isolation gate. Returns true when the event must be discarded.
+   */
+  private shouldDropInboundEvent(
+    body: unknown,
+    accountId: string,
+    eventFamily: string,
+  ): boolean {
+    const identity = this.getAccountState(accountId)?.identity;
+    if (!identity) {
+      return false;
+    }
+    const verdict = shouldDropMismatchedSlackEvent({ body, identity });
+    if (!verdict.drop) {
+      return false;
+    }
+    this.runtime.logger.warn(
+      {
+        src: "plugin:slack",
+        agentId: this.runtime.agentId,
+        accountId,
+        eventFamily,
+        field: verdict.field,
+        expected: verdict.expected,
+        received: verdict.received,
+      },
+      "Dropping Slack event from a mismatched workspace/app",
+    );
+    return true;
+  }
+
+  /** Records inbound traffic for liveness, before any gating. */
+  private markInboundEvent(accountId: string): void {
+    this.getAccountState(accountId)?.liveness.markEvent();
+  }
+
+  /**
+   * Envelope-level redelivery guard for the non-message event families.
+   *
+   * These carry no stable conversation key, so `event_id` is the only handle
+   * on identity — which is fine, because it is exactly what Slack holds
+   * constant across retries.
+   */
+  private admitNonMessageEvent(body: unknown, accountId: string): boolean {
+    const reliability = this.getAccountState(accountId)?.reliability;
+    if (!reliability) {
+      return true;
+    }
+    return reliability.admitEventId(extractSlackEventId(body));
+  }
+
+  /**
+   * Connection + liveness snapshot per account, for health checks.
+   *
+   * `lastEventAt` is reported separately from `connected` on purpose: an open
+   * socket that has stopped delivering looks identical to a healthy one at the
+   * transport layer, and only the event clock tells them apart.
+   */
+  getHealth(): Record<string, SlackLivenessSnapshot> {
+    const health: Record<string, SlackLivenessSnapshot> = {};
+    const states =
+      this.accountStates instanceof Map ? this.accountStates : new Map();
+    for (const [accountId, state] of states) {
+      health[accountId] = state.liveness.snapshot();
+    }
+    return health;
   }
 
   private getDefaultAccountState(): SlackAccountRuntime | null {
@@ -1132,6 +1405,7 @@ export class SlackService extends Service implements ISlackService {
     message: SlackMessageEventType,
     _client: WebClient,
     accountId = this.defaultAccountId,
+    envelope?: SlackInboundEnvelope,
   ): Promise<void> {
     if (
       !isValidChannelId(message.channel) ||
@@ -1179,78 +1453,140 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    // Check if we should only respond to mentions
-    const isMentioned = message.text?.includes(`<@${botUserId}>`);
-    // Skip @mentions in channels — handleAppMention handles those
-    if (isMentioned && message.channel_type !== "im") {
-      return;
-    }
-    if (settings.shouldRespondOnlyToMentions && !isMentioned) {
-      return;
-    }
+    const isMentioned = Boolean(message.text?.includes(`<@${botUserId}>`));
+    const isDirectMessage = message.channel_type === "im";
 
-    const _isThreadReply = Boolean(
-      message.thread_ts && message.thread_ts !== message.ts,
-    );
-
-    // Build memory from message
-    const memory = await this.buildMemoryFromMessage(message, accountId);
-    if (!memory) return;
-
-    // Get or create room
-    const room = await this.ensureRoomExists(
-      message.channel,
-      message.thread_ts,
+    // Admission: dedupe against Slack redelivery and claim this message's lane.
+    const reliability = this.getAccountState(accountId)?.reliability ?? null;
+    const admission = reliability?.admit({
       accountId,
-    );
+      source: "message",
+      event: message,
+      eventId: extractSlackEventId(envelope?.body),
+      retryNum: extractSlackRetryNum(envelope?.body, envelope?.context),
+    });
 
-    const existingEntity = await this.runtime.getEntityById(memory.entityId);
-    if (!existingEntity) {
-      const slackUserId = message.user ?? memory.entityId;
-      const user = message.user
-        ? await this.getUser(message.user, accountId)
-        : null;
-      const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
-      await this.runtime.createEntity({
-        id: memory.entityId,
-        names: [displayName],
-        metadata: {
-          source: "slack",
+    if (admission && !admission.admitted) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
           accountId,
-          slack: {
-            accountId,
-            id: slackUserId,
-            name: displayName,
-            userName: user?.name || slackUserId,
-          },
+          channelId: message.channel,
+          messageTs: message.ts,
+          reason: admission.reason,
         },
-        agentId: this.runtime.agentId,
-      });
+        "Dropping duplicate inbound Slack message",
+      );
+      return;
     }
 
-    // Store the memory
-    await this.runtime.createMemory(memory, "messages");
+    const laneKey = admission?.key ?? null;
+    let outcome: SlackDispatchOutcomeLocal = "skipped";
 
-    // Emit event
-    await this.runtime.emitEvent(
-      SlackEventTypes.MESSAGE_RECEIVED as string,
-      this.buildEventPayload(accountId),
-    );
+    try {
+      // The `app_mention` twin. An @mention in a channel arrives twice, and
+      // exactly one copy may reach the agent. The previous code returned here
+      // unconditionally, which silently lost the turn whenever the mention
+      // path bailed. Instead: wait for the mention to actually settle, and
+      // only stand down if it really dispatched.
+      if (isMentioned && !isDirectMessage && reliability) {
+        const twin = await reliability.awaitMentionTwin(laneKey);
+        if (!twin.proceed) {
+          this.runtime.logger.debug(
+            {
+              src: "plugin:slack",
+              agentId: this.runtime.agentId,
+              accountId,
+              channelId: message.channel,
+              messageTs: message.ts,
+              reason: twin.reason,
+            },
+            "Skipping message twin; app_mention handled this turn",
+          );
+          return;
+        }
+      } else if (isMentioned && !isDirectMessage) {
+        // No coordinator wired (bare construction in tests): preserve the
+        // historical exclusive-path behaviour rather than double-posting.
+        return;
+      }
 
-    // Process the message through the agent
-    await this.processAgentMessage(
-      memory,
-      room,
-      message.channel,
-      message.thread_ts || message.ts,
-      accountId,
-    );
+      if (settings.shouldRespondOnlyToMentions && !isMentioned) {
+        return;
+      }
+
+      const _isThreadReply = Boolean(
+        message.thread_ts && message.thread_ts !== message.ts,
+      );
+
+      // Build memory from message
+      const memory = await this.buildMemoryFromMessage(message, accountId);
+      if (!memory) return;
+
+      // Get or create room
+      const room = await this.ensureRoomExists(
+        message.channel,
+        message.thread_ts,
+        accountId,
+      );
+
+      const existingEntity = await this.runtime.getEntityById(memory.entityId);
+      if (!existingEntity) {
+        const slackUserId = message.user ?? memory.entityId;
+        const user = message.user
+          ? await this.getUser(message.user, accountId)
+          : null;
+        const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
+        await this.runtime.createEntity({
+          id: memory.entityId,
+          names: [displayName],
+          metadata: {
+            source: "slack",
+            accountId,
+            slack: {
+              accountId,
+              id: slackUserId,
+              name: displayName,
+              userName: user?.name || slackUserId,
+            },
+          },
+          agentId: this.runtime.agentId,
+        });
+      }
+
+      // Store the memory
+      await this.runtime.createMemory(memory, "messages");
+
+      // Emit event
+      await this.runtime.emitEvent(
+        SlackEventTypes.MESSAGE_RECEIVED as string,
+        this.buildEventPayload(accountId),
+      );
+
+      // Process the message through the agent
+      await this.processAgentMessage(
+        memory,
+        room,
+        message.channel,
+        message.thread_ts || message.ts,
+        accountId,
+      );
+      outcome = "dispatched";
+    } catch (error) {
+      // Free the lane so Slack's redelivery is a real retry, not a duplicate.
+      outcome = "failed";
+      throw error;
+    } finally {
+      reliability?.settle(laneKey, "message", outcome);
+    }
   }
 
   private async handleAppMention(
     event: SlackAppMentionEventType,
     _client: WebClient,
     accountId = this.defaultAccountId,
+    envelope?: SlackInboundEnvelope,
   ): Promise<void> {
     if (
       !event.user ||
@@ -1272,64 +1608,103 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    // Build memory from mention
-    const memory = await this.buildMemoryFromMention(
-      {
-        user: event.user,
-        text: event.text,
-        channel: event.channel,
-        ts: event.ts,
-        thread_ts: event.thread_ts,
-      },
+    // Admission: same lane as the `message` twin, claimed from the mention
+    // side. Whichever source gets here first owns the turn.
+    const reliability = this.getAccountState(accountId)?.reliability ?? null;
+    const admission = reliability?.admit({
       accountId,
-    );
-    if (!memory) return;
+      source: "app_mention",
+      event,
+      eventId: extractSlackEventId(envelope?.body),
+      retryNum: extractSlackRetryNum(envelope?.body, envelope?.context),
+    });
 
-    // Get or create room
-    const room = await this.ensureRoomExists(
-      event.channel,
-      event.thread_ts,
-      accountId,
-    );
-
-    const existingEntity = await this.runtime.getEntityById(memory.entityId);
-    if (!existingEntity) {
-      const user = await this.getUser(event.user, accountId);
-      const displayName = user ? getSlackUserDisplayName(user) : event.user;
-      await this.runtime.createEntity({
-        id: memory.entityId,
-        names: [displayName],
-        metadata: {
-          source: "slack",
+    if (admission && !admission.admitted) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
           accountId,
-          slack: {
-            accountId,
-            id: event.user,
-            name: displayName,
-            userName: user?.name || event.user,
-          },
+          channelId: event.channel,
+          messageTs: event.ts,
+          reason: admission.reason,
         },
-        agentId: this.runtime.agentId,
-      });
+        "Dropping duplicate inbound Slack app mention",
+      );
+      return;
     }
 
-    // Store the memory
-    await this.runtime.createMemory(memory, "messages");
+    const laneKey = admission?.key ?? null;
+    let outcome: SlackDispatchOutcomeLocal = "skipped";
 
-    // Emit event
-    await this.runtime.emitEvent(
-      SlackEventTypes.APP_MENTION as string,
-      this.buildEventPayload(accountId),
-    );
+    try {
+      // Build memory from mention
+      const memory = await this.buildMemoryFromMention(
+        {
+          user: event.user,
+          text: event.text,
+          channel: event.channel,
+          ts: event.ts,
+          thread_ts: event.thread_ts,
+        },
+        accountId,
+      );
+      if (!memory) return;
 
-    // Process the message
-    await this.processAgentMessage(
-      memory,
-      room,
-      event.channel,
-      event.thread_ts || event.ts,
-      accountId,
-    );
+      // Get or create room
+      const room = await this.ensureRoomExists(
+        event.channel,
+        event.thread_ts,
+        accountId,
+      );
+
+      const existingEntity = await this.runtime.getEntityById(memory.entityId);
+      if (!existingEntity) {
+        const user = await this.getUser(event.user, accountId);
+        const displayName = user ? getSlackUserDisplayName(user) : event.user;
+        await this.runtime.createEntity({
+          id: memory.entityId,
+          names: [displayName],
+          metadata: {
+            source: "slack",
+            accountId,
+            slack: {
+              accountId,
+              id: event.user,
+              name: displayName,
+              userName: user?.name || event.user,
+            },
+          },
+          agentId: this.runtime.agentId,
+        });
+      }
+
+      // Store the memory
+      await this.runtime.createMemory(memory, "messages");
+
+      // Emit event
+      await this.runtime.emitEvent(
+        SlackEventTypes.APP_MENTION as string,
+        this.buildEventPayload(accountId),
+      );
+
+      // Process the message
+      await this.processAgentMessage(
+        memory,
+        room,
+        event.channel,
+        event.thread_ts || event.ts,
+        accountId,
+      );
+      outcome = "dispatched";
+    } catch (error) {
+      outcome = "failed";
+      throw error;
+    } finally {
+      // Releasing here is what un-blocks the waiting `message` twin: a skip or
+      // a throw hands the turn back instead of swallowing it.
+      reliability?.settle(laneKey, "app_mention", outcome);
+    }
   }
 
   private async handleReactionAdded(
