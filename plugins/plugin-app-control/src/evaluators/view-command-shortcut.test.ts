@@ -76,6 +76,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			const patch = await run(text);
 			expect(patch).toBeTruthy();
 			expect(patch?.requiresTool).toBe(true);
+			expect(patch?.clearReply).toBe(true);
 			expect(viewCommandShortcutEvaluator.priority).toBeLessThan(20);
 			expect(patch?.clearCandidateActions).toBe(true);
 			expect(patch?.addCandidateActions).toContain("VIEWS");
@@ -98,6 +99,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 
 		expect(patch).toMatchObject({
 			requiresTool: true,
+			clearReply: true,
 			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],
 			clearParentActionHints: true,
@@ -112,6 +114,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 
 describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 	it("on non-navigation chatter", async () => {
+		expect(await run("wyd?")).toBeNull();
 		expect(await run("what's the weather like")).toBeNull();
 		expect(await run("tell me a joke")).toBeNull();
 	});
