@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("useDisplayPreferences — background history + undo", () => {
-  it("starts on the boot default (Canopy wallpaper) with nothing to undo", () => {
+  it("starts on the boot default (Ember Night sunset wallpaper) with nothing to undo", () => {
     const { result } = renderHook(() => useDisplayPreferences());
     expect(result.current.state.backgroundConfig).toEqual(
       DEFAULT_BACKGROUND_CONFIG,
