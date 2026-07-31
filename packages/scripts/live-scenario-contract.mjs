@@ -139,21 +139,27 @@ export function resolveShardMatrix(manifest, env) {
  * as a lane failure and not as a shard that had nothing to say.
  */
 export function gateShardOutcomes(expectedShards, artifactDir) {
-  const failures = [];
-  for (const shard of expectedShards) {
-    const outcomePath = path.join(
-      artifactDir,
-      `live-scenario-report-${shard}`,
-      "shard-outcome.json",
-    );
-    if (!existsSync(outcomePath)) {
-      failures.push(`${shard}=no-outcome-artifact`);
-      continue;
+  // Indexed by the record's own `shard` field rather than by path: the artifact
+  // download layout varies with how many artifacts matched the pattern, so the
+  // outcome file's depth under artifactDir is not something to depend on.
+  const published = new Map();
+  const walk = (dir) => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(entryPath);
+      else if (entry.name === "shard-outcome.json") {
+        const outcome = JSON.parse(readFileSync(entryPath, "utf8"));
+        published.set(outcome.shard, outcome.status || "unknown");
+      }
     }
-    const outcome = JSON.parse(readFileSync(outcomePath, "utf8"));
-    if (outcome.status !== "success")
-      failures.push(`${shard}=${outcome.status || "unknown"}`);
-  }
+  };
+  walk(artifactDir);
+
+  const failures = expectedShards
+    .map((shard) => [shard, published.get(shard) ?? "no-outcome-artifact"])
+    .filter(([, status]) => status !== "success")
+    .map(([shard, status]) => `${shard}=${status}`);
   return { status: failures.length === 0 ? "pass" : "fail", failures };
 }
 

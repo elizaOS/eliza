@@ -285,8 +285,15 @@ test("fans every requested shard out of the manifest and rejects ambiguity", () 
 test("reads a missing or failed shard outcome as a lane failure", () => {
   const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-gate-"));
   try {
+    // Nested exactly as the download lays the shard's run directory out, to
+    // pin that the gate finds the record by content and not by path depth.
     const write = (shard: string, status: string) => {
-      const dir = path.join(tempRoot, `live-scenario-report-${shard}`);
+      const dir = path.join(
+        tempRoot,
+        `live-scenario-report-${shard}`,
+        "scenario-runs",
+        shard,
+      );
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         path.join(dir, "shard-outcome.json"),
