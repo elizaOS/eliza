@@ -54,10 +54,6 @@ describe("wireCoordinatorBridgesWhenReady", () => {
       stop: async () => {},
     });
     const started: string[] = [];
-    let resolveAllStarted: (() => void) | undefined;
-    const allStarted = new Promise<void>((resolve) => {
-      resolveAllStarted = resolve;
-    });
     let release: (() => void) | undefined;
     let resolveAllStarted: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
