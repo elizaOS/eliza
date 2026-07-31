@@ -1170,7 +1170,9 @@ export function NotificationsHomeCenter({
     (px: number, preserveDirectionAtZero = false) => {
       // A fresh non-zero sample owns direct manipulation immediately. Cancel
       // any prior cancelled-pull settle so easing cannot lag behind this finger.
-      if (px !== 0) cancelPullCancellation();
+      if (px !== 0 && pullCancelTimer.current !== null) {
+        cancelPullCancellation();
+      }
       pullPxRef.current = px;
       const nextDirection =
         px > 0
