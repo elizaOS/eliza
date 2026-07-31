@@ -143,11 +143,6 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
 
-    fireEvent.mouseEnter(message);
-    expect(actions.getAttribute("aria-hidden")).toBe("false");
-    fireEvent.click(bubble);
-    expect(actions.getAttribute("aria-hidden")).toBe("false");
-
     const nativeBubbleMatches = bubble.matches.bind(bubble);
     vi.spyOn(bubble, "matches").mockImplementation((selector) =>
       selector === ":focus-visible" ? true : nativeBubbleMatches(selector),
@@ -174,6 +169,48 @@ describe("ChatMessage desktop hover chrome", () => {
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
     expect(actions.parentElement?.className).toBe(restingContentClass);
+  });
+
+  it("does not pin a fine-pointer action rail after bubble click and pointer leave", () => {
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage({ role: "user", text: "Pointer draft" })}
+        onCopy={vi.fn()}
+        onEdit={vi.fn()}
+        onReply={vi.fn()}
+      />,
+    );
+
+    const message = screen.getByTestId("thread-line");
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    const actions = screen.getByTestId("thread-line-actions");
+
+    fireEvent.mouseEnter(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+
+    fireEvent.click(bubble);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.mouseLeave(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.mouseEnter(message);
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByText("Pointer draft"));
+    const selection = window.getSelection();
+    if (!selection) throw new Error("jsdom selection unavailable");
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    fireEvent.click(bubble);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+
+    fireEvent.mouseLeave(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    selection.removeAllRanges();
   });
 
   it("returns focus to the visible glass message before Reply hides its actions", () => {
