@@ -71,6 +71,7 @@ import {
   AppCacheInvalidationRetryError,
   dispatchAppCacheInvalidationJob,
   enqueueAppCacheInvalidation,
+  formatAppCacheInvalidationError,
 } from "./app-cache-invalidation-job";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
@@ -3064,13 +3065,17 @@ export class ProvisioningJobService {
     err: unknown,
     result?: ProcessingResult,
   ): Promise<void> {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    const errorMsg =
+      err instanceof AppCacheInvalidationRetryError
+        ? formatAppCacheInvalidationError(err)
+        : err instanceof Error
+          ? err.message
+          : String(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
     if (
       err instanceof RetryableProvisionTransportError ||
-      err instanceof RetryableReplacementCleanupError ||
-      err instanceof AppCacheInvalidationRetryError
+      err instanceof RetryableReplacementCleanupError
     ) {
       const retrySnapshot =
         err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
@@ -3115,7 +3120,7 @@ export class ProvisioningJobService {
     // undefined and the writeback ignores it.
     const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
     const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
-    await this.retryOwnedWrite(job, "increment-attempt", () =>
+    const updated = await this.retryOwnedWrite(job, "increment-attempt", () =>
       jobsRepository.incrementAttempt(
         job.id,
         errorMsg,
@@ -3125,6 +3130,22 @@ export class ProvisioningJobService {
         this.executionOwnerId,
       ),
     );
+    if (err instanceof AppCacheInvalidationRetryError) {
+      const context = {
+        jobId: job.id,
+        attempts: updated?.attempts ?? job.attempts,
+        maxAttempts: job.max_attempts,
+        error: errorMsg,
+      };
+      if (updated?.status === "failed") {
+        logger.error(
+          "[provisioning-jobs] App cache invalidation exhausted its retry budget",
+          context,
+        );
+      } else {
+        logger.warn("[provisioning-jobs] App cache invalidation failed; retry scheduled", context);
+      }
+    }
   }
 
   /**

@@ -60,6 +60,7 @@ let ProvisioningJobServiceCtor: typeof import("../../../lib/services/provisionin
 let ProvisioningRecoveryDegradedErrorCtor: typeof import("../../../lib/services/provisioning-jobs").ProvisioningRecoveryDegradedError;
 let jobTypes: typeof import("../../../lib/services/provisioning-job-types").JOB_TYPES;
 let cacheInvalidationJobId: typeof import("../../../lib/services/app-cache-invalidation-job").appCacheInvalidationJobId;
+let cloudLogger: typeof import("../../../lib/utils/logger").logger;
 let pgliteReady = true;
 
 async function seedJob(params: {
@@ -168,6 +169,7 @@ beforeAll(async () => {
       ProvisioningRecoveryDegradedError: ProvisioningRecoveryDegradedErrorCtor,
     } = await import("../../../lib/services/provisioning-jobs"));
     ({ JOB_TYPES: jobTypes } = await import("../../../lib/services/provisioning-job-types"));
+    ({ logger: cloudLogger } = await import("../../../lib/utils/logger"));
     ({ appCacheInvalidationJobId: cacheInvalidationJobId } = await import(
       "../../../lib/services/app-cache-invalidation-job"
     ));
@@ -1204,7 +1206,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
       });
 
       let invalidationCalls = 0;
-      const invalidate = spyOn(AppsServiceSingleton, "invalidateCache").mockImplementation(
+      const invalidate = spyOn(AppsServiceSingleton, "invalidateCacheStrict").mockImplementation(
         async () => {
           invalidationCalls++;
           if (invalidationCalls === 1) throw new Error("redis temporarily unavailable");
@@ -1214,11 +1216,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
         const first = await service.processPendingJobs(1, {
           jobTypes: [jobTypes.APP_CACHE_INVALIDATE],
         });
-        expect(first).toMatchObject({ claimed: 1, succeeded: 0, retried: 1, failed: 0 });
+        expect(first).toMatchObject({ claimed: 1, succeeded: 0, retried: 0, failed: 1 });
         expect(await repo.findByIdForWrite(taskId)).toMatchObject({
           status: "pending",
-          attempts: 0,
-          error: "App cache invalidation failed after terminal provisioning writeback",
+          attempts: 1,
+          error:
+            "AppCacheInvalidationRetryError[APP_CACHE_INVALIDATION_RETRY]: App cache invalidation failed after terminal provisioning writeback <- Error: redis temporarily unavailable",
         });
 
         await dbWrite
@@ -1238,7 +1241,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         expect(interruptedTask).toMatchObject({ retried: 1, permanentlyFailed: 0, failures: [] });
         expect(await repo.findByIdForWrite(taskId)).toMatchObject({
           status: "pending",
-          attempts: 0,
+          attempts: 1,
         });
         const second = await service.processPendingJobs(1, {
           jobTypes: [jobTypes.APP_CACHE_INVALIDATE],
@@ -1246,7 +1249,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         expect(second).toMatchObject({ claimed: 1, succeeded: 1, retried: 0, failed: 0 });
         expect(await repo.findByIdForWrite(taskId)).toMatchObject({
           status: "completed",
-          attempts: 0,
+          attempts: 1,
         });
         expect(invalidationCalls).toBe(2);
         const cacheTasks = await dbWrite
@@ -1256,6 +1259,77 @@ describe("jobsRepository.recoverStaleJobs", () => {
         expect(cacheTasks).toEqual([{ id: taskId }]);
       } finally {
         invalidate.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "observed cache failures exhaust finite attempts and preserve a redacted cause chain",
+    async () => {
+      const sourceJobId = "00000000-0000-4000-8000-000000180916";
+      const appId = "00000000-0000-4000-8000-000000180917";
+      const taskId = cacheInvalidationJobId(sourceJobId);
+      await seedJob({
+        id: taskId,
+        maxAttempts: 3,
+        type: jobTypes.APP_CACHE_INVALIDATE,
+        data: { appId, sourceJobId },
+      });
+      await dbWrite
+        .update(jobs)
+        .set({ status: "pending", started_at: null, execution_generation: null })
+        .where(eq(jobs.id, taskId));
+
+      const secret = `sk-${"a".repeat(48)}`;
+      const invalidate = spyOn(AppsServiceSingleton, "invalidateCacheStrict").mockRejectedValue(
+        new Error("cache adapter rejected delete", {
+          cause: new Error(`upstream credential ${secret}`),
+        }),
+      );
+      const terminalLog = spyOn(cloudLogger, "error").mockImplementation(() => {});
+      try {
+        const service = new ProvisioningJobServiceCtor();
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await dbWrite
+            .update(jobs)
+            .set({ scheduled_for: JOB_STARTED_AT })
+            .where(eq(jobs.id, taskId));
+          const attemptStartedAt = Date.now();
+          const result = await service.processPendingJobs(1, {
+            jobTypes: [jobTypes.APP_CACHE_INVALIDATE],
+          });
+          expect(result).toMatchObject({ claimed: 1, succeeded: 0, retried: 0, failed: 1 });
+          const persisted = await repo.findByIdForWrite(taskId);
+          expect(persisted).toMatchObject({
+            status: attempt === 3 ? "failed" : "pending",
+            attempts: attempt,
+          });
+          if (attempt < 3) {
+            const expectedBackoffMs = attempt === 1 ? 30_000 : 120_000;
+            expect(persisted?.scheduled_for.getTime()).toBeGreaterThanOrEqual(
+              attemptStartedAt + expectedBackoffMs,
+            );
+            expect(persisted?.scheduled_for.getTime()).toBeLessThanOrEqual(
+              Date.now() + expectedBackoffMs + 1_000,
+            );
+          }
+        }
+
+        const failed = await repo.findByIdForWrite(taskId);
+        expect(failed?.error).toContain("AppCacheInvalidationRetryError");
+        expect(failed?.error).toContain("cache adapter rejected delete");
+        expect(failed?.error).toContain("upstream credential");
+        expect(failed?.error).not.toContain(secret);
+        expect(terminalLog).toHaveBeenCalledWith(
+          "[provisioning-jobs] App cache invalidation exhausted its retry budget",
+          expect.objectContaining({ jobId: taskId, attempts: 3, maxAttempts: 3 }),
+        );
+        expect(JSON.stringify(terminalLog.mock.calls)).not.toContain(secret);
+        expect(invalidate).toHaveBeenCalledTimes(3);
+      } finally {
+        invalidate.mockRestore();
+        terminalLog.mockRestore();
       }
     },
     PGLITE_TIMEOUT,

@@ -16,7 +16,7 @@
  * here (the repo cannot be driven against a real DB) — it never silently passes.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 // This suite drives an ISOLATED in-process PGlite (see docstring). When the
 // ambient DATABASE_URL is a real shared Postgres (e.g. CI's
@@ -34,6 +34,8 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
+import { cache } from "../../../lib/cache/client";
+import { CacheKeys } from "../../../lib/cache/keys";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { apiKeys } from "../../schemas/api-keys";
 import { appConfig } from "../../schemas/app-config";
@@ -263,6 +265,80 @@ describe("AppsRepository.update", () => {
     // evicted rather than returning the stale cached "Cache Warm".
     const after = await appsService.getById(created.id);
     expect(after?.name).toBe("Cache Evicted");
+  });
+
+  test("serializes a concurrent stale hydration before durable deletion", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Stale Hydration",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+    const key = CacheKeys.app.byId(created.id);
+    await cache.del(key);
+
+    let hydrationReachedCache: (() => void) | undefined;
+    const hydrationAtCache = new Promise<void>((resolve) => {
+      hydrationReachedCache = resolve;
+    });
+    let releaseHydration: (() => void) | undefined;
+    const hydrationRelease = new Promise<void>((resolve) => {
+      releaseHydration = resolve;
+    });
+    const originalSet = cache.set.bind(cache);
+    const originalDelete = cache.delConfirmed.bind(cache);
+    let deleteCalls = 0;
+    let pauseHydration = true;
+    const setSpy = spyOn(cache, "set").mockImplementation(async (cacheKey, value, ttl) => {
+      if (cacheKey === key && pauseHydration) {
+        pauseHydration = false;
+        hydrationReachedCache?.();
+        await hydrationRelease;
+      }
+      await originalSet(cacheKey, value, ttl);
+    });
+    const deleteSpy = spyOn(cache, "delConfirmed").mockImplementation(async (...args) => {
+      deleteCalls++;
+      return await originalDelete(...args);
+    });
+
+    try {
+      const hydration = appsService.getById(created.id);
+      await hydrationAtCache;
+
+      const invalidation = appsService.invalidateCacheStrict(created.id);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(deleteCalls).toBe(0);
+
+      releaseHydration?.();
+      expect((await hydration)?.id).toBe(created.id);
+      await invalidation;
+      expect(deleteCalls).toBe(2);
+      expect(await cache.get(key)).toBeNull();
+    } finally {
+      releaseHydration?.();
+      setSpy.mockRestore();
+      deleteSpy.mockRestore();
+    }
+  });
+
+  test("strict invalidation rejects a configured but unavailable cache backend", async () => {
+    expect(pgliteReady).toBe(true);
+    const internal = cache as unknown as {
+      getRedisClient: () => Promise<unknown>;
+      isBackendConfigured: () => boolean;
+    };
+    const clientSpy = spyOn(internal, "getRedisClient").mockResolvedValue(null);
+    const configuredSpy = spyOn(internal, "isBackendConfigured").mockReturnValue(true);
+    try {
+      await expect(appsService.invalidateCacheStrict(FRESH_UUID)).rejects.toThrow(
+        "did not confirm app cache deletion",
+      );
+    } finally {
+      clientSpy.mockRestore();
+      configuredSpy.mockRestore();
+    }
   });
 });
 

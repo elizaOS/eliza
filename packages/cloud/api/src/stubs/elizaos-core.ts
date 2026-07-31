@@ -1142,6 +1142,7 @@ export {
 export {
   isSensitiveKeyName,
   redactLogArgs,
+  redactSensitiveText,
 } from "../../../../core/src/security/redact";
 export type { PiiScrubResult } from "../../../../core/src/types/model";
 
