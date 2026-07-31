@@ -241,6 +241,74 @@ Attribution status: self-reported`);
     }
   });
 
+  it("accepts every issue template unmodified as a human-only default", () => {
+    for (const path of [
+      ".github/ISSUE_TEMPLATE/agent_work_item.md",
+      ".github/ISSUE_TEMPLATE/bug_report.md",
+      ".github/ISSUE_TEMPLATE/epic.md",
+      ".github/ISSUE_TEMPLATE/feature_request.md",
+    ]) {
+      const body = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+      const result = evaluateCommentAttribution(body, { issueBody: true });
+      assert.equal(
+        result.ok,
+        true,
+        `${path}: ${result.findings.map((finding) => finding.message).join("; ")}`,
+      );
+      assert.equal(result.attribution?.kind, "no-ai", path);
+    }
+  });
+
+  it("warns instead of failing on pristine or absent issue attribution blocks", () => {
+    const pristine = evaluateCommentAttribution(
+      `## Contribution provenance
+
+- AI assistance: \`yes\` / \`no - human-only report\`
+- AI provider/model: \`<provider> / <exact-model-id>\` / \`N/A - human-only report\`
+- Client / agent tooling: \`<client-name>\` / \`N/A - human-only report\`
+- Contribution skill revision: \`owner/repo@full-commit-sha:path\` / \`N/A - no contribution skill used\`
+- Attribution status: \`self-reported\`
+
+**Describe the bug**
+
+The button does nothing.`,
+      { issueBody: true },
+    );
+    assert.equal(pristine.ok, true);
+    assert.equal(pristine.skipped, true);
+    assert.match(pristine.notice, /pristine template placeholders/);
+
+    const absent = evaluateCommentAttribution(
+      "The app crashes on launch. Logs attached.",
+      { issueBody: true },
+    );
+    assert.equal(absent.ok, true);
+    assert.equal(absent.skipped, true);
+    assert.match(absent.notice, /no attribution block/);
+
+    // A claim, an edited assistance row, or explicit --required keeps the gate
+    // strict even when the rest of the block is still placeholder text.
+    const claimed = evaluateCommentAttribution(
+      "CLAIMING: fix the crash\n\nNo footer here.",
+      { issueBody: true },
+    );
+    assert.equal(claimed.ok, false);
+
+    const edited = evaluateCommentAttribution(
+      `- AI assistance: yes
+- AI provider/model: \`<provider> / <exact-model-id>\` / \`N/A - human-only report\`
+- Attribution status: \`self-reported\``,
+      { issueBody: true },
+    );
+    assert.equal(edited.ok, false);
+
+    const required = evaluateCommentAttribution("The app crashes on launch.", {
+      issueBody: true,
+      required: true,
+    });
+    assert.equal(required.ok, false);
+  });
+
   it("validates a machine-assisted issue body with a terminal signed footer", () => {
     const issue = `## Scope
 

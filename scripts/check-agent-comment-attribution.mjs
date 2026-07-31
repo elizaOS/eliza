@@ -287,6 +287,30 @@ export function parseAttributionEvent(path) {
   };
 }
 
+// Legacy issue templates shipped the assistance row as a backticked
+// either/or placeholder; a body still carrying it was filed without touching
+// the provenance block, so it is unattributed rather than mis-attributed.
+const PRISTINE_ASSISTANCE_RE = /^`yes`\s*\/\s*`no\b[^`]*`\s*$/i;
+
+function pristineIssueNotice(source) {
+  if (hasClaimSignal(source)) return null;
+  const assistanceLines = lineValues(source, "AI assistance");
+  if (
+    assistanceLines.length > 0 &&
+    assistanceLines.every((value) => PRISTINE_ASSISTANCE_RE.test(value))
+  ) {
+    return "Issue attribution rows are still the pristine template placeholders; fill them in (or keep the human-only defaults) so provenance is self-reported.";
+  }
+  if (
+    assistanceLines.length === 0 &&
+    !hasAttributionSignal(source) &&
+    lineValues(source, "Attribution status").length === 0
+  ) {
+    return "Issue body carries no attribution block; treating it as an unattributed human report.";
+  }
+  return null;
+}
+
 export function evaluateCommentAttribution(body, options = {}) {
   // Leading indentation is Markdown syntax: trimming it would turn an
   // indented code example into a real contribution declaration.
@@ -294,6 +318,21 @@ export function evaluateCommentAttribution(body, options = {}) {
   if (options.issueBody === true) {
     const noAiIssue = evaluateNoAiIssue(source);
     if (noAiIssue) return noAiIssue;
+    // Issue bodies come from templates ordinary reporters never designed for
+    // this gate: an absent or untouched provenance block warns instead of
+    // failing. Comments keep the strict behavior below.
+    if (options.required !== true) {
+      const notice = pristineIssueNotice(source);
+      if (notice) {
+        return {
+          ok: true,
+          skipped: true,
+          findings: [],
+          attribution: null,
+          notice,
+        };
+      }
+    }
   }
   const required =
     options.required === true ||
@@ -517,6 +556,10 @@ export function runCli(argv = process.argv.slice(2)) {
     issueBody: event?.kind === "issue",
   });
   if (result.ok) {
+    if (result.notice) {
+      process.stdout.write(`::warning::${result.notice}\n`);
+      return 0;
+    }
     process.stdout.write(
       result.skipped
         ? "No contribution claim or attribution footer to validate.\n"
