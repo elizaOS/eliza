@@ -584,13 +584,14 @@ export const ChatMessage = memo(function ChatMessage({
   }, [message.text, onCopy, flashCopied]);
 
   const handleReply = useCallback(() => {
-    onReply?.(message);
     // Focus the stable message surface before hiding the touch/glass actions;
     // otherwise the browser can retain focus inside controls being unmounted.
+    // Consumers run afterward so a composer focus request remains authoritative.
     if (glass || !supportsHover) {
       focusMessageSurface();
       setShowActions(false);
     }
+    onReply?.(message);
   }, [message, onReply, glass, supportsHover, focusMessageSurface]);
 
   // Press-and-hold to copy an assistant answer (glass) — the only extraction
@@ -985,12 +986,6 @@ export const ChatMessage = memo(function ChatMessage({
     const handleBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
       if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
-      // Hover already reveals the rail before a fine-pointer click lands. Keep
-      // it open instead of letting that same click immediately toggle it closed.
-      if (supportsHover) {
-        setShowActions(true);
-        return;
-      }
       toggleRevealed();
     };
     const handleBubbleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
