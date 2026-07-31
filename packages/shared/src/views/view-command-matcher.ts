@@ -994,6 +994,11 @@ const COMPILED: CompiledView[] = VIEW_PRIORITY.filter((v) => VIEW_NOUNS[v]).map(
   },
 );
 
+// Bare "go back" is the conversational counterpart of the shell's Home affordance.
+// Browser/OS history remains a client-owned gesture, so this exact whole-message
+// form can safely return to the canonical chat surface without guessing history.
+const BARE_HOME_NAVIGATION = /^[\s\p{P}]*go\s+back[\s\p{P}]*$/iu;
+
 function stripDiacritics(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
@@ -1008,6 +1013,7 @@ export function matchViewCommand(text: string | undefined): string | null {
   if (!raw || raw.length > 160) return null; // commands are short
   const lower = raw.toLowerCase();
   if (looksLikeCompanionActionRequest(lower)) return null;
+  if (BARE_HOME_NAVIGATION.test(lower)) return "chat";
   const variants = [lower, stripDiacritics(lower)];
   for (const { viewId, re } of COMPILED) {
     for (const v of variants) {
