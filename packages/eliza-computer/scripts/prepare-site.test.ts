@@ -47,6 +47,7 @@ interface ArchiveInspection {
     revision: string | null;
     revisionStatus: "committed" | "working-tree";
     source: { path: string; sha256: string };
+    files: { path: string; sha256: string }[];
   };
 }
 
@@ -175,6 +176,28 @@ print(json.dumps(result))
           "archive inspection.provenance.source.sha256",
         ),
       },
+      files: Array.isArray(rawProvenance.files)
+        ? rawProvenance.files.map((entry, index) => {
+            const record = asRecord(
+              entry,
+              `archive inspection.provenance.files[${index}]`,
+            );
+            return {
+              path: asString(
+                record.path,
+                `archive inspection.provenance.files[${index}].path`,
+              ),
+              sha256: asString(
+                record.sha256,
+                `archive inspection.provenance.files[${index}].sha256`,
+              ),
+            };
+          })
+        : (() => {
+            throw new TypeError(
+              "archive inspection.provenance.files must be an array",
+            );
+          })(),
     },
   };
 }
@@ -187,14 +210,24 @@ function installCommand() {
   return command.replaceAll("https://eliza.army", localOrigin);
 }
 
-function runInstall(command: string, root: string) {
+function runInstall(
+  command: string,
+  root: string,
+  { codexHome = true }: { codexHome?: boolean } = {},
+) {
+  const environment: NodeJS.ProcessEnv = {
+    ...process.env,
+    HOME: join(root, "home"),
+  };
+  if (codexHome) {
+    environment.CODEX_HOME = join(root, "codex");
+  } else {
+    delete environment.CODEX_HOME;
+  }
   return spawnSync("bash", ["-c", command], {
+    cwd: packageRoot,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      CODEX_HOME: join(root, "codex"),
-      HOME: join(root, "home"),
-    },
+    env: environment,
   });
 }
 
@@ -206,6 +239,15 @@ beforeAll(() => {
 });
 
 describe("contribution skill package", () => {
+  it("packages byte-identical skill archives for identical source and revision", () => {
+    const firstArchive = readFileSync(archivePath);
+    execFileSync("node", [join(packageRoot, "scripts", "prepare-site.mjs")], {
+      cwd: repositoryRoot,
+      stdio: "inherit",
+    });
+    expect(readFileSync(archivePath)).toEqual(firstArchive);
+  });
+
   it("contains every canonical dependency, no extra source, and bound provenance", () => {
     const archive = inspectArchive();
     const canonicalFiles = listFiles(skillRoot).sort();
@@ -249,6 +291,46 @@ describe("contribution skill package", () => {
         sha256: sha256(readFileSync(join(skillRoot, "SKILL.md"))),
       },
     });
+    expect(archive.provenance.files).toEqual(
+      canonicalFiles.map((path) => ({
+        path,
+        sha256: sha256(readFileSync(join(skillRoot, path))),
+      })),
+    );
+  });
+
+  it("rejects ignored source files instead of packaging them as committed provenance", () => {
+    const ignoredExtra = join(skillRoot, "ignored-provenance-fixture.tmp");
+    try {
+      writeFileSync(
+        ignoredExtra,
+        "must never enter the public skill archive\n",
+      );
+      const ignored = spawnSync(
+        "git",
+        ["check-ignore", "--quiet", ignoredExtra],
+        {
+          cwd: repositoryRoot,
+        },
+      );
+      expect(ignored.status).toBe(0);
+
+      const result = spawnSync(
+        "node",
+        [join(packageRoot, "scripts", "prepare-site.mjs")],
+        {
+          cwd: repositoryRoot,
+          encoding: "utf8",
+        },
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        "skill source must exactly match tracked files",
+      );
+      expect(result.stderr).toContain("ignored-provenance-fixture.tmp");
+    } finally {
+      rmSync(ignoredExtra, { force: true });
+    }
   });
 
   it("publishes matching source, archive, checksum, manifest, and standalone mission", () => {
@@ -328,10 +410,19 @@ describe("contribution skill package", () => {
     const ambiguousRoot = mkdtempSync(
       join(tmpdir(), "eliza-skill-install-ambiguous-"),
     );
+    const defaultRoot = mkdtempSync(
+      join(tmpdir(), "eliza-skill-install-default-home-"),
+    );
     const corruptPublic = join(invalidRoot, "public");
     const ambiguousPublic = join(ambiguousRoot, "public");
     try {
-      const valid = runInstall(installCommand(), validRoot);
+      const command = installCommand();
+      expect(command).toContain(
+        `SKILLS_ROOT="\${CODEX_HOME:-\${HOME}/.codex}/skills"`,
+      );
+      expect(command).not.toContain('SKILLS_ROOT="\\${CODEX_HOME');
+
+      const valid = runInstall(command, validRoot);
       expect(valid.status, valid.stderr).toBe(0);
       const installedRoot = join(
         validRoot,
@@ -353,9 +444,36 @@ describe("contribution skill package", () => {
           "installed provenance.source.sha256",
         ),
       ).toBe(sha256(readFileSync(join(skillRoot, "SKILL.md"))));
+      const defaultInstall = runInstall(command, defaultRoot, {
+        codexHome: false,
+      });
+      expect(defaultInstall.status, defaultInstall.stderr).toBe(0);
+      expect(
+        existsSync(
+          join(
+            defaultRoot,
+            "home",
+            ".codex",
+            "skills",
+            "contribute-to-eliza",
+            "SKILL.md",
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            packageRoot,
+            `\${CODEX_HOME:-\${HOME}`,
+            ".codex}",
+            "skills",
+            "contribute-to-eliza",
+          ),
+        ),
+      ).toBe(false);
       const sentinel = "existing local skill must not be overwritten\n";
       writeFileSync(join(installedRoot, "SKILL.md"), sentinel);
-      const overwrite = runInstall(installCommand(), validRoot);
+      const overwrite = runInstall(command, validRoot);
       expect(overwrite.status).not.toBe(0);
       expect(overwrite.stderr).toContain(
         "Refusing to overwrite existing skill",
@@ -424,6 +542,7 @@ describe("contribution skill package", () => {
       rmSync(validRoot, { force: true, recursive: true });
       rmSync(invalidRoot, { force: true, recursive: true });
       rmSync(ambiguousRoot, { force: true, recursive: true });
+      rmSync(defaultRoot, { force: true, recursive: true });
     }
   });
 
@@ -527,6 +646,117 @@ with zipfile.ZipFile(archive_path, "w") as archive:
       rmSync(traversalRoot, { force: true, recursive: true });
       rmSync(symlinkArchiveRoot, { force: true, recursive: true });
       rmSync(brokenTargetRoot, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a forged archive whose headers underreport a 20 MB entry", () => {
+    const forgedRoot = mkdtempSync(
+      join(tmpdir(), "eliza-skill-install-forged-size-"),
+    );
+    const forgedPublic = join(forgedRoot, "public");
+    const forgedDownloads = join(forgedPublic, "downloads");
+    const forgedArchive = join(forgedDownloads, "contribute-to-eliza.skill");
+    try {
+      mkdirSync(forgedDownloads, { recursive: true });
+      execFileSync(
+        "python3",
+        [
+          "-c",
+          `
+import binascii
+import hashlib
+import json
+import struct
+import sys
+import zipfile
+
+archive_path = sys.argv[1]
+bomb_name = "contribute-to-eliza/forged-actual-size.bin"
+skill = b"---\\nname: contribute-to-eliza\\ndescription: fixture\\n---\\n"
+bomb = b"A" * 20_000_000
+bomb_prefix = bomb[:100]
+provenance = (
+    json.dumps(
+        {
+            "schemaVersion": "1",
+            "name": "contribute-to-eliza",
+            "repository": "elizaOS/eliza",
+            "revision": None,
+            "revisionStatus": "working-tree",
+            "source": {
+                "path": "packages/skills/skills/contribute-to-eliza/SKILL.md",
+                "sha256": hashlib.sha256(skill).hexdigest(),
+            },
+            "files": [
+                {
+                    "path": "SKILL.md",
+                    "sha256": hashlib.sha256(skill).hexdigest(),
+                },
+                {
+                    "path": "forged-actual-size.bin",
+                    "sha256": hashlib.sha256(bomb_prefix).hexdigest(),
+                },
+            ],
+        },
+        indent=2,
+    )
+    + "\\n"
+).encode()
+with zipfile.ZipFile(
+    archive_path,
+    "w",
+    compression=zipfile.ZIP_DEFLATED,
+    compresslevel=9,
+) as archive:
+    archive.writestr("contribute-to-eliza/SKILL.md", skill)
+    archive.writestr("contribute-to-eliza/PROVENANCE.json", provenance)
+    archive.writestr(bomb_name, bomb)
+
+payload = bytearray(open(archive_path, "rb").read())
+encoded_name = bomb_name.encode()
+local_name_offset = payload.find(encoded_name)
+central_name_offset = payload.find(encoded_name, local_name_offset + len(encoded_name))
+if local_name_offset < 0 or central_name_offset < 0:
+    raise RuntimeError("bomb entry headers were not found")
+local_header = payload.rfind(b"PK\\x03\\x04", 0, local_name_offset)
+central_header = payload.rfind(b"PK\\x01\\x02", 0, central_name_offset)
+if local_header < 0 or central_header < 0:
+    raise RuntimeError("bomb entry header signatures were not found")
+prefix_crc = binascii.crc32(bomb_prefix) & 0xFFFFFFFF
+struct.pack_into("<I", payload, local_header + 14, prefix_crc)
+struct.pack_into("<I", payload, central_header + 16, prefix_crc)
+struct.pack_into("<I", payload, local_header + 22, 100)
+struct.pack_into("<I", payload, central_header + 24, 100)
+open(archive_path, "wb").write(payload)
+with zipfile.ZipFile(archive_path, "r") as archive:
+    if archive.read(bomb_name) != bomb_prefix:
+        raise RuntimeError("forged archive did not exercise the prefix-acceptance path")
+`,
+          forgedArchive,
+        ],
+        { stdio: "inherit" },
+      );
+      const forgedPayload = readFileSync(forgedArchive);
+      expect(forgedPayload.length).toBeLessThan(30_000);
+      writeFileSync(
+        `${forgedArchive}.sha256`,
+        `${sha256(forgedPayload)}  contribute-to-eliza.skill\n`,
+      );
+      const command = installCommand().replaceAll(
+        pathToFileURL(publicRoot).href.replace(/\/$/, ""),
+        pathToFileURL(forgedPublic).href.replace(/\/$/, ""),
+      );
+      const result = runInstall(command, forgedRoot);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        "Archive failed bounded integrity and path checks.",
+      );
+      expect(
+        existsSync(join(forgedRoot, "codex", "skills", "contribute-to-eliza")),
+      ).toBe(false);
+    } finally {
+      rmSync(forgedRoot, { force: true, recursive: true });
     }
   });
 });

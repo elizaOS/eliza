@@ -121,6 +121,7 @@ test("links every displayed leader to their score ledger", async ({
   await expect(summary).toHaveText(
     `${events.length} linked score ${events.length === 1 ? "event" : "events"}`,
   );
+  await expect(firstRow.locator(".score-evidence li > a")).toHaveCount(0);
   await summary.click();
 
   const evidenceLinks = firstRow.locator(".score-evidence li > a");
@@ -238,6 +239,207 @@ test("installs safely, copies the selected command, and serves verified artifact
     expect(existsSync(join(corruptHome, "skills", "contribute-to-eliza"))).toBe(
       false,
     );
+
+    const highCompressionArchivePath = join(
+      downloadsRoot,
+      "contribute-to-eliza.skill",
+    );
+    const highCompressionArchive = spawnSync(
+      "python3",
+      [
+        "-c",
+        `
+import stat
+import sys
+import zipfile
+
+archive_path = sys.argv[1]
+with zipfile.ZipFile(
+    archive_path,
+    "w",
+    compression=zipfile.ZIP_DEFLATED,
+    compresslevel=9,
+) as archive:
+    entries = [
+        ("contribute-to-eliza/SKILL.md", b"---\\nname: contribute-to-eliza\\ndescription: fixture\\n---\\n"),
+        ("contribute-to-eliza/PROVENANCE.json", b"{}\\n"),
+    ]
+    entries.extend(
+        (f"contribute-to-eliza/high-compression-{index}.bin", b"\\0" * 900000)
+        for index in range(5)
+    )
+    for name, contents in entries:
+        entry = zipfile.ZipInfo(name)
+        entry.create_system = 3
+        entry.external_attr = (stat.S_IFREG | 0o644) << 16
+        entry.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(entry, contents)
+`,
+        highCompressionArchivePath,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(highCompressionArchive.status, highCompressionArchive.stderr).toBe(
+      0,
+    );
+    const compressedBomb = readFileSync(highCompressionArchivePath);
+    expect(compressedBomb.length).toBeLessThan(10_000);
+    writeFileSync(
+      join(downloadsRoot, "contribute-to-eliza.skill.sha256"),
+      `${createHash("sha256").update(compressedBomb).digest("hex")}  contribute-to-eliza.skill\n`,
+    );
+    const highCompressionHome = join(
+      installSandbox,
+      "high-compression-codex-home",
+    );
+    const highCompressionInstall = spawnSync("/bin/sh", ["-c", localCommand], {
+      encoding: "utf8",
+      env: { ...process.env, CODEX_HOME: highCompressionHome },
+    });
+    expect(highCompressionInstall.status).not.toBe(0);
+    expect(highCompressionInstall.stderr).toContain(
+      "Archive failed bounded integrity and path checks.",
+    );
+    expect(
+      existsSync(join(highCompressionHome, "skills", "contribute-to-eliza")),
+    ).toBe(false);
+
+    const oversizedDirectoryArchive = Buffer.from(archive);
+    const centralDirectoryOffset = oversizedDirectoryArchive.indexOf(
+      Buffer.from([0x50, 0x4b, 0x01, 0x02]),
+    );
+    expect(centralDirectoryOffset).toBeGreaterThanOrEqual(0);
+    oversizedDirectoryArchive.writeUInt32LE(
+      1048577,
+      centralDirectoryOffset + 24,
+    );
+    writeFileSync(highCompressionArchivePath, oversizedDirectoryArchive);
+    writeFileSync(
+      join(downloadsRoot, "contribute-to-eliza.skill.sha256"),
+      `${createHash("sha256").update(oversizedDirectoryArchive).digest("hex")}  contribute-to-eliza.skill\n`,
+    );
+    const oversizedDirectoryHome = join(
+      installSandbox,
+      "oversized-directory-codex-home",
+    );
+    const oversizedDirectoryInstall = spawnSync(
+      "/bin/sh",
+      ["-c", localCommand],
+      {
+        encoding: "utf8",
+        env: { ...process.env, CODEX_HOME: oversizedDirectoryHome },
+      },
+    );
+    expect(oversizedDirectoryInstall.status).not.toBe(0);
+    expect(oversizedDirectoryInstall.stderr).toContain(
+      "Archive failed bounded integrity and path checks.",
+    );
+    expect(
+      existsSync(join(oversizedDirectoryHome, "skills", "contribute-to-eliza")),
+    ).toBe(false);
+
+    const forgedActualSizeArchive = spawnSync(
+      "python3",
+      [
+        "-c",
+        `
+import binascii
+import hashlib
+import json
+import struct
+import sys
+import zipfile
+
+archive_path = sys.argv[1]
+bomb_name = "contribute-to-eliza/forged-actual-size.bin"
+skill = b"---\\nname: contribute-to-eliza\\ndescription: fixture\\n---\\n"
+bomb = b"A" * 20_000_000
+bomb_prefix = bomb[:100]
+provenance = (
+    json.dumps(
+        {
+            "schemaVersion": "1",
+            "name": "contribute-to-eliza",
+            "repository": "elizaOS/eliza",
+            "revision": None,
+            "revisionStatus": "working-tree",
+            "source": {
+                "path": "packages/skills/skills/contribute-to-eliza/SKILL.md",
+                "sha256": hashlib.sha256(skill).hexdigest(),
+            },
+            "files": [
+                {
+                    "path": "SKILL.md",
+                    "sha256": hashlib.sha256(skill).hexdigest(),
+                },
+                {
+                    "path": "forged-actual-size.bin",
+                    "sha256": hashlib.sha256(bomb_prefix).hexdigest(),
+                },
+            ],
+        },
+        indent=2,
+    )
+    + "\\n"
+).encode()
+with zipfile.ZipFile(
+    archive_path,
+    "w",
+    compression=zipfile.ZIP_DEFLATED,
+    compresslevel=9,
+) as archive:
+    archive.writestr("contribute-to-eliza/SKILL.md", skill)
+    archive.writestr("contribute-to-eliza/PROVENANCE.json", provenance)
+    archive.writestr(bomb_name, bomb)
+
+payload = bytearray(open(archive_path, "rb").read())
+encoded_name = bomb_name.encode()
+local_name_offset = payload.find(encoded_name)
+central_name_offset = payload.find(encoded_name, local_name_offset + len(encoded_name))
+if local_name_offset < 0 or central_name_offset < 0:
+    raise RuntimeError("bomb entry headers were not found")
+local_header = payload.rfind(b"PK\\x03\\x04", 0, local_name_offset)
+central_header = payload.rfind(b"PK\\x01\\x02", 0, central_name_offset)
+if local_header < 0 or central_header < 0:
+    raise RuntimeError("bomb entry header signatures were not found")
+prefix_crc = binascii.crc32(bomb_prefix) & 0xFFFFFFFF
+struct.pack_into("<I", payload, local_header + 14, prefix_crc)
+struct.pack_into("<I", payload, central_header + 16, prefix_crc)
+struct.pack_into("<I", payload, local_header + 22, 100)
+struct.pack_into("<I", payload, central_header + 24, 100)
+open(archive_path, "wb").write(payload)
+with zipfile.ZipFile(archive_path, "r") as archive:
+    if archive.read(bomb_name) != bomb_prefix:
+        raise RuntimeError("forged archive did not exercise the prefix-acceptance path")
+`,
+        highCompressionArchivePath,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(forgedActualSizeArchive.status, forgedActualSizeArchive.stderr).toBe(
+      0,
+    );
+    const forgedActualSizePayload = readFileSync(highCompressionArchivePath);
+    expect(forgedActualSizePayload.length).toBeLessThan(30_000);
+    writeFileSync(
+      join(downloadsRoot, "contribute-to-eliza.skill.sha256"),
+      `${createHash("sha256").update(forgedActualSizePayload).digest("hex")}  contribute-to-eliza.skill\n`,
+    );
+    const forgedActualSizeHome = join(
+      installSandbox,
+      "forged-actual-size-codex-home",
+    );
+    const forgedActualSizeInstall = spawnSync("/bin/sh", ["-c", localCommand], {
+      encoding: "utf8",
+      env: { ...process.env, CODEX_HOME: forgedActualSizeHome },
+    });
+    expect(forgedActualSizeInstall.status).not.toBe(0);
+    expect(forgedActualSizeInstall.stderr).toContain(
+      "Archive failed bounded integrity and path checks.",
+    );
+    expect(
+      existsSync(join(forgedActualSizeHome, "skills", "contribute-to-eliza")),
+    ).toBe(false);
   } finally {
     rmSync(installSandbox, { force: true, recursive: true });
   }
@@ -295,20 +497,27 @@ test("has no accessibility violations or horizontal page overflow", async ({
   const results = await new AxeBuilder({ page }).analyze();
   expect(results.violations).toEqual([]);
 
-  const overflow = await page.evaluate(() => ({
-    document:
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-    leaderboard: (() => {
-      const tableWrap = document.querySelector(".table-wrap");
-      if (!(tableWrap instanceof HTMLElement)) {
-        throw new Error("leaderboard table wrapper is missing");
-      }
-      return tableWrap.scrollWidth - tableWrap.clientWidth;
-    })(),
-  }));
+  const overflow = await page.evaluate(() => {
+    const tableWrap = document.querySelector(".table-wrap");
+    if (!(tableWrap instanceof HTMLElement)) {
+      throw new Error("leaderboard table wrapper is missing");
+    }
+    return {
+      document:
+        document.documentElement.scrollWidth -
+        document.documentElement.clientWidth,
+      leaderboard: tableWrap.scrollWidth - tableWrap.clientWidth,
+    };
+  });
   expect(overflow.document).toBeLessThanOrEqual(1);
   expect(overflow.leaderboard).toBeLessThanOrEqual(1);
+
+  const buildIssueTarget = await page
+    .getByRole("link", { name: "Build issue" })
+    .boundingBox();
+  expect(buildIssueTarget).not.toBeNull();
+  expect(buildIssueTarget?.width).toBeGreaterThanOrEqual(44);
+  expect(buildIssueTarget?.height).toBeGreaterThanOrEqual(44);
 });
 
 test("surfaces an invalid leaderboard snapshot as an error state", async ({

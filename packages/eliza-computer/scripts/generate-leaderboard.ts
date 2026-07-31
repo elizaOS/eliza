@@ -183,6 +183,7 @@ const COMMENT_FIELDS = `
     id
     body
     createdAt
+    updatedAt
     url
     author { ...LeaderboardActor }
   }
@@ -221,6 +222,7 @@ const PULL_REQUEST_FRAGMENT = `
     body
     createdAt
     updatedAt
+    lastEditedAt
     mergedAt
     isDraft
     reviewDecision
@@ -645,6 +647,7 @@ function parseComments(
           body: asString(node.body, `${nodePath}.body`),
           url: asString(node.url, `${nodePath}.url`),
           createdAt: asString(node.createdAt, `${nodePath}.createdAt`),
+          updatedAt: asString(node.updatedAt, `${nodePath}.updatedAt`),
           author: parseActor(node.author, `${nodePath}.author`),
         };
       },
@@ -767,6 +770,7 @@ function parsePullRequest(value: unknown, path: string): ParsedPullRequest {
       body: asString(node.body, `${path}.body`),
       createdAt: asString(node.createdAt, `${path}.createdAt`),
       updatedAt: asString(node.updatedAt, `${path}.updatedAt`),
+      lastEditedAt: asNullableString(node.lastEditedAt, `${path}.lastEditedAt`),
       mergedAt: asNullableString(node.mergedAt, `${path}.mergedAt`),
       isDraft: asBoolean(node.isDraft, `${path}.isDraft`),
       reviewDecision: asNullableString(

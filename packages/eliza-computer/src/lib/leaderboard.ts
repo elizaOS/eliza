@@ -41,6 +41,7 @@ export interface GitHubTextSource {
   body: string;
   url: string;
   createdAt: string;
+  updatedAt: string;
   author: GitHubActor | null;
 }
 
@@ -74,6 +75,7 @@ export interface PullRequestRecord {
   body: string;
   createdAt: string;
   updatedAt: string;
+  lastEditedAt: string | null;
   mergedAt: string | null;
   isDraft: boolean;
   reviewDecision: string | null;
@@ -422,8 +424,6 @@ const LOW_PRIORITY_LABELS = new Set([
   "priority: low",
 ]);
 
-const ATTRIBUTION_MARKER_PATTERN =
-  /<!--\s*eliza-computer-attribution:v1\b([\s\S]*?)-->/gi;
 const EXACT_MODEL_IDENTIFIER_PATTERN =
   /\b([a-z0-9][a-z0-9._-]{0,63})\/([a-z0-9][a-z0-9._:/-]{0,127})\b/gi;
 const ATTRIBUTION_PLACEHOLDER_PATTERN =
@@ -437,11 +437,24 @@ const GENERIC_MODEL_IDENTIFIERS = new Set([
   "gpt",
   "llama",
   "model",
+  "na",
+  "none",
+]);
+const GENERIC_PROVIDER_IDENTIFIERS = new Set([
+  "ai",
+  "model",
+  "na",
+  "none",
+  "provider",
 ]);
 const HUMAN_ONLY_PATTERN =
   /^\s*(?:[-*]\s*)?(?:(?:AI assistance|Attribution)\s*:\s*)?`?(?:no\s*[-—:]\s*)?human[- ]only\s+(?:comment|contribution|epic|issue|report|request|review|work)`?\s*$/im;
-const ISSUE_CLAIM_PATTERN = /^\s*CLAIMING:\s*\S/im;
-const REVIEW_CLAIM_PATTERN = /^\s*CLAIMING\s+REVIEW:\s*\S/im;
+const ISSUE_CLAIM_PATTERN = /^CLAIMING:\s*\S/i;
+const REVIEW_CLAIM_PATTERN = /^CLAIMING\s+REVIEW:\s*\S/i;
+const ATTRIBUTION_DECLARATION_PATTERN =
+  /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
+const ATTRIBUTION_MARKER_LINE_PATTERN =
+  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/i;
 
 interface MutableLeaderboardEntry {
   actor: GitHubActor;
@@ -452,6 +465,19 @@ interface MutableLeaderboardEntry {
   models: Set<string>;
 }
 
+interface AttributionDeclarationLine {
+  end: number;
+  normalized: string;
+  raw: string;
+  start: number;
+}
+
+interface AttributionMarkerRecord {
+  end: number;
+  payload: string;
+  start: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -460,12 +486,123 @@ function normalizeLabel(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function attributionDeclarationLineRecords(
+  body: string,
+): AttributionDeclarationLine[] {
+  const records: AttributionDeclarationLine[] = [];
+  let fence: { character: "`" | "~"; length: number } | null = null;
+  let offset = 0;
+  while (offset <= body.length) {
+    const newline = body.indexOf("\n", offset);
+    const physicalEnd = newline === -1 ? body.length : newline;
+    const raw = body.slice(offset, physicalEnd);
+    const sourceLine = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    const fenceMatch = sourceLine.match(
+      /^\s{0,3}(?:(?:[-*+]|\d+[.)])\s+)?(`{3,}|~{3,})(.*)$/,
+    );
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      const character = marker[0] as "`" | "~";
+      if (fence === null) {
+        fence = { character, length: marker.length };
+      } else if (
+        character === fence.character &&
+        marker.length >= fence.length &&
+        fenceMatch[2].trim().length === 0
+      ) {
+        fence = null;
+      }
+      if (newline === -1) break;
+      offset = newline + 1;
+      continue;
+    }
+    if (
+      fence !== null ||
+      /^\s{0,3}>/.test(sourceLine) ||
+      /^(?:\t| {4})/.test(sourceLine)
+    ) {
+      if (newline === -1) break;
+      offset = newline + 1;
+      continue;
+    }
+    const line = sourceLine
+      .trim()
+      .replace(/^(?:[-*+]|\d+[.)])\s+/, "")
+      .replaceAll("**", "")
+      .replaceAll("__", "");
+    if (!line.startsWith("`")) {
+      records.push({
+        end: offset + sourceLine.length,
+        normalized: line,
+        raw: sourceLine,
+        start: offset,
+      });
+    }
+    if (newline === -1) break;
+    offset = newline + 1;
+  }
+  return records;
+}
+
+function attributionDeclarationLines(body: string): string[] {
+  return attributionDeclarationLineRecords(body).map(
+    (record) => record.normalized,
+  );
+}
+
+function attributionMarkerRecords(body: string): AttributionMarkerRecord[] {
+  return attributionDeclarationLineRecords(body)
+    .map((record) => {
+      const raw = record.raw.trim();
+      const marker = raw.match(
+        /^<!--\s*eliza-computer-attribution:v1\b([\s\S]*?)-->\s*$/i,
+      );
+      if (!marker) return null;
+      const leadingWhitespace =
+        record.raw.length - record.raw.trimStart().length;
+      return {
+        end: record.start + leadingWhitespace + raw.length,
+        payload: marker[1].trim(),
+        start: record.start + leadingWhitespace,
+      };
+    })
+    .filter((record): record is AttributionMarkerRecord => record !== null);
+}
+
+function hasAttributionEligibilitySignal(body: string): boolean {
+  return attributionDeclarationLines(body).some(
+    (line) =>
+      ATTRIBUTION_DECLARATION_PATTERN.test(line) ||
+      ATTRIBUTION_MARKER_LINE_PATTERN.test(line),
+  );
+}
+
 function providerSlug(value: string): string {
   return value
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function identifierKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isGenericProviderIdentifier(value: string): boolean {
+  return GENERIC_PROVIDER_IDENTIFIERS.has(identifierKey(value));
+}
+
+function isGenericModelIdentifier(value: string): boolean {
+  const segments = value.split("/");
+  return (
+    GENERIC_MODEL_IDENTIFIERS.has(identifierKey(value)) ||
+    GENERIC_MODEL_IDENTIFIERS.has(identifierKey(segments.at(-1) ?? ""))
+  );
+}
+
+function hasMarkdownLine(body: string, pattern: RegExp): boolean {
+  return attributionDeclarationLines(body).some((line) => pattern.test(line));
 }
 
 function parseIsoTime(value: string): number {
@@ -827,7 +964,8 @@ function parseMarker(value: string):
     typeof provider !== "string" ||
     !/^[a-z0-9][a-z0-9._-]{0,63}$/.test(provider) ||
     providerSlug(provider) !== provider ||
-    ATTRIBUTION_PLACEHOLDER_PATTERN.test(provider)
+    ATTRIBUTION_PLACEHOLDER_PATTERN.test(provider) ||
+    isGenericProviderIdentifier(provider)
   ) {
     return { error: "provider must be a concrete lowercase provider slug" };
   }
@@ -835,7 +973,7 @@ function parseMarker(value: string):
     typeof model !== "string" ||
     !/^[a-z0-9][a-z0-9._:/+-]{0,127}$/i.test(model) ||
     ATTRIBUTION_PLACEHOLDER_PATTERN.test(model) ||
-    GENERIC_MODEL_IDENTIFIERS.has(model.toLowerCase())
+    isGenericModelIdentifier(model)
   ) {
     return { error: "model must be an exact model identifier" };
   }
@@ -878,14 +1016,15 @@ function exactIdentifier(provider: string, model: string): string {
 }
 
 function attributionLineValues(body: string, label: string): string[] {
-  return [
-    ...body.matchAll(new RegExp(`^${label}\\s*:\\s*(.+?)\\s*$`, "gim")),
-  ].map((match) => match[1].trim());
+  const expression = new RegExp(`^${label}\\s*:\\s*(.+?)\\s*$`, "i");
+  return attributionDeclarationLines(body)
+    .map((line) => line.match(expression)?.[1]?.trim())
+    .filter((value): value is string => value !== undefined);
 }
 
 function markerFooterError(
   body: string,
-  markerMatch: RegExpMatchArray,
+  markerRecord: AttributionMarkerRecord,
   marker: {
     provider: string;
     model: string;
@@ -893,20 +1032,23 @@ function markerFooterError(
     skillRevision: string | null;
   },
 ): string | null {
-  const markerStart = markerMatch.index ?? 0;
-  const beforeMarker = body.slice(0, markerStart).trimEnd();
-  const laneSignatures = [
-    ...beforeMarker.matchAll(
-      /(?:^|\n)(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/gim,
-    ),
-  ];
+  const lanePattern = /^(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/i;
+  const beforeMarker = attributionDeclarationLineRecords(
+    body.slice(0, markerRecord.start),
+  ).filter((record) => record.normalized.length > 0);
+  const laneSignatures = beforeMarker.filter((record) =>
+    lanePattern.test(record.normalized),
+  );
+  const terminalLane = beforeMarker.at(-1);
   if (
     laneSignatures.length !== 1 ||
-    !/(?:^|\n)(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/i.test(beforeMarker)
+    terminalLane === undefined ||
+    !lanePattern.test(terminalLane.normalized) ||
+    body.slice(terminalLane.end, markerRecord.start).trim().length !== 0
   ) {
     return "marker requires exactly one terminal lane signature";
   }
-  if (body.slice(markerStart + markerMatch[0].length).trim()) {
+  if (body.slice(markerRecord.end).trim()) {
     return "marker must be the final source content";
   }
   const providerModelLines = attributionLineValues(body, "AI provider/model");
@@ -948,20 +1090,26 @@ export function assessModelAttribution(
   const declarations: ModelAttribution[] = [];
   const invalidMarkers: InvalidAttributionMarker[] = [];
   const eligibleSources = dedupeByNodeId(sources).filter(
-    (source) => source.author && !isBotActor(source.author),
+    (source) =>
+      source.author &&
+      !isBotActor(source.author) &&
+      (hasAttributionEligibilitySignal(source.body) ||
+        hasMarkdownLine(source.body, HUMAN_ONLY_PATTERN) ||
+        hasMarkdownLine(source.body, ISSUE_CLAIM_PATTERN) ||
+        hasMarkdownLine(source.body, REVIEW_CLAIM_PATTERN)),
   );
   const validSourceIds = new Set<string>();
   const invalidSourceIds = new Set<string>();
   const humanOnlySourceIds = new Set<string>();
 
   for (const source of eligibleSources) {
-    if (HUMAN_ONLY_PATTERN.test(source.body)) {
+    if (hasMarkdownLine(source.body, HUMAN_ONLY_PATTERN)) {
       humanOnlySourceIds.add(source.id);
       validSourceIds.add(source.id);
     }
     let markerIndex = 0;
     const markerIdentifiers = new Set<string>();
-    const markerMatches = [...source.body.matchAll(ATTRIBUTION_MARKER_PATTERN)];
+    const markerMatches = attributionMarkerRecords(source.body);
     if (markerMatches.length > 1) {
       invalidSourceIds.add(source.id);
       invalidMarkers.push({
@@ -973,7 +1121,7 @@ export function assessModelAttribution(
     const markerMatchesToParse =
       markerMatches.length === 1 ? markerMatches : [];
     for (const match of markerMatchesToParse) {
-      const marker = parseMarker(match[1].trim());
+      const marker = parseMarker(match.payload);
       if ("error" in marker) {
         invalidSourceIds.add(source.id);
         invalidMarkers.push({
@@ -1016,7 +1164,7 @@ export function assessModelAttribution(
     }
 
     let visibleIndex = 0;
-    for (const line of source.body.split("\n")) {
+    for (const line of attributionDeclarationLines(source.body)) {
       const declarationLine = line.match(
         /^\s*(?:[-*]\s*)?(?:AI\s+)?Model(?:s|\(s\))?(?:\s+used)?\s*:\s*(.+?)\s*$/i,
       );
@@ -1038,6 +1186,13 @@ export function assessModelAttribution(
         });
       }
       for (const declaration of visibleIdentifiers) {
+        const normalizedProvider = providerSlug(declaration.provider);
+        if (
+          isGenericProviderIdentifier(normalizedProvider) ||
+          isGenericModelIdentifier(declaration.model)
+        ) {
+          continue;
+        }
         const identifier = `${declaration.provider}/${declaration.model}`;
         validSourceIds.add(source.id);
         if (markerIdentifiers.has(identifier.toLowerCase())) {
@@ -1104,6 +1259,7 @@ export function pullRequestTextSources(
     body: pullRequest.body,
     url: pullRequest.url,
     createdAt: pullRequest.createdAt,
+    updatedAt: pullRequest.lastEditedAt ?? pullRequest.createdAt,
     author: pullRequest.author,
   };
   const reviewSources: GitHubTextSource[] = pullRequest.reviews.map(
@@ -1114,6 +1270,7 @@ export function pullRequestTextSources(
       body: review.body,
       url: review.url,
       createdAt: review.submittedAt ?? pullRequest.updatedAt,
+      updatedAt: review.submittedAt ?? pullRequest.updatedAt,
       author: review.author,
     }),
   );
@@ -1129,6 +1286,7 @@ export function issueTextSources(issue: IssueRecord): GitHubTextSource[] {
       body: issue.body,
       url: issue.url,
       createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
       author: issue.author,
     },
     ...issue.comments,
@@ -1209,7 +1367,7 @@ function methodology(): LeaderboardMethodology {
         points: "up to 6",
         cap: "one award per evidence category per merged pull request; six points total",
         qualification:
-          "For pull requests in the seven-day verification window, concrete proof appears in stable evidence rows or category-labeled GitHub attachments, immutable repository artifacts, or supported transaction explorers; N/A rows do not qualify.",
+          "For pull requests in the seven-day verification window, concrete proof existed in the pull-request body or a comment at merge time and appears in stable evidence rows, category-labeled GitHub attachments, immutable repository artifacts, or supported transaction explorers; N/A rows do not qualify.",
       },
       {
         id: "substantive-review",
@@ -1229,6 +1387,7 @@ function methodology(): LeaderboardMethodology {
       "GitHub Bot actors and bot-pattern logins",
       "self-reviews",
       "reviews submitted after merge",
+      "pull-request bodies or comments created or edited after merge",
       "duplicate immutable GitHub node IDs",
       "repeated reviews by the same reviewer on the same pull request",
       "arbitrary external media links, bare checksums, and unstructured evidence claims",
@@ -1241,7 +1400,7 @@ function methodology(): LeaderboardMethodology {
       "model disclosure",
     ],
     provenancePolicy:
-      "Coverage is valid-source count over every eligible non-bot body, comment, and review. Exact provider/model declarations, human-only declarations, and eliza-computer-attribution:v1 markers are self-reported provenance. Complete, partial, missing, and invalid states add no points.",
+      "Coverage is valid-source count over non-bot claims and text sources that declare AI or human-only provenance; ordinary human discussion is not eligible. Exact provider/model declarations, human-only declarations, and eliza-computer-attribution:v1 markers are self-reported provenance. Complete, partial, missing, and invalid states add no points.",
     collectionPolicy:
       "Every merged pull-request outcome is collected over 30 days with paginated, recursively split UTC time slices below GitHub Search's 1,000-result ceiling. Verification-intensive pull-request bonuses and resolved issues use a complete seven-day detail window. Open queues use complete repository connections. Counts publish both outcome and detail coverage, and immutable node IDs are deduplicated.",
   };
@@ -1334,6 +1493,22 @@ function recordTextActivity(
   }
 }
 
+function evidenceSourcesAtMerge(
+  pullRequest: PullRequestRecord,
+  sources: GitHubTextSource[],
+): GitHubTextSource[] {
+  if (!pullRequest.mergedAt) {
+    return [];
+  }
+  const mergedAt = parseIsoTime(pullRequest.mergedAt);
+  return sources.filter(
+    (source) =>
+      source.kind !== "review" &&
+      parseIsoTime(source.createdAt) <= mergedAt &&
+      parseIsoTime(source.updatedAt) <= mergedAt,
+  );
+}
+
 function modelStatus(assessment: AttributionAssessment): WorkItemModelStatus {
   const identifiers = uniqueSorted(
     assessment.declarations.map((declaration) => declaration.identifier),
@@ -1394,11 +1569,10 @@ function latestClaimComment(
         return false;
       }
       const createdAt = parseIsoTime(comment.createdAt);
-      const claimableBody = comment.body
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/<!--[\s\S]*?-->/g, "");
       return (
-        createdAt >= cutoff && createdAt <= now && pattern.test(claimableBody)
+        createdAt >= cutoff &&
+        createdAt <= now &&
+        hasMarkdownLine(comment.body, pattern)
       );
     })
     .sort(
@@ -1741,7 +1915,9 @@ export function createLeaderboardSnapshot(
         });
       }
 
-      const evidence = assessEvidence(sources);
+      const evidence = assessEvidence(
+        evidenceSourcesAtMerge(pullRequest, sources),
+      );
       for (const finding of evidence.findings) {
         addScore(entries, ledger, {
           id: `${pullRequest.id}:evidence:${finding.category}`,
@@ -1844,6 +2020,7 @@ export function createLeaderboardSnapshot(
       body: pullRequest.body,
       url: pullRequest.url,
       createdAt: pullRequest.createdAt,
+      updatedAt: pullRequest.updatedAt,
       author: pullRequest.author,
     })),
     ...mergedPullRequests.flatMap(pullRequestTextSources),

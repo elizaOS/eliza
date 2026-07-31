@@ -8,17 +8,19 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
-  cpSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createInstallCommand } from "../src/lib/install-command.ts";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "..", "..");
@@ -51,9 +53,15 @@ const packager = join(
   "scripts",
   "package_skill.py",
 );
+const archiveNormalizer = join(
+  packageRoot,
+  "scripts",
+  "normalize-skill-archive.py",
+);
 const archiveName = "contribute-to-eliza.skill";
 const archivePath = join(downloadsRoot, archiveName);
-const sourcePath = "packages/skills/skills/contribute-to-eliza/SKILL.md";
+const skillRepositoryPath = "packages/skills/skills/contribute-to-eliza";
+const sourcePath = `${skillRepositoryPath}/SKILL.md`;
 const publicSiteOrigin = "https://eliza.army";
 
 function sha256(contents) {
@@ -67,6 +75,28 @@ function run(executable, args, cwd = repositoryRoot) {
   });
 }
 
+function listRegularSkillFiles(root, prefix = "") {
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const absolutePath = join(root, entry.name);
+    const relativePath = join(prefix, entry.name).replaceAll("\\", "/");
+    const stats = lstatSync(absolutePath);
+    if (stats.isSymbolicLink()) {
+      throw new TypeError(
+        `[ElizaComputer] skill source contains a symlink: ${relativePath}`,
+      );
+    }
+    if (stats.isDirectory()) {
+      return listRegularSkillFiles(absolutePath, relativePath);
+    }
+    if (!stats.isFile()) {
+      throw new TypeError(
+        `[ElizaComputer] skill source contains a non-regular file: ${relativePath}`,
+      );
+    }
+    return [relativePath];
+  });
+}
+
 mkdirSync(publicRoot, { recursive: true });
 mkdirSync(downloadsRoot, { recursive: true });
 
@@ -74,6 +104,45 @@ const skillMarkdown = readFileSync(skillSource);
 const repositoryContract = readFileSync(repositoryContractPath, "utf8");
 const evidenceRubric = readFileSync(evidenceRubricPath, "utf8");
 const skillDigest = sha256(skillMarkdown);
+const trackedSkillFiles = execFileSync(
+  "git",
+  ["ls-files", "-z", "--", skillRepositoryPath],
+  {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  },
+)
+  .split("\0")
+  .filter(Boolean)
+  .map((path) => relative(skillRepositoryPath, path).replaceAll("\\", "/"))
+  .sort();
+const actualSkillFiles = listRegularSkillFiles(skillRoot).sort();
+if (
+  trackedSkillFiles.length === 0 ||
+  trackedSkillFiles.some(
+    (path) => path === ".." || path.startsWith("../") || path.includes("/../"),
+  )
+) {
+  throw new TypeError(
+    "[ElizaComputer] tracked skill file manifest is empty or escaped its root",
+  );
+}
+if (
+  trackedSkillFiles.length !== actualSkillFiles.length ||
+  trackedSkillFiles.some((path, index) => path !== actualSkillFiles[index])
+) {
+  const tracked = new Set(trackedSkillFiles);
+  const actual = new Set(actualSkillFiles);
+  const extras = actualSkillFiles.filter((path) => !tracked.has(path));
+  const missing = trackedSkillFiles.filter((path) => !actual.has(path));
+  throw new TypeError(
+    `[ElizaComputer] skill source must exactly match tracked files (extra: ${extras.join(", ") || "none"}; missing: ${missing.join(", ") || "none"})`,
+  );
+}
+const skillFileManifest = trackedSkillFiles.map((path) => ({
+  path,
+  sha256: sha256(readFileSync(join(skillRoot, path))),
+}));
 const commit = execFileSync("git", ["rev-parse", "HEAD"], {
   cwd: repositoryRoot,
   encoding: "utf8",
@@ -81,22 +150,32 @@ const commit = execFileSync("git", ["rev-parse", "HEAD"], {
 if (!/^[0-9a-f]{40}$/.test(commit)) {
   throw new TypeError("[ElizaComputer] git did not return a full commit SHA");
 }
-const sourceStatus = execFileSync(
+const committedSkillFiles = execFileSync(
   "git",
-  [
-    "status",
-    "--porcelain",
-    "--untracked-files=all",
-    "--",
-    "packages/skills/skills/contribute-to-eliza",
-  ],
+  ["ls-tree", "-r", "-z", "--name-only", "HEAD", "--", skillRepositoryPath],
   {
     cwd: repositoryRoot,
     encoding: "utf8",
   },
-).trim();
-const sourceRevisionStatus =
-  sourceStatus.length === 0 ? "committed" : "working-tree";
+)
+  .split("\0")
+  .filter(Boolean)
+  .map((path) => relative(skillRepositoryPath, path).replaceAll("\\", "/"))
+  .sort();
+const sourceMatchesCommit =
+  committedSkillFiles.length === trackedSkillFiles.length &&
+  committedSkillFiles.every(
+    (path, index) =>
+      path === trackedSkillFiles[index] &&
+      readFileSync(join(skillRoot, path)).equals(
+        execFileSync("git", ["show", `HEAD:${skillRepositoryPath}/${path}`], {
+          cwd: repositoryRoot,
+          encoding: null,
+          maxBuffer: 16 * 1024 * 1024,
+        }),
+      ),
+  );
+const sourceRevisionStatus = sourceMatchesCommit ? "committed" : "working-tree";
 
 run(process.execPath, [
   join(repositoryRoot, "packages", "shared", "scripts", "sync-to-public.mjs"),
@@ -117,7 +196,11 @@ const stagedPublicArchive = join(
 );
 let archive;
 try {
-  cpSync(skillRoot, stagedSkillRoot, { recursive: true });
+  for (const path of trackedSkillFiles) {
+    const destination = join(stagedSkillRoot, path);
+    mkdirSync(dirname(destination), { recursive: true });
+    copyFileSync(join(skillRoot, path), destination);
+  }
   writeFileSync(
     join(stagedSkillRoot, "PROVENANCE.json"),
     `${JSON.stringify(
@@ -131,6 +214,7 @@ try {
           path: sourcePath,
           sha256: skillDigest,
         },
+        files: skillFileManifest,
       },
       null,
       2,
@@ -138,6 +222,7 @@ try {
   );
   run("python3", [packager, stagedSkillRoot, stagedDownloadsRoot]);
   const packagedArchive = join(stagedDownloadsRoot, archiveName);
+  run("python3", [archiveNormalizer, packagedArchive]);
   archive = readFileSync(packagedArchive);
   if (archive.length === 0) {
     throw new Error("[ElizaComputer] packaged skill archive is empty");
@@ -179,69 +264,10 @@ Install the checksum-verified complete skill archive into its own directory.
 This does not replace a repository's \`AGENTS.md\` or any local instructions.
 
 \`\`\`bash
-(
-  set -eu
-  SKILLS_ROOT="\${CODEX_HOME:-\${HOME}/.codex}/skills"
-  TARGET="$SKILLS_ROOT/contribute-to-eliza"
-  if [ -e "$TARGET" ] || [ -L "$TARGET" ]; then
-    printf '%s\n' "Refusing to overwrite existing skill: $TARGET" >&2
-    exit 1
-  fi
-  INSTALL_TMP="$(mktemp -d)"
-  TARGET_CREATED=0
-  cleanup() {
-    rm -rf "$INSTALL_TMP"
-    if [ "$TARGET_CREATED" -eq 1 ]; then rm -rf "$TARGET"; fi
-  }
-  trap cleanup EXIT
-  trap 'exit 1' HUP INT TERM
-  ARCHIVE="$INSTALL_TMP/contribute-to-eliza.skill"
-  CHECKSUM="$INSTALL_TMP/contribute-to-eliza.skill.sha256"
-  EXTRACTED="$INSTALL_TMP/extracted"
-  curl -fsSL --max-filesize 10485760 ${publicSiteOrigin}/downloads/contribute-to-eliza.skill -o "$ARCHIVE"
-  curl -fsSL --max-filesize 4096 ${publicSiteOrigin}/downloads/contribute-to-eliza.skill.sha256 -o "$CHECKSUM"
-  EXPECTED="$(awk 'NF == 2 && $2 == "contribute-to-eliza.skill" { hash=$1; count++ } END { if (count != 1) exit 1; print hash }' "$CHECKSUM")"
-  test "\${#EXPECTED}" -eq 64
-  case "$EXPECTED" in ""|*[!0-9A-Fa-f]*) exit 1 ;; esac
-  if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL="$(sha256sum "$ARCHIVE" | awk '{ print $1 }')"
-  elif command -v shasum >/dev/null 2>&1; then
-    ACTUAL="$(shasum -a 256 "$ARCHIVE" | awk '{ print $1 }')"
-  else
-    exit 1
-  fi
-  test "$ACTUAL" = "$EXPECTED"
-  unzip -tq "$ARCHIVE" >/dev/null
-  ARCHIVE_ENTRIES="$(unzip -Z1 "$ARCHIVE")"
-  test -n "$ARCHIVE_ENTRIES"
-  printf '%s\n' "$ARCHIVE_ENTRIES" | awk '
-    index($0, "contribute-to-eliza/") != 1 { exit 1 }
-    index("/" $0 "/", "/../") { exit 1 }
-    index("/" $0 "/", "/./") { exit 1 }
-    index($0, "//") { exit 1 }
-    index($0, "\\\\") { exit 1 }
-    index($0, sprintf("%c", 13)) { exit 1 }
-    NR > 128 { exit 1 }
-    END { if (NR == 0) exit 1 }
-  '
-  mkdir "$EXTRACTED"
-  unzip -oq "$ARCHIVE" -d "$EXTRACTED"
-  if find "$EXTRACTED" ! -type f ! -type d -print -quit | grep -q .; then
-    exit 1
-  fi
-  test -f "$EXTRACTED/contribute-to-eliza/SKILL.md"
-  test -f "$EXTRACTED/contribute-to-eliza/PROVENANCE.json"
-  mkdir -p "$SKILLS_ROOT"
-  if ! mkdir "$TARGET"; then
-    printf '%s\n' "Unable to reserve a new skill directory: $TARGET" >&2
-    exit 1
-  fi
-  TARGET_CREATED=1
-  cp -R "$EXTRACTED/contribute-to-eliza/." "$TARGET/"
-  test -f "$TARGET/SKILL.md"
-  test -f "$TARGET/PROVENANCE.json"
-  TARGET_CREATED=0
-)
+${createInstallCommand(
+  publicSiteOrigin,
+  `\${CODEX_HOME:-\${HOME}/.codex}/skills`,
+)}
 \`\`\`
 
 Then ask Codex:
