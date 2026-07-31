@@ -416,22 +416,62 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-count-transition {
   transition: none;
 }
-/* Direct manipulation keeps each glass card as one stable physical surface.
-   Only its information fades toward the committed resting projection; fading
-   an ancestor would dim the specular rim and make the border flicker. */
+/* Keep the rim on the gesture surface, but move its fill to the full-size
+   content layer. This is the demo-era layering that lets the card visibly
+   fade under the finger without changing the rim's material or brightness. */
+.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) .eliza-notif-row-surface,
+[data-notification-shade-cancelling] .eliza-notif-row-surface {
+  background-color: transparent;
+  background-image: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) .eliza-notif-row-content,
+[data-notification-shade-cancelling] .eliza-notif-row-content {
+  background-color: rgb(22 22 25);
+  background-image: ${LIQUID_GLASS_SHEEN};
+}
+.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) :is([data-notification-stack-material], [data-notification-stacked]) .eliza-notif-row-content,
+[data-notification-shade-cancelling] :is([data-notification-stack-material], [data-notification-stacked]) .eliza-notif-row-content {
+  background-color: rgb(28 28 30);
+  background-image: none;
+}
+/* The card surface owns the group fade so its fill, copy, and rim move as one
+   physical object. A row-specific variable is reserved for disposable stack
+   rows; falling back to the group variable here would multiply the surface
+   fade and make direct manipulation feel nonlinear. */
 .eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-content {
-  opacity: var(
-    --eliza-notif-row-content-visibility,
-    var(--eliza-notif-group-content-visibility, 1)
-  );
+  opacity: var(--eliza-notif-row-content-visibility, 1);
 }
 .eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-content {
+  transition: none;
+}
+/* A committed pull keeps the surface and its geometry on one settle clock;
+   disposable stack rows may still use their row-specific visibility. */
+.eliza-notif-scroll[data-shade-settling] [data-notification-group-content] .eliza-notif-row-content {
+  transition:
+    opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
+}
+/* The row button owns the copy, but the glass surface is the visible card.
+   Fade that surface with the content during a close gesture; otherwise the
+   copy disappears into an opaque rounded shell and the card reads as solid.
+   The important override is deliberate because NotificationRow keeps its
+   gesture surface at inline opacity 1 while it owns horizontal dismissing. */
+.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface {
+  opacity: var(--eliza-notif-group-content-visibility, 1) !important;
+  transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
+}
+.eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-surface {
   transition: none;
 }
 /* A cancelled pull reverses the information fade on the same presentation
    clock while the unchanged glass shell stays in place. */
 [data-notification-shade-cancelling] .eliza-notif-row-content {
   opacity: 1;
+  transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
+}
+[data-notification-shade-cancelling] .eliza-notif-row-surface {
+  opacity: 1 !important;
   transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
 }
 /* Bulk clear keeps its right edge aligned with each producer's X. Touch-first
@@ -2844,9 +2884,11 @@ export function NotificationsHomeCenter({
             shadeExpanded,
             shadeClosing,
           );
+          const preservingCardMaterial =
+            shadeExpanded && (pullDirection === "collapse" || shadeClosing);
           const groupContentVisibility = pullRevealed
             ? revealProgress
-            : groupWasRested
+            : groupWasRested && !preservingCardMaterial
               ? 1
               : groupVisibility;
           // A card follows the finger as one physical surface. Fading its
@@ -2854,10 +2896,9 @@ export function NotificationsHomeCenter({
           // which makes the outline flicker between bright and dull while the
           // user reverses a swipe. The committed/cancelled settle may fade the
           // group after release; the in-hand material stays visually stable.
-          const groupPresentationVisibility =
-            shadeExpanded && pullDirection === "collapse"
-              ? 1
-              : groupContentVisibility;
+          const groupPresentationVisibility = preservingCardMaterial
+            ? 1
+            : groupContentVisibility;
           const groupContentPullOffset = pullRevealed
             ? (1 - revealProgress) * -8
             : groupWasRested
@@ -2923,14 +2964,21 @@ export function NotificationsHomeCenter({
             : groupWasRested
               ? "static"
               : "disposable";
-          const stackPeekVisibility = fanned
-            ? Math.max(
-                groupWasRested ? shadeCloseProgress : 0,
-                1 - stackFanProgress,
-              )
-            : stackPeekMode === "disposable"
+          // A rested stack peek is still a physical card in the expanded
+          // shade. Keep it in the same collapse crossfade as the front card;
+          // promoting it to full opacity at pointer-up made one card appear
+          // stuck while every other surface faded away.
+          const stackPeekVisibility =
+            pullDirection === "collapse" || shadeClosing
               ? pullContentVisibility
-              : 1;
+              : fanned
+                ? Math.max(
+                    groupWasRested ? shadeCloseProgress : 0,
+                    1 - stackFanProgress,
+                  )
+                : stackPeekMode === "disposable"
+                  ? pullContentVisibility
+                  : 1;
           const stackPeekExpansionProgress = fanned
             ? Math.min(stackFanProgress, 1 - shadeCloseProgress)
             : 0;
