@@ -261,6 +261,8 @@ function publishSettledResult(
 				actionName: action.name,
 			});
 		} catch (reportingError) {
+			// error-policy:J7 diagnostics failure is logged locally because the
+			// already-settled action result must remain authoritative to callers.
 			runtime.logger.error(
 				{
 					src: "execute-planned-tool-call",
