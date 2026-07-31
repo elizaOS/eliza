@@ -1015,7 +1015,9 @@ export default scenario({
         editTarget: "feed",
         intent: "Tighten the feed app table density",
       },
-      responseIncludesAny: ["Started app edit task for Feed"],
+      // Chat gets one human sentence; the dispatch internals (workdir, session
+      // id, APP_CREATE_DONE) stay planner-facing in the action result text.
+      responseIncludesAny: ["Updating Feed now"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "APP",
@@ -1024,8 +1026,10 @@ export default scenario({
             editTarget: "feed",
             intent: "Tighten the feed app table density",
           },
-          responseText: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification will run when it emits APP_CREATE_DONE.`,
+          responseText:
+            "Updating Feed now — I'll post the link once the changes are live (usually takes a few minutes).",
           resultFields: {
+            text: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification runs when it emits APP_CREATE_DONE.`,
             "values.mode": "create",
             "values.subMode": "edit",
             "values.name": "feed",
