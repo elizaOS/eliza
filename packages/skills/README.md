@@ -62,9 +62,14 @@ const commands = buildSkillCommandSpecs(entries);
 // Returns array of command specs for chat interfaces
 ```
 
-## Bundled documentation skills
+## Bundled skills
 
-Alongside community-oriented skills, this package ships **`elizaos`**, **`eliza-cloud`**, and **`eliza-app-development`** — concise references for elizaOS runtime concepts, Eliza Cloud as a backend, and building elizaOS-based applications (including the Eliza app repository layout).
+This package ships **`elizaos`**, **`eliza-cloud`**, and
+**`eliza-app-development`** as concise references for elizaOS runtime concepts,
+Eliza Cloud as a backend, and application development. It also ships
+**`contribute-to-eliza`**, the evidence-first workflow for safely finishing
+issues and independently reviewing or repairing open pull requests with exact
+model attribution.
 
 ## Skill Discovery
 
