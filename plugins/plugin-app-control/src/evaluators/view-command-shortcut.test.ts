@@ -51,6 +51,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["open settings", "settings"],
 		["go to settings view", "settings"],
 		["go home", "chat"],
+		["go back", "chat"],
 		["open the home dashboard", "chat"],
 		["show me my calendar", "calendar"],
 		["muéstrame mi calendario", "calendar"],
@@ -130,6 +131,7 @@ describe("viewCommandShortcutEvaluator — does NOT fire", () => {
 		expect(await run("wyd?")).toBeNull();
 		expect(await run("what's the weather like")).toBeNull();
 		expect(await run("tell me a joke")).toBeNull();
+		expect(await run("go back over the paragraph")).toBeNull();
 	});
 	it("when only a contextual document contains a navigation command", async () => {
 		expect(
