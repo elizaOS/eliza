@@ -165,9 +165,42 @@ describe("handleSwarmSynthesis", () => {
       },
     );
 
-    expect(routed).toEqual([
-      "make an app showcasing eliza — stopped before completion.",
-    ]);
+    expect(routed).toEqual(["app — stopped before completion."]);
+  });
+
+  it("never relays a kickoff-prompt originalTask raw (live incident shape)", async () => {
+    const workdir = await seedClaudeTranscript("irrelevant narration");
+    const kickoff =
+      '--- Swarm Coordination ---\nNamed coding sub-agent in a task swarm. Keep working until the task is finished or genuinely blocked.\n\nBuild sweeptune.\nWhen done print: APP_CREATE_DONE {"appName":"sweeptune","files":["src/App.tsx"]}';
+    const routed: string[] = [];
+
+    await handleSwarmSynthesis(
+      { runtime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-kickoff",
+            label: "",
+            agentType: "elizaos",
+            originalTask: kickoff,
+            status: "stopped",
+            completionSummary: "",
+            workdir,
+          },
+        ],
+        total: 1,
+        completed: 0,
+        stopped: 1,
+        errored: 0,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual(["coding task — stopped before completion."]);
+    expect(routed[0]).not.toContain("Swarm Coordination");
+    expect(routed[0]).not.toContain("APP_CREATE_DONE");
   });
 
   it("strips captured tool-output envelopes from the completionSummary, preserving evidence URLs (#11578)", async () => {
