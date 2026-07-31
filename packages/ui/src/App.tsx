@@ -1875,7 +1875,10 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
-  const launcher = useMemo(() => <LauncherSurface />, []);
+  // The Home↔Apps rail is the demo-facing navigation surface. Keep it scoped
+  // to registered runtime views; the dedicated `/apps` page remains the full
+  // installable catalog and is where discovery belongs.
+  const launcher = useMemo(() => <LauncherSurface catalogMode="demo" />, []);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
   // launcher so the onboarding overlay reveals only the shared wallpaper.
   return (
