@@ -6,7 +6,12 @@
  * mocks; no live model.
  */
 import type { Action, AgentRuntime } from "@elizaos/core";
-import { createMessageMemory, ModelType, stringToUuid } from "@elizaos/core";
+import {
+  createMessageMemory,
+  EventType,
+  ModelType,
+  stringToUuid,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { executeFallbackParsedActions } from "./fallback-action-helpers.ts";
 
@@ -168,5 +173,62 @@ describe("executeFallbackParsedActions", () => {
       undefined,
     );
     expect(appended).toEqual(["I enabled the block."]);
+  });
+
+  it("does not enter the action handler when cancellation wins during preflight", async () => {
+    const caller = new AbortController();
+    const handler = vi.fn(async () => ({ success: true, text: "committed" }));
+    const action: Action = {
+      name: "CANCELLED_FALLBACK",
+      description: "An action whose validation races with cancellation.",
+      validate: vi.fn(async () => {
+        caller.abort(new DOMException("socket closed", "AbortError"));
+        return true;
+      }),
+      handler,
+    };
+    const runtime = {
+      agentId: stringToUuid("cancelled-fallback-agent"),
+      actions: [action],
+      character: { name: "Example" },
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      getRoom: vi.fn(async () => null),
+      getWorld: vi.fn(async () => null),
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => null),
+      emitEvent: vi.fn(async () => undefined),
+      useModel: vi.fn(),
+    } as unknown as AgentRuntime;
+    const appended: string[] = [];
+
+    const executions = await executeFallbackParsedActions(
+      runtime,
+      createMessageMemory({
+        id: stringToUuid("cancelled-fallback-message"),
+        entityId: stringToUuid("cancelled-fallback-user"),
+        roomId: stringToUuid("cancelled-fallback-room"),
+        content: { text: "run it", source: "test" },
+      }),
+      [{ name: action.name }],
+      (incoming) => appended.push(incoming),
+      vi.fn(),
+      { abortSignal: caller.signal },
+    );
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(runtime.useModel).not.toHaveBeenCalled();
+    expect(runtime.emitEvent).not.toHaveBeenCalledWith(
+      EventType.ACTION_STARTED,
+      expect.anything(),
+    );
+    expect(appended).toEqual([]);
+    expect(executions).toEqual([
+      { actionName: "CANCELLED_FALLBACK", success: false },
+    ]);
   });
 });

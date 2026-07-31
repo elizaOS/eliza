@@ -27,6 +27,7 @@ import {
   executePlannedToolCall,
   getInferenceTimer,
   getSwarmCoordinatorService,
+  hasAppliedUserFacingEffectProof,
   INFERENCE_MARKS,
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
@@ -40,10 +41,12 @@ import {
   type RolesWorldMetadata,
   type RouteRequestContext,
   recordOwnerGrant,
+  revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
   type TrustedApiPrincipal,
+  tagsMayProduceEffects,
   timeInferenceSpan,
   trackPostDeliveryTask,
   type UUID,
@@ -739,6 +742,7 @@ async function rewriteDirectActionCallbackText(args: {
   actionName: string;
   text: string;
   content?: Content;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
@@ -749,6 +753,7 @@ async function rewriteDirectActionCallbackText(args: {
         : "";
     return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
   };
+  if (args.abortSignal?.aborted) return fallback();
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: [
@@ -777,6 +782,7 @@ async function rewriteDirectActionCallbackText(args: {
         })}`,
       ].join("\n"),
       maxTokens: 260,
+      signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
@@ -1008,6 +1014,82 @@ export interface ChatGenerateOptions {
   abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
+}
+
+const POST_COMMIT_INTERRUPTED_REPLY =
+  "The action finished before the response was interrupted. It was not run again.";
+
+function recoverSettledMutatingActionTurn(
+  runtime: AgentRuntime,
+  settledResults: readonly ActionResult[],
+): {
+  text: string;
+  actionResults: ActionResult[];
+  actionNames: string[];
+} | null {
+  const allReceipts = settledResults.flatMap(
+    (result) => result.effectReceipts ?? [],
+  );
+  const revertedReceiptIds = revertedEffectReceiptIds(allReceipts);
+  const actionByName = new Map(
+    runtime.actions.map((action) => [action.name, action]),
+  );
+  const committedResults = settledResults.filter((result) => {
+    const receipts = result.effectReceipts ?? [];
+    const hasActiveAppliedReceipt = receipts.some(
+      (receipt) =>
+        receipt.outcome === "applied" &&
+        !revertedReceiptIds.has(receipt.receiptId),
+    );
+    if (receipts.length > 0) return hasActiveAppliedReceipt;
+    if (
+      result.data?.reconciliationRequired === true &&
+      result.data?.retryable === false
+    ) {
+      return true;
+    }
+    const actionName =
+      typeof result.data?.actionName === "string" ? result.data.actionName : "";
+    return (
+      result.success !== false &&
+      tagsMayProduceEffects(actionByName.get(actionName)?.tags)
+    );
+  });
+  if (committedResults.length === 0) return null;
+
+  let verifiedResult: ActionResult | undefined;
+  try {
+    verifiedResult = [...committedResults]
+      .reverse()
+      .find((result) => hasAppliedUserFacingEffectProof(result, allReceipts));
+  } catch (error) {
+    // error-policy:J4 conflicting receipt evidence degrades to the explicit
+    // post-commit interruption reply rather than inventing action-specific text.
+    runtime.logger.warn(
+      {
+        src: "eliza-api",
+        error: getErrorMessage(error),
+      },
+      "Conflicting action receipts prevented exact post-commit reply recovery",
+    );
+  }
+  const verifiedText = verifiedResult?.userFacingText?.trim();
+  const actionNames = Array.from(
+    new Set(
+      committedResults
+        .map((result) =>
+          typeof result.data?.actionName === "string"
+            ? result.data.actionName
+            : "",
+        )
+        .filter((name) => name.length > 0),
+    ),
+  );
+  return {
+    text: verifiedText || POST_COMMIT_INTERRUPTED_REPLY,
+    actionResults: [...settledResults],
+    actionNames,
+  };
 }
 
 function isAppendOnlyStreamDivergenceError(
@@ -3037,11 +3119,14 @@ async function generateChatResponseWithTiming(
           opts,
         }),
     );
-    generationAbortController.signal.throwIfAborted();
     if (androidDirectResult) {
+      // A successful model return commits the turn even when transport
+      // cancellation races with that return. Discarding it here would release
+      // the retry key and bill the same completed work a second time.
       try {
         if (
           androidDirectResult.responseContent &&
+          !generationAbortController.signal.aborted &&
           typeof runtime.emitEvent === "function"
         ) {
           const memoryLike = createMessageMemory({
@@ -3071,6 +3156,7 @@ async function generateChatResponseWithTiming(
       }
       return androidDirectResult;
     }
+    generationAbortController.signal.throwIfAborted();
 
     let result:
       | Awaited<
@@ -3079,6 +3165,7 @@ async function generateChatResponseWithTiming(
           >
         >
       | undefined;
+    const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
     const recordActionCallback = (
       actionTag: string,
@@ -3133,8 +3220,10 @@ async function generateChatResponseWithTiming(
             appendText: replaceCallbackText,
             replaceText: emitSnapshot,
           });
-          generationAbortController.signal.throwIfAborted();
           if (preHandlerResult) {
+            // A handler that returns a terminal reply owns completion. A late
+            // disconnect must not erase a completed direct dispatch and cause
+            // the client retry to execute it again.
             const directText = preHandlerResult.responseText;
             const finalText = isClientVisibleNoResponse(directText)
               ? directText || "(no response)"
@@ -3148,6 +3237,7 @@ async function generateChatResponseWithTiming(
             forcedWalletExecutionText = isClientVisibleNoResponse(directText);
             return;
           }
+          generationAbortController.signal.throwIfAborted();
 
           // Direct dispatch for explicit task creation intent from UI
           const contentMetadata = message.content.metadata as
@@ -3213,6 +3303,7 @@ async function generateChatResponseWithTiming(
                             actionName: createTaskAction.name,
                             text: chunk,
                             content,
+                            abortSignal: generationAbortController.signal,
                           });
                         applyCallbackTextUpdate(content, voicedChunk);
                         actionResponseText = responseText;
@@ -3229,7 +3320,9 @@ async function generateChatResponseWithTiming(
                     abortSignal: generationAbortController.signal,
                   },
                 );
-                generationAbortController.signal.throwIfAborted();
+                // The action has already returned a committed result. Keep
+                // finalizing it if the transport disappears at this boundary
+                // so reconnect cannot repeat an external side effect.
                 const finalText =
                   actionResponseText ||
                   directActionResult.text ||
@@ -3247,6 +3340,7 @@ async function generateChatResponseWithTiming(
             // Fall through to normal LLM-based routing if coordinator not available
           }
 
+          generationAbortController.signal.throwIfAborted();
           const localInferenceIntent = detectLocalInferenceCommandIntent(
             originalUserText,
             {
@@ -3256,6 +3350,7 @@ async function generateChatResponseWithTiming(
           if (localInferenceIntent) {
             const { handleLocalInferenceChatCommand } =
               await getLocalInferenceChatApi();
+            generationAbortController.signal.throwIfAborted();
             const localResult = await handleLocalInferenceChatCommand(
               localInferenceIntent,
               originalUserText,
@@ -3302,79 +3397,119 @@ async function generateChatResponseWithTiming(
             { phase: "pre-model" },
           );
           generationAbortController.signal.throwIfAborted();
-          result = await timeInferenceSpan(
-            "chat:message-service",
-            async () =>
-              runtime.messageService?.handleMessage(
-                runtime,
-                generationMessage,
-                async (content: Content, actionName?: string) => {
-                  if (content.transcriptVisibility === "internal") {
-                    return [];
-                  }
+          try {
+            result = await timeInferenceSpan(
+              "chat:message-service",
+              async () =>
+                runtime.messageService?.handleMessage(
+                  runtime,
+                  generationMessage,
+                  async (content: Content, actionName?: string) => {
+                    if (content.transcriptVisibility === "internal") {
+                      return [];
+                    }
 
-                  const chunk = extractCompatTextContent(content);
-                  const visibleChunk = isInternalStructuredStreamText(chunk)
-                    ? ""
-                    : chunk;
-                  const attributedActionName = normalizeActionName(actionName);
-                  const progressCallback = isProgressActionCallback(content);
-                  if (!visibleChunk) {
-                    if (attributedActionName) {
-                      recordActionCallback(attributedActionName, false);
-                    }
-                    return [];
-                  }
-                  if (!claimStreamSource("callback")) {
-                    if (attributedActionName) {
-                      recordActionCallback(attributedActionName, false);
-                    }
-                    return [];
-                  }
-                  if (!progressCallback) {
-                    visibleCallbackDeliveries += 1;
-                  }
-                  applyCallbackTextUpdate(content, visibleChunk);
-                  if (attributedActionName) {
-                    recordActionCallback(
-                      attributedActionName,
-                      !progressCallback,
-                      progressCallback ? undefined : visibleChunk,
-                    );
-                  }
-                  return [];
-                },
-                {
-                  abortSignal: generationAbortController.signal,
-                  keepExistingResponses: true,
-                  onStreamChunk: opts?.onChunk
-                    ? async (
-                        chunk: string,
-                        _messageId?: string,
-                        accumulated?: string,
-                      ) => {
-                        if (!chunk) return;
-                        if (isInternalStructuredStreamText(chunk)) {
-                          // A native planner/tool step, not visible reply text:
-                          // fork it onto the working indicator + inline tool row
-                          // instead of leaking JSON into the bubble.
-                          const events =
-                            chatEventsFromStructuredStreamText(chunk);
-                          if (events?.status) emitStatus(events.status);
-                          if (events?.toolEvent) {
-                            opts?.onToolEvent?.(events.toolEvent);
-                          }
-                          return;
-                        }
-                        if (!claimStreamSource("onStreamChunk")) return;
-                        appendIncomingText(chunk, accumulated);
+                    const chunk = extractCompatTextContent(content);
+                    const visibleChunk = isInternalStructuredStreamText(chunk)
+                      ? ""
+                      : chunk;
+                    const attributedActionName =
+                      normalizeActionName(actionName);
+                    const progressCallback = isProgressActionCallback(content);
+                    if (!visibleChunk) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
                       }
-                    : undefined,
-                },
-              ),
-            { phase: "message" },
-          );
-          generationAbortController.signal.throwIfAborted();
+                      return [];
+                    }
+                    if (!claimStreamSource("callback")) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
+                      }
+                      return [];
+                    }
+                    if (!progressCallback) {
+                      visibleCallbackDeliveries += 1;
+                    }
+                    applyCallbackTextUpdate(content, visibleChunk);
+                    if (attributedActionName) {
+                      recordActionCallback(
+                        attributedActionName,
+                        !progressCallback,
+                        progressCallback ? undefined : visibleChunk,
+                      );
+                    }
+                    return [];
+                  },
+                  {
+                    abortSignal: generationAbortController.signal,
+                    keepExistingResponses: true,
+                    onSettledActionResult: (actionResult) => {
+                      settledActionResults.push(actionResult);
+                    },
+                    onStreamChunk: opts?.onChunk
+                      ? async (
+                          chunk: string,
+                          _messageId?: string,
+                          accumulated?: string,
+                        ) => {
+                          if (!chunk) return;
+                          if (isInternalStructuredStreamText(chunk)) {
+                            // A native planner/tool step, not visible reply text:
+                            // fork it onto the working indicator + inline tool row
+                            // instead of leaking JSON into the bubble.
+                            const events =
+                              chatEventsFromStructuredStreamText(chunk);
+                            if (events?.status) emitStatus(events.status);
+                            if (events?.toolEvent) {
+                              opts?.onToolEvent?.(events.toolEvent);
+                            }
+                            return;
+                          }
+                          if (!claimStreamSource("onStreamChunk")) return;
+                          appendIncomingText(chunk, accumulated);
+                        }
+                      : undefined,
+                  },
+                ),
+              { phase: "message" },
+            );
+          } catch (error) {
+            // error-policy:J1 this API boundary preserves a proven committed
+            // effect while translating later turn failure into a durable reply.
+            const recovery = recoverSettledMutatingActionTurn(
+              runtime,
+              settledActionResults,
+            );
+            if (!recovery) throw error;
+            responseText = recovery.text;
+            result = {
+              didRespond: true,
+              responseContent: {
+                text: recovery.text,
+                ...(recovery.actionNames.length > 0
+                  ? { actions: recovery.actionNames }
+                  : {}),
+              },
+              responseMessages: [],
+              actionResults: recovery.actionResults,
+              mode: "actions",
+            } as typeof result;
+            runtime.logger.warn(
+              {
+                src: "eliza-api",
+                messageId: message.id,
+                roomId: message.roomId,
+                actionNames: recovery.actionNames,
+                error: getErrorMessage(error),
+              },
+              "Recovered a settled mutating action after message processing stopped",
+            );
+          }
+          // A successful return preserves the completed model/message result,
+          // but it is not permission to start optional post-processing after a
+          // disconnect. The remaining path finalizes that result and only runs
+          // new work while the owner signal is live.
 
           // Ensure MESSAGE_SENT hooks run for API chat flows.
           try {
@@ -3410,6 +3545,7 @@ async function generateChatResponseWithTiming(
                   : [];
             if (
               messagesToEmit.length > 0 &&
+              !generationAbortController.signal.aborted &&
               typeof runtime.emitEvent === "function"
             ) {
               for (const responseMessage of messagesToEmit) {
@@ -3494,7 +3630,10 @@ async function generateChatResponseWithTiming(
                 });
               let successfulFallbackActions = new Set<string>();
 
-              if (selfControlFallbackActions.length > 0) {
+              if (
+                selfControlFallbackActions.length > 0 &&
+                !generationAbortController.signal.aborted
+              ) {
                 const fallbackExecutions = await executeFallbackParsedActions(
                   runtime,
                   message,
@@ -3502,6 +3641,7 @@ async function generateChatResponseWithTiming(
                   appendIncomingText,
                   recordActionCallback,
                   {
+                    abortSignal: generationAbortController.signal,
                     getCurrentText: () => responseText || modelText,
                   },
                 );
@@ -3664,10 +3804,9 @@ async function generateChatResponseWithTiming(
     }
 
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactDocumentValue = await resolveExactDocumentValueForChat(
-      runtime,
-      message,
-    );
+    const exactDocumentValue = generationAbortController.signal.aborted
+      ? null
+      : await resolveExactDocumentValueForChat(runtime, message);
     const normalizedResponseText = trimWalletProgressPrefix(
       exactDocumentValue || responseText || resultText || "",
     );
