@@ -70,15 +70,11 @@ export async function setSecretHandler(
 	const secretsService =
 		runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
 	if (!secretsService) {
-		if (callback) {
-			await callback({
-				text: "Secret management is not available. Please ensure the secrets plugin is properly configured.",
-				action: "SECRETS",
-			});
-		}
+		// Planner-facing only: plugin-config boilerplate is not actionable for
+		// a chat user; the evaluator phrases the failure in voice.
 		return {
 			success: false,
-			text: "Secrets service not available",
+			text: "Secrets service is unavailable; tell the user secrets can't be stored right now.",
 			data: { actionName: "SECRETS", action: "set" },
 		};
 	}
@@ -176,29 +172,19 @@ export async function setSecretHandler(
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`[SECRETS:set] Failed to extract secrets: ${errorMessage}`);
-		if (callback) {
-			await callback({
-				text: 'I had trouble understanding the secret you wanted to set. Could you please provide it in a clearer format? For example: "Set my OPENAI_API_KEY to sk-..."',
-				action: "SECRETS",
-			});
-		}
+		// Planner-facing only: the canned clarification double-messaged next to
+		// the evaluator's in-voice reply. The evaluator owns asking the user.
 		return {
 			success: false,
-			text: "Failed to extract secrets from message",
+			text: 'Failed to extract secrets from the message; ask the user to restate it with a key and value, like "Set my OPENAI_API_KEY to sk-...".',
 			data: { actionName: "SECRETS", action: "set" },
 		};
 	}
 
 	if (extracted.secrets.length === 0) {
-		if (callback) {
-			await callback({
-				text: 'I couldn\'t find any secrets to set in your message. Please provide a key and value, like: "Set my OPENAI_API_KEY to sk-..."',
-				action: "SECRETS",
-			});
-		}
 		return {
 			success: false,
-			text: "No secrets found in message",
+			text: 'No secrets found in the message; ask the user to provide a key and value, like "Set my OPENAI_API_KEY to sk-...".',
 			data: { actionName: "SECRETS", action: "set" },
 		};
 	}
@@ -274,9 +260,15 @@ export async function setSecretHandler(
 		});
 	}
 
+	// The store confirmation is the complete answer to a single-operation
+	// turn: verified + turnComplete make the callback the sole delivery
+	// instead of double-confirming a secret write with an evaluator paraphrase.
 	return {
 		success: successful.length > 0,
 		text: responseText,
+		userFacingText: responseText,
+		verifiedUserFacing: true,
+		turnComplete: successful.length > 0,
 		data: { actionName: "SECRETS", action: "set", results },
 	};
 }

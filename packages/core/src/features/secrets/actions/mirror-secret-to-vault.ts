@@ -138,13 +138,11 @@ export async function mirrorSecretToVaultHandler(
 		logger.warn(
 			`[SECRETS:mirror] Vault service '${vaultName}' is not available or does not implement setSecret`,
 		);
-		const text = `Vault service '${vaultName}' is not available.`;
-		if (callback) {
-			await callback({ text, action: "SECRETS" });
-		}
+		// Planner-facing only: the raw vault-service name is internal tool-speak
+		// that read as a double message next to the evaluator's in-voice reply.
 		return {
 			success: false,
-			text,
+			text: `Vault service '${vaultName}' is not available; tell the user the secret could not be mirrored because the vault backend is unavailable.`,
 			data: { actionName: "SECRETS", action: "mirror", mirrored: false },
 		};
 	}

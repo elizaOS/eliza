@@ -70,7 +70,7 @@ export const pollPluginConfigStatusAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const pluginName =
@@ -107,13 +107,11 @@ export const pollPluginConfigStatusAction: Action = {
 			`[PollPluginConfigStatus] plugin=${pluginName} ready=${status.ready} missing=${status.missing.length}`,
 		);
 
+		// Planner-facing only: a poll probe's status is planner input, not a chat
+		// bubble — the raw key list double-messaged next to the evaluator's reply.
 		const text = status.ready
 			? `Plugin '${pluginName}' is ready.`
 			: `Plugin '${pluginName}' still missing: ${status.missing.join(", ")}.`;
-
-		if (callback) {
-			await callback({ text, action: "POLL_PLUGIN_CONFIG_STATUS" });
-		}
 
 		return {
 			success: true,

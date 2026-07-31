@@ -80,7 +80,7 @@ export const awaitOAuthCallbackAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const bus = runtime.getService<Service & OAuthCallbackBusClient>(
@@ -126,13 +126,12 @@ export const awaitOAuthCallbackAction: Action = {
 			receivedAt: result.receivedAt,
 		};
 
+		// No visible callback: intent-id/status vocabulary is internal plumbing.
+		// The evaluator voices the outcome; the detail stays planner-facing.
 		const text =
 			result.status === "bound"
 				? `OAuth intent ${oauthIntentId} bound.`
 				: `OAuth intent ${oauthIntentId} ended in status ${result.status}${result.error ? `: ${result.error}` : ""}.`;
-		if (callback) {
-			await callback({ text, action: "AWAIT_OAUTH_CALLBACK" });
-		}
 
 		return {
 			success: result.status === "bound",

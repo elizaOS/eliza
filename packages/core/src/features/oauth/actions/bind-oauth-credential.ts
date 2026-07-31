@@ -89,7 +89,7 @@ export const bindOAuthCredentialAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const client = runtime.getService<Service & OAuthIntentsClient>(
@@ -132,10 +132,9 @@ export const bindOAuthCredentialAction: Action = {
 			`[BIND_OAUTH_CREDENTIAL] oauthIntentId=${oauthIntentId} connectorIdentityId=${connectorIdentityId}`,
 		);
 
+		// No visible callback: two raw internal ids are pure plumbing status. The
+		// evaluator voices the outcome; the detail stays planner-facing.
 		const text = `Bound OAuth intent ${oauthIntentId} to ${connectorIdentityId}.`;
-		if (callback) {
-			await callback({ text, action: "BIND_OAUTH_CREDENTIAL" });
-		}
 
 		return {
 			success: true,

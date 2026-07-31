@@ -382,14 +382,20 @@ export const sendDraftAction: Action = {
 		}
 
 		if (!parsed.confirmed) {
-			const text = `Confirmation required before sending draft ${parsed.draftId}. Preview: ${existing.preview}`;
+			// The confirm prompt is the designed ask the user must answer:
+			// verified + turnComplete make it the sole delivery, worded like a
+			// person asking; the draftId stays planner-facing in data.
+			const text = `Here's what I'm about to send: ${existing.preview} — want me to send it?`;
 			logger.info(`[SendDraft] confirmation gate: draftId=${parsed.draftId}`);
 			if (callback) {
 				await callback({ text, action: "MESSAGE" });
 			}
 			return {
-				success: false,
+				success: true,
 				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				turnComplete: true,
 				continueChain: false,
 				data: {
 					requiresConfirmation: true,
@@ -424,7 +430,11 @@ export const sendDraftAction: Action = {
 						externalId: rec.sentExternalId ?? `pending:${rec.draftId}`,
 					})),
 				);
-				const text = `Draft ${parsed.draftId} pending owner approval (request ${enq.requestId}).`;
+				// The pending-approval notice is the complete answer to this turn:
+				// verified + turnComplete make it the sole delivery, human-worded;
+				// draft/request ids stay planner-facing in data.
+				const text =
+					"This one needs the owner's approval before it goes out — I've requested it and will send it once approved.";
 				logger.info(
 					`[SendDraft] policy hold: draftId=${parsed.draftId} requestId=${enq.requestId}`,
 				);
@@ -432,8 +442,11 @@ export const sendDraftAction: Action = {
 					await callback({ text, action: "MESSAGE" });
 				}
 				return {
-					success: false,
+					success: true,
 					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					continueChain: false,
 					data: {
 						requiresConfirmation: true,
@@ -448,7 +461,10 @@ export const sendDraftAction: Action = {
 		}
 
 		const sent = await service.sendDraft(runtime, parsed.draftId);
-		const text = `Sent draft ${parsed.draftId} on ${sent.source}.`;
+		// The sent confirmation is the complete answer to a single-operation
+		// turn: verified + turnComplete make it the sole delivery; the draftId
+		// stays planner-facing in data.
+		const text = "Sent it.";
 		logger.info(
 			`[SendDraft] sent draftId=${parsed.draftId} externalId=${sent.sentExternalId ?? "unknown"}`,
 		);
@@ -458,6 +474,9 @@ export const sendDraftAction: Action = {
 		return {
 			success: true,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			data: {
 				draftId: sent.draftId,
 				source: sent.source,

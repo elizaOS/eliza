@@ -183,6 +183,9 @@ describe("MANAGE_PLUGINS subaction routing", () => {
 		expect(result?.success).toBe(false);
 		expect(result?.data?.action).toBe("clarify");
 		expect(calls.installed).toHaveLength(0);
-		expect(replies.join("\n")).toContain("which plugin operation");
+		// Planner-facing contract: the clarification rides the result; no
+		// visible callback fires (the evaluator voices the question).
+		expect(replies).toHaveLength(0);
+		expect(String(result?.data?.action)).toBe("clarify");
 	});
 });

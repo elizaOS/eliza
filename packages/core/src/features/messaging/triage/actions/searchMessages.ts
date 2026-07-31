@@ -112,7 +112,7 @@ export const searchMessagesAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		const filters = parseSearchMessagesParams(options);
 		const service = getDefaultTriageService();
@@ -128,10 +128,8 @@ export const searchMessagesAction: Action = {
 			`[SearchMessages] ${hits.length} hits across [${[...sourcesHit].join(",")}]`,
 		);
 
-		if (callback) {
-			await callback({ text, action: "MESSAGE" });
-		}
-
+		// No visible callback: the match count is not the user's answer — the
+		// evaluator presents the matches from data.messages in voice.
 		return {
 			success: true,
 			text,

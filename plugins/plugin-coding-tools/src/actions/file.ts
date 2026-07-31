@@ -235,14 +235,20 @@ async function deviceFileHandler(
     const bytes = Buffer.byteLength(content, encoding);
     const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${path}`;
     if (callback) await callback({ text, source: "coding-tools" });
-    return userFacingSuccessResult(text, {
-      action: "FILE",
-      target: "device",
-      operation,
-      path,
-      encoding,
-      bytes,
-    });
+    // Same single-delivery contract as the workspace write op: the write
+    // confirmation is the complete answer to a single-operation turn.
+    return {
+      ...userFacingSuccessResult(text, {
+        action: "FILE",
+        target: "device",
+        operation,
+        path,
+        encoding,
+        bytes,
+      }),
+      verifiedUserFacing: true,
+      turnComplete: true,
+    };
   }
 
   const entries = await bridge.list(path);

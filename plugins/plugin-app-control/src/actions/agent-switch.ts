@@ -196,10 +196,20 @@ export function createAgentSwitchAction(
 				options,
 			);
 			if (!profile) {
+				// The ask IS the turn's complete answer: verified + turnComplete
+				// make the callback the sole delivery instead of double-messaging
+				// with the evaluator; the un-resolved state stays in values.
 				const reply =
 					'Tell me which agent to switch to — e.g. "switch to my cloud agent" or "use the laptop runtime".';
 				await callback?.({ text: reply });
-				return { success: false, text: reply };
+				return {
+					success: true,
+					text: "No target agent named; asked the user which agent to switch to.",
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { awaitingProfile: true },
+				};
 			}
 
 			logger.info(`[plugin-app-control] AGENT_SWITCH profile="${profile}"`);
@@ -207,20 +217,31 @@ export function createAgentSwitchAction(
 			try {
 				const outcome = await switchAgent(profile);
 				if (!outcome.ok) {
+					// Refusals stay unsuccessful for the planner, but the narration
+					// is already in-voice — verified provenance stops the evaluator
+					// from re-voicing it as a second message.
 					const reply = narrateRefusal(outcome.reason, profile);
 					await callback?.({ text: reply });
 					return {
 						success: false,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
 						values: { profile, reason: outcome.reason },
 					};
 				}
 				const label = outcome.profileLabel ?? outcome.profileId ?? profile;
 				const reply = `Switched the app to "${label}".`;
 				await callback?.({ text: reply });
+				// The switch confirmation is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					values: {
 						profile,
 						profileId: outcome.profileId,

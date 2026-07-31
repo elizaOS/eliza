@@ -30,7 +30,7 @@ export async function exitWorktreeHandler(
   message: Memory,
   _state: State | undefined,
   options: unknown,
-  callback?: HandlerCallback,
+  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId =
     message.roomId !== undefined && message.roomId !== null
@@ -112,8 +112,8 @@ export async function exitWorktreeHandler(
       ? `Exited and removed worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
       : `Exited worktree ${popped.entered}; cwd -> ${popped.previousCwd}`
   ).slice(0, maxActionResultBytes);
-  if (callback) await callback({ text, source: "coding-tools" });
-
+  // No visible callback: the exit confirmation is intermediate coding-flow
+  // detail; the evaluator's in-voice reply is the user's single answer.
   return successActionResult(text, {
     exited: popped.entered,
     restoredTo: popped.previousCwd,

@@ -46,7 +46,17 @@ export async function runSearch({
 	if (results.length === 0) {
 		const text = `No plugins found matching "${query}". Try keywords like database, twitter, solana, voice.`;
 		await callback?.({ text });
-		return { success: true, text, values: { mode: "search", count: 0 } };
+		// The empty-result message is the complete answer: verified +
+		// turnComplete make it the sole delivery instead of double-messaging
+		// with the evaluator.
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { mode: "search", count: 0 },
+		};
 	}
 
 	const lines: string[] = [
@@ -67,9 +77,14 @@ export async function runSearch({
 
 	const text = lines.join("\n");
 	await callback?.({ text });
+	// The results listing IS the complete answer: verified + turnComplete
+	// make it the sole delivery.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { mode: "search", count: results.length, query },
 		data: { results },
 	};

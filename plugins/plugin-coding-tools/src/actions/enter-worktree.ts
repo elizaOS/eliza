@@ -101,7 +101,7 @@ export async function enterWorktreeHandler(
   message: Memory,
   _state: State | undefined,
   options: unknown,
-  callback?: HandlerCallback,
+  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const conversationId = conversationIdFromMessage(message);
   if (!conversationId) {
@@ -168,8 +168,8 @@ export async function enterWorktreeHandler(
       0,
       maxActionResultBytes,
     );
-  if (callback) await callback({ text, source: "coding-tools" });
-
+  // No visible callback: the enter confirmation is intermediate coding-flow
+  // detail; the evaluator's in-voice reply is the user's single answer.
   return successActionResult(text, {
     worktreePath,
     branch: name,

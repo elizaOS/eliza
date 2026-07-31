@@ -246,8 +246,9 @@ export const characterAction: Action = {
 		const rawOp = params.action ?? params.subaction ?? params.op;
 		const op = isCharacterOp(rawOp) ? rawOp : null;
 		if (!op) {
+			// Planner-facing only: a missing op is a planner error, not something
+			// the chat user should see as raw tool-speak.
 			const text = `CHARACTER requires an action: ${CHARACTER_OPS.join(", ")}.`;
-			await callback?.({ text, thought: "Missing or invalid action" });
 			return {
 				text,
 				success: false,
@@ -369,7 +370,6 @@ async function runUpdateIdentity(
 	if (!name && !systemPrompt) {
 		const text =
 			"Either `name` or `system` must be provided to update_identity.";
-		await callback?.({ text, thought: "Missing parameters" });
 		return {
 			text,
 			success: false,
@@ -390,8 +390,8 @@ async function runUpdateIdentity(
 	if (!persistence) {
 		if (name) character.name = previousName;
 		if (systemPrompt) character.system = previousSystem;
-		const text = "Character persistence service is not available.";
-		await callback?.({ text, thought: "Persistence service unavailable" });
+		const text =
+			"Character persistence service is not available; tell the user the identity change can't be saved right now.";
 		return {
 			text,
 			success: false,
@@ -408,8 +408,7 @@ async function runUpdateIdentity(
 	if (!result.success) {
 		if (name) character.name = previousName;
 		if (systemPrompt) character.system = previousSystem;
-		const text = `Failed to persist identity: ${result.error ?? "unknown error"}`;
-		await callback?.({ text, thought: "Persistence failed" });
+		const text = `Failed to persist identity: ${result.error ?? "unknown error"}; tell the user the change didn't save.`;
 		return {
 			text,
 			success: false,
@@ -434,8 +433,14 @@ async function runUpdateIdentity(
 		thought: "Identity updated",
 		actions: ["CHARACTER"],
 	});
+	// The confirmation is the complete answer to a single-operation turn:
+	// verified + turnComplete make the callback the sole delivery instead of
+	// double-messaging with the evaluator.
 	return {
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		success: true,
 		values: { updated },
 		data: { action: "CHARACTER", op: "update_identity", updated },
@@ -480,7 +485,6 @@ async function runPersist(
 
 	if (Object.keys(patch).length === 0) {
 		const text = "No character fields to persist.";
-		await callback?.({ text, thought: "Empty patch" });
 		return {
 			text,
 			success: true,
@@ -491,8 +495,7 @@ async function runPersist(
 
 	const result = await persistCharacterPatch(runtime, patch);
 	if (!result.success) {
-		const text = `I couldn't persist the character: ${result.error ?? "unknown error"}`;
-		await callback?.({ text, thought: "Persistence failed" });
+		const text = `Failed to persist the character: ${result.error ?? "unknown error"}; tell the user the save didn't go through.`;
 		return {
 			text,
 			success: false,
@@ -510,6 +513,9 @@ async function runPersist(
 	});
 	return {
 		text: summary,
+		userFacingText: summary,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		success: true,
 		values: { fieldsPersisted: persistedFields, count: persistedFields.length },
 		data: {
@@ -666,11 +672,8 @@ async function runModify(
 					"Applying selective modifications after safety filtering",
 				);
 			} else {
-				await callback?.({
-					text: responseText,
-					thought: `Rejected modification: ${safety.concerns.join(", ")}`,
-					actions: [],
-				});
+				// Planner-facing only: the safety-eval prose (concerns + reasoning)
+				// stays in the result for the evaluator to voice, not dumped in chat.
 				logger.warn(
 					{
 						messageText: messageText.substring(0, 100),
@@ -700,8 +703,7 @@ async function runModify(
 
 		const validation = fileManager.validateModification(modification);
 		if (!validation.valid) {
-			const text = `I can't make those changes because: ${validation.errors.join(", ")}`;
-			await callback?.({ text, thought: "Validation failed" });
+			const text = `The requested changes failed validation: ${validation.errors.join(", ")}; tell the user which parts can't be applied.`;
 			return {
 				text,
 				values: {
@@ -722,8 +724,7 @@ async function runModify(
 		const result = await fileManager.applyModification(modification);
 
 		if (!result.success) {
-			const text = `I couldn't update my character: ${result.error}`;
-			await callback?.({ text, thought: "File modification failed" });
+			const text = `Character update failed: ${result.error}; tell the user the change didn't apply.`;
 			return {
 				text,
 				values: { success: false, error: result.error },
@@ -738,8 +739,9 @@ async function runModify(
 		}
 
 		const summary = summarizeModification(modification);
+		const successText = `I've successfully updated my character. ${summary}`;
 		await callback?.({
-			text: `I've successfully updated my character. ${summary}`,
+			text: successText,
 			thought: `Applied character modification: ${summary}`,
 			actions: ["CHARACTER"],
 		});
@@ -779,7 +781,10 @@ async function runModify(
 		}
 
 		return {
-			text: `I've successfully updated my character. ${summary}`,
+			text: successText,
+			userFacingText: successText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			values: {
 				success: true,
 				modificationsApplied: true,
@@ -805,11 +810,7 @@ async function runModify(
 			"Error in CHARACTER.modify",
 		);
 		const text =
-			"I encountered an error while trying to modify my character. Please try again.";
-		await callback?.({
-			text,
-			thought: `Error: ${(error as Error).message}`,
-		});
+			"Character modification failed with an unexpected error; tell the user it didn't go through and they can try again.";
 		return {
 			text,
 			values: { success: false, error: (error as Error).message },
@@ -1418,12 +1419,17 @@ async function handlePreferenceReset(
 	});
 
 	if (existingPrefs.length === 0) {
+		const noPrefsText =
+			"You don't have any custom interaction preferences set.";
 		await callback?.({
-			text: "You don't have any custom interaction preferences set.",
+			text: noPrefsText,
 			thought: "No preferences to reset",
 		});
 		return {
 			text: "No preferences to reset",
+			userFacingText: noPrefsText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			success: true,
 			values: { resetCount: 0 },
 			data: { action: "CHARACTER", op: "modify" },
@@ -1445,14 +1451,18 @@ async function handlePreferenceReset(
 		}
 	}
 
+	const clearedText = `I've cleared ${deletedCount} custom interaction preference(s). I'll go back to my default interaction style with you.`;
 	await callback?.({
-		text: `I've cleared ${deletedCount} custom interaction preference(s). I'll go back to my default interaction style with you.`,
+		text: clearedText,
 		thought: `Reset ${deletedCount} user preferences`,
 		actions: ["CHARACTER"],
 	});
 
 	return {
 		text: `Reset ${deletedCount} preferences`,
+		userFacingText: clearedText,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		success: true,
 		values: { resetCount: deletedCount },
 		data: { action: "CHARACTER", op: "modify" },
@@ -1468,12 +1478,8 @@ async function handleUserPreference(
 	try {
 		const preference = await parseUserPreference(runtime, message, messageText);
 		if (!preference) {
-			await callback?.({
-				text: "I couldn't understand your preference. Could you be more specific? For example: 'be more formal with me' or 'don't use emojis when talking to me'.",
-				thought: "Failed to parse user preference",
-			});
 			return {
-				text: "Could not parse preference",
+				text: "No clear interaction preference found in the request; ask the user to state it specifically (e.g. 'be more formal with me').",
 				success: false,
 				values: { error: "parse_failed" },
 				data: { action: "CHARACTER", op: "modify" },
@@ -1492,12 +1498,8 @@ async function handleUserPreference(
 		});
 
 		if (existingPrefs.length >= MAX_PREFS_PER_USER) {
-			await callback?.({
-				text: `You already have ${MAX_PREFS_PER_USER} interaction preferences set. Please clear some first by saying "reset my interaction preferences".`,
-				thought: "User exceeded maximum preference count",
-			});
 			return {
-				text: "Preference limit reached",
+				text: `Preference limit reached (${MAX_PREFS_PER_USER}); tell the user to clear some existing interaction preferences before adding more.`,
 				success: false,
 				values: { error: "limit_exceeded", count: existingPrefs.length },
 				data: { action: "CHARACTER", op: "modify" },
@@ -1510,12 +1512,17 @@ async function handleUserPreference(
 		});
 
 		if (isDuplicate) {
+			const duplicateText =
+				"I already have that preference noted for our interactions.";
 			await callback?.({
-				text: "I already have that preference noted for our interactions.",
+				text: duplicateText,
 				thought: "Duplicate preference detected",
 			});
 			return {
 				text: "Preference already exists",
+				userFacingText: duplicateText,
+				verifiedUserFacing: true,
+				turnComplete: true,
 				success: true,
 				values: { duplicate: true },
 				data: { action: "CHARACTER", op: "modify" },
@@ -1540,14 +1547,18 @@ async function handleUserPreference(
 			USER_PREFS_TABLE,
 		);
 
+		const storedText = `Got it! I'll remember that for our interactions: "${preference.text}". This only affects how I interact with you, not my core personality.`;
 		await callback?.({
-			text: `Got it! I'll remember that for our interactions: "${preference.text}". This only affects how I interact with you, not my core personality.`,
+			text: storedText,
 			thought: `Stored per-user preference: ${preference.text}`,
 			actions: ["CHARACTER"],
 		});
 
 		return {
 			text: `Stored user preference: ${preference.text}`,
+			userFacingText: storedText,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			success: true,
 			values: {
 				preferenceStored: true,
@@ -1570,12 +1581,8 @@ async function handleUserPreference(
 			{ error: error instanceof Error ? error.message : String(error) },
 			"Error storing user preference",
 		);
-		await callback?.({
-			text: "I encountered an error saving your preference. Please try again.",
-			thought: `Error in user preference handler: ${(error as Error).message}`,
-		});
 		return {
-			text: "Error storing preference",
+			text: "Storing the preference failed with an unexpected error; tell the user it didn't save and they can try again.",
 			success: false,
 			values: { error: (error as Error).message },
 			data: { action: "CHARACTER", op: "modify" },

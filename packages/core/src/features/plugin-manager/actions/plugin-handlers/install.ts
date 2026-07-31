@@ -64,13 +64,19 @@ export async function runInstall({
 		return { success: false, text };
 	}
 
+	// Human wording, no raw filesystem path (that stays in values/data); the
+	// confirmation is the complete answer, so verified + turnComplete make it
+	// the sole delivery instead of double-messaging with the evaluator.
 	const text =
-		`Installed ${result.pluginName}@${result.version} at ${result.installPath}` +
-		(result.requiresRestart ? "\nRestart required to activate." : "");
+		`Installed ${result.pluginName} (v${result.version}).` +
+		(result.requiresRestart ? " A restart is needed before it's active." : "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "install",
 			name: result.pluginName,

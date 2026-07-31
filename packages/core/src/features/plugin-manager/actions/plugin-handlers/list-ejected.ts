@@ -35,7 +35,17 @@ export async function runListEjected({
 	if (plugins.length === 0) {
 		const text = "No ejected plugins found.";
 		await callback?.({ text });
-		return { success: true, text, values: { mode: "list_ejected", count: 0 } };
+		// The empty-result message is the complete answer: verified +
+		// turnComplete make it the sole delivery instead of double-messaging
+		// with the evaluator.
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { mode: "list_ejected", count: 0 },
+		};
 	}
 
 	const list = plugins
@@ -43,9 +53,14 @@ export async function runListEjected({
 		.join("\n");
 	const text = `Ejected plugins (${plugins.length}):\n${list}`;
 	await callback?.({ text });
+	// The listing IS the complete answer: verified + turnComplete make it the
+	// sole delivery.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { mode: "list_ejected", count: plugins.length },
 		data: { plugins },
 	};

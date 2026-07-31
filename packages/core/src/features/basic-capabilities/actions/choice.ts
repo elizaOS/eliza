@@ -178,13 +178,8 @@ export const choiceAction: Action = {
 			const taskInfo = taskMap.get(taskId);
 
 			if (!taskInfo) {
-				if (callback) {
-					await callback({
-						text: `Could not find a task matching ID: ${taskId}. Please try again.`,
-						actions: ["SELECT_OPTION_ERROR"],
-						source: message.content.source,
-					});
-				}
+				// No visible callback: the model-emitted taskId is planner detail
+				// the user never typed; the evaluator delivers the miss in voice.
 				return {
 					text: `Could not find task with ID: ${taskId}`,
 					values: {
@@ -279,11 +274,8 @@ export const choiceAction: Action = {
 						stateForCanExecute,
 					);
 					if (!allowed) {
-						if (callback) {
-							await callback({
-								text: "You don't have permission to execute this task.",
-							});
-						}
+						// No visible callback: the evaluator delivers the
+						// permission denial in voice, once.
 						return {
 							text: "You don't have permission to execute this task.",
 							values: { success: false, error: "FORBIDDEN" },

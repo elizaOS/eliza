@@ -78,7 +78,7 @@ export const revokeOAuthCredentialAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const client = runtime.getService<Service & OAuthIntentsClient>(
@@ -111,12 +111,11 @@ export const revokeOAuthCredentialAction: Action = {
 			`[REVOKE_OAUTH_CREDENTIAL] oauthIntentId=${oauthIntentId} revoked=${result.revoked}`,
 		);
 
+		// No visible callback: raw intent-id revoke status is tool-speak. The
+		// evaluator voices the outcome; the detail stays planner-facing.
 		const text = result.revoked
 			? `Revoked OAuth credential ${oauthIntentId}.`
 			: `Failed to revoke OAuth credential ${oauthIntentId}${result.error ? `: ${result.error}` : ""}.`;
-		if (callback) {
-			await callback({ text, action: "REVOKE_OAUTH_CREDENTIAL" });
-		}
 
 		return {
 			success: result.revoked,

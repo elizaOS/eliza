@@ -110,13 +110,11 @@ export async function updateRoleHandler(
 
 	const channelType = message.content.channelType as ChannelType;
 	if (channelType !== ChannelType.GROUP && channelType !== ChannelType.WORLD) {
-		await callback?.({
-			text: "Role assignment only works in a group or world channel.",
-			actions: ["TRUST"],
-			source: "discord",
-		});
+		// Planner-facing only: channel/server plumbing is tool-speak; the
+		// evaluator explains the limitation to the user in voice.
 		return {
 			success: false,
+			text: "Role assignment only works in a group or world channel; tell the user roles can't be changed here.",
 			data: {
 				actionName: "TRUST",
 				subaction: "update_role",
@@ -129,13 +127,9 @@ export async function updateRoleHandler(
 	const { roomId } = message;
 	const serverId = message.content.serverId as string;
 	if (!serverId) {
-		await callback?.({
-			text: "Role assignment requires a serverId on the message.",
-			actions: ["TRUST"],
-			source: "discord",
-		});
 		return {
 			success: false,
+			text: "Role assignment requires a serverId on the message; tell the user roles can't be changed from this channel.",
 			data: {
 				actionName: "TRUST",
 				subaction: "update_role",
@@ -155,11 +149,9 @@ export async function updateRoleHandler(
 
 	if (!world) {
 		logger.error("World not found");
-		await callback?.({
-			text: "I couldn't find the world. This action only works in a world.",
-		});
 		return {
 			success: false,
+			text: "World not found; tell the user role assignment isn't available here.",
 			data: {
 				actionName: "TRUST",
 				subaction: "update_role",
@@ -254,13 +246,9 @@ export async function updateRoleHandler(
 		: extractRoleAssignments(parsed);
 
 	if (!result.length) {
-		await callback?.({
-			text: "No valid role assignments found in the request.",
-			actions: ["TRUST"],
-			source: "discord",
-		});
 		return {
 			success: false,
+			text: "No valid role assignments found in the request; ask the user who should get which role.",
 			data: {
 				actionName: "TRUST",
 				subaction: "update_role",
@@ -277,6 +265,7 @@ export async function updateRoleHandler(
 		newRole: Role;
 	}> = [];
 
+	const summaryLines: string[] = [];
 	for (const assignment of result) {
 		const targetEntity = entities.find((e) => e.id === assignment.entityId);
 		if (!targetEntity) {
@@ -287,11 +276,9 @@ export async function updateRoleHandler(
 		const currentRole = world.metadata.roles[assignment.entityId];
 
 		if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
-			await callback?.({
-				text: `You don't have permission to change ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
-				actions: ["TRUST"],
-				source: "discord",
-			});
+			summaryLines.push(
+				`You don't have permission to change ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+			);
 			continue;
 		}
 
@@ -304,11 +291,9 @@ export async function updateRoleHandler(
 			newRole: assignment.newRole,
 		});
 
-		await callback?.({
-			text: `Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
-			actions: ["TRUST"],
-			source: "discord",
-		});
+		summaryLines.push(
+			`Updated ${targetEntity.names[0]}'s role to ${assignment.newRole}.`,
+		);
 	}
 
 	if (worldUpdated) {
@@ -316,18 +301,45 @@ export async function updateRoleHandler(
 		logger.info(`Updated roles in world metadata for server ${serverId}`);
 	}
 
+	if (!worldUpdated) {
+		return {
+			success: false,
+			data: {
+				actionName: "TRUST",
+				subaction: "update_role",
+				success: false,
+				updatedRoles,
+				totalProcessed: result.length,
+				totalUpdated: 0,
+			},
+			text: summaryLines.length
+				? summaryLines.join("\n")
+				: "No roles were updated.",
+		};
+	}
+
+	// One aggregated confirmation instead of a bubble per assignment: verified +
+	// turnComplete make it the turn's sole delivery instead of double-messaging
+	// with the evaluator.
+	const summaryText = summaryLines.join("\n");
+	await callback?.({
+		text: summaryText,
+		actions: ["TRUST"],
+		source: "discord",
+	});
 	return {
-		success: worldUpdated,
+		success: true,
+		userFacingText: summaryText,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		data: {
 			actionName: "TRUST",
 			subaction: "update_role",
-			success: worldUpdated,
+			success: true,
 			updatedRoles,
 			totalProcessed: result.length,
 			totalUpdated: updatedRoles.length,
 		},
-		text: worldUpdated
-			? `Successfully updated ${updatedRoles.length} role(s).`
-			: "No roles were updated.",
+		text: summaryText,
 	};
 }

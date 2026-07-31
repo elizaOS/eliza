@@ -2134,7 +2134,9 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "PLUGIN" });
-		expect(texts.join(" ")).toContain("PLUGIN");
+		// Planner-facing contract: routing guidance never posts to chat.
+		expect(texts).toHaveLength(0);
+		expect(result?.text).toContain("PLUGIN");
 	});
 
 	it("delegates vault settings to SECRETS, not the browser credential action", async () => {
@@ -2146,7 +2148,8 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 		expect(routeFetch).not.toHaveBeenCalled();
 		expect(result?.success).toBe(false);
 		expect(result?.data).toMatchObject({ delegateTo: "SECRETS" });
-		expect(texts.join(" ")).toContain("SECRETS");
+		expect(texts).toHaveLength(0);
+		expect(result?.text).toContain("SECRETS");
 	});
 
 	it("refuses to write a read-only section", async () => {
@@ -2156,7 +2159,8 @@ describe("SETTINGS action: set on delegated/readonly/unwired sections", () => {
 			value: "on",
 		});
 		expect(result?.success).toBe(false);
-		expect(texts.join(" ")).toContain("read-only");
+		expect(texts).toHaveLength(0);
+		expect(result?.text).toContain("read-only");
 	});
 
 	it("refuses every unwired gap section with its stated reason", async () => {
