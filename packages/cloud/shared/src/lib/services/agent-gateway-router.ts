@@ -213,6 +213,7 @@ export class AgentGatewayRouterService {
     reason?: AgentGatewayRouteReason;
     agentId?: string;
     userId?: string;
+    organizationId?: string;
   }> {
     const localSessions = await agentGatewayRelayService.listOwnerSessions(organizationId, userId);
     if (localSessions.length >= 1) {
@@ -223,6 +224,7 @@ export class AgentGatewayRouterService {
           sessions: localSessions,
         },
         userId,
+        organizationId,
       };
     }
 
@@ -231,6 +233,7 @@ export class AgentGatewayRouterService {
     return {
       ...resolved,
       userId,
+      organizationId,
     };
   }
 
@@ -242,6 +245,7 @@ export class AgentGatewayRouterService {
     reason?: AgentGatewayRouteReason;
     agentId?: string;
     userId?: string;
+    organizationId?: string;
   }> {
     const senderDiscordUserId = args.senderDiscordUserId.trim();
 
@@ -637,11 +641,72 @@ export class AgentGatewayRouterService {
     });
 
     if (!resolved.target) {
+      // DM-GATED on purpose: `unknown_owner` also fires in guild context, and
+      // onboarding there would post the login URL — whose session id embeds
+      // the guessable `platform:discord:<senderId>` — into a public channel.
+      const isDm = !args.guildId?.trim();
+
+      if (isDm && resolved.reason === "unknown_owner") {
+        // First contact: same onboarding the phone path runs, so a new user
+        // who DMs the bot gets the pitch + login link instead of silence.
+        const onboarding = await this.runOnboardingChat({
+          message: args.content,
+          platform: "discord",
+          platformUserId: args.sender.id,
+          platformDisplayName: args.sender.displayName ?? args.sender.username,
+          sessionId: `platform:discord:${args.sender.id}`,
+          trustedPlatformIdentity: true,
+        });
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: onboarding.session.userId,
+          organizationId: onboarding.session.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
+      if (
+        isDm &&
+        resolved.reason === "owner_agent_not_running" &&
+        resolved.userId &&
+        resolved.organizationId &&
+        !resolved.agentId
+      ) {
+        // Authenticated user with ZERO sandboxes: the web login created the
+        // account but provisioning never happened (dropped off mid-funnel).
+        // Continue onboarding under their identity, mirroring the phone path.
+        const onboarding = await this.runOnboardingChat({
+          message: args.content,
+          platform: "discord",
+          platformUserId: args.sender.id,
+          platformDisplayName: args.sender.displayName ?? args.sender.username,
+          sessionId: `platform:discord:${args.sender.id}`,
+          authenticatedUser: {
+            userId: resolved.userId,
+            organizationId: resolved.organizationId,
+          },
+        });
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: resolved.userId,
+          organizationId: resolved.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
+      // Everything else keeps today's behavior — including stopped-agent
+      // owners (agentId present), where parity with the phone path is
+      // deliberate silence, not a status reply.
       return {
         handled: false,
         reason: resolved.reason,
         agentId: resolved.agentId,
         userId: resolved.userId,
+        organizationId: resolved.organizationId,
       };
     }
 
