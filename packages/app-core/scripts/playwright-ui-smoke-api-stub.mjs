@@ -91,6 +91,7 @@ function smokeViewObject({
   viewPath,
   componentExport,
   viewType,
+  surface,
 }) {
   const encodedId = encodeURIComponent(id);
   const query = "?v=ui-smoke";
@@ -120,6 +121,7 @@ function smokeViewObject({
         description: "Read the mounted view state.",
       },
     ],
+    ...(surface === undefined ? {} : { surface }),
     _smokePluginDirName: pluginDirName,
   };
 }
@@ -134,6 +136,7 @@ const smokeViews = smokeViewDeclarations.flatMap(
     viewPath,
     componentExport,
     modalitiesOrViewType = "gui",
+    surface,
   ]) => {
     const viewTypes = Array.isArray(modalitiesOrViewType)
       ? modalitiesOrViewType
@@ -146,6 +149,7 @@ const smokeViews = smokeViewDeclarations.flatMap(
         viewPath,
         componentExport,
         viewType,
+        surface,
       }),
     );
   },
