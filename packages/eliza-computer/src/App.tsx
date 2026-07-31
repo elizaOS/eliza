@@ -919,12 +919,11 @@ export function App() {
               </ExternalAnchor>
             </div>
             <div className="wallet-note">
-              <p>Publish a public Solana or Ethereum payout address.</p>
+              <p>Add a public Solana or Ethereum address to receive USDC.</p>
               <small>
-                The editor generates a hidden README comment for you to copy and
-                commit. The address stays public in README source, Git history,
-                and elizaOS profile data. Never share a private key or seed
-                phrase. Leaderboard points do not determine payouts.
+                The editor creates a README comment that is hidden when
+                rendered; the address is still public. Never share a private key
+                or seed phrase. Leaderboard points do not determine payouts.
               </small>
             </div>
           </div>
