@@ -55,9 +55,11 @@ const HUMAN_ONLY_CLAIM_FOOTER_RE =
 const HUMAN_ONLY_PR_RE =
   /^(?:[-*]\s*)?AI assistance:\s*`?no\s*[-\u2013\u2014]\s*human-only contribution`?\s*$/i;
 const ISSUE_CLAIM_LABEL_RE =
-  /^(?:claimed|in[- ]progress|status:\s*(?:claimed|in[- ]progress))$/i;
+  /^(?:(?:claimed|in[- ]progress|working)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|status:\s*(?:claimed|in[- ]progress))$/i;
 const REVIEW_CLAIM_LABEL_RE =
-  /^(?:review[- ]claimed|review:\s*claimed|review[- ]in[- ]progress)$/i;
+  /^(?:(?:review[- ]claimed|review[- ]in[- ]progress)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|review:\s*claimed)$/i;
+const BLOCKED_LABEL_RE =
+  /^(?:blocked|do[- ]not[- ]merge|needs[- ]human[- ]input|status:\s*blocked)$/i;
 const SENSITIVE_LABEL_RE =
   /(?:^|[-_ ])(?:security|vulnerability|credential[-_ ]?leak|secret[-_ ]?leak|cve)(?:$|[-_ ])/i;
 const EVIDENCE_MARKER_RE = /<!--\s*evidence-row:([a-z0-9-]+)\s*-->/gi;
@@ -703,21 +705,20 @@ function claimReasons(item, comments, mode, context, referenceTime) {
   const labels = labelNames(item, context);
   const claimLabel =
     mode === "issue" ? ISSUE_CLAIM_LABEL_RE : REVIEW_CLAIM_LABEL_RE;
-  const matchedLabels = labels.filter((label) => claimLabel.test(label));
+  const matchedLabels = labels.filter(
+    (label) => claimLabel.test(label) || BLOCKED_LABEL_RE.test(label),
+  );
   if (matchedLabels.length > 0) {
     reasons.push(`labels: ${matchedLabels.sort().join(", ")}`);
   }
 
-  if (mode === "issue") {
-    const assignees = asArrayField(item, "assignees", context);
-    if (assignees.length > 0) {
-      reasons.push(
-        `assignees: ${assignees
-          .map((assignee) => accountLogin(assignee))
-          .sort()
-          .join(", ")}`,
-      );
-    }
+  const author = accountLogin(item.user);
+  const assignees = asArrayField(item, "assignees", context)
+    .filter((assignee) => !isBotAccount(assignee))
+    .map((assignee) => accountLogin(assignee))
+    .filter((assignee) => mode === "issue" || assignee !== author);
+  if (assignees.length > 0) {
+    reasons.push(`assignees: ${assignees.sort().join(", ")}`);
   }
 
   const claimPattern = mode === "issue" ? ISSUE_CLAIM_RE : REVIEW_CLAIM_RE;
@@ -737,8 +738,8 @@ function claimReasons(item, comments, mode, context, referenceTime) {
 }
 
 function requestedReviewTargets(item, context) {
-  const users = asArrayField(item, "requested_reviewers", context)
-    .map((value, index) => {
+  const users = asArrayField(item, "requested_reviewers", context).map(
+    (value, index) => {
       const account = asRecord(
         value,
         `${context}.requested_reviewers[${index}]`,
@@ -746,10 +747,9 @@ function requestedReviewTargets(item, context) {
       return {
         key: `user:${accountLogin(account).toLowerCase()}`,
         label: accountLogin(account),
-        bot: isBotAccount(account),
       };
-    })
-    .filter((target) => !target.bot);
+    },
+  );
   const teams = asArrayField(item, "requested_teams", context).map(
     (value, index) => {
       const team = asRecord(value, `${context}.requested_teams[${index}]`);
@@ -766,58 +766,11 @@ function requestedReviewTargets(item, context) {
   );
 }
 
-function normalizeReviewRequestEvents(values) {
-  if (!Array.isArray(values)) {
-    throw new TypeError("review request events response must be an array");
-  }
-  const events = [];
-  for (let index = 0; index < values.length; index += 1) {
-    const context = `review-request-event[${index}]`;
-    const event = asRecord(values[index], context);
-    if (asStringField(event, "event", context) !== "review_requested") {
-      continue;
-    }
-    const reviewer =
-      event.requested_reviewer == null
-        ? null
-        : asRecord(event.requested_reviewer, `${context}.requested_reviewer`);
-    const team =
-      event.requested_team == null
-        ? null
-        : asRecord(event.requested_team, `${context}.requested_team`);
-    if (reviewer === null && team === null) {
-      throw new TypeError(`${context} must identify a reviewer or team`);
-    }
-    events.push({
-      targetKey:
-        reviewer === null
-          ? `team:${asStringField(team, "slug", `${context}.requested_team`).toLowerCase()}`
-          : `user:${accountLogin(reviewer).toLowerCase()}`,
-      createdAt: isoTime(event.created_at, `${context}.created_at`),
-    });
-  }
-  return events;
-}
-
-function reviewRequestStatus(
-  targets,
-  events,
-  fallbackTimestamp,
-  referenceTime,
-) {
-  const active = [];
-  const stale = [];
-  for (const target of targets) {
-    const latest = events
-      .filter((event) => event.targetKey === target.key)
-      .sort(
-        (left, right) =>
-          Date.parse(right.createdAt) - Date.parse(left.createdAt),
-      )[0];
-    const timestamp = latest?.createdAt ?? fallbackTimestamp;
-    (isRecent(timestamp, referenceTime) ? active : stale).push(target.label);
-  }
-  return { active: active.sort(), stale: stale.sort() };
+function reviewRequestStatus(targets) {
+  return {
+    active: targets.map((target) => target.label).sort(),
+    stale: [],
+  };
 }
 
 function currentHeadReviewStatus(item, reviews, context) {
@@ -874,10 +827,6 @@ function pullReviewCommentsEndpoint(repo, number) {
   return `repos/${repo}/pulls/${number}/comments?per_page=100`;
 }
 
-function pullReviewRequestEventsEndpoint(repo, number) {
-  return `repos/${repo}/issues/${number}/events?per_page=100`;
-}
-
 function listCommentsWhenPresent(item, countField, endpoint, kind, listPages) {
   const count = asNumberField(item, countField, `item #${item.number}`);
   return count === 0 ? [] : normalizeComments(listPages(endpoint), kind);
@@ -905,12 +854,17 @@ export function collectLiveReport(
 
   const candidateIssues = [];
   const botIssues = [];
+  const unknownAuthorIssues = [];
   const sensitiveIssues = [];
   const claimedIssues = [];
   const issueCommentAudits = [];
 
   for (const item of issueItems) {
     const summary = itemSummary(item, `issue #${item.number}`);
+    if (item.user === null) {
+      unknownAuthorIssues.push(summary);
+      continue;
+    }
     if (isBotAccount(item.user)) {
       botIssues.push(summary);
       continue;
@@ -952,6 +906,8 @@ export function collectLiveReport(
 
   const reviewablePullRequests = [];
   const botPullRequests = [];
+  const unknownAuthorPullRequests = [];
+  const sensitivePullRequests = [];
   const draftPullRequests = [];
   const claimedPullRequests = [];
   const reviewedPullRequests = [];
@@ -961,8 +917,21 @@ export function collectLiveReport(
   for (const item of pullItems) {
     const context = `pull request #${item.number}`;
     const summary = itemSummary(item, context);
+    if (item.user === null) {
+      unknownAuthorPullRequests.push(summary);
+      continue;
+    }
     if (isBotAccount(item.user)) {
       botPullRequests.push(summary);
+      continue;
+    }
+    const labels = labelNames(item, context);
+    if (labels.some((label) => SENSITIVE_LABEL_RE.test(label))) {
+      sensitivePullRequests.push({
+        number: summary.number,
+        url: summary.url,
+        reason: "security-sensitive label",
+      });
       continue;
     }
     if (typeof item.draft !== "boolean") {
@@ -986,18 +955,7 @@ export function collectLiveReport(
     );
     const body = nullableText(item.body, `${context}.body`);
     const requestedTargets = requestedReviewTargets(item, context);
-    const requestEvents =
-      requestedTargets.length === 0
-        ? []
-        : normalizeReviewRequestEvents(
-            listPages(pullReviewRequestEventsEndpoint(repo, summary.number)),
-          );
-    const requestStatus = reviewRequestStatus(
-      requestedTargets,
-      requestEvents,
-      isoTime(item.created_at, `${context}.created_at`),
-      referenceTime,
-    );
+    const requestStatus = reviewRequestStatus(requestedTargets);
     const currentReviews = currentHeadReviewStatus(item, reviews, context);
     const reviewState = {
       activeRequests: requestStatus.active,
@@ -1057,9 +1015,13 @@ export function collectLiveReport(
     reviewablePullRequests: reviewablePullRequests.sort(compareByNumber),
     filtered: {
       botIssues: botIssues.sort(compareByNumber),
+      unknownAuthorIssues: unknownAuthorIssues.sort(compareByNumber),
       sensitiveIssues: sensitiveIssues.sort(compareByNumber),
       claimedIssues: claimedIssues.sort(compareByNumber),
       botPullRequests: botPullRequests.sort(compareByNumber),
+      unknownAuthorPullRequests:
+        unknownAuthorPullRequests.sort(compareByNumber),
+      sensitivePullRequests: sensitivePullRequests.sort(compareByNumber),
       draftPullRequests: draftPullRequests.sort(compareByNumber),
       claimedPullRequests: claimedPullRequests.sort(compareByNumber),
       reviewedPullRequests: reviewedPullRequests.sort(compareByNumber),
@@ -1135,7 +1097,7 @@ export function renderMarkdown(report) {
   lines.push(gaps.length > 0 ? gaps.join("\n") : "_No audited gaps._");
   lines.push(
     "",
-    `_Read-only heuristic report: comment claims and review requests expire after ${CLAIM_RECENCY_DAYS} days unless durable repository state remains. Verify live Project state and newest comments before claiming._`,
+    `_Read-only heuristic report: comment claims expire after ${CLAIM_RECENCY_DAYS} days unless durable repository state remains; active GitHub review requests persist until cleared. Verify live Project state and newest comments before claiming._`,
     "",
   );
   return lines.join("\n");

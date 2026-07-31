@@ -91,6 +91,7 @@ function pullRequest(
     mergedAt: "2026-07-30T11:00:00.000Z",
     isDraft: false,
     reviewDecision: "APPROVED",
+    activeReviewRequestCount: 0,
     author: actor("author"),
     assignees: [],
     labels: [],
@@ -922,6 +923,123 @@ describe("scoring and caps", () => {
 });
 
 describe("work queue claims and prioritization", () => {
+  it("marks only safe, unclaimed issue and review candidates", () => {
+    const issueCandidate = issue({
+      id: "ISSUE_CANDIDATE",
+      number: 1,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+    });
+    const claimedIssue = issue({
+      id: "ISSUE_LANE_CLAIM",
+      number: 2,
+      closedAt: null,
+      stateReason: null,
+      labels: [
+        {
+          id: "LABEL_LANE_CLAIM",
+          name: "claimed:shaw-codex",
+          color: "fff",
+        },
+      ],
+    });
+    const sensitiveIssue = issue({
+      id: "ISSUE_SECURITY",
+      number: 3,
+      closedAt: null,
+      stateReason: null,
+      labels: [{ id: "LABEL_SECURITY", name: "security", color: "fff" }],
+    });
+    const botIssue = issue({
+      id: "ISSUE_BOT",
+      number: 4,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+      author: actor("automation-bot", "Bot"),
+    });
+    const reviewCandidate = pullRequest({
+      id: "PR_CANDIDATE",
+      number: 10,
+      mergedAt: null,
+      reviewDecision: null,
+    });
+    const requestedReview = pullRequest({
+      id: "PR_REQUESTED",
+      number: 11,
+      mergedAt: null,
+      reviewDecision: "REVIEW_REQUIRED",
+      activeReviewRequestCount: 2,
+    });
+    const approvedReview = pullRequest({
+      id: "PR_APPROVED",
+      number: 12,
+      mergedAt: null,
+      reviewDecision: "APPROVED",
+    });
+    const blockedReview = pullRequest({
+      id: "PR_BLOCKED",
+      number: 13,
+      mergedAt: null,
+      reviewDecision: null,
+      labels: [{ id: "LABEL_BLOCKED", name: "blocked", color: "fff" }],
+    });
+    const claimedReview = pullRequest({
+      id: "PR_LANE_CLAIM",
+      number: 14,
+      mergedAt: null,
+      reviewDecision: null,
+      labels: [
+        {
+          id: "LABEL_REVIEW_LANE_CLAIM",
+          name: "review-claimed:review-lane",
+          color: "fff",
+        },
+      ],
+    });
+
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        openIssues: [issueCandidate, claimedIssue, sensitiveIssue, botIssue],
+        openPullRequests: [
+          reviewCandidate,
+          requestedReview,
+          approvedReview,
+          blockedReview,
+          claimedReview,
+        ],
+      }),
+    );
+    const selections = new Map(
+      [...snapshot.workQueue.issues, ...snapshot.workQueue.pullRequests].map(
+        (item) => [item.id, item.selection],
+      ),
+    );
+
+    expect(selections.get("ISSUE_CANDIDATE")).toEqual({
+      status: "candidate",
+      reasons: [],
+    });
+    expect(selections.get("PR_CANDIDATE")).toEqual({
+      status: "candidate",
+      reasons: [],
+    });
+    expect(selections.get("ISSUE_LANE_CLAIM")?.reasons).toEqual(["claimed"]);
+    expect(selections.get("ISSUE_SECURITY")?.reasons).toEqual([
+      "security-sensitive",
+    ]);
+    expect(selections.get("ISSUE_BOT")?.reasons).toEqual(["bot-authored"]);
+    expect(selections.get("PR_REQUESTED")?.reasons).toEqual([
+      "active-review-request",
+    ]);
+    expect(selections.get("PR_APPROVED")?.reasons).toEqual([
+      "already-approved",
+    ]);
+    expect(selections.get("PR_BLOCKED")?.reasons).toEqual(["blocked"]);
+    expect(selections.get("PR_LANE_CLAIM")?.reasons).toEqual(["claimed"]);
+  });
+
   it("uses recent claim comments and never treats a PR author as its reviewer", () => {
     const issueClaimant = actor("issue-claimant");
     const reviewer = actor("review-claimant");
@@ -1091,7 +1209,7 @@ describe("work queue claims and prioritization", () => {
       number: 31,
       mergedAt: null,
       updatedAt: "2026-07-29T12:00:00.000Z",
-      labels: [{ id: "LABEL_CLAIMED", name: "claimed", color: "fff" }],
+      labels: [{ id: "LABEL_CLAIMED", name: "review-claimed", color: "fff" }],
     });
     const blocked = pullRequest({
       id: "PR_BLOCKED",
