@@ -803,4 +803,163 @@ describe("jobsRepository.recoverStaleJobs", () => {
       primarySpy.mockRestore();
     }
   });
+  test(
+    "a recovery that exhausts attempts settles the dependent row in the SAME transaction",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobId = "00000000-0000-4000-8000-000000180901";
+      await seedJob({ id: jobId, maxAttempts: 1, type: "agent_delete" });
+
+      const seen: Array<{ id: string; type: string; error: string }> = [];
+      const recovered = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: (hydratedJob, error) => {
+          seen.push({ id: hydratedJob.id, type: hydratedJob.type, error });
+          return async (tx, failedJob) => {
+            await tx
+              .update(jobs)
+              .set({ webhook_status: `settled:${failedJob.status}` })
+              .where(eq(jobs.id, failedJob.id));
+          };
+        },
+      });
+
+      expect(recovered).toBe(0);
+      expect(seen).toEqual([
+        {
+          id: jobId,
+          type: "agent_delete",
+          error: "Job timed out 1 times - max attempts reached",
+        },
+      ]);
+      const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+      expect(row.status).toBe("failed");
+      // The dependent write landed with the flip, not after it, and the
+      // writeback saw the POST-flip row — same contract as incrementAttempt.
+      expect(row.webhook_status).toBe("settled:failed");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a writeback that throws rolls the job flip back instead of half-settling it",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobId = "00000000-0000-4000-8000-000000180902";
+      await seedJob({ id: jobId, maxAttempts: 1, type: "agent_delete" });
+
+      await expect(
+        repo.recoverStaleJobs({
+          type: "agent_delete",
+          staleThresholdMs: 1,
+          buildFailureWriteback: () => async () => {
+            throw new Error("dependent row is locked");
+          },
+        }),
+      ).rejects.toThrow("failed for every job in the batch");
+
+      const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+      // Both writes rolled back together: the next sweep retries the pair.
+      expect(row.status).toBe("in_progress");
+      expect(row.attempts).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "one poisoned job does not starve the sweep, but an all-failed batch still throws",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const poisoned = "00000000-0000-4000-8000-000000180903";
+      const healthy = "00000000-0000-4000-8000-000000180904";
+      await seedJob({ id: poisoned, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: healthy, maxAttempts: 1, type: "agent_delete" });
+
+      const recovered = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: (hydratedJob) =>
+          hydratedJob.id === poisoned
+            ? async () => {
+                throw new Error("dependent row is locked");
+              }
+            : undefined,
+      });
+
+      expect(recovered).toBe(0);
+      const [poisonedRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, poisoned));
+      const [healthyRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, healthy));
+      expect(poisonedRow.status).toBe("in_progress");
+      expect(healthyRow.status).toBe("failed");
+
+      // Now poison BOTH: a batch where every job failed is an outage, and the
+      // caller must see it rather than read a silent zero.
+      await dbWrite.execute("DELETE FROM jobs;");
+      await seedJob({ id: poisoned, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: healthy, maxAttempts: 1, type: "agent_delete" });
+      await expect(
+        repo.recoverStaleJobs({
+          type: "agent_delete",
+          staleThresholdMs: 1,
+          buildFailureWriteback: () => async () => {
+            throw new Error("database is down");
+          },
+        }),
+      ).rejects.toThrow("failed for every job in the batch");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a recovery that only retries never asks for a dependent-row writeback",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobId = "00000000-0000-4000-8000-000000180905";
+      await seedJob({ id: jobId, maxAttempts: 3, type: "agent_delete" });
+
+      let builds = 0;
+      const recovered = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: () => {
+          builds += 1;
+          return undefined;
+        },
+      });
+
+      expect(recovered).toBe(1);
+      expect(builds).toBe(0);
+      const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+      expect(row.status).toBe("pending");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "startup recovery fires the post-commit hook only for a flip that committed",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const failing = "00000000-0000-4000-8000-000000180906";
+      const retrying = "00000000-0000-4000-8000-000000180907";
+      await seedJob({ id: failing, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: retrying, maxAttempts: 3, type: "agent_delete" });
+
+      const committed: string[] = [];
+      const recovered = await repo.recoverInProgressJobsStartedBefore({
+        type: "agent_delete",
+        startedBefore: new Date("2021-01-01T00:00:00.000Z"),
+        buildFailureWriteback: () => async () => {},
+        onPermanentFailure: async (failedJob) => {
+          committed.push(failedJob.id);
+        },
+      });
+
+      expect(recovered).toBe(1);
+      expect(committed).toEqual([failing]);
+      const [retryingRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, retrying));
+      expect(retryingRow.status).toBe("pending");
+    },
+    PGLITE_TIMEOUT,
+  );
 });

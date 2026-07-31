@@ -2858,6 +2858,9 @@ export class ProvisioningJobService {
       const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
+        buildFailureWriteback: (hydratedJob, error) =>
+          this.buildPermanentFailureWriteback(hydratedJob, error),
+        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
       totalRecovered += recovered;
     }
@@ -3018,19 +3021,27 @@ export class ProvisioningJobService {
       ),
     );
 
-    // app_deploy keeps a post-commit cache invalidation (the apps read
-    // cache is invalidated outside the DB transaction); the row flip
-    // itself already committed atomically inside onFailedInTx above.
-    if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
+    if (updated?.status === "failed") {
+      await this.evictAppCachesAfterPermanentFailure(job);
+    }
+  }
+
+  /**
+   * Post-commit read-cache eviction for a job whose dependent row was just
+   * flipped by the in-transaction writeback. The `apps` read cache lives
+   * outside the DB transaction, so it can only be evicted once the flip is
+   * durable — for app_deploy because appsService owns that cache, and for
+   * container_provision because its writeback updates apps.deployment_status
+   * with a raw in-tx statement that bypasses appsService entirely (otherwise
+   * the deploy-status route keeps reporting `building` until the 5-min TTL).
+   */
+  private async evictAppCachesAfterPermanentFailure(job: Job): Promise<void> {
+    if (job.type === JOB_TYPES.APP_DEPLOY) {
       const { appId } = readAppDeployJobData(job);
       await appsService.invalidateCache(appId);
+      return;
     }
-    // container_provision flips apps.deployment_status with a raw in-tx
-    // update (bypassing the appsService cache), so evict the app read cache
-    // here too — otherwise the cache-backed deploy-status route keeps
-    // reporting `building` until the 5-min TTL. The in-tx writeback already
-    // org-scoped the flip; an appId that matched no app is a harmless evict.
-    if (updated?.status === "failed" && job.type === JOB_TYPES.CONTAINER_PROVISION) {
+    if (job.type === JOB_TYPES.CONTAINER_PROVISION) {
       const { containerId } = readContainerProvisionJobData(job);
       const [row] = await dbWrite
         .select({ projectName: containers.project_name })
@@ -3038,6 +3049,8 @@ export class ProvisioningJobService {
         .where(eq(containers.id, containerId))
         .limit(1);
       const appId = row?.projectName;
+      // The in-tx writeback already org-scoped the flip; an appId that matched
+      // no app is a harmless evict.
       if (appId && isValidUUID(appId)) {
         await appsService.invalidateCache(appId);
       }
@@ -5068,6 +5081,9 @@ export class ProvisioningJobService {
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
           : DEFAULT_STALE_JOB_THRESHOLD_MS,
+        buildFailureWriteback: (hydratedJob, error) =>
+          this.buildPermanentFailureWriteback(hydratedJob, error),
+        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
       totalRecovered += recovered;
     }
