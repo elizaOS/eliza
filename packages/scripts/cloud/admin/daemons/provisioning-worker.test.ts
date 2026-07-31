@@ -74,6 +74,7 @@ describe("assertProvisioningWorkerPreflight", () => {
     await assertProvisioningWorkerPreflight({
       env: { ELIZA_KMS_BACKEND: "local" } as NodeJS.ProcessEnv,
       createKmsClient,
+      resolveKmsBackend: () => "local",
     });
 
     expect(createKmsClient).toHaveBeenCalledWith({
@@ -93,6 +94,7 @@ describe("assertProvisioningWorkerPreflight", () => {
             "ELIZA_KMS_BACKEND=steward requires steward.{baseUrl, tokenProvider}",
           );
         },
+        resolveKmsBackend: () => "steward",
       }),
     ).rejects.toThrow(
       "Refusing to publish a healthy heartbeat or claim provisioning jobs",
@@ -108,6 +110,7 @@ describe("assertProvisioningWorkerPreflight", () => {
             throw new Error("Steward endpoint unavailable");
           },
         }),
+        resolveKmsBackend: () => "steward",
       }),
     ).rejects.toThrow("Steward endpoint unavailable");
   });
