@@ -83,6 +83,7 @@ export function useViewCatalog(): UseViewCatalogResult {
       installed,
       activeModality,
       enabledKinds,
+      visibilityScope: "routable",
     });
     if (Object.keys(pending).length === 0) return merged;
     return merged.map((e) =>

@@ -45,6 +45,7 @@ function merge(
     installed: opts.installed ?? [],
     activeModality: opts.activeModality ?? "gui",
     enabledKinds: opts.enabledKinds ?? { developer: false, preview: false },
+    visibilityScope: opts.visibilityScope ?? "manager",
   });
 }
 
@@ -267,6 +268,55 @@ describe("viewToEntry uses bundled icons (native 404 fix)", () => {
       ],
     });
     expect(entries).toHaveLength(0);
+  });
+
+  it("admits manager-hidden shell routes only for a routable catalog", () => {
+    const entries = mergeViewCatalog({
+      views: [
+        makeView("settings", {
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+        makeView("my-apps", {
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+      ],
+      catalog: [],
+      installed: [],
+      activeModality: "gui",
+      enabledKinds: { developer: false, preview: false },
+      visibilityScope: "routable",
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(["settings", "my-apps"]);
+  });
+
+  it("does not let third-party views bypass manager visibility by claiming builtin metadata", () => {
+    const entries = mergeViewCatalog({
+      views: [
+        makeView("hidden-plugin", { visibleInManager: false }),
+        makeView("spoofed-builtin", {
+          builtin: true,
+          visibleInManager: false,
+        }),
+        makeView("builtin-name-without-provenance", {
+          builtin: false,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+        makeView("visible-plugin", { visibleInManager: true }),
+      ],
+      catalog: [],
+      installed: [],
+      activeModality: "gui",
+      enabledKinds: { developer: false, preview: false },
+      visibilityScope: "routable",
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(["visible-plugin"]);
   });
 
   it("on a non-GUI surface lists only loaded views of that modality, no catalog", () => {
