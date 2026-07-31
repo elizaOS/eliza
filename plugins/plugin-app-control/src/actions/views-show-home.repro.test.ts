@@ -6,7 +6,8 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { createViewsAction } from "./views.js";
-import type { ViewSummary } from "./views-client.js";
+import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { runViewsShow } from "./views-show.js";
 
 const coreMock = vi.hoisted(() => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -190,7 +191,15 @@ async function runCase(
 		undefined,
 		options,
 		callback,
-	)) as { values?: Record<string, unknown>; text?: string };
+	)) as {
+		success?: boolean;
+		values?: Record<string, unknown>;
+		text?: string;
+		transcriptVisibility?: string;
+		userFacingText?: string;
+		verifiedUserFacing?: boolean;
+		turnComplete?: boolean;
+	};
 	return { result, fetchMock, callback };
 }
 
@@ -274,6 +283,54 @@ describe("VIEWS show/home with Notes foreground (#17299)", () => {
 			"http://127.0.0.1:3456/api/views/chat/navigate",
 			expect.objectContaining({ method: "POST" }),
 		);
+	});
+
+	it("canonicalizes a planner-supplied home alias for bare go back", async () => {
+		const { result, fetchMock, callback } = await runCase(
+			"go back",
+			{ action: "show", view: "home" },
+			fullRegistry(),
+		);
+		expect(result?.values).toMatchObject({ mode: "show", viewId: "chat" });
+		expect(result?.text).toBe("Opened Home.");
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledWith({ text: "Opened Home." });
+		expect(result).toMatchObject({
+			success: true,
+			transcriptVisibility: "internal",
+			userFacingText: "Opened Home.",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+		expect(fetchMock).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/chat/navigate",
+			expect.objectContaining({ method: "POST" }),
+		);
+	});
+
+	it("reports one grounded failure when the shell rejects Home navigation", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("shell unavailable", { status: 503 })),
+		);
+		const callback = vi.fn();
+		const result = await runViewsShow({
+			client: {
+				listViews: vi.fn(async () => fullRegistry()),
+			} as unknown as ViewsClient,
+			message: message("go back") as never,
+			options: { action: "show", view: "home" },
+			callback,
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.text).toBe(
+			"Couldn't switch to Home at / — the shell did not confirm the change.",
+		);
+		expect(result).not.toHaveProperty("verifiedUserFacing");
+		expect(result).not.toHaveProperty("turnComplete");
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledWith({ text: result.text });
 	});
 
 	it("still reaches Notes through an explicit interact capability request", async () => {

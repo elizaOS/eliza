@@ -20,7 +20,9 @@ describe("matchViewCommand — explicit user examples", () => {
 		["settings", "settings"],
 		["go home", "chat"],
 		["home", "chat"],
+		["go back", "chat"],
 		["back to home", "chat"],
+		["go back to notes", "notes"],
 		["open the home dashboard", "chat"],
 		["return to the main screen", "chat"],
 		["open my calendar", "calendar"],
@@ -168,6 +170,10 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"mahalaga ang kaalaman",
 		"remind me to call mom", // a task, not a view command
 		"how are you doing today",
+		"back",
+		"go back over the paragraph",
+		"go back and explain what changed",
+		"when I go back to school",
 		"",
 		"   ",
 	];

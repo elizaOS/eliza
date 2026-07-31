@@ -25,6 +25,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			"open settings",
 			"open notes",
 			"go home",
+			"go back",
 			"return to the main screen",
 			"open the home dashboard",
 			"show me my calendar",
@@ -71,6 +72,16 @@ describe("viewNavigationShortcuts (#8791)", () => {
 		).toBeNull();
 		expect(
 			matchShortcut(viewNavigationShortcuts, "tell me a joke", MATCH_CONTEXT),
+		).toBeNull();
+		expect(
+			matchShortcut(viewNavigationShortcuts, "back", MATCH_CONTEXT),
+		).toBeNull();
+		expect(
+			matchShortcut(
+				viewNavigationShortcuts,
+				"go back over the paragraph",
+				MATCH_CONTEXT,
+			),
 		).toBeNull();
 	});
 });

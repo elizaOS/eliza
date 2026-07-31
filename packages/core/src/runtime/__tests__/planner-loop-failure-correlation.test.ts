@@ -86,6 +86,37 @@ async function withCodingFullSurface<T>(run: () => Promise<T>): Promise<T> {
 }
 
 describe("planner-loop failed-operation correlation", () => {
+	it("finishes with the just-failed action when its evaluator violates protocol", async () => {
+		const runtime = {
+			useModel: vi.fn().mockResolvedValueOnce(
+				plannerToolCall("home", "VIEWS", {
+					action: "show",
+					view: "home",
+				}),
+			),
+		};
+		const failure = 'No view matches "home".';
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn().mockResolvedValueOnce({
+				success: false,
+				text: failure,
+				userFacingText: failure,
+			}),
+			evaluate: vi.fn().mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "Invalid evaluator envelope.",
+				protocolFailure: true,
+			}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(failure);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("clears a failure only for the same operation despite argument key order", async () => {
 		const runtime = {
 			useModel: vi

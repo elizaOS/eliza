@@ -160,7 +160,7 @@ function deterministicAgentResponse(userMessage: string): string {
   }
 
   if (lower.includes("go back")) {
-    return "Going back to the previous view.";
+    return "Opened Home.";
   }
 
   if (lower.includes("dev log") || lower.includes("developer")) {
