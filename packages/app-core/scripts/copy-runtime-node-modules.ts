@@ -1,11 +1,23 @@
 #!/usr/bin/env -S node --import tsx
-/** Supports app-core build, packaging, or development orchestration for copy runtime node modules ts. */
+/**
+ * Materializes the hermetic runtime node_modules closure that desktop and
+ * Linux packaging (Electrobun, snap, deb, flatpak) ship next to the built app.
+ * Resolution is lockfile-faithful: each dependency edge is answered from the
+ * importer's node_modules chain exactly as Bun materialized it, and a version
+ * mismatch fails the build instead of substituting a different copy. Native
+ * prebuilds are filtered per target os/arch/libc so a glibc package never
+ * ships musl artifacts (and vice versa).
+ */
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Resolved from the repo-root install (root package.json pins semver); the
+// packaging scripts under packages/scripts import it the same way.
+import semver from "semver";
 
 import {
   BASELINE_BUNDLED_RUNTIME_PACKAGES,
@@ -19,12 +31,20 @@ type Options = {
   targetDist: string;
 };
 
+// How a dependency edge was declared by its importer. Peer edges resolve to
+// whatever the host tree provides (Bun installs peers against the importer's
+// chain regardless of the declared range), so only "dependency" and
+// "optional" edges carry an enforceable version constraint.
+export type DependencyEdgeKind = "dependency" | "optional" | "peer";
+
 type DependencyEntry = {
   name: string;
   spec: string | null;
+  kind: DependencyEdgeKind;
 };
 
 type QueueEntry = DependencyEntry & {
+  requesterName: string;
   requesterDir: string;
   requesterDestDir: string;
 };
@@ -660,6 +680,7 @@ export function matchesRuntimeVariant(
   variant: string,
   targetOS = process.platform,
   targetArch = process.arch,
+  targetLibc: string | null = null,
 ): boolean {
   const constraints = getRuntimeVariantConstraints(variant);
   if (!constraints.os && !constraints.libc && !constraints.arch) {
@@ -677,7 +698,7 @@ export function matchesRuntimeVariant(
     if (normalizedOS !== "linux") {
       return false;
     }
-    const currentLibc = detectCurrentLibc();
+    const currentLibc = targetLibc ?? detectCurrentLibc();
     if (currentLibc && currentLibc !== constraints.libc) {
       return false;
     }
@@ -720,10 +741,27 @@ export function shouldKeepPackageRelativePath(
   targetOS = process.platform,
   targetArch = process.arch,
   packageName?: string,
+  targetLibc: string | null = null,
 ): boolean {
   const normalizedPath = relativePath.split(path.sep).join("/");
   if (!normalizedPath || normalizedPath === ".") {
     return true;
+  }
+
+  // Prebuilds tag their libc ABI in the filename (node-gyp-build convention:
+  // `foo.musl.node` / `foo.glibc.node` next to the untagged glibc default).
+  // Shipping the wrong ABI into a distro package breaks dh_shlibdeps on the
+  // Debian glibc target (utf-8-validate.musl.node, usb node.napi.musl.node),
+  // so an ABI-tagged prebuild is kept only when it matches the target libc.
+  const libcTaggedPrebuild = normalizedPath.match(/\.(glibc|musl)\.node$/);
+  if (libcTaggedPrebuild) {
+    if (normalizeTargetOS(targetOS) !== "linux") {
+      return false;
+    }
+    const currentLibc = targetLibc ?? detectCurrentLibc();
+    if (currentLibc) {
+      return currentLibc === libcTaggedPrebuild[1];
+    }
   }
 
   if (packageName === "ffprobe-static") {
@@ -733,6 +771,7 @@ export function shouldKeepPackageRelativePath(
         `${ffprobeMatch[1]}-${ffprobeMatch[2]}`,
         targetOS,
         targetArch,
+        targetLibc,
       );
     }
   }
@@ -746,7 +785,7 @@ export function shouldKeepPackageRelativePath(
         .replace("windows-arm64", "win32-arm64")
         .replace("windows", "win32-x64")
         .replaceAll("_", "-");
-      return matchesRuntimeVariant(variant, targetOS, targetArch);
+      return matchesRuntimeVariant(variant, targetOS, targetArch, targetLibc);
     }
   }
 
@@ -762,17 +801,8 @@ export function shouldKeepPackageRelativePath(
         variants[hermesMatch[1]] ?? hermesMatch[1],
         targetOS,
         targetArch,
+        targetLibc,
       );
-    }
-  }
-
-  if (packageName?.startsWith("@msgpackr-extract/msgpackr-extract-linux-")) {
-    const libcMatch = normalizedPath.match(/\.(glibc|musl)\.node$/);
-    if (libcMatch && normalizeTargetOS(targetOS) === "linux") {
-      const currentLibc = detectCurrentLibc();
-      if (currentLibc) {
-        return currentLibc === libcMatch[1];
-      }
     }
   }
 
@@ -823,7 +853,12 @@ export function shouldKeepPackageRelativePath(
     /(?:^|\/)prebuilds\/([^/]+)(?:\/|$)/,
   );
   if (prebuildMatch) {
-    return matchesRuntimeVariant(prebuildMatch[1], targetOS, targetArch);
+    return matchesRuntimeVariant(
+      prebuildMatch[1],
+      targetOS,
+      targetArch,
+      targetLibc,
+    );
   }
 
   const napiMatch = normalizedPath.match(
@@ -831,7 +866,7 @@ export function shouldKeepPackageRelativePath(
   );
   if (napiMatch) {
     const variant = [napiMatch[1], napiMatch[2]].filter(Boolean).join("-");
-    return matchesRuntimeVariant(variant, targetOS, targetArch);
+    return matchesRuntimeVariant(variant, targetOS, targetArch, targetLibc);
   }
 
   const koffiMatch = normalizedPath.match(
@@ -842,6 +877,7 @@ export function shouldKeepPackageRelativePath(
       koffiMatch[1].replaceAll("_", "-"),
       targetOS,
       targetArch,
+      targetLibc,
     );
   }
 
@@ -852,7 +888,7 @@ export function shouldKeepPackageRelativePath(
     if (!constraints.os && !constraints.libc && !constraints.arch) {
       return true;
     }
-    return matchesRuntimeVariant(variant, targetOS, targetArch);
+    return matchesRuntimeVariant(variant, targetOS, targetArch, targetLibc);
   }
 
   return true;
@@ -2035,41 +2071,148 @@ export function normalizeResolvedPackage(
   return materializeTrackedWorkspacePackage(realSourceDir);
 }
 
+// Lockfile-faithful candidate selection. Candidates arrive in Node/Bun
+// resolution-priority order (workspace, root override, the importer's
+// node_modules chain, then the Bun store index). The spec's version
+// constraint decides which candidate may be used; a candidate list that
+// contains only other versions is a "mismatch", never a silent substitute —
+// packaging a different version than the importer's lockfile answer breaks
+// subpath exports at runtime (@noble/curves/secp256k1.js shipped as
+// ERR_PACKAGE_PATH_NOT_EXPORTED in the built Snap).
+export type CandidateSelection =
+  | { kind: "selected"; candidate: ResolvedPackage }
+  | { kind: "none" }
+  | { kind: "mismatch"; availableVersions: string[] };
+
+export function parseRegistryVersionConstraint(
+  spec: string | null | undefined,
+):
+  | { kind: "exact"; version: string }
+  | { kind: "range"; range: string }
+  | { kind: "unconstrained" } {
+  if (!spec) return { kind: "unconstrained" };
+
+  if (spec.startsWith("npm:")) {
+    const aliased = spec.slice("npm:".length);
+    const versionStart = aliased.lastIndexOf("@");
+    if (versionStart <= 0) return { kind: "unconstrained" };
+    return parseRegistryVersionConstraint(aliased.slice(versionStart + 1));
+  }
+
+  // workspace:/file:/link:/portal:/patch: edges resolve outside the registry;
+  // their on-disk candidate is the lockfile answer regardless of version.
+  if (!canFetchPublishedPackage(spec)) {
+    return { kind: "unconstrained" };
+  }
+
+  if (isExactVersionSpecifier(spec)) {
+    return { kind: "exact", version: spec };
+  }
+
+  // Dist-tags ("latest"), git URLs, and catalog: specs are not version
+  // constraints the on-disk tree can be checked against.
+  if (semver.validRange(spec, { includePrerelease: true }) !== null) {
+    return { kind: "range", range: spec };
+  }
+
+  return { kind: "unconstrained" };
+}
+
 export function selectResolvedCandidate(
   candidates: ResolvedPackage[],
   requestedSpec: string | null,
-): ResolvedPackage | null {
-  if (candidates.length === 0) return null;
-  if (!isExactVersionSpecifier(requestedSpec)) {
-    return candidates[0];
+): CandidateSelection {
+  if (candidates.length === 0) return { kind: "none" };
+
+  const constraint = parseRegistryVersionConstraint(requestedSpec);
+  if (constraint.kind === "unconstrained") {
+    return { kind: "selected", candidate: candidates[0] };
   }
 
+  const availableVersions = new Set<string>();
   for (const candidate of candidates) {
-    if (getPackageVersion(candidate.packageJsonPath) === requestedSpec) {
-      return candidate;
+    // Workspace checkouts are the freshest build of their package and are
+    // deliberately preferred over stale published copies, whatever version
+    // their in-tree manifest carries.
+    if (isWorkspacePackageSourceDir(candidate.sourceDir)) {
+      return { kind: "selected", candidate };
+    }
+
+    const version = getPackageVersion(candidate.packageJsonPath);
+    if (!version) continue;
+    availableVersions.add(version);
+
+    const matches =
+      constraint.kind === "exact"
+        ? version === constraint.version
+        : semver.satisfies(version, constraint.range, {
+            includePrerelease: true,
+          });
+    if (matches) {
+      return { kind: "selected", candidate };
     }
   }
 
-  return candidates[0];
+  return {
+    kind: "mismatch",
+    availableVersions: [...availableVersions].sort(),
+  };
+}
+
+type ResolutionEdge = {
+  name: string;
+  spec: string | null;
+  kind: DependencyEdgeKind;
+  requesterName: string;
+  requesterDir: string;
+};
+
+export function lockfileResolutionError(
+  edge: ResolutionEdge,
+  availableVersions: string[],
+): Error {
+  return new Error(
+    [
+      `[runtime-copy] lockfile-faithful resolution failed: ${edge.requesterName} (${edge.requesterDir}) requires ${edge.name}@${edge.spec ?? "*"}, but the installed tree only provides version(s): ${availableVersions.join(", ") || "<none>"}.`,
+      "Refusing to substitute a different version: a mismatched copy breaks subpath exports at runtime (e.g. @noble/curves/secp256k1.js -> ERR_PACKAGE_PATH_NOT_EXPORTED).",
+      "Run `bun install` so the on-disk tree matches the lockfile, or fix the importer's declared range.",
+    ].join("\n"),
+  );
 }
 
 function resolvePackage(
-  name: string,
-  requestedSpec: string | null,
-  requesterDir: string,
+  edge: ResolutionEdge,
   opts?: { includeWorkspace?: boolean },
 ): ResolvedPackage | null {
-  const candidates = collectResolvedCandidates(name, requesterDir, opts);
-  const selected = selectResolvedCandidate(candidates, requestedSpec);
-  if (selected) return selected;
+  const { name, kind, requesterDir } = edge;
+  // Peer edges resolve to whatever the importer's chain provides (Bun
+  // installs peers against the host tree even when the declared range
+  // disagrees), and root overrides/resolutions rewrite every edge — in both
+  // cases the declared range is not the lockfile's answer.
+  const effectiveSpec =
+    kind === "peer" || hasRootPackageOverride(name) ? null : edge.spec;
 
-  if (ALLOW_REGISTRY_FETCH && canFetchPublishedPackage(requestedSpec)) {
-    const fetched = fetchPublishedPackage(name, requestedSpec);
+  const candidates = collectResolvedCandidates(name, requesterDir, opts);
+  const selection = selectResolvedCandidate(candidates, effectiveSpec);
+  if (selection.kind === "selected") return selection.candidate;
+
+  if (
+    ALLOW_REGISTRY_FETCH &&
+    effectiveSpec &&
+    canFetchPublishedPackage(effectiveSpec)
+  ) {
+    const fetched = fetchPublishedPackage(name, effectiveSpec);
     if (fetched) return fetched;
   }
 
-  if (candidates.length > 0) {
-    return candidates[0];
+  if (selection.kind === "mismatch") {
+    if (kind === "dependency") {
+      throw lockfileResolutionError(edge, selection.availableVersions);
+    }
+    // An optional edge whose only on-disk copies are other versions is "not
+    // installed" for this importer; those copies are other importers'
+    // lockfile answers.
+    return null;
   }
 
   for (const sourceDir of collectInstalledPackageDirs(
@@ -2109,17 +2252,20 @@ export function getRuntimeDependencyEntries(
     peerDependencies?: Record<string, string>;
     peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   }>(pkgPath);
-  const entries = new Map<string, string | null>();
+  const entries = new Map<
+    string,
+    { spec: string | null; kind: DependencyEdgeKind }
+  >();
 
   for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) {
     if (!DEP_SKIP.has(name)) {
-      entries.set(name, spec);
+      entries.set(name, { spec, kind: "dependency" });
     }
   }
 
   for (const [name, spec] of Object.entries(pkg.optionalDependencies ?? {})) {
     if (!DEP_SKIP.has(name) && !entries.has(name)) {
-      entries.set(name, spec);
+      entries.set(name, { spec, kind: "optional" });
     }
   }
 
@@ -2133,12 +2279,12 @@ export function getRuntimeDependencyEntries(
       continue;
     }
 
-    entries.set(name, spec);
+    entries.set(name, { spec, kind: "peer" });
   }
 
   return [...entries.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, spec]) => ({ name, spec }));
+    .map(([name, entry]) => ({ name, spec: entry.spec, kind: entry.kind }));
 }
 
 export function getRuntimeDependencies(pkgPath: string): string[] {
@@ -2604,15 +2750,24 @@ function main(): void {
         continue;
       }
       if (
-        resolvePackage(packageName, null, ROOT, { includeWorkspace: false })
+        resolvePackage(
+          {
+            name: packageName,
+            spec: null,
+            kind: "optional",
+            requesterName: "<baseline runtime manifest>",
+            requesterDir: ROOT,
+          },
+          { includeWorkspace: false },
+        )
       ) {
         alwaysBundled.add(packageName);
       }
     }
-    const rootDependencySpecs = new Map(
+    const rootDependencyEntries = new Map(
       getRuntimeDependencyEntries(PACKAGE_JSON_PATH).map((entry) => [
         entry.name,
-        entry.spec,
+        entry,
       ]),
     );
     const filteredOptionalPlugins = new Set<string>();
@@ -2631,12 +2786,17 @@ function main(): void {
     ensureWorkspaceRuntimeEntriesBuilt([...alwaysBundled, ...discovered]);
     const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
       .sort()
-      .map((name) => ({
-        name,
-        spec: rootDependencySpecs.get(name) ?? null,
-        requesterDir: ROOT,
-        requesterDestDir: targetDist,
-      }));
+      .map((name) => {
+        const rootEntry = rootDependencyEntries.get(name);
+        return {
+          name,
+          spec: rootEntry?.spec ?? null,
+          kind: rootEntry?.kind ?? "dependency",
+          requesterName: "<workspace root package.json>",
+          requesterDir: ROOT,
+          requesterDestDir: targetDist,
+        };
+      });
 
     const copiedDestinations = new Set<string>();
     const copiedNames = new Set<string>();
@@ -2648,7 +2808,14 @@ function main(): void {
       const request = queue.shift();
       if (!request) continue;
 
-      const { name, spec, requesterDir, requesterDestDir } = request;
+      const {
+        name,
+        spec,
+        kind,
+        requesterName,
+        requesterDir,
+        requesterDestDir,
+      } = request;
       if (
         !name ||
         DEP_SKIP.has(name) ||
@@ -2657,7 +2824,13 @@ function main(): void {
         continue;
       }
 
-      const resolved = resolvePackage(name, spec, requesterDir);
+      const resolved = resolvePackage({
+        name,
+        spec,
+        kind,
+        requesterName,
+        requesterDir,
+      });
       if (!resolved) {
         if (alwaysBundled.has(name)) {
           missingAlwaysBundled.add(name);
@@ -2737,6 +2910,8 @@ function main(): void {
         queue.push({
           name: dep.name,
           spec: dep.spec,
+          kind: dep.kind,
+          requesterName: name,
           requesterDir: resolved.sourceDir,
           requesterDestDir: destination,
         });

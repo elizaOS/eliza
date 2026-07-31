@@ -28,9 +28,11 @@ import {
   inferVersionFromBunEntryPath,
   isExactVersionSpecifier,
   isPackageCompatibleWithCurrentPlatform,
+  lockfileResolutionError,
   matchesRuntimeVariant,
   normalizeResolvedPackage,
   parseArgs,
+  parseRegistryVersionConstraint,
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
   recursiveRemoveErrorDetail,
@@ -122,6 +124,18 @@ describe("matchesRuntimeVariant", () => {
     expect(matchesRuntimeVariant("linux-glibc-x64", "darwin", "x64")).toBe(
       false,
     );
+  });
+
+  it("gates libc-tagged variants against an explicit target libc", () => {
+    expect(
+      matchesRuntimeVariant("linux-x64-musl", "linux", "x64", "glibc"),
+    ).toBe(false);
+    expect(
+      matchesRuntimeVariant("linux-x64-musl", "linux", "x64", "musl"),
+    ).toBe(true);
+    expect(
+      matchesRuntimeVariant("linux-x64-glibc", "linux", "x64", "musl"),
+    ).toBe(false);
   });
 });
 
@@ -359,6 +373,71 @@ describe("shouldKeepPackageRelativePath", () => {
       ),
     ).toBe(true);
   });
+
+  it("filters libc-tagged prebuilds against the target libc (deb glibc shape)", () => {
+    // The dh_shlibdeps failure shape: musl-ABI prebuilds shipped into the
+    // glibc .deb (utf-8-validate.musl.node, usb node.napi.musl.node).
+    expect(
+      shouldKeepPackageRelativePath(
+        "prebuilds/linux-x64/utf-8-validate.musl.node",
+        "linux",
+        "x64",
+        "utf-8-validate",
+        "glibc",
+      ),
+    ).toBe(false);
+    expect(
+      shouldKeepPackageRelativePath(
+        "prebuilds/linux-x64/node.napi.musl.node",
+        "linux",
+        "x64",
+        "usb",
+        "glibc",
+      ),
+    ).toBe(false);
+    // The untagged prebuild is the glibc default and must survive.
+    expect(
+      shouldKeepPackageRelativePath(
+        "prebuilds/linux-x64/utf-8-validate.node",
+        "linux",
+        "x64",
+        "utf-8-validate",
+        "glibc",
+      ),
+    ).toBe(true);
+  });
+
+  it("filters glibc-tagged prebuilds off a musl target (vice-versa)", () => {
+    expect(
+      shouldKeepPackageRelativePath(
+        "node.glibc.node",
+        "linux",
+        "x64",
+        "@msgpackr-extract/msgpackr-extract-linux-x64",
+        "musl",
+      ),
+    ).toBe(false);
+    expect(
+      shouldKeepPackageRelativePath(
+        "node.musl.node",
+        "linux",
+        "x64",
+        "@msgpackr-extract/msgpackr-extract-linux-x64",
+        "musl",
+      ),
+    ).toBe(true);
+  });
+
+  it("drops libc-tagged prebuilds entirely for non-linux targets", () => {
+    expect(
+      shouldKeepPackageRelativePath(
+        "prebuilds/some-dir/utf-8-validate.musl.node",
+        "darwin",
+        "arm64",
+        "utf-8-validate",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("shouldCopyPackageEntry", () => {
@@ -542,6 +621,11 @@ describe("getRuntimeDependencyEntries", () => {
     expect(names).toEqual(["alpha", "beta", "gamma"]);
     // first-writer wins: beta keeps its dependencies spec, not the optional one.
     expect(entries.find((e) => e.name === "beta")?.spec).toBe("1.0.0");
+    // Edge kinds drive version enforcement: only "dependency" edges fail the
+    // build on a version mismatch.
+    expect(entries.find((e) => e.name === "beta")?.kind).toBe("dependency");
+    expect(entries.find((e) => e.name === "alpha")?.kind).toBe("optional");
+    expect(entries.find((e) => e.name === "gamma")?.kind).toBe("peer");
   });
 
   it("returns [] for a manifest with no dependency fields", () => {
@@ -576,6 +660,49 @@ describe("normalizeResolvedPackage", () => {
   });
 });
 
+describe("parseRegistryVersionConstraint", () => {
+  it("classifies exact versions, ranges, and unconstrained specs", () => {
+    expect(parseRegistryVersionConstraint("1.2.3")).toEqual({
+      kind: "exact",
+      version: "1.2.3",
+    });
+    expect(parseRegistryVersionConstraint("^1.9.0")).toEqual({
+      kind: "range",
+      range: "^1.9.0",
+    });
+    expect(parseRegistryVersionConstraint(">=2 <3")).toEqual({
+      kind: "range",
+      range: ">=2 <3",
+    });
+    expect(parseRegistryVersionConstraint(null)).toEqual({
+      kind: "unconstrained",
+    });
+    expect(parseRegistryVersionConstraint("latest")).toEqual({
+      kind: "unconstrained",
+    });
+    expect(parseRegistryVersionConstraint("workspace:*")).toEqual({
+      kind: "unconstrained",
+    });
+    expect(parseRegistryVersionConstraint("github:foo/bar")).toEqual({
+      kind: "unconstrained",
+    });
+  });
+
+  it("unwraps npm: aliases to their version constraint", () => {
+    expect(parseRegistryVersionConstraint("npm:@noble/curves@^1.9.0")).toEqual({
+      kind: "range",
+      range: "^1.9.0",
+    });
+    expect(parseRegistryVersionConstraint("npm:foo@2.0.1")).toEqual({
+      kind: "exact",
+      version: "2.0.1",
+    });
+    expect(parseRegistryVersionConstraint("npm:foo")).toEqual({
+      kind: "unconstrained",
+    });
+  });
+});
+
 describe("selectResolvedCandidate", () => {
   function candidate(name: string, version: string) {
     const dir = mkdtempSync(path.join(tmpDir, "cand-"));
@@ -584,26 +711,99 @@ describe("selectResolvedCandidate", () => {
     return { sourceDir: dir, packageJsonPath: manifestPath };
   }
 
-  it("returns null when there are no candidates", () => {
-    expect(selectResolvedCandidate([], "1.0.0")).toBeNull();
+  it("reports none when there are no candidates", () => {
+    expect(selectResolvedCandidate([], "1.0.0")).toEqual({ kind: "none" });
   });
 
-  it("returns the first candidate for a non-exact requested spec", () => {
+  it("returns the first candidate for an unconstrained spec", () => {
     const a = candidate("pkg", "1.0.0");
     const b = candidate("pkg", "2.0.0");
-    expect(selectResolvedCandidate([a, b], "^1.0.0")).toBe(a);
+    expect(selectResolvedCandidate([a, b], null)).toEqual({
+      kind: "selected",
+      candidate: a,
+    });
+    expect(selectResolvedCandidate([a, b], "latest")).toEqual({
+      kind: "selected",
+      candidate: a,
+    });
   });
 
   it("picks the exact version match when the spec is exact", () => {
     const a = candidate("pkg", "1.0.0");
     const b = candidate("pkg", "2.0.0");
-    expect(selectResolvedCandidate([a, b], "2.0.0")).toBe(b);
+    expect(selectResolvedCandidate([a, b], "2.0.0")).toEqual({
+      kind: "selected",
+      candidate: b,
+    });
   });
 
-  it("falls back to the first candidate when no exact match exists", () => {
+  it("reports a mismatch instead of substituting when no exact match exists", () => {
     const a = candidate("pkg", "1.0.0");
     const b = candidate("pkg", "2.0.0");
-    expect(selectResolvedCandidate([a, b], "9.9.9")).toBe(a);
+    expect(selectResolvedCandidate([a, b], "9.9.9")).toEqual({
+      kind: "mismatch",
+      availableVersions: ["1.0.0", "2.0.0"],
+    });
+  });
+
+  it("selects the range-satisfying version, not the first candidate (@noble/curves shape)", () => {
+    // The Snap-breaking shape: the store holds @noble/curves at 2.x (first in
+    // candidate order) and 1.x. An importer pinned to ^1.9.0 must get the 1.x
+    // copy — packaging 2.x makes @noble/curves/secp256k1.js throw
+    // ERR_PACKAGE_PATH_NOT_EXPORTED at app start.
+    const v2 = candidate("@noble/curves", "2.0.1");
+    const v1 = candidate("@noble/curves", "1.9.7");
+    expect(selectResolvedCandidate([v2, v1], "^1.9.0")).toEqual({
+      kind: "selected",
+      candidate: v1,
+    });
+  });
+
+  it("reports a mismatch when only an incompatible version is installed", () => {
+    const v2 = candidate("@noble/curves", "2.0.1");
+    expect(selectResolvedCandidate([v2], "^1.9.0")).toEqual({
+      kind: "mismatch",
+      availableVersions: ["2.0.1"],
+    });
+  });
+
+  it("satisfies ranges against prerelease workspace-style versions", () => {
+    const beta = candidate("@elizaos/core", "1.6.2-beta.3");
+    expect(selectResolvedCandidate([beta], "^1.6.0")).toEqual({
+      kind: "selected",
+      candidate: beta,
+    });
+  });
+
+  it("skips versionless manifests when matching a constraint", () => {
+    const dir = mkdtempSync(path.join(tmpDir, "cand-"));
+    const manifestPath = path.join(dir, "package.json");
+    writeFileSync(manifestPath, JSON.stringify({ name: "pkg" }));
+    const versionless = { sourceDir: dir, packageJsonPath: manifestPath };
+    const good = candidate("pkg", "1.9.7");
+    expect(selectResolvedCandidate([versionless, good], "^1.9.0")).toEqual({
+      kind: "selected",
+      candidate: good,
+    });
+  });
+});
+
+describe("lockfileResolutionError", () => {
+  it("names the importer, the specifier, and the versions that were found", () => {
+    const error = lockfileResolutionError(
+      {
+        name: "@noble/curves",
+        spec: "^1.9.0",
+        kind: "dependency",
+        requesterName: "@scure/bip32",
+        requesterDir: "/repo/node_modules/@scure/bip32",
+      },
+      ["2.0.1"],
+    );
+    expect(error.message).toContain("@scure/bip32");
+    expect(error.message).toContain("@noble/curves@^1.9.0");
+    expect(error.message).toContain("2.0.1");
+    expect(error.message).toContain("Refusing to substitute");
   });
 });
 
