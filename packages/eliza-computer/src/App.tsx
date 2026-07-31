@@ -539,7 +539,17 @@ function Leaderboard({ snapshot }: { snapshot: LeaderboardSnapshot }) {
 
 function WorkQueue({ snapshot }: { snapshot: LeaderboardSnapshot }) {
   const [kind, setKind] = useState<"issues" | "pullRequests">("issues");
-  const items = snapshot.workQueue[kind].slice(0, 8);
+  const candidateCounts = {
+    issues: snapshot.workQueue.issues.filter(
+      (item) => item.selection.status === "candidate",
+    ).length,
+    pullRequests: snapshot.workQueue.pullRequests.filter(
+      (item) => item.selection.status === "candidate",
+    ).length,
+  };
+  const items = snapshot.workQueue[kind]
+    .filter((item) => item.selection.status === "candidate")
+    .slice(0, 8);
 
   return (
     <div className="queue-shell">
@@ -550,21 +560,27 @@ function WorkQueue({ snapshot }: { snapshot: LeaderboardSnapshot }) {
           onClick={() => setKind("issues")}
           type="button"
         >
-          Issues <span>{snapshot.source.counts.openIssues}</span>
+          Issues <span>{candidateCounts.issues}</span>
         </button>
         <button
           aria-pressed={kind === "pullRequests"}
           onClick={() => setKind("pullRequests")}
           type="button"
         >
-          Pull requests <span>{snapshot.source.counts.openPullRequests}</span>
+          Pull requests <span>{candidateCounts.pullRequests}</span>
         </button>
       </fieldset>
       {items.length === 0 ? (
         <div className="empty-state compact">
           <Check aria-hidden="true" />
-          <h3>No open {kind === "issues" ? "issues" : "pull requests"}.</h3>
-          <p>The live GitHub source returned an intentionally empty queue.</p>
+          <h3>
+            No unclaimed {kind === "issues" ? "issues" : "pull requests"} are
+            ready.
+          </h3>
+          <p>
+            The safety filter excluded claimed, sensitive, bot-authored, or
+            already-reviewed work.
+          </p>
         </div>
       ) : (
         <ol className="work-list">
@@ -892,8 +908,8 @@ export function App() {
               <h2>Choose work that still needs a finish.</h2>
             </div>
             <p>
-              Recency, claim state, evidence, and model attribution come
-              directly from the current elizaOS repository snapshot. Confirm
+              Candidate counts exclude claims, sensitive labels, bots, drafts,
+              active review requests, and completed review decisions. Confirm
               live state on GitHub before claiming.
             </p>
           </div>

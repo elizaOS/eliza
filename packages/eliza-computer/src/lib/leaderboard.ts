@@ -79,6 +79,7 @@ export interface PullRequestRecord {
   mergedAt: string | null;
   isDraft: boolean;
   reviewDecision: string | null;
+  activeReviewRequestCount: number;
   author: GitHubActor | null;
   assignees: GitHubActor[];
   labels: GitHubLabel[];
@@ -262,6 +263,22 @@ export interface WorkItemModelStatus {
   provenance: "self-reported" | "none";
 }
 
+export type WorkItemCandidateExclusion =
+  | "active-review-request"
+  | "already-approved"
+  | "blocked"
+  | "bot-authored"
+  | "changes-requested"
+  | "claimed"
+  | "draft"
+  | "security-sensitive"
+  | "unknown-author";
+
+export interface WorkItemSelection {
+  status: "candidate" | "excluded";
+  reasons: WorkItemCandidateExclusion[];
+}
+
 export interface WorkItem {
   id: string;
   kind: "issue" | "pull-request";
@@ -276,8 +293,10 @@ export interface WorkItem {
   actionability: "actionable" | "blocked" | "draft";
   isDraft: boolean | null;
   reviewDecision: string | null;
+  activeReviewRequestCount: number | null;
   commentCount: number;
   claim: WorkItemClaimStatus;
+  selection: WorkItemSelection;
   evidence: WorkItemEvidenceStatus;
   model: WorkItemModelStatus;
 }
@@ -397,6 +416,20 @@ const CLAIM_LABELS = new Set([
   "working",
 ]);
 
+const CLAIM_LABEL_WITH_LANE_PATTERN =
+  /^(?:claimed|in[- ]progress|working)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)$/i;
+
+const REVIEW_CLAIM_LABELS = new Set([
+  "review claimed",
+  "review-claimed",
+  "review in progress",
+  "review-in-progress",
+  "review: claimed",
+]);
+
+const REVIEW_CLAIM_LABEL_WITH_LANE_PATTERN =
+  /^(?:review[- ]claimed|review[- ]in[- ]progress)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)$/i;
+
 const BLOCKED_LABELS = new Set([
   "blocked",
   "do not merge",
@@ -405,6 +438,9 @@ const BLOCKED_LABELS = new Set([
   "needs-human-input",
   "status: blocked",
 ]);
+
+const SECURITY_SENSITIVE_LABEL_PATTERN =
+  /(?:^|[-_ ])(?:security|vulnerability|credential[-_ ]?leak|secret[-_ ]?leak|cve)(?:$|[-_ ])/i;
 
 const URGENT_LABELS = new Set([
   "blocker",
@@ -1402,7 +1438,7 @@ function methodology(): LeaderboardMethodology {
     provenancePolicy:
       "Coverage is valid-source count over non-bot claims and text sources that declare AI or human-only provenance; ordinary human discussion is not eligible. Exact provider/model declarations, human-only declarations, and eliza-computer-attribution:v1 markers are self-reported provenance. Complete, partial, missing, and invalid states add no points.",
     collectionPolicy:
-      "Every merged pull-request outcome is collected over 30 days with paginated, recursively split UTC time slices below GitHub Search's 1,000-result ceiling. Verification-intensive pull-request bonuses and resolved issues use a complete seven-day detail window. Open queues use complete repository connections. Counts publish both outcome and detail coverage, and immutable node IDs are deduplicated.",
+      "Every merged pull-request outcome is collected over 30 days with paginated, recursively split UTC time slices below GitHub Search's 1,000-result ceiling. Verification-intensive pull-request bonuses and resolved issues use a complete seven-day detail window. Open queues use complete repository connections. Candidate selection excludes bots, unknown authors, security-sensitive or blocked work, active claims including lane-qualified labels, drafts, active review requests, approvals, and changes-requested decisions; excluded items retain machine-readable reasons. Counts publish both outcome and detail coverage, and immutable node IDs are deduplicated.",
   };
 }
 
@@ -1583,6 +1619,18 @@ function latestClaimComment(
   return matches[0] ?? null;
 }
 
+function isClaimLabel(
+  label: GitHubLabel,
+  kind: WorkItemClaimStatus["kind"],
+): boolean {
+  const normalized = normalizeLabel(label.name);
+  return kind === "implementation"
+    ? CLAIM_LABELS.has(normalized) ||
+        CLAIM_LABEL_WITH_LANE_PATTERN.test(normalized)
+    : REVIEW_CLAIM_LABELS.has(normalized) ||
+        REVIEW_CLAIM_LABEL_WITH_LANE_PATTERN.test(normalized);
+}
+
 function issueClaim(
   issue: IssueRecord,
   referenceTime: string,
@@ -1611,9 +1659,7 @@ function issueClaim(
       claimedAt: comment.createdAt,
     };
   }
-  if (
-    issue.labels.some((label) => CLAIM_LABELS.has(normalizeLabel(label.name)))
-  ) {
+  if (issue.labels.some((label) => isClaimLabel(label, "implementation"))) {
     return {
       status: "claimed",
       source: "label",
@@ -1667,11 +1713,7 @@ function pullRequestClaim(
       claimedAt: comment.createdAt,
     };
   }
-  if (
-    pullRequest.labels.some((label) =>
-      CLAIM_LABELS.has(normalizeLabel(label.name)),
-    )
-  ) {
+  if (pullRequest.labels.some((label) => isClaimLabel(label, "review"))) {
     return {
       status: "claimed",
       source: "label",
@@ -1715,6 +1757,63 @@ function workItemActionability(
     : "actionable";
 }
 
+interface CandidateSelectionInput {
+  kind: WorkItem["kind"];
+  author: GitHubActor | null;
+  labels: string[];
+  actionability: WorkItem["actionability"];
+  reviewDecision: string | null;
+  activeReviewRequestCount: number | null;
+  claimStatus: WorkItemClaimStatus["status"];
+}
+
+function candidateExclusionReasons(
+  input: CandidateSelectionInput,
+): WorkItemCandidateExclusion[] {
+  const reasons: WorkItemCandidateExclusion[] = [];
+  if (!input.author) {
+    reasons.push("unknown-author");
+  } else if (isBotActor(input.author)) {
+    reasons.push("bot-authored");
+  }
+  if (
+    input.labels.some((label) => SECURITY_SENSITIVE_LABEL_PATTERN.test(label))
+  ) {
+    reasons.push("security-sensitive");
+  }
+  if (input.claimStatus === "claimed") {
+    reasons.push("claimed");
+  }
+  if (input.actionability === "blocked") {
+    reasons.push("blocked");
+  }
+  if (input.actionability === "draft") {
+    reasons.push("draft");
+  }
+  if (
+    input.kind === "pull-request" &&
+    input.activeReviewRequestCount !== null &&
+    input.activeReviewRequestCount > 0
+  ) {
+    reasons.push("active-review-request");
+  }
+  if (input.reviewDecision === "APPROVED") {
+    reasons.push("already-approved");
+  }
+  if (input.reviewDecision === "CHANGES_REQUESTED") {
+    reasons.push("changes-requested");
+  }
+  return reasons;
+}
+
+function workItemSelection(input: CandidateSelectionInput): WorkItemSelection {
+  const reasons = candidateExclusionReasons(input);
+  return {
+    status: reasons.length === 0 ? "candidate" : "excluded",
+    reasons,
+  };
+}
+
 function issueWorkItem(
   issue: IssueRecord,
   referenceTime: string,
@@ -1725,6 +1824,9 @@ function issueWorkItem(
   const sources = issueTextSources(issue);
   const evidence = assessEvidence(sources);
   const attribution = assessModelAttribution(sources);
+  const claim = issueClaim(issue, referenceTime);
+  const labels = uniqueSorted(issue.labels.map((label) => label.name));
+  const actionability = workItemActionability(issue.labels, false);
   return {
     item: {
       id: issue.id,
@@ -1735,13 +1837,23 @@ function issueWorkItem(
       author: issue.author,
       createdAt: issue.createdAt,
       updatedAt: issue.updatedAt,
-      labels: uniqueSorted(issue.labels.map((label) => label.name)),
+      labels,
       priority: workItemPriority(issue.labels),
-      actionability: workItemActionability(issue.labels, false),
+      actionability,
       isDraft: null,
       reviewDecision: null,
+      activeReviewRequestCount: null,
       commentCount: dedupeByNodeId(issue.comments).length,
-      claim: issueClaim(issue, referenceTime),
+      claim,
+      selection: workItemSelection({
+        kind: "issue",
+        author: issue.author,
+        labels,
+        actionability,
+        reviewDecision: null,
+        activeReviewRequestCount: null,
+        claimStatus: claim.status,
+      }),
       evidence: evidenceStatus(evidence),
       model: modelStatus(attribution),
     },
@@ -1759,6 +1871,12 @@ function pullRequestWorkItem(
   const sources = pullRequestTextSources(pullRequest);
   const evidence = assessEvidence(sources);
   const attribution = assessModelAttribution(sources);
+  const claim = pullRequestClaim(pullRequest, referenceTime);
+  const labels = uniqueSorted(pullRequest.labels.map((label) => label.name));
+  const actionability = workItemActionability(
+    pullRequest.labels,
+    pullRequest.isDraft,
+  );
   return {
     item: {
       id: pullRequest.id,
@@ -1769,16 +1887,23 @@ function pullRequestWorkItem(
       author: pullRequest.author,
       createdAt: pullRequest.createdAt,
       updatedAt: pullRequest.updatedAt,
-      labels: uniqueSorted(pullRequest.labels.map((label) => label.name)),
+      labels,
       priority: workItemPriority(pullRequest.labels),
-      actionability: workItemActionability(
-        pullRequest.labels,
-        pullRequest.isDraft,
-      ),
+      actionability,
       isDraft: pullRequest.isDraft,
       reviewDecision: pullRequest.reviewDecision,
+      activeReviewRequestCount: pullRequest.activeReviewRequestCount,
       commentCount: dedupeByNodeId(pullRequest.comments).length,
-      claim: pullRequestClaim(pullRequest, referenceTime),
+      claim,
+      selection: workItemSelection({
+        kind: "pull-request",
+        author: pullRequest.author,
+        labels,
+        actionability,
+        reviewDecision: pullRequest.reviewDecision,
+        activeReviewRequestCount: pullRequest.activeReviewRequestCount,
+        claimStatus: claim.status,
+      }),
       evidence: evidenceStatus(evidence),
       model: modelStatus(attribution),
     },
@@ -1794,6 +1919,8 @@ function compareWorkItems(left: WorkItem, right: WorkItem): number {
   } as const;
   const priorityRank = { urgent: 0, high: 1, normal: 2, low: 3 } as const;
   return (
+    Number(left.selection.status === "excluded") -
+      Number(right.selection.status === "excluded") ||
     actionabilityRank[left.actionability] -
       actionabilityRank[right.actionability] ||
     Number(left.claim.status === "claimed") -
@@ -2178,11 +2305,11 @@ function assertWebUrl(value: unknown, path: string): asserts value is string {
   }
 }
 
-function assertEnum(
+function assertEnum<const Values extends readonly string[]>(
   value: unknown,
-  allowed: readonly string[],
+  allowed: Values,
   path: string,
-): asserts value is string {
+): asserts value is Values[number] {
   if (typeof value !== "string" || !allowed.includes(value)) {
     throw new Error(`${path} must be one of: ${allowed.join(", ")}`);
   }
@@ -2218,7 +2345,10 @@ function assertActorValue(value: unknown, path: string): void {
   );
 }
 
-function assertNullableActor(value: unknown, path: string): void {
+function assertNullableActor(
+  value: unknown,
+  path: string,
+): asserts value is GitHubActor | null {
   if (value !== null) {
     assertActorValue(value, path);
   }
@@ -2537,7 +2667,7 @@ function assertWorkItemValue(
   assertNullableActor(item.author, `${path}.author`);
   assertIsoTimestamp(item.createdAt, `${path}.createdAt`);
   assertIsoTimestamp(item.updatedAt, `${path}.updatedAt`);
-  assertStringArray(item.labels, `${path}.labels`);
+  const labels = assertStringArray(item.labels, `${path}.labels`);
   assertEnum(
     item.priority,
     ["urgent", "high", "normal", "low"],
@@ -2549,9 +2679,13 @@ function assertWorkItemValue(
     `${path}.actionability`,
   );
   if (expectedKind === "issue") {
-    if (item.isDraft !== null || item.reviewDecision !== null) {
+    if (
+      item.isDraft !== null ||
+      item.reviewDecision !== null ||
+      item.activeReviewRequestCount !== null
+    ) {
       throw new Error(
-        `${path} issue draft and review-decision fields must be null`,
+        `${path} issue draft, review-decision, and review-request fields must be null`,
       );
     }
     if (item.actionability === "draft") {
@@ -2568,6 +2702,10 @@ function assertWorkItemValue(
         `${path}.reviewDecision`,
       );
     }
+    assertNonNegativeInteger(
+      item.activeReviewRequestCount,
+      `${path}.activeReviewRequestCount`,
+    );
     if (
       (item.isDraft === true && item.actionability !== "draft") ||
       (item.isDraft === false && item.actionability === "draft")
@@ -2612,6 +2750,55 @@ function assertWorkItemValue(
     (claim.source !== "claim-comment" && claim.claimedAt !== null)
   ) {
     throw new Error(`${path}.claim fields do not describe one valid claim`);
+  }
+
+  const selection = assertObject(item.selection, `${path}.selection`);
+  assertEnum(
+    selection.status,
+    ["candidate", "excluded"],
+    `${path}.selection.status`,
+  );
+  const selectionReasons = assertStringArray(
+    selection.reasons,
+    `${path}.selection.reasons`,
+  );
+  selectionReasons.forEach((reason, index) => {
+    assertEnum(
+      reason,
+      [
+        "active-review-request",
+        "already-approved",
+        "blocked",
+        "bot-authored",
+        "changes-requested",
+        "claimed",
+        "draft",
+        "security-sensitive",
+        "unknown-author",
+      ],
+      `${path}.selection.reasons[${index}]`,
+    );
+  });
+  const expectedSelectionReasons = candidateExclusionReasons({
+    kind: expectedKind,
+    author: item.author,
+    labels,
+    actionability: item.actionability,
+    reviewDecision: item.reviewDecision,
+    activeReviewRequestCount: item.activeReviewRequestCount,
+    claimStatus: claim.status,
+  });
+  if (
+    selection.status !==
+      (expectedSelectionReasons.length === 0 ? "candidate" : "excluded") ||
+    selectionReasons.length !== expectedSelectionReasons.length ||
+    selectionReasons.some(
+      (reason, index) => reason !== expectedSelectionReasons[index],
+    )
+  ) {
+    throw new Error(
+      `${path}.selection does not match the shared work-candidate safety contract`,
+    );
   }
 
   const evidence = assertObject(item.evidence, `${path}.evidence`);

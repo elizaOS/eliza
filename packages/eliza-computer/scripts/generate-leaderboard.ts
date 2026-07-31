@@ -226,6 +226,7 @@ const PULL_REQUEST_FRAGMENT = `
     mergedAt
     isDraft
     reviewDecision
+    reviewRequests(first: 1) { totalCount }
     author { ...LeaderboardActor }
     additions
     deletions
@@ -776,6 +777,10 @@ function parsePullRequest(value: unknown, path: string): ParsedPullRequest {
       reviewDecision: asNullableString(
         node.reviewDecision,
         `${path}.reviewDecision`,
+      ),
+      activeReviewRequestCount: asNumber(
+        child(node, "reviewRequests", path).totalCount,
+        `${path}.reviewRequests.totalCount`,
       ),
       author: parseActor(node.author, `${path}.author`),
       assignees: parseAssignees(node.assignees, `${path}.assignees`),

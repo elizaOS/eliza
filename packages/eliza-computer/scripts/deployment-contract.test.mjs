@@ -25,10 +25,16 @@ const pagesHeaders = readFileSync(
   join(packageRoot, "public", "_headers"),
   "utf8",
 );
+const qualityJob = workflow.slice(
+  workflow.indexOf("\n  quality:"),
+  workflow.indexOf("\n  deploy:"),
+);
+const deployJob = workflow.slice(workflow.indexOf("\n  deploy:"));
 
 describe("eliza.army deployment contract", () => {
   it("deploys only the exact tested SHA through wrangler.toml", () => {
-    const deployJob = workflow.slice(workflow.indexOf("\n  deploy:"));
+    expect(qualityJob).toContain(`ref: ${"$"}{{ github.sha }}`);
+    expect(qualityJob).toContain("does not match the event SHA $GITHUB_SHA");
     expect(deployJob).toContain(`ref: ${"$"}{{ github.sha }}`);
     expect(deployJob).toContain('checked_out_sha="$(git rev-parse HEAD)"');
     expect(deployJob).toContain("bunx wrangler@4.100.0 pages deploy \\");
@@ -40,6 +46,43 @@ describe("eliza.army deployment contract", () => {
     expect(wranglerConfiguration).toContain(
       'pages_build_output_dir = "./dist"',
     );
+  });
+
+  it("keeps automatic and pull-request release authority fail closed", () => {
+    expect(deployJob).toContain(
+      "github.event_name == 'push' && github.ref == 'refs/heads/develop'",
+    );
+    expect(deployJob).toContain(
+      "github.event_name == 'schedule' && github.ref == 'refs/heads/develop'",
+    );
+    expect(deployJob).not.toContain("github.event_name == 'pull_request'");
+    expect(deployJob).toContain(
+      "github.event_name == 'workflow_dispatch' && inputs.release_mode == 'production-candidate'",
+    );
+    expect(deployJob).toContain("group: eliza-computer-production");
+    expect(deployJob).toContain("cancel-in-progress: false");
+    expect(deployJob).toContain("name: eliza-army-production");
+  });
+
+  it("admits a manual non-develop candidate only from a current same-repository PR", () => {
+    expect(workflow).toContain("default: quality-only");
+    expect(workflow).toContain("- production-candidate");
+    expect(workflow).toContain("candidate_pr:");
+    expect(deployJob).toContain('if [ "$GITHUB_REF_TYPE" != "branch" ]; then');
+    expect(deployJob).toContain(
+      'if ! [[ "$CANDIDATE_PR" =~ ^[1-9][0-9]*$ ]]; then',
+    );
+    expect(deployJob).toContain('pullRequest.state !== "open"');
+    expect(deployJob).toContain('pullRequest.base?.ref !== "develop"');
+    expect(deployJob).toContain(
+      "pullRequest.head?.repo?.full_name !== expectedRepository",
+    );
+    expect(deployJob).toContain("pullRequest.head?.sha !== expectedSha");
+    expect(deployJob).toContain("pullRequest.head?.ref !== expectedBranch");
+    expect(deployJob).toContain(
+      'git rev-list --count "$GITHUB_SHA..refs/remotes/origin/develop"',
+    );
+    expect(deployJob).toContain('if [ "$behind_count" != "0" ]; then');
   });
 
   it("keeps production deploy authority out of package scripts", () => {
@@ -60,6 +103,15 @@ describe("eliza.army deployment contract", () => {
     );
     expect(verificationStep).toContain("--connect-timeout 10");
     expect(verificationStep).toContain("--max-time 30");
+    expect(verificationStep).toContain(
+      "verify_download / packages/eliza-computer/dist/index.html index.html",
+    );
+    expect(verificationStep).not.toContain(
+      "verify_download /index.html packages/eliza-computer/dist/index.html",
+    );
+    expect(verificationStep).toContain(
+      `"https://eliza.army${"$"}{remote_path}?verify=`,
+    );
   });
 
   it("serves HTTPS policy and immutable hashed assets", () => {

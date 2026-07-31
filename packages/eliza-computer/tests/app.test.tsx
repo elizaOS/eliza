@@ -142,6 +142,45 @@ describe("App", () => {
     expect(screen.queryByText(/model missing 0\/0/i)).not.toBeInTheDocument();
   });
 
+  it("does not render work excluded by the shared candidate safety contract", async () => {
+    const snapshot = snapshotFixture();
+    const candidate = snapshot.workQueue.issues[0];
+    snapshot.workQueue.issues.push({
+      ...structuredClone(candidate),
+      id: "I_bot",
+      number: 17328,
+      title: "Automated issue that must not be advertised",
+      author: {
+        id: "BOT_fixture",
+        login: "automation-bot",
+        avatarUrl: "https://avatars.githubusercontent.com/u/2?v=4",
+        url: "https://github.com/apps/automation-bot",
+        kind: "Bot",
+      },
+      selection: {
+        status: "excluded",
+        reasons: ["bot-authored"],
+      },
+    });
+    snapshot.source.counts.openIssues = 2;
+    mockFetch(
+      new Response(JSON.stringify(snapshot), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("Launch the eliza.army contribution protocol"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Automated issue that must not be advertised"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /issues 1/i })).toBeVisible();
+  });
+
   it("renders an observable error and retries instead of fabricating empty data", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
