@@ -2270,31 +2270,33 @@ try {
 
   // TRANSCRIBING while an inline reply is in flight (#9880 path).
   //
-  // #9880 was a LIT, DEAD mic button: mid-transcription the voice control stayed
-  // rendered but its off-path was gated on the reply finishing, so tapping it did
-  // nothing until `responding` cleared. The approved composer polish resolved that
-  // structurally rather than by ungating — active transcription now gives the
-  // activity meter the full lane and exposes exactly ONE control, the Stop. With
-  // no mic button rendered at all there is no lit-dead-control state to reach,
-  // and ChatOverlay.test.tsx ("gives active transcription the full lane plus one
-  // Stop control") pins that contract.
-  //
-  // So this case asserts the structural guarantee — one Stop, no mic — instead of
-  // the old two-control master-off. Asserting the mic here would re-require the
-  // very control the polish removed.
+  // Transcription-only finalization and the master privacy stop are independent:
+  // the latter must remain live while a reply is in flight so one tap can stop
+  // both transcription and capture.
   {
     const p = await ctrl();
     attachConsole(p, sink);
+    const logs = [];
+    p.on("console", (m) => logs.push(m.text()));
     await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
     await p.waitForSelector('[data-testid="chat-composer-transcription-stop"]');
     await p.waitForTimeout(500);
+    const masterMic = p.getByTestId("chat-composer-mic");
     assert(
-      (await p.getByTestId("chat-composer-mic").count()) === 0,
-      "TRANSCRIBING+REPLY: no mic control is rendered (no lit-dead button to tap)",
+      (await masterMic.count()) === 1,
+      "TRANSCRIBING+REPLY: exactly one master mic stop is rendered",
+    );
+    assert(
+      (await masterMic.getAttribute("aria-label")) === "stop transcription and mic",
+      "TRANSCRIBING+REPLY: the mic names its master privacy-stop behavior",
+    );
+    assert(
+      (await masterMic.getAttribute("aria-disabled")) !== "true",
+      "TRANSCRIBING+REPLY: the master mic stop is enabled during the reply",
     );
     assert(
       (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: exactly one Stop control owns the trailing slot",
+      "TRANSCRIBING+REPLY: the independent transcription-only Stop is rendered",
     );
     // The Stop must be live mid-reply — the #9880 defect was an inert control
     // while `responding` was true, so an enabled Stop is the real regression pin.
@@ -2305,6 +2307,19 @@ try {
       "TRANSCRIBING+REPLY: the Stop is enabled even while the reply is in flight",
     );
     await snap(p, "state-transcribing-inline-reply");
+    await masterMic.click();
+    await p.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="chat-composer-mic"]') === null,
+    );
+    assert(
+      logs.some((text) => text.includes("[fixture] stopTranscriptionAndMic")),
+      "TRANSCRIBING+REPLY: the master mic stop reaches the controller",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-stop").count()) === 1,
+      "TRANSCRIBING+REPLY: generation Stop owns the trailing slot after capture stops",
+    );
     await p.close();
   }
 
