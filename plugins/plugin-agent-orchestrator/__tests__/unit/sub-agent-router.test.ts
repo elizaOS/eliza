@@ -1629,6 +1629,45 @@ describe("SubAgentRouter", () => {
       expect(fetchMock).toHaveBeenCalledWith(imageUrl, expect.anything());
     });
 
+    it("degrades a dead cross-origin third-party sub-resource to an info note, not a build failure", async () => {
+      // A font-CDN / analytics host that 404s a bare probe is not evidence the
+      // build tanked (the driftwave regression). The page itself probes 200, so
+      // completion must POST — with a single "[verification note:" line, never
+      // the "[verification:" failure marker — and no verify-retry may fire.
+      const appUrl = "https://example.test/apps/permit-garden/";
+      const cdnUrl = "https://cdn.example.test/permit-garden/sticker.png";
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === cdnUrl) {
+          return new Response("not found", { status: 404 });
+        }
+        return new Response(`<!doctype html><img src="${cdnUrl}" alt="Sticker">`, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+      });
+      stubFetch(fetchMock);
+      session = sessionWithTask(`build and verify ${appUrl}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+        setting: { ELIZA_URL_VERIFY_SETTLE_MS: "0" },
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — live at ${appUrl}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).toContain(appUrl);
+      expect(posted?.content?.text).toContain("[verification note:");
+      expect(posted?.content?.text).not.toContain("[verification:");
+      expect(fetchMock).toHaveBeenCalledWith(cdnUrl, expect.anything());
+    });
+
     it("does not reject a served-200 mapped app URL for stale local mtime (GAP-C: live 200 is authoritative)", async () => {
       // A deploy step that copies a build into place preserves the source
       // file's mtime, so a healthy app can have files older than the session.
