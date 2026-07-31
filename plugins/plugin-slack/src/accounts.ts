@@ -9,6 +9,19 @@
  * AGENT role decides whether outbound posts use the user or bot token.
  */
 import type { ConnectorAccountRole, IAgentRuntime } from "@elizaos/core";
+import type {
+  SlackAccountConfig as CanonicalSlackAccountConfig,
+  SlackChannelConfig,
+  SlackDmConfig,
+} from "./config";
+
+export type {
+  SlackActionConfig,
+  SlackChannelConfig,
+  SlackDmConfig,
+  SlackReactionNotificationMode,
+  SlackSlashCommandConfig,
+} from "./config";
 
 /**
  * Default account identifier used when no specific account is configured
@@ -21,91 +34,9 @@ export const DEFAULT_ACCOUNT_ID = "default";
 export type SlackTokenSource = "env" | "config" | "character" | "none";
 
 /**
- * DM-specific configuration
- */
-export interface SlackDmConfig {
-  /** If false, ignore all incoming Slack DMs */
-  enabled?: boolean;
-  /** Direct message access policy */
-  policy?: "open" | "disabled" | "allowlist";
-  /** Allowlist for DM senders (ids or names) */
-  allowFrom?: Array<string | number>;
-  /** Reply-to mode for DMs */
-  replyToMode?: "off" | "first" | "all";
-}
-
-/**
- * Channel-specific configuration.
- *
- * Mirrors `SlackChannelSchema` in
- * packages/agent/src/config/zod-schema.providers-core.ts so everything the
- * config layer accepts under `channels.slack.channels[<id>]` has a home here.
- * `skills` and `systemPrompt` are resolved by `./allowlist.ts` but not yet
- * consumed by the service (they need per-channel context assembly, a separate
- * slice); they are typed here so the resolution point stays singular.
- */
-export interface SlackChannelConfig {
-  /** If false, ignore this channel */
-  enabled?: boolean;
-  /** Legacy alias for `enabled: false`. */
-  allow?: boolean;
-  /** Require bot mention to respond */
-  requireMention?: boolean;
-  /** User allowlist for this channel */
-  users?: Array<string | number>;
-  /** Allow bot-authored messages to trigger replies in this channel */
-  allowBots?: boolean;
-  /** Skill filter for this channel. Resolved, not yet applied. */
-  skills?: string[];
-  /** System prompt for this channel. Resolved, not yet applied. */
-  systemPrompt?: string;
-  /** Reply-to mode for this channel */
-  replyToMode?: "off" | "first" | "all";
-}
-
-/**
- * Reaction notification mode
- */
-export type SlackReactionNotificationMode = "off" | "own" | "all" | "allowlist";
-
-/**
- * Slash command configuration
- */
-export interface SlackSlashCommandConfig {
-  /** Enable slash commands */
-  enabled?: boolean;
-  /** Slash command name (without leading /) */
-  command?: string;
-}
-
-/**
- * Action toggles for Slack features
- */
-export interface SlackActionConfig {
-  /** Enable reactions */
-  reactions?: boolean;
-  /** Enable pins */
-  pins?: boolean;
-  /** Enable file uploads */
-  files?: boolean;
-  /** Enable message editing */
-  edit?: boolean;
-  /** Enable message deletion */
-  delete?: boolean;
-  /** Enable emoji list */
-  emojiList?: boolean;
-  /** Enable member info */
-  memberInfo?: boolean;
-}
-
-/**
  * Configuration for a single Slack account
  */
-export interface SlackAccountConfig {
-  /** Optional display name for this account */
-  name?: string;
-  /** If false, do not start this Slack account */
-  enabled?: boolean;
+export type SlackAccountConfig = CanonicalSlackAccountConfig & {
   /**
    * Account role. AGENT (the default) means outbound API calls are made
    * with the bot token (xoxb-) and represent the agent identity. OWNER
@@ -114,61 +45,19 @@ export interface SlackAccountConfig {
    * user who installed the integration.
    */
   role?: ConnectorAccountRole;
-  /** Slack bot token (xoxb-...) */
-  botToken?: string;
-  /** Slack app-level token (xapp-...) */
-  appToken?: string;
-  /** Slack signing secret */
-  signingSecret?: string;
-  /** Slack user token (xoxp-...) for user actions */
-  userToken?: string;
-  /** Controls how channel messages are handled */
-  groupPolicy?: "open" | "disabled" | "allowlist";
-  /** Outbound text chunk size (chars) */
-  textChunkLimit?: number;
-  /** Max media size in MB */
-  mediaMaxMb?: number;
-  /** Reaction notification mode */
-  reactionNotifications?: SlackReactionNotificationMode;
-  /** Reaction allowlist when mode is 'allowlist' */
-  reactionAllowlist?: Array<string | number>;
-  /** Reply-to mode */
-  replyToMode?: "off" | "first" | "all";
-  /** Reply-to mode by chat type */
-  replyToModeByChatType?: Record<string, "off" | "first" | "all">;
-  /** Per-action toggles */
-  actions?: SlackActionConfig;
-  /** Slash command configuration */
-  slashCommand?: SlackSlashCommandConfig;
-  /** DM configuration */
-  dm?: SlackDmConfig;
-  /**
-   * Per-channel configuration, keyed by channel ID (`C0123ABCD`), by channel
-   * name (`general`, matched once the name is known), or `"*"` for a default.
-   */
-  channels?: Record<string, SlackChannelConfig>;
-  /**
-   * Account-level default mention requirement for channel messages. Overridden
-   * per channel by `channels.<id>.requireMention`; overrides the global
-   * `SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS` env flag.
-   */
-  requireMention?: boolean;
   /** Allowed channel IDs */
   allowedChannelIds?: string[];
   /** Whether to ignore bot messages */
   shouldIgnoreBotMessages?: boolean;
   /** Whether to respond only to mentions */
   shouldRespondOnlyToMentions?: boolean;
-}
+};
 
 /**
  * Multi-account Slack configuration structure
  */
-export interface SlackMultiAccountConfig {
+export interface SlackMultiAccountConfig extends SlackAccountConfig {
   /** Default/base configuration applied to all accounts */
-  enabled?: boolean;
-  botToken?: string;
-  appToken?: string;
   /** Per-account configuration overrides */
   accounts?: Record<string, SlackAccountConfig>;
 }
@@ -206,6 +95,8 @@ export interface ResolvedSlackAccount {
    * `undefined` means "fall through to the global env flag".
    */
   requireMention?: boolean;
+  /** True when a structured authorization policy was explicitly configured. */
+  hasStructuredPolicy: boolean;
 }
 
 /**
@@ -274,13 +165,25 @@ function getMultiAccountConfig(
   const characterSlack = runtime.character.settings?.slack as
     | SlackMultiAccountConfig
     | undefined;
+  return characterSlack && typeof characterSlack === "object"
+    ? characterSlack
+    : {};
+}
 
-  return {
-    enabled: characterSlack?.enabled,
-    botToken: characterSlack?.botToken,
-    appToken: characterSlack?.appToken,
-    accounts: characterSlack?.accounts,
-  };
+function containsStructuredPolicy(config: SlackAccountConfig): boolean {
+  return [
+    "allowBots",
+    "requireMention",
+    "groupPolicy",
+    "dm",
+    "channels",
+    "actions",
+    "commands",
+    "configWrites",
+    "slashCommand",
+    "reactionNotifications",
+    "reactionAllowlist",
+  ].some((key) => Object.hasOwn(config, key));
 }
 
 /**
@@ -401,6 +304,7 @@ export function resolveSlackAccount(
 ): ResolvedSlackAccount {
   const normalizedAccountId = normalizeAccountId(accountId);
   const multiConfig = getMultiAccountConfig(runtime);
+  const configuredAccount = getAccountConfig(runtime, normalizedAccountId);
 
   const baseEnabled = multiConfig.enabled !== false;
   const merged = mergeSlackAccountConfig(runtime, normalizedAccountId);
@@ -483,6 +387,9 @@ export function resolveSlackAccount(
     channels,
     dm: merged.dm,
     requireMention: merged.requireMention,
+    hasStructuredPolicy:
+      containsStructuredPolicy(multiConfig) ||
+      (configuredAccount ? containsStructuredPolicy(configuredAccount) : false),
   };
 }
 
@@ -513,13 +420,18 @@ export function resolveSlackReplyToMode(
   chatType?: string | null,
 ): "off" | "first" | "all" {
   const normalized = chatType?.toLowerCase().trim();
+  const chatTypeKey =
+    normalized === "direct" ||
+    normalized === "group" ||
+    normalized === "channel"
+      ? normalized
+      : undefined;
 
-  // Check chat type specific override
   if (
-    normalized &&
-    account.config.replyToModeByChatType?.[normalized] !== undefined
+    chatTypeKey &&
+    account.config.replyToModeByChatType?.[chatTypeKey] !== undefined
   ) {
-    return account.config.replyToModeByChatType[normalized] ?? "off";
+    return account.config.replyToModeByChatType[chatTypeKey] ?? "off";
   }
 
   // Check DM-specific setting

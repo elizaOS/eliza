@@ -1,362 +1,378 @@
 /**
- * Unit tests for the Slack per-channel config resolver.
- *
- * These cover `allowlist.ts` in isolation (pure functions, no runtime); the
- * service-level proof that the resolver is actually consulted on the inbound
- * path lives in `service-channel-gating.test.ts`.
+ * Adversarial authorization tests for the account-scoped Slack policy compiler.
+ * The directory client behaves like Slack pagination while decisions exercise
+ * cold-start name resolution, event classification, and dynamic membership.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { ResolvedSlackAccount, SlackAccountConfig } from "./accounts";
 import {
-  collectSlackConfiguredChannelIds,
-  isSlackChannelIdKey,
-  normalizeSlackAllowList,
-  normalizeSlackSlug,
-  resolveSlackChannelConfig,
-  resolveSlackInboundGate,
-  resolveSlackShouldRequireMention,
-  resolveSlackUserAllowed,
-  slackAllowListMatches,
+  SlackAccountPolicyResolver,
+  type SlackInboundEventContext,
+  SlackPolicyConfigurationError,
+  type SlackPolicyDirectoryClient,
 } from "./allowlist";
 
-describe("normalizeSlackSlug", () => {
-  it("strips a leading # and lowercases", () => {
-    expect(normalizeSlackSlug("#General")).toBe("general");
-  });
+const CHANNEL = "C0123ABCD";
+const PRIVATE = "G0123ABCD";
+const DM = "D0123ABCD";
+const MPIM = "G0MPIM123";
+const ALICE = "opaque-user-alice";
+const BOB = "opaque-user-bob";
 
-  it("collapses non-alphanumerics into single dashes", () => {
-    expect(normalizeSlackSlug("House  Chores!")).toBe("house-chores");
-  });
+function account(
+  config: SlackAccountConfig,
+  hasStructuredPolicy = true,
+  accountId = "default",
+): ResolvedSlackAccount {
+  return {
+    accountId,
+    enabled: true,
+    role: "AGENT",
+    botToken: "xoxb-test",
+    appToken: "xapp-test",
+    botTokenSource: "config",
+    appTokenSource: "config",
+    config,
+    channels: Object.fromEntries(
+      Object.entries(config.channels ?? {}).filter(
+        (entry): entry is [string, NonNullable<(typeof entry)[1]>] =>
+          Boolean(entry[1]),
+      ),
+    ),
+    dm: config.dm,
+    requireMention: config.requireMention,
+    hasStructuredPolicy,
+  };
+}
 
-  it("trims leading and trailing dashes", () => {
-    expect(normalizeSlackSlug("--chores--")).toBe("chores");
-  });
-});
-
-describe("isSlackChannelIdKey", () => {
-  it("accepts C/G/D-prefixed Slack ids", () => {
-    expect(isSlackChannelIdKey("C0123ABCD")).toBe(true);
-    expect(isSlackChannelIdKey("G0123ABCD")).toBe(true);
-    expect(isSlackChannelIdKey("D0123ABCD")).toBe(true);
-  });
-
-  it("rejects human channel names and the wildcard", () => {
-    expect(isSlackChannelIdKey("general")).toBe(false);
-    expect(isSlackChannelIdKey("*")).toBe(false);
-    expect(isSlackChannelIdKey("C123")).toBe(false);
-  });
-});
-
-describe("normalizeSlackAllowList", () => {
-  it("returns null for an absent or empty list so callers default to allow", () => {
-    expect(normalizeSlackAllowList(undefined)).toBeNull();
-    expect(normalizeSlackAllowList([])).toBeNull();
-  });
-
-  it("detects the allow-all wildcard", () => {
-    expect(normalizeSlackAllowList(["*"])?.allowAll).toBe(true);
-  });
-
-  it("unwraps Slack mention syntax into bare ids", () => {
-    const list = normalizeSlackAllowList(["<@U0123ABCD>"]);
-    expect(list?.ids.has("U0123ABCD")).toBe(true);
-  });
-
-  it("unwraps mention syntax carrying a display name", () => {
-    const list = normalizeSlackAllowList(["<@U0123ABCD|salem>"]);
-    expect(list?.ids.has("U0123ABCD")).toBe(true);
-  });
-
-  it("strips slack:/user: prefixes and classifies ids vs handles", () => {
-    const list = normalizeSlackAllowList(["slack:U0123ABCD", "user:shadow"]);
-    expect(list?.ids.has("U0123ABCD")).toBe(true);
-    expect(list?.names.has("shadow")).toBe(true);
-  });
-
-  it("treats bare non-id entries as name slugs", () => {
-    const list = normalizeSlackAllowList(["Shadow Ben"]);
-    expect(list?.names.has("shadow-ben")).toBe(true);
-  });
-});
-
-describe("slackAllowListMatches", () => {
-  function buildList() {
-    const list = normalizeSlackAllowList(["U0123ABCD", "shadow"]);
-    if (!list) throw new Error("expected a normalized allowlist");
-    return list;
-  }
-
-  it("matches by id case-insensitively", () => {
-    expect(slackAllowListMatches(buildList(), { id: "u0123abcd" })).toBe(true);
-  });
-
-  it("matches by display name slug", () => {
-    expect(
-      slackAllowListMatches(buildList(), { id: "UZZZZZZZZ", name: "Shadow" }),
-    ).toBe(true);
-  });
-
-  it("rejects an unlisted user", () => {
-    expect(
-      slackAllowListMatches(buildList(), { id: "UZZZZZZZZ", name: "stranger" }),
-    ).toBe(false);
-  });
-});
-
-describe("resolveSlackUserAllowed", () => {
-  it("allows everyone when no allowlist is configured", () => {
-    expect(resolveSlackUserAllowed({ userId: "UANY00000" })).toBe(true);
-  });
-
-  it("enforces the allowlist when one is configured", () => {
-    expect(
-      resolveSlackUserAllowed({
-        allowList: ["U0123ABCD"],
-        userId: "UOTHER123",
+function directory(
+  overrides: {
+    channels?: Array<Record<string, unknown>>;
+    users?: Array<Record<string, unknown>>;
+    infoError?: Error;
+  } = {},
+): SlackPolicyDirectoryClient {
+  const channels = overrides.channels ?? [
+    { id: CHANNEL, name: "ops", is_channel: true },
+    { id: PRIVATE, name: "leadership", is_group: true, is_private: true },
+    { id: DM, is_im: true },
+    { id: MPIM, name: "mpdm-team", is_mpim: true },
+  ];
+  return {
+    conversations: {
+      list: vi.fn().mockResolvedValue({ channels }),
+      info: vi.fn().mockImplementation(async ({ channel }) => {
+        if (overrides.infoError) throw overrides.infoError;
+        return { channel: channels.find((entry) => entry.id === channel) };
       }),
-    ).toBe(false);
-  });
-});
-
-describe("resolveSlackChannelConfig", () => {
-  it("returns null when no channels record is configured", () => {
-    expect(
-      resolveSlackChannelConfig({
-        channels: undefined,
-        channelId: "C0123ABCD",
+    },
+    users: {
+      list: vi.fn().mockResolvedValue({
+        members: overrides.users ?? [
+          {
+            id: ALICE,
+            name: "alice",
+            profile: { display_name: "Alice Example" },
+          },
+          { id: BOB, name: "bob", profile: { display_name: "Bob Example" } },
+        ],
       }),
-    ).toBeNull();
-  });
+    },
+  } as SlackPolicyDirectoryClient;
+}
 
-  it("returns null when the record has no entry for the channel", () => {
-    expect(
-      resolveSlackChannelConfig({
-        channels: { C0000AAAA: { requireMention: true } },
-        channelId: "C0123ABCD",
-      }),
-    ).toBeNull();
-  });
+function event(
+  overrides: Partial<SlackInboundEventContext> = {},
+): SlackInboundEventContext {
+  return {
+    eventType: "message",
+    channelId: CHANNEL,
+    userId: ALICE,
+    channelType: "channel",
+    isThread: false,
+    isMentioned: true,
+    isBotMessage: false,
+    ...overrides,
+  };
+}
 
-  it("matches by exact channel id", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: { C0123ABCD: { requireMention: true } },
-      channelId: "C0123ABCD",
+async function resolver(
+  config: SlackAccountConfig,
+  options: {
+    client?: SlackPolicyDirectoryClient;
+    hasStructuredPolicy?: boolean;
+    pairingAllowed?: boolean;
+    accountId?: string;
+  } = {},
+) {
+  return SlackAccountPolicyResolver.create({
+    account: account(
+      config,
+      options.hasStructuredPolicy ?? true,
+      options.accountId,
+    ),
+    client: options.client ?? directory(),
+    checkPairing: vi.fn().mockResolvedValue({
+      allowed: options.pairingAllowed ?? false,
+      replyMessage: "pair first",
+    }),
+  });
+}
+
+describe("SlackAccountPolicyResolver startup compilation", () => {
+  it("resolves channel and user names to immutable IDs before admission", async () => {
+    const policy = await resolver({
+      groupPolicy: "allowlist",
+      channels: { ops: { users: ["alice"], requireMention: false } },
     });
-    expect(resolved).toMatchObject({
+
+    await expect(
+      policy.authorize(event({ isMentioned: false })),
+    ).resolves.toMatchObject({
       allowed: true,
-      requireMention: true,
-      matchSource: "id",
-      matchKey: "C0123ABCD",
+      channelPolicyKey: "ops",
+    });
+    await expect(
+      policy.authorize(event({ userId: BOB })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "user_not_allowed",
     });
   });
 
-  it("matches by channel-name slug when the name is known", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: { "house-chores": { requireMention: false } },
-      channelId: "C0123ABCD",
-      channelName: "House Chores",
+  it("fails startup on unresolved or ambiguous authorization names", async () => {
+    const ambiguous = directory({
+      channels: [
+        { id: CHANNEL, name: "ops", is_channel: true },
+        { id: PRIVATE, name: "ops", is_private: true },
+      ],
     });
-    expect(resolved).toMatchObject({
-      requireMention: false,
-      matchSource: "name",
+    await expect(
+      resolver(
+        { groupPolicy: "allowlist", channels: { ops: { enabled: false } } },
+        { client: ambiguous },
+      ),
+    ).rejects.toThrow(/resolved to 2 conversations/);
+
+    const duplicateUsers = directory({
+      users: [
+        { id: ALICE, name: "alex" },
+        { id: BOB, profile: { display_name: "Alex" } },
+      ],
     });
+    await expect(
+      resolver(
+        {
+          groupPolicy: "allowlist",
+          channels: { [CHANNEL]: { users: ["alex"] } },
+        },
+        { client: duplicateUsers },
+      ),
+    ).rejects.toThrow(/resolved to 2 active users/);
   });
 
-  it("does not match by name when the name is unknown", () => {
-    expect(
-      resolveSlackChannelConfig({
-        channels: { general: { requireMention: false } },
-        channelId: "C0123ABCD",
-      }),
-    ).toBeNull();
-  });
-
-  it("falls back to the wildcard entry", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: { "*": { requireMention: true } },
-      channelId: "C0123ABCD",
-    });
-    expect(resolved).toMatchObject({
-      requireMention: true,
-      matchSource: "wildcard",
-    });
-  });
-
-  it("prefers an exact id entry over the wildcard", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: {
-        "*": { requireMention: true },
-        C0123ABCD: { requireMention: false },
+  it("supports explicit opaque Slack IDs without prefix assumptions", async () => {
+    const client = directory({ users: [] });
+    const policy = await resolver(
+      {
+        groupPolicy: "allowlist",
+        channels: { [CHANNEL]: { users: [`id:${ALICE}`] } },
       },
-      channelId: "C0123ABCD",
-    });
-    expect(resolved).toMatchObject({
-      requireMention: false,
-      matchSource: "id",
+      { client },
+    );
+
+    expect(client.users.list).not.toHaveBeenCalled();
+    await expect(policy.authorize(event())).resolves.toMatchObject({
+      allowed: true,
     });
   });
 
-  it("marks a channel disallowed via enabled:false", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: { C0123ABCD: { enabled: false } },
-      channelId: "C0123ABCD",
+  it("treats an explicit empty user list as deny-all", async () => {
+    const policy = await resolver({
+      groupPolicy: "allowlist",
+      channels: { [CHANNEL]: { users: [] } },
     });
-    expect(resolved?.allowed).toBe(false);
+    await expect(policy.authorize(event())).resolves.toMatchObject({
+      allowed: false,
+      reason: "user_not_allowed",
+    });
   });
 
-  it("marks a channel disallowed via the legacy allow:false alias", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: { C0123ABCD: { allow: false } },
-      channelId: "C0123ABCD",
-    });
-    expect(resolved?.allowed).toBe(false);
+  it("rejects accepted security settings that the connector cannot enforce", async () => {
+    await expect(
+      resolver({
+        groupPolicy: "allowlist",
+        channels: { [CHANNEL]: { tools: { allow: ["shell"] } } },
+      }),
+    ).rejects.toBeInstanceOf(SlackPolicyConfigurationError);
+    await expect(
+      resolver({ groupPolicy: "allowlist", actions: { messages: false } }),
+    ).rejects.toThrow(/cannot enforce: actions/);
   });
+});
 
-  it("surfaces skills and systemPrompt for the follow-up slice", () => {
-    const resolved = resolveSlackChannelConfig({
-      channels: {
-        C0123ABCD: { skills: ["chores"], systemPrompt: "You run the house." },
+describe("SlackAccountPolicyResolver event policy", () => {
+  it("preserves env-only bot behavior when no structured policy exists", async () => {
+    const policy = await resolver(
+      {
+        allowedChannelIds: [CHANNEL],
+        shouldIgnoreBotMessages: false,
       },
-      channelId: "C0123ABCD",
+      { hasStructuredPolicy: false },
+    );
+    await expect(
+      policy.authorize(event({ userId: "bot-identity", isBotMessage: true })),
+    ).resolves.toMatchObject({ allowed: true });
+  });
+
+  it("does not let a dynamic join widen groupPolicy=allowlist", async () => {
+    const policy = await resolver({
+      groupPolicy: "allowlist",
+      channels: { [CHANNEL]: {} },
     });
-    expect(resolved?.skills).toEqual(["chores"]);
-    expect(resolved?.systemPrompt).toBe("You run the house.");
-  });
-});
-
-describe("collectSlackConfiguredChannelIds", () => {
-  it("returns id-shaped keys as allowlist entries", () => {
-    expect(
-      collectSlackConfiguredChannelIds({
-        C0123ABCD: { requireMention: true },
-      }),
-    ).toEqual(["C0123ABCD"]);
+    expect(await policy.registerBotJoin(PRIVATE)).toBe(false);
+    await expect(
+      policy.authorize(event({ channelId: PRIVATE, channelType: "group" })),
+    ).resolves.toMatchObject({ allowed: false, reason: "channel_not_allowed" });
   });
 
-  it("ignores name-keyed and wildcard entries", () => {
-    expect(
-      collectSlackConfiguredChannelIds({
-        general: {},
-        "*": {},
-      }),
-    ).toEqual([]);
-  });
-
-  it("excludes explicitly disabled channels", () => {
-    expect(
-      collectSlackConfiguredChannelIds({
-        C0123ABCD: { enabled: false },
-        C0999ZZZZ: { allow: false },
-        C0777YYYY: {},
-      }),
-    ).toEqual(["C0777YYYY"]);
-  });
-});
-
-describe("resolveSlackShouldRequireMention", () => {
-  it("prefers the per-channel value over account and global", () => {
-    expect(
-      resolveSlackShouldRequireMention({
-        channelConfig: { allowed: true, requireMention: true },
-        accountRequireMention: false,
-        globalRequireMention: false,
-      }),
-    ).toBe(true);
-  });
-
-  it("lets a per-channel false override a global true", () => {
-    expect(
-      resolveSlackShouldRequireMention({
-        channelConfig: { allowed: true, requireMention: false },
-        globalRequireMention: true,
-      }),
-    ).toBe(false);
-  });
-
-  it("falls back to the account value when the channel is silent", () => {
-    expect(
-      resolveSlackShouldRequireMention({
-        channelConfig: { allowed: true },
-        accountRequireMention: true,
-        globalRequireMention: false,
-      }),
-    ).toBe(true);
-  });
-
-  it("falls back to the global env flag when channel and account are silent", () => {
-    expect(
-      resolveSlackShouldRequireMention({ globalRequireMention: true }),
-    ).toBe(true);
-  });
-
-  it("defaults to false so env-only deployments keep replying", () => {
-    expect(resolveSlackShouldRequireMention({})).toBe(false);
-  });
-});
-
-describe("resolveSlackInboundGate", () => {
-  it("denies an explicitly disabled channel even when otherwise allowed", () => {
-    const gate = resolveSlackInboundGate({
-      channelConfig: { allowed: false },
-      isChannelAllowed: true,
-      isMentioned: true,
+  it("applies explicit channel deny and bot precedence under open policy", async () => {
+    const policy = await resolver({
+      groupPolicy: "open",
+      allowBots: false,
+      channels: {
+        [CHANNEL]: { enabled: false },
+        [PRIVATE]: { allowBots: true },
+      },
     });
-    expect(gate).toEqual({ allowed: false, reason: "channel_disabled" });
+    await expect(policy.authorize(event())).resolves.toMatchObject({
+      allowed: false,
+      reason: "channel_disabled",
+    });
+    await expect(
+      policy.authorize(
+        event({
+          channelId: PRIVATE,
+          channelType: "group",
+          userId: "bot-identity",
+          isBotMessage: true,
+        }),
+      ),
+    ).resolves.toMatchObject({ allowed: true });
   });
 
-  it("denies a channel outside the allowlist", () => {
-    const gate = resolveSlackInboundGate({
-      isChannelAllowed: false,
-      isMentioned: true,
+  it("classifies App Home as DM and never applies wildcard channel denial", async () => {
+    const policy = await resolver({
+      groupPolicy: "allowlist",
+      channels: { "*": { enabled: false } },
+      dm: { policy: "allowlist", allowFrom: [`id:${ALICE}`] },
     });
-    expect(gate).toEqual({ allowed: false, reason: "channel_not_allowed" });
+    await expect(
+      policy.authorize(
+        event({
+          channelId: DM,
+          channelType: "app_home",
+          subtype: "app_home",
+          isMentioned: false,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      allowed: true,
+      conversationKind: "app_home",
+    });
   });
 
-  it("denies an unmentioned message when the channel requires a mention", () => {
-    const gate = resolveSlackInboundGate({
-      channelConfig: { allowed: true, requireMention: true },
-      isChannelAllowed: true,
-      isMentioned: false,
+  it("enforces DM allowlist, pairing, MPIM enablement, and MPIM channel list", async () => {
+    const policy = await resolver({
+      groupPolicy: "disabled",
+      dm: {
+        policy: "allowlist",
+        allowFrom: [`id:${ALICE}`],
+        groupEnabled: true,
+        groupChannels: [MPIM],
+      },
     });
-    expect(gate).toEqual({ allowed: false, reason: "mention_required" });
+    await expect(
+      policy.authorize(event({ channelId: DM, channelType: "im" })),
+    ).resolves.toMatchObject({
+      allowed: true,
+      conversationKind: "direct_message",
+    });
+    await expect(
+      policy.authorize(
+        event({ channelId: DM, channelType: "im", userId: BOB }),
+      ),
+    ).resolves.toMatchObject({ allowed: false, reason: "dm_user_not_allowed" });
+    await expect(
+      policy.authorize(event({ channelId: MPIM, channelType: "mpim" })),
+    ).resolves.toMatchObject({
+      allowed: true,
+      conversationKind: "multi_party_direct_message",
+    });
+
+    const pairing = await resolver(
+      { groupPolicy: "disabled", dm: { policy: "pairing" } },
+      { pairingAllowed: false },
+    );
+    await expect(
+      pairing.authorize(event({ channelId: DM, channelType: "im" })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "pairing_required",
+      pairingReply: "pair first",
+    });
   });
 
-  it("allows an unmentioned message when the channel opts out of mention gating", () => {
-    const gate = resolveSlackInboundGate({
-      channelConfig: { allowed: true, requireMention: false },
-      isChannelAllowed: true,
-      isMentioned: false,
-      globalRequireMention: true,
+  it("preserves thread lane classification without bypassing parent policy", async () => {
+    const policy = await resolver({
+      groupPolicy: "allowlist",
+      channels: { [CHANNEL]: { requireMention: true } },
     });
-    expect(gate.allowed).toBe(true);
+    await expect(
+      policy.authorize(event({ isThread: true, isMentioned: false })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "mention_required",
+      isThread: true,
+    });
   });
 
-  it("denies a user outside the per-channel user allowlist", () => {
-    const gate = resolveSlackInboundGate({
-      channelConfig: { allowed: true, users: ["U0123ABCD"] },
-      isChannelAllowed: true,
-      isMentioned: true,
-      userId: "UOTHER123",
-    });
-    expect(gate).toEqual({ allowed: false, reason: "user_not_allowed" });
+  it("surfaces lookup failure before an app_mention can be admitted", async () => {
+    const policy = await resolver(
+      { groupPolicy: "open" },
+      {
+        client: directory({
+          channels: [],
+          infoError: new Error("scope missing"),
+        }),
+      },
+    );
+    await expect(
+      policy.authorize(
+        event({ eventType: "app_mention", channelType: undefined }),
+      ),
+    ).rejects.toThrow("scope missing");
   });
 
-  it("allows a user inside the per-channel user allowlist", () => {
-    const gate = resolveSlackInboundGate({
-      channelConfig: { allowed: true, users: ["U0123ABCD"] },
-      isChannelAllowed: true,
-      isMentioned: true,
-      userId: "U0123ABCD",
+  it("keeps workspace policies isolated for identical names and user labels", async () => {
+    const first = await resolver(
+      { groupPolicy: "allowlist", channels: { ops: { users: ["alice"] } } },
+      { accountId: "workspace-a" },
+    );
+    const secondClient = directory({
+      channels: [{ id: "C0999ZZZZ", name: "ops", is_channel: true }],
+      users: [{ id: "workspace-b-alice", name: "alice" }],
     });
-    expect(gate.allowed).toBe(true);
-  });
+    const second = await resolver(
+      { groupPolicy: "allowlist", channels: { ops: { users: ["alice"] } } },
+      { client: secondClient, accountId: "workspace-b" },
+    );
 
-  it("skips the mention check for app_mention events", () => {
-    const gate = resolveSlackInboundGate({
-      channelConfig: { allowed: true, requireMention: true },
-      isChannelAllowed: true,
-      isMentioned: false,
-      skipMentionCheck: true,
+    await expect(first.authorize(event())).resolves.toMatchObject({
+      allowed: true,
     });
-    expect(gate.allowed).toBe(true);
+    await expect(
+      second.authorize(event({ channelId: CHANNEL, userId: ALICE })),
+    ).resolves.toMatchObject({ allowed: false, reason: "channel_not_allowed" });
   });
 });

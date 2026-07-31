@@ -1,401 +1,760 @@
 /**
- * Per-channel config resolution and inbound gating for the Slack connector.
- *
- * `SlackConfigSchema` (packages/agent/src/config/zod-schema.providers-core.ts)
- * has long parsed `channels.slack.channels[<id>]` entries carrying
- * `enabled` / `allow` / `requireMention` / `users` (plus `skills` and
- * `systemPrompt`), but `SlackService` only ever honoured the global
- * `SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS` env flag and the `SLACK_CHANNEL_IDS`
- * allowlist. Config that looked applied was silently dropped.
- *
- * This module ports the resolution pattern from `plugins/plugin-discord/allowlist.ts`
- * to Slack: it turns the structured per-channel record into (a) an allowlist
- * source and (b) an effective `requireMention` / user-allowlist decision, with
- * the precedence
- *
- *     per-channel explicit  >  account-level explicit  >  global env  >  default
- *
- * Matching is id-first (`C0123ABCD`), then by normalized channel-name slug when
- * the name is already known to the caller (the service passes its channel cache
- * entry, so gating never triggers an extra Slack API call), then `"*"`.
+ * Compiles one Slack account's persisted authorization settings into immutable
+ * channel and user identifiers, then classifies and authorizes every inbound
+ * message event. Name-based policy is resolved before Bolt starts so a cold
+ * cache, rename, duplicate display name, or dynamic join cannot widen access.
  */
-import type { SlackChannelConfig } from "./accounts";
+import { ElizaError } from "@elizaos/core";
+import type { ResolvedSlackAccount, SlackChannelConfig } from "./accounts";
 
-/**
- * Normalized allowlist structure for Slack entities (users, channels).
- */
-export interface SlackAllowList {
-  allowAll: boolean;
-  ids: Set<string>;
-  names: Set<string>;
+export type SlackConversationKind =
+  | "public_channel"
+  | "private_channel"
+  | "direct_message"
+  | "app_home"
+  | "multi_party_direct_message";
+
+export type SlackInboundDenyReason =
+  | "bot_not_allowed"
+  | "channel_disabled"
+  | "channel_not_allowed"
+  | "dm_disabled"
+  | "dm_user_not_allowed"
+  | "group_dm_disabled"
+  | "group_dm_not_allowed"
+  | "mention_required"
+  | "pairing_required"
+  | "user_not_allowed"
+  | "unknown_conversation";
+
+export interface SlackInboundEventContext {
+  eventType: "message" | "app_mention";
+  channelId: string;
+  userId: string;
+  channelType?: string;
+  subtype?: string;
+  isThread: boolean;
+  isMentioned: boolean;
+  isBotMessage: boolean;
 }
 
-/**
- * How a channel config entry was matched.
- */
-export type SlackChannelMatchSource = "id" | "name" | "wildcard";
-
-/**
- * A per-channel config entry resolved against a concrete channel.
- */
-export interface SlackChannelConfigResolved {
-  /** False only when the entry explicitly sets `enabled: false` / `allow: false`. */
+export interface SlackInboundPolicyDecision {
   allowed: boolean;
-  /** Explicit per-channel mention requirement, when the entry sets one. */
+  reason?: SlackInboundDenyReason;
+  conversationKind?: SlackConversationKind;
+  isThread: boolean;
+  channelPolicyKey?: string;
+  pairingReply?: string;
+}
+
+export interface SlackPairingDecision {
+  allowed: boolean;
+  replyMessage?: string;
+}
+
+export interface SlackPolicyDirectoryClient {
+  conversations: {
+    list(args: {
+      cursor?: string;
+      limit: number;
+      types: string;
+      exclude_archived: boolean;
+    }): Promise<{
+      channels?: SlackDirectoryChannel[];
+      response_metadata?: { next_cursor?: string };
+    }>;
+    info(args: { channel: string }): Promise<{
+      channel?: SlackDirectoryChannel;
+    }>;
+  };
+  users: {
+    list(args: { cursor?: string; limit: number }): Promise<{
+      members?: SlackDirectoryUser[];
+      response_metadata?: { next_cursor?: string };
+    }>;
+  };
+}
+
+interface SlackDirectoryChannel {
+  id?: string;
+  name?: string;
+  name_normalized?: string;
+  is_channel?: boolean;
+  is_group?: boolean;
+  is_im?: boolean;
+  is_mpim?: boolean;
+  is_private?: boolean;
+}
+
+interface SlackDirectoryUser {
+  id?: string;
+  name?: string;
+  real_name?: string;
+  deleted?: boolean;
+  profile?: {
+    display_name?: string;
+    display_name_normalized?: string;
+    real_name?: string;
+    real_name_normalized?: string;
+  };
+}
+
+interface CompiledIdentitySet {
+  allowAll: boolean;
+  ids: ReadonlySet<string>;
+}
+
+interface CompiledChannelPolicy {
+  key: string;
+  allowed: boolean;
   requireMention?: boolean;
-  /** Explicit per-channel user allowlist, when the entry sets one. */
-  users?: Array<string | number>;
-  /** Explicit per-channel bot-message toggle, when the entry sets one. */
   allowBots?: boolean;
-  /**
-   * Resolved but NOT yet consumed by the service. Per-channel skill filtering
-   * and system-prompt injection require changes to how message context is
-   * assembled and are deliberately out of scope here; they are surfaced so the
-   * follow-up slice has a single resolution point rather than a second one.
-   */
-  skills?: string[];
-  /** Resolved but NOT yet consumed by the service. See `skills`. */
-  systemPrompt?: string;
-  /** The config key that matched (`C0123ABCD`, a name slug, or `"*"`). */
-  matchKey?: string;
-  matchSource?: SlackChannelMatchSource;
+  users?: CompiledIdentitySet;
+}
+
+interface CompiledDmPolicy {
+  enabled: boolean;
+  policy: "open" | "disabled" | "allowlist" | "pairing";
+  users?: CompiledIdentitySet;
+  groupEnabled: boolean;
+  groupChannels?: ReadonlySet<string>;
+}
+
+export class SlackPolicyConfigurationError extends ElizaError {
+  override readonly name = "SlackPolicyConfigurationError";
+
+  constructor(
+    message: string,
+    public readonly accountId: string,
+  ) {
+    super(`Slack account ${accountId}: ${message}`, {
+      code: "SLACK_POLICY_CONFIGURATION_INVALID",
+      context: { accountId },
+    });
+  }
+}
+
+export interface SlackAccountPolicyResolverOptions {
+  account: ResolvedSlackAccount;
+  client: SlackPolicyDirectoryClient;
+  checkPairing: (userId: string) => Promise<SlackPairingDecision>;
 }
 
 /**
- * Normalizes a Slack name into a comparable slug.
- *
- * Slack channel names are already lowercase and dash-separated, but config is
- * hand-written, so `#General Chat` and `general-chat` must compare equal.
+ * Account-scoped authority for Slack event classification and admission.
  */
+export class SlackAccountPolicyResolver {
+  private readonly accountId: string;
+  private readonly client: SlackPolicyDirectoryClient;
+  private readonly checkPairing: (
+    userId: string,
+  ) => Promise<SlackPairingDecision>;
+  private readonly structured: boolean;
+  private readonly groupPolicy: "legacy" | "open" | "disabled" | "allowlist";
+  private readonly requireMention: boolean;
+  private readonly allowBots: boolean;
+  private readonly staticChannelIds: ReadonlySet<string>;
+  private readonly dynamicChannelIds = new Set<string>();
+  private readonly channelsById: ReadonlyMap<string, CompiledChannelPolicy>;
+  private readonly wildcardChannel?: CompiledChannelPolicy;
+  private readonly dm: CompiledDmPolicy;
+  private readonly conversationKinds = new Map<string, SlackConversationKind>();
+
+  private constructor(params: {
+    options: SlackAccountPolicyResolverOptions;
+    groupPolicy: "legacy" | "open" | "disabled" | "allowlist";
+    requireMention: boolean;
+    allowBots: boolean;
+    staticChannelIds: ReadonlySet<string>;
+    channelsById: ReadonlyMap<string, CompiledChannelPolicy>;
+    wildcardChannel?: CompiledChannelPolicy;
+    dm: CompiledDmPolicy;
+    conversationKinds: ReadonlyMap<string, SlackConversationKind>;
+  }) {
+    this.accountId = params.options.account.accountId;
+    this.client = params.options.client;
+    this.checkPairing = params.options.checkPairing;
+    this.structured = params.options.account.hasStructuredPolicy;
+    this.groupPolicy = params.groupPolicy;
+    this.requireMention = params.requireMention;
+    this.allowBots = params.allowBots;
+    this.staticChannelIds = params.staticChannelIds;
+    this.channelsById = params.channelsById;
+    this.wildcardChannel = params.wildcardChannel;
+    this.dm = params.dm;
+    for (const [id, kind] of params.conversationKinds) {
+      this.conversationKinds.set(id, kind);
+    }
+  }
+
+  static async create(
+    options: SlackAccountPolicyResolverOptions,
+  ): Promise<SlackAccountPolicyResolver> {
+    const { account, client } = options;
+    assertSupportedSecurityPolicy(account);
+
+    const channelEntries = Object.entries(account.channels);
+    const needsChannelDirectory =
+      channelEntries.some(
+        ([key]) => key !== "*" && !isSlackChannelIdKey(key),
+      ) || Boolean(account.dm?.groupChannels?.length);
+    const needsUserDirectory =
+      channelEntries.some(([, config]) =>
+        requiresUserDirectory(config.users),
+      ) || requiresUserDirectory(account.dm?.allowFrom);
+
+    const channels = needsChannelDirectory ? await listAllChannels(client) : [];
+    const users = needsUserDirectory ? await listAllUsers(client) : [];
+    const conversationKinds = new Map<string, SlackConversationKind>();
+    for (const channel of channels) {
+      if (channel.id) {
+        conversationKinds.set(channel.id, classifyDirectoryChannel(channel));
+      }
+    }
+
+    const channelsById = new Map<string, CompiledChannelPolicy>();
+    let wildcardChannel: CompiledChannelPolicy | undefined;
+    for (const [rawKey, config] of channelEntries) {
+      const key = rawKey.trim();
+      if (!key || !config) continue;
+      const compiled = await compileChannelPolicy(
+        account.accountId,
+        key,
+        config,
+        users,
+      );
+      if (key === "*") {
+        wildcardChannel = compiled;
+        continue;
+      }
+
+      const channelId = isSlackChannelIdKey(key)
+        ? key
+        : resolveUniqueChannelId(account.accountId, key, channels);
+      if (channelsById.has(channelId)) {
+        throw new SlackPolicyConfigurationError(
+          `multiple channel policy entries resolve to ${channelId}`,
+          account.accountId,
+        );
+      }
+      channelsById.set(channelId, compiled);
+    }
+
+    const staticChannelIds = new Set(
+      (account.config.allowedChannelIds ?? [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    );
+    const dm = await compileDmPolicy(account, channels, users);
+    const groupPolicy = account.hasStructuredPolicy
+      ? (account.config.groupPolicy ?? "allowlist")
+      : "legacy";
+    const requireMention = account.hasStructuredPolicy
+      ? (account.requireMention ?? true)
+      : (account.config.shouldRespondOnlyToMentions ?? false);
+
+    return new SlackAccountPolicyResolver({
+      options,
+      groupPolicy,
+      requireMention,
+      allowBots: account.hasStructuredPolicy
+        ? (account.config.allowBots ?? false)
+        : !(account.config.shouldIgnoreBotMessages ?? false),
+      staticChannelIds,
+      channelsById,
+      ...(wildcardChannel ? { wildcardChannel } : {}),
+      dm,
+      conversationKinds,
+    });
+  }
+
+  async authorize(
+    event: SlackInboundEventContext,
+  ): Promise<SlackInboundPolicyDecision> {
+    const kind = await this.resolveConversationKind(event);
+    if (!kind) {
+      return this.denied(event, "unknown_conversation");
+    }
+
+    if (kind === "direct_message" || kind === "app_home") {
+      return this.authorizeDirectMessage(event, kind);
+    }
+    if (kind === "multi_party_direct_message") {
+      return this.authorizeGroupDirectMessage(event, kind);
+    }
+    return this.authorizeChannel(event, kind);
+  }
+
+  async registerBotJoin(channelId: string): Promise<boolean> {
+    if (!this.structured) {
+      this.dynamicChannelIds.add(channelId);
+      return true;
+    }
+    if (this.groupPolicy === "disabled") return false;
+    if (this.groupPolicy === "open") return true;
+    return this.isConfiguredChannelAllowed(channelId);
+  }
+
+  registerBotLeave(channelId: string): void {
+    this.dynamicChannelIds.delete(channelId);
+  }
+
+  listAllowedChannelIds(): string[] {
+    const ids = new Set(this.staticChannelIds);
+    for (const id of this.dynamicChannelIds) ids.add(id);
+    for (const [id, policy] of this.channelsById) {
+      if (policy.allowed) ids.add(id);
+    }
+    return Array.from(ids).sort((a, b) => a.localeCompare(b));
+  }
+
+  isChannelAllowed(channelId: string): boolean {
+    if (!this.structured) {
+      if (
+        this.staticChannelIds.size === 0 &&
+        this.dynamicChannelIds.size === 0
+      ) {
+        return true;
+      }
+      return (
+        this.staticChannelIds.has(channelId) ||
+        this.dynamicChannelIds.has(channelId)
+      );
+    }
+    if (this.groupPolicy === "disabled") return false;
+    if (this.groupPolicy === "open") {
+      return this.channelsById.get(channelId)?.allowed !== false;
+    }
+    return this.isConfiguredChannelAllowed(channelId);
+  }
+
+  private isConfiguredChannelAllowed(channelId: string): boolean {
+    const channel = this.channelsById.get(channelId);
+    if (channel) return channel.allowed;
+    if (this.wildcardChannel) return this.wildcardChannel.allowed;
+    return this.staticChannelIds.has(channelId);
+  }
+
+  private async authorizeDirectMessage(
+    event: SlackInboundEventContext,
+    kind: "direct_message" | "app_home",
+  ): Promise<SlackInboundPolicyDecision> {
+    if (event.isBotMessage && !this.allowBots) {
+      return this.denied(event, "bot_not_allowed", kind);
+    }
+    if (!this.dm.enabled || this.dm.policy === "disabled") {
+      return this.denied(event, "dm_disabled", kind);
+    }
+    if (this.dm.policy === "open") return this.allowed(event, kind);
+    if (this.dm.users?.allowAll || this.dm.users?.ids.has(event.userId)) {
+      return this.allowed(event, kind);
+    }
+    if (this.dm.policy === "allowlist") {
+      return this.denied(event, "dm_user_not_allowed", kind);
+    }
+
+    const pairing = await this.checkPairing(event.userId);
+    if (pairing.allowed) return this.allowed(event, kind);
+    return {
+      ...this.denied(event, "pairing_required", kind),
+      ...(pairing.replyMessage ? { pairingReply: pairing.replyMessage } : {}),
+    };
+  }
+
+  private authorizeGroupDirectMessage(
+    event: SlackInboundEventContext,
+    kind: "multi_party_direct_message",
+  ): SlackInboundPolicyDecision {
+    if (event.isBotMessage && !this.allowBots) {
+      return this.denied(event, "bot_not_allowed", kind);
+    }
+    if (!this.dm.enabled || !this.dm.groupEnabled) {
+      return this.denied(event, "group_dm_disabled", kind);
+    }
+    if (this.dm.groupChannels && !this.dm.groupChannels.has(event.channelId)) {
+      return this.denied(event, "group_dm_not_allowed", kind);
+    }
+    return this.allowed(event, kind);
+  }
+
+  private authorizeChannel(
+    event: SlackInboundEventContext,
+    kind: "public_channel" | "private_channel",
+  ): SlackInboundPolicyDecision {
+    const channel =
+      this.channelsById.get(event.channelId) ?? this.wildcardChannel;
+    if (channel && !channel.allowed) {
+      return this.denied(event, "channel_disabled", kind, channel.key);
+    }
+    if (!this.isChannelAllowed(event.channelId)) {
+      return this.denied(event, "channel_not_allowed", kind, channel?.key);
+    }
+    if (event.isBotMessage && !(channel?.allowBots ?? this.allowBots)) {
+      return this.denied(event, "bot_not_allowed", kind, channel?.key);
+    }
+    if (
+      channel?.users &&
+      !channel.users.allowAll &&
+      !channel.users.ids.has(event.userId)
+    ) {
+      return this.denied(event, "user_not_allowed", kind, channel.key);
+    }
+    if (
+      event.eventType !== "app_mention" &&
+      (channel?.requireMention ?? this.requireMention) &&
+      !event.isMentioned
+    ) {
+      return this.denied(event, "mention_required", kind, channel?.key);
+    }
+    return this.allowed(event, kind, channel?.key);
+  }
+
+  private async resolveConversationKind(
+    event: SlackInboundEventContext,
+  ): Promise<SlackConversationKind | null> {
+    const inline = classifyEventShape(event.channelType, event.subtype);
+    if (inline) {
+      this.conversationKinds.set(event.channelId, inline);
+      return inline;
+    }
+    const cached = this.conversationKinds.get(event.channelId);
+    if (cached) return cached;
+    const result = await this.client.conversations.info({
+      channel: event.channelId,
+    });
+    if (!result.channel) return null;
+    const kind = classifyDirectoryChannel(result.channel);
+    this.conversationKinds.set(event.channelId, kind);
+    return kind;
+  }
+
+  private allowed(
+    event: SlackInboundEventContext,
+    conversationKind: SlackConversationKind,
+    channelPolicyKey?: string,
+  ): SlackInboundPolicyDecision {
+    return {
+      allowed: true,
+      conversationKind,
+      isThread: event.isThread,
+      ...(channelPolicyKey ? { channelPolicyKey } : {}),
+    };
+  }
+
+  private denied(
+    event: SlackInboundEventContext,
+    reason: SlackInboundDenyReason,
+    conversationKind?: SlackConversationKind,
+    channelPolicyKey?: string,
+  ): SlackInboundPolicyDecision {
+    return {
+      allowed: false,
+      reason,
+      isThread: event.isThread,
+      ...(conversationKind ? { conversationKind } : {}),
+      ...(channelPolicyKey ? { channelPolicyKey } : {}),
+    };
+  }
+}
+
 export function normalizeSlackSlug(value: string): string {
   return value
     .trim()
     .toLowerCase()
-    .replace(/^#/, "")
+    .replace(/^[#@]/, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
 
-/**
- * True when the string looks like a Slack channel id (`C`/`G`/`D` + base32-ish).
- *
- * Used to decide whether a `channels` config key is an id (usable as an
- * allowlist entry on its own) or a human-written channel name (which can only
- * be matched once the name is known).
- */
 export function isSlackChannelIdKey(key: string): boolean {
   return /^[CGD][A-Z0-9]{8,}$/i.test(key.trim());
 }
 
-/**
- * True when the string looks like a Slack user id (`U`, or `W` on Enterprise Grid).
- */
-function isSlackUserIdLike(value: string): boolean {
-  return /^[UW][A-Z0-9]{8,}$/i.test(value);
+function assertSupportedSecurityPolicy(account: ResolvedSlackAccount): void {
+  const unsupported: string[] = [];
+  const config = account.config;
+  if (config.mode === "http") unsupported.push("mode=http");
+  for (const key of [
+    "actions",
+    "commands",
+    "configWrites",
+    "slashCommand",
+    "reactionNotifications",
+    "reactionAllowlist",
+  ] as const) {
+    if (config[key] !== undefined) unsupported.push(key);
+  }
+  for (const [channel, policy] of Object.entries(account.channels)) {
+    for (const key of [
+      "tools",
+      "toolsBySender",
+      "skills",
+      "systemPrompt",
+    ] as const) {
+      if (policy[key] !== undefined)
+        unsupported.push(`channels.${channel}.${key}`);
+    }
+  }
+  if (unsupported.length > 0) {
+    throw new SlackPolicyConfigurationError(
+      `configuration contains policy fields the connector cannot enforce: ${unsupported.join(", ")}`,
+      account.accountId,
+    );
+  }
 }
 
-/**
- * Normalizes a raw allowlist array into a structured {@link SlackAllowList}.
- *
- * Accepts bare ids (`U0123ABCD`), Slack mention syntax (`<@U0123ABCD>`),
- * prefixed ids (`slack:U0123ABCD`, `user:…`), `"*"` for allow-all, and plain
- * names/handles, which are compared as slugs.
- *
- * Returns `null` for an absent or empty list, which callers read as
- * "no allowlist configured" (i.e. allow) rather than "allowlist matching nothing".
- */
-export function normalizeSlackAllowList(
-  raw: Array<string | number> | undefined,
-  prefixes: string[] = ["slack:", "user:", "pk:"],
-): SlackAllowList | null {
-  if (!raw || raw.length === 0) {
-    return null;
-  }
-
-  const ids = new Set<string>();
-  const names = new Set<string>();
-  const allowAll = raw.some((entry) => String(entry).trim() === "*");
-
-  for (const entry of raw) {
-    const text = String(entry).trim();
-    if (!text || text === "*") {
-      continue;
-    }
-
-    // Slack mention syntax: <@U0123ABCD> / <@U0123ABCD|display-name>
-    const mention = text.replace(/^<@/, "").replace(/>$/, "").split("|")[0];
-    if (mention && isSlackUserIdLike(mention)) {
-      ids.add(mention.toUpperCase());
-      continue;
-    }
-
-    const prefix = prefixes.find((p) => text.toLowerCase().startsWith(p));
-    if (prefix) {
-      const candidate = text.slice(prefix.length).trim();
-      if (candidate) {
-        // A prefixed value is an id if it looks like one, otherwise a handle.
-        if (isSlackUserIdLike(candidate)) {
-          ids.add(candidate.toUpperCase());
-        } else {
-          const slug = normalizeSlackSlug(candidate);
-          if (slug) names.add(slug);
-        }
-      }
-      continue;
-    }
-
-    const slug = normalizeSlackSlug(text);
-    if (slug) {
-      names.add(slug);
-    }
-  }
-
-  return { allowAll, ids, names };
-}
-
-/**
- * Checks a candidate (id and/or display name/handle) against a normalized list.
- */
-export function slackAllowListMatches(
-  list: SlackAllowList,
-  candidate: { id?: string; name?: string; handle?: string },
-): boolean {
-  if (list.allowAll) {
-    return true;
-  }
-
-  if (candidate.id && list.ids.has(candidate.id.toUpperCase())) {
-    return true;
-  }
-
-  for (const value of [candidate.name, candidate.handle]) {
-    if (!value) continue;
-    const slug = normalizeSlackSlug(value);
-    if (slug && list.names.has(slug)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Whether a Slack user passes an allowlist. An unset/empty allowlist allows.
- */
-export function resolveSlackUserAllowed(params: {
-  allowList?: Array<string | number>;
-  userId?: string;
-  userName?: string;
-  userHandle?: string;
-}): boolean {
-  const list = normalizeSlackAllowList(params.allowList);
-  if (!list) {
-    return true;
-  }
-
-  return slackAllowListMatches(list, {
-    id: params.userId,
-    name: params.userName,
-    handle: params.userHandle,
-  });
-}
-
-/**
- * Resolves the `channels` config entry that applies to a concrete channel.
- *
- * Returns `null` when no `channels` record is configured at all, which callers
- * must distinguish from "configured, but this channel has no entry" (an
- * unmatched channel yields `null` too, so the caller keeps its existing
- * env-driven behaviour rather than inventing a deny).
- */
-export function resolveSlackChannelConfig(params: {
-  channels?: Record<string, SlackChannelConfig | undefined>;
-  channelId: string;
-  channelName?: string;
-}): SlackChannelConfigResolved | null {
-  const { channels, channelId, channelName } = params;
-  if (!channels || typeof channels !== "object") {
-    return null;
-  }
-
-  const match = resolveSlackChannelEntry(channels, channelId, channelName);
-  if (!match) {
-    return null;
-  }
-
-  const { entry, matchKey, matchSource } = match;
-
+async function compileChannelPolicy(
+  accountId: string,
+  key: string,
+  config: SlackChannelConfig,
+  users: SlackDirectoryUser[],
+): Promise<CompiledChannelPolicy> {
   return {
-    // `enabled` is the documented key; `allow` is the legacy alias. Either
-    // one set to false disables the channel.
-    allowed: entry.enabled !== false && entry.allow !== false,
-    requireMention: entry.requireMention,
-    users: entry.users,
-    allowBots: entry.allowBots,
-    skills: entry.skills,
-    systemPrompt: entry.systemPrompt,
-    matchKey,
-    matchSource,
+    key,
+    allowed: config.enabled !== false && config.allow !== false,
+    ...(config.requireMention !== undefined
+      ? { requireMention: config.requireMention }
+      : {}),
+    ...(config.allowBots !== undefined ? { allowBots: config.allowBots } : {}),
+    ...(config.users !== undefined
+      ? {
+          users: resolveIdentitySet(
+            accountId,
+            `channels.${key}.users`,
+            config.users,
+            users,
+          ),
+        }
+      : {}),
   };
 }
 
-function resolveSlackChannelEntry(
-  channels: Record<string, SlackChannelConfig | undefined>,
-  channelId: string,
-  channelName?: string,
-): {
-  entry: SlackChannelConfig;
-  matchKey: string;
-  matchSource: SlackChannelMatchSource;
-} | null {
-  // 1. Exact channel id (case-insensitive; Slack ids are uppercase).
-  for (const [key, entry] of Object.entries(channels)) {
-    if (!entry) continue;
-    if (key.trim().toUpperCase() === channelId.trim().toUpperCase()) {
-      return { entry, matchKey: key, matchSource: "id" };
-    }
+async function compileDmPolicy(
+  account: ResolvedSlackAccount,
+  channels: SlackDirectoryChannel[],
+  users: SlackDirectoryUser[],
+): Promise<CompiledDmPolicy> {
+  if (!account.hasStructuredPolicy) {
+    return {
+      enabled: true,
+      policy: "open",
+      groupEnabled: true,
+    };
+  }
+  const config = account.dm;
+  const policy = config?.policy ?? "pairing";
+  const userSet =
+    config?.allowFrom !== undefined
+      ? resolveIdentitySet(
+          account.accountId,
+          "dm.allowFrom",
+          config.allowFrom,
+          users,
+        )
+      : undefined;
+  if (policy === "open" && !userSet?.allowAll) {
+    throw new SlackPolicyConfigurationError(
+      'dm.policy="open" requires dm.allowFrom=["*"]',
+      account.accountId,
+    );
   }
 
-  // 2. Channel-name slug, only when the caller already knows the name.
-  //    Never fetched here: gating must not add a Slack API round-trip per
-  //    inbound message.
-  const nameSlug = channelName ? normalizeSlackSlug(channelName) : "";
-  if (nameSlug) {
-    for (const [key, entry] of Object.entries(channels)) {
-      if (!entry) continue;
-      if (isSlackChannelIdKey(key)) continue;
-      if (normalizeSlackSlug(key) === nameSlug) {
-        return { entry, matchKey: key, matchSource: "name" };
-      }
-    }
-  }
+  const groupChannels =
+    config?.groupChannels === undefined
+      ? undefined
+      : new Set(
+          config.groupChannels.map((entry) => {
+            const value = String(entry).trim();
+            if (!value) {
+              throw new SlackPolicyConfigurationError(
+                "dm.groupChannels contains an empty entry",
+                account.accountId,
+              );
+            }
+            return isSlackChannelIdKey(value)
+              ? value
+              : resolveUniqueChannelId(account.accountId, value, channels);
+          }),
+        );
 
-  // 3. Wildcard default.
-  const wildcard = channels["*"];
-  if (wildcard) {
-    return { entry: wildcard, matchKey: "*", matchSource: "wildcard" };
-  }
-
-  return null;
+  return {
+    enabled: config?.enabled !== false,
+    policy,
+    ...(userSet ? { users: userSet } : {}),
+    groupEnabled: config?.groupEnabled === true,
+    ...(groupChannels ? { groupChannels } : {}),
+  };
 }
 
-/**
- * Collects the channel ids that a structured `channels` record contributes to
- * the inbound allowlist.
- *
- * Only id-shaped keys can act as an allowlist source: a name-keyed entry cannot
- * be turned into an id without an API call, so it participates in per-channel
- * resolution (once the name is cached) but never widens the allowlist. Entries
- * explicitly disabled are excluded — they are denials, not admissions.
- */
-export function collectSlackConfiguredChannelIds(
-  channels?: Record<string, SlackChannelConfig | undefined>,
-): string[] {
-  if (!channels || typeof channels !== "object") {
-    return [];
-  }
-
-  const ids: string[] = [];
-  for (const [key, entry] of Object.entries(channels)) {
-    if (!entry) continue;
-    if (entry.enabled === false || entry.allow === false) continue;
-    const trimmed = key.trim();
-    if (isSlackChannelIdKey(trimmed)) {
-      ids.push(trimmed);
+function resolveIdentitySet(
+  accountId: string,
+  path: string,
+  entries: Array<string | number>,
+  users: SlackDirectoryUser[],
+): CompiledIdentitySet {
+  const ids = new Set<string>();
+  let allowAll = false;
+  for (const raw of entries) {
+    const value = String(raw).trim();
+    if (!value) {
+      throw new SlackPolicyConfigurationError(
+        `${path} contains an empty entry`,
+        accountId,
+      );
     }
+    if (value === "*") {
+      allowAll = true;
+      continue;
+    }
+    const explicitId = extractExplicitUserId(value);
+    if (explicitId) {
+      ids.add(explicitId);
+      continue;
+    }
+    ids.add(resolveUniqueUserId(accountId, path, value, users));
   }
-  return ids;
+  return { allowAll, ids };
 }
 
-/**
- * Resolves whether the bot must be mentioned to respond in this channel.
- *
- * Precedence, highest first:
- *   1. per-channel `channels.<id>.requireMention`
- *   2. account-level `requireMention`
- *   3. global env `SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS`
- *   4. false (historical default: respond to everything in allowed channels)
- *
- * Note the default stays `false` rather than following the zod schema's
- * documented `true`: flipping it would silence every existing env-only
- * deployment that never set the flag. Making `true` the default is a separate,
- * announced change.
- */
-export function resolveSlackShouldRequireMention(params: {
-  channelConfig?: SlackChannelConfigResolved | null;
-  accountRequireMention?: boolean;
-  globalRequireMention?: boolean;
-}): boolean {
-  return (
-    params.channelConfig?.requireMention ??
-    params.accountRequireMention ??
-    params.globalRequireMention ??
-    false
+function extractExplicitUserId(value: string): string | null {
+  const mention = value.match(/^<@([^>|]+)(?:\|[^>]+)?>$/);
+  if (mention?.[1]) return mention[1];
+  const explicit = value.match(/^(?:id|slack-id):(.+)$/i);
+  return explicit?.[1]?.trim() || null;
+}
+
+function requiresUserDirectory(
+  entries: Array<string | number> | undefined,
+): boolean {
+  return Boolean(
+    entries?.some((entry) => {
+      const value = String(entry).trim();
+      return value !== "*" && !extractExplicitUserId(value);
+    }),
   );
 }
 
-/** Why an inbound Slack message was dropped. */
-export type SlackInboundDenyReason =
-  | "channel_disabled"
-  | "channel_not_allowed"
-  | "user_not_allowed"
-  | "mention_required";
+function resolveUniqueUserId(
+  accountId: string,
+  path: string,
+  value: string,
+  users: SlackDirectoryUser[],
+): string {
+  const exactId = users.filter((user) => user.id === value);
+  if (exactId.length === 1 && exactId[0]?.id) return exactId[0].id;
 
-/**
- * Single decision point for inbound gating, shared by the `message` and
- * `app_mention` handlers so the two paths cannot drift.
- *
- * `isChannelAllowed` is supplied by the caller (it folds the env allowlist,
- * the structured channel ids, and dynamically joined channels); this function
- * layers the per-channel config on top of it.
- */
-export function resolveSlackInboundGate(params: {
-  channelConfig?: SlackChannelConfigResolved | null;
-  isChannelAllowed: boolean;
-  isMentioned: boolean;
-  /** app_mention events are mentions by definition. */
-  skipMentionCheck?: boolean;
-  accountRequireMention?: boolean;
-  globalRequireMention?: boolean;
-  userId?: string;
-  userName?: string;
-  userHandle?: string;
-}): { allowed: boolean; reason?: SlackInboundDenyReason } {
-  const { channelConfig } = params;
-
-  // An explicit per-channel disable outranks every admission source, including
-  // a dynamic join and the env allowlist. Otherwise `enabled: false` would be
-  // unenforceable in any channel the bot is a member of.
-  if (channelConfig && !channelConfig.allowed) {
-    return { allowed: false, reason: "channel_disabled" };
+  const slug = normalizeSlackSlug(value);
+  const matches = users.filter((user) => {
+    if (user.deleted || !user.id) return false;
+    return userAliases(user).some(
+      (alias) => normalizeSlackSlug(alias) === slug,
+    );
+  });
+  if (matches.length !== 1 || !matches[0]?.id) {
+    throw new SlackPolicyConfigurationError(
+      `${path} entry ${JSON.stringify(value)} resolved to ${matches.length} active users; use id:<opaque-slack-id>`,
+      accountId,
+    );
   }
+  return matches[0].id;
+}
 
-  if (!params.isChannelAllowed) {
-    return { allowed: false, reason: "channel_not_allowed" };
+function userAliases(user: SlackDirectoryUser): string[] {
+  return [
+    user.name,
+    user.real_name,
+    user.profile?.display_name,
+    user.profile?.display_name_normalized,
+    user.profile?.real_name,
+    user.profile?.real_name_normalized,
+  ].filter((value): value is string => Boolean(value?.trim()));
+}
+
+function resolveUniqueChannelId(
+  accountId: string,
+  value: string,
+  channels: SlackDirectoryChannel[],
+): string {
+  const slug = normalizeSlackSlug(value);
+  const matches = channels.filter(
+    (channel) =>
+      channel.id &&
+      [channel.name, channel.name_normalized].some(
+        (name) => name && normalizeSlackSlug(name) === slug,
+      ),
+  );
+  if (matches.length !== 1 || !matches[0]?.id) {
+    throw new SlackPolicyConfigurationError(
+      `channel entry ${JSON.stringify(value)} resolved to ${matches.length} conversations; use an immutable Slack channel ID`,
+      accountId,
+    );
   }
+  return matches[0].id;
+}
 
-  if (channelConfig?.users) {
-    const userAllowed = resolveSlackUserAllowed({
-      allowList: channelConfig.users,
-      userId: params.userId,
-      userName: params.userName,
-      userHandle: params.userHandle,
+function classifyEventShape(
+  channelType?: string,
+  subtype?: string,
+): SlackConversationKind | null {
+  if (channelType === "app_home" || subtype === "app_home") return "app_home";
+  if (channelType === "im") return "direct_message";
+  if (channelType === "mpim") return "multi_party_direct_message";
+  if (channelType === "group") return "private_channel";
+  if (channelType === "channel") return "public_channel";
+  return null;
+}
+
+function classifyDirectoryChannel(
+  channel: SlackDirectoryChannel,
+): SlackConversationKind {
+  if (channel.is_im) return "direct_message";
+  if (channel.is_mpim) return "multi_party_direct_message";
+  if (channel.is_group || channel.is_private) return "private_channel";
+  return "public_channel";
+}
+
+async function listAllChannels(
+  client: SlackPolicyDirectoryClient,
+): Promise<SlackDirectoryChannel[]> {
+  const result: SlackDirectoryChannel[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await client.conversations.list({
+      ...(cursor ? { cursor } : {}),
+      limit: 200,
+      types: "public_channel,private_channel,mpim,im",
+      exclude_archived: true,
     });
-    if (!userAllowed) {
-      return { allowed: false, reason: "user_not_allowed" };
+    result.push(...(page.channels ?? []));
+    const next = page.response_metadata?.next_cursor?.trim() || undefined;
+    if (next && seenCursors.has(next)) {
+      throw new Error("Slack conversations.list returned a repeated cursor");
     }
-  }
+    if (next) seenCursors.add(next);
+    cursor = next;
+  } while (cursor);
+  return result;
+}
 
-  if (!params.skipMentionCheck) {
-    const requireMention = resolveSlackShouldRequireMention({
-      channelConfig,
-      accountRequireMention: params.accountRequireMention,
-      globalRequireMention: params.globalRequireMention,
+async function listAllUsers(
+  client: SlackPolicyDirectoryClient,
+): Promise<SlackDirectoryUser[]> {
+  const result: SlackDirectoryUser[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await client.users.list({
+      ...(cursor ? { cursor } : {}),
+      limit: 200,
     });
-    if (requireMention && !params.isMentioned) {
-      return { allowed: false, reason: "mention_required" };
+    result.push(...(page.members ?? []));
+    const next = page.response_metadata?.next_cursor?.trim() || undefined;
+    if (next && seenCursors.has(next)) {
+      throw new Error("Slack users.list returned a repeated cursor");
     }
-  }
-
-  return { allowed: true };
+    if (next) seenCursors.add(next);
+    cursor = next;
+  } while (cursor);
+  return result;
 }

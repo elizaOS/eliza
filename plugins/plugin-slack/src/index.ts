@@ -172,21 +172,18 @@ export {
   type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
-// Per-channel config resolution / inbound gating
 export {
-  collectSlackConfiguredChannelIds,
   isSlackChannelIdKey,
-  normalizeSlackAllowList,
   normalizeSlackSlug,
-  resolveSlackChannelConfig,
-  resolveSlackInboundGate,
-  resolveSlackShouldRequireMention,
-  resolveSlackUserAllowed,
-  type SlackAllowList,
-  type SlackChannelConfigResolved,
-  type SlackChannelMatchSource,
+  SlackAccountPolicyResolver,
+  type SlackAccountPolicyResolverOptions,
+  type SlackConversationKind,
   type SlackInboundDenyReason,
-  slackAllowListMatches,
+  type SlackInboundEventContext,
+  type SlackInboundPolicyDecision,
+  type SlackPairingDecision,
+  SlackPolicyConfigurationError,
+  type SlackPolicyDirectoryClient,
 } from "./allowlist";
 // Channel configuration types
 export type {

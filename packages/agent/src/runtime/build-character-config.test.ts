@@ -2,11 +2,12 @@
  * Tests buildCharacterFromConfig's translation of an ElizaConfig into a runtime
  * Character: the Matrix connector secret/settings boundary (public identifiers
  * stay plain settings, credentials become redacted secrets) and passthrough of
- * per-agent settings and knowledge directories.
+ * per-agent settings, canonical Slack connector policy, and knowledge directories.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
+import { ElizaSchema } from "../config/zod-schema.ts";
 import { buildCharacterFromConfig } from "./build-character-config.ts";
 import { applySandboxCharacterFromEnv } from "./sandbox-character.ts";
 
@@ -196,5 +197,26 @@ describe("agent entry character passthrough", () => {
         },
       },
     ]);
+  });
+});
+
+describe("connector policy projection", () => {
+  it("projects canonical Slack config without sharing mutable nested objects", () => {
+    const persisted = ElizaSchema.parse({
+      connectors: {
+        slack: {
+          channels: { ops: { requireMention: true, users: ["U123"] } },
+          dm: { policy: "allowlist", allowFrom: ["U123"] },
+        },
+      },
+    });
+    const slack = persisted.connectors?.slack;
+    const character = buildCharacterFromConfig(persisted);
+
+    const projectedSlack = character.settings?.slack as typeof slack;
+    expect(projectedSlack).toEqual(slack);
+    expect(projectedSlack?.groupPolicy).toBe("allowlist");
+    expect(projectedSlack).not.toBe(slack);
+    expect(projectedSlack?.channels).not.toBe(slack?.channels);
   });
 });

@@ -170,8 +170,17 @@ describe("Slack message connector adapter", () => {
       {
         runtime,
         teamId: "T123",
-        allowedChannelIds: new Set<string>(),
-        dynamicChannelIds: new Set<string>(),
+        defaultAccountId: "default",
+        accountStates: new Map([
+          [
+            "default",
+            {
+              accountId: "default",
+              teamId: "T123",
+              policy: { isChannelAllowed: () => true },
+            },
+          ],
+        ]),
         listChannels: vi.fn().mockResolvedValue([channel]),
         client: {
           users: {
