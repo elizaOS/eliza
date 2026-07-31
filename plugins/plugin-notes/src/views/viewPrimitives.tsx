@@ -20,8 +20,24 @@ export function handleRenderedMutationFailure(cause: unknown): void {
 
 export const VIEW_ROOT_STYLE: CSSProperties = {
   boxSizing: "border-box",
-  width: "calc(100% - var(--eliza-chat-side-clearance, 0px))",
-  height: "calc(100% - var(--eliza-chat-clearance, 5.25rem))",
+  position: "relative",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  overflowX: "hidden",
+  overflowY: "hidden",
+  color: "var(--txt, #f5f5f5)",
+  fontFamily: "inherit",
+};
+
+export const VIEW_SCROLL_STYLE: CSSProperties = {
+  boxSizing: "border-box",
+  position: "absolute",
+  insetBlockStart: 0,
+  insetBlockEnd: "var(--eliza-chat-clearance, 5.25rem)",
+  insetInlineStart: 0,
+  insetInlineEnd: "var(--eliza-chat-side-clearance, 0px)",
+  minWidth: 0,
   minHeight: 0,
   overflowX: "hidden",
   overflowY: "auto",
