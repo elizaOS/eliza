@@ -17,8 +17,8 @@ import type {
   SwarmEventListener,
 } from "@elizaos/core";
 import {
-  FAILED_TOOL_FALLBACK_MESSAGE,
   ElizaError,
+  FAILED_TOOL_FALLBACK_MESSAGE,
   logger,
   Service,
   SWARM_COORDINATOR_SERVICE_TYPE,
