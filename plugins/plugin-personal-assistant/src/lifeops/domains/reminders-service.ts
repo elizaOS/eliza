@@ -18,6 +18,7 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -4146,13 +4147,21 @@ export class RemindersDomain {
       blockedGroups.flatMap((groupKey) => [...(groups.get(groupKey) ?? [])]),
     );
 
-    let status: Awaited<ReturnType<typeof getSelfControlStatus>>;
-    try {
-      status = await getSelfControlStatus();
-    } catch (error) {
-      this.ctx.logLifeOpsError("website_access_status", error, {
-        blockedGroups,
-      });
+    // Provider calls below (status/stop/start) get a bounded in-call retry;
+    // exhaustion is reported through `runtime.reportError` so the failure is
+    // observable (RECENT_ERRORS + ERROR_REPORTED), never silently swallowed.
+    // The method itself stays non-throwing by design: it is a convergent
+    // reconciliation invoked post-commit from mutation paths (where a throw
+    // would mark an already-committed mutation failed) and the periodic
+    // `website_access_sync` subsystem tick is the durable retry schedule that
+    // re-drives the blocker toward the ledgered state.
+    const status = await this.runWebsiteBlockerCall({
+      operation: "website_access_status",
+      call: () => getSelfControlStatus(),
+      failureOf: () => null,
+      context: { blockedGroups },
+    });
+    if (status === null) {
       return;
     }
 
@@ -4176,16 +4185,13 @@ export class RemindersDomain {
       if (!activeLifeOpsBlock) {
         return;
       }
-      const stopResult = await stopSelfControlBlock();
-      if (stopResult.success === false) {
-        this.ctx.logLifeOpsWarn(
-          "website_access_sync",
-          "[lifeops] Failed to clear the LifeOps-managed website blocker state.",
-          {
-            error: stopResult.error,
-          },
-        );
-      }
+      await this.runWebsiteBlockerCall({
+        operation: "website_access_stop",
+        call: () => stopSelfControlBlock(),
+        failureOf: (result) =>
+          result.success === false ? (result.error ?? "stop failed") : null,
+        context: { reason: "clear_lifeops_block" },
+      });
       return;
     }
 
@@ -4197,40 +4203,84 @@ export class RemindersDomain {
     }
 
     if (activeLifeOpsBlock) {
-      const stopResult = await stopSelfControlBlock();
-      if (stopResult.success === false) {
-        this.ctx.logLifeOpsWarn(
-          "website_access_sync",
-          "[lifeops] Failed to update the existing LifeOps website block.",
-          {
-            error: stopResult.error,
-            blockedWebsites,
-          },
-        );
+      const stopResult = await this.runWebsiteBlockerCall({
+        operation: "website_access_stop",
+        call: () => stopSelfControlBlock(),
+        failureOf: (result) =>
+          result.success === false ? (result.error ?? "stop failed") : null,
+        context: { blockedWebsites },
+      });
+      if (stopResult === null) {
         return;
       }
     }
 
-    const startResult = await startSelfControlBlock({
-      websites: blockedWebsites,
-      durationMinutes: null,
-      metadata: {
-        managedBy: "lifeops",
-        blockedGroups,
-        reason: "lifeops_earned_access",
-      },
+    await this.runWebsiteBlockerCall({
+      operation: "website_access_start",
+      call: () =>
+        startSelfControlBlock({
+          websites: blockedWebsites,
+          durationMinutes: null,
+          metadata: {
+            managedBy: "lifeops",
+            blockedGroups,
+            reason: "lifeops_earned_access",
+          },
+        }),
+      failureOf: (result) =>
+        result.success === false ? (result.error ?? "start failed") : null,
+      context: { blockedWebsites, blockedGroups },
     });
-    if (startResult.success === false) {
-      this.ctx.logLifeOpsWarn(
-        "website_access_sync",
-        "[lifeops] Failed to apply the LifeOps website block.",
-        {
-          error: startResult.error,
-          blockedWebsites,
-          blockedGroups,
-        },
-      );
+  }
+
+  /**
+   * Bounded retry wrapper for website-blocker provider calls. Retries both
+   * thrown errors and typed `{ success: false }` results with short backoff;
+   * on exhaustion the failure is raised via `runtime.reportError` and `null`
+   * is returned so {@link syncWebsiteAccessState} can stop reconciling this
+   * tick without masking the failure. `failureOf` returns a failure
+   * description for a resolved-but-failed result, or `null` for success.
+   */
+  private async runWebsiteBlockerCall<T>(args: {
+    operation: string;
+    call: () => Promise<T>;
+    failureOf: (result: T) => string | null;
+    context: Record<string, unknown>;
+  }): Promise<T | null> {
+    const maxAttempts = 3;
+    let lastFailure: unknown = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const result = await args.call();
+        const failure = args.failureOf(result);
+        if (failure === null) {
+          return result;
+        }
+        lastFailure = new ElizaError(
+          `[LifeOpsReminders] ${args.operation} reported failure: ${failure}`,
+          {
+            code: "LIFEOPS_WEBSITE_BLOCKER_CALL_FAILED",
+            context: { operation: args.operation, attempt, ...args.context },
+            severity: "ephemeral",
+          },
+        );
+      } catch (error) {
+        lastFailure = error;
+      }
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 100 * 2 ** (attempt - 1)),
+        );
+      }
     }
+    this.ctx.runtime.reportError(
+      `LifeOpsReminders.${args.operation}`,
+      lastFailure instanceof Error
+        ? lastFailure
+        : new Error(String(lastFailure)),
+      { attempts: maxAttempts, ...args.context },
+    );
+    return null;
   }
 
   public async dispatchReminderAttempt(args: {
