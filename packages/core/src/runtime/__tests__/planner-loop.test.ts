@@ -1,10 +1,6 @@
 /**
- * Core planner-loop suite: `parsePlannerOutput` shape/recovery parsing and
- * end-to-end `runPlannerLoop` behavior — tool dispatch, the evaluator FINISH
- * gate, trajectory limits, coding/full-surface token caps, required-tool
- * handling, suffix compaction, and `plannerTemplate` policy text. Deterministic
- * — `useModel`, `executeToolCall`, and `evaluate` are vitest mocks; no live
- * model.
+ * Deterministic planner-loop tests cover parsing, tool dispatch, evaluator
+ * gating, safety limits, and final-response ownership with mocked model calls.
  */
 import { describe, expect, it, vi } from "vitest";
 import { promoteSubactionsToActions } from "../../actions/promote-subactions";
@@ -3577,6 +3573,94 @@ describe("v5 planner loop — evaluator gate", () => {
 
 		expect(evaluate).toHaveBeenCalledTimes(1);
 		expect(result.evaluator?.thought).toBe("Halted after failure.");
+	});
+
+	it("SKIPS evaluation when a sole failed action owns the complete error reply", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{ id: "cloud-list-1", name: "LIST_CLOUD_APPS", arguments: {} },
+				],
+			}),
+		};
+		const reply =
+			"I couldn't fetch your Eliza Cloud apps right now. Try again in a moment.";
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Cloud API request failed.",
+			userFacingText: reply,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			error: "provider unavailable",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "should not be called",
+			messageToUser: "A paraphrase would duplicate the action reply.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(evaluate).not.toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(reply);
+		expect(result.evaluator?.success).toBe(false);
+		expect(result.evaluator?.thought).toContain("action-owned");
+	});
+
+	it("WITHHOLDS a failed action-owned reply while another tool remains queued", async () => {
+		const runtime = {
+			useModel: plannerNativeWith({
+				toolCalls: [
+					{ id: "cloud-list-1", name: "LIST_CLOUD_APPS", arguments: {} },
+					{ id: "lookup-1", name: "LOOKUP", arguments: {} },
+				],
+			}),
+		};
+		const executeToolCall = vi.fn(async (toolCall: { name: string }) =>
+			toolCall.name === "LIST_CLOUD_APPS"
+				? {
+						success: false,
+						text: "Cloud API request failed.",
+						userFacingText: "I couldn't fetch your cloud apps.",
+						verifiedUserFacing: true,
+						turnComplete: true,
+						error: "provider unavailable",
+					}
+				: { success: true, text: "Lookup complete." },
+		);
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "NEXT_RECOMMENDED" as const,
+				thought: "The queued lookup must still run.",
+				recommendedToolCallId: "lookup-1",
+			})
+			.mockResolvedValueOnce({
+				success: false,
+				decision: "FINISH" as const,
+				thought: "The list failed, but the lookup completed.",
+				messageToUser:
+					"The lookup completed, but I couldn't fetch your cloud apps.",
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("I couldn't fetch your cloud apps.");
 	});
 
 	it("WITHHOLDS when more tools remain queued — evaluator IS called", async () => {

@@ -1,15 +1,6 @@
 /**
- * @module plugin-app-control/actions/app
- *
- * Unified APP action with actions (`launch`, `relaunch`,
- * `load_from_directory`, `list`, `create`).
- *
- * Validate gates on owner role + structured context + a lookup against
- * any pending APP_CREATE intent task in the same room (so the multi-turn
- * choice reply still resolves).
- *
- * Handler is pure dispatch — sub-handlers live in app-launch / app-relaunch
- * / app-list / app-load-from-directory / app-create.
+ * Dispatches owner-gated local app launch, inventory, registration, and
+ * creation operations. Pending create choices remain room-scoped across turns.
  */
 
 import path from "node:path";
@@ -194,7 +185,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		descriptionCompressed:
 			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
+			"Installed applications themselves -> APP. 'Show me the apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new local app is APP (action=list|launch|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers local applications. Cloud-qualified inventory requests use LIST_CLOUD_APPS, while Eliza Cloud lifecycle operations use their matching cloud-app action.",
 		suppressPostActionContinuation: true,
 
 		parameters: [

@@ -161,6 +161,11 @@ visible.
 - `index.node.ts` is the source of truth for the public surface; `index.ts` just re-exports it plus a few `@elizaos/contracts` type shims (kept explicit to avoid d.ts ambiguity).
 - Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
+- A sole completed action may own the reply by returning non-empty
+  `userFacingText` with `verifiedUserFacing: true` and `turnComplete: true`,
+  including a handled failure whose `success` remains false. Queued tools,
+  multiple completed tools, or an explicitly incomplete planner decision always
+  continue through evaluation.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
 - `runtime.ts` is very large (~9000 lines / ~259 KB) — navigate by symbol, not by reading top-to-bottom.

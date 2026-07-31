@@ -1,9 +1,8 @@
 /**
- * LIST_CLOUD_APPS — answer "what apps do I have on Eliza Cloud?".
+ * Lists an authenticated organization's Eliza Cloud apps for cloud-inventory turns.
  *
- * Reads the authenticated org's apps via the typed SDK (`client.listApps()`),
- * formats a clean reply (name / url / status), and handles the empty + no-key +
- * error paths gracefully. Read-only: no mutating calls.
+ * The canonical result text owns the sole-operation response across callback
+ * and returned-result transports, including empty and API failure states.
  */
 
 import type {
@@ -34,26 +33,21 @@ export const listCloudAppsAction: Action = {
   // owns it for device-installed apps, and a simile claimed by two parents is
   // dropped from routing as ambiguous (#16561).
   similes: [
-    "MY_APPS",
-    "GET_APPS",
-    "WHAT_APPS_DO_I_HAVE",
     "MY_CLOUD_APPS",
     "CLOUD_APPS",
     "LIST_ELIZA_CLOUD_APPS",
     "MY_DEPLOYED_APPS",
+    "MY_HOSTED_APPS",
     "MY_SITES",
   ],
   description:
-    "List the Eliza Cloud apps the user owns — the hosted apps and sites they created or deployed on Eliza Cloud (name, URL, deployment status, and credits/earnings when present). Use when the user asks what apps they have, to see their apps, their cloud apps, or the sites/apps they've made or deployed. Not for apps installed or running on this device.",
+    "List the hosted apps and sites the user created or deployed on Eliza Cloud (name, URL, deployment status, and credits/earnings when present). Use only for cloud-qualified inventory requests, not an individual app operation or apps installed on this device.",
   descriptionCompressed:
     "List the user's Eliza Cloud apps (name/url/status); not locally installed apps.",
   routingHint:
-    "The user's own Eliza Cloud apps -> LIST_CLOUD_APPS. 'List my apps', 'my cloud apps', 'what apps do I have on eliza cloud', 'sites/apps I've made or deployed' is LIST_CLOUD_APPS; apps installed or running on this device are APP (NOT this action).",
-  // Read-only inventory lookup; safe on any user turn. "general" mirrors the
-  // APP action's rationale (#9950): Stage-1 routinely classifies unambiguous
-  // app asks ("list my cloud apps") as general context; without it this
-  // action is context-gated off the planner surface and the local APP action
-  // wins by forfeit.
+    "Cloud-qualified inventory requests such as 'list my cloud apps', 'what apps do I have on Eliza Cloud', or 'sites I deployed' -> LIST_CLOUD_APPS. A launch, deploy, create, delete, update, or compound request uses the corresponding cloud-app action instead. Apps installed or running on this device use APP.",
+  // Stage 1 classifies explicit cloud inventory asks as general context, while
+  // settings/finance/apps cover turns already narrowed to cloud management.
   contexts: ["settings", "finance", "apps", "general"],
   contextGate: { anyOf: ["settings", "finance", "apps", "general"] },
 
@@ -75,6 +69,8 @@ export const listCloudAppsAction: Action = {
         success: false,
         text: "No Eliza Cloud API key configured.",
         userFacingText: NO_KEY_MESSAGE,
+        verifiedUserFacing: true,
+        turnComplete: true,
         data: { reason: "no_key" },
       };
     }
@@ -88,6 +84,8 @@ export const listCloudAppsAction: Action = {
           success: true,
           text: "User has no Eliza Cloud apps.",
           userFacingText: EMPTY_MESSAGE,
+          verifiedUserFacing: true,
+          turnComplete: true,
           data: { count: 0, apps: [] },
         };
       }
@@ -105,9 +103,6 @@ export const listCloudAppsAction: Action = {
         text: `Listed ${apps.length} Eliza Cloud app(s).`,
         userFacingText: reply,
         verifiedUserFacing: true,
-        // A single-operation read whose reply IS the complete answer: opting
-        // into the gated evaluator skip keeps a small planner model from
-        // re-rendering the already-delivered list as a second message.
         turnComplete: true,
         data: {
           count: apps.length,
@@ -120,16 +115,19 @@ export const listCloudAppsAction: Action = {
         },
       };
     } catch (err) {
+      // error-policy:J1 action boundary translation — the SDK failure becomes
+      // the complete retry guidance for this single read operation.
       logger.warn(
-        `[LIST_CLOUD_APPS] Failed to list apps: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        { error: err instanceof Error ? err.message : String(err) },
+        "[LIST_CLOUD_APPS] Failed to list apps",
       );
       await callback?.({ text: ERROR_MESSAGE, actions: ["LIST_CLOUD_APPS"] });
       return {
         success: false,
         text: "Failed to list Eliza Cloud apps.",
         userFacingText: ERROR_MESSAGE,
+        verifiedUserFacing: true,
+        turnComplete: true,
         error: err instanceof Error ? err : new Error(String(err)),
         data: { reason: "error" },
       };
@@ -138,7 +136,10 @@ export const listCloudAppsAction: Action = {
 
   examples: [
     [
-      { name: "{{user}}", content: { text: "what apps do I have?" } },
+      {
+        name: "{{user}}",
+        content: { text: "what apps do I have on Eliza Cloud?" },
+      },
       {
         name: "{{agent}}",
         content: {

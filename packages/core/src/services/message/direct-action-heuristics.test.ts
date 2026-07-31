@@ -1,9 +1,6 @@
 /**
- * Tests the direct-action heuristics — shell / web-search intent detection and
- * action-name resolution by canonical name, simile, or delegation tag. They must
- * fire on clear intent yet respect explicit negations ("don't run commands",
- * "don't browse the web"), since a false positive runs an unwanted
- * side-effecting action.
+ * Direct-action routing tests cover explicit intent, action metadata aliases,
+ * and the negative boundaries that prevent unintended tool execution.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -469,11 +466,6 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 	});
 });
 
-// Regression fence: a cloud-qualified app ask ("list my cloud apps") must
-// surface the cloud-apps action in the app slot, not the local APP control
-// action. With only [VIEWS, APP] hinted, the planner answered cloud-apps asks
-// with the installed-app list or a similarly-named cloud action —
-// LIST_CLOUD_APPS was never on the surface to win.
 describe("cloud-apps surface request inference", () => {
 	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
 		name: "VIEWS",
@@ -491,24 +483,38 @@ describe("cloud-apps surface request inference", () => {
 		tags: [],
 	};
 
-	it("surfaces LIST_CLOUD_APPS instead of local APP for cloud-qualified asks", () => {
+	it("surfaces only LIST_CLOUD_APPS for cloud inventory asks", () => {
 		for (const message of [
 			"list my cloud apps",
 			"show my cloud apps",
+			"my cloud apps",
 			"what cloud apps do I have",
 			"list my deployed apps",
 			"show me my hosted apps",
+			"which apps are deployed?",
 		]) {
 			expect(
 				inferDirectCurrentRequestCandidateActions(
 					[viewsAction, appAction, cloudAppsAction],
 					message,
 				),
-			).toEqual(["VIEWS", "LIST_CLOUD_APPS"]);
+			).toEqual(["LIST_CLOUD_APPS"]);
 		}
 	});
 
-	it("keeps local APP for unqualified installed-app asks", () => {
+	it("classifies cloud inventory as its own strong inference", () => {
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, cloudAppsAction],
+				"list my cloud apps",
+			),
+		).toEqual({
+			names: ["LIST_CLOUD_APPS"],
+			kind: "cloud-app-inventory",
+		});
+	});
+
+	it("keeps local APP for unqualified installed-app inventory asks", () => {
 		for (const message of ["show me the apps", "list installed apps"]) {
 			expect(
 				inferDirectCurrentRequestCandidateActions(
@@ -519,13 +525,13 @@ describe("cloud-apps surface request inference", () => {
 		}
 	});
 
-	it("falls back to local APP when no cloud-apps action is registered", () => {
+	it("does not reinterpret a cloud inventory ask as local APP", () => {
 		expect(
 			inferDirectCurrentRequestCandidateActions(
 				[viewsAction, appAction],
 				"list my cloud apps",
 			),
-		).toEqual(["VIEWS", "APP"]);
+		).toEqual([]);
 	});
 
 	it("resolves the cloud action by simile when the canonical name differs", () => {
@@ -539,7 +545,29 @@ describe("cloud-apps surface request inference", () => {
 				[viewsAction, appAction, renamed],
 				"list my cloud apps",
 			),
-		).toEqual(["VIEWS", "SHOW_CLOUD_PORTFOLIO"]);
+		).toEqual(["SHOW_CLOUD_PORTFOLIO"]);
+	});
+
+	it("does not offer the read-only list action for mutations or compound asks", () => {
+		for (const message of [
+			"launch my cloud app",
+			"delete my cloud app",
+			"create and deploy a cloud app",
+			"open my hosted app",
+			"show the cloud app settings",
+			"list my cloud apps and delete the old one",
+			"what cloud apps do I have and launch Acme",
+			"list my cloud apps and tell me the weather",
+			"list my cloud apps, then show settings",
+			"list my cloud apps; tell me the weather",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[viewsAction, appAction, cloudAppsAction],
+					message,
+				),
+			).not.toContain("LIST_CLOUD_APPS");
+		}
 	});
 
 	it("still routes a bare view name to VIEWS with the cloud action registered", () => {

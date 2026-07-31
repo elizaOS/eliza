@@ -1,8 +1,6 @@
 /**
- * @module plugin-app-control/actions/app-list
- *
- * list sub-mode: combine installed apps + running runs into structured text,
- * plus structured `data` for clients.
+ * Builds machine-readable installed and running inventory for APP list mode.
+ * The planner owns the sole prose reply for this read-only result.
  */
 
 import type { ActionResult } from "@elizaos/core";
@@ -63,11 +61,6 @@ export interface RunListInput {
 	client: AppControlClient;
 }
 
-// Read-only query: deliberately no visible callback (the silent read-only
-// contract of #16589). The structured table reaches the model via the
-// ActionResult and the user via the planner's single prose reply; posting
-// the raw dump made chat connectors double-post (raw "available_apps:"
-// block + the planner's prose in the same turn).
 export async function runList({ client }: RunListInput): Promise<ActionResult> {
 	const [installed, runs] = await Promise.all([
 		client.listInstalledApps(),

@@ -275,6 +275,8 @@ export function isShellDirectActionName(
  * candidate:
  * - "shell" / "coding" / "web": explicit intent phrasing in the message.
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
+ * - "cloud-app-inventory": an owned/hosted cloud-app inventory request with no
+ *   launch, mutation, or compound mutation intent.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
  * - "view-navigation": the message is nothing but a bare registered surface
@@ -288,6 +290,7 @@ export function isShellDirectActionName(
 export type DirectCurrentRequestCandidateKind =
 	| "shell"
 	| "coding"
+	| "cloud-app-inventory"
 	| "owner-goals"
 	| "view-surface"
 	| "view-navigation"
@@ -447,19 +450,34 @@ export function inferDirectCurrentRequestCandidateInference(
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);
 		if (codingAction) return { names: [codingAction], kind: "coding" };
 	}
-	const viewShellAction = findViewShellActionName(actions, messageText);
+	const cloudAppRequest = isCloudQualifiedAppRequest(messageText);
+	if (cloudAppRequest) {
+		const cloudInventoryAction = findCloudAppInventoryActionNameForRequest(
+			actions,
+			messageText,
+		);
+		if (cloudInventoryAction) {
+			return {
+				names: [cloudInventoryAction],
+				kind: "cloud-app-inventory",
+			};
+		}
+	}
+
+	const viewShellAction = cloudAppRequest
+		? undefined
+		: findViewShellActionName(actions, messageText);
 	if (viewShellAction) {
 		// A request that names the application surface itself ("show me the
 		// apps", "list running apps", "launch the shopify app") is ambiguous
-		// between the views/apps *page* (VIEWS) and the applications themselves.
-		// Surface BOTH candidates and let the planner arbitrate from the exposed
-		// routing hints; hinting only VIEWS answers every installed-apps ask
-		// with the UI view catalog instead of the app itself (#9950). The app
-		// slot resolves to the local app-control action, or to the cloud-apps
-		// action when the message pins the ask to hosted Eliza Cloud apps (see
-		// findAppActionNameForAppRequest). Structurally anchored to a registered
-		// app action, so runtimes without one are unaffected.
-		const appAction = findAppActionNameForAppRequest(actions, messageText);
+		// between the views/apps *page* (VIEWS) and the applications themselves
+		// (the APP control action). Surface both candidates and let the planner
+		// arbitrate from the exposed routing hints; hinting only VIEWS answers
+		// every installed-apps ask with the UI view catalog instead (#9950).
+		const appAction = findAppControlActionNameForAppRequest(
+			actions,
+			messageText,
+		);
 		if (appAction && appAction !== viewShellAction) {
 			return {
 				names: [viewShellAction, appAction],
@@ -477,17 +495,15 @@ export function inferDirectCurrentRequestCandidateInference(
 	// VIEWS/VIEW_CAPABILITY action's OWN tag/simile vocabulary, so it is inert
 	// for agents without one and never fires on words the views surface does
 	// not itself claim.
-	const bareViewNavigationAction = findBareViewNavigationActionName(
-		actions,
-		messageText,
-	);
+	const bareViewNavigationAction = cloudAppRequest
+		? undefined
+		: findBareViewNavigationActionName(actions, messageText);
 	if (bareViewNavigationAction) {
 		return { names: [bareViewNavigationAction], kind: "view-navigation" };
 	}
-	const viewCapabilityAction = findViewCapabilityActionName(
-		actions,
-		messageText,
-	);
+	const viewCapabilityAction = cloudAppRequest
+		? undefined
+		: findViewCapabilityActionName(actions, messageText);
 	if (viewCapabilityAction) {
 		return { names: [viewCapabilityAction], kind: "view-capability" };
 	}
@@ -749,33 +765,141 @@ const APP_CONTROL_ACTION_NAMES = [
 	"LAUNCH_APP",
 ] as const;
 
-// Cloud-apps action names/similes, in preference order. Mirrors the cloud-apps
-// action's own simile vocabulary (plugin-cloud-apps LIST_CLOUD_APPS); consulted
-// only when an app-shaped message carries a cloud qualifier token below, so
-// agents without a cloud-apps action are unaffected.
 const CLOUD_APPS_ACTION_NAMES = [
 	"LIST_CLOUD_APPS",
 	"MY_CLOUD_APPS",
 	"CLOUD_APPS",
 ] as const;
 
-// Tokens that pin an app-shaped message to the user's HOSTED Eliza Cloud apps
-// ("list my cloud apps", "my deployed apps") rather than apps installed or
-// running on this device. Compared in singular-normalized token space.
 const CLOUD_APP_QUALIFIER_TOKENS: ReadonlySet<string> = new Set<string>([
 	"CLOUD",
 	"DEPLOYED",
 	"HOSTED",
 ]);
 
-// Resolve the app action an app-shaped message targets. A cloud qualifier next
-// to the APP token pins the ask to the user's hosted Eliza Cloud apps, where
-// the local app-control action is wrong by its own routing contract — without
-// this the cloud-apps action is never on the planner surface and the local APP
-// action wins by forfeit. Falls back to the local app-control surface when no
-// cloud-apps action is registered, so those runtimes keep their previous
-// candidates.
-function findAppActionNameForAppRequest(
+// Direct inventory routing is intentionally conservative: any lifecycle verb
+// or extra clause leaves the full request for the planner instead of pruning a
+// mutation or second tool from the turn.
+const CLOUD_APP_MUTATION_TOKENS: ReadonlySet<string> = new Set<string>([
+	"ARCHIVE",
+	"ATTACH",
+	"BACKUP",
+	"BUILD",
+	"BUY",
+	"CHANGE",
+	"CLOSE",
+	"CLONE",
+	"CONFIGURE",
+	"COPY",
+	"CREATE",
+	"DELETE",
+	"DEPLOY",
+	"DISABLE",
+	"DOWNLOAD",
+	"EDIT",
+	"ENABLE",
+	"EXPORT",
+	"IMPORT",
+	"LAUNCH",
+	"MAKE",
+	"MONETIZE",
+	"OPEN",
+	"PAUSE",
+	"PUBLISH",
+	"REGENERATE",
+	"RELAUNCH",
+	"REMOVE",
+	"RENAME",
+	"RESTART",
+	"RESTORE",
+	"RESUME",
+	"ROTATE",
+	"ROLLBACK",
+	"RUN",
+	"SCALE",
+	"SET",
+	"SHARE",
+	"START",
+	"STOP",
+	"SUBMIT",
+	"SUSPEND",
+	"TRANSFER",
+	"UNDO",
+	"UPDATE",
+	"VERIFY",
+	"WITHDRAW",
+]);
+
+const CLOUD_APP_COMPOUND_TOKENS: ReadonlySet<string> = new Set<string>([
+	"ALSO",
+	"AND",
+	"BEFORE",
+	"BUT",
+	"OR",
+	"PLUS",
+	"THEN",
+	"WHILE",
+]);
+
+function cloudAppRequestTokens(messageText: string): {
+	raw: string[];
+	normalized: string[];
+} {
+	const raw = tokenizeActionMetadata(messageText);
+	return {
+		raw,
+		normalized: raw.map(normalizeSingularToken),
+	};
+}
+
+function isCloudQualifiedAppRequest(messageText: string): boolean {
+	const { normalized } = cloudAppRequestTokens(messageText);
+	return (
+		normalized.some((token) => token === "APP" || token === "APPLICATION") &&
+		normalized.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))
+	);
+}
+
+function findCloudAppInventoryActionNameForRequest(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	messageText: string,
+): string | undefined {
+	const { raw, normalized } = cloudAppRequestTokens(messageText);
+	const messageWithoutTerminalPunctuation = messageText
+		.trim()
+		.replace(/[.!?]+$/u, "");
+	if (
+		!normalized.some((token) => token === "APP" || token === "APPLICATION") ||
+		!normalized.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token)) ||
+		normalized.some((token) => CLOUD_APP_MUTATION_TOKENS.has(token)) ||
+		normalized.some((token) => CLOUD_APP_COMPOUND_TOKENS.has(token)) ||
+		/[,;\n\r]|[.!?]\s+\S/u.test(messageWithoutTerminalPunctuation)
+	) {
+		return undefined;
+	}
+
+	const pluralApp = raw.some(
+		(token) => token === "APPS" || token === "APPLICATIONS",
+	);
+	const explicitList = normalized.includes("LIST");
+	const inventoryQuestion =
+		pluralApp &&
+		normalized.some(
+			(token) => token === "SHOW" || token === "WHAT" || token === "WHICH",
+		);
+	const ownedPlural =
+		pluralApp &&
+		normalized.some(
+			(token) => token === "MY" || token === "MINE" || token === "OWN",
+		);
+	if (!explicitList && !inventoryQuestion && !ownedPlural) {
+		return undefined;
+	}
+
+	return findAvailableActionName(actions, CLOUD_APPS_ACTION_NAMES);
+}
+
+function findAppControlActionNameForAppRequest(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
 ): string | undefined {
@@ -784,13 +908,6 @@ function findAppActionNameForAppRequest(
 	);
 	if (!tokens.some((token) => token === "APP" || token === "APPLICATION")) {
 		return undefined;
-	}
-	if (tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))) {
-		const cloudAppsAction = findAvailableActionName(
-			actions,
-			CLOUD_APPS_ACTION_NAMES,
-		);
-		if (cloudAppsAction) return cloudAppsAction;
 	}
 	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }

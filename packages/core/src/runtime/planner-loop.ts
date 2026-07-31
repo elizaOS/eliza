@@ -1057,7 +1057,7 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
-		// Conservative gate (PR #7514): once a successful tool drains the queue,
+		// Conservative gate (PR #7514): once a tool drains the queue,
 		// synthesize FINISH only from a clean explicit planner reply or a verified
 		// action-owned completion. Falls through on any ambiguity. See
 		// `tryGateEvaluator` for the full contract.
@@ -4132,24 +4132,25 @@ function diagnosticFailureReason(
  * end-of-chain block are likewise unaffected.
  *
  * The evaluator's three trajectory-decision outcomes (FINISH, NEXT_RECOMMENDED,
- * CONTINUE) collapse to FINISH/success=true when ALL of the following hold
- * after a tool execution:
+ * CONTINUE) collapse to FINISH when all of the following hold after a tool
+ * execution. Action-owned results preserve their success/failure outcome.
  *
- *   1. The just-completed tool result is `success: true`.
- *   2. The plan queue is drained — no tools remain to evaluate.
- *   3. No failures have accumulated (no recent error to investigate).
- *   4. One side owns a complete user reply:
+ *   1. The plan queue is drained — no tools remain to evaluate.
+ *   2. One side owns a complete user reply:
  *      - this is the turn's only executed tool and the action returned
  *        `turnComplete:true`, `verifiedUserFacing:true`, and non-empty
- *        `userFacingText` after seeing the real tool outcome; or
+ *        `userFacingText` after seeing the real tool outcome. A handled failure
+ *        may own its complete error reply just as a success owns its answer; or
  *      - the most-recent planner output supplied an EXPLICIT `messageToUser`
  *        field (not a fallback inferred from native free text).
  *      `turnComplete:false` is an explicit action-owned disclaimer and always
  *      falls through to the evaluator.
- *   5. The selected reply is not a tool/function-syntax leak (the evaluator's
+ *   3. Planner-owned completion additionally requires a successful latest tool
+ *      and no unresolved or accumulated failures.
+ *   4. The selected reply is not a tool/function-syntax leak (the evaluator's
  *      own prompt rules say leaked syntax should force CONTINUE; we honor the
  *      same constraint by reusing `isUnsafeUserVisibleText`).
- *   6. The planner did NOT explicitly declare the turn incomplete on this
+ *   5. The planner did NOT explicitly declare the turn incomplete on this
  *      output — the JSON lane's top-level `completed: false`, or the native
  *      lane's reserved `eliza_turn_scope: "more_work_pending"` tool argument
  *      (#17034), both folded into `parsePlannerOutput().completed`. When
@@ -4194,21 +4195,19 @@ function tryGateEvaluator(args: {
 }): GatedEvaluatorDecision | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
-	if (latestResult?.success !== true) return null;
-	// #16983 allows a verified terminal action to skip the evaluator, but that
-	// success cannot complete an unrelated operation that remains failed.
-	if (latestUnresolvedFailedNonTerminalToolStep(args.trajectory)) return null;
+	if (!latestResult) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
-	if (args.failures.length > 0) return null;
-	// Precondition 6: respect the planner's own completion disclaimer.
+	// Precondition 5: respect the planner's own completion disclaimer.
 	if (args.lastPlannerExplicitCompleted === false) return null;
-	if (
-		latestResult.turnComplete === true &&
-		completedToolStepCount(args.trajectory) !== 1
-	) {
-		return null;
+
+	if (latestResult.turnComplete === true) {
+		if (completedToolStepCount(args.trajectory) !== 1) return null;
+		return selectGatedEvaluatorReply(latestResult, args);
 	}
 
+	if (latestResult.success !== true) return null;
+	if (latestUnresolvedFailedNonTerminalToolStep(args.trajectory)) return null;
+	if (args.failures.length > 0) return null;
 	return selectGatedEvaluatorReply(latestResult, args);
 }
 
@@ -4229,7 +4228,7 @@ function selectGatedEvaluatorReply(
 		return {
 			reason: "action_terminal_result",
 			output: {
-				success: true,
+				success: latestResult.success === true,
 				decision: "FINISH",
 				thought: ACTION_RESULT_GATED_EVALUATOR_THOUGHT,
 				messageToUser: message,

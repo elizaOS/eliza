@@ -60,7 +60,9 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
 ## Actions
 
 **Read-core**
-- `LIST_CLOUD_APPS` — list the user's apps (name / url / status).
+- `LIST_CLOUD_APPS` — list the user's cloud-qualified app inventory (name / url /
+  status). Its canonical terminal reply covers populated, empty, unconfigured,
+  and Cloud API error outcomes on callback and returned-result transports.
 - `GET_APP` — details for one app by name or id.
 - Provider `CLOUD_APPS` — injects the app inventory into planner context.
 
@@ -135,8 +137,11 @@ bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
   is cached ~5 min via `getById`; a missed eviction was a real payment-gate
   staleness bug — #11213).
 - **`validate` is only the API-key check.** All real validation lives in the
-  handler; every exit calls `callback` AND returns an `ActionResult` with
-  `userFacingText` (and `verifiedUserFacing: true` on truthful outcomes).
+  handler. Each exit returns an `ActionResult` with canonical `userFacingText`;
+  callback-capable transports receive that same text. A sole completed
+  `LIST_CLOUD_APPS` turn sets `verifiedUserFacing` and `turnComplete` even for a
+  handled failure, preserving `success: false` while preventing a second
+  evaluator-authored reply. Queued or multi-tool turns still reach evaluation.
 - **Deploy "done" ≠ 202-accepted.** It is READY status + a live reachability
   probe of the authoritative `production_url` (`deploy-gate.ts`).
 - **Tests fake ONLY the SDK.** `__tests__/helpers.ts` provides `FakeElizaCloudClient`

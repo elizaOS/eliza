@@ -1,5 +1,6 @@
 /**
- * LIST_CLOUD_APPS action tests: the user's app inventory (name / url / status). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
+ * Cloud-inventory action tests exercise real action behavior while faking only
+ * the typed Cloud SDK boundary.
  */
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
@@ -14,7 +15,6 @@ import {
   unkeyedRuntime,
 } from "./helpers";
 
-// Mock ONLY the SDK client; the action under test runs for real.
 mock.module("@elizaos/cloud-sdk", () => ({
   ElizaCloudClient: FakeElizaCloudClient,
 }));
@@ -26,6 +26,22 @@ const { listCloudAppsAction } = await import(
 describe("LIST_CLOUD_APPS", () => {
   beforeEach(() => {
     resetSdk();
+  });
+
+  it("claims cloud inventory aliases without taking generic local-app aliases", () => {
+    expect(listCloudAppsAction.similes).toEqual([
+      "MY_CLOUD_APPS",
+      "CLOUD_APPS",
+      "LIST_ELIZA_CLOUD_APPS",
+      "MY_DEPLOYED_APPS",
+      "MY_HOSTED_APPS",
+      "MY_SITES",
+    ]);
+    expect(listCloudAppsAction.similes).not.toContain("MY_APPS");
+    expect(listCloudAppsAction.similes).not.toContain("GET_APPS");
+    expect(listCloudAppsAction.similes).not.toContain("WHAT_APPS_DO_I_HAVE");
+    expect(listCloudAppsAction.contexts).toContain("general");
+    expect(listCloudAppsAction.contextGate?.anyOf).toContain("general");
   });
 
   describe("validate", () => {
@@ -83,11 +99,7 @@ describe("LIST_CLOUD_APPS", () => {
       expect(reply).toContain("Side Project");
       expect(reply).toContain("https://side.example.com");
       expect(reply).toContain("deployed");
-      // userFacingText mirrors the reply for the planner terminal fallback.
       expect(result?.userFacingText).toBe(reply);
-      // The success list is a complete single-operation answer: verified +
-      // turnComplete opt into the gated evaluator skip, so the planner never
-      // re-renders the already-delivered list as a second message.
       expect(result?.verifiedUserFacing).toBe(true);
       expect(result?.turnComplete).toBe(true);
       expect(
@@ -140,9 +152,8 @@ describe("LIST_CLOUD_APPS", () => {
           .count,
       ).toBe(0);
       expect(cb.calls[0]?.text).toContain("haven't created any apps");
-      // The canned empty message is not a verified terminal answer — the
-      // evaluator still runs and may add guidance (e.g. how to create one).
-      expect(result?.turnComplete).toBeUndefined();
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("degrades gracefully when no Cloud API key is configured", async () => {
@@ -161,6 +172,8 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("no_key");
       expect(cb.calls[0]?.text).toContain("no Cloud API key");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("handles a Cloud API error without throwing", async () => {
@@ -181,6 +194,27 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("error");
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
+    });
+
+    it("returns the same canonical reply when no callback transport exists", async () => {
+      setListApps(() =>
+        Promise.resolve({
+          success: true,
+          apps: [makeApp({ name: "No Callback App", slug: "no-callback" })],
+        }),
+      );
+
+      const result = await listCloudAppsAction.handler(
+        keyedRuntime(),
+        makeMessage("list my cloud apps"),
+      );
+
+      expect(result?.success).toBe(true);
+      expect(result?.userFacingText).toContain("No Callback App");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
   });
 });
