@@ -1,9 +1,11 @@
 import { analyzeWalletActivity } from "../analyzers/activity";
 import { analyzeWalletAge } from "../analyzers/walletAge";
+import { analyzeWalletAlpha } from "../analyzers/alpha";
 import { analyzeWalletAssessment } from "../analyzers/assessment";
 import { analyzeWalletBehavior } from "../analyzers/behavior";
 import { analyzeWalletCaseSummary } from "../analyzers/caseSummary";
 import { analyzeWalletCompliance } from "../analyzers/compliance";
+import { analyzeWalletConviction } from "../analyzers/conviction";
 import { analyzeWalletCustodyProfile } from "../analyzers/custody";
 import { analyzeWalletDecision } from "../analyzers/decision";
 import { analyzeWalletDeFi } from "../analyzers/defi";
@@ -17,12 +19,17 @@ import { analyzeWalletIntelligenceBrief } from "../analyzers/intelligenceBrief";
 import { analyzeInvestigationNarrative } from "../analyzers/investigationNarrative";
 import { analyzeInvestigationReplay } from "../analyzers/investigationReplay";
 import { analyzeInvestigationReport } from "../analyzers/investigationReport";
+import { analyzeInvestmentStyle } from "../analyzers/investmentStyle";
 import { analyzeWalletPortfolio } from "../analyzers/portfolio";
 import { analyzeProtocolIntelligence } from "../analyzers/protocolIntelligence";
+import { analyzeWalletProfitability } from "../analyzers/profitability";
 import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
+import { analyzeWalletReputation } from "../analyzers/reputation";
 import { analyzeWalletRisk } from "../analyzers/risk";
+import { analyzeSkunkScore } from "../analyzers/skunkScore";
 import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
+import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
@@ -117,6 +124,27 @@ export type WalletTransactionRiskAssessmentPipelineResult =
 export type WalletSmartMoneyPipelineResult =
   ReturnType<typeof analyzeWalletSmartMoney>;
 
+export type WalletStrategyPipelineResult =
+  ReturnType<typeof analyzeWalletStrategy>;
+
+export type WalletConvictionPipelineResult =
+  ReturnType<typeof analyzeWalletConviction>;
+
+export type WalletAlphaPipelineResult =
+  ReturnType<typeof analyzeWalletAlpha>;
+
+export type WalletInvestmentStylePipelineResult =
+  ReturnType<typeof analyzeInvestmentStyle>;
+
+export type WalletProfitabilityPipelineResult =
+  ReturnType<typeof analyzeWalletProfitability>;
+
+export type WalletReputationPipelineResult =
+  ReturnType<typeof analyzeWalletReputation>;
+
+export type WalletSkunkScorePipelineResult =
+  ReturnType<typeof analyzeSkunkScore>;
+
 export type WalletInvestigationReplayPipelineResult =
   ReturnType<typeof analyzeInvestigationReplay>;
 
@@ -168,6 +196,13 @@ export interface WalletPipelineOutput {
   transactionRiskAssessment:
     WalletTransactionRiskAssessmentPipelineResult;
   smartMoney: WalletSmartMoneyPipelineResult;
+  strategy: WalletStrategyPipelineResult;
+  conviction: WalletConvictionPipelineResult;
+  alpha: WalletAlphaPipelineResult;
+  investmentStyle: WalletInvestmentStylePipelineResult;
+  profitability: WalletProfitabilityPipelineResult;
+  reputation: WalletReputationPipelineResult;
+  skunkScore: WalletSkunkScorePipelineResult;
   investigationReplay:
     WalletInvestigationReplayPipelineResult;
   evidenceRecords: WalletEvidenceRecordsPipelineResult;
