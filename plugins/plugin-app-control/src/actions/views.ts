@@ -2790,6 +2790,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						}
 						const resolvedView =
 							resolvedCapability?.view ?? resolveViewTarget(viewId, views);
+						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
+							normalizeCapabilityKey(capability),
+						);
 						if (!resolvedCapability && resolvedView) {
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
@@ -2802,7 +2805,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									capability: matches[0],
 								};
 								capability = matches[0].id;
-							} else if (matches.length === 0) {
+							} else if (matches.length === 0 && !standardCapability) {
 								// Generated action labels may be a unique semantic alias for
 								// a declared catalog capability. Keep the view target fixed so
 								// this cannot dispatch across an unrelated surface.
@@ -2823,9 +2826,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								}
 							}
 						}
-						const standardCapability = STANDARD_VIEW_CAPABILITY_BY_KEY.get(
-							normalizeCapabilityKey(capability),
-						);
 						if (!resolvedCapability && !standardCapability) {
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
 							await callback?.({ text: reply });

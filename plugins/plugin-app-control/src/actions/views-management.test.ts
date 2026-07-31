@@ -2678,6 +2678,79 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("keeps an explicit agent-fill capability ahead of semantic view aliases", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						tags: ["notes", "sticky notes"],
+						capabilities: [
+							{
+								id: "create-note",
+								description: "Create a sticky note.",
+								params: {
+									title: { type: "string", description: "Note title." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "notes",
+					viewLabel: "Notes",
+					viewType: "gui" as const,
+					viewPath: "/notes",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { text: "Filled.", success: true },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("create a new note to eat lunch") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "agent-fill",
+				params: { id: "notes-title", value: "Eat Lunch" },
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "interact",
+			viewId: "notes",
+			capability: "agent-fill",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "agent-fill",
+					params: { id: "notes-title", value: "Eat Lunch" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+	});
+
 	it("summarizes structured interaction results without dumping JSON into chat", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
