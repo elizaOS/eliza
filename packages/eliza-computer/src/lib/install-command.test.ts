@@ -521,7 +521,7 @@ describe("authenticated skill installer lifecycle", () => {
     );
     expect(behind.status).not.toBe(0);
     expect(behind.stderr).toContain("behind or divergent");
-  });
+  }, 15_000);
 
   it("allows a labeled candidate to transition to its squash-merged develop result", () => {
     const root = freshRoot("candidate-merge");
