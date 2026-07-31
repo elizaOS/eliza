@@ -2,8 +2,8 @@
   "package": "elizaos-plugin-yieldsignal",
   "repository": "github:Stakemate369/plugin-yieldsignal",
   "kind": "plugin",
-  "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification and schema validation.",
+  "description": "Buyer-side GET_YIELD_SIGNAL action: risk-weighted ETH liquid staking APY plus USDC/WETH lending APY on Base via x402, with client-side spend controls, EIP-712 response verification, schema validation and partial-reading disclosure.",
   "homepage": "https://yieldsignal.vercel.app",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "tags": ["defi", "x402", "yield", "base", "payments"]
 }
