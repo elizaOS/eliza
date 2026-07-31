@@ -351,7 +351,11 @@ export async function verifyRemoteArtifacts({
     ) {
       throw new TypeError("remote verification received an invalid artifact");
     }
-    const url = new URL(artifact.path, `${PRODUCTION_ORIGIN}/`);
+    // Cloudflare Pages canonically serves the entry document at the apex and
+    // redirects /index.html, so verify its public route without relaxing the
+    // no-redirect boundary used for every artifact request.
+    const publicPath = artifact.path === "index.html" ? "/" : artifact.path;
+    const url = new URL(publicPath, `${PRODUCTION_ORIGIN}/`);
     url.searchParams.set("verify", cacheKey);
     const response = await fetchImpl(url, {
       cache: "no-store",
