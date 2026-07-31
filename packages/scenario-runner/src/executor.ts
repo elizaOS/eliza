@@ -59,6 +59,7 @@ import {
   pluginPackageIsRegistered,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
+import { waitForScenarioRequiredServices } from "./required-services.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -72,6 +73,7 @@ export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
   turnTimeoutMs: number;
+  serviceStartTimeoutMs?: number;
   executionProfile?: ScenarioExecutionProfile;
   runDir?: string;
 }
@@ -2424,11 +2426,6 @@ export async function runScenario(
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
           await runtime.registerPlugin(candidate);
-          await Promise.all(
-            (candidate.services ?? []).map((service) =>
-              runtime.getServiceLoadPromise(service.serviceType),
-            ),
-          );
           autoLoaded.add(pkg);
         }
       } catch (err) {
@@ -2448,6 +2445,11 @@ export async function runScenario(
       report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
       return report;
     }
+    await waitForScenarioRequiredServices(
+      runtime,
+      scenario,
+      opts.serviceStartTimeoutMs,
+    );
 
     // Re-attach interceptor so any actions registered by seed plugins are wrapped.
     interceptor.detach();

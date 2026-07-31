@@ -2214,6 +2214,7 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.services) {
+			const serviceTypesToStart = new Set<ServiceTypeName>();
 			for (const service of pluginToRegister.services) {
 				const serviceType = service.serviceType as ServiceTypeName;
 
@@ -2244,12 +2245,13 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					services.push(service);
 				}
+				serviceTypesToStart.add(serviceType);
+			}
 
-				// Eagerly kick off service start so it is available via the
-				// sync getService() by the time actions/routes need it.
-				// Fire-and-forget: cannot await here because _runServiceStart
-				// awaits initPromise which resolves after initialize() completes
-				// (after all registerPlugin calls finish). Awaiting would deadlock.
+			// Register every sibling implementation before startup takes a class
+			// snapshot, otherwise the first declaration can fail before a later
+			// implementation of the same service type is visible.
+			for (const serviceType of serviceTypesToStart) {
 				this._ensureServiceStarted(serviceType).catch((err) => {
 					this.logger.error(
 						{
@@ -4957,15 +4959,57 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		let inFlight = this.startingServices.get(key);
 		if (!inFlight) {
-			// Start ALL registered service classes for this type, not just the first.
-			// This supports multiple services of the same type (e.g. multiple wallet services).
+			// Implementations sharing a type are alternatives. Readiness is reached
+			// by the first successful implementation; failures remain observable,
+			// and all original causes are retained if every implementation fails.
 			inFlight = (async () => {
-				let first: Service | null = null;
-				for (const cls of classes) {
-					const result = await this._runServiceStart(key, serviceType, cls);
-					if (result && !first) first = result;
+				try {
+					const first = await Promise.any(
+						classes.map(async (cls) => {
+							const result = await this._runServiceStart(key, serviceType, cls);
+							if (!result) {
+								throw new Error(
+									`Service implementation ${cls.name || "<anonymous>"} did not start`,
+								);
+							}
+							return result;
+						}),
+					);
+					this.serviceRegistrationStatus.set(key, "registered");
+					const handler = this.servicePromiseHandlers.get(key);
+					if (handler) {
+						handler.resolve(first);
+						this.servicePromiseHandlers.delete(key);
+					}
+					return first;
+				} catch (error) {
+					const cause =
+						error instanceof AggregateError
+							? error
+							: new AggregateError(
+									[error],
+									`All implementations of service ${String(serviceType)} failed`,
+								);
+					const startupError = new ElizaError(
+						`Service ${String(serviceType)} not found or failed to start`,
+						{
+							code: "SERVICE_START_FAILED",
+							context: {
+								serviceType: String(serviceType),
+								implementationCount: classes.length,
+							},
+							cause,
+						},
+					);
+					const handler = this.servicePromiseHandlers.get(key);
+					if (handler) {
+						handler.reject(startupError);
+						this.servicePromiseHandlers.delete(key);
+						this.servicePromises.delete(key);
+					}
+					this.serviceRegistrationStatus.set(key, "failed");
+					throw startupError;
 				}
-				return first;
 			})();
 			this.startingServices.set(key, inFlight);
 		}
@@ -4989,18 +5033,21 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId, serviceType },
 				"Service class has no static start method",
 			);
-			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			throw new Error(
+				`Service implementation ${serviceDef.name || "<anonymous>"} has no static start method`,
+			);
 		}
 		try {
 			if (this.stopped) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Runtime stopped before service ${String(serviceType)} could start`,
+				);
 			}
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Service implementation ${serviceDef.name || "<anonymous>"} returned no instance`,
+				);
 			}
 			if (this.stopped) {
 				await this._stopServiceInstance(
@@ -5008,8 +5055,9 @@ export class AgentRuntime implements IAgentRuntime {
 					serviceInstance,
 					"late service start after runtime stop",
 				);
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new Error(
+					`Runtime stopped while service ${String(serviceType)} was starting`,
+				);
 			}
 			if (!this.services.has(key)) {
 				this.services.set(key, []);
@@ -5017,11 +5065,6 @@ export class AgentRuntime implements IAgentRuntime {
 			const serviceList = this.services.get(key);
 			if (serviceList) {
 				serviceList.push(serviceInstance);
-			}
-			const handler = this.servicePromiseHandlers.get(serviceType);
-			if (handler) {
-				handler.resolve(serviceInstance);
-				this.servicePromiseHandlers.delete(serviceType);
 			}
 			if (serviceDef.registerSendHandlers) {
 				serviceDef.registerSendHandlers(this, serviceInstance);
@@ -5032,16 +5075,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.reportError("AgentRuntime.serviceStart", error, {
 				serviceType,
 			});
-			const handler = this.servicePromiseHandlers.get(serviceType);
-			if (handler) {
-				handler.reject(
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				this.servicePromiseHandlers.delete(serviceType);
-				this.servicePromises.delete(serviceType);
-			}
-			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			throw error;
 		}
 	}
 
