@@ -4,13 +4,18 @@
  * background:apply channel. See the backgrounds section of the package CLAUDE.md.
  */
 import type * as React from "react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from "react";
+import {
+  setNativeWallpaperSource,
+  useNativeBackdropActive,
+} from "../glass/native-backdrop";
+import { resetNativeGlassHost } from "../glass/native-bridge";
 import type { ShaderConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
 import { useVoiceSettingsApplyChannel } from "../voice/useVoiceSettingsApplyChannel";
 import { applyRootCanvasPaint } from "./html-canvas-paint";
-import { ImageBackground } from "./ImageBackground";
+import { ImageBackground, resolveWallpaperUrl } from "./ImageBackground";
 import { ShaderBackground } from "./ShaderBackground";
 import { useAppearanceApplyChannel } from "./useAppearanceApplyChannel";
 import { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";
@@ -74,9 +79,50 @@ export function AppBackground({
   visible = true,
 }: AppBackgroundProps = {}): React.JSX.Element | null {
   const { backgroundConfig } = useBackgroundConfig();
+  const nativeBackdropActive = useNativeBackdropActive();
   useBackgroundApplyChannel();
   useAppearanceApplyChannel();
   useVoiceSettingsApplyChannel();
+
+  // Native glass regions and the hosted wallpaper live OUTSIDE the WebView,
+  // so they survive a renderer reload/crash/HMR that JS cleanup never saw.
+  // This component mounts once per document at the shell root, making it the
+  // renderer's boot boundary: clear any state a previous document left.
+  useEffect(() => {
+    void resetNativeGlassHost();
+  }, []);
+
+  // Publish the image wallpaper (resolved to an absolute renderer URL) to the
+  // native-backdrop coordinator. Publishing is passive — nothing goes native
+  // until a glass anchor acquires a lease (glass/native-backdrop.ts), so
+  // shader/color sessions never pay the transparent-WebView tax.
+  useEffect(() => {
+    const config =
+      backgroundConfig && typeof backgroundConfig === "object"
+        ? backgroundConfig
+        : null;
+    if (!visible || config?.mode !== "image" || !config.imageUrl) {
+      setNativeWallpaperSource(null);
+      return;
+    }
+    let absolute: string;
+    try {
+      absolute = new URL(
+        resolveWallpaperUrl(config.imageUrl),
+        typeof window === "undefined" ? undefined : window.location.href,
+      ).href;
+    } catch {
+      // error-policy:J3 untrusted stored config — an unparseable imageUrl is
+      // simply not native-hostable; the DOM wallpaper (which has its own
+      // resolution guards) remains the only painter.
+      setNativeWallpaperSource(null);
+      return;
+    }
+    setNativeWallpaperSource({
+      imageUrl: absolute,
+      color: config.color ?? DEFAULT_BACKGROUND_COLOR,
+    });
+  }, [backgroundConfig, visible]);
 
   // Mirror the active background onto the ROOT element so the viewport CANVAS —
   // the surface behind every box, which ALWAYS covers the full drawable screen
@@ -88,9 +134,14 @@ export function AppBackground({
   // offset: the canvas is the stable layer when viewport APIs disagree.
   // App-lifetime: updated on every background change, never torn down (this
   // layer is mounted once at the shell root for the whole session).
-  useEffect(() => {
-    applyRootCanvasPaint(backgroundConfig);
-  }, [backgroundConfig]);
+  // Layout effect (not passive): the native-backdrop handoff needs the canvas
+  // transparency to land in the same paint as the DOM wallpaper hiding, or the
+  // launch-bg fill flashes between the two.
+  useLayoutEffect(() => {
+    applyRootCanvasPaint(backgroundConfig, {
+      nativeImageHosted: nativeBackdropActive,
+    });
+  }, [backgroundConfig, nativeBackdropActive]);
 
   if (!visible) return null;
   // Defensive: the app store can return a non-object slice before the provider
@@ -101,7 +152,12 @@ export function AppBackground({
       : null;
   const color = config?.color ?? DEFAULT_BACKGROUND_COLOR;
   if (config?.mode === "image" && config.imageUrl) {
-    return <ImageBackground imageUrl={config.imageUrl} />;
+    return (
+      <ImageBackground
+        imageUrl={config.imageUrl}
+        imageHostedNatively={nativeBackdropActive}
+      />
+    );
   }
   if (config?.mode === "glsl" && config.shader) {
     // Key by source so a replacement shader remounts (fresh compile attempt +

@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useNativeBackdropActive } from "./native-backdrop";
 import { isNativeGlassAvailable } from "./native-bridge";
 
 /**
@@ -30,7 +31,8 @@ import { isNativeGlassAvailable } from "./native-bridge";
  */
 export type GlassTier = "native" | "css-refraction" | "css-frosted";
 
-function cssTier(): GlassTier {
+/** The best tier CSS alone can deliver in this browser. */
+export function cssGlassTier(): GlassTier {
   if (
     typeof CSS !== "undefined" &&
     CSS.supports?.("backdrop-filter", "url(#x)")
@@ -41,15 +43,20 @@ function cssTier(): GlassTier {
 }
 
 export function useNativeGlass(): GlassTier {
-  const [tier, setTier] = useState<GlassTier>(cssTier);
+  const [available, setAvailable] = useState(false);
+  const backdropActive = useNativeBackdropActive();
   useEffect(() => {
     let alive = true;
-    void isNativeGlassAvailable().then((available) => {
-      if (alive && available) setTier("native");
+    void isNativeGlassAvailable().then((next) => {
+      if (alive) setAvailable(next);
     });
     return () => {
       alive = false;
     };
   }, []);
-  return tier;
+  // Capability alone is not enough: native material lives BELOW the WebView
+  // and only has pixels to sample while the wallpaper is hosted natively.
+  // Passive surfaces therefore ride the anchored consumers' backdrop window;
+  // acquiring the backdrop is the anchor hook's job, never this probe's.
+  return available && backdropActive ? "native" : cssGlassTier();
 }
