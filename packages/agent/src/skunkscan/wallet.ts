@@ -11,6 +11,7 @@ import { runWalletPipeline } from "./pipeline/walletPipeline";
 import { parseSolanaTransaction } from "./parsers/transaction";
 import {
   SupportedChain,
+  UniversalNftHolding,
   WalletBalance,
   WalletInvestigationResult,
   WalletRecentTransaction,
@@ -199,6 +200,16 @@ const tokenHoldings: WalletTokenHolding[] =
     },
   );
 
+// NFT holdings are supplementary display data, not analyzed by any
+// downstream analyzer, so a connector that omits getNftHoldings (or a
+// call that fails) degrades to an empty list rather than failing the
+// whole investigation - the same tolerance the old chain-name check had.
+const nftHoldingsResult =
+  await connector.getNftHoldings?.(walletAddress);
+
+const nftHoldings: UniversalNftHolding[] =
+  nftHoldingsResult?.data?.holdings ?? [];
+
         const tokenPrices = await getSolanaTokenPrices([
   ...tokenHoldings.map((token) => token.tokenId),
   WRAPPED_SOL_MINT,
@@ -243,7 +254,6 @@ const {
   age,
   funding,
   portfolio,
-  nftHoldings,
   risk,
   whale,
   defi,

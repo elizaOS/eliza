@@ -144,6 +144,17 @@ export type UniversalAssetIdentifier = {
   metadata?: Record<string, unknown>;
 };
 
+// A single NFT holding, chain-neutral. `asset.tokenId` carries the
+// per-chain identifier (a Solana NFT's mint address; an EVM NFT's numeric
+// token ID within `asset.contractAddress`) - the same split
+// UniversalAssetIdentifier already uses for fungible tokens.
+export type UniversalNftHolding = {
+  asset: UniversalAssetIdentifier;
+  name: string | null;
+  collection: string | null;
+  imageUrl: string | null;
+};
+
 export type UniversalAmount = {
   rawAmount: string;
 

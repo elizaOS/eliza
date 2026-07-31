@@ -33,7 +33,6 @@ import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
-import { getSolanaNftHoldings } from "../helius";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
   WalletPipelineInput,
@@ -65,11 +64,6 @@ export async function runWalletPipeline(
     input.tokenPrices,
     input.chain,
   );
-
-  const nftHoldings =
-  input.chain === "solana"
-    ? await getSolanaNftHoldings(input.address)
-    : [];
 
   const risk = analyzeWalletRisk(
     input.balance.nativeAmount,
@@ -343,7 +337,6 @@ export async function runWalletPipeline(
     age,
     funding,
     portfolio,
-    nftHoldings,
     risk,
     whale,
     defi,
