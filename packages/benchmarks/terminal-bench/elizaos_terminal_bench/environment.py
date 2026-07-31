@@ -30,6 +30,7 @@ except ImportError:
     docker = None
     Container = None
 
+from elizaos_terminal_bench.fixture_guard import require_task_fixtures
 from elizaos_terminal_bench.types import (
     CommandStatus,
     TerminalCommand,
@@ -686,6 +687,9 @@ class LocalTerminalEnvironment:
         task_dir = Path(str(task_dir_raw))
         if not task_dir.is_dir():
             return
+        # Fail closed on archive-only fixtures (#16290) before staging a
+        # partial workspace that would ENOENT later inside the run.
+        require_task_fixtures(task_dir)
         workspace = self._workspace_path()
         for child in task_dir.iterdir():
             target = workspace / child.name
@@ -824,6 +828,9 @@ class TmuxDockerEnvironment(TerminalEnvironment):
             return task.docker_image
         if self._client is None:
             return task.docker_image
+        # Fail closed on archive-only fixtures (#16290) before the Docker
+        # build dies with an opaque COPY failure.
+        require_task_fixtures(df_path.parent)
 
         # docker tag rules: lowercase, dashes ok.
         tag_safe = task.task_id.replace("_", "-").lower()
