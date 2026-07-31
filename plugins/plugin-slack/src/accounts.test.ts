@@ -15,15 +15,23 @@ import {
 function createRuntime(
   slackConfig?: SlackMultiAccountConfig,
   envOverrides?: Record<string, string | undefined>,
+  privateCredentials?: Record<string, unknown>,
 ): IAgentRuntime {
   const character: Partial<Character> = {
     settings: slackConfig ? { slack: slackConfig } : {},
+    secrets: privateCredentials
+      ? {
+          SLACK_CONNECTOR_CREDENTIALS_JSON: JSON.stringify(privateCredentials),
+        }
+      : {},
   };
   const env = envOverrides ?? {};
   const runtime = {
     agentId: "agent-1",
     character: character as Character,
-    getSetting: vi.fn((key: string) => env[key]),
+    getSetting: vi.fn(
+      (key: string) => character.secrets?.[key] ?? env[key] ?? null,
+    ),
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
   return runtime as unknown as IAgentRuntime;
@@ -53,6 +61,50 @@ describe("normalizeSlackAccountRole", () => {
 });
 
 describe("resolveSlackAccount role wiring", () => {
+  it("combines public policy with private per-account credentials", () => {
+    const runtime = createRuntime(
+      {
+        accounts: {
+          support: {
+            role: "OWNER",
+            groupPolicy: "allowlist",
+            channels: { support: { enabled: true } },
+          },
+        },
+      },
+      undefined,
+      {
+        accounts: {
+          support: {
+            botToken: "xoxb-private",
+            appToken: "xapp-private",
+            userToken: "xoxp-private",
+            signingSecret: "signing-private",
+          },
+        },
+      },
+    );
+
+    const account = resolveSlackAccount(runtime, "support");
+    expect(account).toMatchObject({
+      role: "OWNER",
+      botToken: "xoxb-private",
+      appToken: "xapp-private",
+      userToken: "xoxp-private",
+      signingSecret: "signing-private",
+      channels: { support: { enabled: true } },
+    });
+  });
+
+  it("rejects policy fields smuggled through the private credential blob", () => {
+    const runtime = createRuntime(undefined, undefined, {
+      groupPolicy: "open",
+    });
+    expect(() => resolveSlackAccount(runtime)).toThrow(
+      /not a Slack credential string/,
+    );
+  });
+
   it("normalizes and deduplicates configured account IDs", () => {
     const runtime = createRuntime({
       accounts: {

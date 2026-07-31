@@ -8,7 +8,11 @@
  * `SlackService` reads these to build one runtime per workspace; the OWNER vs
  * AGENT role decides whether outbound posts use the user or bot token.
  */
-import type { ConnectorAccountRole, IAgentRuntime } from "@elizaos/core";
+import {
+  type ConnectorAccountRole,
+  ElizaError,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import type {
   SlackAccountConfig as CanonicalSlackAccountConfig,
   SlackChannelConfig,
@@ -27,6 +31,14 @@ export type {
  * Default account identifier used when no specific account is configured
  */
 export const DEFAULT_ACCOUNT_ID = "default";
+
+const SLACK_CONNECTOR_CREDENTIALS_SECRET = "SLACK_CONNECTOR_CREDENTIALS_JSON";
+const SLACK_CREDENTIAL_KEYS = new Set([
+  "appToken",
+  "botToken",
+  "signingSecret",
+  "userToken",
+]);
 
 /**
  * Source of the Slack token
@@ -159,15 +171,146 @@ export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
 /**
  * Gets the multi-account configuration from runtime settings
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseCredentialAccount(
+  value: unknown,
+  path: string,
+): SlackAccountConfig {
+  if (!isRecord(value)) {
+    throw new ElizaError(`${path} must be an object`, {
+      code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
+      context: { path },
+    });
+  }
+  const result: SlackAccountConfig = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!SLACK_CREDENTIAL_KEYS.has(key) || typeof raw !== "string") {
+      throw new ElizaError(`${path}.${key} is not a Slack credential string`, {
+        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
+        context: { path, key },
+      });
+    }
+    switch (key) {
+      case "appToken":
+        result.appToken = raw;
+        break;
+      case "botToken":
+        result.botToken = raw;
+        break;
+      case "signingSecret":
+        result.signingSecret = raw;
+        break;
+      case "userToken":
+        result.userToken = raw;
+        break;
+    }
+  }
+  return result;
+}
+
+function parsePrivateCredentials(
+  runtime: IAgentRuntime,
+): SlackMultiAccountConfig {
+  const raw = runtime.getSetting(SLACK_CONNECTOR_CREDENTIALS_SECRET);
+  if (raw === null || raw === undefined) return {};
+  if (typeof raw !== "string") {
+    throw new ElizaError(
+      `${SLACK_CONNECTOR_CREDENTIALS_SECRET} must be a JSON string`,
+      {
+        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
+        context: { setting: SLACK_CONNECTOR_CREDENTIALS_SECRET },
+      },
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    // error-policy:J2 Preserve parse context without exposing credential data.
+    throw new ElizaError(
+      `${SLACK_CONNECTOR_CREDENTIALS_SECRET} is not valid JSON`,
+      {
+        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
+        context: { setting: SLACK_CONNECTOR_CREDENTIALS_SECRET },
+        cause,
+      },
+    );
+  }
+  if (!isRecord(parsed)) {
+    throw new ElizaError(
+      `${SLACK_CONNECTOR_CREDENTIALS_SECRET} must contain an object`,
+      {
+        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
+        context: { setting: SLACK_CONNECTOR_CREDENTIALS_SECRET },
+      },
+    );
+  }
+
+  const result = parseCredentialAccount(
+    Object.fromEntries(
+      Object.entries(parsed).filter(([key]) => key !== "accounts"),
+    ),
+    "slack credentials",
+  ) as SlackMultiAccountConfig;
+  if (parsed.accounts !== undefined) {
+    if (!isRecord(parsed.accounts)) {
+      throw new ElizaError("slack credentials.accounts must be an object", {
+        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
+        context: { path: "slack credentials.accounts" },
+      });
+    }
+    result.accounts = Object.fromEntries(
+      Object.entries(parsed.accounts).map(([accountId, account]) => [
+        accountId,
+        parseCredentialAccount(
+          account,
+          `slack credentials.accounts.${accountId}`,
+        ),
+      ]),
+    );
+  }
+  return result;
+}
+
 function getMultiAccountConfig(
   runtime: IAgentRuntime,
 ): SlackMultiAccountConfig {
   const characterSlack = runtime.character.settings?.slack as
     | SlackMultiAccountConfig
     | undefined;
-  return characterSlack && typeof characterSlack === "object"
-    ? characterSlack
+  const publicConfig = isRecord(characterSlack) ? characterSlack : {};
+  const privateConfig = parsePrivateCredentials(runtime);
+  const publicAccounts = isRecord(publicConfig.accounts)
+    ? publicConfig.accounts
     : {};
+  const privateAccounts = privateConfig.accounts ?? {};
+  const accountIds = new Set([
+    ...Object.keys(publicAccounts),
+    ...Object.keys(privateAccounts),
+  ]);
+  const accounts = Object.fromEntries(
+    Array.from(accountIds).map((accountId) => [
+      accountId,
+      {
+        ...(isRecord(publicAccounts[accountId])
+          ? publicAccounts[accountId]
+          : {}),
+        ...(privateAccounts[accountId] ?? {}),
+      },
+    ]),
+  );
+
+  return {
+    ...publicConfig,
+    ...Object.fromEntries(
+      Object.entries(privateConfig).filter(([key]) => key !== "accounts"),
+    ),
+    ...(accountIds.size > 0 ? { accounts } : {}),
+  } as SlackMultiAccountConfig;
 }
 
 function containsStructuredPolicy(config: SlackAccountConfig): boolean {

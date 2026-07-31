@@ -201,22 +201,99 @@ describe("agent entry character passthrough", () => {
 });
 
 describe("connector policy projection", () => {
-  it("projects canonical Slack config without sharing mutable nested objects", () => {
+  it("projects Slack policy while keeping every account credential secret", () => {
     const persisted = ElizaSchema.parse({
       connectors: {
         slack: {
+          botToken: "xoxb-top-secret",
+          appToken: "xapp-top-secret",
+          userToken: "xoxp-top-secret",
+          signingSecret: "top-signing-secret",
           channels: { ops: { requireMention: true, users: ["U123"] } },
           dm: { policy: "allowlist", allowFrom: ["U123"] },
+          accounts: {
+            support: {
+              botToken: "xoxb-account-secret",
+              appToken: "xapp-account-secret",
+              userToken: "xoxp-account-secret",
+              signingSecret: "account-signing-secret",
+              channels: { support: { enabled: false } },
+            },
+          },
         },
       },
     });
     const slack = persisted.connectors?.slack;
-    const character = buildCharacterFromConfig(persisted);
+    const character = buildCharacterFromConfig(
+      persisted as unknown as ElizaConfig,
+    );
 
     const projectedSlack = character.settings?.slack as typeof slack;
-    expect(projectedSlack).toEqual(slack);
     expect(projectedSlack?.groupPolicy).toBe("allowlist");
+    expect(projectedSlack?.channels).toEqual(slack?.channels);
+    expect(projectedSlack?.accounts?.support?.channels).toEqual(
+      slack?.accounts?.support?.channels,
+    );
     expect(projectedSlack).not.toBe(slack);
     expect(projectedSlack?.channels).not.toBe(slack?.channels);
+
+    const plainSettings = JSON.stringify(character.settings);
+    for (const secret of [
+      "xoxb-top-secret",
+      "xapp-top-secret",
+      "xoxp-top-secret",
+      "top-signing-secret",
+      "xoxb-account-secret",
+      "xapp-account-secret",
+      "xoxp-account-secret",
+      "account-signing-secret",
+    ]) {
+      expect(plainSettings).not.toContain(secret);
+    }
+    expect(projectedSlack).not.toHaveProperty("botToken");
+    expect(projectedSlack).not.toHaveProperty("appToken");
+    expect(projectedSlack).not.toHaveProperty("userToken");
+    expect(projectedSlack).not.toHaveProperty("signingSecret");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty("botToken");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty("appToken");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty("userToken");
+    expect(projectedSlack?.accounts?.support).not.toHaveProperty(
+      "signingSecret",
+    );
+
+    const credentialJson = character.secrets?.SLACK_CONNECTOR_CREDENTIALS_JSON;
+    expect(typeof credentialJson).toBe("string");
+    if (typeof credentialJson !== "string") {
+      throw new TypeError("Slack credential projection was not serialized");
+    }
+    expect(JSON.parse(credentialJson)).toEqual({
+      botToken: "xoxb-top-secret",
+      appToken: "xapp-top-secret",
+      userToken: "xoxp-top-secret",
+      signingSecret: "top-signing-secret",
+      accounts: {
+        support: {
+          botToken: "xoxb-account-secret",
+          appToken: "xapp-account-secret",
+          userToken: "xoxp-account-secret",
+          signingSecret: "account-signing-secret",
+        },
+      },
+    });
+  });
+
+  it("keeps canonical schema defaults strict without affecting env-only boot", () => {
+    const persisted = ElizaSchema.parse({ connectors: { slack: {} } });
+    const configured = buildCharacterFromConfig(
+      persisted as unknown as ElizaConfig,
+    );
+    expect(configured.settings?.slack).toMatchObject({
+      groupPolicy: "allowlist",
+      mode: "socket",
+      userTokenReadOnly: true,
+    });
+
+    const envOnly = buildCharacterFromConfig(CONFIG);
+    expect(envOnly.settings?.slack).toBeUndefined();
   });
 });
