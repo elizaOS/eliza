@@ -76,7 +76,6 @@ export const lifeAccountPrivacy = appLifeopsPgSchema.table(
       .notNull()
       .default("[]"),
     metadataJson: text("metadata_json").notNull().default("{}"),
-    revision: integer("revision").notNull().default(1),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -111,6 +110,7 @@ export const lifeTaskDefinitions = appLifeopsPgSchema.table(
     goalId: text("goal_id"),
     source: text("source").notNull().default("manual"),
     metadataJson: text("metadata_json").notNull().default("{}"),
+    revision: integer("revision").notNull().default(1),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -161,6 +161,68 @@ export const lifeDefinitionMutationLedger = appLifeopsPgSchema.table(
       t.subjectType,
       t.subjectId,
       t.definitionId,
+    ),
+  ],
+);
+
+/**
+ * Fencing registry for third-party (provider) side effects performed on behalf of
+ * a definition mutation.
+ *
+ * This table exists because a wall-clock lease CANNOT safely gate an third-party
+ * effect: executor A can still be blocked inside a provider call while its
+ * lease lapses, at which point a naive lease hands executor B permission to
+ * call the same provider again. Fencing the terminal database write rejects
+ * A's row update, but A's provider call already happened. The bell cannot be
+ * un-rung.
+ *
+ * So the claim below is deliberately NOT time-expirable. A row in phase
+ * `in_flight` means "a provider call may be in progress right now"; a rival
+ * executor that meets it must defer rather than call the provider. Only the
+ * fencing-sequence holder may resolve the claim, or an explicit reconciler
+ * that first asks the provider what actually happened.
+ *
+ * `fencingSequence` is monotonic per (definition, effectKey) and is asserted in
+ * the WHERE clause of every terminal write, so a stale holder whose wall clock
+ * lapsed mid-effect is rejected at the database boundary.
+ *
+ * `providerRef` is written in the SAME statement that moves the claim to
+ * `completed`, so a crash between provider creation and persistence leaves the
+ * claim `in_flight` and recoverable rather than silently duplicating on retry.
+ */
+export const lifeDefinitionEffectClaims = appLifeopsPgSchema.table(
+  "life_definition_effect_claims",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    domain: text("domain").notNull(),
+    subjectType: text("subject_type").notNull(),
+    subjectId: text("subject_id").notNull(),
+    definitionId: text("definition_id").notNull(),
+    effectKey: text("effect_key").notNull(),
+    definitionRevision: integer("definition_revision").notNull(),
+    fencingSequence: integer("fencing_sequence").notNull(),
+    phase: text("phase").notNull().default("in_flight"),
+    providerRef: text("provider_ref"),
+    failureCode: text("failure_code"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    claimedAt: text("claimed_at").notNull(),
+    resolvedAt: text("resolved_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique("uniq_life_definition_effect_claim").on(
+      t.agentId,
+      t.domain,
+      t.subjectType,
+      t.subjectId,
+      t.definitionId,
+      t.effectKey,
+    ),
+    index("idx_life_definition_effect_claim_phase").on(
+      t.agentId,
+      t.definitionId,
+      t.phase,
     ),
   ],
 );
@@ -1985,6 +2047,7 @@ export const lifeOpsSchema = {
   lifeAccountPrivacy,
   lifeTaskDefinitions,
   lifeDefinitionMutationLedger,
+  lifeDefinitionEffectClaims,
   lifeTaskOccurrences,
   lifeGoalDefinitions,
   lifeGoalLinks,

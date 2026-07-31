@@ -252,6 +252,13 @@ const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "unknown",
 ] as const;
 
+/**
+ * Effect identity for the native Apple Reminders provider. Scoped per
+ * definition (not per request) so adjacent revisions of one definition
+ * serialize against each other instead of racing.
+ */
+const NATIVE_APPLE_REMINDER_EFFECT_KEY = "native.apple_reminders";
+
 const DEFAULT_SCHEDULED_TASK_PROCESS_LIMIT = 25;
 
 // Upper bound on a device-timezone-inferred travel window. A device-zone shift
@@ -1640,7 +1647,109 @@ export class RemindersDomain {
     };
   }
 
+  /**
+   * Fenced wrapper around the native Apple Reminders provider calls.
+   *
+   * Every provider call below is an irreversible third-party effect. Guarding it
+   * with a wall-clock lease is not sufficient: a lease can lapse while this
+   * method is blocked inside the native bridge, which would let a second
+   * executor issue a second provider call for the same definition. So the
+   * effect is instead gated on a non-time-expirable claim, and the resulting
+   * provider reference is persisted under a fencing sequence.
+   *
+   * When the claim is not granted, this method performs NO provider call and
+   * returns the definition unchanged (adopting any already-known provider ref).
+   */
   public async syncNativeAppleReminderForDefinition(args: {
+    definition: LifeOpsTaskDefinition | null;
+    previousDefinition?: LifeOpsTaskDefinition | null;
+  }): Promise<LifeOpsTaskDefinition | null> {
+    const fencingTarget = args.definition ?? args.previousDefinition ?? null;
+    if (!fencingTarget) {
+      return this.syncNativeAppleReminderForDefinitionUnfenced(args);
+    }
+    const scope = {
+      agentId: this.ctx.agentId(),
+      domain: fencingTarget.domain,
+      subjectType: fencingTarget.subjectType,
+      subjectId: fencingTarget.subjectId,
+    };
+    const candidateRevision = (
+      fencingTarget as unknown as Record<string, unknown>
+    ).revision;
+    const revision =
+      typeof candidateRevision === "number" &&
+      Number.isInteger(candidateRevision)
+        ? candidateRevision
+        : 0;
+    const grant = await this.ctx.repository.beginDefinitionEffect({
+      scope,
+      definitionId: fencingTarget.id,
+      effectKey: NATIVE_APPLE_REMINDER_EFFECT_KEY,
+      definitionRevision: revision,
+    });
+    if (grant.disposition !== "granted") {
+      // Another executor owns (or already finished) this effect. Do not touch
+      // the provider. Reporting the already-known reference keeps the caller
+      // consistent without performing a duplicate third-party action.
+      this.ctx.logLifeOpsWarn(
+        "native_apple_reminder_sync",
+        "[lifeops] Skipped a native Apple reminder sync that was not fenced to this executor.",
+        {
+          definitionId: fencingTarget.id,
+          disposition: grant.disposition,
+          claimedRevision: grant.entry.definitionRevision,
+          requestedRevision: revision,
+        },
+      );
+      if (args.definition && grant.disposition === "replayed") {
+        return this.withNativeAppleReminderId(
+          args.definition,
+          grant.entry.providerRef,
+        );
+      }
+      return args.definition;
+    }
+
+    let synced: LifeOpsTaskDefinition | null;
+    try {
+      synced = await this.syncNativeAppleReminderForDefinitionUnfenced(args);
+    } catch (error) {
+      await this.ctx.repository.failDefinitionEffect({
+        entry: grant.entry,
+        failureCode:
+          error instanceof Error && error.name
+            ? error.name
+            : "LIFEOPS_NATIVE_REMINDER_SYNC_FAILED",
+      });
+      throw error;
+    }
+
+    const providerRef = synced
+      ? (readNativeAppleReminderMetadata(synced.metadata)?.reminderId ?? null)
+      : null;
+    const resolved = await this.ctx.repository.completeDefinitionEffect({
+      entry: grant.entry,
+      providerRef,
+    });
+    if (!resolved) {
+      // Fenced out mid-effect: a newer claimant replaced this sequence while
+      // the provider call was in flight. The provider action already happened,
+      // so it is recorded by whoever holds the claim now; this executor must
+      // not additionally report success upward.
+      this.ctx.logLifeOpsWarn(
+        "native_apple_reminder_sync",
+        "[lifeops] A native Apple reminder sync was fenced out before it could commit.",
+        {
+          definitionId: fencingTarget.id,
+          fencingSequence: grant.entry.fencingSequence,
+        },
+      );
+    }
+    return synced;
+  }
+
+  private async syncNativeAppleReminderForDefinitionUnfenced(args: {
     definition: LifeOpsTaskDefinition | null;
     previousDefinition?: LifeOpsTaskDefinition | null;
   }): Promise<LifeOpsTaskDefinition | null> {

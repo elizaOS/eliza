@@ -271,6 +271,51 @@ export type LifeOpsDefinitionMutationClaim =
       entry: LifeOpsDefinitionMutationLedgerEntry;
     };
 
+/**
+ * Lifecycle of an third-party side effect performed for a definition.
+ *
+ * `in_flight` is the load-bearing state: it means a provider call may be
+ * executing at this instant. It has NO wall-clock expiry, because expiry is
+ * precisely the thing that would authorize a duplicate provider call while the
+ * original executor is still blocked inside one.
+ */
+export type LifeOpsDefinitionEffectPhase = "in_flight" | "completed" | "failed";
+
+export interface LifeOpsDefinitionEffectClaimEntry
+  extends LifeOpsDefinitionScope {
+  id: string;
+  definitionId: string;
+  effectKey: string;
+  definitionRevision: number;
+  fencingSequence: number;
+  phase: LifeOpsDefinitionEffectPhase;
+  providerRef: string | null;
+  failureCode: string | null;
+  attemptCount: number;
+  claimedAt: string;
+  resolvedAt: string | null;
+  updatedAt: string;
+}
+
+/**
+ * Result of asking for permission to run an third-party effect.
+ *
+ * - `granted`   — caller holds the fencing sequence and MUST call the provider.
+ * - `replayed`  — the effect already completed; caller MUST NOT call the
+ *                provider and should reuse `entry.providerRef`.
+ * - `in_flight` — another executor may be inside the provider call right now.
+ *                 Caller MUST NOT call the provider. This is the branch that
+ *                 makes Shaw's `["winner", "stale"]` control impossible.
+ * - `superseded`— a newer definition revision already claimed this effect, so
+ *                 this caller's effect is stale and must be abandoned. This is
+ *                 what prevents adjacent revisions from reordering.
+ */
+export type LifeOpsDefinitionEffectGrant =
+  | { disposition: "granted"; entry: LifeOpsDefinitionEffectClaimEntry }
+  | { disposition: "replayed"; entry: LifeOpsDefinitionEffectClaimEntry }
+  | { disposition: "in_flight"; entry: LifeOpsDefinitionEffectClaimEntry }
+  | { disposition: "superseded"; entry: LifeOpsDefinitionEffectClaimEntry };
+
 export {
   createLifeOpsHealthMetricSample,
   createLifeOpsHealthSleepEpisode,
@@ -464,6 +509,35 @@ function parseDefinitionMutationLedger(
     failureCode: row.failure_code ? toText(row.failure_code) : null,
     observedAt: toText(row.observed_at),
     createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseDefinitionEffectClaim(
+  row: Record<string, unknown>,
+): LifeOpsDefinitionEffectClaimEntry {
+  const phase = toText(row.phase);
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    domain: toText(row.domain) === "agent_ops" ? "agent_ops" : "user_lifeops",
+    subjectType: toText(row.subject_type) === "agent" ? "agent" : "owner",
+    subjectId: toText(row.subject_id),
+    definitionId: toText(row.definition_id),
+    effectKey: toText(row.effect_key),
+    definitionRevision: toNumber(row.definition_revision, 0),
+    fencingSequence: toNumber(row.fencing_sequence, 0),
+    phase:
+      phase === "completed"
+        ? "completed"
+        : phase === "failed"
+          ? "failed"
+          : "in_flight",
+    providerRef: row.provider_ref ? toText(row.provider_ref) : null,
+    failureCode: row.failure_code ? toText(row.failure_code) : null,
+    attemptCount: toNumber(row.attempt_count, 1),
+    claimedAt: toText(row.claimed_at),
+    resolvedAt: row.resolved_at ? toText(row.resolved_at) : null,
     updatedAt: toText(row.updated_at),
   };
 }
@@ -2532,6 +2606,34 @@ function definitionMutationLedgerId(input: {
     .digest("hex");
 }
 
+/**
+ * Deterministic identity for an third-party effect on a definition.
+ *
+ * Deliberately keyed on the DEFINITION and the effect, NOT on the originating
+ * request id. Request-scoped keys let two independent requests touching
+ * adjacent revisions of the same definition each open their own claim and then
+ * reorder their provider calls against each other.
+ */
+function definitionEffectClaimId(input: {
+  scope: LifeOpsDefinitionScope;
+  definitionId: string;
+  effectKey: string;
+}): string {
+  return crypto
+    .createHash("sha256")
+    .update(
+      [
+        input.scope.agentId,
+        input.scope.domain,
+        input.scope.subjectType,
+        input.scope.subjectId,
+        input.definitionId,
+        input.effectKey,
+      ].join("\u0000"),
+    )
+    .digest("hex");
+}
+
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -2702,6 +2804,35 @@ export class LifeOpsRepository {
       `CREATE INDEX IF NOT EXISTS idx_life_definition_mutation_target
          ON app_lifeops.life_definition_mutation_ledger
            (agent_id, domain, subject_type, subject_id, definition_id)`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS app_lifeops.life_definition_effect_claims (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        subject_type TEXT NOT NULL,
+        subject_id TEXT NOT NULL,
+        definition_id TEXT NOT NULL,
+        effect_key TEXT NOT NULL,
+        definition_revision INTEGER NOT NULL,
+        fencing_sequence INTEGER NOT NULL,
+        phase TEXT NOT NULL DEFAULT 'in_flight',
+        provider_ref TEXT,
+        failure_code TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 1,
+        claimed_at TEXT NOT NULL,
+        resolved_at TEXT,
+        updated_at TEXT NOT NULL,
+        CONSTRAINT uniq_life_definition_effect_claim
+          UNIQUE (agent_id, domain, subject_type, subject_id, definition_id, effect_key)
+      )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_life_definition_effect_claim_phase
+         ON app_lifeops.life_definition_effect_claims
+           (agent_id, definition_id, phase)`,
     );
   }
 
@@ -3345,6 +3476,270 @@ export class LifeOpsRepository {
       );
     }
     return { disposition: existing.status, entry: existing };
+  }
+
+  /**
+   * Ask for exclusive permission to perform an third-party side effect.
+   *
+   * The whole point of this method is that it NEVER grants permission on the
+   * basis of elapsed wall-clock time. Compare with a conventional lease:
+   *
+   *   lease: "A has not checked in for 30s, so A is probably dead, so B may go"
+   *          → but A may simply be blocked inside the provider call, and now
+   *            two provider calls are live. This is Shaw's `["winner","stale"]`.
+   *
+   *   claim: "A opened this effect and has not resolved it, so nobody else may
+   *          call the provider, full stop."
+   *
+   * Recovery from a genuinely dead executor is therefore NOT automatic and NOT
+   * time-based: it requires {@link reconcileDefinitionEffectClaim}, which takes
+   * an observation of what the provider actually did.
+   *
+   * All timestamps come from the database clock (`now()`), never from the
+   * caller, so a fast application clock cannot influence arbitration.
+   */
+  async beginDefinitionEffect(input: {
+    scope: LifeOpsDefinitionScope;
+    definitionId: string;
+    effectKey: string;
+    definitionRevision: number;
+  }): Promise<LifeOpsDefinitionEffectGrant> {
+    const id = definitionEffectClaimId(input);
+    // Fresh claim: no prior effect of this kind for this definition.
+    const inserted = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_definition_effect_claims (
+        id, agent_id, domain, subject_type, subject_id, definition_id,
+        effect_key, definition_revision, fencing_sequence, phase, provider_ref,
+        failure_code, attempt_count, claimed_at, resolved_at, updated_at
+      ) VALUES (
+        ${sqlQuote(id)},
+        ${sqlQuote(input.scope.agentId)},
+        ${sqlQuote(input.scope.domain)},
+        ${sqlQuote(input.scope.subjectType)},
+        ${sqlQuote(input.scope.subjectId)},
+        ${sqlQuote(input.definitionId)},
+        ${sqlQuote(input.effectKey)},
+        ${sqlInteger(input.definitionRevision)},
+        1,
+        'in_flight',
+        NULL,
+        NULL,
+        1,
+        now()::text,
+        NULL,
+        now()::text
+      )
+      ON CONFLICT ON CONSTRAINT uniq_life_definition_effect_claim DO NOTHING
+      RETURNING *`,
+    );
+    if (inserted[0]) {
+      return {
+        disposition: "granted",
+        entry: parseDefinitionEffectClaim(inserted[0]),
+      };
+    }
+
+    // A claim row already exists. Re-acquisition is permitted ONLY from a
+    // resolved phase, and only in two cases:
+    //
+    //   - the previous attempt at this revision (or older) FAILED, so a retry
+    //     is legitimate; or
+    //   - a strictly NEWER definition revision has arrived, which is a genuinely
+    //     new third-party effect rather than a replay of the old one.
+    //
+    // An `in_flight` row is never stolen, at any age. A `completed` row at the
+    // SAME revision is never re-granted, because that is exactly the duplicate
+    // this table exists to prevent.
+    const reacquired = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_definition_effect_claims
+          SET definition_revision = ${sqlInteger(input.definitionRevision)},
+              fencing_sequence = fencing_sequence + 1,
+              phase = 'in_flight',
+              failure_code = NULL,
+              attempt_count = attempt_count + 1,
+              claimed_at = now()::text,
+              resolved_at = NULL,
+              updated_at = now()::text
+        WHERE id = ${sqlQuote(id)}
+          AND (
+            (phase = 'failed'
+              AND definition_revision <= ${sqlInteger(input.definitionRevision)})
+            OR (phase = 'completed'
+              AND definition_revision < ${sqlInteger(input.definitionRevision)})
+          )
+        RETURNING *`,
+    );
+    if (reacquired[0]) {
+      return {
+        disposition: "granted",
+        entry: parseDefinitionEffectClaim(reacquired[0]),
+      };
+    }
+
+    const existing = await this.getDefinitionEffectClaim({
+      scope: input.scope,
+      definitionId: input.definitionId,
+      effectKey: input.effectKey,
+    });
+    if (!existing) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Definition effect claim was not reloadable",
+        {
+          code: "LIFEOPS_DEFINITION_EFFECT_RELOAD_FAILED",
+          context: {
+            ...input.scope,
+            definitionId: input.definitionId,
+            effectKey: input.effectKey,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    // A newer revision already owns this effect: this caller is stale and must
+    // not perform a provider call that would reorder behind the newer one.
+    if (existing.definitionRevision > input.definitionRevision) {
+      return { disposition: "superseded", entry: existing };
+    }
+    if (existing.phase === "completed") {
+      return { disposition: "replayed", entry: existing };
+    }
+    return { disposition: "in_flight", entry: existing };
+  }
+
+  /**
+   * Record that the third-party effect succeeded, fenced on the caller's sequence.
+   *
+   * `provider_ref` is persisted in the SAME statement that marks the claim
+   * completed, so there is no window where the provider has acted but the
+   * reference is lost.
+   *
+   * Returns `null` when the caller has been fenced out (its sequence is no
+   * longer current). A `null` return means the caller MUST NOT report success
+   * and MUST NOT write a terminal ledger row.
+   */
+  async completeDefinitionEffect(input: {
+    entry: LifeOpsDefinitionEffectClaimEntry;
+    providerRef: string | null;
+  }): Promise<LifeOpsDefinitionEffectClaimEntry | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_definition_effect_claims
+          SET phase = 'completed',
+              provider_ref = ${sqlText(input.providerRef)},
+              failure_code = NULL,
+              resolved_at = now()::text,
+              updated_at = now()::text
+        WHERE id = ${sqlQuote(input.entry.id)}
+          AND fencing_sequence = ${sqlInteger(input.entry.fencingSequence)}
+          AND phase = 'in_flight'
+        RETURNING *`,
+    );
+    return rows[0] ? parseDefinitionEffectClaim(rows[0]) : null;
+  }
+
+  /**
+   * Record that the third-party effect failed, fenced on the caller's sequence.
+   *
+   * Only a `failed` claim is re-acquirable, so this is the single legitimate
+   * path back to `granted` for a subsequent attempt. Returns `null` when the
+   * caller has been fenced out.
+   */
+  async failDefinitionEffect(input: {
+    entry: LifeOpsDefinitionEffectClaimEntry;
+    failureCode: string;
+  }): Promise<LifeOpsDefinitionEffectClaimEntry | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_definition_effect_claims
+          SET phase = 'failed',
+              failure_code = ${sqlQuote(input.failureCode)},
+              resolved_at = now()::text,
+              updated_at = now()::text
+        WHERE id = ${sqlQuote(input.entry.id)}
+          AND fencing_sequence = ${sqlInteger(input.entry.fencingSequence)}
+          AND phase = 'in_flight'
+        RETURNING *`,
+    );
+    return rows[0] ? parseDefinitionEffectClaim(rows[0]) : null;
+  }
+
+  /**
+   * Resolve an `in_flight` claim abandoned by a dead executor.
+   *
+   * This is intentionally the ONLY escape from `in_flight`, and it demands an
+   * `observedProviderRef`: the caller must have asked the provider what really
+   * happened. Passing `null` means "the provider confirms no effect exists",
+   * which releases the claim as `failed` (and therefore re-acquirable). A
+   * non-null value adopts the effect the dead executor actually performed.
+   *
+   * There is deliberately no timeout-driven variant of this method.
+   */
+  async reconcileDefinitionEffectClaim(input: {
+    scope: LifeOpsDefinitionScope;
+    definitionId: string;
+    effectKey: string;
+    observedProviderRef: string | null;
+    failureCode?: string;
+  }): Promise<LifeOpsDefinitionEffectClaimEntry | null> {
+    const id = definitionEffectClaimId(input);
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_definition_effect_claims
+          SET phase = ${input.observedProviderRef === null ? "'failed'" : "'completed'"},
+              provider_ref = ${sqlText(input.observedProviderRef)},
+              failure_code = ${
+                input.observedProviderRef === null
+                  ? sqlQuote(
+                      input.failureCode ??
+                        "LIFEOPS_DEFINITION_EFFECT_RECONCILED_ABSENT",
+                    )
+                  : "NULL"
+              },
+              resolved_at = now()::text,
+              updated_at = now()::text
+        WHERE id = ${sqlQuote(id)}
+          AND phase = 'in_flight'
+        RETURNING *`,
+    );
+    return rows[0] ? parseDefinitionEffectClaim(rows[0]) : null;
+  }
+
+  /**
+   * Test-only: backdate a claim so a control can prove that age alone never
+   * releases an `in_flight` effect. Production code has no reason to move this
+   * column, and deliberately no method that expires a claim by time.
+   */
+  async markDefinitionEffectClaimedAtForTest(input: {
+    scope: LifeOpsDefinitionScope;
+    definitionId: string;
+    effectKey: string;
+    claimedAt: string;
+  }): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_definition_effect_claims
+          SET claimed_at = ${sqlQuote(input.claimedAt)}
+        WHERE id = ${sqlQuote(definitionEffectClaimId(input))}`,
+    );
+  }
+
+  async getDefinitionEffectClaim(input: {
+    scope: LifeOpsDefinitionScope;
+    definitionId: string;
+    effectKey: string;
+  }): Promise<LifeOpsDefinitionEffectClaimEntry | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_definition_effect_claims
+        WHERE ${definitionScopeSql(input.scope)}
+          AND definition_id = ${sqlQuote(input.definitionId)}
+          AND effect_key = ${sqlQuote(input.effectKey)}
+        LIMIT 1`,
+    );
+    return rows[0] ? parseDefinitionEffectClaim(rows[0]) : null;
   }
 
   async getDefinitionMutation(input: {
