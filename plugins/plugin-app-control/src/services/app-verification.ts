@@ -21,6 +21,7 @@ import {
 	describeScreenshotWithVision,
 	detectPackageManager,
 	ensureVerificationDir,
+	loadAppFromWorkdir,
 	type PackageManager,
 	parseEslintOutput,
 	parseTscOutput,
@@ -1195,6 +1196,18 @@ export class AppVerificationService extends Service {
 					if (!client) {
 						throw new Error(
 							"Launch check requested but AppControlClient was not initialized",
+						);
+					}
+					// Register-before-launch: launch resolves through the runtime's
+					// registry, but a freshly built app used to be registered only by
+					// the PASS-path room bridge — circular with this check, so a
+					// first-build launch check could never pass. Same idempotent
+					// load-from-directory the bridge uses; when registration fails the
+					// launch check itself reports the unresolvable name.
+					const load = await loadAppFromWorkdir(opts.workdir);
+					if (!load.ok) {
+						logger.warn(
+							`[AppVerificationService] pre-launch app registration failed: ${load.error}`,
 						);
 					}
 					result = await runLaunchCheck(dir, client, check.appName, launchCtx);

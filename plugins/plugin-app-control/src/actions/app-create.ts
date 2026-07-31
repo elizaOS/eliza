@@ -990,7 +990,22 @@ export async function runCreate({
 		});
 	}
 
-	const installed = await appClient.listInstalledApps();
+	// error-policy:J4 designed degrade — this list only powers the optional
+	// "edit an existing app?" offer. On a cold registry cache the server's
+	// load (network fetch + workspace scans) exceeds the 2s loopback read
+	// deadline and this read aborts; failing the whole create over it turned
+	// every first post-restart build into "The operation timed out." Degrade
+	// to create-new instead; the load-bearing edit-path reads stay strict.
+	let installed: InstalledAppInfo[] = [];
+	try {
+		installed = await appClient.listInstalledApps();
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] APP/create could not list installed apps (${
+				err instanceof Error ? err.message : String(err)
+			}); proceeding to create-new`,
+		);
+	}
 	const matches = rankMatches(intent, installed);
 
 	if (matches.length === 0) {

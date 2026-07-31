@@ -11,8 +11,13 @@ import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, resolveStateDir } from "@elizaos/core";
+import {
+	ModelType,
+	resolveServerOnlyPort,
+	resolveStateDir,
+} from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 
 export type Diagnostic = {
 	file: string;
@@ -41,6 +46,73 @@ export function detectPackageManager(workdir: string): PackageManager {
 		current = parent;
 	}
 	return "npm";
+}
+
+export interface RegisteredAppItem {
+	slug: string;
+	canonicalName: string;
+}
+
+/**
+ * Register a freshly built app into the running runtime via the loopback agent
+ * API so a subsequent `launch <name>` resolves. The
+ * `/api/apps/load-from-directory` route scans a *parent* directory for app
+ * subdirs and registers each valid one through the AppRegistryService
+ * (`trust: "external"`), so we pass the workdir's parent, not the workdir
+ * itself. That register is idempotent by slug and the worker host returns the
+ * existing worker for an already-registered sibling, so re-scanning the shared
+ * apps dir does not churn unrelated apps. Returns the registered items so
+ * callers can confirm the app is actually launchable instead of promising a
+ * `launch` that would fail with "No installed app matches". Used by the
+ * verification launch check (register-before-launch) and by the room bridge's
+ * pass message.
+ */
+export async function loadAppFromWorkdir(
+	workdir: string,
+): Promise<
+	{ ok: true; items: RegisteredAppItem[] } | { ok: false; error: string }
+> {
+	const port = resolveServerOnlyPort(process.env);
+	const directory = path.dirname(workdir);
+	try {
+		const resp = await fetch(
+			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
+			{
+				method: "POST",
+				headers: createViewsRequestHeaders(),
+				body: JSON.stringify({ directory }),
+				signal: AbortSignal.timeout(30_000),
+			},
+		);
+		const body = (await resp.json().catch(() => ({}))) as Record<
+			string,
+			unknown
+		>;
+		if (resp.ok && body.ok === true) {
+			const items = Array.isArray(body.items)
+				? body.items.filter(
+						(item): item is RegisteredAppItem =>
+							typeof item === "object" &&
+							item !== null &&
+							typeof (item as RegisteredAppItem).slug === "string" &&
+							typeof (item as RegisteredAppItem).canonicalName === "string",
+					)
+				: [];
+			return { ok: true, items };
+		}
+		return {
+			ok: false,
+			error:
+				typeof body.error === "string"
+					? body.error
+					: `register returned HTTP ${resp.status}`,
+		};
+	} catch (err) {
+		return {
+			ok: false,
+			error: err instanceof Error ? err.message : String(err),
+		};
+	}
 }
 
 /**
