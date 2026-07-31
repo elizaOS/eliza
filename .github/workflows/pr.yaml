@@ -60,6 +60,9 @@ jobs:
             scripts/check-agent-comment-attribution.test.mjs
             scripts/audit-ai-workflow-output.mjs
             scripts/audit-ai-workflow-output.test.mjs
+            scripts/check-ai-workflow-security.test.mjs
+            scripts/docs-ci-boundary.mjs
+            scripts/docs-ci-boundary.test.mjs
           )
           for source in "${validator_sources[@]}"; do
             if ! git cat-file -e "$BASE_SHA:$source"; then
