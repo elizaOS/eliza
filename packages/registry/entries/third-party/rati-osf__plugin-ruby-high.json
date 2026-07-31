@@ -1,0 +1,35 @@
+{
+  "package": "@rati-osf/plugin-ruby-high",
+  "repository": "github:cenetex/plugin-ruby-high",
+  "kind": "app",
+  "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
+  "homepage": "https://ruby-high.ai",
+  "version": "0.1.5",
+  "tags": ["ruby-high", "education", "agents", "game"],
+  "app": {
+    "displayName": "Ruby High",
+    "category": "education",
+    "launchType": "connect",
+    "launchUrl": null,
+    "icon": "https://unpkg.com/@rati-osf/plugin-ruby-high@0.1.5/images/ruby-high-app-icon.png",
+    "heroImage": "https://unpkg.com/@rati-osf/plugin-ruby-high@0.1.5/images/ruby-eliza-plugin-launch.jpg",
+    "capabilities": [
+      "education",
+      "agent-gameplay",
+      "bounded-autonomy",
+      "spectate-and-steer"
+    ],
+    "runtimePlugin": "@rati-osf/plugin-ruby-high",
+    "viewer": {
+      "url": "/ruby-high/viewer",
+      "postMessageAuth": false,
+      "sandbox": "allow-scripts allow-same-origin allow-popups"
+    },
+    "session": {
+      "mode": "external",
+      "features": ["commands", "telemetry", "suggestions"]
+    },
+    "visibleInAppStore": true,
+    "catalogSection": "other"
+  }
+}

@@ -14,6 +14,56 @@
 /** The kind of artifact a registry entry describes. */
 export type RegistryEntryKind = "plugin" | "connector" | "app";
 
+/** Embedded viewer metadata for an app entry. */
+export interface RegistryAppViewer {
+  url: string;
+  embedParams?: Record<string, string>;
+  postMessageAuth?: boolean;
+  sandbox?: string;
+}
+
+/** Runtime session behavior exposed by an app entry. */
+export interface RegistryAppSession {
+  mode: "viewer" | "spectate-and-steer" | "external";
+  features?: Array<
+    "commands" | "telemetry" | "pause" | "resume" | "suggestions"
+  >;
+}
+
+/** Detail-panel extension contributed by an app entry. */
+export interface RegistryAppUiExtension {
+  detailPanelId: string;
+}
+
+/**
+ * App metadata consumed before a third-party package is installed. This must
+ * remain self-sufficient because the app manager chooses how to install and
+ * launch an app before it can read the package manifest from disk.
+ */
+export interface RegistryAppMetadata {
+  displayName: string;
+  category: string;
+  launchType: string;
+  launchUrl: string | null;
+  icon: string | null;
+  heroImage?: string | null;
+  capabilities: string[];
+  minPlayers?: number | null;
+  maxPlayers?: number | null;
+  runtimePlugin?: string;
+  bridgeExport?: string;
+  uiExtension?: RegistryAppUiExtension;
+  viewer?: RegistryAppViewer;
+  session?: RegistryAppSession;
+  developerOnly?: boolean;
+  visibleInAppStore?: boolean;
+  mainTab?: boolean;
+  catalogSection?: string;
+  featured?: boolean;
+  defaultHidden?: boolean;
+  scope?: string;
+}
+
 /**
  * Source format for a single third-party registry entry. Mirrors the metadata
  * `elizaos plugins submit` generates from a plugin's `package.json`.
@@ -35,6 +85,16 @@ export interface RegistryEntry {
   directory?: string;
   /** Discovery tags (npm keywords minus elizaos boilerplate). */
   tags?: string[];
+  /** Required launch metadata when `kind` is `app`. */
+  app?: RegistryAppMetadata;
+}
+
+/** Normalized app metadata in the generated wire registry. */
+export interface GeneratedRegistryAppMetadata
+  extends Omit<RegistryAppMetadata, "heroImage" | "minPlayers" | "maxPlayers"> {
+  heroImage: string | null;
+  minPlayers: number | null;
+  maxPlayers: number | null;
 }
 
 /** Per-package entry in the generated wire registry. */
@@ -66,6 +126,7 @@ export interface GeneratedRegistryEntry {
   kind: RegistryEntryKind;
   registryKind: RegistryEntryKind;
   directory: string | null;
+  app?: GeneratedRegistryAppMetadata;
 }
 
 /** Top-level wire format served to the runtime. */

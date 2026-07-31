@@ -3296,6 +3296,19 @@ async function handleRequest(
     const appManager = ctx?.getAppManager
       ? await ctx.getAppManager()
       : (state.appManager as AppManagerLike);
+    const installPluginForApp = async (
+      ...args: Parameters<typeof installPluginDirect>
+    ) => {
+      const result = await installPluginDirect(...args);
+      if (result.success) {
+        // The direct installer persists plugins.installs to eliza.json. Keep
+        // this server's in-memory config aligned so the immediately-following
+        // GET /api/apps/installed reflects a clean first install without
+        // waiting for a process restart.
+        state.config = loadElizaConfig();
+      }
+      return result;
+    };
     // #12087 Item 13: single boundary-role collapse (no inline OWNER/GUEST ternary).
     const appActorRole: AppsRouteActorRole = resolveBoundaryRole(req);
     if (
@@ -3341,7 +3354,7 @@ async function handleRequest(
               runtime && typeof runtime === "object"
                 ? (runtime as IAgentRuntime)
                 : null,
-              installPluginDirect,
+              installPluginForApp,
             ),
           stop: (pluginManager, name, runId, runtime) =>
             appManager.stop(
@@ -3369,7 +3382,7 @@ async function handleRequest(
           read: () => readFavoriteAppsFromConfig(state.config),
           write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
         } satisfies FavoriteAppsStore,
-        installPluginDirect,
+        installPluginDirect: installPluginForApp,
       })
     ) {
       return;

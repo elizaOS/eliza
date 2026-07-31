@@ -7,10 +7,10 @@
  *    disk, no plugin load required) but isn't loaded yet → "Get" (load/install).
  *
  * The catalog ({@link RegistryAppInfo}) is sourced from `/api/apps`, which the
- * agent builds by reading each plugin's `package.json` `elizaos.app` manifest —
- * so titles, categories, and hero images are available without importing the
- * plugin. Loading happens on demand; until then the entry is a card with a
- * Get button.
+ * agent builds from installed `elizaos.app` manifests and the generated
+ * community registry. That keeps titles, categories, and launch metadata
+ * available before a third-party package is installed. Loading happens on
+ * demand; until then the entry is a card with a Get button.
  *
  * This module is the pure merge/dedupe so it can be unit-tested without React.
  */

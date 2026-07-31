@@ -328,17 +328,17 @@ function curateCatalogApps(
 
   for (const app of candidates) {
     const canonicalName = normalizeElizaCuratedAppName(app.name);
-    if (!canonicalName) {
-      continue;
-    }
+    const catalogName = canonicalName ?? app.name.trim();
+    if (!catalogName) continue;
 
-    const normalized = canonicalizeCuratedRegistryPlugin(
-      app,
-      canonicalName,
+    const normalized = (
+      canonicalName
+        ? canonicalizeCuratedRegistryPlugin(app, canonicalName)
+        : cloneRegistryPluginInfo(app)
     ) as RegistryAppPlugin;
-    const existing = curated.get(canonicalName);
+    const existing = curated.get(catalogName);
     if (!existing) {
-      curated.set(canonicalName, normalized);
+      curated.set(catalogName, normalized);
       continue;
     }
 
