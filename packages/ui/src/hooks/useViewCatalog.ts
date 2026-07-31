@@ -2,7 +2,7 @@
  * useViewCatalog — data source for the unified Launcher.
  *
  * Merges three sources into one {@link ViewEntry} list:
- *  - loaded views (`GET /api/views`, via {@link useAvailableViews}),
+ *  - routable views (the loaded registry plus built-in shell destinations),
  *  - the installable app catalog (`/api/apps`, scanned from plugin manifests on
  *    disk — no plugin load required), via {@link loadAppsCatalog},
  *  - the set of currently-active apps (`GET /api/apps/installed`).
@@ -19,7 +19,7 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
 import { useEnabledViewKinds } from "../state/useViewKinds";
-import { useAvailableViews } from "./useAvailableViews";
+import { useRoutableViews } from "./useAvailableViews";
 import { useCachedResource } from "./useCachedResource";
 import { mergeViewCatalog, type ViewEntry } from "./view-catalog";
 
@@ -47,7 +47,7 @@ export function useViewCatalog(): UseViewCatalogResult {
     loading: viewsLoading,
     error: viewsError,
     refresh: refreshViews,
-  } = useAvailableViews();
+  } = useRoutableViews();
   const enabledKinds = useEnabledViewKinds();
   const activeModality = useMemo(() => getActiveViewModality(), []);
   const appShellRoutesSupported = supportsFullAppShellRoutes(

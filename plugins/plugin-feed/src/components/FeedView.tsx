@@ -239,6 +239,23 @@ export function FeedView() {
     [loadDashboard, run, sending],
   );
 
+  const spawnAgent = useCallback(async () => {
+    if (run) return;
+    setStatusMessage(null);
+    try {
+      await client.launchApp(FEED_APP_NAME);
+      setStatusMessage("Feed agent launch requested.");
+    } catch (error) {
+      // error-policy:J4 the launch button owns a visible status banner for an
+      // expected operator-triggered failure; the failure is never reported as success.
+      setStatusMessage(
+        error instanceof Error
+          ? error.message
+          : "Failed to launch the Feed agent.",
+      );
+    }
+  }, [run]);
+
   const onAction = useCallback(
     (action: string) => {
       if (action.startsWith("prompt:")) {
@@ -248,6 +265,9 @@ export function FeedView() {
         return;
       }
       switch (action) {
+        case "spawn":
+          void spawnAgent();
+          return;
         case "toggle-autonomy":
           void toggleAutonomy();
           return;
@@ -256,7 +276,7 @@ export function FeedView() {
           return;
       }
     },
-    [loadDashboard, sendPrompt, suggestedPrompts, toggleAutonomy],
+    [loadDashboard, sendPrompt, spawnAgent, suggestedPrompts, toggleAutonomy],
   );
 
   const snapshot: FeedSnapshot = {
@@ -278,10 +298,22 @@ export function FeedView() {
     sending,
   };
 
-  // Surface the two primary operator actions to the agent surface. Both reuse
-  // the live data-layer handlers this wrapper already owns (the same handlers
-  // the spatial Refresh / Pause-Resume buttons dispatch through `onAction`), so
-  // the agent can address them directly on the GUI surface.
+  // Spatial primitives stamp visible DOM nodes but cannot register a controlled
+  // activation callback. This descriptor routes bridge activation through the
+  // same launch handler as the visible spawn button.
+  useAgentElement<HTMLButtonElement>({
+    id: "spawn-agent",
+    role: "button",
+    label: "Spawn agent",
+    group: "feed",
+    description: "Launch a Feed agent and start its app run",
+    status: run ? "disabled" : "inactive",
+    clickable: !run,
+    onActivate: () => void spawnAgent(),
+  });
+
+  // The primary operator actions reuse the live data-layer handlers this
+  // wrapper already owns, keeping pointer and agent-driven behavior aligned.
   const refreshControl = useAgentElement<HTMLButtonElement>({
     id: "feed-refresh",
     role: "button",
