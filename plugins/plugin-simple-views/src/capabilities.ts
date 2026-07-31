@@ -171,7 +171,22 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   },
   {
     id: "delete-calendar-event",
-    description: "Delete one Simple Calendar event by id.",
-    params: ID_PARAM,
+    description:
+      "Delete one Simple Calendar event by id, exact title, or unique query.",
+    params: {
+      id: {
+        ...ID_PARAM.id,
+        description: "Stable calendar event id.",
+        required: false,
+      },
+      title: { ...TITLE_PARAM, description: "Exact calendar event title." },
+      query: {
+        type: "string",
+        description: "Unique title, date, time, or notes search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
+      },
+    },
   },
 ];

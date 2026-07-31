@@ -121,28 +121,38 @@ describe("Simple Views state labels", () => {
       stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
       const notes = render(<NotesView />);
       const notesRoot = notes.getByTestId("simple-notes-view");
-      expect(notesRoot.style.height).toContain("--eliza-chat-clearance");
-      expect(notesRoot.style.width).toContain("--eliza-chat-side-clearance");
+      expect(notesRoot.style.height).toBe("100%");
+      expect(notesRoot.style.width).toBe("100%");
       expect(notesRoot.style.minHeight).toBe("0px");
-      expect(notesRoot.style.overflowY).toBe("auto");
-      expect(notesRoot.style.paddingBottom).not.toContain(
+      expect(notesRoot.style.position).toBe("relative");
+      expect(notesRoot.style.overflowY).toBe("hidden");
+      const notesScroll = notes.getByTestId("simple-notes-scroll-region");
+      expect(notesScroll.style.position).toBe("absolute");
+      expect(notesScroll.style.overflowY).toBe("auto");
+      expect(notesScroll.style.insetBlockEnd).toContain(
         "--eliza-chat-clearance",
       );
-      expect(notesRoot.style.paddingInlineEnd).not.toContain(
+      expect(notesScroll.style.insetInlineEnd).toContain(
         "--eliza-chat-side-clearance",
       );
       notes.unmount();
 
       const calendar = render(<SimpleCalendarView />);
       const calendarRoot = calendar.getByTestId("simple-calendar-view");
-      expect(calendarRoot.style.height).toContain("--eliza-chat-clearance");
-      expect(calendarRoot.style.width).toContain("--eliza-chat-side-clearance");
+      expect(calendarRoot.style.height).toBe("100%");
+      expect(calendarRoot.style.width).toBe("100%");
       expect(calendarRoot.style.minHeight).toBe("0px");
-      expect(calendarRoot.style.overflowY).toBe("auto");
-      expect(calendarRoot.style.paddingBottom).not.toContain(
+      expect(calendarRoot.style.position).toBe("relative");
+      expect(calendarRoot.style.overflowY).toBe("hidden");
+      const calendarScroll = calendar.getByTestId(
+        "simple-calendar-scroll-region",
+      );
+      expect(calendarScroll.style.position).toBe("absolute");
+      expect(calendarScroll.style.overflowY).toBe("auto");
+      expect(calendarScroll.style.insetBlockEnd).toContain(
         "--eliza-chat-clearance",
       );
-      expect(calendarRoot.style.paddingInlineEnd).not.toContain(
+      expect(calendarScroll.style.insetInlineEnd).toContain(
         "--eliza-chat-side-clearance",
       );
     },
