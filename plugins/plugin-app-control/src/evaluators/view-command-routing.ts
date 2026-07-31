@@ -2,18 +2,18 @@
  * Pre-LLM view-command routing helper for explicit navigation utterances.
  */
 
+import { getUserMessageText, type Memory } from "@elizaos/core";
 import { matchViewCommand } from "../actions/view-command-matcher.js";
 
 export const VIEWS_ACTION_NAME = "VIEWS";
 
 type ViewCommandRoutingContext = {
 	runtime: { actions?: ReadonlyArray<{ name?: string }> };
-	message?: { content?: { text?: unknown } };
+	message?: Pick<Memory, "content">;
 };
 
 function messageText(context: ViewCommandRoutingContext): string {
-	const text = context.message?.content?.text;
-	return typeof text === "string" ? text : "";
+	return context.message ? getUserMessageText(context.message) : "";
 }
 
 function hasRegisteredViewsAction(context: ViewCommandRoutingContext): boolean {
