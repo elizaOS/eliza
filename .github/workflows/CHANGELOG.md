@@ -22,8 +22,9 @@ do not have to carry CI-only history.
 
 - Interactive `@claude` assistance is opt-in behind
   `CLAUDE_INTERACTIVE_ENABLED=true`. Its pinned third-party action retains a
-  broad repository-read boundary, so administrators must deliberately accept
-  that boundary before the workflow can receive model or GitHub credentials.
+  broad runner filesystem-read boundary that is not confined to the repository,
+  so administrators must deliberately accept that boundary before the workflow
+  can receive model or GitHub credentials.
 
 - Documentation automation now reads instructions from the trusted base
   revision, uses path-scoped read/edit permissions on ephemeral runners, and
