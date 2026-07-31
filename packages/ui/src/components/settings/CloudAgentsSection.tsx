@@ -16,7 +16,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import {
   getCloudAuthToken,
@@ -110,15 +110,18 @@ export function CloudAgentsSection() {
   // The agent currently being woken (resumed + readiness-polled) before we
   // switch to it. Drives the "Waking <name>…" row state.
   const [wakingId, setWakingId] = useState<string | null>(null);
+  const mountedRef = useRef(false);
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
   const cloudApiBase = getBootConfig().cloudApiBase || "https://elizacloud.ai";
 
   const refresh = useCallback(async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     setLoadError(null);
     try {
       const res = await client.getCloudCompatAgents();
+      if (!mountedRef.current) return;
       // A failed fetch is NOT an empty list — surface it so the user can retry
       // instead of seeing the indistinguishable "No cloud agents yet" copy.
       if (!res.success) {
@@ -131,18 +134,23 @@ export function CloudAgentsSection() {
       );
       setAgents(list);
     } catch (err) {
+      if (!mountedRef.current) return;
       setLoadError(
         err instanceof Error
           ? err.message
           : "Could not load your cloud agents.",
       );
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void refresh();
+    return () => {
+      mountedRef.current = false;
+    };
   }, [refresh]);
 
   const setLocalStatus = useCallback((agentId: string, status: string) => {

@@ -3,8 +3,9 @@
 /**
  * Covers CloudAgentsSection rename (client call + persisted active-server label
  * sync, no-op on unchanged/empty names, error revert) and suspend/resume
- * lifecycle (direct-path client calls, error surfacing, status re-sync). jsdom
- * render with the app store, cloud API client, and persistence mocked.
+ * lifecycle (direct-path client calls, error surfacing, status re-sync), and
+ * safe teardown while a list request is pending. jsdom renders with the app
+ * store, cloud API client, and persistence mocked.
  */
 
 import {
@@ -784,6 +785,25 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
       expect(screen.getByTestId("cloud-agent-rename-agent-1")).toBeTruthy(),
     );
     expect(screen.queryByTestId("cloud-agents-error")).toBeNull();
+  });
+
+  it("discards a list response that settles after unmount", async () => {
+    let resolveFetch:
+      | ((value: { success: true; data: [] }) => void)
+      | undefined;
+    const pendingFetch = new Promise<{ success: true; data: [] }>((resolve) => {
+      resolveFetch = resolve;
+    });
+    clientMock.getCloudCompatAgents.mockReturnValue(pendingFetch);
+
+    const view = render(<CloudAgentsSection />);
+    await waitFor(() =>
+      expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1),
+    );
+    view.unmount();
+
+    resolveFetch?.({ success: true, data: [] });
+    await pendingFetch;
   });
 });
 
