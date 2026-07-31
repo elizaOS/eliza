@@ -42,8 +42,8 @@ export function analyzeWalletFunding(
     (transfer) =>
       transfer.to === walletAddress &&
       transfer.from !== walletAddress &&
-      transfer.amountSol !== null &&
-      transfer.amountSol > 0,
+      transfer.amountNative !== null &&
+      transfer.amountNative > 0,
   );
 
   if (incomingNativeFundingTransfer) {
@@ -79,7 +79,7 @@ export function analyzeWalletFunding(
         reason: "Funding wallet was identified.",
       },
       {
-        condition: incomingNativeFundingTransfer.amountSol !== null,
+        condition: incomingNativeFundingTransfer.amountNative !== null,
         score: 20,
         reason: "Funding amount was identified.",
       },
@@ -101,7 +101,7 @@ export function analyzeWalletFunding(
       firstFundingTransaction: firstTransaction.signature,
       firstFundingAt: firstTransaction.timestamp,
       fundingWallet: incomingNativeFundingTransfer.from,
-      fundingAmountNative: incomingNativeFundingTransfer.amountSol,
+      fundingAmountNative: incomingNativeFundingTransfer.amountNative,
       fundingTokenId: null,
       fundingAmountToken: null,
       fundingTransferType: "native",
@@ -187,7 +187,7 @@ export function analyzeWalletFunding(
       firstFundingAt: firstTransaction.timestamp,
       fundingWallet: incomingTokenFundingTransfer.from,
       fundingAmountNative: null,
-      fundingTokenId: incomingTokenFundingTransfer.mint,
+      fundingTokenId: incomingTokenFundingTransfer.contractAddress,
       fundingAmountToken: incomingTokenFundingTransfer.amount,
       fundingTransferType: "token",
       fundingSourceType,
