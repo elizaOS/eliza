@@ -2,13 +2,17 @@
 // small typed fetch functions, no SDK dependency (fetch() only, matching
 // the existing pattern rather than adding @moralisweb3/* to package.json).
 //
-// Endpoint shapes below are sourced from Moralis's published documentation
-// (docs.moralis.com/web3-data-api/evm/reference/wallet-api, the v2.2
-// changelog, and the Token Balances reference), not from a live call - no
-// MORALIS_API_KEY is available in this environment. Field names should be
-// spot-checked against a real response once a key is available; the
-// parsing for each endpoint is kept in its own small function so any
-// correction stays localized.
+// Live-spot-checked (PR 3.5) against Vitalik Buterin's address
+// (0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045, cross-checkable on
+// Etherscan) - native balance, NFT holdings (normalized_metadata), and
+// transaction list/receipt_status all matched the docs-derived shapes
+// exactly. One real gap found and fixed: /wallets/{address}/tokens is
+// cursor-paginated and errors with "has too many ERC20 token balances"
+// once a wallet crosses an internal threshold if no limit/cursor is
+// passed - getEthereumTokenHoldings now pages through it. Pagination
+// cursor-threading on the transaction-history endpoint (getEthereumTransactions)
+// is still unverified live - the manual test hit a copy-paste issue with
+// the cursor string, not a confirmed bug.
 
 const MORALIS_BASE_URL = "https://deep-index.moralis.io/api/v2.2";
 
@@ -88,6 +92,7 @@ export type MoralisWalletToken = {
 
 export type MoralisWalletTokensResponse = {
   result?: MoralisWalletToken[];
+  cursor?: string | null;
 };
 
 export type EthereumTokenHolding = {
@@ -98,21 +103,56 @@ export type EthereumTokenHolding = {
   rawAmount: string;
 };
 
+// Wallets with a large token count (heavily-airdropped addresses in
+// particular) can't be returned in a single call - /wallets/{address}/tokens
+// is cursor-paginated (confirmed live: an unpaginated call errors with
+// "has too many ERC20 token balances for <chain>" once a wallet crosses
+// some internal threshold). Walks pages the same way getOldestTransaction
+// walks transaction history, capped so a pathological wallet can't loop
+// forever.
+const MAX_TOKEN_HOLDING_PAGES = 20;
+
 export async function getEthereumTokenHoldings(
   address: string,
+  options: { excludeSpam?: boolean } = {},
 ): Promise<EthereumTokenHolding[]> {
   if (!address || address.trim().length === 0) {
     throw new Error("Wallet address is required");
   }
 
-  const data = await callMoralisRest<MoralisWalletTokensResponse>(
-    `/wallets/${address.trim()}/tokens`,
-    { chain: "eth" },
-  );
+  const walletAddress = address.trim();
+  const excludeSpam = options.excludeSpam ?? true;
 
-  const tokens = Array.isArray(data.result) ? data.result : [];
+  const allTokens: MoralisWalletToken[] = [];
+  let cursor: string | null = null;
 
-  return tokens
+  for (let page = 0; page < MAX_TOKEN_HOLDING_PAGES; page += 1) {
+    const searchParams: Record<string, string> = {
+      chain: "eth",
+      limit: "100",
+      exclude_spam: String(excludeSpam),
+    };
+
+    if (cursor) {
+      searchParams.cursor = cursor;
+    }
+
+    const data = await callMoralisRest<MoralisWalletTokensResponse>(
+      `/wallets/${walletAddress}/tokens`,
+      searchParams,
+    );
+
+    const results = Array.isArray(data.result) ? data.result : [];
+    allTokens.push(...results);
+
+    if (!data.cursor) {
+      break;
+    }
+
+    cursor = data.cursor;
+  }
+
+  return allTokens
     .filter((token) => !token.native_token && token.token_address)
     .map((token) => ({
       contractAddress: String(token.token_address),

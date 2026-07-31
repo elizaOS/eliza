@@ -156,7 +156,7 @@ export const ethereumConnectorDescriptor: BlockchainConnectorDescriptor = {
   limitations: [
     "Transaction contents (native/token transfers, contract interactions) are not yet decoded - transactions are listed but not parsed.",
     "Program/protocol classifications are not yet connected.",
-    "Endpoint response shapes are sourced from Moralis's published documentation, not a live-verified call - field names may need adjustment once confirmed against a real response.",
+    "Balance, token holdings, NFT holdings, and transaction-list shapes are live-spot-checked against Moralis (see moralis.ts's header comment); pagination cursor-threading on the transaction-history endpoint is not yet live-verified.",
   ],
 };
 
