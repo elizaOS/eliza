@@ -27,6 +27,7 @@ import {
   createUniqueUuid,
   ElizaError,
   type EventPayload,
+  EventType,
   getConnectorAdminWhitelist,
   type HandlerCallback,
   type IAgentRuntime,
@@ -37,6 +38,7 @@ import {
   type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  type MessagePayload,
   type Room,
   resolveAttachmentBytes,
   Service,
@@ -283,6 +285,10 @@ function isValidSlackEmojiName(emoji: string): boolean {
   return /^[A-Za-z0-9_+-]+(::skin-tone-[2-6])?$/.test(emoji);
 }
 
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function normalizeConnectorLimit(
   limit: number | undefined,
   fallback: number,
@@ -316,6 +322,14 @@ interface SlackAppMentionEventType {
   text: string;
   ts: string;
   thread_ts?: string;
+  event_ts: string;
+}
+
+interface SlackReactionEventType {
+  user: string;
+  reaction: string;
+  item: { type: "message"; channel: string; ts: string };
+  item_user?: string;
   event_ts: string;
 }
 
@@ -360,6 +374,7 @@ import {
   type SlackFile,
   type SlackMessage,
   type SlackMessageSendOptions,
+  type SlackReactionPayload,
   type SlackUser,
 } from "./types";
 
@@ -776,6 +791,7 @@ export class SlackService extends Service implements ISlackService {
         client: app.client as unknown as SlackPolicyDirectoryClient,
         workspace: {
           teamId,
+          botUserId,
           ...(enterpriseId ? { enterpriseId } : {}),
         },
         checkPairing: async (userId) => {
@@ -925,7 +941,12 @@ export class SlackService extends Service implements ISlackService {
       ) {
         return;
       }
-      await this.handleReactionAdded(event, accountId);
+      await this.handleReaction(
+        event,
+        "added",
+        accountId,
+        extractSlackEventWorkspace(body),
+      );
     });
 
     app.event("reaction_removed", async ({ event, body }) => {
@@ -934,7 +955,12 @@ export class SlackService extends Service implements ISlackService {
       ) {
         return;
       }
-      await this.handleReactionRemoved(event, accountId);
+      await this.handleReaction(
+        event,
+        "removed",
+        accountId,
+        extractSlackEventWorkspace(body),
+      );
     });
 
     // Handle channel joins/leaves
@@ -1462,34 +1488,287 @@ export class SlackService extends Service implements ISlackService {
     );
   }
 
-  private async handleReactionAdded(
-    _event: {
-      user: string;
-      reaction: string;
-      item: { type: string; channel: string; ts: string };
-      item_user?: string;
-    },
-    accountId = this.defaultAccountId,
+  private async handleReaction(
+    rawEvent: unknown,
+    action: "added" | "removed",
+    accountId: string,
+    workspace: { teamId?: string; enterpriseId?: string },
   ): Promise<void> {
-    await this.runtime.emitEvent(
-      SlackEventTypes.REACTION_ADDED as string,
-      this.buildEventPayload(accountId),
+    const event = this.parseReactionEvent(rawEvent);
+    if (!event) return;
+
+    const policy = this.getPolicyForAccount(accountId);
+    let decision: SlackInboundPolicyDecision;
+    try {
+      decision = policy
+        ? await policy.authorizeReaction(
+            {
+              eventType: "reaction",
+              channelId: event.item.channel,
+              userId: event.user,
+              isThread: false,
+              isMentioned: true,
+              isBotMessage:
+                event.user === this.getBotUserIdForAccount(accountId),
+              ...workspace,
+            },
+            event.reaction,
+            event.item_user,
+          )
+        : {
+            allowed: false,
+            reason: "unknown_conversation",
+            isThread: false,
+          };
+    } catch (cause) {
+      // error-policy:J2 Policy lookup failures stay visible to Bolt and the owner.
+      const error = new ElizaError("Slack reaction policy resolution failed", {
+        code: "SLACK_REACTION_POLICY_RESOLUTION_FAILED",
+        context: {
+          accountId,
+          channelId: event.item.channel,
+          userId: event.user,
+        },
+        cause,
+      });
+      this.runtime.reportError("slack-inbound-policy", error);
+      throw error;
+    }
+    if (!decision.allowed) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          action,
+          channelId: event.item.channel,
+          userId: event.user,
+          reaction: event.reaction,
+          reason: decision.reason,
+          conversationKind: decision.conversationKind,
+        },
+        "Inbound Slack reaction denied by account policy",
+      );
+      return;
+    }
+
+    try {
+      const target = await this.findReactionTargetMemory(event, accountId);
+      if (!target?.id) {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            channelId: event.item.channel,
+            messageTs: event.item.ts,
+          },
+          "Rejected Slack reaction because its message lane is unknown",
+        );
+        return;
+      }
+
+      const entityId = this.getEntityId(event.user, accountId);
+      const existingEntity = await this.runtime.getEntityById(entityId);
+      if (!existingEntity) {
+        await this.runtime.createEntity({
+          id: entityId,
+          names: [event.user],
+          agentId: this.runtime.agentId,
+          metadata: {
+            source: "slack",
+            accountId,
+            slack: { accountId, id: event.user, userId: event.user },
+          },
+        });
+      }
+
+      const timestamp = this.parseSlackTimestamp(event.event_ts);
+      const threadTs = this.readSlackThreadTs(target);
+      const reactionMemory: Memory = {
+        id: createUniqueUuid(
+          this.runtime,
+          this.scopedSlackKey(
+            "slack-reaction",
+            [
+              workspace.teamId,
+              event.item.channel,
+              event.item.ts,
+              event.user,
+              event.reaction,
+              action,
+              event.event_ts,
+            ].join(":"),
+            accountId,
+          ),
+        ),
+        agentId: this.runtime.agentId,
+        roomId: target.roomId,
+        entityId,
+        content: {
+          text: `${action === "added" ? "Added" : "Removed"} :${event.reaction}:`,
+          source: "slack",
+          name: event.user,
+          inReplyTo: target.id,
+          metadata: { accountId },
+        },
+        metadata: {
+          type: "message",
+          source: "slack",
+          provider: "slack",
+          accountId,
+          timestamp,
+          entityName: event.user,
+          entityUserName: event.user,
+          fromBot: false,
+          fromId: event.user,
+          sourceId: entityId,
+          slackReaction: {
+            action,
+            emoji: event.reaction,
+            channelId: event.item.channel,
+            targetMessageTs: event.item.ts,
+            targetMessageId: target.id,
+            itemUser: event.item_user,
+          },
+          slack: {
+            accountId,
+            teamId: workspace.teamId,
+            channelId: event.item.channel,
+            userId: event.user,
+            messageId: event.item.ts,
+            threadTs,
+          },
+          slackChannelId: event.item.channel,
+          slackMessageTs: event.item.ts,
+          slackThreadTs: threadTs,
+        } satisfies Memory["metadata"],
+        createdAt: timestamp,
+      };
+      const payload: SlackReactionPayload & MessagePayload = {
+        ...this.buildEventPayload(accountId),
+        message: reactionMemory,
+        reaction: event.reaction,
+        userId: event.user,
+        channelId: event.item.channel,
+        messageTs: event.item.ts,
+        itemUser: event.item_user,
+      };
+      await this.runtime.emitEvent(
+        action === "added"
+          ? [SlackEventTypes.REACTION_ADDED, EventType.REACTION_RECEIVED]
+          : SlackEventTypes.REACTION_REMOVED,
+        payload,
+      );
+    } catch (cause) {
+      // error-policy:J2 Bolt automatically acknowledges Events API traffic, so failures must reach owner diagnostics.
+      const error = new ElizaError("Slack reaction bridge failed", {
+        code: "SLACK_REACTION_BRIDGE_FAILED",
+        context: {
+          accountId,
+          action,
+          channelId: event.item.channel,
+          userId: event.user,
+          messageTs: event.item.ts,
+        },
+        cause,
+      });
+      this.runtime.reportError("slack-reaction-bridge", error);
+      throw error;
+    }
+  }
+
+  private parseReactionEvent(rawEvent: unknown): SlackReactionEventType | null {
+    if (!isUnknownRecord(rawEvent)) return null;
+    const item = isUnknownRecord(rawEvent.item) ? rawEvent.item : null;
+    const user = typeof rawEvent.user === "string" ? rawEvent.user : "";
+    const reaction =
+      typeof rawEvent.reaction === "string" ? rawEvent.reaction : "";
+    const channel = typeof item?.channel === "string" ? item.channel : "";
+    const messageTs = typeof item?.ts === "string" ? item.ts : "";
+    const eventTs =
+      typeof rawEvent.event_ts === "string" ? rawEvent.event_ts : "";
+    const itemUser =
+      typeof rawEvent.item_user === "string" ? rawEvent.item_user : undefined;
+    const valid =
+      isValidUserId(user) &&
+      isValidSlackEmojiName(reaction) &&
+      item?.type === "message" &&
+      isValidChannelId(channel) &&
+      isValidMessageTs(messageTs) &&
+      isValidMessageTs(eventTs) &&
+      (rawEvent.item_user === undefined ||
+        (itemUser !== undefined && isValidUserId(itemUser)));
+    if (!valid) {
+      this.runtime.logger.warn(
+        { src: "plugin:slack", agentId: this.runtime.agentId },
+        "Rejected malformed Slack reaction event",
+      );
+      return null;
+    }
+    return {
+      user,
+      reaction: reaction.toLowerCase(),
+      item: { type: "message", channel, ts: messageTs },
+      ...(itemUser ? { item_user: itemUser } : {}),
+      event_ts: eventTs,
+    };
+  }
+
+  private async findReactionTargetMemory(
+    event: SlackReactionEventType,
+    accountId: string,
+  ): Promise<Memory | null> {
+    const ids = [
+      createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack", event.item.ts, accountId),
+      ),
+      createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey("slack-mention", event.item.ts, accountId),
+      ),
+      createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey(
+          "slack",
+          `${event.item.channel}-${event.item.ts}`,
+          accountId,
+        ),
+      ),
+    ];
+    const candidates = (
+      await Promise.all(ids.map((id) => this.runtime.getMemoryById(id)))
+    ).filter((memory): memory is Memory => Boolean(memory));
+    if (candidates.length === 0) return null;
+    const rooms = new Set(candidates.map((memory) => memory.roomId));
+    if (rooms.size > 1) {
+      throw new ElizaError("Slack reaction target resolved to multiple rooms", {
+        code: "SLACK_REACTION_TARGET_AMBIGUOUS",
+        context: {
+          accountId,
+          channelId: event.item.channel,
+          messageTs: event.item.ts,
+          roomIds: Array.from(rooms),
+        },
+      });
+    }
+    const botUserId = this.getBotUserIdForAccount(accountId);
+    return (
+      candidates.find(
+        (memory) =>
+          event.item_user === botUserId &&
+          memory.entityId === this.runtime.agentId,
+      ) ?? candidates[0]
     );
   }
 
-  private async handleReactionRemoved(
-    _event: {
-      user: string;
-      reaction: string;
-      item: { type: string; channel: string; ts: string };
-      item_user?: string;
-    },
-    accountId = this.defaultAccountId,
-  ): Promise<void> {
-    await this.runtime.emitEvent(
-      SlackEventTypes.REACTION_REMOVED as string,
-      this.buildEventPayload(accountId),
-    );
+  private readSlackThreadTs(memory: Memory): string | undefined {
+    const metadata = memory.metadata;
+    if (!metadata || !("slackThreadTs" in metadata)) return undefined;
+    return typeof metadata.slackThreadTs === "string"
+      ? metadata.slackThreadTs
+      : undefined;
   }
 
   private async handleMemberJoinedChannel(
@@ -1576,7 +1855,7 @@ export class SlackService extends Service implements ISlackService {
         return [];
       }
 
-      await this.sendMessage(
+      const sent = await this.sendMessage(
         channelId,
         responseText,
         {
@@ -1591,43 +1870,62 @@ export class SlackService extends Service implements ISlackService {
         accountId,
       );
 
-      // Create memory for the response
-      const responseMemory: Memory = {
-        id: createUniqueUuid(this.runtime, `slack-response-${Date.now()}`),
-        agentId: this.runtime.agentId,
-        roomId: room.id,
-        entityId: this.runtime.agentId,
-        content: {
-          text: response.text || "",
-          source: "slack",
-          inReplyTo: memory.id,
-          metadata: { accountId },
-        },
-        metadata: {
-          type: "message",
-          source: "slack",
-          provider: "slack",
-          accountId,
-          fromBot: true,
-          fromId: this.runtime.agentId,
-          sourceId: this.runtime.agentId,
-          slack: {
-            accountId,
-            channelId,
-            threadTs,
+      const responseRoom = await this.ensureRoomExists(
+        channelId,
+        threadTs,
+        accountId,
+      );
+      const responseMemories: Memory[] = sent.messages.map(
+        ({ ts, text: sentText }) => ({
+          id: createUniqueUuid(
+            this.runtime,
+            this.scopedSlackKey("slack", `${channelId}-${ts}`, accountId),
+          ),
+          agentId: this.runtime.agentId,
+          roomId: responseRoom.id,
+          entityId: this.runtime.agentId,
+          content: {
+            text: sentText,
+            source: "slack",
+            inReplyTo: memory.id,
+            metadata: { accountId },
           },
-        } satisfies Memory["metadata"],
-        createdAt: Date.now(),
-      };
+          metadata: {
+            type: "message",
+            source: "slack",
+            provider: "slack",
+            accountId,
+            timestamp: this.parseSlackTimestamp(ts),
+            fromBot: true,
+            fromId: this.runtime.agentId,
+            sourceId: this.runtime.agentId,
+            messageIdFull: ts,
+            slack: {
+              accountId,
+              teamId: this.getTeamIdForAccount(accountId) ?? undefined,
+              channelId,
+              userId: this.getBotUserIdForAccount(accountId) ?? undefined,
+              messageId: ts,
+              threadTs,
+            },
+            slackChannelId: channelId,
+            slackMessageTs: ts,
+            slackThreadTs: threadTs,
+          } satisfies Memory["metadata"],
+          createdAt: this.parseSlackTimestamp(ts),
+        }),
+      );
 
-      await this.runtime.createMemory(responseMemory, "messages");
+      for (const responseMemory of responseMemories) {
+        await this.runtime.createMemory(responseMemory, "messages");
+      }
 
       await this.runtime.emitEvent(
         SlackEventTypes.MESSAGE_SENT as string,
         this.buildEventPayload(accountId),
       );
 
-      return [responseMemory];
+      return responseMemories;
     };
 
     const messageService = getMessageService(this.runtime);
@@ -3182,7 +3480,11 @@ export class SlackService extends Service implements ISlackService {
     text: string,
     options?: SlackMessageSendOptions,
     accountId?: string | null,
-  ): Promise<{ ts: string; channelId: string }> {
+  ): Promise<{
+    ts: string;
+    channelId: string;
+    messages: Array<{ ts: string; text: string }>;
+  }> {
     const client = this.getOutboundClient(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
@@ -3192,6 +3494,7 @@ export class SlackService extends Service implements ISlackService {
     const convertedText = markdownToSlackMrkdwn(text);
     const messages = this.splitMessage(convertedText);
     let lastTs = "";
+    const sentMessages: Array<{ ts: string; text: string }> = [];
 
     for (const msg of messages) {
       type SlackPostMessageArgs = Parameters<
@@ -3226,10 +3529,20 @@ export class SlackService extends Service implements ISlackService {
 
       const result = await client.chat.postMessage(messageArgs);
 
-      lastTs = result.ts as string;
+      if (typeof result.ts !== "string" || !isValidMessageTs(result.ts)) {
+        throw new ElizaError(
+          "Slack chat.postMessage returned no message timestamp",
+          {
+            code: "SLACK_POST_MESSAGE_IDENTITY_MISSING",
+            context: { accountId: normalizeAccountId(accountId), channelId },
+          },
+        );
+      }
+      lastTs = result.ts;
+      sentMessages.push({ ts: result.ts, text: msg });
     }
 
-    return { ts: lastTs, channelId };
+    return { ts: lastTs, channelId, messages: sentMessages };
   }
 
   async sendReaction(

@@ -105,7 +105,7 @@ async function resolver(
     hasStructuredPolicy?: boolean;
     pairingAllowed?: boolean;
     accountId?: string;
-    workspace?: { teamId: string; enterpriseId?: string };
+    workspace?: { teamId: string; botUserId: string; enterpriseId?: string };
     cache?: {
       maxConversationKinds?: number;
       conversationKindTtlMs?: number;
@@ -121,7 +121,7 @@ async function resolver(
       options.accountId,
     ),
     client: options.client ?? directory(),
-    workspace: options.workspace ?? { teamId: TEAM },
+    workspace: options.workspace ?? { teamId: TEAM, botUserId: "bot-user" },
     ...(options.cache ? { cache: options.cache } : {}),
     checkPairing: vi.fn().mockResolvedValue({
       allowed: options.pairingAllowed ?? false,
@@ -226,6 +226,26 @@ describe("SlackAccountPolicyResolver startup compilation", () => {
       resolver({ groupPolicy: "allowlist", actions: { messages: false } }),
     ).rejects.toThrow(/cannot enforce: actions/);
   });
+
+  it("compiles exact reaction names and rejects dangling or non-Slack entries", async () => {
+    await expect(
+      resolver({
+        groupPolicy: "open",
+        reactionNotifications: "allowlist",
+        reactionAllowlist: [":thumbsup:", "ship_it"],
+      }),
+    ).resolves.toBeInstanceOf(SlackAccountPolicyResolver);
+    await expect(
+      resolver({ groupPolicy: "open", reactionAllowlist: ["thumbsup"] }),
+    ).rejects.toThrow(/requires reactionNotifications=allowlist/);
+    await expect(
+      resolver({
+        groupPolicy: "open",
+        reactionNotifications: "allowlist",
+        reactionAllowlist: [42],
+      }),
+    ).rejects.toThrow(/must be Slack reaction names/);
+  });
 });
 
 describe("SlackAccountPolicyResolver event policy", () => {
@@ -247,7 +267,10 @@ describe("SlackAccountPolicyResolver event policy", () => {
 
   it("requires auth.test workspace identity before compiling policy", async () => {
     await expect(
-      resolver({ groupPolicy: "open" }, { workspace: { teamId: "" } }),
+      resolver(
+        { groupPolicy: "open" },
+        { workspace: { teamId: "", botUserId: "" } },
+      ),
     ).rejects.toThrow(/did not return a workspace team_id/);
   });
 
@@ -262,6 +285,58 @@ describe("SlackAccountPolicyResolver event policy", () => {
     await expect(
       policy.authorize(event({ userId: "bot-identity", isBotMessage: true })),
     ).resolves.toMatchObject({ allowed: true });
+  });
+
+  it("applies sender, channel, ownership, and emoji policy to reactions", async () => {
+    const own = await resolver({
+      groupPolicy: "allowlist",
+      channels: { [CHANNEL]: { users: [`id:${ALICE}`] } },
+    });
+    const reactionEvent = event({ eventType: "reaction", isMentioned: false });
+    await expect(
+      own.authorizeReaction(reactionEvent, "thumbsup", "bot-user"),
+    ).resolves.toMatchObject({ allowed: true });
+    await expect(
+      own.authorizeReaction(reactionEvent, "thumbsup", BOB),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "reaction_not_owned",
+    });
+    await expect(
+      own.authorizeReaction(
+        { ...reactionEvent, userId: "bot-user", isBotMessage: true },
+        "thumbsup",
+        "bot-user",
+      ),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "bot_not_allowed",
+    });
+    await expect(
+      own.authorizeReaction(
+        { ...reactionEvent, userId: BOB },
+        "thumbsup",
+        "bot-user",
+      ),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "user_not_allowed",
+    });
+
+    const allowlist = await resolver({
+      groupPolicy: "open",
+      reactionNotifications: "allowlist",
+      reactionAllowlist: ["thumbsup"],
+    });
+    await expect(
+      allowlist.authorizeReaction(reactionEvent, "thumbsup", BOB),
+    ).resolves.toMatchObject({ allowed: true });
+    await expect(
+      allowlist.authorizeReaction(reactionEvent, "eyes", BOB),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "reaction_not_allowed",
+    });
   });
 
   it("does not let a dynamic join widen groupPolicy=allowlist", async () => {

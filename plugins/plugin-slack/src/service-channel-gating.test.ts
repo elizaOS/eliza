@@ -4,7 +4,13 @@
  * Downstream agent work is replaced only after startup so admission exercises
  * the production boot and handler path.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type Room,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { projectConnectorSettings } from "../../../packages/agent/src/runtime/project-connector-settings";
 
@@ -155,6 +161,7 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
     getWorld: vi.fn().mockResolvedValue({ id: "world-existing" }),
     emitEvent: vi.fn().mockResolvedValue(undefined),
     createMemory: vi.fn().mockResolvedValue(undefined),
+    getMemoryById: vi.fn().mockResolvedValue(null),
     createEntity: vi.fn().mockResolvedValue(undefined),
     getEntityById: vi.fn().mockResolvedValue({ id: "entity-existing" }),
     reportError: vi.fn(),
@@ -222,6 +229,21 @@ function mention(overrides: Record<string, unknown> = {}) {
     text: "<@U0BOTBOT0> status?",
     ts: "1700000000.000100",
     event_ts: "1700000000.000100",
+    ...overrides,
+  };
+}
+
+function reaction(overrides: Record<string, unknown> = {}) {
+  return {
+    user: ALICE,
+    reaction: "thumbsup",
+    item: {
+      type: "message",
+      channel: OPS,
+      ts: "1700000000.000100",
+    },
+    item_user: "U0BOTBOT0",
+    event_ts: "1700000001.000200",
     ...overrides,
   };
 }
@@ -382,6 +404,241 @@ describe("persisted Slack policy through Bolt handlers", () => {
       });
     }
     expect(harness.runtime.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it("bridges authorized reactions with stable identity and the stored thread lane", async () => {
+    const harness = await startHarness();
+    const target = {
+      id: "target-memory",
+      roomId: "thread-room",
+      entityId: harness.runtime.agentId,
+      content: { text: "target" },
+      metadata: { slackThreadTs: "1700000000.000100" },
+    };
+    vi.mocked(harness.runtime.getMemoryById).mockResolvedValue(target);
+    const handler = harness.app.eventHandlers.get("reaction_added");
+
+    await handler?.({ event: reaction(), client: harness.app.client });
+    const firstPayload = vi
+      .mocked(harness.runtime.emitEvent)
+      .mock.calls.at(-1)?.[1];
+    expect(vi.mocked(harness.runtime.emitEvent).mock.calls.at(-1)?.[0]).toEqual(
+      ["SLACK_REACTION_ADDED", "REACTION_RECEIVED"],
+    );
+    expect(firstPayload).toMatchObject({
+      reaction: "thumbsup",
+      userId: ALICE,
+      channelId: OPS,
+      messageTs: "1700000000.000100",
+      message: {
+        roomId: "thread-room",
+        content: { inReplyTo: "target-memory" },
+        metadata: {
+          slackThreadTs: "1700000000.000100",
+          slackReaction: { action: "added", itemUser: "U0BOTBOT0" },
+        },
+      },
+    });
+
+    await handler?.({ event: reaction(), client: harness.app.client });
+    const secondPayload = vi
+      .mocked(harness.runtime.emitEvent)
+      .mock.calls.at(-1)?.[1];
+    expect(secondPayload?.message.id).toBe(firstPayload?.message.id);
+  });
+
+  it("fails closed for malformed, unauthorized, and non-owned reactions", async () => {
+    const harness = await startHarness();
+    vi.mocked(harness.runtime.getMemoryById).mockResolvedValue({
+      id: "target-memory",
+      roomId: "room-1",
+      entityId: harness.runtime.agentId,
+      content: { text: "target" },
+    });
+    const handler = harness.app.eventHandlers.get("reaction_added");
+
+    await handler?.({
+      event: reaction({ item: { channel: OPS, ts: "1700000000.000100" } }),
+      client: harness.app.client,
+    });
+    await handler?.({
+      event: reaction({ event_ts: undefined }),
+      client: harness.app.client,
+    });
+    await handler?.({
+      event: reaction({ user: BOB }),
+      client: harness.app.client,
+    });
+    await handler?.({
+      event: reaction({ user: "U0BOTBOT0" }),
+      client: harness.app.client,
+    });
+    await handler?.({
+      event: reaction({ item_user: BOB }),
+      client: harness.app.client,
+    });
+    await handler?.({
+      event: reaction({
+        user: BOB,
+        item: { type: "message", channel: DM, ts: "1700000000.000100" },
+      }),
+      client: harness.app.client,
+    });
+    expect(harness.runtime.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it("keeps removals plugin-local until core defines a removal contract", async () => {
+    const harness = await startHarness();
+    vi.mocked(harness.runtime.getMemoryById).mockResolvedValue({
+      id: "target-memory",
+      roomId: "room-1",
+      entityId: harness.runtime.agentId,
+      content: { text: "target" },
+    });
+    await harness.app.eventHandlers.get("reaction_removed")?.({
+      event: reaction(),
+      client: harness.app.client,
+    });
+    expect(harness.runtime.emitEvent).toHaveBeenCalledWith(
+      "SLACK_REACTION_REMOVED",
+      expect.objectContaining({
+        message: expect.objectContaining({
+          metadata: expect.objectContaining({
+            slackReaction: expect.objectContaining({ action: "removed" }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("applies configured reaction-name policy after channel user policy", async () => {
+    const harness = await startHarness({
+      reactionNotifications: "allowlist",
+      reactionAllowlist: ["eyes"],
+    });
+    vi.mocked(harness.runtime.getMemoryById).mockResolvedValue({
+      id: "target-memory",
+      roomId: "room-1",
+      entityId: harness.runtime.agentId,
+      content: { text: "target" },
+    });
+    const handler = harness.app.eventHandlers.get("reaction_added");
+    await handler?.({ event: reaction(), client: harness.app.client });
+    expect(harness.runtime.emitEvent).not.toHaveBeenCalled();
+
+    await handler?.({
+      event: reaction({ reaction: "eyes", item_user: BOB }),
+      client: harness.app.client,
+    });
+    expect(harness.runtime.emitEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports database failures and refuses ambiguous target lanes", async () => {
+    const harness = await startHarness();
+    const handler = harness.app.eventHandlers.get("reaction_added");
+    vi.mocked(harness.runtime.getMemoryById).mockRejectedValueOnce(
+      new Error("database unavailable"),
+    );
+    await expect(
+      handler?.({ event: reaction(), client: harness.app.client }),
+    ).rejects.toThrow("Slack reaction bridge failed");
+    expect(harness.runtime.reportError).toHaveBeenCalledWith(
+      "slack-reaction-bridge",
+      expect.objectContaining({ code: "SLACK_REACTION_BRIDGE_FAILED" }),
+    );
+
+    vi.mocked(harness.runtime.getMemoryById)
+      .mockReset()
+      .mockResolvedValueOnce({
+        id: "target-one",
+        roomId: "room-one",
+        entityId: harness.runtime.agentId,
+        content: { text: "target" },
+      })
+      .mockResolvedValueOnce({
+        id: "target-two",
+        roomId: "room-two",
+        entityId: harness.runtime.agentId,
+        content: { text: "target" },
+      })
+      .mockResolvedValueOnce(null);
+    await expect(
+      handler?.({ event: reaction(), client: harness.app.client }),
+    ).rejects.toThrow("Slack reaction bridge failed");
+    expect(harness.runtime.reportError).toHaveBeenLastCalledWith(
+      "slack-reaction-bridge",
+      expect.objectContaining({
+        cause: expect.objectContaining({
+          code: "SLACK_REACTION_TARGET_AMBIGUOUS",
+        }),
+      }),
+    );
+  });
+
+  it("persists outbound Slack timestamps in the exact thread lane", async () => {
+    const runtime = createRuntime({
+      enabled: true,
+      botToken: "xoxb-test-token",
+      appToken: "xapp-test-token",
+      groupPolicy: "open",
+      dm: { policy: "open", allowFrom: ["*"] },
+    });
+    Object.assign(runtime, {
+      messageService: {
+        handleMessage: async (
+          _runtime: IAgentRuntime,
+          _memory: Memory,
+          callback: HandlerCallback,
+        ) => callback({ text: "acknowledged" }),
+      },
+    });
+    const service = await SlackService.start(runtime);
+    Object.assign(service, {
+      ensureRoomExists: vi.fn().mockResolvedValue({ id: "thread-room" }),
+    });
+    const app = bolt.apps.at(-1);
+    vi.mocked(app?.client.chat.postMessage).mockResolvedValueOnce({
+      ok: true,
+      ts: "1700000002.000300",
+    });
+    const inputMemory = {
+      id: "input-memory",
+      entityId: "input-entity",
+      agentId: runtime.agentId,
+      roomId: "channel-room",
+      content: { text: "hello" },
+    } as Memory;
+    await (
+      service as unknown as {
+        processAgentMessage(
+          memory: Memory,
+          room: Room,
+          channelId: string,
+          threadTs: string,
+          accountId: string,
+        ): Promise<void>;
+      }
+    ).processAgentMessage(
+      inputMemory,
+      { id: "channel-room" } as Room,
+      OPS,
+      "1700000000.000100",
+      "default",
+    );
+
+    expect(runtime.createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: createUniqueUuid(runtime, `slack-${OPS}-1700000002.000300`),
+        roomId: "thread-room",
+        createdAt: 1700000002000,
+        metadata: expect.objectContaining({
+          slackMessageTs: "1700000002.000300",
+          slackThreadTs: "1700000000.000100",
+          fromBot: true,
+        }),
+      }),
+      "messages",
+    );
   });
 
   it("reports and rethrows channel lookup failures from the Bolt callback", async () => {
