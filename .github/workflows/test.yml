@@ -85,6 +85,9 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs
 
+      - name: Validate merge-critical workflow invariants
+        run: node packages/scripts/ci-workflow-invariants.mjs
+
       - name: Validate zero-key command ownership contract
         run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
 
@@ -1134,12 +1137,114 @@ jobs:
         if: needs.provider-live-e2e.result == 'success' && needs.provider-live-e2e.outputs.skip != 'true'
         run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 
+  script-tests:
+    name: Script Tests (Linux)
+    needs: changes
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+
+      - name: Run the complete isolated script-test inventory
+        run: bun run test:scripts
+
+      - name: Upload script-test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: script-tests-linux
+          path: reports/script-tests/
+          if-no-files-found: error
+          retention-days: 7
+
+  merge-quality-gate:
+    name: Merge Queue Quality Gate
+    needs: changes
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Repo-wide biome lint (read-only)
+        run: bun run lint:check
+
+      - name: Repo-wide biome format check
+        run: bun run format:check
+
+      - name: Repo-wide typecheck
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4
+
+      - name: Install gitleaks
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl --fail --location --silent --show-error --retry 3 \
+            --output "$RUNNER_TEMP/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 "$RUNNER_TEMP/gitleaks" "$HOME/.local/bin/gitleaks"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Secret scan (gitleaks)
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          parent_count="$(git rev-list --parents -n 1 "$CURRENT_SHA" | wc -w | tr -d ' ')"
+          if [ "$parent_count" -gt 2 ]; then
+            RANGE_ARGS=(--log-opts "-m -p -1 ${CURRENT_SHA}")
+          elif [ "$parent_count" -eq 2 ]; then
+            RANGE_ARGS=(--log-opts "-1 ${CURRENT_SHA}")
+          else
+            echo "gitleaks: root baseline was already scanned incrementally"
+            exit 0
+          fi
+          gitleaks detect \
+            --config .gitleaks.toml \
+            --source . \
+            --verbose \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            --no-banner \
+            "${RANGE_ARGS[@]}"
+
   ci-ok:
     name: ci-ok
     if: ${{ !cancelled() && always() }}
     needs:
       - changes
       - test-runner-vacuous-green-guard
+      - script-tests
+      - merge-quality-gate
       - server-tests
       - client-tests
       - plugin-tests-status
@@ -1162,6 +1267,8 @@ jobs:
           echo "=== Required test job results ==="
           echo "changes:          ${{ needs.changes.result }}"
           echo "runner guard:     ${{ needs.test-runner-vacuous-green-guard.result }}"
+          echo "script-tests:     ${{ needs.script-tests.result }}"
+          echo "merge-quality-gate:${{ needs.merge-quality-gate.result }}"
           echo "server-tests:     ${{ needs.server-tests.result }}"
           echo "client-tests:     ${{ needs.client-tests.result }}"
           echo "plugin-tests:     ${{ needs.plugin-tests-status.result }}"
@@ -1177,6 +1284,8 @@ jobs:
           for pair in \
             "changes:${{ needs.changes.result }}" \
             "test-runner-vacuous-green-guard:${{ needs.test-runner-vacuous-green-guard.result }}" \
+            "script-tests:${{ needs.script-tests.result }}" \
+            "merge-quality-gate:${{ needs.merge-quality-gate.result }}" \
             "server-tests:${{ needs.server-tests.result }}" \
             "client-tests:${{ needs.client-tests.result }}" \
             "plugin-tests:${{ needs.plugin-tests-status.result }}" \

@@ -1,0 +1,185 @@
+#!/usr/bin/env node
+/**
+ * Enforces merge-critical GitHub Actions behavior from parsed workflow YAML.
+ * The contract rejects missing dependency edges and conditional or permissive
+ * quality steps, so formatting, lint, typecheck, secrets, and script tests
+ * cannot silently disappear while the workflow still parses.
+ */
+
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { parseDocument } from "yaml";
+
+const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
+const WORKFLOW_PATHS = Object.freeze({
+  develop: ".github/workflows/develop-pr.yml",
+  gitleaks: ".github/workflows/gitleaks.yml",
+  tests: ".github/workflows/test.yml",
+});
+
+function invariant(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+export function parseWorkflow(relativePath, source) {
+  const document = parseDocument(source, {
+    maxAliasCount: 0,
+    prettyErrors: true,
+    schema: "core",
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new Error(
+      `${relativePath}: invalid YAML: ${document.errors.map((error) => error.message).join("; ")}`,
+    );
+  }
+  const value = document.toJS({ maxAliasCount: 0 });
+  invariant(
+    value && typeof value === "object" && !Array.isArray(value),
+    `${relativePath}: workflow root must be a mapping`,
+  );
+  invariant(
+    value.jobs && typeof value.jobs === "object" && !Array.isArray(value.jobs),
+    `${relativePath}: jobs must be a mapping`,
+  );
+  return value;
+}
+
+function requireJob(workflow, workflowPath, jobName) {
+  const job = workflow.jobs[jobName];
+  invariant(
+    job && typeof job === "object",
+    `${workflowPath}: missing jobs.${jobName}`,
+  );
+  invariant(
+    job.if === undefined,
+    `${workflowPath}: jobs.${jobName} may not declare if`,
+  );
+  invariant(
+    job["continue-on-error"] !== true,
+    `${workflowPath}: jobs.${jobName} may not continue on error`,
+  );
+  invariant(
+    Array.isArray(job.steps) && job.steps.length > 0,
+    `${workflowPath}: jobs.${jobName} must contain steps`,
+  );
+  return job;
+}
+
+function requireCommand(job, workflowPath, jobName, command) {
+  const step = job.steps.find(
+    (candidate) =>
+      typeof candidate?.run === "string" && candidate.run.includes(command),
+  );
+  invariant(step, `${workflowPath}: jobs.${jobName} must execute ${command}`);
+  invariant(
+    step.if === undefined,
+    `${workflowPath}: ${command} may not be conditional`,
+  );
+  invariant(
+    step["continue-on-error"] !== true,
+    `${workflowPath}: ${command} may not continue on error`,
+  );
+  invariant(
+    !/(?:\|\|\s*true\b|;\s*true\b|set\s+\+e\b)/.test(step.run),
+    `${workflowPath}: ${command} is wrapped by a success-forcing shell construct`,
+  );
+}
+
+function normalizedNeeds(job) {
+  if (typeof job.needs === "string") return [job.needs];
+  return Array.isArray(job.needs) ? job.needs : [];
+}
+
+export function validateWorkflowSources(sources) {
+  const develop = parseWorkflow(WORKFLOW_PATHS.develop, sources.develop);
+  const gitleaks = parseWorkflow(WORKFLOW_PATHS.gitleaks, sources.gitleaks);
+  const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
+
+  const lint = requireJob(develop, WORKFLOW_PATHS.develop, "lint");
+  requireCommand(lint, WORKFLOW_PATHS.develop, "lint", "bun run lint:check");
+  requireCommand(lint, WORKFLOW_PATHS.develop, "lint", "bun run format:check");
+
+  const typecheck = requireJob(develop, WORKFLOW_PATHS.develop, "typecheck");
+  requireCommand(
+    typecheck,
+    WORKFLOW_PATHS.develop,
+    "typecheck",
+    "run typecheck",
+  );
+
+  const secrets = requireJob(gitleaks, WORKFLOW_PATHS.gitleaks, "gitleaks");
+  requireCommand(
+    secrets,
+    WORKFLOW_PATHS.gitleaks,
+    "gitleaks",
+    "gitleaks detect",
+  );
+
+  const quality = requireJob(tests, WORKFLOW_PATHS.tests, "merge-quality-gate");
+  requireCommand(
+    quality,
+    WORKFLOW_PATHS.tests,
+    "merge-quality-gate",
+    "bun run lint:check",
+  );
+  requireCommand(
+    quality,
+    WORKFLOW_PATHS.tests,
+    "merge-quality-gate",
+    "bun run format:check",
+  );
+  requireCommand(
+    quality,
+    WORKFLOW_PATHS.tests,
+    "merge-quality-gate",
+    "run typecheck",
+  );
+  requireCommand(
+    quality,
+    WORKFLOW_PATHS.tests,
+    "merge-quality-gate",
+    "gitleaks detect",
+  );
+
+  const scripts = requireJob(tests, WORKFLOW_PATHS.tests, "script-tests");
+  requireCommand(
+    scripts,
+    WORKFLOW_PATHS.tests,
+    "script-tests",
+    "bun run test:scripts",
+  );
+
+  const finalGate = tests.jobs["ci-ok"];
+  invariant(finalGate, `${WORKFLOW_PATHS.tests}: missing jobs.ci-ok`);
+  const needs = normalizedNeeds(finalGate);
+  for (const dependency of ["merge-quality-gate", "script-tests"]) {
+    invariant(
+      needs.includes(dependency),
+      `${WORKFLOW_PATHS.tests}: jobs.ci-ok must need ${dependency}`,
+    );
+  }
+  return { ok: true };
+}
+
+export function run(repoRoot = REPO_ROOT) {
+  return validateWorkflowSources({
+    develop: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.develop), "utf8"),
+    gitleaks: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.gitleaks),
+      "utf8",
+    ),
+    tests: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.tests), "utf8"),
+  });
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  run();
+  process.stdout.write(
+    "ci-workflow-invariants: merge-critical workflow contract passed\n",
+  );
+}
