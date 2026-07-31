@@ -178,7 +178,8 @@ export async function runSupervisorTick(
   const skipped: string[] = [];
   for (const [roomId, { source, views: roomViews }] of byRoom) {
     const digest = composeRoomDigest(roomViews);
-    if (seen.get(roomId) === digest) {
+    const last = seen.get(roomId);
+    if (last === digest || last === `undeliverable:${digest}`) {
       skipped.push(roomId);
       continue;
     }
@@ -187,15 +188,19 @@ export async function runSupervisorTick(
       seen.set(roomId, digest);
       posted.push(roomId);
     } catch (error) {
-      // error-policy:J7 per-room send loop must not die on one delivery failure;
-      // seen is left unset so the next tick retries — warn-observable, self-healing.
-      // A delivery failure must not abort the rest of the tick or poison the
-      // dedup cache (so the next tick retries this room).
+      // error-policy:J7 per-room send loop must not die on one delivery failure —
+      // warn-observable; a failure must not abort the rest of the tick.
       logger.warn(
         `[TaskSupervisorService] digest delivery failed for room ${roomId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      // Permanent-failure damper: remember the digest that failed so the loop
+      // retries only when the digest CHANGES — staleness bands mutate the digest
+      // over time and room pruning resets state on task turnover, so stalled
+      // tasks still re-attempt without warn-looping every tick against a
+      // permanently undeliverable target.
+      seen.set(roomId, `undeliverable:${digest}`);
     }
   }
   return { posted, skipped };
