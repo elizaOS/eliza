@@ -228,6 +228,7 @@ describe("production artifact and network contract", () => {
     const fetchImpl = vi.fn(async (url, init) => {
       expect(url).toBeInstanceOf(URL);
       expect(url.origin).toBe(PRODUCTION_ORIGIN);
+      expect(url.pathname).toBe("/");
       expect(url.searchParams.get("verify")).toBe("revision");
       expect(init).toMatchObject({
         cache: "no-store",
