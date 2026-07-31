@@ -577,7 +577,7 @@ test("has no accessibility violations or horizontal page overflow", async ({
   expect(overflow.leaderboard).toBeLessThanOrEqual(1);
 
   const walletTarget = await page
-    .getByRole("link", { exact: true, name: "Payout address" })
+    .getByRole("link", { exact: true, name: "Set payout address" })
     .boundingBox();
   expect(walletTarget).not.toBeNull();
   expect(walletTarget?.width).toBeGreaterThanOrEqual(44);
