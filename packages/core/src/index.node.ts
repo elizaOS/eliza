@@ -262,6 +262,10 @@ export {
 	SIMPLE_CONTEXT_ID,
 	type V5MessageHandlerOutput,
 } from "./runtime/message-handler";
+// The planner's generic failed-tool apology is exported so relay/delivery
+// layers (message service, orchestrator completion relays) can recognize it
+// by identity and drop it as redundant next to an authoritative outcome.
+export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
