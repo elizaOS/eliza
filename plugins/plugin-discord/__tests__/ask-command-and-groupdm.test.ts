@@ -77,12 +77,16 @@ describe("/ask command", () => {
 	) {
 		const followUps: string[] = [];
 		let editedReply: string | undefined;
+		let editedComponents: unknown[] | undefined;
 		let deferred = false;
 		let directReply: string | undefined;
 		return {
 			followUps,
 			get editedReply() {
 				return editedReply;
+			},
+			get editedComponents() {
+				return editedComponents;
 			},
 			get deferred() {
 				return deferred;
@@ -116,11 +120,19 @@ describe("/ask command", () => {
 				deferReply: async () => {
 					deferred = true;
 				},
-				editReply: async (content: string) => {
-					editedReply = content;
+				editReply: async (
+					content: string | { content: string; components?: unknown[] },
+				) => {
+					editedReply = typeof content === "string" ? content : content.content;
+					editedComponents =
+						typeof content === "string" ? undefined : content.components;
 				},
-				followUp: async (content: string) => {
-					followUps.push(content);
+				followUp: async (
+					content: string | { content: string; components?: unknown[] },
+				) => {
+					followUps.push(
+						typeof content === "string" ? content : content.content,
+					);
 				},
 			},
 		};
@@ -261,5 +273,29 @@ describe("/ask command", () => {
 		await ask?.execute(h.interaction as never, runtime as never);
 		expect((h.editedReply ?? "").length).toBeLessThanOrEqual(2000);
 		expect(h.followUps.length).toBeGreaterThanOrEqual(1);
+	});
+
+	it("renders [FOLLOWUPS] blocks as button components instead of leaking the wire markup", async () => {
+		const ask = getRegisteredCommands().get("ask");
+		const h = makeInteraction("restaurants near the school?");
+		const answer = [
+			"Here are two solid coffee spots nearby.",
+			"[FOLLOWUPS]",
+			"reply:Which one is closer?=Closer one",
+			"prompt:Find a place with outdoor seating=Outdoor seating",
+			"[/FOLLOWUPS]",
+		].join("\n");
+		const runtime = makeRuntime(async (_rt, _m, cb) => {
+			await cb({ text: answer, source: "agent" } as Content);
+			return {};
+		});
+		await ask?.execute(h.interaction as never, runtime as never);
+
+		// Live leak 2026-07-16: group-DM /ask replies shipped the raw block as
+		// text because this path skipped the interaction render.
+		expect(h.editedReply).toContain("coffee spots");
+		expect(h.editedReply).not.toContain("[FOLLOWUPS]");
+		expect(h.editedReply).not.toContain("reply:");
+		expect(h.editedComponents?.length ?? 0).toBeGreaterThanOrEqual(1);
 	});
 });
