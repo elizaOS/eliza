@@ -1586,10 +1586,10 @@ class TalkModePlugin : Plugin() {
             }
 
             if (id == "fmt ") {
-                val fmt = readExactly(input, size)
-                if (fmt.size < 16) {
-                    throw IllegalStateException("Invalid WAV fmt chunk")
-                }
+                val fmt = readExactly(
+                    input,
+                    TalkModeAndroidBridgeContract.validateWavFormatChunkSize(size)
+                )
                 val audioFormat = littleEndianShort(fmt, 0)
                 val channels = littleEndianShort(fmt, 2)
                 val sampleRate = littleEndianInt(fmt, 4)

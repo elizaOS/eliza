@@ -4,6 +4,8 @@ import com.getcapacitor.JSObject
 
 internal object TalkModeAndroidBridgeContract {
     const val FINAL_TRANSCRIPT_DEDUP_WINDOW_MS = 2000L
+    private const val MIN_WAV_FORMAT_CHUNK_BYTES = 16
+    private const val MAX_WAV_FORMAT_CHUNK_BYTES = 4096
 
     fun localInferenceRequestPayload(
         body: String,
@@ -32,7 +34,13 @@ internal object TalkModeAndroidBridgeContract {
     ): String? {
         val expected = "$appPackageName.ElizaAgentService"
         return serviceClassNames.firstOrNull { it == expected }
-            ?: serviceClassNames.firstOrNull { it.endsWith(".ElizaAgentService") }
+    }
+
+    fun validateWavFormatChunkSize(size: Int): Int {
+        if (size !in MIN_WAV_FORMAT_CHUNK_BYTES..MAX_WAV_FORMAT_CHUNK_BYTES) {
+            throw IllegalArgumentException("Invalid WAV fmt chunk size: $size")
+        }
+        return size
     }
 
     fun audioFramesStartedPayload(

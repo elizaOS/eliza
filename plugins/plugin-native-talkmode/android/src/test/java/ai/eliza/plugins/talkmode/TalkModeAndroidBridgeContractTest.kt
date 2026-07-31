@@ -3,6 +3,7 @@ package ai.eliza.plugins.talkmode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -49,6 +50,24 @@ class TalkModeAndroidBridgeContractTest {
                 "ai.elizaos.app"
             )
         )
+        assertNull(
+            TalkModeAndroidBridgeContract.selectAgentServiceClass(
+                listOf("other.package.ElizaAgentService"),
+                "ai.elizaos.app"
+            )
+        )
+    }
+
+    @Test
+    fun `WAV format chunks are bounded before allocation`() {
+        assertEquals(16, TalkModeAndroidBridgeContract.validateWavFormatChunkSize(16))
+        assertEquals(4096, TalkModeAndroidBridgeContract.validateWavFormatChunkSize(4096))
+        assertThrows(IllegalArgumentException::class.java) {
+            TalkModeAndroidBridgeContract.validateWavFormatChunkSize(15)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            TalkModeAndroidBridgeContract.validateWavFormatChunkSize(Int.MAX_VALUE)
+        }
     }
 
     @Test
