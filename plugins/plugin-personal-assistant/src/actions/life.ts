@@ -903,18 +903,140 @@ async function resolveGoal(
   return goals.find((e) => e.goal.id === target) ?? matchByTitle(goals, target);
 }
 
+type DefinitionResult = {
+  match: LifeOpsDefinitionRecord | null;
+  ambiguousCandidates: string[];
+};
+
 async function resolveDefinition(
   service: LifeOpsService,
   target: string | undefined,
   domain?: LifeOpsDomain,
-): Promise<LifeOpsDefinitionRecord | null> {
-  if (!target) return null;
+): Promise<DefinitionResult> {
+  if (!target) return { match: null, ambiguousCandidates: [] };
   const defs = (await service.listDefinitions()).filter((e) =>
     domain ? e.definition.domain === domain : true,
   );
-  return (
-    defs.find((e) => e.definition.id === target) ?? matchByTitle(defs, target)
+  const byId = defs.find((entry) => entry.definition.id === target);
+  if (byId) {
+    return { match: byId, ambiguousCandidates: [] };
+  }
+  const normalized = normalizeTitle(target);
+  const exactMatches = defs.filter(
+    (entry) => normalizeTitle(entry.definition.title) === normalized,
   );
+  if (exactMatches.length === 1) {
+    return {
+      match: exactMatches.at(0) ?? null,
+      ambiguousCandidates: [],
+    };
+  }
+  if (exactMatches.length > 1) {
+    return {
+      match: null,
+      ambiguousCandidates: exactMatches.map((entry) => entry.definition.title),
+    };
+  }
+  const substringMatches = defs.filter((entry) =>
+    normalizeTitle(entry.definition.title).includes(normalized),
+  );
+  if (substringMatches.length === 1) {
+    return {
+      match: substringMatches.at(0) ?? null,
+      ambiguousCandidates: [],
+    };
+  }
+  if (substringMatches.length > 1) {
+    return {
+      match: null,
+      ambiguousCandidates: substringMatches.map(
+        (entry) => entry.definition.title,
+      ),
+    };
+  }
+  const targetTokens = new Set(tokenizeTitle(target));
+  const scored = defs
+    .map((entry) => ({
+      entry,
+      score: tokenizeTitle(entry.definition.title).filter((token) =>
+        targetTokens.has(token),
+      ).length,
+    }))
+    .filter(({ score }) => score > 0);
+  const bestScore = Math.max(0, ...scored.map(({ score }) => score));
+  const bestMatches = scored
+    .filter(({ score }) => score === bestScore)
+    .map(({ entry }) => entry);
+  if (bestMatches.length === 1) {
+    return {
+      match: bestMatches.at(0) ?? null,
+      ambiguousCandidates: [],
+    };
+  }
+  if (bestMatches.length > 1) {
+    return {
+      match: null,
+      ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
+    };
+  }
+  return { match: null, ambiguousCandidates: [] };
+}
+
+async function resolveDefinitionForMutation(
+  service: LifeOpsService,
+  target: string | undefined,
+  ownerText: string,
+  domain?: LifeOpsDomain,
+): Promise<DefinitionResult> {
+  const defs = (await service.listDefinitions()).filter((entry) =>
+    domain ? entry.definition.domain === domain : true,
+  );
+  const normalizedOwnerText = normalizeTitle(ownerText);
+  const explicitlyNamed = defs.filter((entry) => {
+    const title = normalizeTitle(entry.definition.title);
+    return title.length > 0 && normalizedOwnerText.includes(title);
+  });
+  if (explicitlyNamed.length === 1) {
+    return {
+      match: explicitlyNamed.at(0) ?? null,
+      ambiguousCandidates: [],
+    };
+  }
+  if (explicitlyNamed.length > 1) {
+    return {
+      match: null,
+      ambiguousCandidates: explicitlyNamed.map(
+        (entry) => entry.definition.title,
+      ),
+    };
+  }
+
+  const ownerTokens = new Set(tokenizeTitle(ownerText));
+  const scored = defs
+    .map((entry) => ({
+      entry,
+      score: tokenizeTitle(entry.definition.title).filter((token) =>
+        ownerTokens.has(token),
+      ).length,
+    }))
+    .filter(({ score }) => score > 0);
+  const bestScore = Math.max(0, ...scored.map(({ score }) => score));
+  const bestMatches = scored
+    .filter(({ score }) => score === bestScore)
+    .map(({ entry }) => entry);
+  if (bestMatches.length === 1) {
+    return {
+      match: bestMatches.at(0) ?? null,
+      ambiguousCandidates: [],
+    };
+  }
+  if (bestMatches.length > 1) {
+    return {
+      match: null,
+      ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
+    };
+  }
+  return resolveDefinition(service, target, domain);
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -930,8 +1052,8 @@ export async function resolveDefinitionFromIntent(
   domain?: LifeOpsDomain,
 ): Promise<LifeOpsDefinitionRecord | null> {
   const direct = await resolveDefinition(service, target, domain);
-  if (direct) {
-    return direct;
+  if (direct.match || direct.ambiguousCandidates.length > 0) {
+    return direct.match;
   }
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
@@ -2594,6 +2716,7 @@ function hasDefinitionUpdateChanges(
 ): boolean {
   return (
     request.title != null ||
+    request.timezone != null ||
     request.cadence != null ||
     request.priority != null ||
     request.description != null ||
@@ -3065,6 +3188,23 @@ function lifeEffectRequestId(message: Memory): string {
   return message.id ?? `room:${message.roomId}`;
 }
 
+const lifeEffectObservedAtFallbacks = new WeakMap<object, string>();
+
+function lifeEffectObservedAt(message: Memory): string {
+  if (message.createdAt !== undefined) {
+    return new Date(message.createdAt).toISOString();
+  }
+  const existing = lifeEffectObservedAtFallbacks.get(message);
+  if (existing) {
+    return existing;
+  }
+  // One planner turn can retry the same action. Legacy transports without a
+  // message timestamp still need byte-identical receipts across those retries.
+  const observedAt = new Date().toISOString();
+  lifeEffectObservedAtFallbacks.set(message, observedAt);
+  return observedAt;
+}
+
 function lifeEffectReceiptId(
   message: Memory,
   operation: string,
@@ -3098,7 +3238,7 @@ function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
     },
     artifacts: [],
     idempotency: { key: null, replayed: false },
-    observedAt: new Date().toISOString(),
+    observedAt: lifeEffectObservedAt(message),
     outcome: "preview",
   });
 }
@@ -3175,15 +3315,20 @@ async function lifeEffectReceiptForResult(args: {
   }
 
   if (args.result.success === false) {
+    const failureCode = lifeFailureCode(args.result);
     return lifeOpsFailedEffect({
-      receiptId: lifeEffectReceiptId(args.message, operation, requestId),
+      receiptId: lifeEffectReceiptId(
+        args.message,
+        operation,
+        `${requestId}:${failureCode}`,
+      ),
       operation,
       resource: { kind: "runtime.message", id: requestId },
       artifacts: [],
       idempotency: { key: null, replayed: false },
-      observedAt: new Date().toISOString(),
+      observedAt: lifeEffectObservedAt(args.message),
       failure: {
-        code: lifeFailureCode(args.result),
+        code: failureCode,
         retryable: false,
         acceptance: "rejected",
       },
@@ -3217,7 +3362,7 @@ async function lifeEffectReceiptForResult(args: {
         : { kind: "runtime.message", id: requestId },
       artifacts: [],
       idempotency: { key: null, replayed: false },
-      observedAt: new Date().toISOString(),
+      observedAt: lifeEffectObservedAt(args.message),
       reason:
         "The operation only read, evaluated, clarified, or intentionally left state unchanged.",
     });
@@ -3495,7 +3640,7 @@ async function lifeEffectReceiptForResult(args: {
           : null,
       replayed: data?.deduplicated === true,
     },
-    observedAt: new Date().toISOString(),
+    observedAt: lifeEffectObservedAt(args.message),
     reason:
       data?.deduplicated === true
         ? "The requested resource already exists."
@@ -3630,7 +3775,9 @@ async function runLifeOperationHandlerInner(
       (recentSave.sourceMessageId === undefined ||
         recentSave.sourceMessageId !== retractionMessageId)
     ) {
-      const retractionService = new LifeOpsService(runtime);
+      const retractionService = new LifeOpsService(runtime, {
+        ownerEntityId: message.entityId,
+      });
       const retracted = (await retractionService.listDefinitions()).find(
         (record) =>
           record.definition.id === recentSave.definitionId &&
@@ -3824,7 +3971,9 @@ async function runLifeOperationHandlerInner(
     : !isLifeOwnedOperation(operationPlan.operation)
       ? operationPlan.operation
       : null;
-  const service = new LifeOpsService(runtime);
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: message.entityId,
+  });
   if (
     queryOperation === "query_calendar_today" ||
     queryOperation === "query_calendar_next" ||
@@ -4811,16 +4960,50 @@ async function runLifeOperationHandlerInner(
     }
 
     if (internalOp === "update_definition") {
-      const target = await resolveDefinition(service, targetName, domain);
+      const requestedTime = detailString(details, "time");
+      const requestedTimeZone = normalizeLifeTimeZoneToken(
+        detailString(details, "timezone"),
+      );
+      const { match: target, ambiguousCandidates } =
+        await resolveDefinitionForMutation(
+          service,
+          targetName,
+          messageText(message) || intent,
+          domain,
+        );
       if (!target)
         return {
           success: false,
-          text: "I could not find that item to update.",
+          text:
+            ambiguousCandidates.length > 0
+              ? ambiguousCandidates.some((title) =>
+                  /\b(?:landing|arrival|outbound|departure|flight|trip|travel)\b/i.test(
+                    title,
+                  ),
+                ) &&
+                requestedTime !== undefined &&
+                requestedTimeZone === null
+                ? `Multiple items match — which reminder do you mean, and what timezone should I use for ${requestedTime}?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+                : `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              : "I could not find that item to update.",
         };
+      if (
+        requestedTime !== undefined &&
+        requestedTimeZone === null &&
+        /\b(?:landing|arrival|outbound|departure|flight|trip|travel)\b/i.test(
+          target.definition.title,
+        )
+      ) {
+        return {
+          success: false,
+          text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
+        };
+      }
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
           params.title !== target.definition.title ? params.title : undefined,
+        timezone: requestedTimeZone ?? undefined,
         description: detailString(details, "description"),
         cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
         priority: detailNumber(details, "priority"),
@@ -4836,8 +5019,7 @@ async function runLifeOperationHandlerInner(
       };
 
       // If no explicit changes from structured details, try LLM extraction
-      const hasExplicitChanges = hasDefinitionUpdateChanges(request);
-      if (!hasExplicitChanges && intent) {
+      if (request.cadence == null && intent) {
         const llmFields = await extractUpdateFieldsWithLlm({
           runtime,
           intent,
@@ -4866,12 +5048,19 @@ async function runLifeOperationHandlerInner(
             const built = buildCadenceFromUpdateFields({
               currentCadence: target.definition.cadence,
               currentWindowPolicy: target.definition.windowPolicy,
-              timeZone: target.definition.timezone,
+              timeZone: requestedTimeZone ?? target.definition.timezone,
               update: llmFields,
             });
             if (built) {
               request.cadence = built.cadence;
-              request.windowPolicy = built.windowPolicy;
+              request.windowPolicy =
+                built.windowPolicy ??
+                (requestedTimeZone
+                  ? {
+                      ...target.definition.windowPolicy,
+                      timezone: requestedTimeZone,
+                    }
+                  : undefined);
             }
           }
         }
@@ -4889,22 +5078,25 @@ async function runLifeOperationHandlerInner(
         request,
       );
       const fallback = `Updated "${updated.definition.title}".`;
+      const text = await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "updated_definition",
+        fallback,
+        context: {
+          previousTitle: target.definition.title,
+          updated: {
+            title: updated.definition.title,
+          },
+        },
+      });
       return {
         success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "updated_definition",
-          fallback,
-          context: {
-            previousTitle: target.definition.title,
-            updated: {
-              title: updated.definition.title,
-            },
-          },
-        }),
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
         data: toActionData(updated),
       };
     }
@@ -5037,11 +5229,20 @@ async function runLifeOperationHandlerInner(
           },
         };
       }
-      const target = await resolveDefinition(service, targetName, domain);
+      const { match: target, ambiguousCandidates } =
+        await resolveDefinitionForMutation(
+          service,
+          targetName,
+          messageText(message) || intent,
+          domain,
+        );
       if (!target)
         return {
           success: false,
-          text: "I could not find that item to delete.",
+          text:
+            ambiguousCandidates.length > 0
+              ? `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              : "I could not find that item to delete.",
         };
       await service.deleteDefinition(target.definition.id);
       const fallback = `Deleted "${target.definition.title}" and its occurrences.`;
