@@ -111,10 +111,45 @@ jobs:
           echo "::warning::No complete published release data is available; skipping homepage deploy for this develop push."
           echo "available=false" >> "$GITHUB_OUTPUT"
 
+      # Vite inlines import.meta.env at BUILD time, so these must be present
+      # here — a Pages project variable cannot reach the bundle. An empty value
+      # silently ships dead provider buttons ("Telegram not configured",
+      # Discord OAuth bouncing back, WhatsApp falling back to the SMS number),
+      # which is what #17336 was closed for. Fail loudly instead (#17340).
+      - name: Verify channel build config
+        if: steps.release_data_check.outputs.available == 'true'
+        shell: bash
+        env:
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
+          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: |
+          missing=()
+          for name in VITE_TELEGRAM_BOT_ID VITE_TELEGRAM_BOT_USERNAME \
+                      VITE_DISCORD_CLIENT_ID VITE_WHATSAPP_PHONE_NUMBER; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository variables: ${missing[*]}"
+            echo "::error::Vite inlines these at build time; without them the"
+            echo "::error::published bundle ships non-functional channel buttons."
+            echo "::error::Create them under Settings -> Actions -> Variables."
+            echo "::error::They are public identifiers, not secrets - the bundle"
+            echo "::error::exposes them either way."
+            exit 1
+          fi
+          echo "All four channel identifiers are present."
+
       - name: Build homepage
         if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
         run: bun run build
+        env:
+          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
+          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
 
       - name: Install homepage browser
         if: steps.release_data_check.outputs.available == 'true'
