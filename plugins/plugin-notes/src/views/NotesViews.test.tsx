@@ -91,6 +91,37 @@ describe("Notes state labels", () => {
     expect(yellow?.textContent).toBe("");
   });
 
+  it.each([
+    { height: 499, label: "compact", width: 315 },
+    { height: 800, label: "desktop", width: 1280 },
+  ])(
+    "lets Notes own scrolling inside the overflow-hidden host at $label size",
+    ({ height, width }) => {
+      Object.defineProperties(window, {
+        innerHeight: { configurable: true, value: height },
+        innerWidth: { configurable: true, value: width },
+      });
+      stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+      const notes = render(<NotesView />);
+      const notesRoot = notes.getByTestId("simple-notes-view");
+      expect(notesRoot.style.height).toBe("100%");
+      expect(notesRoot.style.width).toBe("100%");
+      expect(notesRoot.style.minHeight).toBe("0px");
+      expect(notesRoot.style.position).toBe("relative");
+      expect(notesRoot.style.overflowY).toBe("hidden");
+      const notesScroll = notes.getByTestId("simple-notes-scroll-region");
+      expect(notesScroll.style.position).toBe("absolute");
+      expect(notesScroll.style.overflowY).toBe("auto");
+      expect(notesScroll.style.insetBlockEnd).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(notesScroll.style.insetInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      notes.unmount();
+    },
+  );
+
   it("does not report healthy zero counts before the first snapshot", () => {
     stateHook.mockReturnValue(hookState({ loading: true }));
     const _notes = render(<NotesView />);

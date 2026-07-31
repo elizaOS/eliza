@@ -163,6 +163,47 @@ function resolveNoteTarget(
   return candidate.id;
 }
 
+function parseCalendarEventTarget(
+  params: Record<string, unknown>,
+):
+  | { selector: "id"; value: string }
+  | { selector: CalendarEventLookupSelector; value: string } {
+  const selectorNames = ["id", "title", "query"] as const;
+  const providedSelectors = selectorNames.filter((name) =>
+    Object.hasOwn(params, name),
+  );
+  if (providedSelectors.length !== 1) {
+    throw new ElizaError(
+      "delete-calendar-event requires exactly one of id, title, or query.",
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: {
+          fields: selectorNames,
+          providedFields: providedSelectors,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const selector = providedSelectors[0];
+  const selectorValue = selector ? params[selector] : undefined;
+  if (
+    !selector ||
+    typeof selectorValue !== "string" ||
+    selectorValue.trim().length === 0
+  ) {
+    throw new ElizaError(
+      `delete-calendar-event ${selector ?? "selector"} must be a nonblank string.`,
+      {
+        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+        context: { field: selector ?? "selector" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return { selector, value: selectorValue.trim() };
+}
+
 function success(
   service: NotesService,
   text: string,

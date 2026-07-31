@@ -26,6 +26,7 @@ import {
   LABEL_STYLE,
   SECONDARY_TEXT_STYLE,
   VIEW_ROOT_STYLE,
+  VIEW_SCROLL_STYLE,
   ViewState,
 } from "./viewPrimitives.js";
 
@@ -265,18 +266,11 @@ export function NotesView() {
       data-testid="simple-notes-view"
       style={VIEW_ROOT_STYLE}
     >
-      <ViewState
-        loading={loading && !snapshot}
-        error={!snapshot ? error : null}
-        empty={false}
-        emptyTitle=""
-        emptyBody=""
-        onRetry={() => void refresh()}
-      />
-
       {snapshot ? (
         <div
+          data-testid="simple-notes-scroll-region"
           style={{
+            ...VIEW_SCROLL_STYLE,
             display: "grid",
             gridTemplateColumns:
               "repeat(auto-fit, minmax(min(100%, 310px), 1fr))",
@@ -478,7 +472,18 @@ export function NotesView() {
             )}
           </section>
         </div>
-      ) : null}
+      ) : (
+        <div data-testid="simple-notes-scroll-region" style={VIEW_SCROLL_STYLE}>
+          <ViewState
+            loading={loading}
+            error={error}
+            empty={false}
+            emptyTitle=""
+            emptyBody=""
+            onRetry={() => void refresh()}
+          />
+        </div>
+      )}
     </main>
   );
 }
