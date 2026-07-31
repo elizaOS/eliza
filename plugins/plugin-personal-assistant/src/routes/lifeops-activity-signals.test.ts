@@ -12,13 +12,15 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import { AgentRuntime, type Character, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
 import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
 import {
+  __resetSignalSourceRegistryForTests,
   createSignalSourceRegistry,
   registerSignalSourceRegistry,
 } from "../lifeops/registries/signal-source-registry.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import { registerBuiltinSignalSources } from "../lifeops/telemetry-mapping.js";
 import {
   handleLifeOpsRoutes,
@@ -232,6 +234,55 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
     expect(created.signal.platform).toBe("web_app");
     // observedAt defaults server-side when the client omits it.
     expect(Number.isFinite(Date.parse(created.signal.observedAt))).toBe(true);
+  });
+
+  it("fails closed without writes or runtime errors when the personal-assistant runtime is inactive", async () => {
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    __resetSignalSourceRegistryForTests(runtime);
+    const reportError = vi.spyOn(runtime, "reportError");
+    const post = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+      body: {
+        source: "page_visibility",
+        platform: "web_app",
+        state: "active",
+        metadata: { reason: "focus" },
+      },
+    });
+    const readJsonBody = vi.spyOn(post.ctx, "readJsonBody");
+
+    expect(await handleLifeOpsRoutes(post.ctx)).toBe(true);
+    expect(post.res.statusCode).toBe(503);
+    expect(JSON.parse(post.res.body ?? "{}")).toEqual({
+      error:
+        "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
+    });
+    expect(readJsonBody).not.toHaveBeenCalled();
+
+    const primaryRows = await adapter
+      .getDatabase()
+      .execute(sql.raw("SELECT id FROM app_lifeops.life_activity_signals"));
+    const telemetryRows = await adapter
+      .getDatabase()
+      .execute(sql.raw("SELECT id FROM app_lifeops.life_telemetry_events"));
+    expect(primaryRows.rows).toEqual([]);
+    expect(telemetryRows.rows).toEqual([]);
+    expect(reportError).not.toHaveBeenCalled();
+    expect(runtime.getRecentReportedErrors()).toEqual([]);
+
+    const get = buildCtx({
+      method: "GET",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+    });
+    expect(await handleLifeOpsRoutes(get.ctx)).toBe(true);
+    expect(get.res.statusCode).toBe(503);
+    expect(JSON.parse(get.res.body ?? "{}")).toEqual({
+      error:
+        "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
+    });
   });
 
   it("rejects an unknown source with 400 and persists nothing", async () => {
