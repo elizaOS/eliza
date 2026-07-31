@@ -47,6 +47,9 @@ export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 		if (!viewId) return undefined;
 		return {
 			requiresTool: true,
+			// Navigation must succeed or fail before anything claims completion.
+			// The VIEWS callback below the planner owns that one visible response.
+			clearReply: true,
 			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
 			clearParentActionHints: true,
