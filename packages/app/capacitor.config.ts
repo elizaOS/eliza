@@ -3,8 +3,6 @@
  * runtime settings.
  */
 import type { CapacitorConfig } from "@capacitor/cli";
-import { existsSync } from "node:fs";
-import path from "node:path";
 import appConfig from "./app.config";
 import appPackage from "./package.json" with { type: "json" };
 
@@ -16,17 +14,9 @@ export function resolveAndroidCapacitorPlugins(
 ): string[] {
   return [
     ...new Set([...Object.keys(dependencies), ...Object.keys(devDependencies)]),
-  ].filter((packageName) => {
-    if (RETIRED_ANDROID_CAPACITOR_PLUGINS.has(packageName)) return false;
-    // Capacitor evaluates this file with the app root as cwd; resolving from
-    // that boundary works in both its CommonJS loader and Bun's ESM test loader.
-    const packageRoot = path.join(process.cwd(), "node_modules", packageName);
-    return (
-      existsSync(path.join(packageRoot, "android", "build.gradle")) ||
-      existsSync(path.join(packageRoot, "android", "build.gradle.kts")) ||
-      existsSync(path.join(packageRoot, "plugin.xml"))
-    );
-  });
+  ].filter(
+    (packageName) => !RETIRED_ANDROID_CAPACITOR_PLUGINS.has(packageName),
+  );
 }
 
 function isIosStoreBuild(): boolean {
