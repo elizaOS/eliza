@@ -19,6 +19,7 @@ import {
   offloadJsonField,
   offloadTextField,
 } from "../../lib/storage/object-store";
+import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -28,6 +29,23 @@ import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
 
 export type { Job, NewJob };
+
+/**
+ * Settles the rows that depend on a job the recovery sweep just flipped to
+ * `failed`. Runs inside the recovery transaction, so it commits with the flip
+ * or rolls back with it — the same contract as `incrementAttempt`.
+ */
+export type JobFailureWriteback = (tx: DbTransaction, failedJob: Job) => Promise<void>;
+
+/**
+ * Builds the writeback for one job. Called OUTSIDE the transaction so the
+ * caller can read blob-offloaded payloads without holding the lifecycle lock.
+ * Returns undefined for job types that own no dependent row.
+ */
+export type RecoveryFailureWritebackBuilder = (
+  hydratedJob: Job,
+  error: string,
+) => JobFailureWriteback | undefined;
 
 export const DEFAULT_JOB_EXECUTION_LEASE_MS = 60_000;
 export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
@@ -881,6 +899,10 @@ export class JobsRepository {
     organizationId?: string;
     staleThresholdMs: number;
     maxAttempts?: number;
+    /** Settles dependent rows for jobs this sweep flips to `failed`. */
+    buildFailureWriteback?: RecoveryFailureWritebackBuilder;
+    /** Post-commit hook for a committed flip (cache eviction); gets the hydrated job. */
+    onPermanentFailure?: (failedJob: Job) => Promise<void>;
   }): Promise<number> {
     const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
     const conditions = [
@@ -910,6 +932,7 @@ export class JobsRepository {
       .where(and(...conditions));
 
     let recoveredCount = 0;
+    let sweepFailures = 0;
 
     // Process each stale job, incrementing attempts and failing if max reached
     for (const job of staleJobs) {
@@ -923,16 +946,60 @@ export class JobsRepository {
           ? `Job timed out ${newAttempts} times - max attempts reached`
           : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
-      const updated = await this.recoverJobFromSnapshot({
-        job,
-        startedBefore: staleThreshold,
-        isFailed,
-        newAttempts,
-        error: timeoutError,
-        recoveryFence,
+      // Per-job isolation so one poisoned payload cannot starve the sweep. A
+      // batch where EVERY job failed is an infrastructure outage instead, and
+      // that signal must keep reaching the caller, so it is counted and
+      // rethrown below.
+      try {
+        const { onFailedInTx, hydratedJob } = isFailed
+          ? await this.prepareRecoveryWriteback(job, timeoutError, filters.buildFailureWriteback)
+          : {};
+        const updated = await this.recoverJobFromSnapshot({
+          job,
+          startedBefore: staleThreshold,
+          isFailed,
+          newAttempts,
+          error: timeoutError,
+          recoveryFence,
+          onFailedInTx,
+          hydratedJob,
+        });
+        if (updated && !isFailed) {
+          recoveredCount++;
+        }
+        if (updated && isFailed && filters.onPermanentFailure) {
+          try {
+            await filters.onPermanentFailure(updated);
+          } catch (hookError) {
+            // error-policy:J7 the recovery itself committed; only the
+            // post-commit hook failed.
+            logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
+              jobId: job.id,
+              type: job.type,
+              error: hookError instanceof Error ? hookError.message : String(hookError),
+            });
+          }
+        }
+      } catch (error) {
+        // error-policy:J1/J7 per-job isolation with the outage signal kept.
+        sweepFailures++;
+        logger.error("[jobs] Stale-job recovery failed for one job; continuing sweep", {
+          jobId: job.id,
+          type: job.type,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (sweepFailures > 0) {
+      logger.error("[jobs] Stale-job sweep finished degraded", {
+        swept: staleJobs.length,
+        failed: sweepFailures,
       });
-      if (updated && !isFailed) {
-        recoveredCount++;
+      if (sweepFailures === staleJobs.length) {
+        throw new Error(
+          `Stale-job recovery failed for every job in the batch (${sweepFailures}/${staleJobs.length})`,
+        );
       }
     }
 
@@ -949,6 +1016,10 @@ export class JobsRepository {
     organizationId?: string;
     startedBefore: Date;
     maxAttempts?: number;
+    /** Settles dependent rows for jobs this sweep flips to `failed`. */
+    buildFailureWriteback?: RecoveryFailureWritebackBuilder;
+    /** Post-commit hook for a committed flip (cache eviction); gets the hydrated job. */
+    onPermanentFailure?: (failedJob: Job) => Promise<void>;
   }): Promise<number> {
     const conditions = [
       eq(jobs.type, filters.type),
@@ -972,6 +1043,7 @@ export class JobsRepository {
       .where(and(...conditions));
 
     let recoveredCount = 0;
+    let sweepFailures = 0;
 
     for (const job of interruptedJobs) {
       const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
@@ -984,20 +1056,79 @@ export class JobsRepository {
           ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
           : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
-      const updated = await this.recoverJobFromSnapshot({
-        job,
-        startedBefore: filters.startedBefore,
-        isFailed,
-        newAttempts,
-        error,
-        recoveryFence,
+      // Per-job isolation with the outage signal preserved — same policy as
+      // the stale sweep.
+      try {
+        const { onFailedInTx, hydratedJob } = isFailed
+          ? await this.prepareRecoveryWriteback(job, error, filters.buildFailureWriteback)
+          : {};
+        const updated = await this.recoverJobFromSnapshot({
+          job,
+          startedBefore: filters.startedBefore,
+          isFailed,
+          newAttempts,
+          error,
+          recoveryFence,
+          onFailedInTx,
+          hydratedJob,
+        });
+        if (updated && !isFailed) {
+          recoveredCount++;
+        }
+        if (updated && isFailed && filters.onPermanentFailure) {
+          try {
+            await filters.onPermanentFailure(updated);
+          } catch (hookError) {
+            // error-policy:J7 the recovery committed; only the hook failed.
+            logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
+              jobId: job.id,
+              type: job.type,
+              error: hookError instanceof Error ? hookError.message : String(hookError),
+            });
+          }
+        }
+      } catch (loopError) {
+        // error-policy:J1/J7 per-job isolation with the outage signal kept.
+        sweepFailures++;
+        logger.error("[jobs] Startup recovery failed for one job; continuing sweep", {
+          jobId: job.id,
+          type: job.type,
+          error: loopError instanceof Error ? loopError.message : String(loopError),
+        });
+      }
+    }
+
+    if (sweepFailures > 0) {
+      logger.error("[jobs] Startup recovery sweep finished degraded", {
+        swept: interruptedJobs.length,
+        failed: sweepFailures,
       });
-      if (updated && !isFailed) {
-        recoveredCount++;
+      if (sweepFailures === interruptedJobs.length) {
+        throw new Error(
+          `Startup recovery failed for every job in the batch (${sweepFailures}/${interruptedJobs.length})`,
+        );
       }
     }
 
     return recoveredCount;
+  }
+
+  /**
+   * Resolves the dependent-row writeback for a job about to be flipped to
+   * `failed`. Hydration happens HERE, outside the recovery transaction: the
+   * blob store has no timeout and the transaction holds the agent-lifecycle
+   * advisory lock. A throw lands before the flip is attempted, so the job stays
+   * `in_progress` for the next sweep instead of reaching a terminal state with
+   * its dependent row unsettled — the live path fails the same way.
+   */
+  private async prepareRecoveryWriteback(
+    job: Job,
+    error: string,
+    build: RecoveryFailureWritebackBuilder | undefined,
+  ): Promise<{ onFailedInTx?: JobFailureWriteback; hydratedJob?: Job }> {
+    if (!build) return {};
+    const hydratedJob = await hydrateJob(job);
+    return { onFailedInTx: build(hydratedJob, error), hydratedJob };
   }
 
   private async recoverJobFromSnapshot(params: {
@@ -1007,7 +1138,15 @@ export class JobsRepository {
     newAttempts: number;
     error: string;
     recoveryFence: SQL;
-  }): Promise<boolean> {
+    /**
+     * Settles the dependent row when this recovery flips the job to `failed`.
+     * Runs inside the recovery transaction, only after the CAS matched, so a
+     * throw rolls back BOTH the status flip and the dependent write.
+     */
+    onFailedInTx?: JobFailureWriteback;
+    /** Hydrated snapshot for the writeback; resolved outside the transaction. */
+    hydratedJob?: Job;
+  }): Promise<Job | undefined> {
     const payload = await prepareJobPayload({ error: params.error }, params.job);
     const requiresExecutionLease = hasDetachedProvisioningExecution(params.job.type);
     return dbWrite.transaction(async (tx) => {
@@ -1036,7 +1175,7 @@ export class JobsRepository {
         )
         .for("update")
         .limit(1);
-      if (!lockedJob) return false;
+      if (!lockedJob) return undefined;
       if (requiresExecutionLease && params.job.execution_generation) {
         const [liveLease] = await tx
           .select({ jobId: jobExecutionLeases.job_id })
@@ -1050,7 +1189,7 @@ export class JobsRepository {
             ),
           )
           .limit(1);
-        if (liveLease) return false;
+        if (liveLease) return undefined;
       }
       const [updated] = await tx
         .update(jobs)
@@ -1082,8 +1221,8 @@ export class JobsRepository {
               : sql`TRUE`,
           ),
         )
-        .returning({ id: jobs.id });
-      if (!updated) return false;
+        .returning();
+      if (!updated) return undefined;
       if (requiresExecutionLease) {
         await tx
           .delete(jobExecutionLeases)
@@ -1112,7 +1251,25 @@ export class JobsRepository {
             ),
           );
       }
-      return true;
+      // `incrementAttempt` hands `hydrateJob(updated)` to its writeback AND to
+      // its caller, and the post-commit hook reads fields an offloaded row does
+      // not keep — container_provision's `containerId` is not on the inline
+      // allowlist. Rebuild that value without an in-transaction blob read:
+      // recovery never touches `data`/`result`, so the pre-transaction
+      // hydration of those two is byte-identical, and the fresh `error` is the
+      // plaintext just written, offloaded or not.
+      const recoveredJob: Job = params.hydratedJob
+        ? {
+            ...updated,
+            data: params.hydratedJob.data,
+            result: params.hydratedJob.result,
+            error: params.error,
+          }
+        : updated;
+      if (params.isFailed && params.onFailedInTx) {
+        await params.onFailedInTx(tx, recoveredJob);
+      }
+      return recoveredJob;
     });
   }
 

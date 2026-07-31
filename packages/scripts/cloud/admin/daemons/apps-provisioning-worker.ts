@@ -181,6 +181,42 @@ async function pollCycle(
   }
 }
 
+/**
+ * One-shot recovery of the executions a previous process left `in_progress`.
+ * Guarded because it sits between boot and the poll loop: the sweep throws when
+ * every job in a batch failed, and on a lane this small that batch is routinely
+ * one row. Rethrowing here exits the process, systemd restarts into the same
+ * row, and the lane claims nothing at all — strictly worse than booting with
+ * that row still stale, which the poll cycle's stale sweep retries anyway.
+ */
+export async function recoverInterruptedExecutions(
+  logger: WorkerLogger,
+  loadWorkerDeps: typeof loadDeps = loadDeps,
+): Promise<void> {
+  try {
+    const { provisioningJobService } = await loadWorkerDeps();
+    const recovered =
+      await provisioningJobService.recoverInterruptedJobsOnStartup(
+        workerStartedAt,
+        APPS_JOB_TYPES,
+      );
+    if (recovered > 0) {
+      logger.warn(
+        "[apps-worker] recovered interrupted executions from prior process",
+        {
+          recovered,
+        },
+      );
+    }
+  } catch (error) {
+    // error-policy:J1 process boundary — the sibling control-plane worker wraps
+    // the same sweep in runBoundedPhase; this lane had no equivalent.
+    logger.error("[apps-worker] startup interrupted-job recovery failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function main(): Promise<void> {
   loadLocalEnv(import.meta.url);
 
@@ -197,20 +233,7 @@ async function main(): Promise<void> {
 
   armed = await armAppsDeployBackend(logger);
   if (armed) {
-    const { provisioningJobService } = await loadDeps();
-    const recovered =
-      await provisioningJobService.recoverInterruptedJobsOnStartup(
-        workerStartedAt,
-        APPS_JOB_TYPES,
-      );
-    if (recovered > 0) {
-      logger.warn(
-        "[apps-worker] recovered interrupted executions from prior process",
-        {
-          recovered,
-        },
-      );
-    }
+    await recoverInterruptedExecutions(logger);
   }
 
   if (config.runOnce) {

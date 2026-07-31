@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { eq, type SQL } from "drizzle-orm";
+import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
 import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { type Job, jobs } from "../../schemas/jobs";
 
@@ -22,6 +23,34 @@ const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
 const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
 const JOB_STARTED_AT = new Date("2020-01-01T00:00:00.000Z");
 const JOB_UPDATED_AT = new Date("2020-01-01T00:01:00.000Z");
+const HEAVY_PAYLOAD_ENV = [
+  "SQL_HEAVY_PAYLOAD_STORAGE",
+  "SQL_HEAVY_PAYLOAD_MIN_BYTES",
+  "SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES",
+] as const;
+
+function memoryBucket(objects: Map<string, string>): RuntimeR2Bucket {
+  return {
+    async get(key) {
+      const value = objects.get(key);
+      return value === undefined
+        ? null
+        : {
+            async text() {
+              return value;
+            },
+          };
+    },
+    async put(key, value) {
+      objects.set(key, typeof value === "string" ? value : String(value ?? ""));
+      return {};
+    },
+    async delete(key) {
+      objects.delete(key);
+      return {};
+    },
+  };
+}
 
 let dbWrite: typeof import("../../client").dbWrite;
 let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
@@ -35,6 +64,7 @@ async function seedJob(params: {
   type?: string;
   data?: Record<string, unknown>;
   dataStorage?: string;
+  dataKey?: string;
   result?: Record<string, unknown>;
   resultStorage?: string;
   organizationId?: string;
@@ -49,6 +79,7 @@ async function seedJob(params: {
     status: "in_progress",
     data: params.data ?? {},
     data_storage: params.dataStorage ?? "inline",
+    data_key: params.dataKey,
     result: params.result,
     result_storage: params.resultStorage ?? "inline",
     attempts: params.attempts ?? 0,
@@ -803,4 +834,247 @@ describe("jobsRepository.recoverStaleJobs", () => {
       primarySpy.mockRestore();
     }
   });
+  test(
+    "a permanent flip hands the writeback and the hook the hydrated, post-flip job",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobId = "00000000-0000-4000-8000-000000180901";
+      const dataKey = `job-payloads/${ORG_ID}/2020-01-01/${jobId}/data.json`;
+      // Production offloads job payloads, and the row then keeps only the
+      // indexed envelope. Anything reading the RAW row back — the post-commit
+      // cache eviction reads `containerId` this way — sees a payload with the
+      // offloaded fields missing.
+      const blobPayload = {
+        agentId: AGENT_ID,
+        organizationId: ORG_ID,
+        userId: ACTOR_ID,
+        deleteVolumes: true,
+      };
+      setRuntimeR2Bucket(memoryBucket(new Map([[dataKey, JSON.stringify(blobPayload)]])));
+      process.env.SQL_HEAVY_PAYLOAD_STORAGE = "r2";
+      process.env.SQL_HEAVY_PAYLOAD_MIN_BYTES = "1";
+      process.env.SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "0";
+      try {
+        await seedJob({
+          id: jobId,
+          maxAttempts: 1,
+          type: "agent_delete",
+          data: { agentId: AGENT_ID, organizationId: ORG_ID, userId: ACTOR_ID },
+          dataStorage: "r2",
+          dataKey,
+        });
+
+        const built: Array<{ data: unknown; error: string }> = [];
+        const settled: Array<{ status: string; data: unknown; error: string | null }> = [];
+        const committed: Array<{ data: unknown; error: string | null }> = [];
+        const recovered = await repo.recoverStaleJobs({
+          type: "agent_delete",
+          staleThresholdMs: 1,
+          buildFailureWriteback: (hydratedJob, error) => {
+            built.push({ data: hydratedJob.data, error });
+            return async (tx, failedJob) => {
+              settled.push({
+                status: failedJob.status,
+                data: failedJob.data,
+                error: failedJob.error,
+              });
+              await tx
+                .update(jobs)
+                .set({ webhook_status: `settled:${failedJob.status}` })
+                .where(eq(jobs.id, failedJob.id));
+            };
+          },
+          onPermanentFailure: async (failedJob) => {
+            committed.push({ data: failedJob.data, error: failedJob.error });
+          },
+        });
+
+        expect(recovered).toBe(0);
+        const timeout = "Job timed out 1 times - max attempts reached";
+        expect(built).toEqual([{ data: blobPayload, error: timeout }]);
+        // hydrateJob(updated) equivalence: blob payload, plaintext error, and
+        // the POST-flip status — the same value incrementAttempt passes.
+        expect(settled).toEqual([{ status: "failed", data: blobPayload, error: timeout }]);
+        // The post-commit hook reads job data too, so it gets the same value.
+        expect(committed).toEqual([{ data: blobPayload, error: timeout }]);
+
+        const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+        expect(row.status).toBe("failed");
+        // The row itself carries the pointer, so the assertions above are about
+        // the reconstruction and not an accidentally inline payload.
+        expect(row.error_storage).toBe("r2");
+        expect(row.data).toEqual({ agentId: AGENT_ID, organizationId: ORG_ID, userId: ACTOR_ID });
+        expect(row.webhook_status).toBe("settled:failed");
+      } finally {
+        setRuntimeR2Bucket(null);
+        for (const key of HEAVY_PAYLOAD_ENV) delete process.env[key];
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a writeback that throws rolls the job flip back instead of half-settling it",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobId = "00000000-0000-4000-8000-000000180902";
+      await seedJob({ id: jobId, maxAttempts: 1, type: "agent_delete" });
+
+      await expect(
+        repo.recoverStaleJobs({
+          type: "agent_delete",
+          staleThresholdMs: 1,
+          buildFailureWriteback: () => async () => {
+            throw new Error("dependent row is locked");
+          },
+        }),
+      ).rejects.toThrow("failed for every job in the batch");
+
+      const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+      // Both writes rolled back together: the next sweep retries the pair.
+      expect(row.status).toBe("in_progress");
+      expect(row.attempts).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "one poisoned job does not starve the sweep, but an all-failed batch still throws",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const poisoned = "00000000-0000-4000-8000-000000180903";
+      const healthy = "00000000-0000-4000-8000-000000180904";
+      await seedJob({ id: poisoned, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: healthy, maxAttempts: 1, type: "agent_delete" });
+
+      const recovered = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: (hydratedJob) =>
+          hydratedJob.id === poisoned
+            ? async () => {
+                throw new Error("dependent row is locked");
+              }
+            : undefined,
+      });
+
+      expect(recovered).toBe(0);
+      const [poisonedRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, poisoned));
+      const [healthyRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, healthy));
+      expect(poisonedRow.status).toBe("in_progress");
+      expect(healthyRow.status).toBe("failed");
+
+      // Now poison BOTH: a batch where every job failed is an outage, and the
+      // caller must see it rather than read a silent zero.
+      await dbWrite.execute("DELETE FROM jobs;");
+      await seedJob({ id: poisoned, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: healthy, maxAttempts: 1, type: "agent_delete" });
+      await expect(
+        repo.recoverStaleJobs({
+          type: "agent_delete",
+          staleThresholdMs: 1,
+          buildFailureWriteback: () => async () => {
+            throw new Error("database is down");
+          },
+        }),
+      ).rejects.toThrow("failed for every job in the batch");
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a writeback that cannot be built leaves the job in_progress instead of flipping it unsettled",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const unbuildable = "00000000-0000-4000-8000-000000180905";
+      const healthy = "00000000-0000-4000-8000-000000180908";
+      await seedJob({ id: unbuildable, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: healthy, maxAttempts: 1, type: "agent_delete" });
+
+      const recovered = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: (hydratedJob) => {
+          // What an offloaded payload that no longer resolves produces: the
+          // hydration yields the reduced envelope and the reader rejects it.
+          if (hydratedJob.id === unbuildable) {
+            throw new Error(`Invalid job data for job ${hydratedJob.id}`);
+          }
+          return async (tx, failedJob) => {
+            await tx
+              .update(jobs)
+              .set({ webhook_status: "settled" })
+              .where(eq(jobs.id, failedJob.id));
+          };
+        },
+      });
+
+      expect(recovered).toBe(0);
+      const [unbuildableRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, unbuildable));
+      const [healthyRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, healthy));
+      // A job whose dependent row cannot be settled must not reach a terminal
+      // state: the live path leaves it in_progress too, and the next sweep
+      // retries the pair.
+      expect(unbuildableRow).toMatchObject({
+        status: "in_progress",
+        attempts: 0,
+        webhook_status: null,
+      });
+      expect(healthyRow).toMatchObject({ status: "failed", webhook_status: "settled" });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a recovery that only retries never hydrates for a writeback",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const jobId = "00000000-0000-4000-8000-000000180909";
+      await seedJob({ id: jobId, maxAttempts: 3, type: "agent_delete" });
+
+      let builds = 0;
+      const recovered = await repo.recoverStaleJobs({
+        type: "agent_delete",
+        staleThresholdMs: 1,
+        buildFailureWriteback: () => {
+          builds += 1;
+          return async () => {};
+        },
+      });
+
+      expect(recovered).toBe(1);
+      expect(builds).toBe(0);
+      const [row] = await dbWrite.select().from(jobs).where(eq(jobs.id, jobId));
+      expect(row.status).toBe("pending");
+      expect(row.webhook_status).toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "startup recovery fires the post-commit hook only for a flip that committed",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const failing = "00000000-0000-4000-8000-000000180906";
+      const retrying = "00000000-0000-4000-8000-000000180907";
+      await seedJob({ id: failing, maxAttempts: 1, type: "agent_delete" });
+      await seedJob({ id: retrying, maxAttempts: 3, type: "agent_delete" });
+
+      const committed: string[] = [];
+      const recovered = await repo.recoverInProgressJobsStartedBefore({
+        type: "agent_delete",
+        startedBefore: new Date("2021-01-01T00:00:00.000Z"),
+        buildFailureWriteback: () => async () => {},
+        onPermanentFailure: async (failedJob) => {
+          committed.push(failedJob.id);
+        },
+      });
+
+      expect(recovered).toBe(1);
+      expect(committed).toEqual([failing]);
+      const [retryingRow] = await dbWrite.select().from(jobs).where(eq(jobs.id, retrying));
+      expect(retryingRow.status).toBe("pending");
+    },
+    PGLITE_TIMEOUT,
+  );
 });

@@ -879,17 +879,47 @@ describe("managed dedicated canary diagnostic", () => {
     ).toThrow("unrelated newer job");
   });
 
+  // The recovery sweep now runs the same dependent-row writeback the live
+  // execution path runs, so a recovery-authored terminal failure IS a
+  // legitimate envelope source.
   test.each([
-    "Job timed out 3 times - max attempts reached",
-    "Job interrupted by worker restart 3 times - max attempts reached",
-  ])("rejects a recovery-generated terminal job as wrapper source", (cause) => {
-    expect(() =>
-      sanitizeManagedDedicatedCanaryDiagnostic(
+    ["Job timed out 3 times - max attempts reached", "timeout"],
+    [
+      "Job interrupted by worker restart 3 times - max attempts reached",
+      "worker_restart_interrupted",
+    ],
+  ])(
+    "accepts a recovery-generated terminal job as wrapper source",
+    (cause, code) => {
+      const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
         correlatedPermanentDeleteInput(cause),
         SUFFIX,
-      ),
-    ).toThrow("does not correlate");
-  });
+      );
+      expect(evidence.sandbox.errorCode).toBe(code as never);
+      expect(evidence.jobs[0]).toMatchObject({
+        status: "failed",
+        errorCode: code,
+      });
+    },
+  );
+
+  // The attempt count a terminal message carries is fenced job-side, before
+  // wrapper correlation ever runs — which is what lets the correlation itself
+  // stay a plain raw-equality check.
+  test.each([
+    "Job timed out 2 times - max attempts reached",
+    "Job interrupted by worker restart 4 times - max attempts reached",
+  ])(
+    "rejects a terminal wrapper source whose attempt count disagrees",
+    (cause) => {
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(
+          correlatedPermanentDeleteInput(cause),
+          SUFFIX,
+        ),
+      ).toThrow("terminal counters disagree");
+    },
+  );
 
   test("rejects coarse-code and equal-profile matches with different raw causes", () => {
     const known = correlatedPermanentDeleteInput(
