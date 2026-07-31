@@ -31,7 +31,20 @@ bun run --cwd packages/eliza-computer typecheck
 bun run --cwd packages/eliza-computer test
 bun run --cwd packages/eliza-computer build
 bun run --cwd packages/eliza-computer test:e2e
+bun run --cwd packages/eliza-computer test:e2e:record
 ```
+
+The local recording command builds a preview and fails closed unless its
+ledger is a recent, non-empty live GitHub snapshot. After the exact verified
+`dist` directory has been deployed, run
+`bun run --cwd packages/eliza-computer test:e2e:record:production`. Production
+recording does not rebuild. It byte-compares the remote skill, manifest,
+archive, checksum, and ledger with local `dist`, then records the apex DNS, TLS
+certificate, HTTP-to-HTTPS redirect, security headers, browser traffic,
+screenshots, and walkthrough. Capture output is validated in a fresh sibling
+directory and replaces `evidence/` only after every artifact and digest passes,
+so an interrupted run cannot leave a mixed or authoritative-looking partial
+bundle.
 
 ## Data and scoring
 
@@ -73,6 +86,13 @@ Pages Direct Upload. Configure a protected environment with:
 - `CLOUDFLARE_API_TOKEN` — scoped to Cloudflare Pages Edit for the target
   account;
 - `CLOUDFLARE_ACCOUNT_ID`.
+
+Production has no local deploy script. The workflow checks out the exact
+tested `github.sha`, deploys the downloaded build using the checked-in
+`wrangler.toml` output-directory contract, and sends that SHA to Cloudflare as
+clean commit metadata. It then waits for Cloudflare's API to report a new,
+successful production deployment with that exact clean SHA and records the
+deployment ID and immutable Pages URL before checking public bytes.
 
 The published bootstrap, manifest, skill, archive, and checksum use
 `https://eliza.army` as their stable origin. The Cloudflare Pages project keeps

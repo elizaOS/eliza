@@ -23,15 +23,36 @@ export const CLAIM_RECENCY_DAYS = 7;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const PLACEHOLDER_RE =
   /^(?:n\/?a|none|unknown|unspecified|tbd|todo|null|model|provider|<[^>]+>|\[[^\]]+\])$/i;
-const ISSUE_CLAIM_RE = /^\s*CLAIMING\s*:/im;
-const REVIEW_CLAIM_RE = /^\s*CLAIMING\s+REVIEW\s*:/im;
-const CONTRIBUTION_CLAIM_RE = /^\s*CLAIMING(?:\s+REVIEW|\s+LEVER)?\s*:/im;
-const AI_PROVENANCE_SIGNAL_RE =
-  /(?:AI provider\/model|AI assistance\s*:\s*yes|Client\s*\/\s*agent tooling|Contribution skill revision|eliza-computer-attribution:v1)/i;
+const GENERIC_PROVIDER_IDS = new Set([
+  "ai",
+  "model",
+  "n-a",
+  "n.a",
+  "na",
+  "none",
+  "provider",
+]);
+const GENERIC_MODEL_IDS = new Set([
+  "ai",
+  "claude",
+  "gemini",
+  "gpt",
+  "llama",
+  "model",
+  "na",
+  "none",
+]);
+const ISSUE_CLAIM_RE = /^CLAIMING\s*:/i;
+const REVIEW_CLAIM_RE = /^CLAIMING\s+REVIEW\s*:/i;
+const CONTRIBUTION_CLAIM_RE = /^CLAIMING(?:\s+REVIEW|\s+LEVER)?\s*:/i;
+const AI_PROVENANCE_DECLARATION_RE =
+  /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
+const AI_PROVENANCE_MARKER_LINE_RE =
+  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/i;
 const HUMAN_ONLY_CLAIM_FOOTER_RE =
   /(?:^|\r?\n)\s*AI assistance:\s*no\s*[-\u2013\u2014]\s*human-only claim\s*\r?\n\s*Attribution status:\s*self-reported\s*$/i;
 const HUMAN_ONLY_PR_RE =
-  /^\s*[-*]\s*AI assistance:\s*`?no\s*[-\u2013\u2014]\s*human-only contribution`?\s*$/im;
+  /^(?:[-*]\s*)?AI assistance:\s*`?no\s*[-\u2013\u2014]\s*human-only contribution`?\s*$/i;
 const ISSUE_CLAIM_LABEL_RE =
   /^(?:claimed|in[- ]progress|status:\s*(?:claimed|in[- ]progress))$/i;
 const REVIEW_CLAIM_LABEL_RE =
@@ -116,6 +137,115 @@ function isRecent(timestamp, referenceTime) {
   );
 }
 
+function declarationLineRecords(source) {
+  const text = nullableText(source, "declaration source");
+  const records = [];
+  let fence = null;
+  let offset = 0;
+  while (offset <= text.length) {
+    const newline = text.indexOf("\n", offset);
+    const physicalEnd = newline === -1 ? text.length : newline;
+    const raw = text.slice(offset, physicalEnd);
+    const sourceLine = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    const fenceMatch = sourceLine.match(
+      /^\s{0,3}(?:(?:[-*+]|\d+[.)])\s+)?(`{3,}|~{3,})(.*)$/,
+    );
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      if (fence === null) {
+        fence = { character: marker[0], length: marker.length };
+      } else if (
+        marker[0] === fence.character &&
+        marker.length >= fence.length &&
+        fenceMatch[2].trim().length === 0
+      ) {
+        fence = null;
+      }
+      if (newline === -1) break;
+      offset = newline + 1;
+      continue;
+    }
+    if (
+      fence !== null ||
+      /^\s{0,3}>/.test(sourceLine) ||
+      /^(?:\t| {4})/.test(sourceLine)
+    ) {
+      if (newline === -1) break;
+      offset = newline + 1;
+      continue;
+    }
+    const line = sourceLine
+      .trim()
+      .replace(/^(?:[-*+]|\d+[.)])\s+/, "")
+      .replaceAll("**", "")
+      .replaceAll("__", "");
+    if (!line.startsWith("`")) {
+      records.push({
+        end: offset + sourceLine.length,
+        normalized: line,
+        start: offset,
+      });
+    }
+    if (newline === -1) break;
+    offset = newline + 1;
+  }
+  return records;
+}
+
+function declarationLines(source) {
+  return declarationLineRecords(source).map((record) => record.normalized);
+}
+
+function hasClaimSignal(source, pattern) {
+  return declarationLines(source).some((line) => pattern.test(line));
+}
+
+function hasHumanOnlyClaimFooter(source) {
+  const text = nullableText(source, "claim footer");
+  const records = declarationLineRecords(text).filter(
+    (record) => record.normalized.length > 0,
+  );
+  const terminal = records.at(-1);
+  return (
+    terminal !== undefined &&
+    HUMAN_ONLY_CLAIM_FOOTER_RE.test(
+      records
+        .slice(-2)
+        .map((record) => record.normalized)
+        .join("\n"),
+    ) &&
+    text.slice(terminal.end).trim().length === 0
+  );
+}
+
+function hasHumanOnlyPullRequestDeclaration(source) {
+  return declarationLines(source).some((line) => HUMAN_ONLY_PR_RE.test(line));
+}
+
+function identifierKey(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isGenericProvider(value) {
+  return GENERIC_PROVIDER_IDS.has(identifierKey(value));
+}
+
+function isGenericModel(value) {
+  const segments = value.split("/");
+  return (
+    GENERIC_MODEL_IDS.has(identifierKey(value)) ||
+    GENERIC_MODEL_IDS.has(identifierKey(segments.at(-1) ?? ""))
+  );
+}
+
+function hasAiProvenanceSignal(source) {
+  return declarationLines(source).some(
+    (line) =>
+      AI_PROVENANCE_DECLARATION_RE.test(line) ||
+      AI_PROVENANCE_MARKER_LINE_RE.test(line),
+  );
+}
+
 function accountLogin(account) {
   if (account === null) return "ghost";
   const record = asRecord(account, "account");
@@ -180,13 +310,7 @@ export function readGhPages(endpoint, spawn = spawnSync) {
 
 export function parseModelDisclosure(text) {
   const body = nullableText(text, "disclosure text");
-  for (const sourceLine of body.split(/\r?\n/)) {
-    const line = sourceLine
-      .trim()
-      .replace(/^[-*]\s+/, "")
-      .replaceAll("**", "")
-      .replaceAll("__", "")
-      .replace(/^`|`$/g, "");
+  for (const line of declarationLines(body)) {
     const match = line.match(/^AI provider\/model\s*:\s*(.+)$/i);
     if (!match) continue;
     const pair = match[1].match(/^(.+?)\s+\/\s+(.+)$/);
@@ -196,6 +320,8 @@ export function parseModelDisclosure(text) {
     if (
       provider.length === 0 ||
       model.length === 0 ||
+      isGenericProvider(provider) ||
+      isGenericModel(model) ||
       PLACEHOLDER_RE.test(provider) ||
       PLACEHOLDER_RE.test(model) ||
       /[<>[\]]/.test(provider) ||
@@ -282,9 +408,9 @@ export function auditCommentDisclosures(comments) {
       (comment) =>
         !comment.bot &&
         comment.body.trim().length > 0 &&
-        (CONTRIBUTION_CLAIM_RE.test(comment.body) ||
-          AI_PROVENANCE_SIGNAL_RE.test(comment.body)) &&
-        !HUMAN_ONLY_CLAIM_FOOTER_RE.test(comment.body) &&
+        (hasClaimSignal(comment.body, CONTRIBUTION_CLAIM_RE) ||
+          hasAiProvenanceSignal(comment.body)) &&
+        !hasHumanOnlyClaimFooter(comment.body) &&
         parseModelDisclosure(comment.body) === null,
     )
     .map(({ id, kind, url, author }) => ({ id, kind, url, author }));
@@ -598,7 +724,7 @@ function claimReasons(item, comments, mode, context, referenceTime) {
     .filter(
       (comment) =>
         !comment.bot &&
-        claimPattern.test(comment.body) &&
+        hasClaimSignal(comment.body, claimPattern) &&
         isRecent(comment.createdAt, referenceTime),
     )
     .map((comment) => comment.author)
@@ -882,7 +1008,7 @@ export function collectLiveReport(
     pullRequestAudits.push({
       ...detailedSummary,
       bodyProviderModel: parseModelDisclosure(body),
-      bodyHumanOnly: HUMAN_ONLY_PR_RE.test(body),
+      bodyHumanOnly: hasHumanOnlyPullRequestDeclaration(body),
       missingModelDisclosures: auditCommentDisclosures(allComments),
       evidence: auditPrEvidence(body),
     });

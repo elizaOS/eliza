@@ -9,15 +9,14 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const CLAIM_RE = /^\s*CLAIMING(?:\s+(?:REVIEW|LEVER))?\s*:/im;
-const ATTRIBUTION_SIGNAL_RE =
-  /AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?\s+used\s*:|Model\(s\)\s+used\s*:|eliza-computer-attribution:v1/i;
+const CLAIM_LINE_RE = /^CLAIMING(?:\s+(?:REVIEW|LEVER))?\s*:/i;
+const ATTRIBUTION_DECLARATION_RE =
+  /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
+const ATTRIBUTION_MARKER_LINE_RE =
+  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/i;
 const HUMAN_ONLY_FOOTER_RE =
   /(?:^|\n)AI assistance:\s*no\s*[-\u2013\u2014]\s*human-only (?:claim|comment|review)\s*\nAttribution status:\s*self-reported\s*$/i;
 const NO_AI_VALUE_RE = /^(?:no|none|n\/?a)\s*[-:\u2013\u2014]\s*(\S[\s\S]*?)$/i;
-const MARKER_RE =
-  /<!--\s*eliza-computer-attribution:v1\s+(\{[^\r\n]*\})\s*-->/g;
-const ANY_MARKER_RE = /<!--\s*eliza-computer-attribution:v1\b[\s\S]*?-->/g;
 const FULL_SKILL_REVISION_RE =
   /^[a-z0-9_.-]+\/[a-z0-9_.-]+@[0-9a-f]{40}:[^\s`]+$/i;
 const PLACEHOLDER_RE =
@@ -29,17 +28,144 @@ const GENERIC_MODEL_IDS = new Set([
   "gpt",
   "llama",
   "model",
+  "na",
+  "none",
 ]);
-const GENERIC_PROVIDER_IDS = new Set(["ai", "model", "provider"]);
+const GENERIC_PROVIDER_IDS = new Set(["ai", "model", "na", "none", "provider"]);
 const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9._-]*$/i;
 const MODEL_ID_RE = /^[a-z0-9][-a-z0-9._:+/]*$/i;
 
-function lineValues(source, labelPattern) {
-  const expression = new RegExp(
-    `^\\s*(?:[-*]\\s*)?${labelPattern}\\s*:\\s*(.+?)\\s*$`,
-    "gim",
+function identifierKey(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isGenericProvider(value) {
+  return GENERIC_PROVIDER_IDS.has(identifierKey(value));
+}
+
+function isGenericModel(value) {
+  const segments = value.split("/");
+  return (
+    GENERIC_MODEL_IDS.has(identifierKey(value)) ||
+    GENERIC_MODEL_IDS.has(identifierKey(segments.at(-1) ?? ""))
   );
-  return [...source.matchAll(expression)].map((match) => match[1].trim());
+}
+
+function declarationLineRecords(source) {
+  const text = String(source ?? "");
+  const records = [];
+  let fence = null;
+  let offset = 0;
+  while (offset <= text.length) {
+    const newline = text.indexOf("\n", offset);
+    const physicalEnd = newline === -1 ? text.length : newline;
+    const raw = text.slice(offset, physicalEnd);
+    const sourceLine = raw.endsWith("\r") ? raw.slice(0, -1) : raw;
+    const fenceMatch = sourceLine.match(
+      /^\s{0,3}(?:(?:[-*+]|\d+[.)])\s+)?(`{3,}|~{3,})(.*)$/,
+    );
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      if (fence === null) {
+        fence = { character: marker[0], length: marker.length };
+      } else if (
+        marker[0] === fence.character &&
+        marker.length >= fence.length &&
+        fenceMatch[2].trim().length === 0
+      ) {
+        fence = null;
+      }
+      if (newline === -1) break;
+      offset = newline + 1;
+      continue;
+    }
+    if (
+      fence !== null ||
+      /^\s{0,3}>/.test(sourceLine) ||
+      /^(?:\t| {4})/.test(sourceLine)
+    ) {
+      if (newline === -1) break;
+      offset = newline + 1;
+      continue;
+    }
+    const line = sourceLine
+      .trim()
+      .replace(/^(?:[-*+]|\d+[.)])\s+/, "")
+      .replaceAll("**", "")
+      .replaceAll("__", "");
+    if (!line.startsWith("`")) {
+      records.push({
+        end: offset + sourceLine.length,
+        normalized: line,
+        raw: sourceLine,
+        start: offset,
+      });
+    }
+    if (newline === -1) break;
+    offset = newline + 1;
+  }
+  return records;
+}
+
+function declarationLines(source) {
+  return declarationLineRecords(source).map((record) => record.normalized);
+}
+
+function hasClaimSignal(source) {
+  return declarationLines(source).some((line) => CLAIM_LINE_RE.test(line));
+}
+
+function markerRecords(source) {
+  return declarationLineRecords(source)
+    .map((record) => {
+      const raw = record.raw.trim();
+      const any = raw.match(
+        /^<!--\s*eliza-computer-attribution:v1\b([\s\S]*?)-->\s*$/i,
+      );
+      if (!any) return null;
+      const wellFormed = raw.match(
+        /^<!--\s*eliza-computer-attribution:v1\s+(\{[^\r\n]*\})\s*-->\s*$/i,
+      );
+      const leadingWhitespace =
+        record.raw.length - record.raw.trimStart().length;
+      return {
+        end: record.start + leadingWhitespace + raw.length,
+        json: wellFormed?.[1] ?? null,
+        start: record.start + leadingWhitespace,
+      };
+    })
+    .filter((record) => record !== null);
+}
+
+function hasHumanOnlyFooter(source) {
+  const records = declarationLineRecords(source).filter(
+    (record) => record.normalized.length > 0,
+  );
+  const footer = records
+    .slice(-2)
+    .map((record) => record.normalized)
+    .join("\n");
+  const terminal = records.at(-1);
+  return (
+    terminal !== undefined &&
+    HUMAN_ONLY_FOOTER_RE.test(footer) &&
+    String(source).slice(terminal.end).trim().length === 0
+  );
+}
+
+function hasAttributionSignal(source) {
+  return declarationLines(source).some(
+    (line) =>
+      ATTRIBUTION_DECLARATION_RE.test(line) ||
+      ATTRIBUTION_MARKER_LINE_RE.test(line),
+  );
+}
+
+function lineValues(source, labelPattern) {
+  const expression = new RegExp(`^${labelPattern}\\s*:\\s*(.+?)\\s*$`, "i");
+  return declarationLines(source)
+    .map((line) => line.match(expression)?.[1]?.trim())
+    .filter((value) => value !== undefined);
 }
 
 function providerSlug(value) {
@@ -123,7 +249,7 @@ function evaluateNoAiIssue(source) {
       message: "Attribution status must be self-reported.",
     });
   }
-  if ([...source.matchAll(ANY_MARKER_RE)].length > 0) {
+  if (markerRecords(source).length > 0) {
     findings.push({
       id: "human-only-conflict",
       message: "A no-AI issue must not include a machine-attribution marker.",
@@ -162,7 +288,9 @@ export function parseAttributionEvent(path) {
 }
 
 export function evaluateCommentAttribution(body, options = {}) {
-  const source = String(body ?? "").trim();
+  // Leading indentation is Markdown syntax: trimming it would turn an
+  // indented code example into a real contribution declaration.
+  const source = String(body ?? "").trimEnd();
   if (options.issueBody === true) {
     const noAiIssue = evaluateNoAiIssue(source);
     if (noAiIssue) return noAiIssue;
@@ -170,14 +298,14 @@ export function evaluateCommentAttribution(body, options = {}) {
   const required =
     options.required === true ||
     options.issueBody === true ||
-    CLAIM_RE.test(source) ||
-    ATTRIBUTION_SIGNAL_RE.test(source);
+    hasClaimSignal(source) ||
+    hasAttributionSignal(source);
   if (!required) {
     return { ok: true, skipped: true, findings: [], attribution: null };
   }
 
-  if (HUMAN_ONLY_FOOTER_RE.test(source)) {
-    const conflictingMachineSignal = ATTRIBUTION_SIGNAL_RE.test(source);
+  if (hasHumanOnlyFooter(source)) {
+    const conflictingMachineSignal = hasAttributionSignal(source);
     return {
       ok: !conflictingMachineSignal,
       skipped: false,
@@ -199,8 +327,10 @@ export function evaluateCommentAttribution(body, options = {}) {
   const clientLines = lineValues(source, "Client / agent tooling");
   const revisionLines = lineValues(source, "Contribution skill revision");
   const statusLines = lineValues(source, "Attribution status");
-  const markerMatches = [...source.matchAll(MARKER_RE)];
-  const allMarkerMatches = [...source.matchAll(ANY_MARKER_RE)];
+  const allMarkerMatches = markerRecords(source);
+  const markerMatches = allMarkerMatches.filter(
+    (record) => record.json !== null,
+  );
 
   for (const [id, values] of [
     ["provider-model", modelLines],
@@ -235,8 +365,8 @@ export function evaluateCommentAttribution(body, options = {}) {
     !isConcrete(model) ||
     !PROVIDER_ID_RE.test(provider) ||
     !MODEL_ID_RE.test(model) ||
-    GENERIC_PROVIDER_IDS.has(provider.toLowerCase()) ||
-    GENERIC_MODEL_IDS.has(model.toLowerCase())
+    isGenericProvider(provider) ||
+    isGenericModel(model)
   ) {
     findings.push({
       id: "provider-model",
@@ -270,17 +400,19 @@ export function evaluateCommentAttribution(body, options = {}) {
   const markerMatch = markerMatches[0];
   let marker = null;
   if (markerMatch) {
-    const beforeMarker = source.slice(0, markerMatch.index ?? 0).trimEnd();
-    const laneLineRe = /(?:^|\n)(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/gim;
-    const laneMatches = [...beforeMarker.matchAll(laneLineRe)];
-    const terminalLane = beforeMarker.match(
-      /(?:^|\n)(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/i,
+    const laneLineRe = /^(?:—|-)\s*\[([a-z0-9][a-z0-9-]{1,48})\]\s*$/i;
+    const beforeMarkerRecords = declarationLineRecords(
+      source.slice(0, markerMatch.start),
+    ).filter((record) => record.normalized.length > 0);
+    const laneMatches = beforeMarkerRecords.filter((record) =>
+      laneLineRe.test(record.normalized),
     );
-    const fenceCount = (beforeMarker.match(/```/g) ?? []).length;
+    const terminalLane = beforeMarkerRecords.at(-1);
     if (
       laneMatches.length !== 1 ||
-      terminalLane === null ||
-      fenceCount % 2 !== 0
+      terminalLane === undefined ||
+      !laneLineRe.test(terminalLane.normalized) ||
+      source.slice(terminalLane.end, markerMatch.start).trim().length !== 0
     ) {
       findings.push({
         id: "lane-tag",
@@ -288,14 +420,14 @@ export function evaluateCommentAttribution(body, options = {}) {
           "Machine-authored comments and issues must carry exactly one terminal lane signature such as `— [qa-agent]` before the marker.",
       });
     }
-    if (source.slice((markerMatch.index ?? 0) + markerMatch[0].length).trim()) {
+    if (source.slice(markerMatch.end).trim()) {
       findings.push({
         id: "marker-position",
         message: "The attribution marker must be the final comment content.",
       });
     }
     try {
-      marker = JSON.parse(markerMatch[1]);
+      marker = JSON.parse(markerMatch.json);
     } catch {
       findings.push({
         id: "marker-json",

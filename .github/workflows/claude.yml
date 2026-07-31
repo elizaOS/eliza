@@ -17,16 +17,39 @@ permissions:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      github.event.sender.type != 'Bot' &&
+      !endsWith(github.actor, '[bot]') &&
+      (
+        (
+          github.event_name == 'issue_comment' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+          contains(github.event.comment.body, '@claude')
+        ) ||
+        (
+          github.event_name == 'pull_request_review_comment' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association) &&
+          contains(github.event.comment.body, '@claude')
+        ) ||
+        (
+          github.event_name == 'pull_request_review' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association) &&
+          contains(github.event.review.body, '@claude')
+        ) ||
+        (
+          github.event_name == 'issues' &&
+          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) &&
+          (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude'))
+        )
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       attribution_snapshot: ${{ steps.attribution-boundary.outputs.snapshot }}
     permissions:
       actions: read
+      # The pinned action returns trusted maintainer-requested file edits as a
+      # branch update; the job-level actor and association gate above prevents
+      # untrusted users and installed bots from receiving this capability.
       contents: write
       pull-requests: write
       issues: write

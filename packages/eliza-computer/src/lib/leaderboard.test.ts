@@ -50,6 +50,7 @@ function textSource(
     body,
     url: `https://github.com/elizaOS/eliza/pull/1#${id}`,
     createdAt: "2026-07-29T10:00:00.000Z",
+    updatedAt: "2026-07-29T10:00:00.000Z",
     author,
   };
 }
@@ -86,6 +87,7 @@ function pullRequest(
     body: "",
     createdAt: "2026-07-28T10:00:00.000Z",
     updatedAt: "2026-07-30T11:00:00.000Z",
+    lastEditedAt: null,
     mergedAt: "2026-07-30T11:00:00.000Z",
     isDraft: false,
     reviewDecision: "APPROVED",
@@ -267,17 +269,46 @@ describe("model attribution", () => {
         "",
       ),
     );
+    const genericProvider = textSource(
+      "COMMENT_GENERIC_PROVIDER",
+      machineAttribution("OpenAI", "gpt-5.6-sol")
+        .replace("AI provider/model: OpenAI /", "AI provider/model: AI /")
+        .replace('"provider":"openai"', '"provider":"ai"'),
+    );
+    const noProvider = textSource(
+      "COMMENT_NO_PROVIDER",
+      machineAttribution("OpenAI", "gpt-5.6-sol")
+        .replace("AI provider/model: OpenAI /", "AI provider/model: None /")
+        .replace('"provider":"openai"', '"provider":"none"'),
+    );
+    const noModel = textSource(
+      "COMMENT_NO_MODEL",
+      machineAttribution("OpenAI", "gpt-5.6-sol")
+        .replace("gpt-5.6-sol", "N/A")
+        .replace('"model":"gpt-5.6-sol"', '"model":"N/A"'),
+    );
 
     const result = assessModelAttribution([
       placeholder,
       extraField,
       mismatch,
       missingLane,
+      genericProvider,
+      noProvider,
+      noModel,
     ]);
 
     expect(
       result.declarations.filter(
         (declaration) => declaration.format === "machine-marker",
+      ),
+    ).toEqual([]);
+    expect(
+      result.declarations.filter(
+        (declaration) =>
+          declaration.sourceId === "COMMENT_GENERIC_PROVIDER" ||
+          declaration.sourceId === "COMMENT_NO_PROVIDER" ||
+          declaration.sourceId === "COMMENT_NO_MODEL",
       ),
     ).toEqual([]);
     expect(result.invalidMarkers).toEqual([
@@ -297,6 +328,18 @@ describe("model attribution", () => {
       expect.objectContaining({
         sourceId: "COMMENT_MISSING_LANE",
         reason: "marker requires exactly one terminal lane signature",
+      }),
+      expect.objectContaining({
+        sourceId: "COMMENT_GENERIC_PROVIDER",
+        reason: "provider must be a concrete lowercase provider slug",
+      }),
+      expect.objectContaining({
+        sourceId: "COMMENT_NO_PROVIDER",
+        reason: "provider must be a concrete lowercase provider slug",
+      }),
+      expect.objectContaining({
+        sourceId: "COMMENT_NO_MODEL",
+        reason: "model must be an exact model identifier",
       }),
     ]);
   });
@@ -364,7 +407,7 @@ describe("model attribution", () => {
     );
     const missing = textSource(
       "COMMENT_MISSING",
-      "I reproduced the failure and verified the output.",
+      "CLAIMING: I reproduced the failure and verified the output.",
       actor("missing"),
     );
     const invalid = textSource(
@@ -399,6 +442,68 @@ describe("model attribution", () => {
     });
     expect(assessModelAttribution([missing]).coverage.status).toBe("missing");
     expect(assessModelAttribution([invalid]).coverage.status).toBe("invalid");
+  });
+
+  it("does not classify ordinary human discussion as missing attribution", () => {
+    for (const [index, discussion] of [
+      "Looks good to me.",
+      "The `AI provider/model:` field in your comment is malformed.",
+      "> AI provider/model: quoted / example\n\nThis is quoted policy text.",
+      "```text\nAI provider/model: example / example-model\n```",
+      "````text\nCLAIMING: policy example\n```\nAI provider/model: example / example-model\n````",
+      "    CLAIMING REVIEW: indented policy example",
+      "~~~text\nAI assistance: no - human-only comment\n~~~",
+    ].entries()) {
+      expect(
+        assessModelAttribution([
+          textSource(`COMMENT_DISCUSSION_${index}`, discussion, actor("human")),
+        ]).coverage,
+      ).toMatchObject({
+        eligibleSourceCount: 0,
+        missingSourceCount: 0,
+        validSourceCount: 0,
+      });
+    }
+  });
+
+  it("ignores quoted and fenced marker examples around a real machine footer", () => {
+    for (const prefix of [
+      '> <!-- eliza-computer-attribution:v1 {"provider":"fake"} -->',
+      '~~~text\n<!-- eliza-computer-attribution:v1 {"provider":"fake"} -->\n~~~',
+      "````text\n— [example-agent]\n```\n````",
+    ]) {
+      const source = textSource(
+        `COMMENT_CONTEXT_${prefix.length}`,
+        `${prefix}\n\n${machineAttribution("OpenAI", "gpt-5.6-sol")}`,
+      );
+      const result = assessModelAttribution([source]);
+      expect(result.invalidMarkers).toEqual([]);
+      expect(result.declarations).toHaveLength(1);
+      expect(result.declarations[0]).toMatchObject({
+        identifier: "openai/gpt-5.6-sol",
+        format: "machine-marker",
+      });
+    }
+  });
+
+  it("does not let fenced model examples satisfy a real claim", () => {
+    const source = textSource(
+      "COMMENT_CLAIM_WITH_FENCED_MODEL",
+      [
+        "CLAIMING: fix the scheduler",
+        "",
+        "```text",
+        "AI provider/model: OpenAI / gpt-5.6-sol",
+        "```",
+      ].join("\n"),
+    );
+    const result = assessModelAttribution([source]);
+    expect(result.declarations).toEqual([]);
+    expect(result.coverage).toMatchObject({
+      status: "missing",
+      eligibleSourceCount: 1,
+      validSourceCount: 0,
+    });
   });
 
   it("does not mistake template guidance for a human-only declaration", () => {
@@ -735,6 +840,67 @@ describe("scoring and caps", () => {
     ]);
   });
 
+  it("scores only evidence that existed unchanged when the pull request merged", () => {
+    const preMergeScreenshot = {
+      ...textSource(
+        "COMMENT_PRE_MERGE",
+        [
+          "<!-- evidence-row:after-screenshots -->",
+          "After screenshot: https://github.com/user-attachments/assets/pre-merge",
+        ].join("\n"),
+      ),
+      createdAt: "2026-07-30T10:00:00.000Z",
+      updatedAt: "2026-07-30T10:00:00.000Z",
+    };
+    const editedAfterMerge = {
+      ...textSource(
+        "COMMENT_EDITED_AFTER_MERGE",
+        [
+          "<!-- evidence-row:backend-logs -->",
+          "Backend logs: https://github.com/elizaOS/eliza/actions/runs/123/artifacts/999",
+        ].join("\n"),
+      ),
+      createdAt: "2026-07-30T10:00:00.000Z",
+      updatedAt: "2026-07-30T11:01:00.000Z",
+    };
+    const postedAfterMerge = {
+      ...textSource(
+        "COMMENT_POST_MERGE",
+        [
+          "<!-- evidence-row:walkthrough-video -->",
+          "Video: https://github.com/user-attachments/assets/post-merge",
+        ].join("\n"),
+      ),
+      createdAt: "2026-07-30T11:01:00.000Z",
+      updatedAt: "2026-07-30T11:01:00.000Z",
+    };
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: [
+          pullRequest({
+            body: [
+              "<!-- evidence-row:llm-trajectory -->",
+              "Trajectory: https://github.com/elizaOS/eliza/actions/runs/456/artifacts/789",
+            ].join("\n"),
+            lastEditedAt: "2026-07-30T11:02:00.000Z",
+            comments: [preMergeScreenshot, editedAfterMerge, postedAfterMerge],
+          }),
+        ],
+      }),
+    );
+
+    expect(snapshot.leaders[0]).toMatchObject({
+      score: 11,
+      points: { mergedPullRequests: 10, evidence: 1 },
+      acceptedOutcomes: { evidenceCategories: 1 },
+    });
+    expect(
+      snapshot.ledger
+        .filter((event) => event.category === "evidence")
+        .map((event) => event.reason),
+    ).toEqual(["Concrete screenshot evidence was attached or linked."]);
+  });
+
   it("keeps model disclosure non-scoring", () => {
     const withoutDisclosure = createLeaderboardSnapshot(
       input({ mergedPullRequests: [pullRequest()] }),
@@ -795,6 +961,24 @@ describe("work queue claims and prioritization", () => {
         },
       ],
     });
+    const fencedExampleIssue = issue({
+      id: "ISSUE_FENCED_EXAMPLE",
+      number: 12,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_FENCED_ISSUE_CLAIM",
+            "````text\nCLAIMING: example only\n```\n````",
+            actor("example-author"),
+          ),
+          artifactId: "ISSUE_FENCED_EXAMPLE",
+          createdAt: "2026-07-29T10:00:00.000Z",
+        },
+      ],
+    });
     const openPullRequest = pullRequest({
       id: "PR_REVIEW",
       number: 20,
@@ -848,7 +1032,7 @@ describe("work queue claims and prioritization", () => {
 
     const snapshot = createLeaderboardSnapshot(
       input({
-        openIssues: [recentIssue, staleIssue],
+        openIssues: [recentIssue, staleIssue, fencedExampleIssue],
         openPullRequests: [openPullRequest, wrongClaimForm],
       }),
     );
@@ -857,6 +1041,9 @@ describe("work queue claims and prioritization", () => {
     )?.claim;
     const staleClaim = snapshot.workQueue.issues.find(
       (item) => item.id === "ISSUE_STALE",
+    )?.claim;
+    const fencedExampleClaim = snapshot.workQueue.issues.find(
+      (item) => item.id === "ISSUE_FENCED_EXAMPLE",
     )?.claim;
     const reviewClaim = snapshot.workQueue.pullRequests.find(
       (item) => item.id === "PR_REVIEW",
@@ -873,6 +1060,11 @@ describe("work queue claims and prioritization", () => {
       claimedAt: "2026-07-29T10:00:00.000Z",
     });
     expect(staleClaim).toMatchObject({
+      status: "unclaimed",
+      source: "none",
+      kind: null,
+    });
+    expect(fencedExampleClaim).toMatchObject({
       status: "unclaimed",
       source: "none",
       kind: null,
@@ -944,7 +1136,7 @@ describe("work queue claims and prioritization", () => {
     ]);
   });
 
-  it("publishes valid versus eligible attribution counts for each work item", () => {
+  it("excludes ordinary discussion from work-item attribution coverage", () => {
     const openIssue = issue({
       id: "ISSUE_COVERAGE",
       closedAt: null,
@@ -969,15 +1161,15 @@ describe("work queue claims and prioritization", () => {
     );
 
     expect(snapshot.workQueue.issues[0].model).toMatchObject({
-      status: "partial",
-      eligibleSourceCount: 2,
+      status: "complete",
+      eligibleSourceCount: 1,
       validSourceCount: 1,
-      missingSourceCount: 1,
+      missingSourceCount: 0,
       invalidSourceCount: 0,
     });
     expect(snapshot.attributionCoverage).toMatchObject({
-      status: "partial",
-      eligibleSourceCount: 2,
+      status: "complete",
+      eligibleSourceCount: 1,
       validSourceCount: 1,
     });
     expect(snapshot.leaders).toEqual([]);

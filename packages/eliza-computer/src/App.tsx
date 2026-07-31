@@ -26,6 +26,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { createInstallCommand } from "./lib/install-command";
 import {
   assertLeaderboardSnapshot,
   type LeaderboardEntry,
@@ -53,73 +54,6 @@ function currentSiteOrigin(): string {
   return origin;
 }
 
-function createInstallCommand(origin: string, skillsRoot: string): string {
-  return `(
-  set -eu
-  SKILLS_ROOT="${skillsRoot}"
-  TARGET="$SKILLS_ROOT/contribute-to-eliza"
-  if [ -e "$TARGET" ] || [ -L "$TARGET" ]; then
-    printf '%s\\n' "Refusing to overwrite existing skill: $TARGET" >&2
-    exit 1
-  fi
-  INSTALL_TMP="$(mktemp -d)"
-  TARGET_CREATED=0
-  cleanup() {
-    rm -rf "$INSTALL_TMP"
-    if [ "$TARGET_CREATED" -eq 1 ]; then rm -rf "$TARGET"; fi
-  }
-  trap cleanup EXIT
-  trap 'exit 1' HUP INT TERM
-  ARCHIVE="$INSTALL_TMP/contribute-to-eliza.skill"
-  CHECKSUM="$INSTALL_TMP/contribute-to-eliza.skill.sha256"
-  STAGE_ROOT="$INSTALL_TMP/stage"
-  curl -fsSL --max-filesize 10485760 "${origin}/downloads/contribute-to-eliza.skill" -o "$ARCHIVE"
-  curl -fsSL --max-filesize 4096 "${origin}/downloads/contribute-to-eliza.skill.sha256" -o "$CHECKSUM"
-  EXPECTED="$(awk 'NF == 2 && $2 == "contribute-to-eliza.skill" { hash=$1; count++ } END { if (count != 1) exit 1; print hash }' "$CHECKSUM")"
-  test "\${#EXPECTED}" -eq 64
-  case "$EXPECTED" in ""|*[!0-9A-Fa-f]*) exit 1 ;; esac
-  if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL="$(sha256sum "$ARCHIVE" | awk '{ print $1 }')"
-  elif command -v shasum >/dev/null 2>&1; then
-    ACTUAL="$(shasum -a 256 "$ARCHIVE" | awk '{ print $1 }')"
-  else
-    exit 1
-  fi
-  test "$ACTUAL" = "$EXPECTED"
-  unzip -tq "$ARCHIVE" >/dev/null
-  ARCHIVE_ENTRIES="$(unzip -Z1 "$ARCHIVE")"
-  test -n "$ARCHIVE_ENTRIES"
-  printf '%s\\n' "$ARCHIVE_ENTRIES" | awk '
-    index($0, "contribute-to-eliza/") != 1 { exit 1 }
-    index("/" $0 "/", "/../") { exit 1 }
-    index("/" $0 "/", "/./") { exit 1 }
-    index($0, "//") { exit 1 }
-    index($0, "\\\\") { exit 1 }
-    index($0, sprintf("%c", 13)) { exit 1 }
-    NR > 128 { exit 1 }
-    END { if (NR == 0) exit 1 }
-  '
-  mkdir "$STAGE_ROOT"
-  unzip -oq "$ARCHIVE" -d "$STAGE_ROOT"
-  if find "$STAGE_ROOT" ! -type f ! -type d -print -quit | grep -q .; then
-    exit 1
-  fi
-  STAGED="$STAGE_ROOT/contribute-to-eliza"
-  test -f "$STAGED/SKILL.md"
-  test -f "$STAGED/PROVENANCE.json"
-  mkdir -p "$SKILLS_ROOT"
-  if ! mkdir "$TARGET"; then
-    printf '%s\\n' "Unable to reserve a new skill directory: $TARGET" >&2
-    exit 1
-  fi
-  TARGET_CREATED=1
-  cp -R "$STAGED/." "$TARGET/"
-  test -f "$TARGET/SKILL.md"
-  test -f "$TARGET/PROVENANCE.json"
-  TARGET_CREATED=0
-)`;
-}
-
 function createInstallOptions(origin: string): readonly InstallOption[] {
   return [
     {
@@ -135,13 +69,13 @@ function createInstallOptions(origin: string): readonly InstallOption[] {
         origin,
         `\${CODEX_HOME:-\${HOME}/.codex}/skills`,
       ),
-      note: "Checks the checksum, archive paths, archive integrity, and required files, then refuses to overwrite an existing install.",
+      note: "Checks the checksum, bounded archive extraction, paths, and required files, then refuses to overwrite an existing install.",
     },
     {
       id: "claude",
       label: "Claude Code",
       command: createInstallCommand(origin, `\${HOME}/.claude/skills`),
-      note: "Checks the complete archive and its paths, then refuses to overwrite an existing skill or project-level CLAUDE.md guidance.",
+      note: "Checks the complete archive with bounded extraction, then refuses to overwrite an existing skill or project-level CLAUDE.md guidance.",
     },
   ];
 }
@@ -438,6 +372,7 @@ function OutcomeBreakdown({
   entry: LeaderboardEntry;
   events: ScoreEvent[];
 }) {
+  const [expanded, setExpanded] = useState(false);
   const outcomes = [
     ["Merged PRs", entry.acceptedOutcomes.mergedPullRequests],
     ["Resolved issues", entry.acceptedOutcomes.resolvedIssues],
@@ -455,12 +390,15 @@ function OutcomeBreakdown({
           </li>
         ))}
       </ul>
-      <details className="score-evidence">
+      <details
+        className="score-evidence"
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+      >
         <summary>
           {events.length} linked score{" "}
           {events.length === 1 ? "event" : "events"}
         </summary>
-        {events.length > 0 ? (
+        {expanded && events.length > 0 ? (
           <ol>
             {events.map((event) => (
               <li key={event.id}>
@@ -480,11 +418,11 @@ function OutcomeBreakdown({
               </li>
             ))}
           </ol>
-        ) : (
+        ) : expanded ? (
           <p className="missing-score-evidence">
             No score evidence is present in this snapshot.
           </p>
-        )}
+        ) : null}
       </details>
     </div>
   );
@@ -655,7 +593,10 @@ function WorkQueueItem({ item }: { item: WorkItem }) {
   const modelLabel = {
     complete: `model coverage ${item.model.validSourceCount}/${item.model.eligibleSourceCount}`,
     invalid: `invalid attribution ${item.model.validSourceCount}/${item.model.eligibleSourceCount}`,
-    missing: `model missing ${item.model.validSourceCount}/${item.model.eligibleSourceCount}`,
+    missing:
+      item.model.eligibleSourceCount === 0
+        ? "no attribution-eligible activity"
+        : `model missing ${item.model.validSourceCount}/${item.model.eligibleSourceCount}`,
     partial: `model coverage ${item.model.validSourceCount}/${item.model.eligibleSourceCount}`,
   }[item.model.status];
   const claimKind =

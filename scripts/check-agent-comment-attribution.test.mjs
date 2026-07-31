@@ -157,11 +157,37 @@ Attribution status: self-reported`);
   });
 
   it("does not impose attribution syntax on ordinary human discussion", () => {
-    const result = evaluateCommentAttribution(
+    for (const discussion of [
       "I reproduced this on macOS and added the logs above.",
-    );
-    assert.equal(result.ok, true);
-    assert.equal(result.skipped, true);
+      "The `AI provider/model:` field in your comment is malformed.",
+      "> AI provider/model: quoted / example\n\nThis is quoted policy text.",
+      "```text\nAI provider/model: example / example-model\n```",
+      "````text\nCLAIMING: example only\n```\nAI provider/model: example / example-model\n````",
+      "    CLAIMING REVIEW: indented code is policy text",
+    ]) {
+      const result = evaluateCommentAttribution(discussion);
+      assert.equal(result.ok, true, discussion);
+      assert.equal(result.skipped, true, discussion);
+    }
+  });
+
+  it("ignores quoted and fenced footer markers without weakening a real footer", () => {
+    const quotedMarker =
+      '> <!-- eliza-computer-attribution:v1 {"provider":"fake"} -->';
+    const fencedMarker =
+      '~~~text\n<!-- eliza-computer-attribution:v1 {"provider":"fake"} -->\n~~~';
+    const fencedLane = "````text\n— [example-agent]\n```\n````";
+    for (const prefix of [quotedMarker, fencedMarker, fencedLane]) {
+      const result = evaluateCommentAttribution(
+        `${prefix}\n\n${machineFooter()}`,
+        { required: true },
+      );
+      assert.equal(
+        result.ok,
+        true,
+        `${prefix}: ${result.findings.map((finding) => finding.message).join("; ")}`,
+      );
+    }
   });
 
   it("accepts matching no-AI issue rows and rejects mixed reasons", () => {
@@ -196,6 +222,21 @@ Attribution status: self-reported`);
         (finding) => finding.id === "human-only-conflict",
       ),
     );
+
+    for (const exampleMarker of [
+      "> <!-- eliza-computer-attribution:v1 -->",
+      "```text\n<!-- eliza-computer-attribution:v1 -->\n```",
+    ]) {
+      const example = evaluateCommentAttribution(
+        `${exampleMarker}\n\n${issue}`,
+        { issueBody: true },
+      );
+      assert.equal(
+        example.ok,
+        true,
+        example.findings.map((finding) => finding.message).join("; "),
+      );
+    }
   });
 
   it("keeps every issue template valid when filled as human-only", () => {
@@ -284,16 +325,39 @@ ${machineFooter()}`;
       result.findings.some((finding) => finding.id === "provider-model"),
     );
 
-    const genericProvider = evaluateCommentAttribution(
-      machineFooter({ provider: "AI", providerSlug: "ai" }),
-      { required: true },
-    );
-    assert.equal(genericProvider.ok, false);
-    assert.ok(
-      genericProvider.findings.some(
-        (finding) => finding.id === "provider-model",
-      ),
-    );
+    for (const [provider, providerSlug] of [
+      ["AI", "ai"],
+      ["None", "none"],
+      ["N_A", "n-a"],
+    ]) {
+      const genericProvider = evaluateCommentAttribution(
+        machineFooter({ provider, providerSlug }),
+        { required: true },
+      );
+      assert.equal(genericProvider.ok, false, provider);
+      assert.ok(
+        genericProvider.findings.some(
+          (finding) => finding.id === "provider-model",
+        ),
+        provider,
+      );
+    }
+
+    for (const model of ["N/A", "none", "openai/gpt"]) {
+      const genericModel = evaluateCommentAttribution(
+        machineFooter({ model }),
+        {
+          required: true,
+        },
+      );
+      assert.equal(genericModel.ok, false, model);
+      assert.ok(
+        genericModel.findings.some(
+          (finding) => finding.id === "provider-model",
+        ),
+        model,
+      );
+    }
   });
 
   it("does not skip alternate declarations of AI assistance or models used", () => {

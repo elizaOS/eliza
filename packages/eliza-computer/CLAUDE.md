@@ -46,12 +46,22 @@ bun run --cwd packages/eliza-computer format:check
 bun run --cwd packages/eliza-computer build
 bun run --cwd packages/eliza-computer test:e2e
 bun run --cwd packages/eliza-computer test:e2e:record
+bun run --cwd packages/eliza-computer test:e2e:record:production
 ```
 
 `leaderboard:generate` reads GitHub through the authenticated `gh` CLI or
 `GITHUB_TOKEN`; it fails loudly when live data cannot be loaded. The UI keeps
 loading, empty, stale, and error states distinct. Never fabricate an empty or
 zero leaderboard after an ingestion failure.
+
+The local evidence command builds and records the local preview, but refuses a
+missing, empty, malformed, or older-than-eight-hours live ledger. The
+production command never rebuilds: it records only the existing `dist`, targets
+exactly `https://eliza.army`, byte-compares the deployed skill and ledger
+artifacts with that directory, and records DNS, TLS, redirect, and security
+header checks. Both modes capture into a fresh sibling staging directory,
+validate every artifact and digest, and publish the evidence directory only as
+one complete transaction.
 
 ## Contribution scoring contract
 
@@ -84,6 +94,13 @@ repository/environment secrets are `CLOUDFLARE_API_TOKEN` and
 Production is the protected `develop` deployment unless maintainers change the
 release policy. Claim the deploy/DNS lever on the issue before changing Pages,
 zones, nameservers, DNSSEC, custom domains, or registrar state.
+
+Do not deploy production from a package script or a local working tree. The
+workflow checks out the exact tested Actions SHA, downloads the verified build,
+and lets `wrangler.toml` select the Pages output directory before binding that
+deployment to the same commit SHA. The release stays failed until Cloudflare's
+API reports a new, clean, successful production deployment for that exact SHA;
+the workflow records its deployment ID and immutable Pages URL.
 
 The production domain is registered with Cloudflare Registrar in the same
 account as the Pages project. The internal project slug remains
