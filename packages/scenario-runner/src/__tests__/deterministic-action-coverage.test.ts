@@ -437,7 +437,7 @@ const APP_CONTROL_MODE_SURFACE: Record<
   AppControlActionName,
   readonly string[]
 > = {
-  APP: ["create", "launch", "list", "load_from_directory", "relaunch"],
+  APP: ["create", "launch", "list", "load_from_directory", "relaunch", "stop"],
   VIEWS: [
     "broadcast",
     "close",
@@ -496,6 +496,12 @@ const REQUIRED_APP_CONTROL_MODE_TURNS: readonly {
     actionName: "APP",
     mode: "relaunch",
     label: "APP relaunch",
+    requiredOptions: { app: isNonEmptyString },
+  },
+  {
+    actionName: "APP",
+    mode: "stop",
+    label: "APP stop",
     requiredOptions: { app: isNonEmptyString },
   },
   {
@@ -616,6 +622,7 @@ const REQUIRED_APP_CONTROL_NL_TURNS: readonly string[] = [
   "natural language searches views",
   "natural language launches an app",
   "natural language relaunches an app",
+  "natural language stops an app",
   "natural language loads apps from directory",
   "natural language enters app create choice flow",
   "natural language cancels pending app create flow",
