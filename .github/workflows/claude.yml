@@ -35,22 +35,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      # Diagnostic only (never fails the job): when the credential is broken,
-      # the action's own failure is a cryptic is_error:true, so print the
-      # provider's actual error here. Never prints the key.
-      - name: Preflight Anthropic credential
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          status=$(curl -sS -o /tmp/anthropic.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
-            -H "x-api-key: ${ANTHROPIC_API_KEY}" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-            -d '{"model":"claude-opus-4-7","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
-          if [ "$status" != "200" ]; then
-            echo "::warning::ANTHROPIC_API_KEY preflight failed (HTTP $status): $(cat /tmp/anthropic.json)"
-          else
-            echo "ANTHROPIC_API_KEY ok"
-          fi
-
       - name: Run Claude Code
         id: claude
         # Don't fail the workflow when the Anthropic API is unavailable
@@ -59,11 +43,7 @@ jobs:
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
         with:
-          # ANTHROPIC_API_KEY is the credential that actually exists in this
-          # repository's secrets. The OAuth-token secret this workflow used to
-          # reference was never configured, which left every @claude mention
-          # silently dead behind continue-on-error.
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
           # Allow cursor bot to trigger reviews
           allowed_bots: "cursor"
