@@ -176,7 +176,7 @@ async function main() {
                 .getByRole("button", { name: "Manage calendar sources" })
                 .click();
               await page
-                .getByText("New calendars are included automatically")
+                .getByRole("button", { name: "Close source settings" })
                 .waitFor({ state: "visible", timeout: 5_000 });
             }
           } catch (e) {

@@ -226,6 +226,13 @@ function flattenAppInfo<T extends RegistryPluginInfo>(appInfo: T): T {
     uiExtension: meta.uiExtension ?? appInfo.uiExtension,
     viewer: resolveDisplayViewerInfo(meta.viewer ?? appInfo.viewer),
     session: meta.session ?? appInfo.session,
+    developerOnly: meta.developerOnly,
+    visibleInAppStore: meta.visibleInAppStore,
+    mainTab: meta.mainTab,
+    catalogSection: meta.catalogSection,
+    featured: meta.featured,
+    defaultHidden: meta.defaultHidden,
+    scope: meta.scope,
   };
 }
 
