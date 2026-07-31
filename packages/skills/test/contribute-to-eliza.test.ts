@@ -10,7 +10,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,6 +36,7 @@ import {
 const testDir = dirname(fileURLToPath(import.meta.url));
 const skillDir = join(testDir, "..", "skills", "contribute-to-eliza");
 const skillPath = join(skillDir, "SKILL.md");
+const liveReportPath = join(skillDir, "scripts", "live-report.mjs");
 const NOW = new Date("2026-01-20T12:00:00.000Z");
 const HEAD_SHA = "a".repeat(40);
 const PRIOR_SHA = "b".repeat(40);
@@ -283,6 +286,27 @@ writeFileSync(
 });
 
 describe("live report parsing", () => {
+  it("runs the CLI when its entrypoint reaches the module through a symlink", () => {
+    const fixtureRoot = mkdtempSync(
+      join(tmpdir(), "contribute-to-eliza-live-report-"),
+    );
+    const linkedEntrypoint = join(fixtureRoot, "live-report.mjs");
+    try {
+      symlinkSync(liveReportPath, linkedEntrypoint);
+      assert.notStrictEqual(linkedEntrypoint, realpathSync(linkedEntrypoint));
+
+      const result = spawnSync(process.execPath, [linkedEntrypoint, "--help"], {
+        encoding: "utf8",
+      });
+
+      assert.strictEqual(result.status, 0, result.stderr);
+      assert.match(result.stdout, /^Usage: node scripts\/live-report\.mjs/m);
+      assert.strictEqual(result.stderr, "");
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true });
+    }
+  });
+
   it("flattens paginated gh output and rejects malformed pages", () => {
     assert.deepStrictEqual(
       parsePaginatedJson('[[{"number":1}],[{"number":2}]]'),
