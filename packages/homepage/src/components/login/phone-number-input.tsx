@@ -3,44 +3,17 @@
  */
 import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Input } from "@elizaos/ui/input";
-import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import { CountryFlag } from "@/components/login/country-flag";
-import { useT } from "@/providers/I18nProvider";
+import { type CountryOption, createCountryOptions } from "@/lib/countries";
+import { useI18n } from "@/providers/I18nProvider";
 
-const COUNTRY_LIST = getCountries();
-const DISPLAY_NAMES =
-  typeof Intl !== "undefined"
-    ? new Intl.DisplayNames(["en"], { type: "region" })
-    : null;
-
-function getCountryName(code: string): string {
-  try {
-    return DISPLAY_NAMES?.of(code) ?? code;
-  } catch {
-    return code;
-  }
-}
-
-export interface CountryOption {
-  code: string;
-  name: string;
-  dialCode: string;
-}
+export type { CountryOption } from "@/lib/countries";
 
 export function useCountryOptions(): CountryOption[] {
-  return useMemo(() => {
-    return COUNTRY_LIST.map((code) => {
-      let dialCode = "1";
-      try {
-        dialCode = getCountryCallingCode(code);
-      } catch {
-        dialCode = "1";
-      }
-      return { code, name: getCountryName(code), dialCode };
-    }).sort((a, b) => a.name.localeCompare(b.name));
-  }, []);
+  const { lang } = useI18n();
+  return useMemo(() => createCountryOptions(lang), [lang]);
 }
 
 export function buildFullPhoneNumber(
@@ -48,10 +21,12 @@ export function buildFullPhoneNumber(
   selectedCountry: string,
   countryOptions: CountryOption[],
 ): string {
-  const dialCode =
-    countryOptions.find((c) => c.code === selectedCountry)?.dialCode || "1";
+  const option = countryOptions.find((c) => c.code === selectedCountry);
+  if (!option) {
+    throw new RangeError(`Unknown phone country: ${selectedCountry}`);
+  }
   const cleanPhone = phoneValue.replace(/\D/g, "");
-  return `+${dialCode}${cleanPhone}`;
+  return `+${option.dialCode}${cleanPhone}`;
 }
 
 type PhoneInputVariant = "light" | "dark";
@@ -104,13 +79,20 @@ export function PhoneNumberInput({
   autoFocus = false,
   countryOptions,
 }: PhoneNumberInputProps) {
-  const t = useT();
+  const { t } = useI18n();
   const styles = variantStyles[variant];
+  const selectedOption = countryOptions.find(
+    (option) => option.code === selectedCountry,
+  );
 
   return (
     <div className={styles.wrapper}>
       <label className={styles.label}>
-        <CountryFlag countryCode={selectedCountry} className={styles.flag} />
+        <CountryFlag
+          countryCode={selectedCountry}
+          className={styles.flag}
+          title={selectedOption?.name ?? selectedCountry}
+        />
         <ChevronDown className={styles.chevron} />
         <select
           value={selectedCountry}

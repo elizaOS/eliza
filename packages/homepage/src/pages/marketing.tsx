@@ -147,6 +147,8 @@ export default function MarketingPage() {
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupBlack}`}
             alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
+            width={420}
+            height={104}
             draggable={false}
             className="app-brand-mark"
           />
@@ -445,6 +447,8 @@ export default function MarketingPage() {
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaWhite}`}
             alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
+            width={269}
+            height={99}
             className="app-footer-logo"
             draggable={false}
           />

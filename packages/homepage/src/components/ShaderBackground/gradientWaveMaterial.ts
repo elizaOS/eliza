@@ -1,27 +1,28 @@
 /**
  * Custom react-three/fiber material for the homepage gradient wave shader.
  */
-import { shaderMaterial } from "@react-three/drei";
 import { extend, type ThreeElement } from "@react-three/fiber";
 import * as THREE from "three";
 
-const GradientWaveMaterial = shaderMaterial(
-  {
-    uTime: 0,
-    uMouse: new THREE.Vector2(0.5, 0.5),
-    uMouseVel: new THREE.Vector2(0, 0),
-    uClickTime: 100,
-    uClickPos: new THREE.Vector2(0.5, 0.5),
-    uResolution: new THREE.Vector2(1, 1),
-  },
-  /* vertex shader */ `
+class GradientWaveMaterial extends THREE.ShaderMaterial {
+  constructor() {
+    super({
+      uniforms: {
+        uTime: { value: 0 },
+        uMouse: { value: new THREE.Vector2(0.5, 0.5) },
+        uMouseVel: { value: new THREE.Vector2(0, 0) },
+        uClickTime: { value: 100 },
+        uClickPos: { value: new THREE.Vector2(0.5, 0.5) },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+      },
+      vertexShader: `
     varying vec2 vUv;
     void main() {
       vUv = uv;
       gl_Position = vec4(position, 1.0);
     }
   `,
-  /* fragment shader */ `
+      fragmentShader: `
     precision highp float;
 
     uniform float uTime;
@@ -127,7 +128,9 @@ const GradientWaveMaterial = shaderMaterial(
       gl_FragColor = vec4(color, 1.0);
     }
   `,
-);
+    });
+  }
+}
 
 extend({ GradientWaveMaterial });
 

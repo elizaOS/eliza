@@ -1,5 +1,5 @@
 /**
- * Visual regression coverage for the marketing homepage routes.
+ * Visual regression coverage for the public homepage routes.
  *
  * Every route and viewport is compared against committed baselines via
  * toHaveScreenshot, while the quality-retry pre-check rejects blank or
@@ -12,6 +12,7 @@ import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
   { path: "/", name: "landing" },
+  { path: "/downloads", name: "downloads" },
   { path: "/login", name: "login" },
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },
@@ -25,19 +26,38 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The /leaderboard intro (SVG letter swap → spring-revealed tab bar) is
-  // react-spring/JS-driven, so `animations: "disabled"` cannot freeze it and
-  // a fixed wait races slow app-JS loads. Wait for the last spring-revealed
-  // control ("Try Now") instead, then give the springs time to reach rest.
-  if (routePath === "/leaderboard") {
+  // The phone is loaded only after the section becomes visible and the browser
+  // gets idle time, so its explicit readiness marker is the stable capture
+  // boundary for both the deferred load and the camera intro.
+  if (routePath === "/" || routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
+    const tryButton = page.getByRole("button", { name: "Try Now" }).first();
+    await tryButton.waitFor({ timeout: 15_000 });
+    await expect
+      .poll(
+        async () =>
+          Number(
+            await tryButton.evaluate(
+              (element) => getComputedStyle(element).opacity,
+            ),
+          ),
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0.98);
     await page
-      .getByText("Try Now")
-      .first()
-      .waitFor({ timeout: 15_000 })
-      .catch(() => {});
-    await page.waitForTimeout(2500);
+      .locator('[data-phone-model="settled"]')
+      .waitFor({ timeout: 20_000 });
+    await page.waitForTimeout(500);
     return;
+  }
+  if (routePath === "/login" || routePath === "/connected") {
+    await page.waitForFunction(
+      () =>
+        window.location.pathname === "/get-started" ||
+        document.body.textContent?.includes("Connected."),
+      undefined,
+      { timeout: 20_000 },
+    );
   }
   await page.waitForTimeout(600);
 }

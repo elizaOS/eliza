@@ -1,19 +1,12 @@
 /**
- * Country flag renderer for the homepage phone-number picker.
+ * Cross-platform country flag renderer for homepage phone-number pickers.
  */
-import { hasFlag } from "country-flag-icons";
-import * as FlagComponents from "country-flag-icons/react/3x2";
-import type * as React from "react";
-
-const FlagMap = FlagComponents as Record<
-  string,
-  React.ComponentType<React.SVGAttributes<SVGSVGElement>>
->;
+import { getCountryFlagPath } from "@/lib/countries";
 
 interface CountryFlagProps {
   countryCode: string;
   className?: string;
-  title?: string;
+  title: string;
 }
 
 export function CountryFlag({
@@ -21,20 +14,27 @@ export function CountryFlag({
   className,
   title,
 }: CountryFlagProps) {
-  const key = countryCode.replace(/-/g, "_");
-  const Flag = FlagMap[key];
-
-  if (!hasFlag(countryCode) || !Flag) {
-    return (
-      <span className={className} title={title ?? countryCode} aria-hidden>
-        {countryCode}
-      </span>
-    );
-  }
+  const flagPath = getCountryFlagPath(countryCode);
 
   return (
-    <span title={title ?? countryCode}>
-      <Flag className={className} />
+    <span
+      className={`${className ?? ""} inline-flex items-center justify-center overflow-hidden`}
+      title={title}
+      role="img"
+      aria-label={title}
+    >
+      {flagPath ? (
+        <img
+          src={flagPath}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          decoding="async"
+          className="size-full object-cover"
+        />
+      ) : (
+        countryCode.toUpperCase()
+      )}
     </span>
   );
 }
