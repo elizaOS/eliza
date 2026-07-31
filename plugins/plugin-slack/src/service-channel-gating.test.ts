@@ -4,236 +4,82 @@
  *
  * These drive the REAL handlers registered on the bolt app in
  * `registerEventHandlers` (`app.message` → `handleMessage`, `app.event
- * ("app_mention")` → `handleAppMention`), not a helper, and assert on whether
- * `processAgentMessage` ran. On unfixed develop the per-channel config is
- * parsed and discarded, so the requireMention/users/enabled cases below fail;
- * with the resolver wired in they pass.
+ * ("app_mention")` → `handleAppMention`), reached from a REAL persisted
+ * `ElizaConfig` through the REAL character projection and account resolution
+ * (see `./test-harness`). The previous revision of this file hand-constructed
+ * `ResolvedSlackAccount`, which bypassed both upstream paths and is exactly how
+ * a gate receiving no configuration at all passed its own suite.
+ *
+ * The adversarial regressions for each reviewed blocker live in
+ * `./policy-adversarial.test.ts`; this file covers the ordinary contract and
+ * the negative controls that keep the gate from degenerating into deny-all.
  */
-import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ResolvedSlackAccount, SlackChannelConfig } from "./accounts";
-import { SlackService } from "./service";
-import type { SlackChannel, SlackSettings, SlackUser } from "./types";
-
-const BOT_USER_ID = "U0BOTBOT0";
-const CHANNEL_ID = "C0123ABCD";
-const OTHER_CHANNEL_ID = "C0999ZZZZ";
-const USER_ID = "U0123ABCD";
-const OTHER_USER_ID = "U0OTHER99";
-
-function createRuntime() {
-  return {
-    agentId: "agent-slack-gating",
-    character: { name: "Salem", settings: {} },
-    logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    getSetting: vi.fn().mockReturnValue(undefined),
-    emitEvent: vi.fn(),
-    createMemory: vi.fn(),
-    createEntity: vi.fn(),
-    getEntityById: vi.fn().mockResolvedValue({ id: "entity-1" }),
-  } as unknown as IAgentRuntime;
-}
-
-interface HarnessOptions {
-  channels?: Record<string, SlackChannelConfig>;
-  allowedChannelIds?: string[];
-  globalRequireMention?: boolean;
-  accountRequireMention?: boolean;
-  dynamicChannelIds?: string[];
-  channelCache?: Map<string, SlackChannel>;
-}
-
-/**
- * Builds a SlackService with one account state wired the way
- * `startAccount` wires it, then returns the handlers that
- * `registerEventHandlers` actually binds to the bolt app.
- */
-function createHarness(options: HarnessOptions = {}) {
-  const runtime = createRuntime();
-  const service = Object.create(SlackService.prototype) as SlackService;
-
-  const settings: SlackSettings = {
-    allowedChannelIds: options.allowedChannelIds,
-    shouldIgnoreBotMessages: true,
-    shouldRespondOnlyToMentions: options.globalRequireMention ?? false,
-  };
-
-  const account = {
-    accountId: "default",
-    enabled: true,
-    role: "AGENT",
-    botToken: "xoxb-test",
-    appToken: "xapp-test",
-    botTokenSource: "config",
-    appTokenSource: "config",
-    config: {},
-    channels: options.channels ?? {},
-    requireMention: options.accountRequireMention,
-  } as unknown as ResolvedSlackAccount;
-
-  const allowedChannelIds = new Set<string>(options.allowedChannelIds ?? []);
-  // Mirror buildAllowedChannelSet: id-keyed structured entries are an
-  // allowlist source alongside SLACK_CHANNEL_IDS.
-  for (const [key, entry] of Object.entries(options.channels ?? {})) {
-    if (!entry) continue;
-    if (entry.enabled === false || entry.allow === false) continue;
-    if (/^[CGD][A-Z0-9]{8,}$/i.test(key)) allowedChannelIds.add(key);
-  }
-
-  const state = {
-    accountId: "default",
-    account,
-    app: {} as never,
-    client: {} as never,
-    userClient: null,
-    botUserId: BOT_USER_ID,
-    teamId: "T0TEAM000",
-    settings,
-    allowedChannelIds,
-    dynamicChannelIds: new Set<string>(options.dynamicChannelIds ?? []),
-    channelConfigs: options.channels ?? {},
-    userCache: new Map<string, SlackUser>(),
-    channelCache: options.channelCache ?? new Map<string, SlackChannel>(),
-    isConnected: true,
-  };
-
-  Object.assign(service, {
-    runtime,
-    character: runtime.character,
-    settings,
-    defaultAccountId: "default",
-    accountStates: new Map([["default", state]]),
-    accountStarts: new Map(),
-    allowedChannelIds,
-    dynamicChannelIds: new Set<string>(),
-    userCache: new Map(),
-    channelCache: new Map(),
-    botUserId: BOT_USER_ID,
-    teamId: "T0TEAM000",
-    isConnected: true,
-  });
-
-  // Everything downstream of the gate is stubbed: the assertion is purely
-  // "did the message get past gating".
-  const processAgentMessage = vi.fn().mockResolvedValue(undefined);
-  Object.assign(service, {
-    processAgentMessage,
-    buildMemoryFromMessage: vi.fn().mockResolvedValue({ id: "mem-1" }),
-    buildMemoryFromMention: vi.fn().mockResolvedValue({ id: "mem-1" }),
-    ensureRoomExists: vi.fn().mockResolvedValue({ id: "room-1" }),
-    getUser: vi.fn().mockResolvedValue(null),
-  });
-
-  // Capture the handlers the service registers on the bolt app — this is the
-  // production wiring, so the tests cannot drift onto a dead helper.
-  const handlers: {
-    message?: (args: { message: unknown; client: unknown }) => Promise<void>;
-    appMention?: (args: { event: unknown; client: unknown }) => Promise<void>;
-  } = {};
-
-  const app = {
-    message: (
-      fn: (args: { message: unknown; client: unknown }) => Promise<void>,
-    ) => {
-      handlers.message = fn;
-    },
-    event: (
-      name: string,
-      fn: (args: { event: unknown; client: unknown }) => Promise<void>,
-    ) => {
-      if (name === "app_mention") handlers.appMention = fn;
-    },
-  };
-
-  (
-    service as unknown as {
-      registerEventHandlers: (s: unknown) => void;
-    }
-  ).registerEventHandlers({ ...state, app });
-
-  return { service, runtime, handlers, processAgentMessage };
-}
-
-function channelMessage(overrides: Record<string, unknown> = {}) {
-  return {
-    type: "message",
-    channel: CHANNEL_ID,
-    channel_type: "channel",
-    user: USER_ID,
-    text: "chores status?",
-    ts: "1700000000.000100",
-    ...overrides,
-  };
-}
+import { describe, expect, it } from "vitest";
+import {
+  appMentionEvent,
+  bootHarness,
+  CHANNEL_ID,
+  channelMessage,
+  DM_CHANNEL_ID,
+  OTHER_CHANNEL_ID,
+  OTHER_USER_ID,
+  persistedSlackConfig,
+  USER_ID,
+} from "./test-harness";
 
 describe("SlackService inbound gating — per-channel requireMention", () => {
-  let harness: ReturnType<typeof createHarness>;
-
-  it("registers handlers on the real bolt message and app_mention events", () => {
-    harness = createHarness();
+  it("registers handlers on the real bolt message and app_mention events", async () => {
+    const harness = await bootHarness(persistedSlackConfig({}));
     expect(harness.handlers.message).toBeTypeOf("function");
     expect(harness.handlers.appMention).toBeTypeOf("function");
   });
 
   it("drops an unmentioned message when the channel sets requireMention:true", async () => {
-    // FAILS on unfixed develop: channels[].requireMention is ignored, so the
-    // message is processed.
-    harness = createHarness({
-      channels: { [CHANNEL_ID]: { requireMention: true } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { requireMention: true } },
+      }),
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
-
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("processes an unmentioned message when the channel sets requireMention:false", async () => {
-    harness = createHarness({
-      channels: { [CHANNEL_ID]: { requireMention: false } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { requireMention: false } },
+      }),
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
-
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
   it("lets a per-channel requireMention:false override the global mention-only flag", async () => {
-    // FAILS on unfixed develop: only the global flag is consulted, so the
-    // message is dropped.
-    harness = createHarness({
-      globalRequireMention: true,
-      channels: { [CHANNEL_ID]: { requireMention: false } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { requireMention: false } },
+      }),
+      { globalRequireMention: true },
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
-
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
   it("lets a per-channel requireMention:true override a permissive global default", async () => {
-    // FAILS on unfixed develop: with the global flag unset every message is
-    // processed regardless of per-channel config.
-    harness = createHarness({
-      globalRequireMention: false,
-      channels: {
-        [CHANNEL_ID]: { requireMention: true },
-        [OTHER_CHANNEL_ID]: { requireMention: false },
-      },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: {
+          [CHANNEL_ID]: { requireMention: true },
+          [OTHER_CHANNEL_ID]: { requireMention: false },
+        },
+      }),
+      { globalRequireMention: false },
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
 
     // The sibling channel opted out, so it still replies unmentioned.
@@ -245,244 +91,270 @@ describe("SlackService inbound gating — per-channel requireMention", () => {
   });
 
   it("honours the account-level requireMention when the channel is silent", async () => {
-    harness = createHarness({
-      accountRequireMention: true,
-      channels: { [CHANNEL_ID]: {} },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        requireMention: true,
+        channels: { [CHANNEL_ID]: {} },
+      }),
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
-
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("still honours the global env flag when no structured config exists", async () => {
-    harness = createHarness({ globalRequireMention: true });
-
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
+    const harness = await bootHarness(persistedSlackConfig({}), {
+      globalRequireMention: true,
     });
 
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
-  it("resolves requireMention through a name-keyed entry using the channel cache", async () => {
-    const channelCache = new Map<string, SlackChannel>([
-      [CHANNEL_ID, { id: CHANNEL_ID, name: "house-chores" } as SlackChannel],
-    ]);
-    harness = createHarness({
-      allowedChannelIds: [CHANNEL_ID],
-      channels: { "house-chores": { requireMention: true } },
-      channelCache,
-    });
+  it("resolves requireMention through a name-keyed entry, bound at startup", async () => {
+    // CONTRACT CHANGE vs the reviewed head: a name key is resolved to its
+    // immutable id during startup, so it applies to the FIRST event. It used
+    // to depend on the channel cache being warm, which is precisely the
+    // cold-cache bypass the review reproduced.
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { general: { requireMention: true } } }),
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
-
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("applies the wildcard entry to an otherwise unconfigured channel", async () => {
-    harness = createHarness({
-      allowedChannelIds: [CHANNEL_ID],
-      channels: { "*": { requireMention: true } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { "*": { requireMention: true } } }),
+    );
 
     await harness.handlers.message?.({
-      message: channelMessage(),
+      message: channelMessage({ channel: OTHER_CHANNEL_ID }),
       client: {},
     });
-
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 });
 
 describe("SlackService inbound gating — structured channels as an allowlist source", () => {
   it("admits a channel that only the structured config names", async () => {
-    // FAILS on unfixed develop: with SLACK_CHANNEL_IDS unset the allowlist is
-    // empty, so EVERY channel is admitted — including the one the operator
-    // never listed. Asserting the unlisted channel is dropped is the proof.
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: { requireMention: false } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { [CHANNEL_ID]: {} } }),
+    );
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
   it("drops a channel absent from the structured allowlist", async () => {
-    // FAILS on unfixed develop (empty allowlist ⇒ all channels allowed).
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: { requireMention: false } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { [CHANNEL_ID]: {} } }),
+    );
 
     await harness.handlers.message?.({
       message: channelMessage({ channel: OTHER_CHANNEL_ID }),
       client: {},
     });
-
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("drops an explicitly disabled channel even when it was dynamically joined", async () => {
-    // FAILS on unfixed develop: `enabled: false` is ignored and a dynamic join
-    // admits the channel unconditionally.
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: { enabled: false } },
-      dynamicChannelIds: [CHANNEL_ID],
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        groupPolicy: "open",
+        channels: { [CHANNEL_ID]: { enabled: false } },
+      }),
+    );
+
+    await harness.handlers.memberJoined?.({
+      event: { user: "U0BOTBOT0", channel: CHANNEL_ID },
     });
 
-    await harness.handlers.message?.({
-      message: channelMessage(),
-      client: {},
-    });
-
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("keeps replying everywhere when nothing is configured at all", async () => {
-    const harness = createHarness();
+    // NEGATIVE CONTROL: the gate must not degenerate into deny-all for the
+    // legacy env-only deployments that never wrote a policy.
+    const harness = await bootHarness(persistedSlackConfig({}));
+
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
 
     await harness.handlers.message?.({
       message: channelMessage({ channel: OTHER_CHANNEL_ID }),
       client: {},
     });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(2);
+  });
 
-    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+  it("unions the SLACK_CHANNEL_IDS env allowlist with the structured one", async () => {
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { [CHANNEL_ID]: {} } }),
+      { envAllowedChannelIds: [OTHER_CHANNEL_ID] },
+    );
+
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
+    await harness.handlers.message?.({
+      message: channelMessage({ channel: OTHER_CHANNEL_ID }),
+      client: {},
+    });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(2);
+
+    await harness.handlers.message?.({
+      message: channelMessage({ channel: "C0THIRD000" }),
+      client: {},
+    });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("SlackService inbound gating — per-channel user allowlist", () => {
   it("drops a message from a user outside the channel users list", async () => {
-    // FAILS on unfixed develop: channels[].users is ignored entirely.
-    const harness = createHarness({
-      channels: {
-        [CHANNEL_ID]: { requireMention: false, users: [USER_ID] },
-      },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { users: [USER_ID] } },
+      }),
+    );
 
     await harness.handlers.message?.({
       message: channelMessage({ user: OTHER_USER_ID }),
       client: {},
     });
-
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("processes a message from a user inside the channel users list", async () => {
-    const harness = createHarness({
-      channels: {
-        [CHANNEL_ID]: { requireMention: false, users: [USER_ID] },
-      },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { users: [USER_ID] } },
+      }),
+    );
+
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts Slack mention syntax in the allowlist", async () => {
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { users: [`<@${USER_ID}|salem>`] } },
+      }),
+    );
+
+    await harness.handlers.message?.({ message: channelMessage(), client: {} });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a '*' entry as allow-all", async () => {
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { [CHANNEL_ID]: { users: ["*"] } } }),
+    );
 
     await harness.handlers.message?.({
-      message: channelMessage({ user: USER_ID }),
+      message: channelMessage({ user: OTHER_USER_ID }),
       client: {},
     });
-
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("SlackService inbound gating — app_mention path", () => {
-  function mentionEvent(overrides: Record<string, unknown> = {}) {
-    return {
-      type: "app_mention",
-      channel: CHANNEL_ID,
-      user: USER_ID,
-      text: `<@${BOT_USER_ID}> status?`,
-      ts: "1700000000.000200",
-      event_ts: "1700000000.000200",
-      ...overrides,
-    };
-  }
-
   it("still answers an @mention in a channel that requires mentions", async () => {
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: { requireMention: true } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { requireMention: true } },
+      }),
+    );
 
     await harness.handlers.appMention?.({
-      event: mentionEvent(),
+      event: appMentionEvent(),
       client: {},
     });
-
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
   it("drops an @mention in an explicitly disabled channel", async () => {
-    // FAILS on unfixed develop: handleAppMention had NO gating at all, so a
-    // disabled channel stayed reachable by @-mentioning the bot.
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: { enabled: false } },
-      dynamicChannelIds: [CHANNEL_ID],
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { enabled: false }, [OTHER_CHANNEL_ID]: {} },
+      }),
+    );
 
     await harness.handlers.appMention?.({
-      event: mentionEvent(),
+      event: appMentionEvent(),
       client: {},
     });
-
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("drops an @mention from a user outside the channel users list", async () => {
-    // FAILS on unfixed develop (no user gating on the mention path).
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: { users: [USER_ID] } },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({
+        channels: { [CHANNEL_ID]: { users: [USER_ID] } },
+      }),
+    );
 
     await harness.handlers.appMention?.({
-      event: mentionEvent({ user: OTHER_USER_ID }),
+      event: appMentionEvent({ user: OTHER_USER_ID }),
       client: {},
     });
-
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 
   it("drops an @mention in a channel outside the structured allowlist", async () => {
-    // FAILS on unfixed develop (mention path bypassed isChannelAllowed).
-    const harness = createHarness({
-      channels: { [CHANNEL_ID]: {} },
-    });
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { [CHANNEL_ID]: {} } }),
+    );
 
     await harness.handlers.appMention?.({
-      event: mentionEvent({ channel: OTHER_CHANNEL_ID }),
+      event: appMentionEvent({ channel: OTHER_CHANNEL_ID }),
       client: {},
     });
+    expect(harness.processAgentMessage).not.toHaveBeenCalled();
+  });
 
+  it("does not double-process a mention through the message handler", async () => {
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { [CHANNEL_ID]: {} } }),
+    );
+
+    await harness.handlers.message?.({
+      message: channelMessage({ text: "<@U0BOTBOT0> status?" }),
+      client: {},
+    });
     expect(harness.processAgentMessage).not.toHaveBeenCalled();
   });
 });
 
-describe("SlackService inbound gating — DM behaviour is unchanged in this slice", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("SlackService inbound gating — DM traffic obeys DM policy, not channel policy", () => {
+  it("processes a DM even when a wildcard channel entry requires mentions", async () => {
+    const harness = await bootHarness(
+      persistedSlackConfig({ channels: { "*": { requireMention: true } } }),
+    );
+
+    await harness.handlers.message?.({
+      message: channelMessage({ channel: DM_CHANNEL_ID, channel_type: "im" }),
+      client: {},
+    });
+    expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("processes a DM even when a wildcard channel entry requires mentions", async () => {
-    const harness = createHarness({
-      channels: { "*": { requireMention: true } },
-    });
+  it("processes a mentioned DM through the message handler", async () => {
+    // Direct surfaces receive no app_mention event, so the message handler
+    // must keep them even when the text carries the bot mention.
+    const harness = await bootHarness(persistedSlackConfig({}));
 
     await harness.handlers.message?.({
       message: channelMessage({
-        channel: "D0123ABCD",
+        channel: DM_CHANNEL_ID,
         channel_type: "im",
-        text: "hey",
+        text: "<@U0BOTBOT0> hi",
       }),
       client: {},
     });
-
     expect(harness.processAgentMessage).toHaveBeenCalledTimes(1);
   });
 });

@@ -17,6 +17,15 @@ export {
 // `<PREFIX>_*` var resolves; keep the genuine resolver so the branded-prefix
 // resolution is exercised, not stubbed.
 export { resolveAliasedEnvValue } from "../../../core/src/boot-env.ts";
+// Real (unstubbed) character normalization + the default system template.
+// Connector tests that drive the genuine production config path (persisted
+// ElizaConfig -> buildCharacterFromConfig -> character.settings.<connector> ->
+// the plugin's gate) need the actual projection, not a hand-built character:
+// stubbing here is exactly how a broken projection can pass its own tests.
+export {
+  type CharacterInput,
+  mergeCharacterDefaults,
+} from "../../../core/src/character.ts";
 export {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
   CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE,
@@ -53,6 +62,7 @@ export { assertPublicRouteIntent } from "../../../core/src/types/plugin.ts";
 export { Service } from "../../../core/src/types/service.ts";
 export { resolveSetting } from "../../../core/src/utils/resolve-setting.ts";
 export { resolveStateDir } from "../../../core/src/utils/state-dir.ts";
+export { defaultCharacterSystemTemplate } from "../../../prompts/src/index.ts";
 
 type LogFn = (...args: unknown[]) => void;
 
