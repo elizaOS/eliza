@@ -335,8 +335,7 @@ describe("AgentSandboxesRepository", () => {
     expect(
       query.params.some(
         (p) =>
-          (p instanceof Date &&
-            p.toISOString() === "2026-07-23T11:59:00.000Z") ||
+          (p instanceof Date && p.toISOString() === "2026-07-23T11:59:00.000Z") ||
           p === "2026-07-23T11:59:00.000Z",
       ),
     ).toBe(true);
