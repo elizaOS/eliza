@@ -346,8 +346,6 @@ h1 em {
 .wallet-note {
   max-width: 62ch;
   margin: 24px 0 0;
-  padding-left: 14px;
-  border-left: 2px solid var(--signal);
 }
 
 .wallet-note p,
