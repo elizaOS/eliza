@@ -15,6 +15,8 @@ import {
 } from "./docker-node-workload-queries";
 import { AGENT_CONTAINER_NAME_PREFIX } from "./docker-sandbox-utils";
 import {
+  DEFAULT_NODE_MOVE_GRACE_MS,
+  DEFAULT_ROWLESS_GRACE_MS,
   type LiveContainerRef,
   type OrphanReconcileResult,
   type OrphanReconcilerConfig,
@@ -193,6 +195,8 @@ const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   loadStatuses: loadSandboxStatusesByIds,
   logScope: "orphan-reconciler",
   nodeAware: true,
+  rowlessGraceMs: DEFAULT_ROWLESS_GRACE_MS,
+  nodeMoveGraceMs: DEFAULT_NODE_MOVE_GRACE_MS,
 };
 
 /**

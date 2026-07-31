@@ -14,6 +14,7 @@ import { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
 import { APP_DB_AMBASSADOR_NAME_PREFIX, appContainerNameForAmbassador } from "./app-db-ambassador";
 import {
+  DEFAULT_ROWLESS_GRACE_MS,
   type LiveContainerRef,
   type OrphanReconcileResult,
   type OrphanReconcilerConfig,
@@ -91,6 +92,7 @@ const APP_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   terminalStatuses: TERMINAL_CONTAINER_STATUSES,
   loadStatuses: loadContainerStatusesByNames,
   logScope: "app-orphan-reconciler",
+  rowlessGraceMs: DEFAULT_ROWLESS_GRACE_MS,
 };
 
 /**

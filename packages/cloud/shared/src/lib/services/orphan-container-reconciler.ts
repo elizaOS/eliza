@@ -163,6 +163,13 @@ export interface OrphanReconcilerConfig {
    */
   nodeAware?: boolean;
   /**
+   * How long a container with no matching ownership row must exist before it
+   * may be reaped. This protects the create-before-row-commit window for every
+   * workload type, including apps. Defaults to
+   * `DEFAULT_ROWLESS_GRACE_MS` when unset.
+   */
+  rowlessGraceMs?: number;
+  /**
    * How long a `nodeId` mismatch must persist before the twin is reaped
    * (epoch-ms delta against the row's `updatedAtMs`). Guards the provision race
    * where a container is healthy on its new node before the DB row catches up.
@@ -178,6 +185,12 @@ export interface OrphanReconcilerConfig {
  * NEW container is never mistaken for the twin during its own creation window.
  */
 export const DEFAULT_NODE_MOVE_GRACE_MS = 5 * 60_000;
+
+/**
+ * A rowless container must outlive the normal create-and-commit window before
+ * absence of durable ownership is treated as conclusive.
+ */
+export const DEFAULT_ROWLESS_GRACE_MS = 5 * 60_000;
 
 /**
  * Classify every listed container as retained or reapable.
@@ -222,7 +235,7 @@ export function classifyContainersForReconciliation(
   liveRows: readonly LiveContainerRef[],
   config: Pick<
     OrphanReconcilerConfig,
-    "keyOf" | "terminalStatuses" | "nodeAware" | "nodeMoveGraceMs"
+    "keyOf" | "terminalStatuses" | "nodeAware" | "rowlessGraceMs" | "nodeMoveGraceMs"
   >,
   nodeId?: string,
   nowMs?: number,
@@ -238,11 +251,18 @@ export function classifyContainersForReconciliation(
   }
 
   const nodeAware = config.nodeAware === true && nodeId !== undefined;
-  const graceMs = config.nodeMoveGraceMs ?? DEFAULT_NODE_MOVE_GRACE_MS;
-  if (!Number.isFinite(graceMs) || graceMs < 0) {
-    throw new ElizaError("Orphan reconciliation grace must be a non-negative duration", {
+  const rowlessGraceMs = config.rowlessGraceMs ?? DEFAULT_ROWLESS_GRACE_MS;
+  const nodeMoveGraceMs = config.nodeMoveGraceMs ?? DEFAULT_NODE_MOVE_GRACE_MS;
+  if (!Number.isFinite(rowlessGraceMs) || rowlessGraceMs < 0) {
+    throw new ElizaError("Rowless reconciliation grace must be a non-negative duration", {
       code: "ORPHAN_RECONCILER_INVALID_GRACE",
-      context: { graceMs },
+      context: { graceKind: "rowless", graceMs: rowlessGraceMs },
+    });
+  }
+  if (!Number.isFinite(nodeMoveGraceMs) || nodeMoveGraceMs < 0) {
+    throw new ElizaError("Node-move reconciliation grace must be a non-negative duration", {
+      code: "ORPHAN_RECONCILER_INVALID_GRACE",
+      context: { graceKind: "node_move", graceMs: nodeMoveGraceMs },
     });
   }
 
@@ -280,7 +300,7 @@ export function classifyContainersForReconciliation(
         });
         continue;
       }
-      if (nowMs - container.createdAtMs < graceMs) {
+      if (nowMs - container.createdAtMs < rowlessGraceMs) {
         decisions.push({
           action: "retain",
           name: container.name,
@@ -383,7 +403,7 @@ export function classifyContainersForReconciliation(
       });
       continue;
     }
-    if (nowMs - container.createdAtMs < graceMs) {
+    if (nowMs - container.createdAtMs < nodeMoveGraceMs) {
       decisions.push({
         action: "retain",
         name: container.name,
@@ -394,7 +414,7 @@ export function classifyContainersForReconciliation(
       continue;
     }
     const newest = Math.max(...completePlacements.map((row) => row.updatedAtMs));
-    if (nowMs - newest < graceMs) {
+    if (nowMs - newest < nodeMoveGraceMs) {
       decisions.push({
         action: "retain",
         name: container.name,
@@ -425,7 +445,7 @@ export function computeOrphanContainersToReap(
   liveRows: readonly LiveContainerRef[],
   config: Pick<
     OrphanReconcilerConfig,
-    "keyOf" | "terminalStatuses" | "nodeAware" | "nodeMoveGraceMs"
+    "keyOf" | "terminalStatuses" | "nodeAware" | "rowlessGraceMs" | "nodeMoveGraceMs"
   >,
   nodeId?: string,
   nowMs?: number,

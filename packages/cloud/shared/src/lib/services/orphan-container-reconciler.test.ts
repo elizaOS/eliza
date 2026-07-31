@@ -197,16 +197,18 @@ describe("retention decision reasons", () => {
   });
 
   test("rejects invalid grace configuration before classifying a container", () => {
-    for (const nodeMoveGraceMs of [Number.NaN, -1]) {
-      expect(() =>
-        classifyContainersForReconciliation(
-          [container("agent-live", "live")],
-          [live("live", "running")],
-          { ...diff, nodeMoveGraceMs },
-          undefined,
-          AGED_NOW_MS,
-        ),
-      ).toThrow("grace must be a non-negative duration");
+    for (const graceKind of ["rowlessGraceMs", "nodeMoveGraceMs"] as const) {
+      for (const graceMs of [Number.NaN, -1]) {
+        expect(() =>
+          classifyContainersForReconciliation(
+            [container("agent-live", "live")],
+            [live("live", "running")],
+            { ...diff, [graceKind]: graceMs },
+            undefined,
+            AGED_NOW_MS,
+          ),
+        ).toThrow("grace must be a non-negative duration");
+      }
     }
   });
 });
@@ -237,6 +239,28 @@ describe("node-aware stale-twin classification", () => {
     name: `agent-${id}`,
     id: `docker-${id}`,
     createdAtMs: NOW - containerAgeMs,
+  });
+
+  test("tunes rowless and wrong-node evidence windows independently", () => {
+    const independentGrace = {
+      ...cfg,
+      rowlessGraceMs: 20 * 60_000,
+      nodeMoveGraceMs: 5 * 60_000,
+    };
+    const tenMinutesOld = c("x", 10 * 60_000);
+
+    expect(
+      computeOrphanContainersToReap([tenMinutesOld], [], independentGrace, "nodeA", NOW),
+    ).toEqual([]);
+    expect(
+      computeOrphanContainersToReap(
+        [tenMinutesOld],
+        [onNode("x", "running", "nodeB", 10 * 60_000)],
+        independentGrace,
+        "nodeA",
+        NOW,
+      ),
+    ).toEqual([{ name: "agent-x", id: "docker-x", key: "x", reason: "wrong_node" }]);
   });
 
   test("reaps a stable container whose live row points at a different node", () => {
