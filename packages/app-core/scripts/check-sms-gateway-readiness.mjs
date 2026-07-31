@@ -61,8 +61,13 @@ const routingContractTests = [
 const adbPath =
   "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 const bridgeUrl = "http://127.0.0.1:8795";
-const onboardingContinuationUrl =
-  "https://elizaos-homepage.pages.dev/get-started/?onboardingSession=readiness-smoke";
+// Must track ELIZA_ONBOARDING_APP_URL (packages/cloud/api/wrangler.toml) — the
+// host the onboarding worker actually builds login links from. Pinning a stale
+// host made this gate assert a 404.
+const onboardingAppOrigin =
+  process.env.ELIZA_ONBOARDING_APP_URL?.replace(/\/+$/, "") ||
+  "https://eliza.app";
+const onboardingContinuationUrl = `${onboardingAppOrigin}/get-started/?onboardingSession=readiness-smoke`;
 let blocked = false;
 
 function run(command, args, { cwd = process.cwd() } = {}) {
@@ -220,9 +225,7 @@ function printOnboardingContinuationState() {
   const hasBlooioPlatform = chunk.stdout.includes("blooio");
   const passed =
     httpCode === "200" &&
-    effectiveUrl?.startsWith(
-      "https://elizaos-homepage.pages.dev/get-started/",
-    ) &&
+    effectiveUrl?.startsWith(`${onboardingAppOrigin}/get-started/`) &&
     hasAppShell &&
     chunk.status === 0 &&
     hasOnboardingSession &&
