@@ -83,8 +83,28 @@ jobs:
           fi
           node packages/scripts/pr-deep-review-context.mjs
 
-      - name: Deep review
+      # The review is advisory, so a dead credential must not redden the check —
+      # but it must be LOUD in the log. Validated live 2026-07-31: the previous
+      # key failed every call in ~400ms and the only visible symptom was a
+      # cryptic is_error:true.
+      - name: Preflight Anthropic credential
+        id: preflight
         if: steps.classify.outputs.run_review == 'true' && steps.dossier.outputs.dossier_path != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          status=$(curl -sS -o /tmp/anthropic.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+            -d '{"model":"claude-opus-4-7","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
+          if [ "$status" != "200" ]; then
+            echo "::warning::deep review skipped — ANTHROPIC_API_KEY preflight failed (HTTP $status): $(cat /tmp/anthropic.json)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deep review
+        if: steps.preflight.outputs.ok == 'true'
         # Advisory: an unreachable model must not redden the pull request.
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b

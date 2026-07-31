@@ -57,6 +57,34 @@ jobs:
       issues: write
       id-token: write
     steps:
+      # Validated live 2026-07-31: both credentials were dead (ANTHROPIC_API_KEY
+      # rejected instantly, GH_PAT from 2024 expired) and every failure was
+      # near-silent. This preflight makes a broken credential the FIRST, loudest
+      # failure, with the provider's own error text — never the key — in the log.
+      - name: Preflight credentials
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HEAL_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          fail=0
+          status=$(curl -sS -o /tmp/anthropic.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+            -d '{"model":"claude-opus-4-7","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
+          if [ "$status" != "200" ]; then
+            echo "::error::ANTHROPIC_API_KEY preflight failed (HTTP $status): $(cat /tmp/anthropic.json)"
+            fail=1
+          else
+            echo "ANTHROPIC_API_KEY ok (model reachable)"
+          fi
+          status=$(curl -sS -o /tmp/gh.json -w "%{http_code}" -H "Authorization: Bearer ${HEAL_PAT}" https://api.github.com/user)
+          if [ "$status" != "200" ]; then
+            echo "::error::GH_PAT preflight failed (HTTP $status) — heal branches cannot be pushed and heal PRs would not trigger CI. Rotate the GH_PAT repository secret."
+            fail=1
+          else
+            echo "GH_PAT ok (authenticated as $(jq -r .login /tmp/gh.json))"
+          fi
+          exit "$fail"
+
       - name: Check out develop
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:

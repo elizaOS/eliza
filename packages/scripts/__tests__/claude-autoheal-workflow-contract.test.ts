@@ -152,3 +152,37 @@ describe("deep review workflow", () => {
     expect(review).toContain("continue-on-error: true");
   });
 });
+
+describe("credential preflights", () => {
+  // Both repository secrets were found dead on 2026-07-31 with near-silent
+  // symptoms; the preflights make a broken credential the loudest failure.
+  test("every agent workflow probes the Anthropic API before running Claude", () => {
+    for (const [name, body] of [
+      ["claude-ci-autoheal", autoheal],
+      ["claude-code-review", review],
+      ["claude", mention],
+    ] as const) {
+      expect(body, `${name} must preflight the Anthropic credential`).toContain(
+        "https://api.anthropic.com/v1/messages",
+      );
+      expect(body, `${name} preflight must never echo the key`).not.toMatch(
+        /echo[^\n]*\$\{?ANTHROPIC_API_KEY/,
+      );
+    }
+  });
+
+  test("autoheal also validates GH_PAT and fails hard on either credential", () => {
+    expect(autoheal).toContain("https://api.github.com/user");
+    expect(autoheal).toContain('exit "$fail"');
+    // Preflight must precede checkout: an expired PAT fails checkout with a
+    // useless "could not read Username" otherwise (observed live).
+    expect(autoheal.indexOf("Preflight credentials")).toBeLessThan(
+      autoheal.indexOf("Check out develop"),
+    );
+  });
+
+  test("review skips the agent, stays green, and warns when the credential is dead", () => {
+    expect(review).toContain("steps.preflight.outputs.ok == 'true'");
+    expect(review).toContain("::warning::deep review skipped");
+  });
+});
