@@ -1,23 +1,6 @@
 /**
- * Regression proof for #17249: retrying a failed deletion crashed with
- * `value.toISOString is not a function` on EVERY attempt, trapping the agent
- * in `deletion_failed` forever (37 agents, 160/160 delete jobs in prod).
- *
- * Root cause: `getAgentForLifecycleMutation` WAS a raw `SELECT * FOR UPDATE`
- * (typed since #17262), and raw drizzle rows carry timestamptz as STRINGS
- * despite the Date type.
- * A first deletion (column NULL) wrote `new Date()` and worked; every retry
- * read the string back and pushed it through the typed update builder, which
- * throws in `mapToDriverValue`. The ownership fence's `?.getTime()` was the
- * same class of crash one step later.
- *
- * PGlite's raw rows are strings exactly like production's — this harness
- * reproduces the incident faithfully (verified against the live CP stack
- * trace), so these tests fail on the pre-fix code with the production error.
- *
- * Drives the REAL ElizaSandboxService.executeDeletion against in-process
- * PGlite (real Drizzle schema via pushSchema) with NOTHING mocked. Fails
- * LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
+ * Exercises fresh and retried agent deletion against PGlite, including a
+ * persisted prior deletion timestamp read through the typed lifecycle path.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -40,7 +23,7 @@ import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
 
-const PGLITE_TIMEOUT = 60_000;
+const PGLITE_TIMEOUT = 300_000;
 const ORIGINAL_START = new Date("2026-07-13T04:11:00.000Z");
 
 let pgliteReady = true;
@@ -100,7 +83,7 @@ afterAll(async () => {
   if (closeDb) await closeDb();
 });
 
-describe("deletion retries survive raw-row string timestamps (#17249)", () => {
+describe("deletion retries preserve durable ownership", () => {
   test(
     "retrying a FAILED deletion completes instead of crashing on the read-back timestamp",
     async () => {

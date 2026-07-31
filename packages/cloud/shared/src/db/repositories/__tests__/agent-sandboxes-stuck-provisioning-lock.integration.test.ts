@@ -247,7 +247,7 @@ realPostgres("stuck provisioning lifecycle lock", () => {
         organizationId: organization.id,
         userId: user.id,
         agentName: sandbox.agent_name ?? sandbox.id,
-        expectedUpdatedAt: sandbox.updated_at,
+        expectedLifecycleRevision: sandbox.lifecycle_revision,
       });
       await waitForAdvisoryWaiters(control, 1);
 

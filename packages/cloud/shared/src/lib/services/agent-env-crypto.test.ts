@@ -81,9 +81,8 @@ const orgKeyDb = {
         }
         throw new Error(`Unexpected lifecycle SQL in test transaction: ${text}`);
       },
-      // The lifecycle read is a typed select builder (FOR UPDATE); serve it
-      // the stored row through the builder chain, same seam shape as
-      // agent-tier-upgrade-target-lock.test.ts.
+      // Model the typed builder chain so encrypted environment tests exercise
+      // the same locked-row boundary as production lifecycle operations.
       select: () => ({
         from: () => ({
           where: () => ({
