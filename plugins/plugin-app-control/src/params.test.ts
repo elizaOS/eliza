@@ -89,3 +89,19 @@ describe("extractCloseTarget", () => {
 		});
 	});
 });
+
+describe("readStringOption sentinel handling", () => {
+	it("treats planner-emitted absent-value strings as not provided", () => {
+		for (const sentinel of ["None", "null", "undefined", " none "]) {
+			expect(readStringOption({ editTarget: sentinel }, "editTarget")).toBe(
+				null,
+			);
+		}
+	});
+
+	it("keeps real values intact", () => {
+		expect(readStringOption({ editTarget: "my-app" }, "editTarget")).toBe(
+			"my-app",
+		);
+	});
+});

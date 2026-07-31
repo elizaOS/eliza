@@ -77,16 +77,40 @@ export function elideLongBlocks(
 }
 
 /**
- * Full relay-sanitization pipeline: strip envelope blocks, then hard-cap the
- * remainder. Returns "" when nothing survives (callers substitute their own
- * default, e.g. "Task completed.").
+ * Strip the orchestrator's OWN completion-envelope summary lines
+ * (summarizeEnvelope in completion-envelope.ts: `diff: …`, `workdir: …`,
+ * `files: N`, `tests: …`, `criteria: N/M met`, …). Those lines are verifier/log
+ * machine format, not model prose — when a completion summary carries them into
+ * a chat relay the user sees internal paths and counters. Line-anchored on the
+ * exact canonical field prefixes so builder prose is untouched.
+ */
+const ENVELOPE_SUMMARY_LINE =
+  /^(?:diff|workdir|files|verifiedFiles|tests|criteria|unmet|risks|UNVERIFIED missing): /;
+
+export function stripEnvelopeSummaryLines(text: string): string {
+  if (!text) return "";
+  return text
+    .split("\n")
+    .filter((line) => !ENVELOPE_SUMMARY_LINE.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Full relay-sanitization pipeline: strip envelope blocks and envelope summary
+ * lines, then hard-cap the remainder. Returns "" when nothing survives
+ * (callers substitute their own default, e.g. "Task completed.").
  */
 export function sanitizeCompletionRelay(
   text: string | undefined | null,
   maxChars: number = DEFAULT_MAX_RELAY_CHARS,
 ): string {
   if (!text) return "";
-  return elideLongBlocks(stripToolTranscript(text), maxChars);
+  return elideLongBlocks(
+    stripEnvelopeSummaryLines(stripToolTranscript(text)),
+    maxChars,
+  );
 }
 
 export { TOOL_OUTPUT_END_MARKER };
