@@ -507,6 +507,95 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
   });
 });
 
+describe("collectCompletionResiduals — spawn-time baseline + shared route workdirs", () => {
+  it("does not count tracked paths already dirty at spawn (pre-existing churn)", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "README.md"), "pre-existing churn\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineDirtyPaths: ["README.md"],
+    });
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+    expect(result.gitLegsSkipped).toBeUndefined();
+  });
+
+  it("still counts run-produced paths alongside baseline-dirty ones", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "README.md"), "pre-existing churn\n");
+    writeFileSync(join(workdir, "run-output.ts"), "export {};\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineDirtyPaths: ["README.md"],
+    });
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.detail).toContain("1 uncommitted path(s)");
+    expect(residual?.items).toEqual(["?? run-output.ts"]);
+  });
+
+  it("never exempts an untracked path via the baseline (spawn baseline is tracked-only)", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "untracked.ts"), "export {};\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineDirtyPaths: ["untracked.ts"],
+    });
+    expect(result.status).toBe("residuals");
+  });
+
+  it("shared route workdir: skips the git legs on a dirty, unpushed shared checkout and records the skip", async () => {
+    const { workdir } = makeRepo();
+    // Pre-existing shared-checkout state: an unpushed commit + untracked dirt
+    // the reporting session never touched (the agent-home shape).
+    writeFileSync(join(workdir, "stale.txt"), "pre-existing\n");
+    git(workdir, "add", "stale.txt");
+    git(workdir, "commit", "-q", "-m", "pre-existing unpushed");
+    writeFileSync(join(workdir, "dirt.txt"), "dirt\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      sharedRouteWorkdir: true,
+    });
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+    expect(result.gitLegsSkipped).toBe("shared_route_workdir");
+  });
+
+  it("shared route workdir still applies the envelope legs", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "dirt.txt"), "dirt\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      sharedRouteWorkdir: true,
+      testResults: [{ command: "bun test", exitCode: 1, summary: "1 failed" }],
+    });
+    expect(result.status).toBe("residuals");
+    expect(result.residuals.map((row) => row.kind)).toEqual([
+      "failing_tests_reported",
+    ]);
+    expect(result.gitLegsSkipped).toBe("shared_route_workdir");
+  });
+
+  it("an explicit repo claim overrides the shared-route exemption (task-provisioned strictness)", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "wip.ts"), "// wip\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      sharedRouteWorkdir: true,
+    });
+    expect(result.status).toBe("residuals");
+    expect(result.gitLegsSkipped).toBeUndefined();
+  });
+});
+
 describe("residualsGateEnabled", () => {
   const prev = process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
   afterEach(() => {

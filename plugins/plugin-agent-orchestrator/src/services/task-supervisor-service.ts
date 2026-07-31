@@ -9,6 +9,14 @@
  *
  * The tick logic is a pure function (`runSupervisorTick`) over injected views so
  * it unit-tests without timers, services, or a runtime.
+ *
+ * Damping, layered on the change-driven dedup: a task younger than one tick
+ * interval is not digested yet (a sub-interval inline build finishes before a
+ * digest could say anything its completion relay won't say better), a room
+ * whose task just relayed a completion is suppressed for that tick (the digest
+ * must not be a second uncoordinated message about the same event), and a task
+ * held un-done by a verification gate after reporting completion digests on
+ * status transitions only. See noteTaskCompletion for the cross-surface half.
  */
 
 import type {
@@ -69,6 +77,20 @@ export interface SupervisorTaskView {
   /** True when the task is parked in the admission queue (waiting for a session
    *  slot). Folded into the digest as a queued count, not a per-task line. */
   queued?: boolean;
+  /** True when this task reported completion within the CURRENT tick window.
+   *  The router relays that completion to the origin room the moment it fires,
+   *  so a digest on its heels is a second uncoordinated message about the same
+   *  event — the tick suppresses the room instead, and change-driven dedup
+   *  owns any later re-post. */
+  recentlyRelayed?: boolean;
+  /** True when this task has reported completion at least once but is still
+   *  held un-done by a verification gate (URL-verify retry, residuals). The
+   *  verify-retry respawns churn session labels/counts and the staleness bands
+   *  escalate while the gate holds — each mutation would re-post "still
+   *  active" noise after the user already received the completion relay. The
+   *  digest line freezes to structural status for such tasks; a real status
+   *  transition still changes the digest and posts. */
+  heldAfterCompletion?: boolean;
 }
 
 // Coarse staleness bands (minutes → label), highest first. Bucketed on purpose:
@@ -105,6 +127,23 @@ const PROGRESS_EXPECTED_STATUSES: ReadonlySet<OrchestratorTaskStatus> = new Set(
   ["active", "validating"],
 );
 
+/** Whether a task is old enough to appear in a digest at all. A task younger
+ *  than one tick interval either finishes before the digest could say anything
+ *  its completion relay won't say better (the sub-interval inline build), or
+ *  survives into the next tick and posts then — so the FIRST digest is gated
+ *  on min task-age > tick interval. Fail-open on an unparseable timestamp:
+ *  this is a burst damper, and silently muting a task's digests forever would
+ *  be worse than one early post. */
+export function taskOldEnoughForDigest(
+  createdAt: string,
+  nowMs: number,
+  minAgeMs: number,
+): boolean {
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) return true;
+  return nowMs - createdMs >= minAgeMs;
+}
+
 /** Compose the digest body for one room's set of live tasks. Deterministic.
  * Queued (admission-parked) tasks are summarized as a count line, not per-task
  * rows, so a backlog of waiting tasks doesn't flood the digest. */
@@ -119,6 +158,12 @@ export function composeRoomDigest(views: SupervisorTaskView[]): string {
     .slice()
     .sort((a, b) => a.label.localeCompare(b.label))
     .map((v) => {
+      // Post-completion hold: only the structural status may drive a re-post
+      // (see heldAfterCompletion) — session churn and staleness escalation on
+      // a gate-held task are noise, not news.
+      if (v.heldAfterCompletion) {
+        return `${statusEmoji(v.status)} ${v.label} — ${v.status}`;
+      }
       const detail = v.sessionLabel ? ` · ${v.sessionLabel}` : "";
       const sessions =
         v.activeSessions > 0 ? ` (${v.activeSessions} running)` : "";
@@ -183,6 +228,16 @@ export async function runSupervisorTick(
       skipped.push(roomId);
       continue;
     }
+    // Cross-surface arbitration: a completion relay for a task in this room
+    // already posted within the current tick window, so this digest would be
+    // a second uncoordinated message about the same event. Record the digest
+    // as seen so only a future CHANGE re-posts — the same change-driven
+    // contract the permanent-failure damper below uses.
+    if (roomViews.some((v) => v.recentlyRelayed)) {
+      seen.set(roomId, digest);
+      skipped.push(roomId);
+      continue;
+    }
     try {
       await send({ source, roomId: roomId as UUID }, { text: digest, source });
       seen.set(roomId, digest);
@@ -236,6 +291,7 @@ interface TaskServiceLike {
       activeSessionCount: number;
       latestSessionLabel: string | null;
       latestActivityAt: number | null;
+      createdAt: string;
       admission?: { state: "queued" } | undefined;
     }>
   >;
@@ -256,6 +312,14 @@ export class TaskSupervisorService extends Service {
   private ticking = false;
   /** roomId → last-posted digest, for change-driven dedup. */
   private readonly seen = new Map<string, string>();
+  /** taskId → ms timestamp of the task's most recent reported completion.
+   *  Stamped by the task service's task_complete event bridge via
+   *  noteTaskCompletion — the same event whose result the router relays to
+   *  the origin room — so the tick can yield to that relay instead of
+   *  double-messaging the room, and can freeze the line of a task a
+   *  verification gate is holding un-done. Pruned each tick against the live
+   *  task list. */
+  private readonly completionNotes = new Map<string, number>();
   private readonly digestSinks = new Map<
     string,
     Set<TaskSupervisorDigestSink>
@@ -292,6 +356,19 @@ export class TaskSupervisorService extends Service {
     }, this.intervalMs());
     // The digest loop must never, by itself, keep the process alive.
     (this.timer as { unref?: () => void }).unref?.();
+  }
+
+  /** Record that a completion was reported for a task (called from the task
+   *  service's task_complete event bridge). This is the digest emitter's half
+   *  of cross-surface arbitration: the router relays that completion to the
+   *  origin room, so digests for the room yield within the same tick window
+   *  and the task's line freezes to structural status while a verification
+   *  gate holds it un-done. */
+  noteTaskCompletion(taskId: string): void {
+    // A disabled supervisor never ticks, so nothing would prune the notes —
+    // don't accumulate them.
+    if (!this.enabled()) return;
+    this.completionNotes.set(taskId, Date.now());
   }
 
   registerDigestSink(
@@ -356,27 +433,54 @@ export class TaskSupervisorService extends Service {
     // calls this fire-and-forget) — noisy, and fatal under strict handling.
     try {
       const tasks = await taskSvc.listTasks({ includeArchived: false });
-      // Live tasks drive per-task lines; admission-parked tasks (status `open`
-      // with an admission record) drive the queued-count line.
-      const surfaced = tasks.filter(
-        (t) => LIVE_STATUSES.has(t.status) || t.admission?.state === "queued",
-      );
       const now = Date.now();
+      const tickMs = this.intervalMs();
+      // Live tasks drive per-task lines; admission-parked tasks (status `open`
+      // with an admission record) drive the queued-count line. Tasks younger
+      // than one tick interval are held out entirely: a sub-interval inline
+      // build would otherwise draw a stale "active" digest AFTER its
+      // completion relay already told the user the outcome.
+      const surfaced = tasks.filter(
+        (t) =>
+          (LIVE_STATUSES.has(t.status) || t.admission?.state === "queued") &&
+          taskOldEnoughForDigest(t.createdAt, now, tickMs),
+      );
+      // Completion notes live only while their task can still surface in a
+      // digest; a terminal or vanished task frees its note so a later reopen
+      // starts clean. Young (age-gated) tasks keep theirs — a sub-interval
+      // build that completed before its first digest still needs the hold.
+      const noteEligibleIds = new Set(
+        tasks
+          .filter((t) => LIVE_STATUSES.has(t.status) || t.status === "open")
+          .map((t) => t.id),
+      );
+      for (const taskId of [...this.completionNotes.keys()]) {
+        if (!noteEligibleIds.has(taskId)) this.completionNotes.delete(taskId);
+      }
       const views: SupervisorTaskView[] = await Promise.all(
-        surfaced.map(async (t) => ({
-          id: t.id,
-          label: t.title,
-          status: t.status,
-          activeSessions: t.activeSessionCount,
-          sessionLabel: t.latestSessionLabel,
-          // Surface a stall only for progress-expected statuses; waiting_on_user
-          // / blocked are legitimately idle.
-          staleness: PROGRESS_EXPECTED_STATUSES.has(t.status)
-            ? supervisorStalenessLabel(t.latestActivityAt, now)
-            : undefined,
-          origin: await taskSvc.getTaskOriginTarget(t.id),
-          queued: t.admission?.state === "queued",
-        })),
+        surfaced.map(async (t) => {
+          const completionAt = this.completionNotes.get(t.id);
+          return {
+            id: t.id,
+            label: t.title,
+            status: t.status,
+            activeSessions: t.activeSessionCount,
+            sessionLabel: t.latestSessionLabel,
+            // Surface a stall only for progress-expected statuses; waiting_on_user
+            // / blocked are legitimately idle.
+            staleness: PROGRESS_EXPECTED_STATUSES.has(t.status)
+              ? supervisorStalenessLabel(t.latestActivityAt, now)
+              : undefined,
+            origin: await taskSvc.getTaskOriginTarget(t.id),
+            queued: t.admission?.state === "queued",
+            ...(typeof completionAt === "number"
+              ? {
+                  recentlyRelayed: now - completionAt < tickMs,
+                  heldAfterCompletion: true,
+                }
+              : {}),
+          };
+        }),
       );
       const result = await runSupervisorTick(
         views,
@@ -408,6 +512,7 @@ export class TaskSupervisorService extends Service {
       this.timer = undefined;
     }
     this.seen.clear();
+    this.completionNotes.clear();
     this.digestSinks.clear();
   }
 }

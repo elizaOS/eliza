@@ -97,6 +97,11 @@ export interface CompletionResidualsResult {
    * incentive inverts and the disclosure disappears. Surfaced to the user as
    * caveats on the relayed completion instead. */
   disclosedRisks?: string[];
+  /** Present when the git legs were DELIBERATELY skipped because the session
+   * ran in a shared route-mapped checkout whose git state is not attributable
+   * to this run. Rides the persisted snapshot so the exemption is auditable,
+   * never a silent pass. */
+  gitLegsSkipped?: "shared_route_workdir";
   workdir?: string;
   checkedAt: number;
 }
@@ -120,6 +125,19 @@ export interface CompletionResidualsInput {
    * skips them (envelope legs still apply) instead of blocking promotion.
    */
   repoExpected: boolean;
+  /** Paths already dirty when the reporting session spawned (session metadata
+   * `codingBaselineDirty`, captured by `AcpService.spawnSession` as
+   * `git diff --name-only HEAD`). The uncommitted-changes leg subtracts them:
+   * pre-existing churn was not produced by this run. Tracked modifications
+   * only — untracked paths are never baseline-exempt. */
+  baselineDirtyPaths?: readonly string[];
+  /** True when the session ran in a SHARED, route-mapped app checkout
+   * (`TASK_AGENT_WORKDIR_ROUTES`) rather than a task-provisioned workspace.
+   * A shared checkout carries dirt and unpushed commits from before the run
+   * and from sibling tasks, so its git facts are not attributable to this
+   * session; the git legs are skipped (envelope legs still apply). Ignored
+   * when `repoExpected` — an explicit repo claim keeps full strictness. */
+  sharedRouteWorkdir?: boolean;
   testResults?: ReadonlyArray<{
     command: string;
     exitCode: number;
@@ -188,6 +206,23 @@ function ownedArtifactsByPath(
   );
 }
 
+/** Whether a porcelain line names only paths that were ALREADY dirty when the
+ * session spawned. The spawn baseline (`codingBaselineDirty`) records tracked
+ * modifications only (`git diff --name-only HEAD`), so untracked (`??`) lines
+ * never match — a path untracked at completion is genuinely new work. A rename
+ * line is exempt only when BOTH sides were baseline-dirty. */
+function isBaselineDirtyLine(
+  line: string,
+  baselineDirtyPaths: ReadonlySet<string>,
+): boolean {
+  if (baselineDirtyPaths.size === 0) return false;
+  if (line.startsWith("?? ")) return false;
+  const paths = porcelainPaths(line);
+  return (
+    paths.length > 0 && paths.every((path) => baselineDirtyPaths.has(path))
+  );
+}
+
 /**
  * Run every applicable residuals leg and aggregate the verdict. Purely
  * deterministic — no model call, no network; the only side effects are the
@@ -202,6 +237,19 @@ export async function collectCompletionResiduals(
   const orchestratorOwnedArtifacts = ownedArtifactsByPath(
     input.orchestratorOwnedArtifacts ?? [],
   );
+  // Shared route-mapped app checkouts (TASK_AGENT_WORKDIR_ROUTES → e.g. an
+  // agent-home static-apps dir) are pre-existing directories shared by every
+  // task the route matches: their dirty paths and unpushed commits predate the
+  // run or belong to sibling tasks, so git facts there are not attributable to
+  // the reporting session — counting them blocks every completion in that
+  // checkout forever. Skip the git legs for that class (envelope legs still
+  // apply) and record the skip on the snapshot so the exemption is auditable.
+  // An explicit repo claim always wins: a repo-bound task never gets the
+  // exemption, so genuinely incomplete work on a task-provisioned workspace
+  // still blocks.
+  const sharedWorkdirExempt =
+    input.sharedRouteWorkdir === true && !input.repoExpected;
+  let gitLegsSkipped: CompletionResidualsResult["gitLegsSkipped"];
 
   // Envelope legs apply regardless of workspace presence: a self-reported
   // failing test contradicts "done" even for a Q&A task.
@@ -325,6 +373,11 @@ export async function collectCompletionResiduals(
     }
     // Unbound + missing/non-git scratch dir: skip the git legs; the envelope
     // legs above still decide the verdict.
+  } else if (workdir !== undefined && sharedWorkdirExempt) {
+    // A real worktree, but a shared route-mapped checkout (see
+    // sharedWorkdirExempt above): deliberately not inspected. The marker rides
+    // the persisted snapshot so the skip is visible, never a silent pass.
+    gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
     const status = runGit(workdir, ["status", "--porcelain"]);
     if (!status.ok) {
@@ -333,6 +386,15 @@ export async function collectCompletionResiduals(
         `git status failed in ${workdir}: ${status.stderr.trim() || "unknown error"}`,
       );
     }
+    // Pre-existing tracked churn (paths already dirty when the session
+    // spawned) is not this run's leftover work — subtract the spawn baseline
+    // before counting. The baseline is orchestrator-stamped at spawn, never
+    // worker-writable, so the exemption cannot be forged by the agent.
+    const baselineDirtyPaths = new Set(
+      (input.baselineDirtyPaths ?? [])
+        .map((path) => path.trim())
+        .filter((path) => path.length > 0),
+    );
     const dirty = status.stdout
       .split("\n")
       .map((line) => line.trimEnd())
@@ -344,7 +406,8 @@ export async function collectCompletionResiduals(
             workdir,
             orchestratorOwnedArtifacts,
           ),
-      );
+      )
+      .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths));
     if (dirty.length > 0) {
       residuals.push({
         kind: "uncommitted_changes",
@@ -388,6 +451,7 @@ export async function collectCompletionResiduals(
 
   return {
     status: residuals.length > 0 ? "residuals" : "clean",
+    ...(gitLegsSkipped !== undefined ? { gitLegsSkipped } : {}),
     ...base,
   };
 }
