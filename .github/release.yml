@@ -1,0 +1,82 @@
+# Configures GitHub's auto-generated release notes (generate_release_notes: true
+# in packages/scripts/lib/release-github.mjs). Groups merged PRs into readable
+# categories and drops noise so the Releases page reads cleanly. Categories use
+# the repository's real PR labels; commit-title prefixes are not visible to
+# GitHub's release-note generator.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - skip-changelog
+    # Dependency bots stay INCLUDED: their bumps are often security-relevant
+    # and land under 📦 Dependencies. Only repo-automation noise is excluded.
+    authors:
+      - github-actions
+      - github-actions[bot]
+  categories:
+    - title: ⚠️ Breaking Changes
+      labels:
+        - Breaking Changes
+    - title: 🚀 Features
+      labels:
+        - feature
+        - enhancement
+        - feature request
+        - kind/feat
+        - Improvement
+    - title: 🐛 Fixes
+      labels:
+        - bug
+        - bug-confirmed
+        - Fixed
+        - Regression Risk
+    - title: ⚡ Performance
+      labels:
+        - performance
+    - title: 🔒 Security
+      labels:
+        - security
+        - SECURITY ISSUE
+    - title: 📚 Documentation
+      labels:
+        - Docs
+        - documentation
+    - title: 📦 Dependencies
+      labels:
+        - dependencies
+        - dependency management
+    - title: 🧩 Plugins & Connectors
+      labels:
+        - plugins
+        - Plugin
+        - Plugin_new
+        - area/plugin
+        - connector
+    - title: 🎨 App & UI
+      labels:
+        - ui
+        - frontend
+        - ux
+        - Design
+        - Eliza App
+    - title: 🧠 Core & Agents
+      labels:
+        - core
+        - area/core
+        - Agent
+    - title: 🧰 Build, CI & Operations
+      labels:
+        - build
+        - ci
+        - github_actions
+        - infrastructure
+        - ops
+        - deploy
+        - refactor
+    - title: 🧪 Tests
+      labels:
+        - Tests
+        - testing
+    - title: Other Changes
+      labels:
+        - "*"
