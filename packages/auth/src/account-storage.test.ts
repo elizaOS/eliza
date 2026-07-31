@@ -1,15 +1,15 @@
 /**
  * Credential deletion guards prevent test workers from unlinking account files
  * in a developer's persistent Eliza state. The destructive path is exercised
- * with mocked unlink calls for non-temp probes and real missing files only under
- * mkdtemp state roots.
+ * with mocked unlink calls for unsafe probes and a real credential file under a
+ * mkdtemp state root.
  */
 
-import fs, { mkdtempSync, rmSync } from "node:fs";
+import fs, { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { deleteAccount } from "./account-storage";
+import { deleteAccount, saveAccount } from "./account-storage";
 
 const ENV_KEYS = [
   "BUN_ENV",
@@ -55,10 +55,21 @@ describe("credential deletion test-state guard", () => {
       throw Object.assign(new Error("missing"), { code: "ENOENT" });
     });
 
-    expect(() =>
-      deleteAccount("anthropic-subscription", "guard-probe-does-not-exist"),
-    ).toThrow(
-      /Refusing to delete credentials from a non-temporary Eliza state directory/,
+    let thrown: unknown;
+    try {
+      deleteAccount("anthropic-subscription", "guard-probe-does-not-exist");
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toEqual(
+      expect.objectContaining({
+        name: "ElizaError",
+        code: "AUTH_CREDENTIAL_DELETE_OUTSIDE_TEST_STATE",
+        severity: "fatal",
+        message: expect.stringMatching(
+          /Refusing to delete credentials from a non-temporary Eliza state directory/,
+        ),
+      }),
     );
     expect(unlink).not.toHaveBeenCalled();
   });
@@ -87,11 +98,28 @@ describe("credential deletion test-state guard", () => {
     process.env.ELIZA_HOME = home;
     delete process.env.ELIZA_STATE_DIR;
     process.env.VITEST = "true";
+    const file = path.join(
+      home,
+      "auth",
+      "anthropic-subscription",
+      "temporary-account.json",
+    );
 
     try {
-      expect(() =>
-        deleteAccount("anthropic-subscription", "missing-temp-account"),
-      ).not.toThrow();
+      saveAccount({
+        id: "temporary-account",
+        providerId: "anthropic-subscription",
+        label: "Temporary account",
+        source: "oauth",
+        credentials: { access: "temporary-access", refresh: "", expires: 0 },
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      expect(fs.existsSync(file)).toBe(true);
+
+      deleteAccount("anthropic-subscription", "temporary-account");
+
+      expect(fs.existsSync(file)).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
@@ -109,6 +137,32 @@ describe("credential deletion test-state guard", () => {
       ).not.toThrow();
     } finally {
       rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a temporary path that resolves through a symlink outside the OS temp directory", () => {
+    const container = mkdtempSync(path.join(tmpdir(), "eliza-symlink-guard-"));
+    const linkedHome = path.join(container, "linked-home");
+    const filesystemRoot = path.parse(process.cwd()).root;
+    symlinkSync(
+      filesystemRoot,
+      linkedHome,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    process.env.ELIZA_HOME = linkedHome;
+    delete process.env.ELIZA_STATE_DIR;
+    process.env.VITEST = "true";
+    const unlink = vi.spyOn(fs, "unlinkSync").mockImplementation(() => {
+      throw Object.assign(new Error("missing"), { code: "ENOENT" });
+    });
+
+    try {
+      expect(() =>
+        deleteAccount("openai-codex", "symlink-escape-probe"),
+      ).toThrow(/non-temporary Eliza state directory/);
+      expect(unlink).not.toHaveBeenCalled();
+    } finally {
+      rmSync(container, { recursive: true, force: true });
     }
   });
 
