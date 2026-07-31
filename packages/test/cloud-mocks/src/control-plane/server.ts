@@ -8,6 +8,8 @@ import {
   type Sandbox,
 } from "./store";
 
+const MOCK_EXECUTION_OWNER_ID = "00000000-0000-4000-8000-00000000f00d";
+
 type DatabaseJob = {
   id: string;
   type: string;
@@ -220,7 +222,13 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         };
         const batchSize = Math.max(1, Math.floor(limit));
         const claim = (type: string) =>
-          jobsRepository.claimPendingJobs({ type, limit: batchSize });
+          jobsRepository.claimPendingJobs({
+            type,
+            limit: batchSize,
+            // Stable ownership lets the mock renew claims across control-plane
+            // requests without inventing a new worker identity each time.
+            executionOwnerId: MOCK_EXECUTION_OWNER_ID,
+          });
         // Provision/delete are reimplemented against the Hetzner mock; the
         // remaining lifecycle jobs are reproduced as direct agent_sandboxes
         // row transitions (mirroring the real handlers' DB effects), which is

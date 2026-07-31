@@ -249,7 +249,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
     await expect(repo.assertExecutionLease(claimed, winner)).rejects.toThrow(
       "execution generation is no longer current",
     );
-    expect(await repo.renewExecutionLease(claimed, winner, 60_000)).toBe(true);
+    expect(await repo.renewExecutionLease(claimed, winner, 60_000)).toBe("renewed");
     await expect(repo.assertExecutionLease(claimed, winner)).resolves.toBeUndefined();
     expect(
       await repo.recoverInProgressJobsStartedBefore({
@@ -273,6 +273,35 @@ describe("jobsRepository.recoverStaleJobs", () => {
       attempts: 1,
       execution_quiesced_at: expect.any(Date),
     });
+    expect(await repo.renewExecutionLease(claimed, winner, 60_000)).toBe("lost");
+  });
+
+  test("classifies a completed claim as settled without a follow-up read", async () => {
+    expect(pgliteReady).toBe(true);
+    const jobId = "00000000-0000-4000-8000-000000030854";
+    const ownerId = "00000000-0000-4000-8000-000000030855";
+    await dbWrite.insert(jobs).values({
+      id: jobId,
+      type: "agent_message",
+      status: "pending",
+      data: { agentId: AGENT_ID, organizationId: ORG_ID },
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      scheduled_for: JOB_STARTED_AT,
+      created_at: JOB_STARTED_AT,
+      updated_at: JOB_STARTED_AT,
+    });
+    const [claimed] = await repo.claimPendingJobs({
+      type: "agent_message",
+      limit: 1,
+      executionOwnerId: ownerId,
+      executionLeaseMs: 60_000,
+    });
+    if (!claimed) throw new Error("expected the job to be claimed");
+
+    await repo.settleExecution(claimed, "completed", undefined, ownerId);
+
+    expect(await repo.renewExecutionLease(claimed, ownerId, 60_000)).toBe("settled");
   });
 
   test("uses each stale row's max_attempts instead of a caller-wide fallback", async () => {

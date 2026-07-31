@@ -89,7 +89,7 @@ function harness(job: Job) {
     async (f: { type: string }) => (f.type === job.type ? [job] : []),
   );
   const leaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
-  const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue(false);
+  const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
   const sharedClaimSpy = spyOn(
     jobsRepository,
     "claimPendingJobsWithinSharedRunningLimit",
