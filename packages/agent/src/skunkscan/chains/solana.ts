@@ -8,6 +8,7 @@ import {
 
 import {
   getSolanaBalance,
+  getSolanaNftHoldings,
   getSolanaOldestKnownSignature,
   getSolanaParsedTransactions,
   getSolanaRecentSignatures,
@@ -23,6 +24,7 @@ import {
   ChainConnectorHealth,
   ChainOperationResult,
   NativeBalanceResult,
+  NftHoldingsResult,
   OldestTransactionResult,
   TokenBalancesResult,
   TransactionLookupResult,
@@ -50,7 +52,7 @@ const SOLANA_CAPABILITIES: ChainAdapterCapabilities = {
   transactionRetrieval: true,
   transactionParsing: true,
   tokenRetrieval: true,
-  nftRetrieval: false,
+  nftRetrieval: true,
   protocolDetection: false,
   internalTransferDetection: false,
   historicalTransactionRetrieval: true,
@@ -430,6 +432,41 @@ export class SolanaBlockchainConnector
       return createErrorResult(
         error,
         "SOLANA_TOKEN_BALANCE_RETRIEVAL_FAILED",
+      );
+    }
+  }
+
+  async getNftHoldings(
+    address: string,
+  ): Promise<
+    ChainOperationResult<NftHoldingsResult>
+  > {
+    try {
+      const holdings =
+        await getSolanaNftHoldings(address);
+
+      return createSuccessResult({
+        chainId: SOLANA_CHAIN_ID,
+        address: address.trim(),
+        holdings: holdings.map((nft) => ({
+          asset: {
+            chainId: SOLANA_CHAIN_ID,
+            assetType: "nft",
+            assetId: `solana:nft:${nft.mint}`,
+            decimals: null,
+            contractAddress: null,
+            tokenId: nft.mint,
+          },
+          name: nft.name,
+          collection: nft.collection,
+          imageUrl: nft.imageUrl,
+        })),
+        retrievedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      return createErrorResult(
+        error,
+        "SOLANA_NFT_RETRIEVAL_FAILED",
       );
     }
   }

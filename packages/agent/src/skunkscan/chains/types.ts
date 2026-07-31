@@ -6,6 +6,7 @@ import {
   ChainIdentifier,
   UniversalAssetIdentifier,
   UniversalBlockchainAddress,
+  UniversalNftHolding,
   UniversalTransaction,
 } from "../types";
 
@@ -64,6 +65,13 @@ export type TokenBalancesResult = {
   chainId: ChainIdentifier;
   address: string;
   balances: TokenBalance[];
+  retrievedAt: string;
+};
+
+export type NftHoldingsResult = {
+  chainId: ChainIdentifier;
+  address: string;
+  holdings: UniversalNftHolding[];
   retrievedAt: string;
 };
 
@@ -140,6 +148,13 @@ export interface BlockchainConnector {
   getTokenBalances(
     address: string,
   ): Promise<ChainOperationResult<TokenBalancesResult>>;
+
+  // Optional: chains without NFT support (or without an NFT-fetching
+  // implementation yet) simply omit this method, and callers treat that
+  // the same as an empty holdings list - no chain-name check required.
+  getNftHoldings?(
+    address: string,
+  ): Promise<ChainOperationResult<NftHoldingsResult>>;
 
   getTransactions(
     address: string,
