@@ -624,9 +624,11 @@ async function runModify(
 		}
 
 		if (!modification) {
+			// Planner-facing only: the canned clarification read as corporate
+			// boilerplate in chat next to the evaluator's in-voice reply (a live
+			// double message). The evaluator owns asking the user, in voice.
 			const text =
-				"I don't see any clear modification instructions. Could you be more specific about how you'd like me to change?";
-			await callback?.({ text, thought: "No valid modification found" });
+				"No clear modification instructions found in the request; ask the user to be specific about how they'd like the character to change.";
 			return {
 				text,
 				values: { success: false, error: "no_modification_found" },
