@@ -1,0 +1,12 @@
+[Unit]
+Description=Prune stale GitHub Actions runner workspaces hourly (#15398)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+# A backlog of missed runs adds nothing — the next hourly run reclaims the same
+# stale workspaces — so don't replay skipped timers after downtime.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

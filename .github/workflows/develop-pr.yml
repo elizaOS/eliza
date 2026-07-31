@@ -50,6 +50,15 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
+      # Also present in quality.yml, which only runs on PRs to `main` and on
+      # post-merge pushes — so a change to this bundle reached develop with the
+      # smoke never having executed anywhere. It settles every claim through
+      # the REAL prune tool (effective flags, unknown-flag rejection, an actual
+      # stale-vs-fresh reclaim, and a two-orphan sweep), which is exactly the
+      # class of defect a string-compare version let ship before (#15398).
+      - name: Run runner-workspace cleanup smoke
+        run: ./packages/deploy/runner-workspace-cleanup/smoke-test.sh
+
   typecheck:
     runs-on: ubuntu-latest
     # 35 not 20: at --concurrency=4 a near-total affected cone (~250 packages)
