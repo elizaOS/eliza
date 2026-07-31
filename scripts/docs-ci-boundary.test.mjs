@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -19,6 +20,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   isAllowedDocsPath,
+  MAX_DOC_FILES,
   MAX_DOC_PATCH_BYTES,
   materializePullRequest,
   validateGeneratedChanges,
@@ -40,6 +42,10 @@ beforeEach(() => {
   writeFileSync(
     join(fixtureRoot, "packages", "docs", "guide.mdx"),
     "# Trusted guide\n",
+  );
+  writeFileSync(
+    join(fixtureRoot, "packages", "docs", "package.json"),
+    '{"name":"docs"}\n',
   );
   git("init", "--initial-branch=develop");
   git("config", "user.name", "Docs CI Test");
@@ -146,6 +152,19 @@ describe("docs CI untrusted patch boundary", () => {
     );
   });
 
+  it("caps generated documentation at the file-count limit", () => {
+    for (let index = 0; index <= MAX_DOC_FILES; index += 1) {
+      writeFileSync(
+        join(fixtureRoot, "packages", "docs", `generated-${index}.md`),
+        "# Generated\n",
+      );
+    }
+    assert.throws(
+      () => validateGeneratedChanges(undefined, { cwd: fixtureRoot }),
+      new RegExp(`exceed the ${MAX_DOC_FILES}-file limit`),
+    );
+  });
+
   it("caps the actual exported patch, including large deletions", () => {
     const hugePath = join(fixtureRoot, "packages", "docs", "huge.md");
     writeFileSync(hugePath, `${"A".repeat(MAX_DOC_PATCH_BYTES + 1024)}\n`);
@@ -242,7 +261,21 @@ describe("docs CI untrusted patch boundary", () => {
       join(fixtureRoot, ".gitignore"),
       "untrusted code-side edit\n",
     );
-    git("add", "packages/docs/guide.mdx", ".gitignore");
+    writeFileSync(
+      join(fixtureRoot, "packages", "docs", "package.json"),
+      '{"name":"docs","malicious":true}\n',
+    );
+    writeFileSync(
+      join(fixtureRoot, "packages", "docs", "logo.svg"),
+      "<svg xmlns='http://www.w3.org/2000/svg'/>\n",
+    );
+    git(
+      "add",
+      "packages/docs/guide.mdx",
+      "packages/docs/package.json",
+      "packages/docs/logo.svg",
+      ".gitignore",
+    );
     git("commit", "-m", "untrusted documentation");
     const head = git("rev-parse", "HEAD").trim();
     git("checkout", "--detach", base);
@@ -284,6 +317,19 @@ describe("docs CI untrusted patch boundary", () => {
       assert.equal(
         readFileSync(join(fixtureRoot, ".gitignore"), "utf8"),
         "packages/docs/ignored.md\n",
+      );
+      // Non-page files under packages/docs are ignored on the input side:
+      // never materialized from the untrusted head, never a hard failure.
+      assert.equal(
+        readFileSync(
+          join(fixtureRoot, "packages", "docs", "package.json"),
+          "utf8",
+        ),
+        '{"name":"docs"}\n',
+      );
+      assert.equal(
+        existsSync(join(fixtureRoot, "packages", "docs", "logo.svg")),
+        false,
       );
     } finally {
       rmSync(runnerTemp, { force: true, recursive: true });

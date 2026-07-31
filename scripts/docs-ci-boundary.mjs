@@ -17,7 +17,7 @@ import {
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const MAX_DOC_FILES = 64;
+export const MAX_DOC_FILES = 200;
 export const MAX_MODEL_INPUT_FILES = 512;
 export const MAX_DOC_FILE_BYTES = 512 * 1024;
 export const MAX_DOC_TOTAL_BYTES = 2 * 1024 * 1024;
@@ -193,22 +193,33 @@ export function materializePullRequest(
       "[DocsCiBoundary] fetched PR head does not match the event",
     );
   }
-  const paths = assertBoundedPaths(
-    nulPaths(
-      git(
-        [
-          "diff",
-          "--no-renames",
-          "--name-only",
-          "-z",
-          `${base}...${head}`,
-          "--",
-          "packages/docs",
-        ],
-        { cwd, encoding: "buffer" },
-      ),
+  // packages/docs legitimately carries non-page files (package.json, brand
+  // images, logos). Only .md/.mdx/docs.json/mint.json cross into the model
+  // job; everything else is ignored on this input side rather than failing
+  // the PR — the strict allowlist stays on the model-output/patch side.
+  const changedPaths = nulPaths(
+    git(
+      [
+        "diff",
+        "--no-renames",
+        "--name-only",
+        "-z",
+        `${base}...${head}`,
+        "--",
+        "packages/docs",
+      ],
+      { cwd, encoding: "buffer" },
     ),
   );
+  const skippedPaths = [
+    ...new Set(changedPaths.filter((path) => !isAllowedDocsPath(path))),
+  ].sort();
+  if (skippedPaths.length > 0) {
+    process.stdout.write(
+      `::notice::[DocsCiBoundary] ignoring ${skippedPaths.length} non-documentation path(s) under packages/docs: ${skippedPaths.join(", ")}\n`,
+    );
+  }
+  const paths = assertBoundedPaths(changedPaths.filter(isAllowedDocsPath));
 
   let totalBytes = 0;
   for (const path of paths) {
