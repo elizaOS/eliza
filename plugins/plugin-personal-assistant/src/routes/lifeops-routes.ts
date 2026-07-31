@@ -96,12 +96,12 @@ import {
   type LifeOpsGmailSpamReviewStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
+import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
 } from "../lifeops/app-state.js";
 import { probeFullDiskAccess } from "../lifeops/fda-probe.js";
-import { getSignalSourceRegistry } from "../lifeops/registries/signal-source-registry.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 
@@ -151,7 +151,7 @@ function requireActivitySignalsAvailable(ctx: LifeOpsRouteContext): boolean {
     return false;
   }
   const runtime = ctx.state.runtime;
-  if (!runtime || getSignalSourceRegistry(runtime) === null) {
+  if (!runtime || !areLifeOpsActivitySignalsActive(runtime)) {
     ctx.error(
       ctx.res,
       "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
