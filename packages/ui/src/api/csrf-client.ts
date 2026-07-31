@@ -99,8 +99,9 @@ export async function requestViaAgentTransport(
     desktopHttpTransportForUrl(url) ??
     nativeCloudHttpTransportForUrl(url) ??
     fetchAgentTransport;
+  const timeoutMs = context.timeoutMs ?? defaultFetchTimeoutMs(url, init);
   return transport.request(url, init, {
-    timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(context.responseType ? { responseType: context.responseType } : {}),
   });
 }
