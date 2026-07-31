@@ -3,8 +3,8 @@
  * Electric stack (`docker compose -f plugins/plugin-sql/docker-compose.electric-test.yml up -d`).
  * Exercises the full data flow — Postgres (source) → Electric (shape server)
  * → PGlite (`syncShapesToTables`) — including per-agent isolation and sync
- * status transitions. All tests skip gracefully when the containers are not
- * running.
+ * status transitions. The suite is explicitly opt-in; once enabled, missing
+ * infrastructure is a failure rather than a fake passing result.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -21,37 +21,8 @@ const ELECTRIC_HEALTH_URL = "http://localhost:3000/api/health";
 const ELECTRIC_SYNC_URL = "http://localhost:3000";
 const POSTGRES_URL = "postgresql://postgres:postgres@localhost:5433/electric_test";
 
-let containersAvailable = false;
 let pgModule: typeof import("pg") | null = null;
-
-// ------------------------------------------------------------------
-// Probe whether the Docker containers are reachable.
-// ------------------------------------------------------------------
-beforeAll(async () => {
-  try {
-    // Try to reach Electric's health endpoint.
-    const res = await fetch(ELECTRIC_HEALTH_URL, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) {
-      throw new Error(`Electric health check returned ${res.status}`);
-    }
-    // Dynamically import pg so tests that don't use it don't fail on missing dep.
-    try {
-      pgModule = await import("pg");
-    } catch {
-      console.warn(
-        "[e2e-sync] Electric containers are reachable but 'pg' module is not installed. " +
-          "Install it with: bun add pg"
-      );
-      return;
-    }
-    containersAvailable = true;
-  } catch {
-    console.warn(
-      "[e2e-sync] Electric containers not reachable at localhost:3000. " +
-        "Start them with: docker compose -f plugins/plugin-sql/docker-compose.electric-test.yml up -d"
-    );
-  }
-}, 10_000);
+const describeElectricE2E = process.env.ELIZA_ELECTRIC_E2E === "1" ? describe : describe.skip;
 
 // ------------------------------------------------------------------
 // Helpers
@@ -202,19 +173,35 @@ async function createPostgresSchema(): Promise<void> {
 // ------------------------------------------------------------------
 // Test suite
 // ------------------------------------------------------------------
-describe("Electric Sync end-to-end", () => {
+describeElectricE2E("Electric Sync end-to-end", () => {
   const cleanups: Array<{ dir: string; manager?: PGliteClientManager }> = [];
+
+  beforeAll(async () => {
+    const response = await fetch(ELECTRIC_HEALTH_URL, {
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Electric health check returned ${response.status}`);
+    }
+    pgModule = await import("pg");
+  }, 10_000);
 
   afterEach(async () => {
     for (const c of cleanups.splice(0)) {
       if (c.manager) {
         try {
           await c.manager.close();
-        } catch {}
+        } catch (error) {
+          // error-policy:J6 test teardown continues so all temporary resources are attempted.
+          console.warn("[e2e-sync] manager teardown failed", error);
+        }
       }
       try {
         fs.rmSync(c.dir, { recursive: true, force: true });
-      } catch {}
+      } catch (error) {
+        // error-policy:J6 test teardown reports filesystem cleanup failures.
+        console.warn("[e2e-sync] temporary directory cleanup failed", error);
+      }
     }
   });
 
@@ -222,8 +209,6 @@ describe("Electric Sync end-to-end", () => {
   // 1. Data flows: Postgres → Electric → PGlite
   // ------------------------------------------------------------------
   it("synced data from Postgres flows to PGlite via Electric", async () => {
-    if (!containersAvailable) return;
-
     // 1. Create schema and insert test data in Postgres.
     await createPostgresSchema();
 
@@ -309,8 +294,6 @@ describe("Electric Sync end-to-end", () => {
   // 2. Per-agent isolation: agentA's PGlite only sees agentA's data
   // ------------------------------------------------------------------
   it("per-agent isolation: only the synced agent's rows appear in PGlite", async () => {
-    if (!containersAvailable) return;
-
     await createPostgresSchema();
 
     const agentA = v4();
@@ -413,8 +396,6 @@ describe("Electric Sync end-to-end", () => {
   // 3. Sync status transitions: disabled → syncing → synced
   // ------------------------------------------------------------------
   it("sync status transitions from disabled through syncing to synced", async () => {
-    if (!containersAvailable) return;
-
     await createPostgresSchema();
 
     const agentId = v4();
@@ -466,4 +447,4 @@ describe("Electric Sync end-to-end", () => {
 
     expect(finalStatus).toBe("synced");
   }, 30_000);
-}, 90_000);
+});

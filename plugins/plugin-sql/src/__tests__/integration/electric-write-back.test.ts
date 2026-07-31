@@ -1,10 +1,10 @@
 /**
  * End-to-end Electric Write-Back test against Electric Cloud (the managed
  * sync service, not a local Docker Compose stack) — verifies PGlite connects
- * and syncs existing tables via `syncShapesToTables`. Skips gracefully when
- * the Cloud env vars are unset or the proxy is unreachable. Write-back
- * enabled/disabled/enqueue behavior itself is covered by the unit tests in
- * `__tests__/unit/write-back.test.ts`.
+ * and syncs existing tables via `syncShapesToTables`. The suite is explicitly
+ * skipped when Cloud credentials are absent; once selected, an unreachable
+ * proxy fails instead of fabricating a pass. Write-back enabled/disabled/enqueue
+ * behavior itself is covered by `__tests__/unit/write-back.test.ts`.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -39,47 +39,7 @@ const CLOUD_ENV_VARS_SET = !!(ELECTRIC_CLOUD_SOURCE_ID && ELECTRIC_CLOUD_SECRET)
 const KNOWN_CLOUD_REJECTIONS = [/relation "public\.user_sessions" does not exist/];
 
 let unhandledSuppressor: ((reason: unknown, promise: Promise<unknown>) => void) | null = null;
-// Register the suppressor first so it's active before any async work
-// (including the cloud probe fetch) begins.
-beforeAll(() => {
-  unhandledSuppressor = (reason: unknown, _promise: Promise<unknown>) => {
-    const msg = reason instanceof Error ? reason.message : String(reason);
-    const isKnown = KNOWN_CLOUD_REJECTIONS.some((pattern) => pattern.test(msg));
-    if (isKnown) {
-      console.debug("[write-back] Suppressed known Cloud rejection:", msg);
-    } else {
-      console.error("[write-back] UNEXPECTED unhandled rejection:", msg, reason);
-    }
-  };
-  process.on("unhandledRejection", unhandledSuppressor);
-});
-afterAll(() => {
-  if (unhandledSuppressor) {
-    process.off("unhandledRejection", unhandledSuppressor);
-  }
-});
-
-let cloudAvailable = false;
-
-beforeAll(async () => {
-  if (!CLOUD_ENV_VARS_SET) {
-    console.warn(
-      "[write-back] ELECTRIC_CLOUD_SOURCE_ID and ELECTRIC_CLOUD_SECRET env vars not set — skipping e2e test.\n" +
-        "  Start Caddy with: ELECTRIC_CLOUD_SOURCE_ID=... ELECTRIC_CLOUD_SECRET=... caddy run --config plugins/plugin-sql/caddy/electric-proxy.Caddyfile"
-    );
-    return;
-  }
-  try {
-    const res = await fetch(ELECTRIC_PROBE_URL, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) throw new Error(`Electric probe returned ${res.status}`);
-    cloudAvailable = true;
-    console.log("[write-back] Electric Cloud reachable via Caddy proxy — running write-back tests");
-  } catch (err) {
-    console.warn(
-      `[write-back] Electric Cloud not reachable at localhost:3001: ${err instanceof Error ? err.message : String(err)}. Start Caddy with: ELECTRIC_CLOUD_SOURCE_ID=... ELECTRIC_CLOUD_SECRET=... caddy run --config plugins/plugin-sql/caddy/electric-proxy.Caddyfile`
-    );
-  }
-}, 15_000);
+const unexpectedUnhandledRejections: unknown[] = [];
 
 // ------------------------------------------------------------------
 // Helpers
@@ -91,22 +51,63 @@ function createTempDir(prefix: string): string {
 // ------------------------------------------------------------------
 // Test suite
 // ------------------------------------------------------------------
-describe("Electric Write-Back e2e", () => {
+describe.skipIf(!CLOUD_ENV_VARS_SET)("Electric Write-Back e2e", () => {
   const cleanups: Array<{ dir: string; manager?: PGliteClientManager }> = [];
+
+  beforeAll(() => {
+    unhandledSuppressor = (reason: unknown, _promise: Promise<unknown>) => {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      if (KNOWN_CLOUD_REJECTIONS.some((pattern) => pattern.test(message))) {
+        // error-policy:J5 the known Cloud schema rejection is observed here and logged.
+        console.debug("[write-back] Suppressed known Cloud rejection:", message);
+        return;
+      }
+      unexpectedUnhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", unhandledSuppressor);
+  });
+
+  beforeAll(async () => {
+    const response = await fetch(ELECTRIC_PROBE_URL, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Electric probe returned ${response.status}`);
+    }
+    console.log("[write-back] Electric Cloud reachable via Caddy proxy — running write-back tests");
+  }, 15_000);
+
+  afterAll(() => {
+    if (unhandledSuppressor) {
+      process.off("unhandledRejection", unhandledSuppressor);
+    }
+    if (unexpectedUnhandledRejections.length > 0) {
+      throw new AggregateError(
+        unexpectedUnhandledRejections,
+        "Unexpected unhandled rejection during Electric Cloud e2e"
+      );
+    }
+  });
 
   afterEach(async () => {
     for (const c of cleanups.splice(0)) {
       if (c.manager) {
         try {
           await c.manager.close();
-        } catch {}
+        } catch (error) {
+          // error-policy:J6 test teardown continues so all temporary resources are attempted.
+          console.warn("[write-back] manager teardown failed", error);
+        }
       }
       // Yield the event loop so PGlite WASM cleanup callbacks complete
       // before the data directory is removed.
       await new Promise((r) => setTimeout(r, 50));
       try {
         fs.rmSync(c.dir, { recursive: true, force: true });
-      } catch {}
+      } catch (error) {
+        // error-policy:J6 test teardown reports filesystem cleanup failures.
+        console.warn("[write-back] temporary directory cleanup failed", error);
+      }
     }
   });
 
@@ -114,8 +115,6 @@ describe("Electric Write-Back e2e", () => {
   // 1. PGlite syncs data from Electric Cloud
   // ------------------------------------------------------------------
   it("write-back: PGlite connects to Electric Cloud and syncs existing data", async () => {
-    if (!cloudAvailable) return;
-
     const agentId = v4();
 
     // 1. Create PGlite with Electric Cloud sync configured.
