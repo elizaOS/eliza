@@ -16,7 +16,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import {
   getCloudAuthToken,
@@ -110,15 +110,19 @@ export function CloudAgentsSection() {
   // The agent currently being woken (resumed + readiness-polled) before we
   // switch to it. Drives the "Waking <name>…" row state.
   const [wakingId, setWakingId] = useState<string | null>(null);
+  const refreshRequestIdRef = useRef(0);
   const activeId = useMemo(() => activeCloudAgentId(), []);
 
   const cloudApiBase = getBootConfig().cloudApiBase || "https://elizacloud.ai";
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestIdRef.current;
+    const ownsRefreshState = () => refreshRequestIdRef.current === requestId;
     setLoading(true);
     setLoadError(null);
     try {
       const res = await client.getCloudCompatAgents();
+      if (!ownsRefreshState()) return;
       // A failed fetch is NOT an empty list — surface it so the user can retry
       // instead of seeing the indistinguishable "No cloud agents yet" copy.
       if (!res.success) {
@@ -131,18 +135,25 @@ export function CloudAgentsSection() {
       );
       setAgents(list);
     } catch (err) {
+      if (!ownsRefreshState()) return;
       setLoadError(
         err instanceof Error
           ? err.message
           : "Could not load your cloud agents.",
       );
     } finally {
-      setLoading(false);
+      if (ownsRefreshState()) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void refresh();
+    return () => {
+      // Strict Mode can clean up and restart this effect while the first
+      // request is still live. Invalidating its ownership prevents that stale
+      // result from updating either an unmounted view or the restarted effect.
+      refreshRequestIdRef.current += 1;
+    };
   }, [refresh]);
 
   const setLocalStatus = useCallback((agentId: string, status: string) => {
