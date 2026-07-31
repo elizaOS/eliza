@@ -8,6 +8,12 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runHetznerE2eProvision } from "./hetzner-e2e-provision";
+import {
+  buildProvisionFailureDiagnostic,
+  readProvisionFailureDiagnostic,
+  renderProvisionFailureSummary,
+  writeProvisionFailureDiagnostic,
+} from "./hetzner-e2e-provision-diagnostic";
 
 type RecordedRequest = {
   method: string;
@@ -24,6 +30,10 @@ let originalEnv: Record<string, string | undefined>;
 const stateFile = join(
   tmpdir(),
   `hetzner-e2e-provision-http-${process.pid}.json`,
+);
+const diagnosticFile = join(
+  tmpdir(),
+  `hetzner-e2e-provision-diagnostic-${process.pid}.json`,
 );
 const testEnv = {
   HCLOUD_TOKEN_CI: "valid-ci-token",
@@ -106,6 +116,9 @@ afterEach(() => {
   if (existsSync(stateFile)) {
     rmSync(stateFile);
   }
+  if (existsSync(diagnosticFile)) {
+    rmSync(diagnosticFile);
+  }
 });
 
 describe("Hetzner E2E provision HTTP boundary", () => {
@@ -146,6 +159,27 @@ describe("Hetzner E2E provision HTTP boundary", () => {
         body: undefined,
       },
     ]);
+  });
+
+  test("does not reap incomplete or untagged inventory entries", async () => {
+    responseQueue.push(
+      Response.json({
+        servers: [
+          server({ labels: {}, name: "untagged" }),
+          server({ id: null, name: "invalid-id" }),
+          server({ created: null, name: "invalid-created" }),
+        ],
+      }),
+      Response.json({
+        server: server({ id: 99, created: new Date().toISOString() }),
+        root_password: null,
+      }),
+    );
+
+    await expect(runHetznerE2eProvision()).resolves.toMatchObject({ id: 99 });
+    expect(requests.filter((request) => request.method === "DELETE")).toEqual(
+      [],
+    );
   });
 
   test("fails before create when the labeled inventory cannot be read", async () => {
@@ -205,13 +239,37 @@ describe("Hetzner E2E provision HTTP boundary", () => {
       }),
     );
 
-    await expect(runHetznerE2eProvision()).rejects.toMatchObject({
-      message: expect.stringContaining("project quota exhausted"),
-      name: "HetznerCloudError",
+    const error = (await runHetznerE2eProvision().catch(
+      (caught) => caught,
+    )) as Error & {
+      code: string;
+      status: number;
+      cause: unknown;
+    };
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("HetznerE2eQuotaError");
+    expect(error.message).toContain("project quota exhausted");
+    expect(error.code).toBe("quota_exceeded");
+    expect(error.status).toBe(403);
+    expect(error.cause).toMatchObject({ code: "quota_exceeded" });
+    const diagnostic = buildProvisionFailureDiagnostic(error);
+    expect(diagnostic).toMatchObject({
+      kind: "quota",
       code: "quota_exceeded",
       status: 403,
-      cause: { code: "quota_exceeded" },
+      inventory: {
+        totalServers: 2,
+        hetznerE2eServers: 1,
+        otherServers: 1,
+      },
+      inventoryError: null,
     });
+    expect(renderProvisionFailureSummary(diagnostic)).toContain(
+      "Hetzner project quota exhausted",
+    );
+    expect(renderProvisionFailureSummary(diagnostic)).not.toContain(
+      "rejected the API credential",
+    );
 
     const createRequests = requests.filter(
       (request) =>
@@ -236,5 +294,134 @@ describe("Hetzner E2E provision HTTP boundary", () => {
     expect(capacityLog).not.toContain("198.51.100.77");
     expect(capacityLog).not.toContain("secret-owner");
     expect(capacityLog).not.toContain('"id":');
+  });
+
+  test("classifies a write-rejected token as authentication", async () => {
+    responseQueue.push(
+      Response.json({ servers: [] }),
+      Response.json(
+        { error: { code: "unauthorized", message: "permission denied" } },
+        { status: 403 },
+      ),
+    );
+
+    const error = await runHetznerE2eProvision().catch((caught) => caught);
+    const diagnostic = buildProvisionFailureDiagnostic(error);
+    expect(diagnostic).toMatchObject({
+      kind: "authentication",
+      code: "missing_token",
+      status: 403,
+      inventory: null,
+    });
+    expect(renderProvisionFailureSummary(diagnostic)).toContain(
+      "rejected the API credential",
+    );
+    expect(
+      requests.filter((request) => request.method === "POST"),
+    ).toHaveLength(1);
+  });
+
+  test("sanitizes incomplete capacity inventory into unknown buckets", async () => {
+    responseQueue.push(
+      Response.json({ servers: [] }),
+      Response.json(
+        { error: { code: "limit_reached", message: "server limit reached" } },
+        { status: 403 },
+      ),
+      Response.json({
+        servers: [
+          server({
+            status: null,
+            server_type: null,
+            datacenter: null,
+            labels: null,
+          }),
+          null,
+        ],
+      }),
+    );
+
+    const error = await runHetznerE2eProvision().catch((caught) => caught);
+    expect(buildProvisionFailureDiagnostic(error)).toMatchObject({
+      kind: "quota",
+      inventory: {
+        totalServers: 2,
+        hetznerE2eServers: 0,
+        otherServers: 2,
+        byStatus: { unknown: 2 },
+        byServerType: { unknown: 2 },
+        byLocation: { unknown: 2 },
+      },
+    });
+  });
+
+  test("preserves quota classification when the diagnostic inventory fails", async () => {
+    responseQueue.push(
+      Response.json({ servers: [] }),
+      Response.json(
+        { error: { code: "limit_reached", message: "server limit reached" } },
+        { status: 403 },
+      ),
+      Response.json(
+        { error: { code: "server_error", message: "inventory unavailable" } },
+        { status: 500 },
+      ),
+    );
+
+    const error = await runHetznerE2eProvision().catch((caught) => caught);
+    expect(error).toMatchObject({
+      code: "quota_exceeded",
+      status: 403,
+      cause: { code: "quota_exceeded", status: 403 },
+      inventory: null,
+      inventoryError: { code: "server_error", status: 500 },
+    });
+    const diagnostic = buildProvisionFailureDiagnostic(error);
+    expect(diagnostic).toEqual({
+      version: 1,
+      kind: "quota",
+      code: "quota_exceeded",
+      status: 403,
+      inventory: null,
+      inventoryError: { code: "server_error", status: 500 },
+    });
+    const summary = renderProvisionFailureSummary(diagnostic);
+    expect(summary).toContain("quota exhausted");
+    expect(summary).toContain("inventory also failed");
+    expect(summary).not.toContain("rejected the API credential");
+  });
+
+  test("workflow consumes structured diagnostics instead of grepping HTTP status text", () => {
+    const workflow = readFileSync(
+      join(import.meta.dir, "../../../../../.github/workflows/hetzner-e2e.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("hetzner-e2e-provision-diagnostic.ts");
+    expect(workflow).toContain('rm -f "$HETZNER_E2E_DIAGNOSTIC_FILE"');
+    expect(workflow).not.toContain("status: 401|status: 403");
+    expect(workflow).not.toContain(
+      'grep -qE "quota exhausted|server limit reached',
+    );
+  });
+
+  test("round-trips the validated diagnostic consumed by the workflow", () => {
+    const diagnostic = {
+      version: 1 as const,
+      kind: "quota" as const,
+      code: "quota_exceeded",
+      status: 403,
+      inventory: {
+        totalServers: 1,
+        hetznerE2eServers: 1,
+        otherServers: 0,
+        byStatus: { running: 1 },
+        byServerType: { cpx22: 1 },
+        byLocation: { nbg1: 1 },
+      },
+      inventoryError: null,
+    };
+
+    writeProvisionFailureDiagnostic(diagnosticFile, diagnostic);
+    expect(readProvisionFailureDiagnostic(diagnosticFile)).toEqual(diagnostic);
   });
 });

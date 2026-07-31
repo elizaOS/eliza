@@ -20,6 +20,11 @@ import {
   HetznerCloudClient,
   HetznerCloudError,
 } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import {
+  buildProvisionFailureDiagnostic,
+  type CapacityInventory,
+  writeProvisionFailureDiagnostic,
+} from "./hetzner-e2e-provision-diagnostic";
 import { appendStateAtomic } from "./state-file";
 
 function requireEnv(name: string): string {
@@ -79,12 +84,9 @@ function isProjectQuotaError(err: unknown): err is HetznerCloudError {
   return err instanceof HetznerCloudError && err.code === "quota_exceeded";
 }
 
-// Pre-provision reap: delete any prior CI servers older than this. Stops a
-// chain of failed runs (which leak servers because teardown only fires when
-// provision succeeds) from blocking new runs with "server limit reached".
-// 20min is well above the ~10min healthy E2E budget; anything older is
-// guaranteed dead. The half-hourly reaper workflow handles the >60min case;
-// this is the fast lane.
+// The workflow's non-overlapping concurrency guarantees that an older tagged
+// server cannot belong to another active official run when this provisioner
+// starts. The age floor still protects manually created lookalikes and clocks.
 const PRE_REAP_AGE_MS = 20 * 60 * 1000;
 
 async function preReapOldServers(client: HetznerCloudClient): Promise<void> {
@@ -94,24 +96,42 @@ async function preReapOldServers(client: HetznerCloudClient): Promise<void> {
   });
   const now = Date.now();
   for (const server of servers) {
-    const created = Date.parse(server.created);
+    const candidate = asRecord(server);
+    const labels = asRecord(candidate?.labels);
+    if (
+      labels?.ci !== "true" ||
+      labels.workflow !== "hetzner-e2e" ||
+      !Number.isSafeInteger(candidate?.id) ||
+      Number(candidate?.id) <= 0 ||
+      typeof candidate?.created !== "string"
+    ) {
+      continue;
+    }
+    const created = Date.parse(candidate.created);
     if (!Number.isFinite(created)) continue;
     if (now - created < PRE_REAP_AGE_MS) continue;
+    const name = sanitizedDimension(candidate.name);
     console.error(
-      `[hetzner-e2e-provision] pre-reap deleting ${server.id} (${server.name}) age=${Math.round((now - created) / 60000)}min`,
+      `[hetzner-e2e-provision] pre-reap deleting ${candidate.id} (${name}) age=${Math.round((now - created) / 60000)}min`,
     );
-    await client.deleteServer(server.id);
+    await client.deleteServer(Number(candidate.id));
   }
 }
 
-type CapacityInventory = {
-  totalServers: number;
-  hetznerE2eServers: number;
-  otherServers: number;
-  byStatus: Record<string, number>;
-  byServerType: Record<string, number>;
-  byLocation: Record<string, number>;
-};
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function sanitizedDimension(value: unknown): string {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 64 &&
+    /^[A-Za-z0-9._-]+$/.test(value)
+    ? value
+    : "unknown";
+}
 
 function incrementCount(counts: Record<string, number>, key: string): void {
   counts[key] = (counts[key] ?? 0) + 1;
@@ -120,7 +140,13 @@ function incrementCount(counts: Record<string, number>, key: string): void {
 async function readSanitizedCapacityInventory(
   client: HetznerCloudClient,
 ): Promise<CapacityInventory> {
-  const servers = await client.listServers();
+  const response: unknown = await client.listServers();
+  if (!Array.isArray(response)) {
+    throw new Error(
+      "Hetzner capacity inventory did not contain a server array",
+    );
+  }
+  const servers = response;
   const inventory: CapacityInventory = {
     totalServers: servers.length,
     hetznerE2eServers: 0,
@@ -131,16 +157,24 @@ async function readSanitizedCapacityInventory(
   };
 
   for (const server of servers) {
+    const candidate = asRecord(server);
+    const labels = asRecord(candidate?.labels);
     const isHetznerE2e =
-      server.labels.ci === "true" && server.labels.workflow === "hetzner-e2e";
+      labels?.ci === "true" && labels.workflow === "hetzner-e2e";
     if (isHetznerE2e) {
       inventory.hetznerE2eServers++;
     } else {
       inventory.otherServers++;
     }
-    incrementCount(inventory.byStatus, server.status);
-    incrementCount(inventory.byServerType, server.server_type.name);
-    incrementCount(inventory.byLocation, server.datacenter.location.name);
+    const serverType = asRecord(candidate?.server_type);
+    const datacenter = asRecord(candidate?.datacenter);
+    const location = asRecord(datacenter?.location);
+    incrementCount(inventory.byStatus, sanitizedDimension(candidate?.status));
+    incrementCount(
+      inventory.byServerType,
+      sanitizedDimension(serverType?.name),
+    );
+    incrementCount(inventory.byLocation, sanitizedDimension(location?.name));
   }
 
   return inventory;
@@ -230,26 +264,27 @@ export async function runHetznerE2eProvision(): Promise<{
     } catch (err) {
       lastError = err;
       if (isProjectQuotaError(err)) {
-        let inventory: CapacityInventory;
+        let inventory: CapacityInventory | null = null;
+        let inventoryError: unknown;
         try {
           inventory = await readSanitizedCapacityInventory(client);
-        } catch (inventoryError) {
-          // error-policy:J2 Preserve both the quota failure and the failed diagnostic read.
-          throw new AggregateError(
-            [err, inventoryError],
-            "Hetzner project quota exhausted and capacity inventory could not be read",
-            { cause: err },
+        } catch (error) {
+          // error-policy:J2 The create failure remains the cause; the diagnostic failure is attached separately.
+          inventoryError = error;
+        }
+        if (inventory) {
+          console.error(
+            `[hetzner-e2e-provision] project capacity inventory: ${JSON.stringify(inventory)}`,
           );
         }
-        console.error(
-          `[hetzner-e2e-provision] project capacity inventory: ${JSON.stringify(inventory)}`,
-        );
-        throw new HetznerCloudError(
+        throw new HetznerE2eQuotaError(
           "quota_exceeded",
           `Hetzner project quota exhausted after ${attempt.serverType}@${attempt.location} (${err.message}). ` +
             "Operator action required: inspect project capacity or raise the server limit; changing location cannot bypass a project-wide quota.",
           err.status,
           err,
+          inventory,
+          inventoryError,
         );
       }
       if (!isRetryableCombo(err)) {
@@ -292,5 +327,44 @@ export async function runHetznerE2eProvision(): Promise<{
 }
 
 if (import.meta.main) {
-  console.log(JSON.stringify(await runHetznerE2eProvision()));
+  void runHetznerE2eProvision()
+    .then((result) => {
+      console.log(JSON.stringify(result));
+    })
+    .catch((error: unknown) => {
+      const diagnostic = buildProvisionFailureDiagnostic(error);
+      const diagnosticPath =
+        // biome-ignore lint/suspicious/noUndeclaredEnvVars: GitHub Actions injects this standalone script path.
+        process.env.HETZNER_E2E_DIAGNOSTIC_FILE ??
+        "/tmp/hetzner-e2e-provision-diagnostic.json";
+      try {
+        writeProvisionFailureDiagnostic(diagnosticPath, diagnostic);
+      } catch (diagnosticWriteError) {
+        // error-policy:J2 Preserve the provisioning failure if its reporting boundary also fails.
+        throw new AggregateError(
+          [error, diagnosticWriteError],
+          "Hetzner provisioning failed and its structured diagnostic could not be written",
+          { cause: error },
+        );
+      }
+      console.error(
+        `[hetzner-e2e-provision] failure diagnostic: ${JSON.stringify(diagnostic)}`,
+      );
+      console.error(error);
+      process.exitCode = 1;
+    });
+}
+
+class HetznerE2eQuotaError extends HetznerCloudError {
+  constructor(
+    code: "quota_exceeded",
+    message: string,
+    status: number | undefined,
+    cause: unknown,
+    public readonly inventory: CapacityInventory | null,
+    public readonly inventoryError: unknown,
+  ) {
+    super(code, message, status, cause);
+    this.name = "HetznerE2eQuotaError";
+  }
 }
