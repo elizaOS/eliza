@@ -293,8 +293,6 @@ export function NotesView() {
               display: "grid",
               gap: 13,
               padding: 16,
-              position: "sticky",
-              top: 12,
             }}
           >
             <div

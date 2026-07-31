@@ -96,6 +96,18 @@ describe("Simple Views state labels", () => {
     ).toBeNull();
   });
 
+  it("gives compact note controls native accessible names", () => {
+    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+
+    const notes = render(<NotesView />);
+    const yellow = notes.container.querySelector(
+      '[aria-label="Use yellow color"]',
+    );
+
+    expect(yellow).toBeTruthy();
+    expect(yellow?.textContent).toBe("");
+  });
+
   it.each([
     { height: 499, label: "compact", width: 315 },
     { height: 800, label: "desktop", width: 1280 },
