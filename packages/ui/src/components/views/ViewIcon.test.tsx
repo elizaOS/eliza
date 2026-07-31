@@ -131,4 +131,133 @@ describe("ViewIcon system views render distinct glyphs (#5)", () => {
     ]);
     expect(glyphs).not.toContain("lucide-layout-grid");
   });
+
+  it("renders launcher plugin icons as distinct semantic glyphs", () => {
+    const cases = [
+      ["UserRound", "Character", "lucide-user-round"],
+      ["Brain", "Memories", "lucide-brain"],
+      ["StickyNote", "Notes", "lucide-sticky-note"],
+      ["CalendarDays", "Calendar", "lucide-calendar-days"],
+    ] as const;
+
+    const glyphs = cases.map(([icon, label, expected]) => {
+      const rendered = render(<ViewIcon icon={icon} label={label} />);
+      const glyph = glyphClass(rendered.container);
+      expect(glyph).toBe(expected);
+      return glyph;
+    });
+
+    expect(new Set(glyphs).size).toBe(cases.length);
+  });
+
+  it("uses a unique semantic fallback for My Apps", () => {
+    const rendered = render(<ViewIcon label="My Apps" id="my-apps" />);
+    expect(glyphClass(rendered.container)).toBe("lucide-boxes");
+  });
+
+  it("resolves every installed app package before the generic plugin fallback", () => {
+    const cases = [
+      ["Contacts", "@elizaos/plugin-contacts", "lucide-users-round"],
+      ["Phone", "@elizaos/plugin-phone", "lucide-phone"],
+      ["WiFi", "@elizaos/plugin-wifi", "lucide-wifi"],
+      ["Feed", "@elizaos/plugin-feed", "lucide-rss"],
+      ["Hyperliquid", "@elizaos/plugin-hyperliquid", "lucide-trending-up"],
+      [
+        "Polymarket",
+        "@elizaos/plugin-polymarket",
+        "lucide-chart-no-axes-column",
+      ],
+      ["Screen Share", "@elizaos/plugin-screenshare", "lucide-monitor"],
+      [
+        "Trajectory Logger",
+        "@elizaos/plugin-trajectory-logger",
+        "lucide-activity",
+      ],
+      [
+        "Model Tester",
+        "@elizaos/plugin-app-model-tester",
+        "lucide-test-tube-diagonal",
+      ],
+      ["Birdclaw", "@elizaos/plugin-birdclaw", "lucide-bird"],
+      ["Focus", "@elizaos/plugin-blocker", "lucide-focus"],
+      ["Calendar", "@elizaos/plugin-calendar", "lucide-calendar-days"],
+      ["Documents", "@elizaos/plugin-documents", "lucide-files"],
+      ["Finances", "@elizaos/plugin-finances", "lucide-circle-dollar-sign"],
+      ["Form", "@elizaos/plugin-form", "lucide-clipboard-list"],
+      ["Goals", "@elizaos/plugin-goals", "lucide-target"],
+      ["Inbox", "@elizaos/plugin-inbox", "lucide-inbox"],
+      ["Messages", "@elizaos/plugin-messages", "lucide-message-square"],
+      [
+        "Settings",
+        "@elizaos/plugin-native-settings",
+        "lucide-sliders-horizontal",
+      ],
+      [
+        "Personal Assistant",
+        "@elizaos/plugin-personal-assistant",
+        "lucide-layout-dashboard",
+      ],
+      ["Relationships", "@elizaos/plugin-relationships", "lucide-network"],
+      [
+        "Task Coordinator",
+        "@elizaos/plugin-task-coordinator",
+        "lucide-square-terminal",
+      ],
+      ["Todos", "@elizaos/plugin-todos", "lucide-list-todo"],
+      ["Training", "@elizaos/plugin-training", "lucide-brain-circuit"],
+      [
+        "Vector Browser",
+        "@elizaos/plugin-vector-browser",
+        "lucide-chart-scatter",
+      ],
+      ["Wallet", "@elizaos/plugin-wallet-ui", "lucide-credit-card"],
+    ] as const;
+
+    const glyphs = cases.map(([label, id, expected]) => {
+      const rendered = render(<ViewIcon label={label} id={id} />);
+      const glyph = glyphClass(rendered.container);
+      expect(glyph, `${label} (${id})`).toBe(expected);
+      return [id, glyph] as const;
+    });
+
+    expect(glyphs.map(([, glyph]) => glyph)).not.toContain("lucide-plug");
+    expect(glyphs.map(([, glyph]) => glyph)).not.toContain(
+      "lucide-layout-grid",
+    );
+
+    const packagesByGlyph = Map.groupBy(glyphs, ([, glyph]) => glyph);
+    expect(
+      [...packagesByGlyph.values()].filter((entries) => entries.length > 1),
+    ).toEqual([]);
+  });
+
+  it("keeps builtin and catalog launcher counterparts visually distinct", () => {
+    const cases = [
+      ["Settings", "settings", "Settings", "lucide-settings"],
+      [
+        "Device Settings",
+        "@elizaos/plugin-native-settings",
+        undefined,
+        "lucide-sliders-horizontal",
+      ],
+      ["Wallet", "wallet", "Wallet", "lucide-wallet"],
+      [
+        "Wallet Ui",
+        "@elizaos/plugin-wallet-ui",
+        undefined,
+        "lucide-credit-card",
+      ],
+      ["Knowledge", "documents", "FileText", "lucide-file-text"],
+      ["Documents", "@elizaos/plugin-documents", undefined, "lucide-files"],
+    ] as const;
+
+    const glyphs = cases.map(([label, id, icon, expected]) => {
+      const rendered = render(<ViewIcon label={label} id={id} icon={icon} />);
+      const glyph = glyphClass(rendered.container);
+      expect(glyph, `${label} (${id})`).toBe(expected);
+      return glyph;
+    });
+
+    expect(new Set(glyphs).size).toBe(cases.length);
+  });
 });

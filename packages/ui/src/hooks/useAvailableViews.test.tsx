@@ -312,6 +312,12 @@ describe("useAvailableViews", () => {
         desktopTabEnabled: true,
       }),
     );
+    expect(routable.result.current.views).toContainEqual(
+      expect.objectContaining({
+        id: "my-apps",
+        icon: "Boxes",
+      }),
+    );
   });
 
   it("does not let built-in shell fallbacks override real registry entries", () => {
