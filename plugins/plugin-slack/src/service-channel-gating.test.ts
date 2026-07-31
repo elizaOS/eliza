@@ -13,25 +13,31 @@ const bolt = vi.hoisted(() => ({
     messageHandler?: (args: {
       message: unknown;
       client: unknown;
+      body?: unknown;
     }) => Promise<void>;
     eventHandlers: Map<
       string,
-      (args: { event: unknown; client: unknown }) => Promise<void>
+      (args: {
+        event: unknown;
+        client: unknown;
+        body?: unknown;
+      }) => Promise<void>
     >;
     client: ReturnType<typeof createClient>;
   }>,
   channels: [] as Array<Record<string, unknown>>,
   users: [] as Array<Record<string, unknown>>,
   infoError: null as Error | null,
+  authResult: {
+    user_id: "U0BOTBOT0",
+    team_id: "T0TEAM000",
+  } as Record<string, unknown>,
 }));
 
 function createClient() {
   return {
     auth: {
-      test: vi.fn().mockResolvedValue({
-        user_id: "U0BOTBOT0",
-        team_id: "T0TEAM000",
-      }),
+      test: vi.fn().mockImplementation(async () => bolt.authResult),
     },
     conversations: {
       list: vi
@@ -63,7 +69,11 @@ vi.mock("@slack/bolt", () => ({
     private readonly record = {
       eventHandlers: new Map<
         string,
-        (args: { event: unknown; client: unknown }) => Promise<void>
+        (args: {
+          event: unknown;
+          client: unknown;
+          body?: unknown;
+        }) => Promise<void>
       >(),
       client: this.client,
     } as (typeof bolt.apps)[number];
@@ -73,16 +83,33 @@ vi.mock("@slack/bolt", () => ({
     }
 
     message(
-      handler: (args: { message: unknown; client: unknown }) => Promise<void>,
+      handler: (args: {
+        message: unknown;
+        client: unknown;
+        body?: unknown;
+      }) => Promise<void>,
     ) {
-      this.record.messageHandler = handler;
+      this.record.messageHandler = (args) =>
+        handler({
+          ...args,
+          body: args.body ?? { team_id: "T0TEAM000", event: args.message },
+        });
     }
 
     event(
       name: string,
-      handler: (args: { event: unknown; client: unknown }) => Promise<void>,
+      handler: (args: {
+        event: unknown;
+        client: unknown;
+        body?: unknown;
+      }) => Promise<void>,
     ) {
-      this.record.eventHandlers.set(name, handler);
+      this.record.eventHandlers.set(name, (args) =>
+        handler({
+          ...args,
+          body: args.body ?? { team_id: "T0TEAM000", event: args.event },
+        }),
+      );
     }
 
     async start() {}
@@ -213,6 +240,7 @@ beforeEach(() => {
     { id: BOB, name: "bob", profile: { display_name: "Bob" } },
   ];
   bolt.infoError = null;
+  bolt.authResult = { user_id: "U0BOTBOT0", team_id: "T0TEAM000" };
 });
 
 describe("persisted Slack policy through Bolt handlers", () => {
@@ -297,6 +325,63 @@ describe("persisted Slack policy through Bolt handlers", () => {
       /cannot enforce: actions/,
     );
     expect(bolt.apps[0]?.eventHandlers.size).toBe(0);
+  });
+
+  it("fails startup when Slack does not authenticate a workspace identity", async () => {
+    bolt.authResult = { user_id: "U0BOTBOT0" };
+    const runtime = createRuntime({
+      enabled: true,
+      botToken: "xoxb-test-token",
+      appToken: "xapp-test-token",
+      groupPolicy: "open",
+    });
+    await expect(SlackService.start(runtime)).rejects.toMatchObject({
+      code: "SLACK_AUTH_IDENTITY_MISSING",
+    });
+    expect(bolt.apps[0]?.eventHandlers.size).toBe(0);
+  });
+
+  it("rejects missing and foreign workspace identity on every inbound family", async () => {
+    const harness = await startHarness();
+    const appMention = harness.app.eventHandlers.get("app_mention");
+    await appMention?.({
+      event: mention(),
+      client: harness.app.client,
+      body: {},
+    });
+    await appMention?.({
+      event: mention(),
+      client: harness.app.client,
+      body: { team_id: "foreign-workspace", event: mention() },
+    });
+    expect(harness.processAgentMessage).not.toHaveBeenCalled();
+
+    const fixtures: Record<string, Record<string, unknown>> = {
+      reaction_added: {
+        user: ALICE,
+        reaction: "thumbsup",
+        item: { type: "message", channel: OPS, ts: "1700000000.000100" },
+      },
+      reaction_removed: {
+        user: ALICE,
+        reaction: "thumbsup",
+        item: { type: "message", channel: OPS, ts: "1700000000.000100" },
+      },
+      member_joined_channel: {
+        user: "U0BOTBOT0",
+        channel: UNKNOWN,
+      },
+      member_left_channel: { user: "U0BOTBOT0", channel: UNKNOWN },
+      file_shared: { file_id: "file", user_id: ALICE, channel_id: OPS },
+    };
+    for (const [name, event] of Object.entries(fixtures)) {
+      await harness.app.eventHandlers.get(name)?.({
+        event,
+        client: harness.app.client,
+        body: { team_id: "foreign-workspace", event },
+      });
+    }
+    expect(harness.runtime.emitEvent).not.toHaveBeenCalled();
   });
 
   it("reports and rethrows channel lookup failures from the Bolt callback", async () => {

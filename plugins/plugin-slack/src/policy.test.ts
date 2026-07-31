@@ -10,7 +10,7 @@ import {
   type SlackInboundEventContext,
   SlackPolicyConfigurationError,
   type SlackPolicyDirectoryClient,
-} from "./allowlist";
+} from "./policy";
 
 const CHANNEL = "C0123ABCD";
 const PRIVATE = "G0123ABCD";
@@ -18,6 +18,7 @@ const DM = "D0123ABCD";
 const MPIM = "G0MPIM123";
 const ALICE = "opaque-user-alice";
 const BOB = "opaque-user-bob";
+const TEAM = "T0TEAM000";
 
 function account(
   config: SlackAccountConfig,
@@ -92,6 +93,7 @@ function event(
     isThread: false,
     isMentioned: true,
     isBotMessage: false,
+    teamId: TEAM,
     ...overrides,
   };
 }
@@ -103,6 +105,13 @@ async function resolver(
     hasStructuredPolicy?: boolean;
     pairingAllowed?: boolean;
     accountId?: string;
+    workspace?: { teamId: string; enterpriseId?: string };
+    cache?: {
+      maxConversationKinds?: number;
+      conversationKindTtlMs?: number;
+      maxDynamicChannels?: number;
+      now?: () => number;
+    };
   } = {},
 ) {
   return SlackAccountPolicyResolver.create({
@@ -112,6 +121,8 @@ async function resolver(
       options.accountId,
     ),
     client: options.client ?? directory(),
+    workspace: options.workspace ?? { teamId: TEAM },
+    ...(options.cache ? { cache: options.cache } : {}),
     checkPairing: vi.fn().mockResolvedValue({
       allowed: options.pairingAllowed ?? false,
       replyMessage: "pair first",
@@ -173,18 +184,24 @@ describe("SlackAccountPolicyResolver startup compilation", () => {
 
   it("supports explicit opaque Slack IDs without prefix assumptions", async () => {
     const client = directory({ users: [] });
+    const opaqueChannelId = "opaque-channel-identifier";
     const policy = await resolver(
       {
         groupPolicy: "allowlist",
-        channels: { [CHANNEL]: { users: [`id:${ALICE}`] } },
+        channels: {
+          [`id:${opaqueChannelId}`]: { users: [`id:${ALICE}`] },
+        },
       },
       { client },
     );
 
+    expect(client.conversations.list).not.toHaveBeenCalled();
     expect(client.users.list).not.toHaveBeenCalled();
-    await expect(policy.authorize(event())).resolves.toMatchObject({
-      allowed: true,
-    });
+    await expect(
+      policy.authorize(
+        event({ channelId: opaqueChannelId, channelType: "channel" }),
+      ),
+    ).resolves.toMatchObject({ allowed: true });
   });
 
   it("treats an explicit empty user list as deny-all", async () => {
@@ -212,6 +229,28 @@ describe("SlackAccountPolicyResolver startup compilation", () => {
 });
 
 describe("SlackAccountPolicyResolver event policy", () => {
+  it("fails closed for missing or foreign workspace identity", async () => {
+    const policy = await resolver({ groupPolicy: "open" });
+    await expect(
+      policy.authorize(event({ teamId: undefined })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "workspace_identity_missing",
+    });
+    await expect(
+      policy.authorize(event({ teamId: "foreign-workspace" })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: "workspace_identity_mismatch",
+    });
+  });
+
+  it("requires auth.test workspace identity before compiling policy", async () => {
+    await expect(
+      resolver({ groupPolicy: "open" }, { workspace: { teamId: "" } }),
+    ).rejects.toThrow(/did not return a workspace team_id/);
+  });
+
   it("preserves env-only bot behavior when no structured policy exists", async () => {
     const policy = await resolver(
       {
@@ -352,6 +391,57 @@ describe("SlackAccountPolicyResolver event policy", () => {
         event({ eventType: "app_mention", channelType: undefined }),
       ),
     ).rejects.toThrow("scope missing");
+  });
+
+  it("bounds and expires event-time conversation classification", async () => {
+    let now = 0;
+    const first = "opaque-conversation-one";
+    const second = "opaque-conversation-two";
+    const client = directory({
+      channels: [
+        { id: first, is_channel: true },
+        { id: second, is_channel: true },
+      ],
+    });
+    const policy = await resolver(
+      { groupPolicy: "open" },
+      {
+        client,
+        cache: {
+          maxConversationKinds: 1,
+          conversationKindTtlMs: 10,
+          now: () => now,
+        },
+      },
+    );
+
+    const mentionEvent = (channelId: string) =>
+      event({ eventType: "app_mention", channelId, channelType: undefined });
+    await policy.authorize(mentionEvent(first));
+    await policy.authorize(mentionEvent(first));
+    expect(client.conversations.info).toHaveBeenCalledTimes(1);
+
+    await policy.authorize(mentionEvent(second));
+    await policy.authorize(mentionEvent(first));
+    expect(client.conversations.info).toHaveBeenCalledTimes(3);
+
+    now = 11;
+    await policy.authorize(mentionEvent(first));
+    expect(client.conversations.info).toHaveBeenCalledTimes(4);
+  });
+
+  it("bounds legacy dynamic-join compatibility state", async () => {
+    const policy = await resolver(
+      { allowedChannelIds: [CHANNEL] },
+      {
+        hasStructuredPolicy: false,
+        cache: { maxDynamicChannels: 1 },
+      },
+    );
+    await policy.registerBotJoin("joined-one");
+    await policy.registerBotJoin("joined-two");
+    expect(policy.isChannelAllowed("joined-one")).toBe(false);
+    expect(policy.isChannelAllowed("joined-two")).toBe(true);
   });
 
   it("keeps workspace policies isolated for identical names and user labels", async () => {

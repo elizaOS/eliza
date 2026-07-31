@@ -337,12 +337,13 @@ import {
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
 } from "./accounts";
+import { markdownToSlackMrkdwn } from "./formatting";
 import {
+  extractSlackEventWorkspace,
   SlackAccountPolicyResolver,
   type SlackInboundPolicyDecision,
   type SlackPolicyDirectoryClient,
-} from "./allowlist";
-import { markdownToSlackMrkdwn } from "./formatting";
+} from "./policy";
 import {
   getSlackChannelType,
   getSlackUserDisplayName,
@@ -382,6 +383,18 @@ type SlackAccountRuntime = {
   channelCache: Map<string, SlackChannel>;
   isConnected: boolean;
 };
+
+const MAX_SLACK_LOOKUP_CACHE_ENTRIES = 1_024;
+
+function setBoundedCache<K, V>(cache: Map<K, V>, key: K, value: V): void {
+  cache.delete(key);
+  while (cache.size >= MAX_SLACK_LOOKUP_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest === undefined) break;
+    cache.delete(oldest);
+  }
+  cache.set(key, value);
+}
 
 /**
  * SlackService class for interacting with Slack via Socket Mode
@@ -736,11 +749,35 @@ export class SlackService extends Service implements ISlackService {
         : null;
 
       const authResult = await app.client.auth.test();
-      const botUserId = authResult.user_id as string;
-      const teamId = authResult.team_id as string;
+      const botUserId =
+        typeof authResult.user_id === "string" ? authResult.user_id.trim() : "";
+      const teamId =
+        typeof authResult.team_id === "string" ? authResult.team_id.trim() : "";
+      if (!botUserId || !teamId) {
+        throw new ElizaError(
+          "Slack auth.test did not return bot user and workspace identity",
+          {
+            code: "SLACK_AUTH_IDENTITY_MISSING",
+            context: {
+              accountId,
+              hasBotUserId: Boolean(botUserId),
+              hasTeamId: Boolean(teamId),
+            },
+          },
+        );
+      }
+      const enterpriseId =
+        typeof (authResult as { enterprise_id?: unknown }).enterprise_id ===
+        "string"
+          ? (authResult as { enterprise_id: string }).enterprise_id.trim()
+          : undefined;
       const policy = await SlackAccountPolicyResolver.create({
         account,
         client: app.client as unknown as SlackPolicyDirectoryClient,
+        workspace: {
+          teamId,
+          ...(enterpriseId ? { enterpriseId } : {}),
+        },
         checkPairing: async (userId) => {
           const adminIds = getConnectorAdminWhitelist(this.runtime).slack ?? [];
           if (adminIds.includes(userId)) return { allowed: true };
@@ -856,43 +893,82 @@ export class SlackService extends Service implements ISlackService {
     if (!app) return;
 
     // Handle regular messages
-    app.message(async ({ message, client }) => {
+    app.message(async ({ message, client, body }) => {
+      if (!this.isInboundWorkspaceAuthorized(accountId, body, "message")) {
+        return;
+      }
       await this.handleMessage(
         message as SlackMessageEventType,
         client,
         accountId,
+        body,
       );
     });
 
     // Handle app mentions
-    app.event("app_mention", async ({ event, client }) => {
+    app.event("app_mention", async ({ event, client, body }) => {
+      if (!this.isInboundWorkspaceAuthorized(accountId, body, "app_mention")) {
+        return;
+      }
       await this.handleAppMention(
         event as SlackAppMentionEventType,
         client,
         accountId,
+        body,
       );
     });
 
     // Handle reactions
-    app.event("reaction_added", async ({ event }) => {
+    app.event("reaction_added", async ({ event, body }) => {
+      if (
+        !this.isInboundWorkspaceAuthorized(accountId, body, "reaction_added")
+      ) {
+        return;
+      }
       await this.handleReactionAdded(event, accountId);
     });
 
-    app.event("reaction_removed", async ({ event }) => {
+    app.event("reaction_removed", async ({ event, body }) => {
+      if (
+        !this.isInboundWorkspaceAuthorized(accountId, body, "reaction_removed")
+      ) {
+        return;
+      }
       await this.handleReactionRemoved(event, accountId);
     });
 
     // Handle channel joins/leaves
-    app.event("member_joined_channel", async ({ event }) => {
+    app.event("member_joined_channel", async ({ event, body }) => {
+      if (
+        !this.isInboundWorkspaceAuthorized(
+          accountId,
+          body,
+          "member_joined_channel",
+        )
+      ) {
+        return;
+      }
       await this.handleMemberJoinedChannel(event, accountId);
     });
 
-    app.event("member_left_channel", async ({ event }) => {
+    app.event("member_left_channel", async ({ event, body }) => {
+      if (
+        !this.isInboundWorkspaceAuthorized(
+          accountId,
+          body,
+          "member_left_channel",
+        )
+      ) {
+        return;
+      }
       await this.handleMemberLeftChannel(event, accountId);
     });
 
     // Handle file shares
-    app.event("file_shared", async ({ event }) => {
+    app.event("file_shared", async ({ event, body }) => {
+      if (!this.isInboundWorkspaceAuthorized(accountId, body, "file_shared")) {
+        return;
+      }
       await this.handleFileShared(event, accountId);
     });
   }
@@ -965,6 +1041,31 @@ export class SlackService extends Service implements ISlackService {
     accountId?: string | null,
   ): SlackAccountPolicyResolver | null {
     return this.getAccountState(accountId)?.policy ?? null;
+  }
+
+  private isInboundWorkspaceAuthorized(
+    accountId: string,
+    body: unknown,
+    eventFamily: string,
+  ): boolean {
+    const policy = this.getPolicyForAccount(accountId);
+    const workspace = extractSlackEventWorkspace(body);
+    const reason = policy
+      ? policy.workspaceDenial(workspace)
+      : "workspace_identity_missing";
+    if (!reason) return true;
+    this.runtime.logger.warn(
+      {
+        src: "plugin:slack",
+        agentId: this.runtime.agentId,
+        accountId,
+        eventFamily,
+        reason,
+        receivedTeamId: workspace.teamId,
+      },
+      "Rejected Slack event without authenticated workspace attribution",
+    );
+    return false;
   }
 
   private getUserCacheForAccount(
@@ -1142,6 +1243,7 @@ export class SlackService extends Service implements ISlackService {
     message: SlackMessageEventType,
     client: WebClient,
     accountId = this.defaultAccountId,
+    body?: unknown,
   ): Promise<void> {
     if (
       !isValidChannelId(message.channel) ||
@@ -1171,6 +1273,7 @@ export class SlackService extends Service implements ISlackService {
     }
 
     const isMentioned = Boolean(message.text?.includes(`<@${botUserId}>`));
+    const workspace = extractSlackEventWorkspace(body);
     const gate = await this.authorizeInboundEvent(
       {
         eventType: "message",
@@ -1183,6 +1286,7 @@ export class SlackService extends Service implements ISlackService {
         ),
         isMentioned,
         isBotMessage: Boolean(message.bot_id),
+        ...workspace,
       },
       client,
       accountId,
@@ -1260,6 +1364,7 @@ export class SlackService extends Service implements ISlackService {
     event: SlackAppMentionEventType,
     client: WebClient,
     accountId = this.defaultAccountId,
+    body?: unknown,
   ): Promise<void> {
     if (
       !event.user ||
@@ -1281,6 +1386,7 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
+    const workspace = extractSlackEventWorkspace(body);
     const gate = await this.authorizeInboundEvent(
       {
         eventType: "app_mention",
@@ -1289,6 +1395,7 @@ export class SlackService extends Service implements ISlackService {
         isThread: Boolean(event.thread_ts && event.thread_ts !== event.ts),
         isMentioned: true,
         isBotMessage: false,
+        ...workspace,
       },
       client,
       accountId,
@@ -2995,7 +3102,7 @@ export class SlackService extends Service implements ISlackService {
       updated: result.user.updated || 0,
     };
 
-    userCache.set(userId, user);
+    setBoundedCache(userCache, userId, user);
     return user;
   }
 
@@ -3066,7 +3173,7 @@ export class SlackService extends Service implements ISlackService {
       creator: (result.channel as { creator: string }).creator,
     };
 
-    channelCache.set(channelId, channel);
+    setBoundedCache(channelCache, channelId, channel);
     return channel;
   }
 
