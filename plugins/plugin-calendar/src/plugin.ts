@@ -69,8 +69,8 @@ export const calendarPlugin: Plugin = {
       componentExport: "CalendarView",
       tags: ["calendar", "schedule", "events"],
       relatedActions: ["CALENDAR", "CALENDAR_SOURCES", "CONFLICT_DETECT"],
-      visibleInManager: true,
-      desktopTabEnabled: true,
+      visibleInManager: false,
+      desktopTabEnabled: false,
     },
   ],
 };
