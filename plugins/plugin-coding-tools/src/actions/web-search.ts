@@ -129,7 +129,7 @@ export const webSearchAction: Action = {
     _message: Memory,
     _state?: State,
     options?: unknown,
-    callback?: HandlerCallback,
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!isCodingWebSearchEnabled()) {
       return failureToActionResult({

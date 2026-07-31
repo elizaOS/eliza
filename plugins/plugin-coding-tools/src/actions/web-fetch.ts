@@ -160,7 +160,7 @@ export const webFetchAction: Action = {
     _message: Memory,
     _state?: State,
     options?: unknown,
-    callback?: HandlerCallback,
+    _callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!isCodingWebFetchEnabled()) {
       return failureToActionResult({
