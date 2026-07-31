@@ -190,6 +190,7 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     label: "Vector Browser",
     path: "/vector-browser",
     viewId: "vector-browser",
+    ready: { selector: '[data-agent-id="vector-search"]' },
     // The vector toolbar controls (table select, view tabs, search) register on
     // mount; the memories table fixture keeps the list tab populated.
     requiredIds: [
