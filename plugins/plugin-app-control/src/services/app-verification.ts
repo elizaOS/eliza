@@ -189,6 +189,19 @@ function packageScriptCommand(
 	return { file: "npm", args: ["run", "--silent", script] };
 }
 
+// Non-interactive child env (no TTY prompts, no color). NO_COLOR is the only
+// lever color libs honor by PRESENCE alone — tinyrainbow (vitest) treats the
+// mere presence of FORCE_COLOR or CI as force-ON, so `FORCE_COLOR: "0"`
+// cannot disable color by itself.
+function nonInteractiveEnv(): NodeJS.ProcessEnv {
+	return {
+		...process.env,
+		CI: process.env.CI ?? "1",
+		FORCE_COLOR: "0",
+		NO_COLOR: "1",
+	};
+}
+
 async function runScript(
 	pm: PackageManager,
 	script: string,
@@ -200,16 +213,7 @@ async function runScript(
 		cwd: workdir,
 		timeout: timeoutMs,
 		maxBuffer: EXEC_BUFFER,
-		// Ensure non-interactive child processes (no TTY prompts). NO_COLOR is
-		// the only lever color libs honor by PRESENCE alone — tinyrainbow
-		// (vitest) treats the mere presence of FORCE_COLOR or CI as force-ON,
-		// so `FORCE_COLOR: "0"` cannot disable color by itself.
-		env: {
-			...process.env,
-			CI: process.env.CI ?? "1",
-			FORCE_COLOR: "0",
-			NO_COLOR: "1",
-		},
+		env: nonInteractiveEnv(),
 		// On Windows, `npm` resolves to `npm.cmd` and `bun` to `bun.exe`.
 		// Without `shell: true`, Node's execFile won't apply PATHEXT and
 		// fails with ENOENT. Enabling the shell is the standard Windows
@@ -341,15 +345,7 @@ async function runTests(
 		cwd: workdir,
 		timeout: TIMEOUTS.test,
 		maxBuffer: EXEC_BUFFER,
-		// Same color-suppression contract as runScript above: NO_COLOR is the
-		// presence-honored lever; FORCE_COLOR/CI presence would otherwise
-		// force vitest's color on and bury the parsed `Tests` summary line.
-		env: {
-			...process.env,
-			CI: process.env.CI ?? "1",
-			FORCE_COLOR: "0",
-			NO_COLOR: "1",
-		},
+		env: nonInteractiveEnv(),
 	};
 	let stdout = "";
 	let stderr = "";
