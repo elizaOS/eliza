@@ -167,6 +167,27 @@ function createMessageService(
   } as unknown as MessageService;
 }
 
+function createCallbackMessageService(reply: string): MessageService {
+  const content = { text: reply, actions: ["REPLY"] };
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.(content);
+      return {
+        didRespond: true,
+        responseContent: content,
+        responseMessages: [{ id: stringToUuid("callback-reply-msg"), content }],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } as unknown as MessageService;
+}
+
 function createRuntime(
   agentId: UUID,
   overrides: Partial<AgentRuntime> = {},
@@ -515,6 +536,64 @@ describe("POST /api/agents/:id/message (issue #7680)", () => {
 describe("compatibility transport transcript visibility", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("streams callback-only replies through the OpenAI-compatible transport", async () => {
+    const agentId = stringToUuid("openai-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService("callback reply"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Reply through the callback" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      choices?: Array<{ delta?: { content?: string } }>;
+    }>;
+    const text = frames
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice) => choice.delta?.content ?? "")
+      .join("");
+    expect(text).toBe("callback reply");
+  });
+
+  it("streams callback-only replies through the Anthropic-compatible transport", async () => {
+    const agentId = stringToUuid("anthropic-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService("callback reply"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "Reply through the callback" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      type?: string;
+      delta?: { text?: string };
+    }>;
+    const text = frames
+      .filter((frame) => frame.type === "content_block_delta")
+      .map((frame) => frame.delta?.text ?? "")
+      .join("");
+    expect(text).toBe("callback reply");
   });
 
   it("returns empty OpenAI-compatible non-streaming content for an internal turn", async () => {
