@@ -44,12 +44,6 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # Source-owned artifact authority (#16290): dependency-free fail-closed
-      # contract that keeps the retired global artifact sync from resurfacing
-      # via lifecycle scripts or workflow YAML.
-      - name: Source-owned artifact authority
-        run: node packages/scripts/artifact-authority-contract.mjs
-
       - name: Run lint (read-only)
         run: bun run lint:check
 

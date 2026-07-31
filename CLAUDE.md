@@ -431,8 +431,9 @@ Generated native libraries, mobile/OS agent bundles, benchmark fixtures, and
 test evidence each belong to the package that produces and consumes them. A
 required generated artifact must be built or fetched by that package's explicit
 command, verified before use, and fail closed when absent; postinstall may not
-make the repository look complete by overlaying a global snapshot. The
-source-owned authority ratchet is `bun run audit:artifact-authority`.
+make the repository look complete by overlaying a global snapshot. Check the
+source-owned authority contract on demand with
+`bun run audit:artifact-authority` (also run by the post-merge contract lane).
 
 ## Definition of Done — sync, PR, and human-verifiable evidence
 
