@@ -16,6 +16,27 @@ The canonical skill source is
 inside this package. `scripts/prepare-site.mjs` validates that source, copies
 the raw Markdown endpoints, and builds the downloadable `.skill` archive.
 
+The public checksum is only a corruption check. The generated installer uses
+GitHub as an independent trust root: the revision must be current `develop`, a
+`develop` ancestor whose complete canonical skill tree is byte-identical to
+current `develop`, or an open, non-draft, same-repository PR head into `develop`
+with the maintainer-controlled `eliza-army-release-candidate` label. It
+recursively
+requires the label event to follow the exact current-head commit event, rejects
+candidates behind or divergent from current `develop`, and compares the bounded
+canonical Contents API file set and immutable raw bytes with the archive.
+Working-tree provenance, extra files, and missing files fail closed. Local
+versions are immutable sibling directories behind an atomic
+relative symlink; a process-bound kernel lock survives interrupted commands
+without leaving a stale denial, updates require an ancestor relationship, retain the prior
+verified version, and rollback is explicit and locally plus remotely
+reverified. A canonical per-version authorization receipt preserves the
+candidate PR identity needed to verify a later squash-merge transition; it is
+not a substitute for rechecking all source bytes. Never weaken the fixed
+production GitHub origins, the concurrency lock, or the version/symlink
+invariants. Tests may inject only deterministic `file://` authorities through
+the generator's test option, never environment variables.
+
 ## Layout
 
 ```text
@@ -81,12 +102,15 @@ one complete transaction.
 
 The snapshot retains every open issue and PR for source-count integrity, but
 each item publishes a deterministic `selection` decision. The UI advertises
-only `candidate` items. Exclude unknown or bot authors, security-sensitive
-labels, blocked work, active claims (including `claimed:<lane>` and
+only `candidate` items. Issues also require a maintainer-controlled
+contributor-ready label and bounded scope. Exclude epics needing child issues,
+human-gated work, unknown or bot authors, security-sensitive labels, blocked
+work, active claims (including `claimed:<lane>` and
 `review-claimed:<lane>`), drafts, active review requests, current-head
-approvals, and current-head changes requests. The bundled live report uses the
-same rules. These filters are fail-closed hints, not claim authority; users
-must re-read live GitHub and Project state before acting.
+approvals, and current-head changes requests. Public claim comments reserve
+work only for repository owners, members, or collaborators. The bundled live
+report uses the same rules. These filters are fail-closed hints, not claim
+authority; users must re-read live GitHub and Project state before acting.
 
 ## Model attribution
 
@@ -104,47 +128,30 @@ repository/environment secrets are `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID`; `GITHUB_TOKEN` is supplied by Actions for ingestion.
 All production jobs use the protected `eliza-army-production` environment.
 Its deployment-branch policy must use a selected-branch allowlist whose only
-permanent entry is `develop`. Access to its secrets and branch policy belongs
-only to designated release operators. Claim the deploy/DNS lever on the issue
-before changing the allowlist, Pages, zones, nameservers, DNSSEC, custom
-domains, or registrar state.
+permanent entry is `develop`. It must require a designated release reviewer
+and disallow administrator bypass. An active repository ruleset must require a
+pull request, one approval, approval after the latest push, resolved review
+threads, and non-fast-forward history for `develop`, with no bypass actors.
+Access to the environment secrets and branch policy belongs only to designated
+release operators. Claim the deploy/DNS lever on the issue before changing the
+allowlist, Pages, zones, nameservers, DNSSEC, custom domains, or registrar
+state.
 
-Push and schedule releases are restricted to `develop`; pull-request runs
-never deploy. Manual dispatch defaults to `quality-only`. The explicit
-`production-candidate` mode exists so a PR can collect real production evidence
-before merge without weakening those automatic paths. It quality-tests and
-deploys one immutable `github.sha`. A non-`develop` candidate must name a
-currently open same-repository PR into `develop`; the workflow verifies that
-the PR head branch and SHA exactly match the dispatched ref and that the
-candidate is zero commits behind a freshly fetched `origin/develop`. Any
-missing, stale, forked, closed, or mismatched PR fails before Cloudflare is
-called.
-
-A release operator promotes a non-`develop` candidate with this procedure:
-
-1. Rebase the branch onto current `origin/develop` and confirm its open PR
-   targets `develop`.
-2. Review the exact candidate SHA's workflow, `wrangler.toml`, and every script
-   the deploy job executes against `origin/develop`. The candidate supplies its
-   workflow definition, so the protected environment's operator review is the
-   trust boundary; never allowlist a ref with unapproved release-authority or
-   credential-handling changes.
-3. Temporarily add that exact branch name to the environment deployment-branch
-   allowlist. Never add a wildcard, branch family, fork head, or tag.
-4. Dispatch this workflow from that branch with
-   `release_mode=production-candidate` and its PR number. Confirm the quality
-   and deploy jobs name the expected SHA; satisfy any configured environment
-   review without bypassing protection.
-5. Remove the temporary branch entry as soon as the run reaches a terminal
-   state. If the candidate will not merge, dispatch the current `develop` ref
-   in `production-candidate` mode to restore the canonical production build.
+Push, schedule, and manual releases are restricted to the exact checked-out
+`develop` SHA; pull-request and feature-branch runs never deploy. Manual
+dispatches must select `develop`. The workflow has no production-candidate
+input or branch-admission path, so pull-request-controlled workflow code never
+receives the protected environment's Cloudflare credentials. Keep `develop` as
+the environment deployment-branch allowlist's only entry; never temporarily
+allowlist a feature branch, wildcard, fork head, or tag.
 
 Do not deploy production from a package script or a local working tree. The
-workflow checks out the exact tested Actions SHA, downloads the verified build,
-and lets `wrangler.toml` select the Pages output directory before binding that
-deployment to the same commit SHA. The release stays failed until Cloudflare's
-API reports a new, clean, successful production deployment for that exact SHA;
-the workflow records its deployment ID and immutable Pages URL.
+workflow checks out the exact tested Actions SHA, installs the lockfile-pinned
+Wrangler without lifecycle scripts, downloads the verified build, and lets
+`wrangler.toml` select the Pages output directory before binding that deployment
+to the same commit SHA. The release stays failed until Cloudflare's API reports
+a new, clean, successful production deployment for that exact SHA; the workflow
+records its deployment ID and immutable Pages URL.
 
 The production domain is registered with Cloudflare Registrar in the same
 account as the Pages project. The internal project slug remains

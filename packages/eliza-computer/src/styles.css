@@ -343,12 +343,29 @@ h1 em {
   background: var(--surface);
 }
 
-.hero-footnote {
+.wallet-note {
   max-width: 62ch;
-  margin: 20px 0 0;
+  margin: 24px 0 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--signal);
+}
+
+.wallet-note p,
+.wallet-note small {
+  display: block;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.wallet-note p {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.wallet-note small {
+  margin-top: 5px;
   color: var(--dim);
-  font-size: 0.75rem;
-  line-height: 1.65;
+  font-size: 0.7rem;
 }
 
 .install-console {
@@ -879,6 +896,7 @@ h1 em {
 .contributor {
   display: inline-flex;
   min-width: 0;
+  min-height: 44px;
   max-width: 100%;
   align-items: center;
   gap: 12px;
@@ -899,12 +917,11 @@ h1 em {
 }
 
 .contributor strong {
-  overflow: hidden;
   max-width: 16ch;
   font-size: 0.84rem;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .contributor small {
@@ -1036,6 +1053,27 @@ h1 em {
 
 .missing-score-evidence {
   padding: 0 0 10px;
+}
+
+.load-score-events {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.load-score-events:hover {
+  border-color: var(--signal-dark);
+  color: var(--ink);
+  background: var(--signal-dark);
 }
 
 .mobile-cell-label {
@@ -1241,6 +1279,19 @@ h1 em {
   line-height: 1.8;
 }
 
+.methodology-footer summary {
+  width: fit-content;
+  min-height: 44px;
+  padding: 11px 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.methodology-footer p {
+  margin: 10px 0 0;
+}
+
 .methodology-footer code {
   color: var(--muted);
 }
@@ -1387,6 +1438,9 @@ footer p {
 }
 
 .footer-links a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
   color: var(--muted);
   font-size: 0.75rem;
   text-decoration-color: var(--rule-strong);

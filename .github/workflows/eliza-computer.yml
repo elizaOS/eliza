@@ -1,8 +1,8 @@
 name: eliza.army
 
 # Builds the contribution site from live elizaOS/eliza data, verifies the
-# canonical skill and browser surface, and publishes only trusted develop or
-# explicitly admitted production-candidate runs to Cloudflare Pages.
+# canonical skill and browser surface, and publishes only trusted develop
+# revisions to Cloudflare Pages.
 
 on:
   pull_request:
@@ -10,37 +10,43 @@ on:
     paths:
       - "packages/eliza-computer/**"
       - "packages/skills/skills/contribute-to-eliza/**"
+      - "packages/skills/skills/skill-creator/scripts/package_skill.py"
+      - "packages/skills/skills/skill-creator/scripts/quick_validate.py"
       - "packages/skills/test/contribute-to-eliza.test.ts"
+      - "packages/shared/assets/favicons/**"
+      - "packages/shared/assets/logos/**"
+      - "packages/shared/assets/ogembeds/**"
+      - "packages/shared/scripts/sync-to-public.mjs"
+      - "packages/scripts/rm-path-recursive.mjs"
+      - "bun.lock"
+      - "package.json"
       - ".github/workflows/eliza-computer.yml"
   push:
     branches: [develop]
     paths:
       - "packages/eliza-computer/**"
       - "packages/skills/skills/contribute-to-eliza/**"
+      - "packages/skills/skills/skill-creator/scripts/package_skill.py"
+      - "packages/skills/skills/skill-creator/scripts/quick_validate.py"
       - "packages/skills/test/contribute-to-eliza.test.ts"
+      - "packages/shared/assets/favicons/**"
+      - "packages/shared/assets/logos/**"
+      - "packages/shared/assets/ogembeds/**"
+      - "packages/shared/scripts/sync-to-public.mjs"
+      - "packages/scripts/rm-path-recursive.mjs"
+      - "bun.lock"
+      - "package.json"
       - ".github/workflows/eliza-computer.yml"
   schedule:
     # Offset from the hour so this refresh does not join the top-of-hour surge.
     - cron: "17 */6 * * *"
   workflow_dispatch:
-    inputs:
-      release_mode:
-        description: "Run checks only, or promote this exact ref as a protected production candidate"
-        required: true
-        default: quality-only
-        type: choice
-        options:
-          - quality-only
-          - production-candidate
-      candidate_pr:
-        description: "Open same-repository PR number into develop (required for non-develop production candidates)"
-        required: false
-        default: ""
-        type: string
 
 concurrency:
   group: eliza-computer-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Quality-only PR supersessions may cancel. A trusted develop release must
+  # finish its deployment and byte verification before a newer run starts.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -157,11 +163,11 @@ jobs:
           retention-days: 14
 
   deploy:
-    name: Deploy admitted production bundle
+    name: Deploy trusted production bundle
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
       (github.event_name == 'schedule' && github.ref == 'refs/heads/develop') ||
-      (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'production-candidate')
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop')
     needs: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -189,118 +195,70 @@ jobs:
             exit 1
           fi
 
-      - name: Admit release authority
-        env:
-          CANDIDATE_PR: ${{ inputs.candidate_pr }}
-          GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_MODE: ${{ inputs.release_mode }}
+      - name: Verify trusted release authority
         run: |
           set -euo pipefail
-
           case "$GITHUB_EVENT_NAME" in
-            push|schedule)
-              if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
-                echo "::error::$GITHUB_EVENT_NAME production releases are restricted to develop."
-                exit 1
-              fi
-              ;;
-            workflow_dispatch)
-              if [ "$RELEASE_MODE" != "production-candidate" ]; then
-                echo "::error::A manual production release requires release_mode=production-candidate."
-                exit 1
-              fi
-              if [ "$GITHUB_REF_TYPE" != "branch" ]; then
-                echo "::error::A production candidate must be dispatched from a branch, not $GITHUB_REF_TYPE."
-                exit 1
-              fi
-              ;;
+            push|schedule|workflow_dispatch) ;;
             *)
               echo "::error::$GITHUB_EVENT_NAME is not authorized to deploy eliza.army."
               exit 1
               ;;
           esac
-
-          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
-            exit 0
-          fi
-
-          if ! [[ "$CANDIDATE_PR" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::A non-develop production candidate requires a numeric candidate_pr input."
+          if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "::error::$GITHUB_EVENT_NAME production releases are restricted to refs/heads/develop."
             exit 1
           fi
 
-          response="$RUNNER_TEMP/eliza-computer-candidate-pr.json"
-          status="$(
-            curl --silent --show-error \
-              --connect-timeout 10 \
-              --max-time 30 \
-              --output "$response" \
-              --write-out "%{http_code}" \
-              --header "Accept: application/vnd.github+json" \
-              --header "Authorization: Bearer $GITHUB_TOKEN" \
-              --header "X-GitHub-Api-Version: 2022-11-28" \
-              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$CANDIDATE_PR"
-          )"
-          if [ "$status" != "200" ]; then
-            echo "::error::Candidate PR #$CANDIDATE_PR lookup failed with HTTP $status."
-            exit 1
-          fi
-
-          node --input-type=module - \
-            "$response" \
-            "$GITHUB_SHA" \
-            "$GITHUB_REF_NAME" \
-            "$GITHUB_REPOSITORY" <<'NODE'
-          import { readFileSync } from "node:fs";
-
-          const [responsePath, expectedSha, expectedBranch, expectedRepository] =
-            process.argv.slice(2);
-          const pullRequest = JSON.parse(readFileSync(responsePath, "utf8"));
-          const failures = [];
-
-          if (pullRequest.state !== "open") failures.push("state is not open");
-          if (pullRequest.base?.ref !== "develop") failures.push("base is not develop");
-          if (pullRequest.base?.repo?.full_name !== expectedRepository) {
-            failures.push("base repository does not match this repository");
-          }
-          if (pullRequest.head?.repo?.full_name !== expectedRepository) {
-            failures.push("head repository is not this repository");
-          }
-          if (pullRequest.head?.ref !== expectedBranch) {
-            failures.push("head branch does not match the dispatched branch");
-          }
-          if (pullRequest.head?.sha !== expectedSha) {
-            failures.push("head SHA does not match the quality-tested SHA");
-          }
-
-          if (failures.length > 0) {
-            process.stderr.write(
-              `::error::Candidate PR admission failed: ${failures.join("; ")}.\n`,
-            );
-            process.exit(1);
-          }
-          NODE
-
-          git fetch --force --no-tags origin \
-            develop:refs/remotes/origin/develop
-          behind_count="$(
-            git rev-list --count "$GITHUB_SHA..refs/remotes/origin/develop"
-          )"
-          if [ "$behind_count" != "0" ]; then
-            echo "::error::Candidate $GITHUB_SHA is $behind_count commit(s) behind current origin/develop."
-            exit 1
-          fi
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Install locked release tooling
+        run: bun install --frozen-lockfile --ignore-scripts
+
       - name: Download verified Pages bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: eliza-computer-pages-${{ github.run_id }}
           path: packages/eliza-computer/dist
+
+      - name: Require live release-input equivalence
+        run: |
+          set -euo pipefail
+          live_develop="$(
+            git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --refs \
+              https://github.com/elizaOS/eliza.git refs/heads/develop |
+              awk 'NR == 1 { print $1 }'
+          )"
+          if ! [[ "$live_develop" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub did not return a valid live develop SHA."
+            exit 1
+          fi
+          git -C "$GITHUB_WORKSPACE" fetch --force --no-tags --depth=1 origin \
+            "$live_develop:refs/remotes/origin/eliza-army-live-develop"
+          if ! git -C "$GITHUB_WORKSPACE" diff --quiet "$GITHUB_SHA" "$live_develop" -- \
+            .github/workflows/eliza-computer.yml \
+            bun.lock package.json \
+            packages/eliza-computer \
+            packages/skills/skills/contribute-to-eliza \
+            packages/skills/skills/skill-creator/scripts/package_skill.py \
+            packages/skills/skills/skill-creator/scripts/quick_validate.py \
+            packages/skills/test/contribute-to-eliza.test.ts \
+            packages/shared/assets/favicons \
+            packages/shared/assets/logos \
+            packages/shared/assets/ogembeds \
+            packages/shared/scripts/sync-to-public.mjs \
+            packages/scripts/rm-path-recursive.mjs; then
+            echo "::error::Live develop changed an eliza.army release input after $GITHUB_SHA was tested."
+            exit 1
+          fi
 
       - name: Require scoped Cloudflare credentials
         env:
@@ -314,6 +272,7 @@ jobs:
           fi
 
       - name: Ensure Pages project exists
+        working-directory: packages/eliza-computer
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -340,7 +299,7 @@ jobs:
               fi
               ;;
             404)
-              bunx wrangler@4.100.0 pages project create eliza-computer \
+              ./node_modules/.bin/wrangler pages project create eliza-computer \
                 --production-branch=develop
               ;;
             *)
@@ -359,9 +318,36 @@ jobs:
         # bypasses that deployment contract and must not be added here.
         run: |
           set -euo pipefail
+          live_develop="$(
+            git -C "$GITHUB_WORKSPACE" ls-remote --exit-code --refs \
+              https://github.com/elizaOS/eliza.git refs/heads/develop |
+              awk 'NR == 1 { print $1 }'
+          )"
+          if ! [[ "$live_develop" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub did not return a valid live develop SHA before deployment."
+            exit 1
+          fi
+          git -C "$GITHUB_WORKSPACE" fetch --force --no-tags --depth=1 origin \
+            "$live_develop:refs/remotes/origin/eliza-army-live-develop"
+          if ! git -C "$GITHUB_WORKSPACE" diff --quiet "$GITHUB_SHA" "$live_develop" -- \
+            .github/workflows/eliza-computer.yml \
+            bun.lock package.json \
+            packages/eliza-computer \
+            packages/skills/skills/contribute-to-eliza \
+            packages/skills/skills/skill-creator/scripts/package_skill.py \
+            packages/skills/skills/skill-creator/scripts/quick_validate.py \
+            packages/skills/test/contribute-to-eliza.test.ts \
+            packages/shared/assets/favicons \
+            packages/shared/assets/logos \
+            packages/shared/assets/ogembeds \
+            packages/shared/scripts/sync-to-public.mjs \
+            packages/scripts/rm-path-recursive.mjs; then
+            echo "::error::Live develop changed an eliza.army release input immediately before deployment."
+            exit 1
+          fi
           printf '%s\n' "started_at=$(node -e 'process.stdout.write(Date.now().toString())')" >> "$GITHUB_OUTPUT"
           for attempt in 1 2 3; do
-            if bunx wrangler@4.100.0 pages deploy \
+            if ./node_modules/.bin/wrangler pages deploy \
               --project-name=eliza-computer \
               --branch=develop \
               --commit-hash="$GITHUB_SHA" \
@@ -439,7 +425,7 @@ jobs:
             local received
             local attempt=1
             received="$RUNNER_TEMP/eliza-computer-${artifact//\//-}"
-            while [ "$attempt" -le 12 ]; do
+            while [ "$attempt" -le 3 ]; do
               if curl --fail --silent --show-error \
                 --connect-timeout 10 \
                 --max-time 30 \
@@ -457,11 +443,10 @@ jobs:
             echo "::error::Published $artifact did not match the verified build."
             return 1
           }
+          node packages/eliza-computer/scripts/dist-manifest.mjs verify \
+            packages/eliza-computer/dist \
+            https://eliza.army \
+            "$GITHUB_SHA-$GITHUB_RUN_ATTEMPT"
+          # The inventory checks /index.html; this additional request proves the
+          # public root route resolves to those same tested bytes.
           verify_download / packages/eliza-computer/dist/index.html index.html
-          verify_download /skill.md packages/eliza-computer/dist/skill.md skill.md
-          verify_download /mission.md packages/eliza-computer/dist/mission.md mission.md
-          verify_download /codex.md packages/eliza-computer/dist/codex.md codex.md
-          verify_download /skill-manifest.json packages/eliza-computer/dist/skill-manifest.json skill-manifest.json
-          verify_download /downloads/contribute-to-eliza.skill packages/eliza-computer/dist/downloads/contribute-to-eliza.skill downloads/contribute-to-eliza.skill
-          verify_download /downloads/contribute-to-eliza.skill.sha256 packages/eliza-computer/dist/downloads/contribute-to-eliza.skill.sha256 downloads/contribute-to-eliza.skill.sha256
-          verify_download /data/leaderboard.json packages/eliza-computer/dist/data/leaderboard.json data/leaderboard.json

@@ -96,6 +96,10 @@ None: Automated tests are acceptable.
 
 # Evidence Gate
 
+Evidence must match the exact commit reviewed. `scripts/pr-evidence.mjs rows`
+sets this marker from the live PR head; rerun it after every push.
+<!-- evidence-head:replace-with-current-40-character-head-sha -->
+
 Any change testable on the frontend is not mergeable without a video walkthrough,
 before/after screenshots, and logs. If you did not attach them, say why.
 
@@ -127,6 +131,9 @@ repo.
 - [ ] Domain artifacts are attached where applicable (DB rows, memories,
       scheduled tasks, wallet/on-chain output, generated files, audio, etc.), or
       marked `N/A - <reason>`.
+<!-- evidence-row:ocr-review -->
+- [ ] OCR visual-text review output is attached for UI changes, or marked
+      `N/A - <reason>` when the change has no rendered visual surface.
 
 # Evidence Details
 

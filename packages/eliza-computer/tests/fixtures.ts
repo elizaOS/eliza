@@ -18,7 +18,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
   return {
     schemaVersion: "1",
     repository: "elizaOS/eliza",
-    ruleVersion: "eliza-computer-v2",
+    ruleVersion: "eliza-computer-v4",
     generatedAt,
     sourceUpdatedAt: generatedAt,
     stale: false,
@@ -108,6 +108,13 @@ export function snapshotFixture(): LeaderboardSnapshot {
         days: 7,
         from: "2026-07-23T00:00:00.000Z",
         to: windowTo,
+      },
+      evidenceVerification: {
+        status: "complete",
+        sourceCount: 1,
+        artifactCount: 3,
+        maxSources: 64,
+        maxArtifacts: 64,
       },
     },
     leaders: [
@@ -261,7 +268,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
           author: leaderActor,
           createdAt: generatedAt,
           updatedAt: generatedAt,
-          labels: ["website"],
+          labels: ["help wanted", "website"],
           priority: "normal",
           actionability: "actionable",
           isDraft: null,

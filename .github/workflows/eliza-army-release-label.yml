@@ -1,0 +1,62 @@
+# Base-controlled release approval invalidation. This workflow handles only PR
+# metadata and never checks out or executes pull-request code.
+name: Invalidate eliza.army release approval
+
+on:
+  pull_request_target:
+    branches: [develop]
+    types: [synchronize]
+
+concurrency:
+  group: eliza-army-release-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  remove-stale-approval:
+    name: Remove stale release-candidate label
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Invalidate approval for the changed head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          target_label="eliza-army-release-candidate"
+
+          if [[ "$EVENT_NAME" != "pull_request_target" ||
+                "$EVENT_ACTION" != "synchronize" ||
+                ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ||
+                ! "$REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "::error::Refusing to mutate labels outside an exact pull-request head synchronization."
+            exit 1
+          fi
+
+          labels="$(
+            gh api --paginate \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels" \
+              --jq '.[].name'
+          )"
+          if ! grep --fixed-strings --line-regexp --quiet -- "$target_label" <<<"$labels"; then
+            echo "Release approval is already absent for PR #${PR_NUMBER}."
+            exit 0
+          fi
+
+          gh api \
+            --method DELETE \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/labels/${target_label}" \
+            >/dev/null
+          echo "Removed ${target_label} from PR #${PR_NUMBER} after its head changed."

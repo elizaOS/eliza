@@ -3,12 +3,16 @@
  * contract-valid snapshot rather than bypassing the production validator.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
@@ -17,10 +21,13 @@ import { snapshotFixture } from "./fixtures";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function mockFetch(response: Response) {
-  return vi.spyOn(globalThis, "fetch").mockResolvedValue(response);
+  return vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async () => response.clone());
 }
 
 describe("App", () => {
@@ -36,8 +43,28 @@ describe("App", () => {
 
     expect(
       screen.getByRole("heading", {
-        name: /your agent can finish elizaOS work/i,
+        name: /earn money contributing to open source/i,
       }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/\$10,000 monthly pool, paid in USDC/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /set payout address/i }),
+    ).toHaveAttribute("href", "https://eliza.app/profile/edit");
+    expect(
+      screen.getByText(/public Solana or Ethereum payout address/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/hidden README comment for you to copy and commit/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/public in README source, Git history/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/never share a private key/i)).toBeInTheDocument();
+    expect(screen.getByText(/seed phrase/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/leaderboard points do not determine payouts/i),
     ).toBeInTheDocument();
     expect(
       await screen.findByText("Launch the eliza.army contribution protocol"),
@@ -48,10 +75,51 @@ describe("App", () => {
         /complete verification coverage 1 merged PRs \+ 1 closed issues/i,
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /evidence verification complete: 1 sources, 3 artifacts/i,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText("@finish-line")).toBeInTheDocument();
     expect(screen.getByText("openai/gpt-5")).toBeInTheDocument();
     expect(screen.getByText("24")).toBeInTheDocument();
     expect(screen.getByText("self-reported")).toBeInTheDocument();
+  });
+
+  it("explains bounded evidence verification without hiding retained scores", async () => {
+    const snapshot = snapshotFixture();
+    snapshot.source.evidenceVerification = {
+      status: "suppressed-limit",
+      sourceCount: 65,
+      artifactCount: 70,
+      maxSources: 64,
+      maxArtifacts: 64,
+    };
+    mockFetch(
+      new Response(JSON.stringify(snapshot), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        /evidence verification limited \(65 sources, 70 artifacts\) — verified proof within the bound still scores/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("qualifies the reward in detached social metadata", () => {
+    const indexHtml = readFileSync(resolve("index.html"), "utf8");
+
+    expect(indexHtml).toContain(
+      "Accepted elizaOS work can earn from a $10,000 monthly pool paid in USDC.",
+    );
+    expect(indexHtml).not.toContain(
+      "offers $10,000 in USDC to contributors each month",
+    );
   });
 
   it("switches install clients and reports successful copy", async () => {
@@ -74,18 +142,17 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
     const command = writeText.mock.calls[0][0];
-    expect(command).toContain("downloads/contribute-to-eliza.skill");
     expect(command).toContain("set -eu");
-    expect(command).toContain("trap cleanup EXIT");
     expect(command).toContain("trap 'exit 1' HUP INT TERM");
-    expect(command).toContain('$2 == "contribute-to-eliza.skill"');
-    expect(command).toContain(`test "\${#EXPECTED}" -eq 64`);
-    expect(command).toContain("*[!0-9A-Fa-f]*");
-    expect(command).toContain("sha256sum");
-    expect(command).toContain("shasum -a 256");
-    expect(command).toContain("--max-filesize 10485760");
+    expect(command).toContain("http://localhost:3000");
+    expect(command).toContain("https://api.github.com");
+    expect(command).toContain("https://raw.githubusercontent.com");
+    expect(command).not.toContain("GITHUB_API_ORIGIN");
+    expect(command).not.toContain("GITHUB_RAW_ORIGIN");
     expect(command).toContain("python3 is required");
-    expect(command).toContain("max_entries = 32");
+    expect(command).toContain("max_archive_bytes = 10_485_760");
+    expect(command).toContain("max_archive_entries = 33");
+    expect(command).toContain("max_source_files = 32");
     expect(command).toContain("max_entry_bytes = 1_048_576");
     expect(command).toContain("max_total_bytes = 4_194_304");
     expect(command).toContain("zlib.decompressobj(-zlib.MAX_WBITS)");
@@ -95,21 +162,22 @@ describe("App", () => {
       "archive size or CRC metadata does not match payload",
     );
     expect(command).toContain("skill provenance file manifest is incomplete");
-    expect(command).toContain(
-      "Archive failed bounded integrity and path checks.",
-    );
+    expect(command).toContain("working-tree provenance cannot be installed");
+    expect(command).toContain("git/ref/heads/develop");
+    expect(command).toContain("eliza-army-release-candidate");
+    expect(command).toContain("GitHub's canonical skill file list");
+    expect(command).toContain("compare_is_ancestor");
+    expect(command).toContain("another skill install, update, or rollback");
+    expect(command).toContain("os.replace(temporary_link, target_path)");
+    expect(command).toContain("ELIZA_ARMY_SKILL_OPERATION");
+    expect(command).toContain("ELIZA_ARMY_SKILL_REVISION");
     expect(command).toContain(
       `SKILLS_ROOT="\${CODEX_HOME:-\${HOME}/.codex}/skills"`,
     );
     expect(command).not.toContain('SKILLS_ROOT="\\${CODEX_HOME');
-    expect(command).toContain("Refusing to overwrite existing skill");
-    expect(command).toContain('test -f "$TARGET/PROVENANCE.json"');
-    expect(command.indexOf('test "$ACTUAL" = "$EXPECTED"')).toBeLessThan(
-      command.indexOf('mkdir -p "$SKILLS_ROOT"'),
-    );
-    expect(command.indexOf("python3 -")).toBeLessThan(
-      command.indexOf('mkdir -p "$SKILLS_ROOT"'),
-    );
+    expect(
+      screen.getByRole("link", { name: /install guide/i }),
+    ).toHaveAttribute("href", "/codex.md");
     expect(await screen.findByRole("button", { name: "Copied" })).toBeVisible();
   });
 
@@ -150,6 +218,7 @@ describe("App", () => {
       id: "I_bot",
       number: 17328,
       title: "Automated issue that must not be advertised",
+      url: "https://github.com/elizaOS/eliza/issues/17328",
       author: {
         id: "BOT_fixture",
         login: "automation-bot",
@@ -185,6 +254,7 @@ describe("App", () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(new Response("unavailable", { status: 503 }))
+      .mockResolvedValueOnce(new Response("still unavailable", { status: 503 }))
       .mockResolvedValueOnce(
         new Response(JSON.stringify(snapshotFixture()), {
           headers: { "Content-Type": "application/json" },
@@ -196,13 +266,13 @@ describe("App", () => {
 
     const alerts = await screen.findAllByRole("alert");
     expect(alerts[0]).toHaveTextContent("did not load");
-    expect(alerts[0]).toHaveTextContent("No empty result has been substituted");
+    expect(alerts[0]).toHaveTextContent("Try again");
     fireEvent.click(screen.getAllByRole("button", { name: /retry/i })[0]);
 
     expect(
       await screen.findByText("Launch the eliza.army contribution protocol"),
     ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("rejects a structurally invalid snapshot at the browser boundary", async () => {
@@ -223,5 +293,128 @@ describe("App", () => {
       "snapshot.repository must be elizaOS/eliza",
     );
     expect(screen.queryByText("@finish-line")).not.toBeInTheDocument();
+  });
+
+  it("times out stalled requests, retries once, and exposes the failure", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) {
+            reject(new Error("fetch signal is required"));
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () => reject(signal.reason ?? new Error("request aborted")),
+            { once: true },
+          );
+        }),
+    );
+
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole("alert")[0]).toHaveTextContent(
+      "data request timed out",
+    );
+  });
+
+  it("ages a current snapshot to delayed while the page remains open", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-07-31T12:00:00.000Z");
+    vi.setSystemTime(now);
+    const snapshot = snapshotFixture();
+    const almostStale = new Date(
+      now.getTime() - (8 * 60 - 1) * 60_000,
+    ).toISOString();
+    snapshot.generatedAt = almostStale;
+    snapshot.sourceUpdatedAt = almostStale;
+    snapshot.source.fetchedAt = almostStale;
+    for (const item of [
+      ...snapshot.workQueue.issues,
+      ...snapshot.workQueue.pullRequests,
+    ]) {
+      item.createdAt = almostStale;
+      item.updatedAt = almostStale;
+    }
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => structuredClone(snapshot),
+    } as Response);
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Latest GitHub snapshot")).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+    });
+    expect(screen.getByText("Snapshot update delayed")).toBeInTheDocument();
+  });
+
+  it("progressively reveals a large score ledger in bounded pages", async () => {
+    const snapshot = snapshotFixture();
+    const leader = snapshot.leaders[0];
+    snapshot.ledger = Array.from({ length: 30 }, (_, index) => ({
+      id: `PR_fixture:evidence:fixture-${index}`,
+      actor: leader.actor,
+      category: "evidence" as const,
+      points: 1,
+      source: {
+        id: "PR_fixture",
+        kind: "pull-request" as const,
+        number: 17327,
+        title: `Evidence event ${index + 1}`,
+        url: "https://github.com/elizaOS/eliza/pull/17327",
+      },
+      reason: "Concrete screenshot evidence was attached.",
+    }));
+    leader.score = 30;
+    leader.points = {
+      mergedPullRequests: 0,
+      resolvedIssues: 0,
+      materialTestChanges: 0,
+      evidence: 30,
+      substantiveReviews: 0,
+    };
+    leader.acceptedOutcomes = {
+      mergedPullRequests: 0,
+      resolvedIssues: 0,
+      materialTestChanges: 0,
+      evidenceCategories: 30,
+      substantiveReviews: 0,
+    };
+    mockFetch(
+      new Response(JSON.stringify(snapshot), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    render(<App />);
+    const summary = await screen.findByText("30 linked score events");
+    fireEvent.click(summary);
+    const evidence = summary.closest("details");
+    if (!evidence) {
+      throw new Error("score evidence details are missing");
+    }
+    fireEvent(evidence, new Event("toggle", { bubbles: true }));
+    await waitFor(() =>
+      expect(within(evidence).getAllByRole("link")).toHaveLength(25),
+    );
+    fireEvent.click(
+      within(evidence).getByRole("button", { name: "Show 5 more" }),
+    );
+    expect(within(evidence).getAllByRole("link")).toHaveLength(30);
   });
 });

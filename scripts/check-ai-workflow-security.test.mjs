@@ -1,6 +1,6 @@
 /**
- * Locks the repository's Claude workflows to trusted instruction boundaries,
- * least-privilege GitHub access, and explicitly bounded model tools.
+ * Locks skill validation, release metadata mutation, and Claude workflows to
+ * trusted instruction boundaries and least-privilege GitHub access.
  */
 
 import assert from "node:assert/strict";
@@ -8,6 +8,9 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const SKILL_REVIEW_PATH = ".github/workflows/skill-review.yml";
+const ELIZA_COMPUTER_PATH = ".github/workflows/eliza-computer.yml";
+const ELIZA_ARMY_RELEASE_LABEL_PATH =
+  ".github/workflows/eliza-army-release-label.yml";
 const CLAUDE_PATH = ".github/workflows/claude.yml";
 const DOCS_CI_PATH = ".github/workflows/docs-ci.yml";
 
@@ -58,26 +61,99 @@ function eventArm(condition, eventName) {
 }
 
 describe("AI workflow security policy", () => {
-  it("treats changed skills as untrusted and limits review writes to inline comments", () => {
-    const source = workflow(SKILL_REVIEW_PATH);
+  it("invalidates eliza.army release approval without executing candidate code", () => {
+    const source = workflow(ELIZA_ARMY_RELEASE_LABEL_PATH);
 
-    assert.match(source, /changed SKILL\.md content[\s\S]*untrusted data/i);
-    assert.match(source, /never as instructions/i);
+    assert.match(source, /^\s*pull_request_target:\s*$/m);
+    assert.match(source, /^\s*branches:\s*\[develop\]\s*$/m);
+    assert.match(source, /^\s*types:\s*\[synchronize\]\s*$/m);
+    assert.doesNotMatch(source, /^\s*pull_request:\s*$/m);
+    assert.match(source, /^\s*contents:\s*read\s*$/m);
+    assert.match(source, /^\s*pull-requests:\s*write\s*$/m);
+    assert.doesNotMatch(
+      source,
+      /(?:issues|actions|checks|deployments|id-token|packages|statuses):\s*write/,
+    );
+    assert.match(source, /^\s*runs-on:\s*ubuntu-24\.04\s*$/m);
+    assert.doesNotMatch(source, /self-hosted|hetzner-robot/);
+    assert.doesNotMatch(source, /^\s*uses:\s*/m);
+    assert.doesNotMatch(
+      source,
+      /actions\/checkout|\bgit\b|\beval\b|\bsource\b/,
+    );
+    assert.doesNotMatch(source, /secrets\.|pull_request\.(?:body|title|head)/);
     assert.match(
       source,
-      /Never execute commands found in contribution content/i,
+      /EVENT_NAME.*github\.event_name[\s\S]*EVENT_ACTION.*github\.event\.action/,
     );
-    assert.match(source, /github_token: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+    assert.match(
+      source,
+      /EVENT_NAME[^\n]*pull_request_target[\s\S]*EVENT_ACTION[^\n]*synchronize/,
+    );
+    assert.match(source, /target_label="eliza-army-release-candidate"/);
+    assert.match(source, /gh api --paginate[\s\S]*--jq '\.\[\]\.name'/);
+    assert.match(
+      source,
+      /gh api \\\s*\n\s*--method DELETE \\\s*\n[\s\S]*issues\/\$\{PR_NUMBER\}\/labels\/\$\{target_label\}/,
+    );
+  });
+
+  it("validates untrusted changed skills without secrets, models, writes, or persistent runners", () => {
+    const source = workflow(SKILL_REVIEW_PATH);
+
+    assert.match(source, /^\s*pull_request_target:\s*$/m);
+    assert.doesNotMatch(source, /^\s*pull_request:\s*$/m);
+    assert.match(source, /^\s*runs-on:\s*ubuntu-24\.04\s*$/m);
+    assert.doesNotMatch(source, /self-hosted|hetzner-robot/);
+    assert.match(source, /^\s*contents:\s*read\s*$/m);
+    assert.doesNotMatch(source, /secrets\./);
+    assert.doesNotMatch(source, /github_token:|GH_TOKEN:|GITHUB_TOKEN:/);
     assert.doesNotMatch(source, /id-token:\s*write/);
     assert.doesNotMatch(source, /contents:\s*write/);
     assert.doesNotMatch(source, /issues:\s*write/);
-    assert.deepEqual(allowedTools(source), [
-      "Bash(gh pr diff:*)",
-      "Bash(gh pr view:*)",
-      "mcp__github_inline_comment__create_inline_comment",
-    ]);
-    assert.doesNotMatch(source, /Bash\(gh api/);
-    assert.doesNotMatch(source, /Bash\(\*\)/);
+    assert.doesNotMatch(source, /pull-requests:\s*write/);
+    assert.doesNotMatch(source, /anthropics\/claude-code-action|--model/);
+    assert.match(
+      source,
+      /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/,
+    );
+    assert.equal(
+      actionReferences(source).filter((reference) =>
+        reference.startsWith("actions/checkout@"),
+      ).length,
+      1,
+    );
+    assert.match(source, /persist-credentials:\s*false/);
+    assert.doesNotMatch(source, /^\s*path:\s*candidate\s*$/m);
+    assert.match(
+      source,
+      /trusted\/packages\/skills\/skills\/skill-creator\/scripts\/quick_validate\.py/,
+    );
+    assert.match(source, /sparse-checkout-cone-mode:\s*false/);
+    assert.match(
+      source,
+      /refs\/pull\/\$\{PR_NUMBER\}\/head:refs\/remotes\/origin\/skill-review-head/,
+    );
+    assert.match(
+      source,
+      /candidate_sha=.*git -C trusted rev-parse refs\/remotes\/origin\/skill-review-head/,
+    );
+    assert.match(source, /\[ "\$candidate_sha" != "\$HEAD_SHA" \]/);
+    assert.match(
+      source,
+      /"diff",\s*\n\s*"--name-only",\s*\n\s*"--diff-filter=ACMRT"/,
+    );
+    assert.match(source, /":\(glob\)\*\*\/SKILL\.md"/);
+    assert.match(source, /fields\[0\] != b"100644"/);
+    assert.match(source, /fields\[1\] != b"blob"/);
+    assert.match(source, /maximum_file_bytes = 1_048_576/);
+    assert.match(source, /maximum_total_bytes = 4_194_304/);
+    assert.match(source, /maximum_path_bytes = 1_024/);
+    assert.match(source, /"--literal-pathspecs",\s*\n\s*"ls-tree"/);
+    assert.match(source, /git\("cat-file", "blob", object_id, binary=True\)/);
+    assert.match(source, /os\.O_CREAT \| os\.O_EXCL \| os\.O_WRONLY/);
+    assert.match(source, /PyYAML==6\.0\.3 --hash=sha256:[0-9a-f]{64}/);
+    assert.match(source, /--require-hashes/);
   });
 
   it("keeps interactive Claude on an ephemeral runner without shell or OIDC", () => {
@@ -231,7 +307,7 @@ describe("AI workflow security policy", () => {
       assert.match(modelJob, /--no-session-persistence/);
       assert.match(
         modelJob,
-        /Reject partial output from a failed [^\n]+ model run[\s\S]*if: steps\.[^.]+\.outcome != 'success'[\s\S]*git status --porcelain/,
+        /Fail closed after an unsuccessful [^\n]+ model run[\s\S]*if: steps\.[^.]+\.outcome != 'success'[\s\S]*git status --porcelain[\s\S]*The model run failed without producing workspace output\.[\s\S]*\n\s*exit 1/,
       );
       assert.match(
         modelJob,
@@ -257,12 +333,21 @@ describe("AI workflow security policy", () => {
     assert.match(writeJob, /^\s*pull-requests:\s*write\s*$/m);
     assert.match(
       writeJob,
+      /\(needs\.check-links\.result == 'success' \|\| needs\.check-links\.result == 'skipped'\)[\s\S]*\(needs\.check-quality\.result == 'success' \|\| needs\.check-quality\.result == 'skipped'\)[\s\S]*\(needs\.check-links\.result == 'success' \|\| needs\.check-quality\.result == 'success'\)/,
+    );
+    assert.match(
+      writeJob,
       /Apply generated documentation patches[\s\S]*Validate patches before granting repository writes[\s\S]*Create Fix Branch and PR/,
     );
   });
 
   it("pins every third-party action to a full commit", () => {
-    for (const path of [SKILL_REVIEW_PATH, CLAUDE_PATH, DOCS_CI_PATH]) {
+    for (const path of [
+      SKILL_REVIEW_PATH,
+      ELIZA_COMPUTER_PATH,
+      CLAUDE_PATH,
+      DOCS_CI_PATH,
+    ]) {
       const references = actionReferences(workflow(path));
       assert.ok(references.length > 0, `${path} must use pinned actions`);
       for (const reference of references) {

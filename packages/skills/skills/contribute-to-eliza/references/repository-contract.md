@@ -54,10 +54,15 @@ execution proof is blocked.
 - Before non-trivial work, use an existing issue or open one with scope, acceptance criteria, blockers, and an evidence plan.
 - Claim issue work with `CLAIMING: <scope>`. Set the active Project's `Claimed by` field to the lane or agent tag and keep `Status` accurate.
 - Treat `claimed:<lane>`, `in-progress:<lane>`, assignees, and recent claim
-  comments as active ownership. A candidate issue has a known non-bot author
-  and is non-sensitive, unblocked, and unclaimed. A candidate review also has a
-  known non-bot author, is non-draft, has no active review request or reviewer
-  assignment, and has no current-head approval or changes-requested decision.
+  comments from repository owners, members, or collaborators as active
+  ownership. External claim requests require a maintainer to assign the actor
+  or apply a claim label before they exclude work from the public queue. A
+  candidate issue has a known non-bot author, carries a maintainer-controlled
+  contributor-ready label, has bounded scope, and is not an epic needing a
+  child issue, human-gated, sensitive, blocked, or claimed. A candidate review
+  also has a known non-bot author, is non-draft, has no active review request
+  or reviewer assignment, and has no current-head approval or
+  changes-requested decision.
   These are safety filters, not authority: re-read live Project fields, labels,
   assignees, requests, reviews, and newest comments immediately before
   claiming.
