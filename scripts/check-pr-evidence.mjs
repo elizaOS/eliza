@@ -167,6 +167,47 @@ export function hasArtifactReference(text) {
   return false;
 }
 
+/** Minimum substance for a pasted transcript to count as evidence. */
+const INLINE_TRANSCRIPT_MIN_LINES = 3;
+const INLINE_TRANSCRIPT_MIN_CHARS = 120;
+
+/**
+ * True when the row carries a pasted log/transcript body rather than a link to
+ * one. CONTRIBUTING.md § Evidence and the root AGENTS.md both prescribe "long
+ * logs in a `<details>` block", so a row that follows the documented standard
+ * must satisfy the gate — requiring a URL for every non-visual row contradicts
+ * the standard the gate cites and reports a real pasted transcript as `blank`.
+ *
+ * Only the container's own text counts: tags are stripped and the remainder must
+ * clear a line and character floor, so `<details></details>` or a one-line
+ * "logs attached" still fails. This never relaxes the visual rows — a surface PR
+ * reaches `hasVisualArtifactReference` first and returns `artifact-required`
+ * before this is consulted, so screenshots and video still demand real media.
+ */
+export function hasInlineTranscriptEvidence(text) {
+  const source = String(text ?? "");
+  const blocks = [
+    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
+    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
+    ...source.matchAll(/```[\s\S]*?```/g),
+  ].map((match) => match[0]);
+  return blocks.some((block) => {
+    const content = block
+      // A <summary> is a caption, not evidence — it must not carry the block.
+      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/```/g, " ");
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    return (
+      lines.length >= INLINE_TRANSCRIPT_MIN_LINES &&
+      lines.join("").length >= INLINE_TRANSCRIPT_MIN_CHARS
+    );
+  });
+}
+
 // A GitHub-uploaded attachment (drag-and-drop) lands on one of these hosts;
 // these URLs are the unforgeable signal that a real image/video is embedded.
 const GITHUB_ATTACHMENT_RE =
@@ -231,7 +272,11 @@ export function isChecked(rowText) {
 }
 
 export function isRowSatisfied(rowText) {
-  return hasNaWithReason(rowText) || hasArtifactReference(rowText);
+  return (
+    hasNaWithReason(rowText) ||
+    hasArtifactReference(rowText) ||
+    hasInlineTranscriptEvidence(rowText)
+  );
 }
 
 export function isRowSatisfiedForContext(
@@ -449,6 +494,49 @@ export function runSelfTest() {
     if (ok) failures.push("checked-without-artifact fixture should fail");
     if (blank?.status !== "blank") {
       failures.push("checked-without-artifact row should be reported blank");
+    }
+  }
+
+  // A pasted transcript is the format CONTRIBUTING.md § Evidence prescribes for
+  // logs, so it must satisfy a non-visual row on its own.
+  {
+    const { ok, findings } = evaluatePrEvidence(
+      buildFixtureBody({
+        "backend-logs": [
+          "- [x] Boot-path run over the real vault backend.",
+          "  <details><summary>connector-vault-refs</summary><pre>",
+          "  $ vitest run packages/agent/src/runtime/connector-vault-refs.test.ts",
+          "  Test Files  1 passed (1)",
+          "       Tests  13 passed (13)",
+          "    - ref resolves -> settings carry plaintext; process.env asserted clean",
+          "  </pre></details>",
+        ].join("\n"),
+      }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (!ok) failures.push("inline transcript fixture should pass");
+    if (row?.status !== "ok") {
+      failures.push("inline transcript row should be reported ok");
+    }
+  }
+
+  // The floor is what keeps the allowance from becoming a rubber stamp: an
+  // empty container and a one-line "see attached" must both still fail.
+  for (const [name, rowText] of [
+    ["empty details block", "- [x] Backend logs.\n  <details></details>"],
+    [
+      "summary-only details block",
+      "- [x] Backend logs.\n  <details><summary>backend logs for the whole run</summary></details>",
+    ],
+    ["one-line code fence", "- [x] Backend logs.\n  ```\n  ok\n  ```"],
+  ]) {
+    const { ok, findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": rowText }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (ok) failures.push(`${name} fixture should fail`);
+    if (row?.status !== "blank") {
+      failures.push(`${name} row should be reported blank`);
     }
   }
 
