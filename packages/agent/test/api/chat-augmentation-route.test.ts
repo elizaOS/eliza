@@ -171,6 +171,9 @@ function createRuntime(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
+    // API audience attestation reads canonical membership before augmentation;
+    // an empty set matches this fixture's absent-room state.
+    getParticipantsForRoom: vi.fn(async (_roomId: UUID): Promise<UUID[]> => []),
     getService: vi.fn(() => null),
     getServiceLoadPromise: vi.fn(async () => undefined),
     // The route's J7 diagnostic paths (inference-timing persistence, recovery
@@ -183,7 +186,9 @@ function createRuntime(
     useModel: vi.fn(async () => ""),
     ...overrides,
   };
-  return runtime as unknown as AgentRuntime;
+  const contractCheckedRuntime: Pick<AgentRuntime, "getParticipantsForRoom"> =
+    runtime;
+  return contractCheckedRuntime as unknown as AgentRuntime;
 }
 
 function createCtx(opts: {

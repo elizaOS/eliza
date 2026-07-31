@@ -72,6 +72,7 @@ describe("view action handoff", () => {
       viewPath: "/calendar",
       viewLabel: "Calendar",
       viewType: "gui",
+      source: "agent",
     });
   });
 
@@ -86,7 +87,10 @@ describe("view action handoff", () => {
     expect(dispatchViewActionHandoffDirect([sharedKnowledge], dispatch)).toBe(
       true,
     );
-    expect(dispatch).toHaveBeenCalledWith({ viewId: "documents" });
+    expect(dispatch).toHaveBeenCalledWith({
+      viewId: "documents",
+      source: "agent",
+    });
   });
 
   it("does not duplicate history when the WebSocket already switched the route", async () => {
