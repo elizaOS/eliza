@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 188
+- **Registered runtime actions:** 196
 
 ## Actions
 
@@ -364,7 +364,8 @@ list. Regenerate this document after changing the registered action surface.
 - `BRIEF` — `plugins/plugin-personal-assistant/src/actions/brief.ts`
 - `BROWSER` — `plugins/plugin-browser/src/actions/browser.ts`
 - `BUY_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/buy-app-domain.ts`
-- `CALENDAR` — `plugins/plugin-calendar/src/actions/calendar.ts`, `plugins/plugin-personal-assistant/src/actions/calendar.ts`
+- `CALENDAR` — `plugins/plugin-personal-assistant/src/actions/calendar.ts`
+- `CALENDAR_SOURCES` — `plugins/plugin-calendar/src/actions/calendar-sources.ts`
 - `CALENDLY` — `plugins/plugin-personal-assistant/src/actions/lib/calendly-handler.ts`
 - `CHARACTER` — `packages/core/src/features/advanced-capabilities/personality/actions/character.ts`
 - `CHECK_APP_DOMAIN` — `plugins/plugin-cloud-apps/src/actions/check-app-domain.ts`
@@ -378,7 +379,6 @@ list. Regenerate this document after changing the registered action surface.
 - `COMPACT_CONVERSATION` — `packages/agent/src/actions/compact-conversation.ts`
 - `COMPUTER_USE` — `plugins/plugin-computeruse/src/actions/use-computer.ts`
 - `COMPUTER_USE_AGENT` — `plugins/plugin-computeruse/src/actions/use-computer-agent.ts`
-- `CONFLICT_DETECT` — `plugins/plugin-calendar/src/actions/conflict-detect.ts`, `plugins/plugin-personal-assistant/src/actions/conflict-detect.ts`
 - `CONNECT_ACCOUNT` — `packages/agent/src/actions/connect-account.ts`
 - `CONNECTOR` — `plugins/plugin-personal-assistant/src/actions/connector.ts`
 - `CONTACT` — `packages/agent/src/actions/contact.ts`
@@ -410,6 +410,7 @@ list. Regenerate this document after changing the registered action surface.
 - `EXPORT_AD_CAMPAIGN_REPORT` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
 - `FACEWEAR_CONNECT` — `plugins/plugin-facewear/src/actions/facewear-connect.ts`
 - `FACEWEAR_DEBUG` — `plugins/plugin-facewear/src/actions/facewear-debug.ts`
+- `FAMILY_COMMUNICATIONS` — `plugins/plugin-personal-assistant/src/lifeops/family-communications/action.ts`
 - `FILE` — `plugins/plugin-coding-tools/src/actions/file.ts`
 - `FILES` — `packages/agent/src/actions/files.ts`
 - `FORM` — `plugins/plugin-form/src/actions/form.ts`
@@ -423,6 +424,10 @@ list. Regenerate this document after changing the registered action surface.
 - `GET_MEETING_TRANSCRIPT` — `plugins/plugin-meetings/src/actions/get-meeting-transcript.ts`
 - `GIT_PATHOLOGY` — `plugins/plugin-gitpathologist/src/actions/git-pathology.ts`
 - `GITHUB` — `plugins/plugin-github/src/actions/github.ts`
+- `HOUSEHOLD_COORDINATION` — `plugins/plugin-personal-assistant/src/actions/household-coordination.ts`
+- `HOUSEHOLD_FOOD` — `plugins/plugin-personal-assistant/src/lifeops/food/action.ts`
+- `HOUSEHOLD_OPERATIONS` — `plugins/plugin-personal-assistant/src/lifeops/household-operations/action.ts`
+- `HOUSEHOLD_RESOURCE_CAPACITY` — `plugins/plugin-personal-assistant/src/lifeops/resource-capacity/action.ts`
 - `IDENTIFY_SPEAKER` — `plugins/plugin-local-inference/src/actions/identify-speaker.ts`
 - `INBOX` — `plugins/plugin-inbox/src/actions/inbox.ts`
 - `JOIN_MEETING` — `plugins/plugin-meetings/src/actions/join-meeting.ts`
@@ -437,6 +442,7 @@ list. Regenerate this document after changing the registered action surface.
 - `LIST_LINEAR_COMMENTS` — `plugins/plugin-linear/src/actions/listComments.ts`
 - `LIST_OVERDUE_FOLLOWUPS` — `plugins/plugin-personal-assistant/src/followup/actions/listOverdueFollowups.ts`
 - `LIST_PRESS_RELEASES` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
+- `LOCAL_CONDITIONS` — `plugins/plugin-personal-assistant/src/lifeops/oracles/action.ts`
 - `LOCAL_INFERENCE` — `plugins/plugin-local-inference/src/actions/local-inference-management.ts`
 - `LOGS` — `packages/agent/src/actions/logs.ts`
 - `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
@@ -461,6 +467,7 @@ list. Regenerate this document after changing the registered action surface.
 - `OWNER_SCREENTIME` — `plugins/plugin-health/src/actions/screen-time.ts`
 - `OWNER_TODOS` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
 - `PAIR_OWNER_ACCOUNT` — `packages/agent/src/actions/pair-owner-account.ts`
+- `PARENTING_GUIDANCE` — `plugins/plugin-personal-assistant/src/lifeops/parenting/action.ts`
 - `PAYMENT` — `packages/core/src/features/payments/actions/payment.ts`
 - `PERPETUAL_MARKET` — `plugins/plugin-hyperliquid/src/actions/perpetual-market.ts`
 - `PERSONAL_ASSISTANT` — `plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts`
@@ -486,6 +493,7 @@ list. Regenerate this document after changing the registered action surface.
 - `ROOM` — `packages/core/src/features/advanced-capabilities/actions/room.ts`
 - `RUNTIME` — `packages/agent/src/actions/runtime.ts`
 - `SCHEDULED_TASKS` — `plugins/plugin-personal-assistant/src/actions/scheduled-task.ts`
+- `SCHOOL_SOURCES` — `plugins/plugin-personal-assistant/src/lifeops/school/action.ts`
 - `SEARCH_CHANNEL_TOPICS` — `packages/core/src/features/basic-capabilities/actions/channel-topic-search.ts`
 - `SEARCH_EXPERIENCES` — `packages/core/src/features/advanced-capabilities/experience/actions/search-experiences.ts`
 - `SEARCH_KNOWLEDGE` — `packages/agent/src/actions/knowledge.ts`
