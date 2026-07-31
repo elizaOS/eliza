@@ -199,7 +199,7 @@ describe("schema-v2 backup repository transitions", () => {
     expect(await repository.getStoredBackupById(backupId)).toBeUndefined();
 
     const incomplete = await repository.listIncompleteChunkedBackupsBefore(
-      new Date("2026-07-27T00:00:00.000Z"),
+      new Date("2100-01-01T00:00:00.000Z"),
       10,
     );
     expect(incomplete).toHaveLength(1);
@@ -280,7 +280,7 @@ describe("schema-v2 backup repository transitions", () => {
       },
     });
     await expect(
-      service.reconcileIncomplete({ before: new Date("2026-07-27T00:00:00.000Z") }),
+      service.reconcileIncomplete({ before: new Date("2100-01-01T00:00:00.000Z") }),
     ).resolves.toEqual({ deleted: 1, retained: 0 });
     expect(deletedObjects).toEqual([complete.chunks[0]?.objectKey]);
     expect(await dbWrite.select().from(agentSandboxBackupCleanupIntents)).toHaveLength(0);

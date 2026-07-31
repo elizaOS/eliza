@@ -415,6 +415,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
     await expect(
       captureAgentSnapshotV2({
         agentId: AGENT_ID,
+        binding: SNAPSHOT_BINDING,
         dependencies,
         organizationId: ORGANIZATION_ID,
         response: new Response(body, {
@@ -451,6 +452,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: storedBackup(snapshot.aggregateSha256),
+        binding: SNAPSHOT_BINDING,
         dependencies,
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
@@ -510,6 +512,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: storedBackup(snapshot.aggregateSha256),
+        binding: SNAPSHOT_BINDING,
         dependencies,
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
