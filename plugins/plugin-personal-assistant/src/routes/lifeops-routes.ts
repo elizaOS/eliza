@@ -96,6 +96,7 @@ import {
   type LifeOpsGmailSpamReviewStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
+import { areLifeOpsActivitySignalsActive } from "../lifeops/activity-signal-lifecycle.js";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
@@ -140,6 +141,22 @@ export interface LifeOpsRouteContext {
 function requireAuthorizedRouteContext(ctx: LifeOpsRouteContext): boolean {
   if (!ctx.state.runtime) {
     ctx.error(ctx.res, "Agent runtime is not available", 503);
+    return false;
+  }
+  return true;
+}
+
+function requireActivitySignalsAvailable(ctx: LifeOpsRouteContext): boolean {
+  if (!requireAuthorizedRouteContext(ctx)) {
+    return false;
+  }
+  const runtime = ctx.state.runtime;
+  if (!runtime || !areLifeOpsActivitySignalsActive(runtime)) {
+    ctx.error(
+      ctx.res,
+      "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
+      503,
+    );
     return false;
   }
   return true;
@@ -2012,6 +2029,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "GET" && pathname === "/api/lifeops/activity-signals") {
+    if (!requireActivitySignalsAvailable(ctx)) return true;
     return runRoute(ctx, async (service) => {
       await ensureRouteSchema(ctx.state.runtime);
       json(res, {
@@ -2031,6 +2049,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/activity-signals") {
+    if (!requireActivitySignalsAvailable(ctx)) return true;
     if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsActivitySignalRequest>(
       req,

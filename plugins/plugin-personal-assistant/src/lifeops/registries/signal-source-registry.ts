@@ -118,8 +118,12 @@ export function getSignalSourceRegistry(
   return registries.get(runtime) ?? null;
 }
 
+export function unregisterSignalSourceRegistry(runtime: IAgentRuntime): void {
+  registries.delete(runtime);
+}
+
 export function __resetSignalSourceRegistryForTests(
   runtime: IAgentRuntime,
 ): void {
-  registries.delete(runtime);
+  unregisterSignalSourceRegistry(runtime);
 }
