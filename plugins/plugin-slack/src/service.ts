@@ -332,15 +332,18 @@ import {
   normalizeAccountId,
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
-  type SlackChannelConfig,
 } from "./accounts";
-import {
-  collectSlackConfiguredChannelIds,
-  resolveSlackChannelConfig,
-  resolveSlackInboundGate,
-  type SlackChannelConfigResolved,
-} from "./allowlist";
 import { markdownToSlackMrkdwn } from "./formatting";
+import {
+  classifySlackEvent,
+  evaluateSlackInbound,
+  isSlackDirectSurface,
+  resolveSlackAccountPolicy,
+  type SlackEventClass,
+  type SlackPolicyLookups,
+  type SlackResolvedPolicy,
+  shouldAdmitDynamicJoin,
+} from "./policy";
 import {
   getSlackChannelType,
   getSlackUserDisplayName,
@@ -380,10 +383,12 @@ type SlackAccountRuntime = {
   allowedChannelIds: Set<string>;
   dynamicChannelIds: Set<string>;
   /**
-   * Structured `channels.slack.channels` config for this account. Consulted
-   * per inbound message for requireMention / users / enabled overrides.
+   * The account's fully resolved inbound policy: every configured name already
+   * bound to an immutable Slack ID, every event class mapped to the policy
+   * that governs it. Resolved once in `startAccount`, BEFORE any handler is
+   * registered, so no event can be evaluated against a half-resolved policy.
    */
-  channelConfigs: Record<string, SlackChannelConfig>;
+  policy: SlackResolvedPolicy;
   userCache: Map<string, SlackUser>;
   channelCache: Map<string, SlackChannel>;
   isConnected: boolean;
@@ -403,7 +408,6 @@ export class SlackService extends Service implements ISlackService {
   botUserId: string | null = null;
   teamId: string | null = null;
 
-  private settings: SlackSettings;
   private botToken: string | null = null;
   private appToken: string | null = null;
   private signingSecret: string | null = null;
@@ -419,10 +423,11 @@ export class SlackService extends Service implements ISlackService {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.character = this.runtime.character;
-    this.settings = this.loadSettings();
 
-    // Parse allowed channel IDs for the legacy/default account path.
-    this.allowedChannelIds = this.buildAllowedChannelSet();
+    // Parse allowed channel IDs for the legacy/default account path. The
+    // authoritative allowlist lives on each account's resolved policy; this
+    // set only backs the pre-multi-account compatibility accessors.
+    this.allowedChannelIds = new Set(this.collectEnvAllowedChannelIds());
     if (this.allowedChannelIds.size > 0) {
       this.runtime.logger.debug(
         {
@@ -455,77 +460,135 @@ export class SlackService extends Service implements ISlackService {
   }
 
   /**
-   * Builds the static inbound allowlist for an account.
-   *
-   * Two sources, unioned:
-   *  - `allowedChannelIds` / the `SLACK_CHANNEL_IDS` env var (legacy path)
-   *  - id-keyed entries in the structured `channels.slack.channels` config
-   *
-   * Folding the structured config in is what makes `channels: { C0123ABCD: {…} }`
-   * a working allowlist on its own; previously it was parsed and discarded, so
-   * an operator who configured only `channels` got "all channels allowed"
-   * instead of the restriction they wrote.
+   * The env-var channel allowlist source (`SLACK_CHANNEL_IDS`, or an account's
+   * `allowedChannelIds`). The structured `channels` record is folded in by the
+   * policy resolver, which also resolves name keys to immutable IDs.
    */
-  private buildAllowedChannelSet(account?: ResolvedSlackAccount): Set<string> {
-    const allowed = new Set<string>();
+  private collectEnvAllowedChannelIds(
+    account?: ResolvedSlackAccount,
+  ): string[] {
     const configuredIds = account?.config.allowedChannelIds;
     const channelIdsRaw =
       configuredIds && configuredIds.length > 0
         ? configuredIds.join(",")
         : (this.runtime.getSetting("SLACK_CHANNEL_IDS") as string | undefined);
 
-    if (channelIdsRaw?.trim()) {
-      channelIdsRaw
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0 && isValidChannelId(s))
-        .forEach((id) => {
-          allowed.add(id);
+    if (!channelIdsRaw?.trim()) return [];
+    return channelIdsRaw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && isValidChannelId(s));
+  }
+
+  /**
+   * Slack lookups the policy resolver uses to turn configured names into
+   * immutable IDs, ONCE, at account startup. Nothing on the event path calls
+   * these: authorization must never depend on a cache being warm.
+   */
+  private buildPolicyLookups(client: WebClient): SlackPolicyLookups {
+    return {
+      listChannels: async () => {
+        const result = await client.conversations.list({
+          limit: 1000,
+          types: "public_channel,private_channel,mpim,im",
+          exclude_archived: false,
         });
-    }
-
-    for (const id of collectSlackConfiguredChannelIds(account?.channels)) {
-      if (isValidChannelId(id)) {
-        allowed.add(id);
-      }
-    }
-
-    return allowed;
+        return (result.channels ?? []).map((channel) => ({
+          id: String((channel as { id?: string }).id ?? ""),
+          name: (channel as { name?: string }).name,
+        }));
+      },
+      listUsers: async () => {
+        const result = await client.users.list({ limit: 1000 });
+        return (result.members ?? []).map((member) => {
+          const m = member as SlackApiUserMember & { deleted?: boolean };
+          return {
+            id: String(m.id ?? ""),
+            name: m.name,
+            realName: m.real_name,
+            displayName: m.profile?.display_name,
+            deleted: Boolean(m.deleted),
+          };
+        });
+      },
+    };
   }
 
   /**
-   * Returns the structured per-channel config record for an account.
+   * Returns the resolved policy for an account, or null when the account has
+   * not been started. A null policy is treated as fail-closed by callers: an
+   * event that arrives before policy resolution has no authorization basis.
    */
-  private getChannelConfigsForAccount(
+  private getPolicyForAccount(
     accountId?: string | null,
-  ): Record<string, SlackChannelConfig> {
-    return this.getAccountState(accountId)?.channelConfigs ?? {};
+  ): SlackResolvedPolicy | null {
+    return this.getAccountState(accountId)?.policy ?? null;
   }
 
   /**
-   * Resolves the config entry that applies to a channel.
-   *
-   * The channel name is read from the already-populated channel cache only:
-   * gating runs on every inbound event, so it must never trigger a
-   * `conversations.info` round-trip. Id-keyed and `"*"` entries therefore match
-   * immediately, while name-keyed entries begin matching once the channel has
-   * been resolved by some other code path.
+   * Classifies an inbound event and evaluates it against the account policy.
+   * Single decision point: `handleMessage` and `handleAppMention` both route
+   * here so the two paths cannot drift.
    */
-  private resolveChannelConfig(
-    channelId: string,
-    accountId?: string | null,
-  ): SlackChannelConfigResolved | null {
-    const channels = this.getChannelConfigsForAccount(accountId);
-    if (Object.keys(channels).length === 0) {
-      return null;
-    }
-    const cachedName =
-      this.getChannelCacheForAccount(accountId).get(channelId)?.name;
-    return resolveSlackChannelConfig({
-      channels,
-      channelId,
-      channelName: cachedName,
+  private gateInboundEvent(params: {
+    accountId: string;
+    channelId: string;
+    channelType?: string | null;
+    eventType?: string | null;
+    subtype?: string | null;
+    userId?: string;
+    isBotMessage: boolean;
+    isMentioned: boolean;
+    isAppMention: boolean;
+  }): { allowed: boolean; eventClass: SlackEventClass } {
+    const eventClass = classifySlackEvent({
+      channelType: params.channelType,
+      channelId: params.channelId,
+      eventType: params.eventType,
+      subtype: params.subtype,
     });
+
+    const policy = this.getPolicyForAccount(params.accountId);
+    if (!policy) {
+      this.runtime.logger.warn(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId: params.accountId,
+          channelId: params.channelId,
+          eventClass,
+        },
+        "Slack event received before policy resolution; dropping (fail closed)",
+      );
+      return { allowed: false, eventClass };
+    }
+
+    const decision = evaluateSlackInbound(policy, {
+      eventClass,
+      channelId: params.channelId,
+      userId: params.userId,
+      isBotMessage: params.isBotMessage,
+      isMentioned: params.isMentioned,
+      isAppMention: params.isAppMention,
+      dynamicChannelIds: this.getDynamicChannelIdsForAccount(params.accountId),
+    });
+
+    if (!decision.allowed) {
+      this.runtime.logger.debug(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId: params.accountId,
+          channelId: params.channelId,
+          eventClass,
+          reason: decision.reason,
+          matchedKey: decision.matchedKey,
+        },
+        "Inbound Slack event denied by policy",
+      );
+    }
+
+    return { allowed: decision.allowed, eventClass };
   }
 
   static async start(runtime: IAgentRuntime): Promise<SlackService> {
@@ -848,6 +911,46 @@ export class SlackService extends Service implements ISlackService {
         ? (new SlackWebClient(account.userToken) as WebClient)
         : null;
 
+      const accountSettings = this.loadSettings(account);
+
+      // Authenticate first: policy resolution issues real API calls when the
+      // config names channels/users, and a bad token should surface as an auth
+      // failure rather than as an opaque policy-resolution error.
+      const authResult = await app.client.auth.test();
+
+      // Resolve the policy BEFORE any handler is registered. Names become
+      // immutable IDs here, once, so the event path never authorizes against a
+      // cold cache; unhonorable config throws and fails the account's startup
+      // rather than presenting a gate that does not exist.
+      const policy = await resolveSlackAccountPolicy({
+        account,
+        lookups: this.buildPolicyLookups(app.client),
+        envAllowedChannelIds: this.collectEnvAllowedChannelIds(account),
+        globalRequireMention: accountSettings.shouldRespondOnlyToMentions,
+        ignoreBotMessages: accountSettings.shouldIgnoreBotMessages,
+      });
+
+      for (const warning of policy.warnings) {
+        this.runtime.logger.warn(
+          { src: "plugin:slack", agentId: this.runtime.agentId, accountId },
+          warning,
+        );
+      }
+      this.runtime.logger.info(
+        {
+          src: "plugin:slack",
+          agentId: this.runtime.agentId,
+          accountId,
+          groupPolicy: policy.groupPolicy,
+          groupPolicySource: policy.groupPolicySource,
+          allowedChannelIds: Array.from(policy.allowedChannelIds),
+          channelEntries: policy.channelsById.size,
+          hasWildcard: policy.wildcard !== null,
+          dmPolicy: policy.dm.policy,
+        },
+        "Slack inbound policy resolved",
+      );
+
       const state: SlackAccountRuntime = {
         accountId,
         account,
@@ -856,16 +959,15 @@ export class SlackService extends Service implements ISlackService {
         userClient,
         botUserId: null,
         teamId: null,
-        settings: this.loadSettings(account),
-        allowedChannelIds: this.buildAllowedChannelSet(account),
+        settings: accountSettings,
+        allowedChannelIds: new Set(policy.allowedChannelIds),
         dynamicChannelIds: new Set(),
-        channelConfigs: account.channels ?? {},
+        policy,
         userCache: new Map(),
         channelCache: new Map(),
         isConnected: false,
       };
 
-      const authResult = await state.client.auth.test();
       state.botUserId = authResult.user_id as string;
       state.teamId = authResult.team_id as string;
 
@@ -1056,10 +1158,6 @@ export class SlackService extends Service implements ISlackService {
     return state.client;
   }
 
-  private getSettingsForAccount(accountId?: string | null): SlackSettings {
-    return this.getAccountState(accountId)?.settings ?? this.settings;
-  }
-
   private getAllowedChannelIdsForAccount(
     accountId?: string | null,
   ): Set<string> {
@@ -1216,59 +1314,46 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    const settings = this.getSettingsForAccount(accountId);
     const botUserId = this.getBotUserIdForAccount(accountId);
 
-    // Ignore bot messages if configured
-    if (settings.shouldIgnoreBotMessages && message.bot_id) {
-      return;
-    }
-
-    // Ignore messages from self
+    // Ignore messages from self. This is identity, not policy: the agent must
+    // never process its own output regardless of how permissive the config is.
     if (message.user === botUserId) {
       return;
     }
 
     const isMentioned = Boolean(message.text?.includes(`<@${botUserId}>`));
-    // Skip @mentions in channels — handleAppMention handles those
-    if (isMentioned && message.channel_type !== "im") {
+
+    // Classify BEFORE anything reads channel semantics. Slack delivers App
+    // Home (Messages-tab) traffic on D-channel ids through this same handler;
+    // treating it as a channel would match it against `channels["*"]` and let
+    // a channel-scoped `enabled:false` silently kill DMs.
+    const eventClass = classifySlackEvent({
+      channelType: message.channel_type,
+      channelId: message.channel,
+      eventType: message.type,
+      subtype: (message as { subtype?: string }).subtype,
+    });
+
+    // Channel @mentions are handled exclusively by `handleAppMention` so a
+    // single message is never processed twice. Direct surfaces have no
+    // app_mention event, so they must stay on this path.
+    if (isMentioned && !isSlackDirectSurface(eventClass)) {
       return;
     }
 
-    // Structured per-channel config (requireMention / users / enabled) layered
-    // on top of the env allowlist. DMs are left alone in this slice: they have
-    // no `channels` surface, and DM policy is its own slice, so they keep the
-    // exact previous behaviour (global mention flag only).
-    const isDirectMessage = message.channel_type === "im";
-    const channelConfig = isDirectMessage
-      ? null
-      : this.resolveChannelConfig(message.channel, accountId);
-    const account = this.getAccountState(accountId)?.account;
-
-    const gate = resolveSlackInboundGate({
-      channelConfig,
-      isChannelAllowed: this.isChannelAllowed(message.channel, accountId),
-      isMentioned,
-      accountRequireMention: isDirectMessage
-        ? undefined
-        : account?.requireMention,
-      globalRequireMention: settings.shouldRespondOnlyToMentions,
+    const gate = this.gateInboundEvent({
+      accountId,
+      channelId: message.channel,
+      channelType: message.channel_type,
+      eventType: message.type,
+      subtype: (message as { subtype?: string }).subtype,
       userId: message.user,
+      isBotMessage: Boolean(message.bot_id),
+      isMentioned,
+      isAppMention: false,
     });
-
     if (!gate.allowed) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:slack",
-          agentId: this.runtime.agentId,
-          accountId,
-          channelId: message.channel,
-          reason: gate.reason,
-          matchKey: channelConfig?.matchKey,
-          matchSource: channelConfig?.matchSource,
-        },
-        "Inbound Slack message gated, ignoring",
-      );
       return;
     }
 
@@ -1355,32 +1440,26 @@ export class SlackService extends Service implements ISlackService {
       return;
     }
 
-    // Same gate as handleMessage, minus the mention check (an app_mention IS
-    // the mention). Without this, a channel marked `enabled: false` — or one
-    // outside the allowlist — stayed reachable by @-mentioning the bot, which
-    // makes the channel config unenforceable on the path operators care about.
-    const channelConfig = this.resolveChannelConfig(event.channel, accountId);
-    const gate = resolveSlackInboundGate({
-      channelConfig,
-      isChannelAllowed: this.isChannelAllowed(event.channel, accountId),
-      isMentioned: true,
-      skipMentionCheck: true,
+    // The SAME gate as handleMessage, through the same resolver, differing
+    // only in `isAppMention` (an app_mention IS the mention, so the
+    // requireMention check is satisfied by construction). Without this, a
+    // channel marked `enabled:false` — or one outside the allowlist — stayed
+    // reachable by @-mentioning the bot, which makes the channel config
+    // unenforceable on exactly the path operators care about.
+    //
+    // app_mention carries no `channel_type`; the classifier falls back to the
+    // channel id prefix, which is sufficient because Slack only delivers
+    // app_mention on conversations the bot is in.
+    const gate = this.gateInboundEvent({
+      accountId,
+      channelId: event.channel,
+      eventType: event.type,
       userId: event.user,
+      isBotMessage: false,
+      isMentioned: true,
+      isAppMention: true,
     });
-
     if (!gate.allowed) {
-      this.runtime.logger.debug(
-        {
-          src: "plugin:slack",
-          agentId: this.runtime.agentId,
-          accountId,
-          channelId: event.channel,
-          reason: gate.reason,
-          matchKey: channelConfig?.matchKey,
-          matchSource: channelConfig?.matchSource,
-        },
-        "Inbound Slack app mention gated, ignoring",
-      );
       return;
     }
 
@@ -1482,9 +1561,28 @@ export class SlackService extends Service implements ISlackService {
     },
     accountId = this.defaultAccountId,
   ): Promise<void> {
-    // If the bot joined, add to dynamic channels
+    // A join must OBEY the group policy, not override it. Previously any join
+    // unioned the channel into `dynamicChannelIds`, which the gate treated as
+    // an admission source — so any workspace member could add the bot to a
+    // channel and walk straight past a configured allowlist. Under
+    // `allowlist`/`disabled` the join is recorded as a no-op for admission;
+    // under `open` everything is admitted anyway, so tracking it is harmless.
     if (event.user === this.getBotUserIdForAccount(accountId)) {
-      this.getDynamicChannelIdsForAccount(accountId).add(event.channel);
+      const policy = this.getPolicyForAccount(accountId);
+      if (policy && shouldAdmitDynamicJoin(policy)) {
+        this.getDynamicChannelIdsForAccount(accountId).add(event.channel);
+      } else {
+        this.runtime.logger.info(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            channelId: event.channel,
+            groupPolicy: policy?.groupPolicy ?? "unresolved",
+          },
+          "Bot joined a Slack channel that the group policy does not admit; not widening the allowlist",
+        );
+      }
       await this.ensureRoomExists(event.channel, undefined, accountId);
     }
 
@@ -1527,20 +1625,39 @@ export class SlackService extends Service implements ISlackService {
     );
   }
 
+  /**
+   * Whether a channel is admitted under the account's resolved group policy.
+   *
+   * Kept for outbound/compat callers. Inbound authorization goes through
+   * `gateInboundEvent` → `evaluateSlackInbound`, which is the single decision
+   * point; this helper deliberately shares the policy object so it cannot
+   * disagree with the gate.
+   */
   private isChannelAllowed(
     channelId: string,
     accountId?: string | null,
   ): boolean {
-    const allowedChannelIds = this.getAllowedChannelIdsForAccount(accountId);
-    const dynamicChannelIds = this.getDynamicChannelIdsForAccount(accountId);
-
-    // If no restrictions, all channels allowed
-    if (allowedChannelIds.size === 0 && dynamicChannelIds.size === 0) {
-      return true;
+    const policy = this.getPolicyForAccount(accountId);
+    if (!policy) {
+      // No resolved policy: fall back to the legacy env-only sets rather than
+      // inventing an admission.
+      const allowedChannelIds = this.getAllowedChannelIdsForAccount(accountId);
+      const dynamicChannelIds = this.getDynamicChannelIdsForAccount(accountId);
+      if (allowedChannelIds.size === 0 && dynamicChannelIds.size === 0) {
+        return true;
+      }
+      return (
+        allowedChannelIds.has(channelId) || dynamicChannelIds.has(channelId)
+      );
     }
 
-    // Check static and dynamic allowed lists
-    return allowedChannelIds.has(channelId) || dynamicChannelIds.has(channelId);
+    if (policy.groupPolicy === "open") return true;
+    if (policy.groupPolicy === "disabled") return false;
+
+    const normalized = channelId.trim().toUpperCase();
+    const entry = policy.channelsById.get(normalized);
+    if (entry && !entry.enabled) return false;
+    return policy.allowedChannelIds.has(normalized) || policy.wildcard !== null;
   }
 
   private async processAgentMessage(

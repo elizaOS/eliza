@@ -174,22 +174,6 @@ export {
   type SlackSlashCommandConfig,
   type SlackTokenSource,
 } from "./accounts";
-// Per-channel config resolution / inbound gating
-export {
-  collectSlackConfiguredChannelIds,
-  isSlackChannelIdKey,
-  normalizeSlackAllowList,
-  normalizeSlackSlug,
-  resolveSlackChannelConfig,
-  resolveSlackInboundGate,
-  resolveSlackShouldRequireMention,
-  resolveSlackUserAllowed,
-  type SlackAllowList,
-  type SlackChannelConfigResolved,
-  type SlackChannelMatchSource,
-  type SlackInboundDenyReason,
-  slackAllowListMatches,
-} from "./allowlist";
 // Channel configuration types
 export type {
   SlackConfig,
@@ -224,6 +208,28 @@ export {
   stripSlackFormatting,
   truncateText,
 } from "./formatting";
+// Authoritative inbound policy model (channel + DM + event classification)
+export {
+  assertSlackPolicySupported,
+  classifySlackEvent,
+  evaluateSlackInbound,
+  isSlackChannelIdKey,
+  isSlackDirectSurface,
+  isSlackUserIdKey,
+  normalizeSlackSlug,
+  resolveSlackAccountPolicy,
+  type SlackChannelPolicy,
+  type SlackDmPolicy,
+  type SlackEventClass,
+  type SlackGroupPolicySource,
+  type SlackInboundContext,
+  type SlackInboundDecision,
+  type SlackInboundDenyReason,
+  SlackPolicyError,
+  type SlackPolicyLookups,
+  type SlackResolvedPolicy,
+  shouldAdmitDynamicJoin,
+} from "./policy";
 // Export service for direct access
 export { SlackService } from "./service";
 // Export types
