@@ -148,6 +148,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
         viewPath: "/views/remote-ledger",
         viewLabel: "Remote Ledger",
         viewType: "gui",
+        source: "agent",
         action: "pin-tab",
         alwaysOnTop: true,
       }),
@@ -160,6 +161,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
       viewPath: "/views/remote-ledger",
       viewLabel: "Remote Ledger",
       viewType: "gui",
+      source: "agent",
       action: "pin-tab",
       alwaysOnTop: true,
     });

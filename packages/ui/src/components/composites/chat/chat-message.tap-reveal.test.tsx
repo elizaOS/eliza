@@ -111,6 +111,32 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     expect(rail.hasAttribute("inert")).toBe(true);
   });
 
+  it("lets a Reply consumer transfer focus from the hidden rail to its composer", () => {
+    render(
+      <>
+        <textarea aria-label="composer" />
+        <ChatMessage
+          message={makeMessage()}
+          onCopy={vi.fn()}
+          onReply={() => screen.getByLabelText("composer").focus()}
+        />
+      </>,
+    );
+
+    const article = getArticle();
+    fireEvent.touchStart(article, { touches: [touchPoint(50, 100)] });
+    fireEvent.touchEnd(article, { changedTouches: [touchPoint(50, 100)] });
+    const reply = screen.getByRole("button", { name: "Reply" });
+    act(() => reply.focus());
+
+    fireEvent.click(reply);
+
+    expect(document.activeElement).toBe(screen.getByLabelText("composer"));
+    const rail = screen.getByTestId("chat-message-action-rail");
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rail.hasAttribute("inert")).toBe(true);
+  });
+
   it("reveals a glass action rail on the first touch-generated click", () => {
     render(
       <ChatMessage
