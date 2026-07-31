@@ -1502,14 +1502,8 @@ footer p {
     min-height: 68px;
   }
 
-  .site-header :where(nav a) {
-    min-width: 44px;
-    justify-content: center;
-    font-size: 0;
-  }
-
-  .site-header :where(nav a svg) {
-    width: 20px;
+  .site-header nav {
+    display: none;
   }
 
   .hero {
