@@ -25,6 +25,7 @@ import {
 	parseEslintOutput,
 	parseTscOutput,
 	parseVitestOutput,
+	stripAnsi,
 	truncate,
 } from "./verification-helpers.js";
 
@@ -198,8 +199,16 @@ async function runScript(
 		cwd: workdir,
 		timeout: timeoutMs,
 		maxBuffer: EXEC_BUFFER,
-		// Ensure non-interactive child processes (no TTY prompts).
-		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		// Ensure non-interactive child processes (no TTY prompts). NO_COLOR is
+		// the only lever color libs honor by PRESENCE alone — tinyrainbow
+		// (vitest) treats the mere presence of FORCE_COLOR or CI as force-ON,
+		// so `FORCE_COLOR: "0"` cannot disable color by itself.
+		env: {
+			...process.env,
+			CI: process.env.CI ?? "1",
+			FORCE_COLOR: "0",
+			NO_COLOR: "1",
+		},
 		// On Windows, `npm` resolves to `npm.cmd` and `bun` to `bun.exe`.
 		// Without `shell: true`, Node's execFile won't apply PATHEXT and
 		// fails with ENOENT. Enabling the shell is the standard Windows
@@ -243,7 +252,12 @@ async function persistOutput(
 	return outputPath;
 }
 
-function combineOutput(stdout: string, stderr: string): string {
+function combineOutput(rawStdout: string, rawStderr: string): string {
+	// Every parsed check (typecheck/lint/test/build) funnels through here
+	// before persistence and parsing — the one place stripping ANSI protects
+	// all the line-anchored parsers at once.
+	const stdout = stripAnsi(rawStdout);
+	const stderr = stripAnsi(rawStderr);
 	if (!stdout) return stderr;
 	if (!stderr) return stdout;
 	return `${stdout}\n--- stderr ---\n${stderr}`;
@@ -326,7 +340,15 @@ async function runTests(
 		cwd: workdir,
 		timeout: TIMEOUTS.test,
 		maxBuffer: EXEC_BUFFER,
-		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		// Same color-suppression contract as runScript above: NO_COLOR is the
+		// presence-honored lever; FORCE_COLOR/CI presence would otherwise
+		// force vitest's color on and bury the parsed `Tests` summary line.
+		env: {
+			...process.env,
+			CI: process.env.CI ?? "1",
+			FORCE_COLOR: "0",
+			NO_COLOR: "1",
+		},
 	};
 	let stdout = "";
 	let stderr = "";

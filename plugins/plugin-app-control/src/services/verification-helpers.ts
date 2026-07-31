@@ -44,6 +44,17 @@ export function detectPackageManager(workdir: string): PackageManager {
 }
 
 /**
+ * Removes ANSI escape sequences (colors, cursor moves) so the line-anchored
+ * parsers below see plain text. Vitest's color lib (tinyrainbow) enables color
+ * on the PRESENCE of `FORCE_COLOR`/`CI` in the env regardless of value, so
+ * captured output can carry escapes even from a non-TTY pipe.
+ */
+export function stripAnsi(text: string): string {
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI ESC is the target
+	return text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+}
+
+/**
  * UTF-8 safe truncation. Appends a `...truncated N chars` suffix when the
  * input exceeds `max`.
  */
