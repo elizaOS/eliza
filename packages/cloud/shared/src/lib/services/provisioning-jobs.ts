@@ -33,6 +33,8 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import {
   hydrateJob,
   type Job,
+  type JobRecoveryFailure,
+  type JobRecoverySweepResult,
   jobsRepository,
   type NewJob,
   prepareJobInsertData,
@@ -65,9 +67,13 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
+import {
+  AppCacheInvalidationRetryError,
+  dispatchAppCacheInvalidationJob,
+  enqueueAppCacheInvalidation,
+} from "./app-cache-invalidation-job";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
-import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
@@ -1056,6 +1062,76 @@ type DependentRowJobType = (typeof DEPENDENT_ROW_JOB_TYPES)[number];
 function ownsDependentRow(jobType: string): jobType is DependentRowJobType {
   return (DEPENDENT_ROW_JOB_TYPES as readonly string[]).includes(jobType);
 }
+
+export interface ProvisioningRecoverySummary {
+  scanned: number;
+  retried: number;
+  permanentlyFailed: number;
+  unchanged: number;
+  failures: JobRecoveryFailure[];
+}
+
+export class ProvisioningRecoveryDegradedError extends ElizaError {
+  override readonly name = "ProvisioningRecoveryDegradedError";
+  readonly summary: ProvisioningRecoverySummary;
+
+  constructor(phase: "stale" | "startup", summary: ProvisioningRecoverySummary) {
+    const causes = summary.failures.map(({ cause }) => cause);
+    super(`Provisioning ${phase} recovery completed with ${summary.failures.length} failure(s)`, {
+      code: "PROVISIONING_RECOVERY_DEGRADED",
+      cause: new AggregateError(causes, `Provisioning ${phase} recovery failures`),
+      context: {
+        phase,
+        scanned: summary.scanned,
+        retried: summary.retried,
+        permanentlyFailed: summary.permanentlyFailed,
+        unchanged: summary.unchanged,
+        failures: summary.failures.map(({ jobId, jobType, cause }) => ({
+          jobId,
+          jobType,
+          error: cause instanceof Error ? cause.message : String(cause),
+        })),
+      },
+      severity: "ephemeral",
+    });
+    this.summary = summary;
+  }
+}
+
+function emptyRecoverySummary(): ProvisioningRecoverySummary {
+  return { scanned: 0, retried: 0, permanentlyFailed: 0, unchanged: 0, failures: [] };
+}
+
+function addRecoveryResult(
+  summary: ProvisioningRecoverySummary,
+  result: JobRecoverySweepResult,
+): void {
+  summary.scanned += result.scanned;
+  summary.retried += result.retried;
+  summary.permanentlyFailed += result.permanentlyFailed;
+  summary.unchanged += result.unchanged;
+  summary.failures.push(...result.failures);
+}
+
+function assertRecoveryHealthy(
+  phase: "stale" | "startup",
+  summary: ProvisioningRecoverySummary,
+): void {
+  if (summary.failures.length === 0) return;
+  logger.error(`[provisioning-jobs] ${phase} recovery finished degraded`, {
+    scanned: summary.scanned,
+    retried: summary.retried,
+    permanentlyFailed: summary.permanentlyFailed,
+    unchanged: summary.unchanged,
+    failures: summary.failures.map(({ jobId, jobType, cause }) => ({
+      jobId,
+      jobType,
+      error: cause instanceof Error ? cause.message : String(cause),
+    })),
+  });
+  throw new ProvisioningRecoveryDegradedError(phase, summary);
+}
+
 export class ProvisioningJobService {
   private readonly executionOverride?: (job: Job) => Promise<void>;
   private readonly executionTimeoutMs: (jobType: string) => number;
@@ -2831,9 +2907,12 @@ export class ProvisioningJobService {
     // Recover legacy or already-quiesced stale claims, scoped to the same lane
     // so a lane-scoped daemon never resets the OTHER lane's rows. Generated
     // active attempts stay owned until settlement or daemon startup recovery.
-    const recovered = await this.recoverStaleJobs(jobTypes);
-    if (recovered > 0) {
-      logger.info("[provisioning-jobs] Recovered stale jobs", { recovered });
+    const recovery = await this.recoverStaleJobs(jobTypes);
+    if (recovery.retried > 0 || recovery.permanentlyFailed > 0) {
+      logger.info("[provisioning-jobs] Recovered stale jobs", {
+        retried: recovery.retried,
+        permanentlyFailed: recovery.permanentlyFailed,
+      });
     }
 
     return result;
@@ -2877,20 +2956,20 @@ export class ProvisioningJobService {
   async recoverInterruptedJobsOnStartup(
     startedBefore: Date,
     jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
-  ): Promise<number> {
-    let totalRecovered = 0;
+  ): Promise<ProvisioningRecoverySummary> {
+    const summary = emptyRecoverySummary();
 
     for (const jobType of this.filterSnapshotLane(jobTypes, "startup-recovery")) {
-      const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
+      const result = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
         buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
-        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
-      totalRecovered += recovered;
+      addRecoveryResult(summary, result);
     }
 
-    return totalRecovered;
+    assertRecoveryHealthy("startup", summary);
+    return summary;
   }
 
   // ---------------------------------------------------------------------------
@@ -2990,7 +3069,8 @@ export class ProvisioningJobService {
 
     if (
       err instanceof RetryableProvisionTransportError ||
-      err instanceof RetryableReplacementCleanupError
+      err instanceof RetryableReplacementCleanupError ||
+      err instanceof AppCacheInvalidationRetryError
     ) {
       const retrySnapshot =
         err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
@@ -3035,7 +3115,7 @@ export class ProvisioningJobService {
     // undefined and the writeback ignores it.
     const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
     const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
-    const updated = await this.retryOwnedWrite(job, "increment-attempt", () =>
+    await this.retryOwnedWrite(job, "increment-attempt", () =>
       jobsRepository.incrementAttempt(
         job.id,
         errorMsg,
@@ -3045,41 +3125,6 @@ export class ProvisioningJobService {
         this.executionOwnerId,
       ),
     );
-
-    if (updated?.status === "failed") {
-      await this.evictAppCachesAfterPermanentFailure(job);
-    }
-  }
-
-  /**
-   * Post-commit read-cache eviction for a job whose dependent row was just
-   * flipped by the in-transaction writeback. The `apps` read cache lives
-   * outside the DB transaction, so it can only be evicted once the flip is
-   * durable — for app_deploy because appsService owns that cache, and for
-   * container_provision because its writeback updates apps.deployment_status
-   * with a raw in-tx statement that bypasses appsService entirely (otherwise
-   * the deploy-status route keeps reporting `building` until the 5-min TTL).
-   */
-  private async evictAppCachesAfterPermanentFailure(job: Job): Promise<void> {
-    if (job.type === JOB_TYPES.APP_DEPLOY) {
-      const { appId } = readAppDeployJobData(job);
-      await appsService.invalidateCache(appId);
-      return;
-    }
-    if (job.type === JOB_TYPES.CONTAINER_PROVISION) {
-      const { containerId } = readContainerProvisionJobData(job);
-      const [row] = await dbWrite
-        .select({ projectName: containers.project_name })
-        .from(containers)
-        .where(eq(containers.id, containerId))
-        .limit(1);
-      const appId = row?.projectName;
-      // The in-tx writeback already org-scoped the flip; an appId that matched
-      // no app is a harmless evict.
-      if (appId && isValidUUID(appId)) {
-        await appsService.invalidateCache(appId);
-      }
-    }
   }
 
   /**
@@ -3259,22 +3304,26 @@ export class ProvisioningJobService {
       // Apps / Product 2: a permanently failed deploy must flip the app off
       // `building`, or the deploy-status route (which echoes
       // `apps.deployment_status`) reports BUILDING forever — the CLI/dashboard
-      // never sees the failure. The read-cache invalidation runs post-commit
-      // in the caller (cache work must not live inside a DB transaction).
+      // never sees the failure. A durable cache task is inserted in the same
+      // transaction; its cache deletion runs later outside the transaction.
       // Especially relevant during the lane-migration window, when the agent
       // CP worker (still default=all lanes) claims an APP_DEPLOY it can't run
       // and exhausts retries.
       case JOB_TYPES.APP_DEPLOY: {
         const { appId } = readAppDeployJobData(job);
-        return async (tx) => {
-          await tx
+        return async (tx, failedJob) => {
+          const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(eq(apps.id, appId));
-          logger.warn(
-            "[provisioning-jobs] Marked app deployment as failed after permanent failure",
-            { jobId: job.id, appId },
-          );
+            .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
+            .returning({ id: apps.id });
+          if (failedApp) {
+            await enqueueAppCacheInvalidation(tx, failedJob, failedApp.id);
+            logger.warn(
+              "[provisioning-jobs] Marked app deployment as failed after permanent failure",
+              { jobId: job.id, appId },
+            );
+          }
         };
       }
       // Apps / Product 2: the APP_DEPLOY job above only self-completes after
@@ -3294,25 +3343,34 @@ export class ProvisioningJobService {
       // because the cross-org WHERE matches zero rows.
       case JOB_TYPES.CONTAINER_PROVISION: {
         const { containerId } = readContainerProvisionJobData(job);
-        return async (tx) => {
+        return async (tx, failedJob) => {
           const [row] = await tx
             .select({
               projectName: containers.project_name,
               organizationId: containers.organization_id,
             })
             .from(containers)
-            .where(eq(containers.id, containerId))
+            .where(
+              and(
+                eq(containers.id, containerId),
+                eq(containers.organization_id, failedJob.organization_id),
+              ),
+            )
             .limit(1);
           const appId = row?.projectName;
           if (!appId || !isValidUUID(appId)) return;
-          await tx
+          const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)));
-          logger.warn(
-            "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
-            { jobId: job.id, containerId, appId },
-          );
+            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
+            .returning({ id: apps.id });
+          if (failedApp) {
+            await enqueueAppCacheInvalidation(tx, failedJob, failedApp.id);
+            logger.warn(
+              "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
+              { jobId: job.id, containerId, appId },
+            );
+          }
         };
       }
       // agent_delete: when the daemon gives up, flip the row to
@@ -3603,6 +3661,13 @@ export class ProvisioningJobService {
         });
         break;
       }
+      case JOB_TYPES.APP_CACHE_INVALIDATE:
+        await this.assertExecutionMutationLease(job);
+        await dispatchAppCacheInvalidationJob(job);
+        await this.settleClaimedExecution(job, "completed", {
+          completed_at: new Date(),
+        });
+        break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
@@ -5114,24 +5179,24 @@ export class ProvisioningJobService {
 
   private async recoverStaleJobs(
     jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
-  ): Promise<number> {
-    let totalRecovered = 0;
+  ): Promise<ProvisioningRecoverySummary> {
+    const summary = emptyRecoverySummary();
 
     // Recover stale jobs per type across all organizations. The repository now
     // handles org-agnostic recovery, so we can do this in one pass.
     for (const jobType of jobTypes) {
-      const recovered = await jobsRepository.recoverStaleJobs({
+      const result = await jobsRepository.recoverStaleJobs({
         type: jobType,
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
           : DEFAULT_STALE_JOB_THRESHOLD_MS,
         buildFailureWriteback: this.dependentRowWritebackBuilder(jobType),
-        onPermanentFailure: (failedJob) => this.evictAppCachesAfterPermanentFailure(failedJob),
       });
-      totalRecovered += recovered;
+      addRecoveryResult(summary, result);
     }
 
-    return totalRecovered;
+    assertRecoveryHealthy("stale", summary);
+    return summary;
   }
 
   private async fireWebhook(

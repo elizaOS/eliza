@@ -33,13 +33,14 @@ describe("JOB_TYPES", () => {
     // Apps lane (Product 2): the Worker enqueues APP_DB_DEPROVISION on app
     // delete; the daemon runs the isolated tenant-DB DROP + slot release.
     expect(JOB_TYPES.APP_DB_DEPROVISION).toBe("app_db_deprovision");
+    expect(JOB_TYPES.APP_CACHE_INVALIDATE).toBe("app_cache_invalidate");
     // Billing suspend (#8342): the container-billing cron (Worker, no SSH)
     // enqueues CONTAINER_STOP; the daemon docker-stops the node container
     // (volume preserved, slot freed) so a deadbeat app can't run for free.
     expect(JOB_TYPES.CONTAINER_STOP).toBe("container_stop");
     // Lock the size so a new entry without a matching assertion above
     // fails CI instead of being silently under-covered by tests below.
-    expect(Object.keys(JOB_TYPES)).toHaveLength(21);
+    expect(Object.keys(JOB_TYPES)).toHaveLength(22);
   });
 
   test("wire values are unique (no two symbols share a string)", () => {
