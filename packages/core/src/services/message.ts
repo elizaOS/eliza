@@ -7467,6 +7467,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.reply.trim().length > 0
 				? messageHandler.plan.reply
 				: undefined;
+		const prePatchStageOneReplyEffectStatus =
+			messageHandler.plan.replyEffectStatus;
+		const prePatchStageOneReplyIsUngroundedAppliedClaim =
+			prePatchStageOneReplyEffectStatus === "applied";
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
@@ -8005,6 +8009,12 @@ export async function runV5MessageRuntimeStage1(args: {
 							typeof messageHandler.plan.reply === "string"
 								? messageHandler.plan.reply
 								: undefined;
+						if (
+							prePatchStageOneReplyIsUngroundedAppliedClaim &&
+							postPatch === prePatchStageOneReply
+						) {
+							return undefined;
+						}
 						// A promotion patch that replaced a substantive stage-0 answer
 						// with a bare progress ack must not also disarm the loop's
 						// answer rescue — feed the preserved pre-patch answer instead.
@@ -8012,6 +8022,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							prePatchStageOneReply &&
 							postPatch &&
 							postPatch !== prePatchStageOneReply &&
+							!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 							PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
 						) {
 							return prePatchStageOneReply;
@@ -8053,7 +8064,11 @@ export async function runV5MessageRuntimeStage1(args: {
 											ctx.trajectory,
 											exposedPlannerActions,
 										),
-										...(recordingCallback
+										// A batch marked more_work_pending has not earned a
+										// transcript reply yet. Its result remains in the planner
+										// trajectory, while the eventual terminal action/failure
+										// owns the one visible callback.
+										...(recordingCallback && ctx.plannerCompleted !== false
 											? { callback: recordingCallback }
 											: {}),
 									}),
@@ -8236,10 +8251,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
-		const stageOneAck =
+		const rawStageOneAck =
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
 				: "";
+		const stageOneAck =
+			prePatchStageOneReplyIsUngroundedAppliedClaim &&
+			rawStageOneAck === prePatchStageOneReply?.trim()
+				? ""
+				: rawStageOneAck;
 		// Answerless-final fallback: when the planner loop finished with NO final
 		// text, a preserved substantive stage-0 answer is strictly better than
 		// silence or filler — deliver it. This applies whether or not an early
@@ -8249,6 +8269,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText &&
 			!suppressesPlannerReply &&
 			prePatchStageOneReply &&
+			!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
 			(!earlyReplySent ||
 				normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
