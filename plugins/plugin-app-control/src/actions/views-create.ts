@@ -736,7 +736,7 @@ async function createNewViewPlugin({
 	// Chat gets one human sentence; the dispatch detail (workdir, session id)
 	// stays planner-facing in the result text — internal identifiers in a
 	// user-visible message read as a malfunction. Same contract as APP create.
-	const text = `Building the ${displayName} view now — I'll let you know once it's ready (usually takes a few minutes).`;
+	const text = `Building the ${displayName} view now — I'll let you know once it's ready.`;
 	const dispatchDetail = `Started view create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
 	await callback?.({ text });
 	logger.info(

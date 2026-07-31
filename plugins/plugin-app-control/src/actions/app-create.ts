@@ -802,7 +802,7 @@ async function createNewApp({
 	// identifiers in a user-visible message read as a malfunction. The
 	// verified+turnComplete contract makes the callback the turn's single
 	// delivery (the gated evaluator skip), same as LIST_CLOUD_APPS.
-	const text = `Building ${displayName} now — I'll post the link once it's live (usually takes a few minutes).`;
+	const text = `Building ${displayName} now — I'll post the link once it's live.`;
 	const dispatchDetail = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
@@ -900,7 +900,7 @@ async function editExistingApp({
 
 	const task = dispatch.agents[0];
 	// Same single-human-sentence contract as the create path above.
-	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live (usually takes a few minutes).`;
+	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live.`;
 	const dispatchDetail = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
