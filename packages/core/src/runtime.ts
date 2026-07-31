@@ -380,6 +380,8 @@ interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
 	startedAt: number;
 	startedAtMonotonic: number;
+	timeoutMs?: number;
+	timeoutMode: "fail" | "degrade";
 }
 
 export function calculateProviderOverlaps(
@@ -404,43 +406,82 @@ export function calculateProviderOverlaps(
 	);
 }
 
-// Per-provider composeState budget. Without an enforced deadline a provider
-// doing synchronous network work can hold every message turn hostage for tens
-// of seconds and still count as healthy (a registry refetch measured 10.9s on
-// a live turn). The default defends interactive latency; a provider with
-// legitimately slow, turn-blocking work declares its own `timeoutMs`. On
-// expiry the provider degrades to a failure record for the turn
-// (`deadline_exceeded`) and composition proceeds without it.
+// Provider authors opt into a deadline with `timeoutMs`; operators can apply a
+// global default when deployment evidence supports one. An implicit default
+// would change the semantics of every third-party provider without knowing
+// whether its context is optional or how long its backing service can take.
 const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
 	const raw = Number.parseInt(
 		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
 		10,
 	);
 	if (Number.isFinite(raw) && raw >= 250) return raw;
-	return 3_000;
+	return undefined;
 })();
 
-// The budget is enforced at execution creation so coalesced awaiters share
-// one deadline. The rejection carries name "TimeoutError" so the composition
-// catch classifies it as `deadline_exceeded` and degrades that provider while
-// the turn proceeds.
+class ProviderDeadlineError extends Error {
+	readonly timeoutMs: number;
+
+	constructor(providerName: string, timeoutMs: number) {
+		super(
+			`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
+		);
+		this.name = "TimeoutError";
+		this.timeoutMs = timeoutMs;
+	}
+}
+
+// The budget and its derived signal are created once per execution so
+// coalesced awaiters share one deadline. JavaScript cannot preempt a provider
+// that ignores AbortSignal, but cooperative database/network/subprocess work
+// receives the timeout immediately and the turn never waits past the budget.
 function withProviderDeadline<T>(
-	promise: Promise<T>,
-	timeoutMs: number,
+	run: (signal: AbortSignal) => Promise<T>,
+	timeoutMs: number | undefined,
 	providerName: string,
+	parentSignal?: AbortSignal,
 ): Promise<T> {
+	const controller = new AbortController();
 	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-	const deadline = new Promise<never>((_, reject) => {
-		timeoutHandle = setTimeout(() => {
-			const error = new Error(
-				`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
+	let rejectFromSignal: (() => void) | undefined;
+	const abortFromParent = () => {
+		controller.abort(
+			parentSignal?.reason ?? new Error("Provider execution aborted"),
+		);
+	};
+	if (parentSignal?.aborted) {
+		abortFromParent();
+	} else {
+		parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+	}
+	const aborted = new Promise<never>((_, reject) => {
+		rejectFromSignal = () => {
+			reject(
+				controller.signal.reason ?? new Error("Provider execution aborted"),
 			);
-			error.name = "TimeoutError";
-			reject(error);
-		}, timeoutMs);
+		};
+		if (controller.signal.aborted) {
+			rejectFromSignal?.();
+			return;
+		}
+		controller.signal.addEventListener("abort", rejectFromSignal, {
+			once: true,
+		});
 	});
-	return Promise.race([promise, deadline]).finally(() => {
+	if (!controller.signal.aborted && timeoutMs !== undefined) {
+		timeoutHandle = setTimeout(() => {
+			controller.abort(new ProviderDeadlineError(providerName, timeoutMs));
+		}, timeoutMs);
+	}
+	const providerPromise = controller.signal.aborted
+		? Promise.reject(controller.signal.reason)
+		: Promise.resolve().then(() => run(controller.signal));
+	return Promise.race([providerPromise, aborted]).finally(() => {
 		if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+		if (rejectFromSignal) {
+			controller.signal.removeEventListener("abort", rejectFromSignal);
+		}
+		parentSignal?.removeEventListener("abort", abortFromParent);
 	});
 }
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
@@ -4555,23 +4596,27 @@ export class AgentRuntime implements IAgentRuntime {
 						typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
 							? provider.timeoutMs
 							: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
+					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
-					const promise = providerSignal?.aborted
-						? Promise.reject(
-								providerSignal.reason ??
-									new Error("Provider execution aborted before start"),
-							)
-						: withProviderDeadline(
-								withProviderStep(providerRuntime, provider.name, () =>
-									provider.get(providerRuntime, message, cachedState, {
-										...(providerSignal ? { signal: providerSignal } : {}),
-									}),
-								),
-								providerBudgetMs,
-								provider.name,
-							);
-					execution = { promise, startedAt, startedAtMonotonic };
+					const promise = withProviderDeadline(
+						(signal) =>
+							withProviderStep(providerRuntime, provider.name, () =>
+								provider.get(providerRuntime, message, cachedState, {
+									signal,
+								}),
+							),
+						providerBudgetMs,
+						provider.name,
+						providerSignal,
+					);
+					execution = {
+						promise,
+						startedAt,
+						startedAtMonotonic,
+						timeoutMs: providerBudgetMs,
+						timeoutMode,
+					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
 						const cleanup = () => {
@@ -4605,12 +4650,11 @@ export class AgentRuntime implements IAgentRuntime {
 				} catch (cause) {
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
-					const causeName = cause instanceof Error ? cause.name : "";
 					const outcome: ProviderExecutionOutcome = providerSignal?.aborted
 						? "aborted"
-						: causeName === "TimeoutError"
+						: cause instanceof ProviderDeadlineError
 							? "deadline_exceeded"
-							: causeName === "AbortError"
+							: cause instanceof Error && cause.name === "AbortError"
 								? "aborted"
 								: "error";
 					const code =
@@ -4637,6 +4681,8 @@ export class AgentRuntime implements IAgentRuntime {
 								roomId: message.roomId,
 								messageId: message.id,
 								outcome,
+								timeoutMs: execution.timeoutMs,
+								timeoutMode: execution.timeoutMode,
 							},
 						},
 					);
@@ -4646,18 +4692,22 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
-					if (outcome === "deadline_exceeded") {
-						// error-policy:J4 a budget overrun degrades to an empty
-						// contribution instead of failing the turn: the per-provider
-						// deadline exists to defend interactive latency, and a reply
-						// missing one provider's section is strictly better than no
-						// reply. The overrun stays observable via the span outcome and
-						// reportError above; genuine provider errors below keep the
-						// fail-fast composition contract.
+					if (
+						outcome === "deadline_exceeded" &&
+						execution.timeoutMode === "degrade" &&
+						execution.timeoutMs !== undefined
+					) {
+						// error-policy:J4 optional providers may explicitly degrade,
+						// but the prompt and structured state must remain distinguishable
+						// from a legitimate empty result for the rest of the turn.
 						return {
-							text: "",
+							text: `[Provider ${provider.name} unavailable this turn: exceeded ${execution.timeoutMs}ms deadline.]`,
 							values: {},
-							data: {},
+							data: {
+								available: false,
+								reason: "deadline_exceeded",
+								timeoutMs: execution.timeoutMs,
+							},
 							providerName: provider.name,
 							providerStartedAt: execution.startedAt,
 							providerEndedAt: endedAt,
@@ -4682,6 +4732,9 @@ export class AgentRuntime implements IAgentRuntime {
 		const failedProviderData = providerData.filter(
 			(record) => record.providerError !== undefined,
 		);
+		const degradedProviderData = providerData.filter(
+			(record) => record.providerOutcome === "deadline_exceeded",
+		);
 		for (const provider of reusedProviders) {
 			const cached = (
 				cachedState.data.providers as
@@ -4699,6 +4752,7 @@ export class AgentRuntime implements IAgentRuntime {
 			providers: providersToRun.length,
 			reused: providersToGet.length - providersToRun.length,
 			failed: failedProviderData.length,
+			degraded: degradedProviderData.length,
 		});
 
 		const currentProviderResults: Record<string, CachedProviderResult> = {
@@ -4851,7 +4905,7 @@ export class AgentRuntime implements IAgentRuntime {
 						data: {
 							textLength:
 								typeof cached?.text === "string" ? cached.text.length : 0,
-							outcome: "success",
+							outcome: cached?.providerOutcome ?? "success",
 							coalesced: false,
 							cacheHit: true,
 							...(typeof cached?.providerDurationMs === "number"
