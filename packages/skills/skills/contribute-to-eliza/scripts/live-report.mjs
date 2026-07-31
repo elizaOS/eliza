@@ -6,7 +6,8 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { existsSync, realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export const MODEL_DISCLOSURE_PREFIX = "AI provider/model:";
 export const REQUIRED_EVIDENCE_ROWS = [
@@ -1194,7 +1195,9 @@ export function main(args = process.argv.slice(2)) {
 
 const invokedDirectly =
   typeof process.argv[1] === "string" &&
-  import.meta.url === pathToFileURL(process.argv[1]).href;
+  existsSync(process.argv[1]) &&
+  realpathSync(fileURLToPath(import.meta.url)) ===
+    realpathSync(process.argv[1]);
 
 if (invokedDirectly) {
   try {
