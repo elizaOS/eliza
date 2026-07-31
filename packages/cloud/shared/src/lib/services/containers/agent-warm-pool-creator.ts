@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
 import { WARM_POOL_ORG_ID } from "../../../db/schemas/agent-sandboxes";
 import { logger } from "../../utils/logger";
@@ -32,32 +33,45 @@ export class HetznerPoolContainerCreator implements PoolContainerCreator {
       environment_vars: {},
     });
 
-    try {
-      const result = await elizaSandboxService.provision(row.id, WARM_POOL_ORG_ID);
-      if (!result.success) {
-        // Leave the row in 'error' state — health-check cron will reap it.
-        await agentSandboxesRepository.update(row.id, {
-          status: "error",
-          error_message: result.error,
-        });
-        throw new Error(`pool provision failed: ${result.error}`);
-      }
-      const ready = await agentSandboxesRepository.markPoolEntryReady(row.id);
-      logger.info("[warm-pool/creator] pool entry ready", {
-        poolId: row.id,
-        nodeId: ready?.node_id ?? null,
-        bridgeUrl: ready?.bridge_url ?? null,
+    const result = await elizaSandboxService.provision(row.id, WARM_POOL_ORG_ID);
+    if (!result.success) {
+      // The row stays available to the production reconciliation sweep, while
+      // the explicit error state prevents it from contributing capacity.
+      await agentSandboxesRepository.update(row.id, {
+        status: "error",
+        error_message: result.error,
       });
-      return { id: row.id, nodeId: ready?.node_id ?? result.sandboxRecord.node_id ?? null };
-    } catch (err) {
-      // error-policy:J7 diagnostic warn adding poolId context; rethrows the
-      // original error so the provision failure still surfaces to replenish().
-      logger.warn("[warm-pool/creator] pool entry creation failed", {
-        poolId: row.id,
-        error: err instanceof Error ? err.message : String(err),
+      throw new ElizaError(`Pool provision failed: ${result.error}`, {
+        code: "WARM_POOL_PROVISION_FAILED",
+        context: { poolId: row.id, image },
+        severity: result.retryable ? "ephemeral" : "fatal",
       });
-      throw err;
     }
+    const ready = result.sandboxRecord;
+    if (
+      ready.status !== "running" ||
+      ready.pool_ready_at === null ||
+      ready.node_id === null ||
+      ready.bridge_url === null
+    ) {
+      throw new ElizaError("Pool provision returned success without claimable readiness", {
+        code: "WARM_POOL_READINESS_INVARIANT_BROKEN",
+        context: {
+          poolId: row.id,
+          status: ready.status,
+          hasReadyStamp: ready.pool_ready_at !== null,
+          hasNodeId: ready.node_id !== null,
+          hasBridgeUrl: ready.bridge_url !== null,
+        },
+        severity: "fatal",
+      });
+    }
+    logger.info("[warm-pool/creator] pool entry ready", {
+      poolId: row.id,
+      nodeId: ready.node_id,
+      bridgeUrl: ready.bridge_url,
+    });
+    return { id: row.id, nodeId: ready.node_id };
   }
 
   async destroyPoolContainer(poolId: string): Promise<void> {

@@ -2196,6 +2196,8 @@ export class ElizaSandboxService {
       rec.claimed_at !== null &&
       (rec.warm_claim_credential_state === "pending" ||
         rec.warm_claim_credential_state === "attested");
+    const isWarmPoolProvision =
+      rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed";
     const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
 
     // Every claimed row carries the exact managed key owned by its durable
@@ -2430,21 +2432,19 @@ export class ElizaSandboxService {
 
         await this.ensureRuntimeAgentStarted(runtimeRec);
 
-        // 4. Mark running + persist provider-specific metadata.
+        // 4. Persist the reachable container and provider-specific metadata.
         //
-        // This write happens BEFORE the backup restore on purpose: the status
-        // column is the reachability gate — the dedicated-agent proxy
-        // synthesizes a 202 "starting" for EVERY request (including the
-        // launcher's /api/status poll) until status='running'. The container is
-        // serving from this moment (health checked, runtime agent started), so
-        // gating the flip on the restore tail made a responsive agent read as
-        // "waking" for the whole restore — the launcher escalated to "taking
-        // longer than usual" while chat already answered (#14038). A restore
-        // failure still flips the row out of 'running' via the catch below
-        // (ghost cleanup → retry or markError), so 'running' never sticks on a
-        // failed provision.
+        // User rows flip to `running` before restore because that status is the
+        // proxy reachability gate; delaying it made a responsive agent render
+        // as "waking" throughout restore (#14038). Unclaimed pool rows are the
+        // exception: exposing them as claimable before the restore tail
+        // succeeds recreates the readiness crash window, so they stay
+        // `provisioning` until the final status+stamp CAS below.
         const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-          status: recoveringPendingWarmClaim ? "provisioning" : "running",
+          // Pool rows stay non-claimable until the entire provision tail
+          // succeeds. Their final status+readiness stamp is one repository CAS
+          // below; user rows retain the early reachability flip.
+          status: recoveringPendingWarmClaim || isWarmPoolProvision ? "provisioning" : "running",
           sandbox_id: handle.sandboxId,
           bridge_url: handle.bridgeUrl,
           health_url: handle.healthUrl,
@@ -2595,6 +2595,25 @@ export class ElizaSandboxService {
           });
         }
 
+        let completed = updated;
+        if (isWarmPoolProvision) {
+          const ready = await agentSandboxesRepository.commitPoolEntryReady(updated);
+          if (!ready) {
+            throw new ElizaError("Warm-pool readiness generation changed before final commit", {
+              code: "WARM_POOL_READINESS_CAS_MISSED",
+              context: {
+                poolId: updated.id,
+                environmentRevision: updated.environment_revision,
+                sandboxId: updated.sandbox_id,
+                nodeId: updated.node_id,
+                containerName: updated.container_name,
+              },
+              severity: "ephemeral",
+            });
+          }
+          completed = ready;
+        }
+
         logger.info("[agent-sandbox] Provisioned", {
           agentId: rec.id,
           sandboxId: handle.sandboxId,
@@ -2602,7 +2621,7 @@ export class ElizaSandboxService {
         });
         return {
           success: true,
-          sandboxRecord: updated!,
+          sandboxRecord: completed,
           bridgeUrl: handle.bridgeUrl,
           healthUrl: handle.healthUrl,
         };

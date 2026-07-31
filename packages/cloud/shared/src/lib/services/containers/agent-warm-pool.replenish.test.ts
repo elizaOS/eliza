@@ -21,7 +21,10 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { PoolContainerCreator } from "./agent-warm-pool";
 
 const repo = {
-  listUnclaimedPool: mock(async () => [] as Array<{ id: string }>),
+  listClaimablePool: mock(async () => [] as Array<{ id: string }>),
+  listWarmPoolReconciliationCandidates: mock(async () => []),
+  promoteStrandedPoolEntryReady: mock(async () => undefined),
+  reserveUnclaimablePoolEntryForReap: mock(async () => undefined),
   findStuckPoolProvisioning: mock(async () => [] as Array<{ id: string }>),
   countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
   countUserProvisionsByHour: mock(async () => [] as number[]),
@@ -63,8 +66,10 @@ function fakeCreator(overrides: Partial<PoolContainerCreator> = {}): {
 
 beforeEach(() => {
   warmPoolEnabled = true;
-  repo.listUnclaimedPool.mockReset();
-  repo.listUnclaimedPool.mockResolvedValue([]);
+  repo.listClaimablePool.mockReset();
+  repo.listClaimablePool.mockResolvedValue([]);
+  repo.listWarmPoolReconciliationCandidates.mockReset();
+  repo.listWarmPoolReconciliationCandidates.mockResolvedValue([]);
   repo.findStuckPoolProvisioning.mockReset();
   repo.findStuckPoolProvisioning.mockResolvedValue([]);
   repo.countAllPoolEntries.mockReset();
@@ -122,7 +127,8 @@ describe("replenish honors the disabled no-op", () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(repo.countAllPoolEntries).not.toHaveBeenCalled();
-    expect(repo.listUnclaimedPool).not.toHaveBeenCalled();
+    expect(repo.listClaimablePool).not.toHaveBeenCalled();
+    expect(repo.listWarmPoolReconciliationCandidates).not.toHaveBeenCalled();
     expect(result.created).toEqual([]);
     expect(result.decision.toCreate).toBe(0);
     expect(result.decision.reason).toContain("WARM_POOL_ENABLED=false");
