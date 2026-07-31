@@ -2423,19 +2423,18 @@ export async function runScenario(
       try {
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
-          // `requires` names a plugin, so registration is the bar — not the
-          // startup of every service the plugin happens to ship. A plugin
-          // bundles services a given scenario never touches, and on the
-          // keyless pr-deterministic lane the credentialed ones legitimately
-          // refuse to start (BirdeyeService without BIRDEYE_API_KEY, say)
-          // while the scenario drives a different, mocked backend entirely.
-          // Gating on those would make every keyless wallet/analytics
-          // scenario unrunnable. Service-start failures still surface on
-          // their own: the runtime logs them via `AgentRuntime.serviceStart`
-          // and routes them through `reportError`, and a scenario that truly
-          // needs the service fails on its own assertions with a specific
-          // cause rather than a blanket plugin-init error.
           await runtime.registerPlugin(candidate);
+          // Required-plugin registration waits for every service attempt to
+          // settle so the first scenario turn cannot race a usable service.
+          // A plugin may also bundle credential-gated services the scenario
+          // never touches; their failures are already observable through
+          // AgentRuntime.serviceStart/reportError and do not invalidate the
+          // successfully registered actions or sibling services.
+          await Promise.allSettled(
+            (candidate.services ?? []).map((service) =>
+              runtime.getServiceLoadPromise(service.serviceType),
+            ),
+          );
           autoLoaded.add(pkg);
         }
       } catch (err) {
