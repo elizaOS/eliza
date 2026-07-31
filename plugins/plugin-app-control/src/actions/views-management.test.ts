@@ -352,10 +352,15 @@ describe("view management actions", () => {
 		).resolves.toMatchObject({
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
 			addContexts: ["general"],
+			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],
+			clearParentActionHints: true,
 			addParentActionHints: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "interact", view: "notes", viewType: "gui" },
+			},
 		});
 	});
 
