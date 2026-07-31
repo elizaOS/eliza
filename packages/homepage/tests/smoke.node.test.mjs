@@ -23,6 +23,7 @@ const profileImagePath = resolve(
   __dirname,
   "../public/eliza-app-profile-image.webp",
 );
+const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
@@ -56,6 +57,19 @@ test("landing ships compressed iPhone and WebP profile assets", () => {
     statSync(profileImagePath).size < 25_000,
     "profile image must stay under its 25 KB transfer budget",
   );
+});
+
+test("large visual assets receive a durable browser cache policy", () => {
+  const headers = readFileSync(headersPath, "utf8");
+
+  for (const route of ["/models/*", "/*.webp", "/*.woff2"]) {
+    assert.match(
+      headers,
+      new RegExp(
+        `${route.replaceAll("*", "\\*")}\\n\\s+Cache-Control: public, max-age=604800, stale-while-revalidate=86400`,
+      ),
+    );
+  }
 });
 
 test("reduced-motion keeps functional loading indicators animated", () => {
