@@ -1,5 +1,5 @@
 /**
- * Visual regression coverage for the marketing homepage routes.
+ * Visual regression coverage for the public homepage routes.
  *
  * Every route and viewport is compared against committed baselines via
  * toHaveScreenshot, while the quality-retry pre-check rejects blank or
@@ -12,6 +12,7 @@ import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
   { path: "/", name: "landing" },
+  { path: "/downloads", name: "downloads" },
   { path: "/login", name: "login" },
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },
@@ -25,11 +26,11 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The /leaderboard intro (SVG letter swap → spring-revealed tab bar) is
+  // The landing intro (SVG letter swap → spring-revealed tab bar) is
   // react-spring/JS-driven, so `animations: "disabled"` cannot freeze it and
   // a fixed wait races slow app-JS loads. Wait for the last spring-revealed
   // control ("Try Now") instead, then give the springs time to reach rest.
-  if (routePath === "/leaderboard") {
+  if (routePath === "/" || routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
     await page
       .getByText("Try Now")

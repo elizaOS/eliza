@@ -35,6 +35,7 @@ test("homepage route matrices cover every routed page", () => {
   expect(appRoutes).toEqual([
     "/",
     "/leaderboard",
+    "/downloads",
     "/login",
     "/connected",
     "/get-started",

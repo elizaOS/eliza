@@ -4,41 +4,16 @@
  * The aliases keep workspace UI imports pointed at source files so the homepage
  * bundle avoids unrelated package barrels.
  */
-import fs from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
-import { defineConfig, type Plugin } from "vite";
-
-/**
- * GitHub Pages serves a single static directory and does not understand
- * client-side routes. Copying index.html to 404.html means deep links such as
- * /leaderboard fall through to the SPA shell, which then renders the right
- * route via React Router.
- */
-function gh404Fallback(): Plugin {
-  return {
-    name: "gh-pages-404-fallback",
-    apply: "build",
-    closeBundle() {
-      if (process.env.CF_PAGES === "1") return;
-
-      const outDir = path.resolve(__dirname, "dist");
-      const indexHtml = path.join(outDir, "index.html");
-      const notFoundHtml = path.join(outDir, "404.html");
-      if (fs.existsSync(indexHtml)) {
-        fs.copyFileSync(indexHtml, notFoundHtml);
-      }
-    },
-  };
-}
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    gh404Fallback(),
     visualizer({
       filename: "dist/stats.html",
       gzipSize: true,

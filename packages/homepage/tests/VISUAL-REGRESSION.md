@@ -26,7 +26,7 @@ Failure diffs go to `test-results/` (gitignored).
 
 ## Routes covered
 
-`/`, `/login`, `/connected`, `/get-started`, `/leaderboard` at desktop
+`/`, `/downloads`, `/login`, `/connected`, `/get-started`, `/leaderboard` at desktop
 (1280×720) and mobile (390×844 — iPhone 14 Pro).
 
 ## Dynamic content
