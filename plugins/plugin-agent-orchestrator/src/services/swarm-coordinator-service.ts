@@ -262,6 +262,11 @@ export class SwarmCoordinatorService
   // A multi-turn builder re-validates on every turn; repeating the bare
   // verdict is noise, while a verdict carrying a deliverable always posts.
   private readonly postedBareValidatorPass = new Set<string>();
+  // Sessions whose validator PASS (bare or body-carrying) has posted. Unlike
+  // the synthesis dedupe slot this never re-arms on resume: once a create/edit
+  // task has publicly passed, its eventual teardown `stopped` is plumbing and
+  // must not synthesize a false "<label> — stopped before completion."
+  private readonly validatorPassSessions = new Set<string>();
   // Sessions whose latest terminal event was ceded to the sub-agent-router
   // (the router-owned skip in `runSwarmComplete`). The one-shot runners
   // (runPromptAndClose / runPromptViaSmithers in actions/tasks.ts) ALWAYS stop
@@ -385,6 +390,7 @@ export class SwarmCoordinatorService
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
     this.postedBareValidatorPass.clear();
+    this.validatorPassSessions.clear();
     this.routerCededTerminalSessions.clear();
     this.terminalCompletionChains.clear();
     this.enrichmentMetadataCache.clear();
@@ -963,11 +969,18 @@ export class SwarmCoordinatorService
     // the pass verdict. A retry that genuinely dies without ANY lineage
     // completion still synthesizes: the root never claimed the slot.
     if (event === "stopped") {
+      if (this.validatorPassSessions.has(sessionId)) {
+        return;
+      }
       const retryOf = readString(
         await this.getFreshSessionMetadata(sessionId),
         "retryOfSessionId",
       );
-      if (retryOf && this.synthesizedCompletionSessions.has(retryOf)) {
+      if (
+        retryOf &&
+        (this.synthesizedCompletionSessions.has(retryOf) ||
+          this.validatorPassSessions.has(retryOf))
+      ) {
         return;
       }
     }
@@ -1117,11 +1130,14 @@ export class SwarmCoordinatorService
         ? `${validatorVerdict}\n\n${sanitizedBody}`
         : validatorVerdict
       : sanitizedBody;
-    if (validatorVerdict && !sanitizedBody && terminalStatus === "completed") {
-      if (this.postedBareValidatorPass.has(sessionId)) {
-        return;
+    if (validatorVerdict && terminalStatus === "completed") {
+      this.validatorPassSessions.add(sessionId);
+      if (!sanitizedBody) {
+        if (this.postedBareValidatorPass.has(sessionId)) {
+          return;
+        }
+        this.postedBareValidatorPass.add(sessionId);
       }
-      this.postedBareValidatorPass.add(sessionId);
     }
     const completionSummary =
       sanitizedSummary ||
