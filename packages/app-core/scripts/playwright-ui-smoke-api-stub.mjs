@@ -3058,8 +3058,10 @@ const server = http.createServer(async (req, res) => {
       // bidirectional loop drives /api/asr/local-inference (in) and
       // /api/tts/local-inference (out) — both stubbed below.
       messages: {
-        tts: { provider: "local-inference" },
-        asr: { provider: "local-inference" },
+        tts: {
+          provider: "local-inference",
+          asr: { provider: "local-inference" },
+        },
       },
       plugins: { entries: {} },
       ui: {},

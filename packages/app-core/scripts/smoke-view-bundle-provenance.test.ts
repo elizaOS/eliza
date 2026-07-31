@@ -1,9 +1,9 @@
 /**
  * End-to-end contract for the UI-smoke stub's view-bundle route: boots the real
- * stub server (no mocks) and asserts the provenance the stub actually emits over
- * HTTP. Proves that audit mode fails observably instead of fabricating a bundle,
- * synthesized placeholders are marked on the wire, and registry fixtures match
- * the production view-capability transport contract (issue #15791).
+ * stub server (no mocks) and asserts the view provenance and config contracts it
+ * emits over HTTP. Proves that audit mode fails observably instead of fabricating
+ * a bundle, synthesized placeholders are marked on the wire, and smoke fixtures
+ * match production transport shapes (issue #15791).
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -109,6 +109,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 describe("smoke view bundle provenance over HTTP (#15791)", {
   timeout: 30_000,
 }, () => {
+  it("advertises ASR under the canonical messages.tts config object", async () => {
+    const { child, port } = await bootStub({});
+    running = child;
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/config`);
+    expect(response.status).toBe(200);
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !isRecord(payload.messages)) {
+      throw new Error("smoke config must contain a messages object");
+    }
+    const messages = payload.messages;
+    if (!isRecord(messages.tts)) {
+      throw new Error("smoke config must contain a messages.tts object");
+    }
+
+    expect(messages.tts).toMatchObject({
+      provider: "local-inference",
+      asr: { provider: "local-inference" },
+    });
+    expect(messages).not.toHaveProperty("asr");
+  });
+
   it("preserves the orchestrator agent-surface grant in the view response", async () => {
     const bundleRoot = await emptyBundleRoot();
     const { child, port } = await bootStub({
