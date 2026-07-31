@@ -1495,6 +1495,67 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe("completed reply");
   });
 
+  it("fails closed instead of starting fallback actions after cancellation", async () => {
+    const caller = new AbortController();
+    const fallbackHandler = vi.fn(async () => ({
+      success: true,
+      text: "Block started.",
+    }));
+    const useModel = createUseModelMock(async () =>
+      JSON.stringify({ response: "I started the block." }),
+    );
+    const runtime = createRuntime({
+      actions: [
+        {
+          name: "BLOCK",
+          description: "Start a website block.",
+          similes: [],
+          examples: [],
+          validate: async () => true,
+          handler: fallbackHandler,
+        } satisfies Action,
+      ],
+      useModel,
+      messageService: {
+        handleMessage: vi.fn(async () => {
+          caller.abort(new DOMException("socket closed", "AbortError"));
+          return {
+            didRespond: true,
+            responseContent: {
+              text: "Starting the block now.",
+              actions: ["BLOCK"],
+            },
+            responseMessages: [],
+          };
+        }),
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("block distractions"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+
+    expect(fallbackHandler).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+    expect(result.text).toBe(
+      [
+        "I could not complete that request because the model returned actions that were not executed.",
+        "Unexecuted actions: BLOCK.",
+        "No side effects were applied.",
+      ].join("\n"),
+    );
+  });
+
   it("propagates caller cancellation into chat pre-handlers", async () => {
     let preHandlerStarted: (() => void) | undefined;
     const started = new Promise<void>((resolve) => {
