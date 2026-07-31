@@ -11,6 +11,7 @@
  * 128 MiB, so a 128-256 MiB snapshot was a silent dead end.
  *
  * Every side imports THIS module so the numbers cannot drift apart again.
+ * The producer-side capture budget (#17214) derives from the same constant.
  */
 
 /**
