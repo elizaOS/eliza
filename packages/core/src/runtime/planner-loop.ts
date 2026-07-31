@@ -990,6 +990,7 @@ async function runPlannerLoopIterations(
 			iteration,
 			config,
 			failures,
+			plannerCompleted: lastPlannerExplicitCompleted,
 		});
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
@@ -2600,6 +2601,7 @@ async function executeQueuedToolCall(params: {
 	iteration: number;
 	config: ChainingLoopConfig;
 	failures: FailureLike[];
+	plannerCompleted?: boolean;
 }): Promise<void> {
 	assertTrajectoryLimit({
 		kind: "tool_calls",
@@ -2630,6 +2632,9 @@ async function executeQueuedToolCall(params: {
 		result = await params.params.executeToolCall(params.toolCall, {
 			trajectory: params.trajectory,
 			iteration: params.iteration,
+			...(params.plannerCompleted !== undefined
+				? { plannerCompleted: params.plannerCompleted }
+				: {}),
 		});
 	} catch (error) {
 		result = {
