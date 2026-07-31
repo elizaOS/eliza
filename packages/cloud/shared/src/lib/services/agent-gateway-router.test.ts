@@ -178,6 +178,17 @@ function routeArgs(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// Shared across both describes: reset at file level so isolation never depends
+// on describe declaration order (the discord suite leaves guild fixtures set).
+beforeEach(() => {
+  findByDiscordIdWithOrganization.mockReset();
+  findByManagedDiscordGuildId.mockReset();
+  readManagedAgentDiscordBinding.mockReset();
+  readManagedAgentDiscordBinding.mockReturnValue(null);
+  readManagedAgentDiscordGateway.mockReset();
+  readManagedAgentDiscordGateway.mockReturnValue(null);
+});
+
 describe("AgentGatewayRouterService phone routing", () => {
   beforeEach(() => {
     findByPhoneNumberWithOrganization.mockReset();
@@ -613,12 +624,6 @@ describe("AgentGatewayRouterService phone routing", () => {
 
 describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
   beforeEach(() => {
-    findByDiscordIdWithOrganization.mockReset();
-    findByManagedDiscordGuildId.mockReset();
-    readManagedAgentDiscordBinding.mockReset();
-    readManagedAgentDiscordBinding.mockReturnValue(null);
-    readManagedAgentDiscordGateway.mockReset();
-    readManagedAgentDiscordGateway.mockReturnValue(null);
     listOwnerSessions.mockReset();
     listByOrganization.mockReset();
     runOnboardingChat.mockReset();

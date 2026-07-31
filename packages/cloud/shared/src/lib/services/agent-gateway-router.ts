@@ -748,6 +748,7 @@ export class AgentGatewayRouterService {
     return {
       ...routed,
       userId: resolved.userId,
+      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 
