@@ -69,6 +69,8 @@ function listRepositoryFiles(repoRoot) {
       "--cached",
       "--others",
       "--exclude-standard",
+      "--",
+      "packages/scripts",
     ],
     {
       encoding: "utf8",
