@@ -26,7 +26,7 @@
  */
 
 import http from "node:http";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+import type { Action, AgentRuntime, Memory } from "@elizaos/core";
 import { logger, stringToUuid, type UUID } from "@elizaos/core";
 import {
   afterAll,
@@ -703,6 +703,67 @@ describe("conversation-route chat idempotency wiring", () => {
       expect.objectContaining({
         type: "done",
         fullText: "durable reply",
+        messageId: expect.any(String),
+      }),
+    ]);
+  });
+
+  it("SSE: a late disconnect binds a safe outcome without starting fallback actions", async () => {
+    const { state, handleMessage, createMemory } = createHarness();
+    const fallbackHandler = vi.fn(async () => ({
+      success: true,
+      text: "Block started.",
+    }));
+    (state.runtime as AgentRuntime).actions.push({
+      name: "BLOCK",
+      description: "Start a website block.",
+      similes: [],
+      examples: [],
+      validate: async () => true,
+      handler: fallbackHandler,
+    } satisfies Action);
+    let releaseTurn: (() => void) | undefined;
+    const turnGate = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    handleMessage.mockImplementationOnce(async () => {
+      await turnGate;
+      return {
+        didRespond: true,
+        responseContent: {
+          text: "Starting the block now.",
+          actions: ["BLOCK"],
+        },
+        responseMessages: [],
+      };
+    });
+    const body = {
+      text: "block distractions",
+      clientMessageId: "disconnect-before-fallback-1",
+    };
+    const safeOutcome = [
+      "I could not complete that request because the model returned actions that were not executed.",
+      "Unexecuted actions: BLOCK.",
+      "No side effects were applied.",
+    ].join("\n");
+
+    await runRoute("POST", STREAM_PATH, state, body, (req) => {
+      req.emit("aborted");
+      releaseTurn?.();
+    });
+    const persistsAfterDisconnect = createMemory.mock.calls.length;
+
+    expect(fallbackHandler).not.toHaveBeenCalled();
+    expect(persistsAfterDisconnect).toBeGreaterThan(0);
+
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(fallbackHandler).not.toHaveBeenCalled();
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterDisconnect);
+    expect(parseDataFrames(retry.record)).toEqual([
+      expect.objectContaining({
+        type: "done",
+        fullText: safeOutcome,
         messageId: expect.any(String),
       }),
     ]);

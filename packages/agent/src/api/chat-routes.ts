@@ -739,6 +739,7 @@ async function rewriteDirectActionCallbackText(args: {
   actionName: string;
   text: string;
   content?: Content;
+  abortSignal?: AbortSignal;
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
@@ -749,6 +750,7 @@ async function rewriteDirectActionCallbackText(args: {
         : "";
     return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
   };
+  if (args.abortSignal?.aborted) return fallback();
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: [
@@ -777,6 +779,7 @@ async function rewriteDirectActionCallbackText(args: {
         })}`,
       ].join("\n"),
       maxTokens: 260,
+      signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
@@ -3044,6 +3047,7 @@ async function generateChatResponseWithTiming(
       try {
         if (
           androidDirectResult.responseContent &&
+          !generationAbortController.signal.aborted &&
           typeof runtime.emitEvent === "function"
         ) {
           const memoryLike = createMessageMemory({
@@ -3219,6 +3223,7 @@ async function generateChatResponseWithTiming(
                             actionName: createTaskAction.name,
                             text: chunk,
                             content,
+                            abortSignal: generationAbortController.signal,
                           });
                         applyCallbackTextUpdate(content, voicedChunk);
                         actionResponseText = responseText;
@@ -3255,6 +3260,7 @@ async function generateChatResponseWithTiming(
             // Fall through to normal LLM-based routing if coordinator not available
           }
 
+          generationAbortController.signal.throwIfAborted();
           const localInferenceIntent = detectLocalInferenceCommandIntent(
             originalUserText,
             {
@@ -3264,6 +3270,7 @@ async function generateChatResponseWithTiming(
           if (localInferenceIntent) {
             const { handleLocalInferenceChatCommand } =
               await getLocalInferenceChatApi();
+            generationAbortController.signal.throwIfAborted();
             const localResult = await handleLocalInferenceChatCommand(
               localInferenceIntent,
               originalUserText,
@@ -3382,10 +3389,10 @@ async function generateChatResponseWithTiming(
               ),
             { phase: "message" },
           );
-          // handleMessage returning successfully is the turn's completion
-          // barrier. Providers and actions receive the owner signal and reject
-          // unfinished work; a successful return must survive a late transport
-          // abort so persistence and idempotent replay can finish exactly once.
+          // A successful return preserves the completed model/message result,
+          // but it is not permission to start optional post-processing after a
+          // disconnect. The remaining path finalizes that result and only runs
+          // new work while the owner signal is live.
 
           // Ensure MESSAGE_SENT hooks run for API chat flows.
           try {
@@ -3421,6 +3428,7 @@ async function generateChatResponseWithTiming(
                   : [];
             if (
               messagesToEmit.length > 0 &&
+              !generationAbortController.signal.aborted &&
               typeof runtime.emitEvent === "function"
             ) {
               for (const responseMessage of messagesToEmit) {
@@ -3505,7 +3513,10 @@ async function generateChatResponseWithTiming(
                 });
               let successfulFallbackActions = new Set<string>();
 
-              if (selfControlFallbackActions.length > 0) {
+              if (
+                selfControlFallbackActions.length > 0 &&
+                !generationAbortController.signal.aborted
+              ) {
                 const fallbackExecutions = await executeFallbackParsedActions(
                   runtime,
                   message,
@@ -3513,6 +3524,7 @@ async function generateChatResponseWithTiming(
                   appendIncomingText,
                   recordActionCallback,
                   {
+                    abortSignal: generationAbortController.signal,
                     getCurrentText: () => responseText || modelText,
                   },
                 );
@@ -3675,10 +3687,9 @@ async function generateChatResponseWithTiming(
     }
 
     const noResponseFallback = opts?.resolveNoResponseText?.();
-    const exactDocumentValue = await resolveExactDocumentValueForChat(
-      runtime,
-      message,
-    );
+    const exactDocumentValue = generationAbortController.signal.aborted
+      ? null
+      : await resolveExactDocumentValueForChat(runtime, message);
     const normalizedResponseText = trimWalletProgressPrefix(
       exactDocumentValue || responseText || resultText || "",
     );
