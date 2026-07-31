@@ -82,12 +82,6 @@ export function normalizeActionOptions(
 	return options;
 }
 
-// Planner models emit stringified absent-values ("None", "null", "undefined")
-// for optional parameters they do not use. Treating those as real values sent
-// e.g. editTarget:"None" down the strict edit path, where a cold-registry read
-// timed out and failed the whole create. They mean "not provided".
-const ABSENT_SENTINELS = new Set(["none", "null", "undefined"]);
-
 export function readStringOption(
 	options: Record<string, unknown> | undefined,
 	key: string,
@@ -97,10 +91,23 @@ export function readStringOption(
 	const value = normalized[key];
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
-	if (trimmed.length === 0 || ABSENT_SENTINELS.has(trimmed.toLowerCase())) {
-		return null;
-	}
-	return trimmed;
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+// Planner models emit stringified absent-values ("None", "null", "undefined")
+// for OPTIONAL parameters they do not use. Only reference-style options
+// (editTarget, runId, …) opt into this filter: a value like "none" is a
+// legitimate literal for settings values, colors, and search queries, so the
+// shared readStringOption must never swallow it.
+const ABSENT_SENTINELS = new Set(["none", "null", "undefined"]);
+
+export function readOptionalRefOption(
+	options: Record<string, unknown> | undefined,
+	key: string,
+): string | null {
+	const value = readStringOption(options, key);
+	if (value && ABSENT_SENTINELS.has(value.toLowerCase())) return null;
+	return value;
 }
 
 export function extractLaunchTarget(

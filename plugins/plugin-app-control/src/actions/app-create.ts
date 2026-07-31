@@ -20,7 +20,7 @@ import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
-import { readStringOption } from "../params.js";
+import { readOptionalRefOption, readStringOption } from "../params.js";
 import type { InstalledAppInfo } from "../types.js";
 import {
 	findAsyncCodingDelegationActionName,
@@ -508,11 +508,13 @@ async function dispatchCodingAgent({
 function resolvePublishTarget(
 	runtime: IAgentRuntime,
 ): { dir: string; urlBase: string } | null {
+	const dirSetting = runtime.getSetting("APP_PUBLISH_DIR");
+	const urlSetting = runtime.getSetting("APP_PUBLISH_URL_BASE");
 	const dir =
-		(runtime.getSetting("APP_PUBLISH_DIR") as string | undefined)?.trim() ||
+		(typeof dirSetting === "string" ? dirSetting.trim() : "") ||
 		process.env.ELIZA_APP_PUBLISH_DIR?.trim();
 	const urlBase =
-		(runtime.getSetting("APP_PUBLISH_URL_BASE") as string | undefined)?.trim() ||
+		(typeof urlSetting === "string" ? urlSetting.trim() : "") ||
 		process.env.ELIZA_APP_PUBLISH_URL_BASE?.trim();
 	if (!dir || !urlBase) return null;
 	return { dir, urlBase: urlBase.replace(/\/+$/, "") };
@@ -867,10 +869,18 @@ async function editExistingApp({
 	await snapshotAppWorkdir(runtime, workdir, app.name, false, originRoomId);
 
 	const prompt = buildEditPrompt(intent, app, workdir);
+	// A workdir scaffolded by the create flow (SCAFFOLD.md marker) has no
+	// runtime launcher, so "full" verification (launch/browser) fails by
+	// design — the same loop the create path escaped. Installed launchable
+	// apps keep the full profile.
+	const scaffolded = await fs
+		.stat(path.join(workdir, "SCAFFOLD.md"))
+		.then(() => true)
+		.catch(() => false);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
-		verifyProfile: "full",
+		verifyProfile: scaffolded ? "build" : "full",
 		label: `edit-app:${app.name}`,
 		workdir,
 		appName: app.name,
@@ -946,7 +956,7 @@ export async function runCreate({
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 	const userText = (message.content.text ?? "").trim();
 	const explicitChoice = readStringOption(options, "choice");
-	const explicitEditTarget = readStringOption(options, "editTarget");
+	const explicitEditTarget = readOptionalRefOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
 
 	const appClient = client ?? createAppControlClient();

@@ -816,7 +816,7 @@ function shouldRequireStructuredProof(
 	}
 	if (opts.structuredProof !== undefined) return true;
 	if (projectKind === "plugin") return true;
-	return opts.profile === "full";
+	return opts.profile === "full" || opts.profile === "build";
 }
 
 function proofField(proof: Record<string, unknown>, field: string): unknown {

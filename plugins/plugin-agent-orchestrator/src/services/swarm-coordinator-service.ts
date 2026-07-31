@@ -736,8 +736,13 @@ export class SwarmCoordinatorService
       // Session resumed: the ceded-terminal marker belongs to the PREVIOUS
       // turn. A genuine user stop on this new turn — which the router never
       // posts — must synthesize again, so the marker must not outlive the turn
-      // whose teardown it suppresses.
+      // whose teardown it suppresses. Same rule for the validator-pass
+      // markers: a pass suppresses only the teardown stop of the turn it
+      // verified; new work on the reused session re-arms both the stop notice
+      // and the bare-pass feedback.
       this.routerCededTerminalSessions.delete(sessionId);
+      this.validatorPassSessions.delete(sessionId);
+      this.postedBareValidatorPass.delete(sessionId);
     }
 
     const enrichedData = this.shouldEnrichEvent(event)
