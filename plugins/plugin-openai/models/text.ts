@@ -48,6 +48,7 @@ import {
   getNanoModel,
   getResponseHandlerModel,
   getSmallModel,
+  getUsageProvider,
   isCerebrasMode,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
@@ -1441,14 +1442,15 @@ function buildNativeTextResult(
     usage?: LanguageModelUsage;
     providerMetadata?: unknown;
   },
-  modelName?: string
+  modelName: string,
+  provider: "cerebras" | "evolink" | "openai"
 ): NativeGenerateTextResult {
   return {
     text: result.text,
     toolCalls: result.toolCalls ?? [],
     finishReason: result.finishReason,
     usage: convertUsage(result.usage),
-    providerMetadata: mergeProviderModelName(result.providerMetadata, modelName),
+    providerMetadata: mergeProviderIdentity(result.providerMetadata, modelName, provider),
   };
 }
 
@@ -1470,10 +1472,11 @@ function handledMappedPromise<T, U>(
   return handledPromise(handledPromise(value).then(mapper));
 }
 
-function mergeProviderModelName(providerMetadata: unknown, modelName?: string): unknown {
-  if (!modelName) {
-    return providerMetadata;
-  }
+function mergeProviderIdentity(
+  providerMetadata: unknown,
+  modelName: string,
+  provider: "cerebras" | "evolink" | "openai"
+): unknown {
   if (
     providerMetadata &&
     typeof providerMetadata === "object" &&
@@ -1482,9 +1485,10 @@ function mergeProviderModelName(providerMetadata: unknown, modelName?: string): 
     return {
       ...(providerMetadata as Record<string, unknown>),
       modelName,
+      provider,
     };
   }
-  return { modelName };
+  return { modelName, provider };
 }
 
 function createLlmCallDetails(
@@ -1757,6 +1761,7 @@ async function generateTextByModelType(
   const paramsWithAttachments = params as GenerateTextParamsWithOpenAIOptions;
   const openai = createOpenAIClient(runtime);
   const modelName = resolveRequestedModelName(paramsWithAttachments, runtime, getModelFn);
+  const usageProvider = getUsageProvider(runtime);
 
   logger.debug(`[OpenAI] Using ${modelType} model: ${modelName}`);
   const providerOptions = resolveProviderOptions(params, runtime, modelName);
@@ -1882,7 +1887,7 @@ async function generateTextByModelType(
       details.finishReason = buffered.finishReason;
       if (buffered.usage) {
         applyUsageToDetails(details, buffered.usage);
-        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", buffered.usage);
+        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", buffered.usage, modelName);
       }
       return {
         textStream: (async function* replayBufferedStream() {
@@ -1897,6 +1902,7 @@ async function generateTextByModelType(
         ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(restoredToolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
+        providerMetadata: { modelName, provider: usageProvider },
       };
     }
     const details = createLlmCallDetails(
@@ -2037,7 +2043,7 @@ async function generateTextByModelType(
       details.response = restoreResponseText(responseChunks.join(""));
       if (usageResult.status === "fulfilled" && usageResult.value) {
         applyUsageToDetails(details, usageResult.value);
-        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usageResult.value);
+        emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usageResult.value, modelName);
       } else if (usageResult.status === "rejected") {
         companionStreamError ??= usageResult.reason;
       }
@@ -2123,6 +2129,7 @@ async function generateTextByModelType(
       ...(shouldReturnNativeResult ? { toolCalls: restoredToolCallsPromise } : {}),
       usage: usagePromise,
       finishReason: finishReasonPromise,
+      providerMetadata: { modelName, provider: usageProvider },
     };
   }
 
@@ -2160,11 +2167,11 @@ async function generateTextByModelType(
   });
 
   if (result.usage) {
-    emitModelUsageEvent(runtime, modelType, params.prompt ?? "", result.usage);
+    emitModelUsageEvent(runtime, modelType, params.prompt ?? "", result.usage, modelName);
   }
 
   if (shouldReturnNativeResult) {
-    return buildNativeTextResult(result, modelName) as NativeTextModelResult;
+    return buildNativeTextResult(result, modelName, usageProvider) as NativeTextModelResult;
   }
 
   return result.text;

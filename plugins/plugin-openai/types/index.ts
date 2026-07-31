@@ -280,6 +280,15 @@ export interface TextStreamResult {
 
   /** Promise resolving to finish reason */
   finishReason: Promise<string | undefined>;
+
+  /** Native tool calls when the caller requested a tool-capable result. */
+  toolCalls?: Promise<unknown[] | undefined>;
+
+  /** Concrete backend and model identity retained through runtime stream consumption. */
+  providerMetadata?: {
+    modelName: string;
+    provider: "cerebras" | "evolink" | "openai";
+  };
 }
 
 /**

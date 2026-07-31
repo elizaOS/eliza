@@ -6476,24 +6476,20 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					const hasToolCallsField = "toolCalls" in streamRaw;
 					const resolvedToolCalls = hasToolCallsField
-						? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+						? await Promise.resolve(streamRaw.toolCalls)
 						: [];
-					const hasResolvedToolCalls =
-						Array.isArray(resolvedToolCalls) && resolvedToolCalls.length > 0;
-					// Only widen to a GenerateText-shape result when the stream actually
-					// surfaced tool calls. The original streaming contract returns a bare
-					// string; the wider object exists solely to preserve `toolCalls` for
-					// `parsePlannerOutput`, which is irrelevant when none were emitted.
-					if (hasResolvedToolCalls) {
+					// The presence of `toolCalls` marks a native-result contract, even
+					// when the provider returns an empty list. Collapsing that result to a
+					// string discards usage, finish reason, and concrete model metadata,
+					// which makes successful hosted calls unpriceable.
+					if (hasToolCallsField) {
 						const resolvedFinishReason =
 							"finishReason" in streamRaw
-								? await Promise.resolve(streamRaw.finishReason).catch(
-										() => undefined,
-									)
+								? await Promise.resolve(streamRaw.finishReason)
 								: undefined;
 						const resolvedUsage =
 							"usage" in streamRaw
-								? await Promise.resolve(streamRaw.usage).catch(() => undefined)
+								? await Promise.resolve(streamRaw.usage)
 								: undefined;
 						resultRef.current = {
 							text: streamedText,

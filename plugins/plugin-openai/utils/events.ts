@@ -4,25 +4,17 @@
  * one payload and emits `EventType.MODEL_USED` for telemetry, truncating the
  * prompt to keep event payloads small.
  */
-import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
+import type { IAgentRuntime, ModelEventPayload, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import type { TokenUsage } from "../types";
+import { getUsageProvider } from "./config";
 
 const MAX_PROMPT_LENGTH = 200;
 
-interface ModelUsageEventPayload {
-  runtime: IAgentRuntime;
+type OpenAIModelUsageEventPayload = ModelEventPayload & {
   source: "openai";
-  provider: "openai";
-  type: ModelTypeName;
   prompt: string;
-  tokens: {
-    prompt: number;
-    completion: number;
-    total: number;
-    cached?: number;
-  };
-}
+};
 
 interface AISDKUsage {
   inputTokens?: number;
@@ -84,22 +76,34 @@ export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
   prompt: string,
-  usage: ModelUsage
+  usage: ModelUsage,
+  modelName: string
 ): void {
   const normalized = normalizeUsage(usage);
+  const model = modelName.trim();
+  if (!model) {
+    throw new Error("MODEL_USED requires the concrete provider model name");
+  }
 
-  const payload: ModelUsageEventPayload = {
+  const payload: OpenAIModelUsageEventPayload = {
     runtime,
     source: "openai",
-    provider: "openai",
+    provider: getUsageProvider(runtime),
     type,
+    model,
+    modelName: model,
+    modelLabel: String(type),
     prompt: truncatePrompt(prompt),
     tokens: {
       prompt: normalized.promptTokens,
       completion: normalized.completionTokens,
       total: normalized.totalTokens,
       ...(normalized.cachedPromptTokens !== undefined
-        ? { cached: normalized.cachedPromptTokens }
+        ? {
+            cached: normalized.cachedPromptTokens,
+            cachedInputTokens: normalized.cachedPromptTokens,
+            cacheReadInputTokens: normalized.cachedPromptTokens,
+          }
         : {}),
     },
   };

@@ -620,6 +620,9 @@ class BoundedHistogram {
 			mean: sum / n,
 		};
 	}
+	reset(): void {
+		this.samples.length = 0;
+	}
 }
 
 const REGISTRY_RING_CAPACITY = 64;
@@ -683,6 +686,11 @@ class InferenceTimingRegistry {
 	reset(): void {
 		this.ring.length = 0;
 		this.spanHistograms.clear();
+		this.ttft.reset();
+		this.firstVisible.reset();
+		this.ttreply.reset();
+		this.finalized.reset();
+		this.total.reset();
 	}
 }
 
