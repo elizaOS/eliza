@@ -488,10 +488,8 @@ public class ElizaAgentService extends Service {
             .put("stream", true)
             .put("payload", payload);
 
-        LocalSocket socket = new LocalSocket();
+        LocalSocket socket = connectLocalAgentSocket();
         try {
-            socket.connect(new LocalSocketAddress(
-                LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
             LocalSocket previous = ACTIVE_LOCAL_AGENT_STREAMS.putIfAbsent(requestId, socket);
             if (previous != null) {
                 throw new IllegalArgumentException(
@@ -558,15 +556,9 @@ public class ElizaAgentService extends Service {
     /**
      * Send one buffered request over the abstract UDS and return the agent's
      * response envelope ({@code {status,statusText,headers,body,bodyBase64,
-     * bodyEncoding}}) — the exact shape the loopback HTTP path returned, so the
-     * AgentPlugin + WebView transport are unchanged. The connect (not the sent
-     * request) carries the cold-boot retry: while the agent is inside a long
-     * synchronous FFI call (a cold model load, a chat llama_decode) its accept
-     * loop briefly stalls, so a concurrent request can hit connection-refused.
-     * Only the connect phase is retried; once bytes are written the request is
-     * in-flight and a read failure propagates so non-idempotent POSTs never
-     * replay. The window must outlast the longest event-loop stall (~10-15 s
-     * chat-model cold reload after a voice transcription).
+     * bodyEncoding}}). A connection failure surfaces immediately because the
+     * service lifecycle owns readiness; transport-level waiting would make an
+     * unavailable runtime indistinguishable from an in-flight request.
      */
     private static JSONObject dispatchBufferedOverSocket(JSONObject payload)
         throws IOException, JSONException {
@@ -610,35 +602,35 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    /**
-     * Connect to the agent's abstract-namespace request socket, retrying only the
-     * connect phase across the cold-boot window (the bun agent may not have bound
-     * the socket yet, or its accept loop is stalled mid-decode). Returns a
-     * connected {@link LocalSocket}; the caller owns closing it.
-     */
+    @FunctionalInterface
+    interface LocalAgentSocketConnector {
+        LocalSocket connect() throws IOException;
+    }
+
+    /** Connect once to the request socket; the caller owns the returned socket. */
     private static LocalSocket connectLocalAgentSocket() throws IOException {
-        final int connectRetries = 15;
-        IOException lastError = null;
-        for (int attempt = 0; attempt <= connectRetries; attempt++) {
+        return connectLocalAgentSocket(() -> {
             LocalSocket socket = new LocalSocket();
             try {
                 socket.connect(new LocalSocketAddress(
                     LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
                 return socket;
-            } catch (IOException connectError) {
+            } catch (IOException cause) {
                 closeQuietly(socket);
-                lastError = connectError;
+                throw cause;
             }
-            if (attempt < connectRetries) {
-                try {
-                    Thread.sleep(250L * (attempt + 1));
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw lastError;
-                }
-            }
+        });
+    }
+
+    static LocalSocket connectLocalAgentSocket(LocalAgentSocketConnector connector)
+        throws IOException {
+        try {
+            return connector.connect();
+        } catch (IOException cause) {
+            throw new IOException(
+                "Local agent is not ready: request socket is not accepting connections",
+                cause);
         }
-        throw lastError != null ? lastError : new IOException("local agent socket unreachable");
     }
 
     /** Write one NDJSON frame line (UTF-8, newline-terminated) to the socket. */
