@@ -424,10 +424,26 @@ async function buildTaskResultLine(task: {
   originalTask: string;
   completionSummary: string;
   validationSummary?: string;
+  status: string;
   agentType: string;
   workdir?: string;
 }): Promise<string> {
   const validationSummary = task.validationSummary?.trim();
+  // Lifecycle-only relay for any task that did not complete cleanly. A
+  // stopped/errored session's transcript tail is mid-task inner monologue and
+  // its completionSummary can carry raw lastOutput — neither is a result the
+  // user should see. The verification verdict (validationSummary) is the one
+  // user-actionable payload such a task owns; otherwise state what happened.
+  if (task.status !== "completed") {
+    if (validationSummary) return validationSummary;
+    return `${task.originalTask} — ${task.status} before completion.`;
+  }
+  // Lifecycle-only relay for any task that did not complete cleanly. A
+  // stopped/errored session's transcript tail is mid-task inner monologue and
+  // its completionSummary can carry raw lastOutput — neither is a result the
+  // user should see. The verification verdict (validationSummary) is the one
+  // user-actionable payload such a task owns; otherwise state what happened.
+
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
   // `[tool output: …]` envelope blocks from the completionSummary before it is
   // relayed VERBATIM to the connector. The coordinator now sanitizes at the
