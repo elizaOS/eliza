@@ -1554,6 +1554,14 @@ async function executeMessageTurn(
     id: crypto.randomUUID() as UUID,
     agentId: runtime.agentId,
     entityId: room.userId,
+    // Real transports stamp the receiving agent on every inbound turn, and the
+    // owner-private disclosure gate REQUIRES it: an absent `agentId` is denied
+    // as `agent_mismatch`, which silently drops every owner-private action from
+    // the planner's tool surface. The planner is then handed an empty tool list
+    // and the turn degrades to REPLY, so a scenario asserting an owner action
+    // fails with no visible cause. Also flips memory scope to `private`, which
+    // is what a one-to-one owner turn actually is.
+    agentId: runtime.agentId,
     roomId: room.roomId,
     content: {
       ...turnContent,
@@ -1677,6 +1685,9 @@ async function executeActionTurn(
     id: crypto.randomUUID() as UUID,
     agentId: runtime.agentId,
     entityId: room.userId,
+    // See the message-turn construction above: the owner-private disclosure
+    // gate denies an agentId-less turn as `agent_mismatch`.
+    agentId: runtime.agentId,
     roomId: room.roomId,
     content: {
       ...turnContent,

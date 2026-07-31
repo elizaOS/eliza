@@ -62,11 +62,17 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
  *
  * Functions, symbols, and undefined are dropped rather than stringified —
  * substituting a placeholder would put a value in the trace that the action was
- * never called with. Cycles resolve to null (the options graph is data, so a
- * cycle means runtime plumbing leaked in), and depth is capped so a deeply
- * self-referential object cannot stall serialization.
+ * never called with. Cycles resolve to null: `seen` tracks ancestors only, so
+ * recursion always terminates on a cyclic graph without truncating siblings.
+ *
+ * The depth cap is a backstop ABOVE the downstream limit, never below it:
+ * `canonicalJsonValue` rejects nesting past 128, so anything it would accept
+ * must survive sanitization intact. An earlier cap of 12 silently rewrote real
+ * data to null — a captured workflow execution nests
+ * `data.resultData.runData.<node>.0.data.main.0.0.json` well past that, and the
+ * truncated `null` looked exactly like a genuine empty node result.
  */
-const MAX_CAPTURED_PARAM_DEPTH = 12;
+const MAX_CAPTURED_PARAM_DEPTH = 128;
 
 function toJsonSafe(
   value: unknown,
