@@ -111,9 +111,11 @@ function createPersistedConfig(slack: SlackConnectorInput) {
 
 function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
   const persisted = createPersistedConfig(slack);
+  const projection = projectConnectorSettings({}, persisted.connectors);
   const character = {
     name: "Slack Policy Test",
-    settings: projectConnectorSettings({}, persisted.connectors),
+    settings: projection.settings,
+    secrets: projection.secrets,
   };
   const runtime = {
     agentId: "agent-slack-policy-integration",
@@ -121,8 +123,7 @@ function createRuntime(slack: SlackConnectorInput): IAgentRuntime {
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getSetting: vi.fn((key: string) => {
       const settings = character.settings as Record<string, unknown>;
-      const secrets = settings.secrets as Record<string, unknown> | undefined;
-      return settings[key] ?? secrets?.[key];
+      return settings[key] ?? character.secrets[key] ?? null;
     }),
     getWorld: vi.fn().mockResolvedValue({ id: "world-existing" }),
     emitEvent: vi.fn().mockResolvedValue(undefined),
