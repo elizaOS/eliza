@@ -10,6 +10,7 @@ import {
   statusEmoji,
   supervisorStalenessLabel,
   TaskSupervisorService,
+  taskOldEnoughForDigest,
 } from "../../src/services/task-supervisor-service.js";
 
 const ROOM_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -131,18 +132,19 @@ describe("runSupervisorTick (#8900)", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it("a delivery failure doesn't poison dedup (retries next tick)", async () => {
-    const send = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("connector down"))
-      .mockResolvedValueOnce(undefined);
+  it("damps a permanent delivery failure: remembers it undeliverable, no same-digest retry (ebdc4bc storm guard)", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("connector down"));
     const seen = new Map<string, string>();
     const views = [view({ id: "t1" })];
     const first = await runSupervisorTick(views, send, seen);
-    expect(first.posted).toEqual([]); // failed, not recorded
-    expect(seen.has(ROOM_A)).toBe(false);
+    expect(first.posted).toEqual([]); // failed, nothing posted
+    // A failed digest is REMEMBERED as `undeliverable:<digest>` so the loop does
+    // not re-hammer a permanently-dead target every tick (the ~1871 warns/day
+    // storm ebdc4bc fixed). It re-posts only when the digest CHANGES — staleness
+    // bands mutate it within minutes; covered by the escalation test below.
+    expect(seen.get(ROOM_A)?.startsWith("undeliverable:")).toBe(true);
     const second = await runSupervisorTick(views, send, seen);
-    expect(second.posted).toEqual([ROOM_A]); // retried successfully
+    expect(second.posted).toEqual([]); // same digest still dead → damped, not retried
   });
 
   it("re-posts a STUCK task when its staleness band escalates (not deduped silent)", async () => {
@@ -238,6 +240,7 @@ describe("TaskSupervisorService.runOnce resilience", () => {
             status: "active",
             activeSessionCount: 1,
             latestSessionLabel: "codex",
+            createdAt: new Date(Date.now() - 120_000).toISOString(),
           },
         ],
         getTaskOriginTarget: async () => ({
@@ -248,6 +251,160 @@ describe("TaskSupervisorService.runOnce resilience", () => {
     );
     const result = await svc.runOnce();
     expect(result.posted).toEqual([ROOM_A]);
+    await svc.stop();
+  });
+});
+
+describe("digest damping (uncoordinated-messages burst)", () => {
+  // Unlike runtimeWith above, the supervisor stays ENABLED here:
+  // noteTaskCompletion deliberately no-ops on a disabled supervisor, and
+  // these tests exercise the note path. start() arms the unref'd interval
+  // timer; svc.stop() clears it before the test ends.
+  function enabledRuntimeWith(taskSvc: unknown) {
+    return {
+      getService: (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE" ? taskSvc : undefined,
+      sendMessageToTarget: async () => undefined,
+      getSetting: () => undefined,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+    } as never;
+  }
+
+  it("gates the first digest on min task-age > tick interval (pure helper)", () => {
+    const t0 = 1_000_000_000_000;
+    const iso = (agoMs: number) => new Date(t0 - agoMs).toISOString();
+    expect(taskOldEnoughForDigest(iso(10_000), t0, 45_000)).toBe(false);
+    expect(taskOldEnoughForDigest(iso(45_000), t0, 45_000)).toBe(true);
+    expect(taskOldEnoughForDigest(iso(90_000), t0, 45_000)).toBe(true);
+    // Fail-open: an unparseable timestamp must not mute a task forever.
+    expect(taskOldEnoughForDigest("not-a-date", t0, 45_000)).toBe(true);
+  });
+
+  it("runOnce posts no stale 'active' digest for a sub-tick-interval task", async () => {
+    const svc = await TaskSupervisorService.start(
+      enabledRuntimeWith({
+        listTasks: async () => [
+          {
+            id: "young",
+            title: "inline build",
+            status: "active",
+            activeSessionCount: 1,
+            latestSessionLabel: "codex",
+            createdAt: new Date(Date.now() - 5_000).toISOString(),
+          },
+        ],
+        getTaskOriginTarget: async () => ({
+          roomId: ROOM_A,
+          source: "discord",
+        }),
+      }),
+    );
+    const result = await svc.runOnce();
+    expect(result.posted).toEqual([]);
+    await svc.stop();
+  });
+
+  it("suppresses the room digest in the tick window after a completion relay; only a CHANGE re-posts", async () => {
+    const send = vi.fn(async () => undefined);
+    const seen = new Map<string, string>();
+    const first = await runSupervisorTick(
+      [view({ id: "t1", status: "validating", recentlyRelayed: true })],
+      send,
+      seen,
+    );
+    expect(first.posted).toEqual([]);
+    expect(first.skipped).toEqual([ROOM_A]);
+    expect(send).not.toHaveBeenCalled();
+    // Relay window over, digest unchanged → still silent (dedup owns it).
+    const second = await runSupervisorTick(
+      [view({ id: "t1", status: "validating" })],
+      send,
+      seen,
+    );
+    expect(second.posted).toEqual([]);
+    // A real status transition still posts.
+    const third = await runSupervisorTick(
+      [view({ id: "t1", status: "blocked" })],
+      send,
+      seen,
+    );
+    expect(third.posted).toEqual([ROOM_A]);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("freezes the line of a task held un-done after reporting completion (no retry-churn re-posts)", async () => {
+    const digest = composeRoomDigest([
+      view({
+        id: "t1",
+        label: "build-app",
+        status: "active",
+        activeSessions: 1,
+        sessionLabel: "codex · acct-2",
+        staleness: "⏳ idle 8m+",
+        heldAfterCompletion: true,
+      }),
+    ]);
+    expect(digest).toContain(`${statusEmoji("active")} build-app — active`);
+    expect(digest).not.toContain("running");
+    expect(digest).not.toContain("codex");
+    expect(digest).not.toContain("idle");
+    // Verify-retry churn (new session label, escalating staleness) no longer
+    // mutates the digest, so the tick dedups instead of re-posting.
+    const send = vi.fn(async () => undefined);
+    const seen = new Map<string, string>();
+    await runSupervisorTick(
+      [
+        view({
+          id: "t1",
+          label: "build-app",
+          sessionLabel: "retry-1",
+          heldAfterCompletion: true,
+        }),
+      ],
+      send,
+      seen,
+    );
+    const second = await runSupervisorTick(
+      [
+        view({
+          id: "t1",
+          label: "build-app",
+          sessionLabel: "retry-2",
+          staleness: "⏳ idle 3m+",
+          heldAfterCompletion: true,
+        }),
+      ],
+      send,
+      seen,
+    );
+    expect(second.posted).toEqual([]);
+    expect(second.skipped).toEqual([ROOM_A]);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("noteTaskCompletion drives relay suppression through runOnce", async () => {
+    const svc = await TaskSupervisorService.start(
+      enabledRuntimeWith({
+        listTasks: async () => [
+          {
+            id: "t-done",
+            title: "site build",
+            status: "validating",
+            activeSessionCount: 0,
+            latestSessionLabel: null,
+            createdAt: new Date(Date.now() - 120_000).toISOString(),
+          },
+        ],
+        getTaskOriginTarget: async () => ({
+          roomId: ROOM_A,
+          source: "discord",
+        }),
+      }),
+    );
+    svc.noteTaskCompletion("t-done");
+    const result = await svc.runOnce();
+    expect(result.posted).toEqual([]);
+    expect(result.skipped).toEqual([ROOM_A]);
     await svc.stop();
   });
 });
