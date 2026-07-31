@@ -6,6 +6,7 @@ import {
 } from "./types";
 
 import { solanaBlockchainConnector } from "./solana";
+import { ethereumBlockchainConnector } from "./ethereum";
 
 export class DefaultBlockchainConnectorRegistry
   implements BlockchainConnectorRegistry
