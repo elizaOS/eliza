@@ -4025,6 +4025,7 @@ export class DiscordService extends Service implements IDiscordService {
 		for (const state of states) {
 			try {
 				state.voiceManager?.stop();
+				state.messageManager?.destroy();
 				this.voiceTargets.unregisterAccount(state.accountId);
 			} catch (error) {
 				this.runtime.logger.warn(

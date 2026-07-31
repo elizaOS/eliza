@@ -344,6 +344,23 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				message.channel.id,
 				message.id,
 			);
+			// P4 group coordination: only human (non-bot) messages advance the
+			// conversation edge; bot messages never do, which is one half of the
+			// bot-to-bot loop breaker (see group-coordination.ts). This writes the
+			// DURABLE edge row (not an in-process map) so every human message the
+			// gateway sees supersedes in-flight generations across all contenders,
+			// including messages that never trigger a dispatch on this agent.
+			if (
+				!message.author.bot &&
+				message.guild &&
+				typeof service.messageManager.noteHumanEdge === "function"
+			) {
+				await service.messageManager.noteHumanEdge(
+					message.channel.id,
+					message.id,
+					message.createdTimestamp ?? Date.now(),
+				);
+			}
 		}
 
 		// Persisted mute gate. Consults the same participant/world mute state

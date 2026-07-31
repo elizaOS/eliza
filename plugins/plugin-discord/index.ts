@@ -15,6 +15,7 @@ import {
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DISCORD_SERVICE_NAME } from "./constants";
+import * as discordCoordinationSchema from "./coordination-schema";
 import { discordDataRoutes } from "./data-routes";
 import { registerDiscordTargetSource } from "./discord-target-source";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
@@ -46,6 +47,7 @@ const discordPlugin: Plugin = {
 	routes: [...discordSetupRoutes, ...discordDataRoutes],
 	actions: [],
 	providers: [],
+	schema: discordCoordinationSchema,
 	tests: [new DiscordTestSuite()],
 	autoEnable: {
 		connectorKeys: ["discord"],

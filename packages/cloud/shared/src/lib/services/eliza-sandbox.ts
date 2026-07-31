@@ -8933,8 +8933,11 @@ export class ElizaSandboxService {
       }
 
       const locator = this.getReplacementCleanupLocator(current);
-      const incoming = this.replacementLocatorFromHandle(handle);
       if (locator) {
+        // A preserved retry handle has no replacement metadata because its
+        // identity already lives on the primary row. Construct the replacement
+        // locator only when a durable replacement fence exists to compare it to.
+        const incoming = this.replacementLocatorFromHandle(handle);
         this.assertSameReplacementIdentity(locator, incoming);
         if (
           locator.containerId !== incoming.containerId ||

@@ -337,3 +337,18 @@ description = "eliza-1 smoke SFT corpus (synthetic training rows, not credential
 paths = [
   '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
 ]
+
+# plugin-discord/group-coordination.ts: DISCORD_SPEAKER_LEASE_TABLE's value is
+# the literal Postgres table name "discord_coordination_reply_slots" — which is
+# coincidentally the exact shape the `discord-client-secret` rule looks for (the
+# word "discord" followed by a 32-char lowercase/underscore token). The same
+# identifier appears verbatim in the plugin migration and in its CREATE TABLE
+# statements, so it is a schema name, not a credential. Match the full
+# assignment rather than allowlisting the path, so every other token in that
+# file — including a genuine DISCORD_CLIENT_SECRET — remains scanned.
+[[allowlists]]
+description = "Discord coordination table-name constant (schema identifier, not a credential)"
+regexTarget = "match"
+regexes = [
+  '''DISCORD_SPEAKER_LEASE_TABLE\s*=\s*"discord_coordination_reply_slots"''',
+]

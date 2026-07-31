@@ -569,6 +569,11 @@ function safeStringify(obj: unknown): string {
  */
 interface MessageSendOptions {
 	content: string;
+	// Mirrors discord.js `MessageCreateOptions.nonce`/`enforceNonce`: the
+	// coordination fence stamps a per-chunk nonce so Discord itself rejects a
+	// duplicate send if a retry races the lease, rather than posting twice.
+	nonce?: string | number;
+	enforceNonce?: boolean;
 	reply?: {
 		messageReference: string;
 	};
@@ -690,6 +695,10 @@ export async function sendMessageInChunks(
 	runtime?: IAgentRuntime,
 	replyToMode: ReplyToMode = "first",
 	outcomeObserver?: (outcome: DiscordChunkSendOutcome) => void,
+	fence?: {
+		beforeSend: (chunkIndex: number) => Promise<boolean>;
+		nonceForChunk: (chunkIndex: number) => string;
+	},
 ): Promise<DiscordMessage[]> {
 	const sentMessages: DiscordMessage[] = [];
 	let lastSendError: unknown = null;
@@ -718,9 +727,16 @@ export async function sendMessageInChunks(
 				(i === messages.length - 1 && files && files.length > 0) ||
 				(i === messages.length - 1 && components && components.length > 0)
 			) {
+				if (fence && !(await fence.beforeSend(i))) {
+					return sentMessages;
+				}
 				const options: MessageSendOptions = {
 					content: message.trim(),
 				};
+				if (fence) {
+					options.nonce = fence.nonceForChunk(i);
+					options.enforceNonce = true;
+				}
 
 				if (
 					inReplyTo &&
@@ -753,6 +769,9 @@ export async function sendMessageInChunks(
 						const optionsWithoutReply = { ...options };
 						delete optionsWithoutReply.reply;
 						try {
+							if (fence && !(await fence.beforeSend(i))) {
+								return sentMessages;
+							}
 							const m = await channel.send(
 								optionsWithoutReply as MessageCreateOptions,
 							);
