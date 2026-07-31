@@ -3,7 +3,7 @@
  * and dispatches replies to Discord (content, attachments, chunking, pairing
  * gate) and maps interaction URLs into the outgoing payload.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	type ChannelType,
@@ -47,6 +47,29 @@ import type { ICompatRuntime } from "./compat";
 import { checkDiscordDmAccess } from "./dm-access";
 import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
+import {
+	type CoordinationScope,
+	claimSpeakerLease,
+	createDiscordContenderToken,
+	DISCORD_COORDINATION_AUDIT_SCOPE,
+	deterministicCoordinationNonce,
+	deterministicDiscordNonce,
+	emitCoordinationReceipt,
+	evaluateEdgeCurrency,
+	type GroupCoordinationConfig,
+	getGroupCoordinationConfig,
+	rearmSweptCoordinationSlot,
+	reconcileDiscordDelivery,
+	recordDiscordHumanEdge,
+	registerCoordinationTrustMember,
+	releaseSpeakerLease,
+	renewSpeakerLease,
+	requireCoordinationScope,
+	type SpeakerLease,
+	shouldSuppressBotReply,
+	sweepExpiredCoordinationSlots,
+	verifySpeakerLease,
+} from "./group-coordination";
 import { buildDiscordWorldMetadata } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
 import { buildDiscordReplyPayload } from "./interactions";
@@ -318,6 +341,17 @@ function stringField(
 ): string | undefined {
 	const value = record?.[field];
 	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function hasSqlExecutor(runtime: ICompatRuntime): boolean {
+	const candidate = runtime as ICompatRuntime & {
+		db?: { execute?: unknown };
+		adapter?: { db?: { execute?: unknown } };
+	};
+	return (
+		typeof candidate.db?.execute === "function" ||
+		typeof candidate.adapter?.db?.execute === "function"
+	);
 }
 
 export function hasActiveTaskAgentWorkForMessage(
@@ -807,6 +841,11 @@ export class MessageManager {
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
 	private stalenessConfig: DiscordStalenessConfig;
+	private groupCoordinationConfig: GroupCoordinationConfig;
+	private readonly runtimeInstanceId: string;
+	private readonly contenderToken: string;
+	private coordinationSweeperHandle?: ReturnType<typeof setInterval>;
+	private coordinationSweepInFlight = false;
 	private recentlyProcessedMessageIds = new Map<string, number>();
 	private static readonly PROCESSED_MESSAGE_TTL_MS = 2 * 60 * 1000;
 	/**
@@ -861,6 +900,225 @@ export class MessageManager {
 		this.stalenessConfig = getDiscordStalenessConfig((key) =>
 			this.runtime.getSetting(key),
 		);
+		this.groupCoordinationConfig = getGroupCoordinationConfig((key) =>
+			this.runtime.getSetting(key),
+		);
+		// Draft streaming creates/edits Discord messages before the final callback.
+		// Keep it off until that path is protected by the same outbound fence.
+		if (this.groupCoordinationConfig.enabled) {
+			this.draftStreamingEnabled = false;
+		}
+		this.runtimeInstanceId =
+			String(
+				this.runtime.getSetting("ELIZA_RUNTIME_INSTANCE_ID") ?? "",
+			).trim() || randomUUID();
+		this.contenderToken = createDiscordContenderToken({
+			accountId: this.accountId,
+			agentId: this.runtime.agentId,
+			runtimeInstanceId: this.runtimeInstanceId,
+		});
+		this.startCoordinationSweeper();
+	}
+
+	/**
+	 * Crash-recovery sweeper (production trigger for expired claims). A winner
+	 * that crashed between claim and delivery leaves a `claimed` slot with no
+	 * `delivered_message_id`; nothing else in the protocol revisits that edge
+	 * unless the identical message is redelivered. This interval atomically
+	 * expires such slots (first sweeper wins the UPDATE) and re-dispatches the
+	 * original inbound Discord message through the NORMAL handleMessage path,
+	 * where the durable turn record resumes the reply (bounded by its attempt
+	 * counter) and the ordinary claim/fence machinery decides who answers.
+	 */
+	private startCoordinationSweeper(): void {
+		const config = this.groupCoordinationConfig;
+		if (!config.enabled || config.sweepMs <= 0) return;
+		if (!hasSqlExecutor(this.runtime)) return;
+		let scope: CoordinationScope;
+		try {
+			scope = requireCoordinationScope(
+				{
+					agentId: this.runtime.agentId,
+					getSetting: (key) =>
+						key === "ELIZA_RUNTIME_INSTANCE_ID"
+							? this.runtimeInstanceId
+							: this.runtime.getSetting(key),
+				},
+				this.accountId,
+			);
+		} catch {
+			// Incomplete coordination config surfaces loudly on the message path;
+			// the sweeper simply has nothing durable to sweep.
+			return;
+		}
+		scope.contenderToken = this.contenderToken;
+		this.coordinationSweeperHandle = setInterval(() => {
+			void this.runCoordinationSweep(scope);
+		}, config.sweepMs);
+		this.coordinationSweeperHandle.unref?.();
+	}
+
+	private async runCoordinationSweep(scope: CoordinationScope): Promise<void> {
+		if (this.coordinationSweepInFlight) return;
+		this.coordinationSweepInFlight = true;
+		try {
+			// Only sweep channels this client can actually re-dispatch into.
+			// Terminally expiring a slot for an unreachable channel spends a recovery
+			// attempt while the re-dispatch silently fails, which loses the edge.
+			const swept = await sweepExpiredCoordinationSlots(
+				this.runtime,
+				scope,
+				Date.now(),
+				[...this.client.channels.cache.keys()],
+			);
+			for (const slot of swept) {
+				const roomId = createUniqueUuid(this.runtime, slot.channelId);
+				await emitCoordinationReceipt(this.runtime, {
+					kind: "sweeper-recovery",
+					channelId: slot.channelId,
+					edgeMessageId: slot.inboundMessageId,
+					roomId,
+					entityId: this.runtime.agentId,
+					outcome: "expired-claim-recovered",
+					generation: slot.slotIndex,
+					holderToken: slot.holderToken,
+					edgeEpoch: slot.edgeEpoch,
+					detail: {
+						lane: slot.lane,
+						recoveryAttempts: slot.recoveryAttempts,
+					},
+					scope,
+				});
+				try {
+					await this.redispatchSweptMessage(
+						slot.channelId,
+						slot.inboundMessageId,
+					);
+				} finally {
+					// Sweeping changes `claimed` -> `expired` before Discord fetch. If
+					// fetch/dispatch fails (or dispatch declines before claiming), re-arm
+					// the exact old row so a later sweep retries. If dispatch DID claim
+					// it, the guarded state/token CAS is a no-op.
+					await rearmSweptCoordinationSlot(
+						this.runtime,
+						scope,
+						slot,
+						this.groupCoordinationConfig.sweepMs,
+					);
+				}
+			}
+		} catch (error) {
+			this.runtime.reportError?.("discord:coordination.sweeper", error, {
+				accountId: this.accountId,
+			});
+		} finally {
+			this.coordinationSweepInFlight = false;
+		}
+	}
+
+	private async redispatchSweptMessage(
+		channelId: string,
+		inboundMessageId: string,
+	): Promise<void> {
+		try {
+			const channel = await this.client.channels.fetch(channelId);
+			if (!channel || !("messages" in channel)) return;
+			const inbound = await (channel as TextChannel).messages.fetch(
+				inboundMessageId,
+			);
+			if (!inbound) return;
+			// Clear this manager's in-process dedupe entry before re-dispatching.
+			// The sweep interval (60s default) is SHORTER than the processed-id TTL
+			// (120s), so on the crash path that matters most — the holder process
+			// still alive but its generation dead — handleMessage would drop the
+			// recovery as a "duplicate" and the edge would never be answered.
+			// Cross-process safety does not rest on this guard: the durable slot
+			// claim + outbound fence decide who may actually send.
+			this.releaseMessageProcessing(inboundMessageId);
+			await this.handleMessage(inbound);
+		} catch (error) {
+			this.runtime.reportError?.("discord:coordination.sweeper", error, {
+				channelId,
+				inboundMessageId,
+				phase: "redispatch",
+			});
+		}
+	}
+
+	/**
+	 * Resolve this manager's durable coordination scope, or undefined when the
+	 * feature is off / not backed by plugin-sql. Never throws: callers on the
+	 * gateway path must not break message intake on a misconfiguration, which the
+	 * dispatch path already reports loudly.
+	 */
+	private tryCoordinationScope(): CoordinationScope | undefined {
+		if (!this.groupCoordinationConfig.enabled) return undefined;
+		if (!hasSqlExecutor(this.runtime)) return undefined;
+		try {
+			const scope = requireCoordinationScope(
+				{
+					agentId: this.runtime.agentId,
+					getSetting: (key) =>
+						key === "ELIZA_RUNTIME_INSTANCE_ID"
+							? this.runtimeInstanceId
+							: this.runtime.getSetting(key),
+				},
+				this.accountId,
+			);
+			scope.contenderToken = this.contenderToken;
+			return scope;
+		} catch {
+			return undefined;
+		}
+	}
+
+	/**
+	 * Advance the durable human edge from the GATEWAY listener (messageCreate),
+	 * i.e. for every human message the connector observes — not only the ones
+	 * this agent goes on to dispatch.
+	 *
+	 * This is the production path for "latest human edge wins". Previously the
+	 * gateway hook wrote only to the in-process WeakMap, so on a mention-gated
+	 * deployment a human message that did not trigger a dispatch never advanced
+	 * the persisted edge, and an in-flight generation answering an older message
+	 * was never recognised as stale. The durable table is the shared surface all
+	 * contenders read, so the gateway must write THERE.
+	 */
+	public async noteHumanEdge(
+		channelId: string | undefined,
+		messageId: string | undefined,
+		createdTimestamp: number,
+	): Promise<void> {
+		if (!this.groupCoordinationConfig.enabled || !channelId || !messageId) {
+			return;
+		}
+		const scope = this.tryCoordinationScope();
+		if (!scope) return;
+		try {
+			await registerCoordinationTrustMember(this.runtime, scope);
+			await recordDiscordHumanEdge(
+				this.runtime,
+				channelId,
+				messageId,
+				createdTimestamp,
+				scope,
+			);
+		} catch (error) {
+			this.runtime.reportError?.(DISCORD_COORDINATION_AUDIT_SCOPE, error, {
+				channelId,
+				messageId,
+				phase: "gateway-edge",
+				accountId: this.accountId,
+			});
+		}
+	}
+
+	/** Stop background coordination work. Idempotent. */
+	public destroy(): void {
+		if (this.coordinationSweeperHandle) {
+			clearInterval(this.coordinationSweeperHandle);
+			this.coordinationSweeperHandle = undefined;
+		}
 	}
 
 	/**
@@ -1497,6 +1755,220 @@ export class MessageManager {
 				);
 			}
 
+			// ── P4 group coordination gate (multi-human + multi-agent rooms) ──
+			//
+			// Opt-in via DISCORD_GROUP_COORDINATION_ENABLED. Three structural
+			// guarantees before this agent may commit a model turn in a group room:
+			//   1. Bot-to-bot loop prevention: a bot-authored message only earns a
+			//      reply when it explicitly addresses this bot AND the per-channel
+			//      consecutive bot-reply budget (reset by each human message) is
+			//      not exhausted. Suppressed messages are still ingested.
+			//   2. One active speaker per human edge: a durable speaker lease keyed
+			//      (channelId, edgeMessageId) — agent-independent row id — must be
+			//      won. Losing the race is a silent ingest, with a receipt.
+			//   3. Latest-human-edge-wins at claim time: a turn whose edge has been
+			//      superseded by a newer human message aborts here, unless the
+			//      message explicitly addressed this bot (explicitly addressed work
+			//      is never dropped) or the coalesced batch contains the new edge.
+			// A second edge/lease verification runs again in the response callback
+			// immediately before the third-party send (see below).
+			let speakerLease: SpeakerLease | undefined;
+			let coordinationScope: CoordinationScope | undefined;
+			const coordination = this.groupCoordinationConfig;
+			const coalescedEdgeIds = (message as DiscordMessageWithCoalescedMetadata)
+				.__discordCoalescedMessageIds;
+			if (coordination.enabled && !isDM && message.id) {
+				const coordinationDbAvailable = hasSqlExecutor(this.runtime);
+				if (coordinationDbAvailable) {
+					coordinationScope = requireCoordinationScope(
+						{
+							agentId: this.runtime.agentId,
+							getSetting: (key) => {
+								if (key === "ELIZA_RUNTIME_INSTANCE_ID") {
+									return this.runtimeInstanceId;
+								}
+								return this.runtime.getSetting(key);
+							},
+						},
+						this.accountId,
+					);
+					coordinationScope.contenderToken = this.contenderToken;
+					await registerCoordinationTrustMember(
+						this.runtime,
+						coordinationScope,
+					);
+				} else {
+					// Fail closed, with no test escape hatch. A NODE_ENV bypass here let
+					// the suites exercise the in-process WeakMap fallback while claiming
+					// to cover the durable protocol; the coordination tests now boot a
+					// real plugin-sql runtime instead.
+					throw new Error(
+						"DISCORD_GROUP_COORDINATION_ENABLED requires plugin-sql runtime.db",
+					);
+				}
+				// Direct dispatch paths (and tests) may bypass the gateway listener
+				// that records edges; recording here is idempotent (monotonic guard).
+				if (!message.author?.bot) {
+					await recordDiscordHumanEdge(
+						this.runtime,
+						message.channel.id,
+						message.id,
+						message.createdTimestamp ?? Date.now(),
+						coordinationScope,
+					);
+				} else {
+					const suppression = await shouldSuppressBotReply({
+						owner: this.runtime,
+						channelId: message.channel.id,
+						explicitlyAddressed: isBotDirectlyAddressed,
+						budget: coordination.botReplyBudget,
+						scope: coordinationScope,
+					});
+					if (suppression.suppress) {
+						const inboundPersistence = await this.persistInboundMemory(
+							newMessage,
+							message.id,
+						);
+						inboundMemoryCommitted = inboundPersistence !== "missing-id";
+						turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
+						await emitCoordinationReceipt(this.runtime, {
+							kind: "bot-loop-suppress",
+							channelId: message.channel.id,
+							edgeMessageId: message.id,
+							roomId,
+							entityId: newMessage.entityId,
+							worldId,
+							outcome: suppression.reason,
+							scope: coordinationScope,
+						});
+						this.runtime.logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								channelId: message.channel.id,
+								messageId: message.id,
+								reason: suppression.reason,
+							},
+							"Group coordination: suppressing reply to bot message",
+						);
+						return;
+					}
+				}
+
+				const claim = await claimSpeakerLease(this.runtime, {
+					channelId: message.channel.id,
+					edgeMessageId: message.id,
+					roomId,
+					entityId: newMessage.entityId,
+					worldId,
+					leaseMs: coordination.leaseMs,
+					// Human replies and bot-to-bot replies are separate lanes with
+					// separate budgets; sharing a lane made the human answer spend the
+					// bot budget for the same edge.
+					lane: message.author?.bot ? "bot" : "human",
+					slotCount: message.author?.bot ? coordination.botReplyBudget : 1,
+					accountId: this.accountId,
+					scope: coordinationScope,
+					contenderToken: this.contenderToken,
+					nonce: deterministicDiscordNonce({
+						accountId: this.accountId,
+						channelId: message.channel.id,
+						authorId: message.author.id,
+						edgeMessageId: message.id,
+					}),
+				});
+				await emitCoordinationReceipt(this.runtime, {
+					kind: "lease-claim",
+					channelId: message.channel.id,
+					edgeMessageId: message.id,
+					roomId,
+					entityId: newMessage.entityId,
+					worldId,
+					outcome: claim.outcome,
+					generation: claim.lease.generation,
+					holderAgentId: claim.lease.holderAgentId,
+					holderToken: claim.lease.contenderToken,
+					edgeEpoch: claim.lease.edgeEpoch,
+					scope: coordinationScope,
+				});
+				if (claim.outcome === "lost") {
+					const inboundPersistence = await this.persistInboundMemory(
+						newMessage,
+						message.id,
+					);
+					inboundMemoryCommitted = inboundPersistence !== "missing-id";
+					turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							channelId: message.channel.id,
+							messageId: message.id,
+							holderAgentId: claim.lease.holderAgentId,
+						},
+						"Group coordination: another agent holds the speaker lease; ingesting silently",
+					);
+					return;
+				}
+				speakerLease = claim.lease;
+
+				const edgeAtClaim = await evaluateEdgeCurrency({
+					owner: this.runtime,
+					channelId: message.channel.id,
+					edgeMessageId: message.id,
+					coalescedMessageIds: coalescedEdgeIds,
+					explicitlyAddressed: isBotDirectlyAddressed,
+					scope: coordinationScope,
+				});
+				if (!edgeAtClaim.current) {
+					const inboundPersistence = await this.persistInboundMemory(
+						newMessage,
+						message.id,
+					);
+					inboundMemoryCommitted = inboundPersistence !== "missing-id";
+					turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
+					// This claim will never produce a reply. Release the slot now
+					// instead of leaving it `claimed` until expiry, otherwise the crash
+					// sweeper re-dispatches an edge we deliberately abandoned.
+					await releaseSpeakerLease(
+						this.runtime,
+						claim.lease,
+						"stale-edge-at-claim",
+					);
+					speakerLease = undefined;
+					await emitCoordinationReceipt(this.runtime, {
+						kind: "stale-edge-abort",
+						channelId: message.channel.id,
+						edgeMessageId: message.id,
+						roomId,
+						entityId: newMessage.entityId,
+						worldId,
+						outcome: "claim-time",
+						edgeEpoch: edgeAtClaim.edgeEpoch,
+						detail: { latestEdgeMessageId: edgeAtClaim.latestEdgeMessageId },
+						scope: coordinationScope,
+					});
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							channelId: message.channel.id,
+							messageId: message.id,
+							latestEdgeMessageId: edgeAtClaim.latestEdgeMessageId,
+						},
+						"Group coordination: human edge superseded before dispatch; ingesting silently",
+					);
+					return;
+				}
+
+				// NOTE: the bot-lane budget needs no separate "consume" write. Winning
+				// the bot-lane slot IS the spend: the claim is a single atomic upsert,
+				// and shouldSuppressBotReply counts claimed/consumed/delivered bot-lane
+				// rows for the edge. A separate state='consumed' write here also broke
+				// the outbound fence, which requires state='claimed' to renew, so the
+				// agent aborted its own bot reply as a lost lease.
+			}
+
 			const messageId = newMessage.id;
 			const stalenessStartSequence = getDiscordChannelMessageSequence(
 				this,
@@ -1556,8 +2028,21 @@ export class MessageManager {
 
 			const sendFailureReply = async (text: string) => {
 				try {
-					await channel.send({
+					const fenced = await verifyFencedOutboundSend("failure-reply");
+					if (!fenced) {
+						return;
+					}
+					const sent = await channel.send({
 						content: text,
+						...(speakerLease
+							? {
+									nonce: deterministicCoordinationNonce(
+										speakerLease,
+										"failure",
+									),
+									enforceNonce: true,
+								}
+							: {}),
 						...(outboundReplyToMessageId && replyToMode !== "off"
 							? {
 									reply: {
@@ -1566,6 +2051,23 @@ export class MessageManager {
 								}
 							: {}),
 					});
+					if (speakerLease) {
+						await reconcileDiscordDelivery(this.runtime, speakerLease, sent.id);
+						await emitCoordinationReceipt(this.runtime, {
+							kind: "delivery-reconciled",
+							channelId: message.channel.id,
+							edgeMessageId: message.id,
+							roomId,
+							entityId: newMessage.entityId,
+							worldId,
+							outcome: "failure-reply",
+							generation: speakerLease.generation,
+							holderToken: speakerLease.contenderToken,
+							edgeEpoch: speakerLease.edgeEpoch,
+							detail: { deliveredMessageId: sent.id },
+							scope: coordinationScope,
+						});
+					}
 					responseEmitted = true;
 				} catch (sendError) {
 					this.runtime.logger.warn(
@@ -1580,6 +2082,99 @@ export class MessageManager {
 						"Failed to send Discord failure reply",
 					);
 				}
+			};
+
+			const verifyFencedOutboundSend = async (
+				outcome: "normal" | "failure-reply",
+			): Promise<boolean> => {
+				if (!speakerLease || !message.id) {
+					return true;
+				}
+				const renewed = await renewSpeakerLease(
+					this.runtime,
+					speakerLease,
+					coordination.leaseMs,
+				);
+				const leaseCheck = renewed
+					? await verifySpeakerLease(this.runtime, speakerLease)
+					: { held: false as const, reason: "expired" as const };
+				if (!leaseCheck.held) {
+					// The slot is already someone else's (or expired); do NOT release it,
+					// that would clear the new holder's claim. Just abort.
+					await emitCoordinationReceipt(this.runtime, {
+						kind: "lost-lease-abort",
+						channelId: message.channel.id,
+						edgeMessageId: message.id,
+						roomId,
+						entityId: newMessage.entityId,
+						worldId,
+						outcome: leaseCheck.reason,
+						generation: speakerLease.generation,
+						holderToken: speakerLease.contenderToken,
+						edgeEpoch: speakerLease.edgeEpoch,
+						detail: { sendPath: outcome },
+						scope: coordinationScope,
+					});
+					this.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							channelId: message.channel.id,
+							messageId: message.id,
+							reason: leaseCheck.reason,
+							sendPath: outcome,
+						},
+						"Group coordination: speaker lease no longer held; aborting before send",
+					);
+					return false;
+				}
+				const edgeAtSend = await evaluateEdgeCurrency({
+					owner: this.runtime,
+					channelId: message.channel.id,
+					edgeMessageId: message.id,
+					coalescedMessageIds: coalescedEdgeIds,
+					explicitlyAddressed: isBotDirectlyAddressed,
+					scope: coordinationScope,
+				});
+				if (!edgeAtSend.current) {
+					// We still hold the slot but will never use it: release so the edge is
+					// not resurrected by the sweeper and the bot lane's budget is not
+					// consumed by an attempt that produced no message.
+					await releaseSpeakerLease(
+						this.runtime,
+						speakerLease,
+						"stale-edge-pre-send",
+					);
+					await emitCoordinationReceipt(this.runtime, {
+						kind: "stale-edge-abort",
+						channelId: message.channel.id,
+						edgeMessageId: message.id,
+						roomId,
+						entityId: newMessage.entityId,
+						worldId,
+						outcome: outcome === "normal" ? "pre-send" : "failure-reply",
+						holderToken: speakerLease.contenderToken,
+						edgeEpoch: edgeAtSend.edgeEpoch,
+						detail: {
+							latestEdgeMessageId: edgeAtSend.latestEdgeMessageId,
+							sendPath: outcome,
+						},
+						scope: coordinationScope,
+					});
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							channelId: message.channel.id,
+							messageId: message.id,
+							latestEdgeMessageId: edgeAtSend.latestEdgeMessageId,
+							sendPath: outcome,
+						},
+						"Group coordination: human edge superseded; aborting before send",
+					);
+					return false;
+				}
+				return true;
 			};
 
 			const runResponseDispatch = async <T>(
@@ -1652,6 +2247,13 @@ export class MessageManager {
 						);
 					}
 					if (!stalenessDecision.shouldSend) {
+						typingController.stop();
+						statusReactions?.setDone();
+						await finalizePendingDraft();
+						return [];
+					}
+
+					if (!(await verifyFencedOutboundSend("normal"))) {
 						typingController.stop();
 						statusReactions?.setDone();
 						await finalizePendingDraft();
@@ -1911,6 +2513,16 @@ export class MessageManager {
 								(outcome) => {
 									providerSendFailure = outcome.failure;
 								},
+								speakerLease
+									? {
+											beforeSend: () => verifyFencedOutboundSend("normal"),
+											nonceForChunk: (chunkIndex) =>
+												deterministicCoordinationNonce(
+													speakerLease,
+													String(chunkIndex),
+												),
+										}
+									: undefined,
 							),
 						);
 					}
@@ -1921,6 +2533,32 @@ export class MessageManager {
 						throw new Error(
 							"Discord response callback completed without sending any messages",
 						);
+					}
+					// Coordination delivery reconciliation runs as soon as Discord
+					// accepted a chunk, BEFORE local persistence: the slot must record
+					// `delivered_message_id` even if memory writes later fail, otherwise
+					// the crash sweeper would treat a delivered edge as unanswered and
+					// re-dispatch it (double reply).
+					if (speakerLease && messages.length > 0) {
+						await reconcileDiscordDelivery(
+							this.runtime,
+							speakerLease,
+							messages[0]?.id ?? "",
+						);
+						await emitCoordinationReceipt(this.runtime, {
+							kind: "delivery-reconciled",
+							channelId: message.channel.id,
+							edgeMessageId: message.id,
+							roomId,
+							entityId: newMessage.entityId,
+							worldId,
+							outcome: "delivered",
+							generation: speakerLease.generation,
+							holderToken: speakerLease.contenderToken,
+							edgeEpoch: speakerLease.edgeEpoch,
+							detail: { deliveredMessageId: messages[0]?.id ?? "" },
+							scope: coordinationScope,
+						});
 					}
 					const memories: Memory[] = [];
 					for (const m of messages) {
@@ -2111,7 +2749,29 @@ export class MessageManager {
 			const generationAbortController = new AbortController();
 			const generationSignal = generationAbortController.signal;
 			let generationTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+			let coordinationHeartbeatHandle:
+				| ReturnType<typeof setInterval>
+				| undefined;
 			try {
+				if (speakerLease && coordination.heartbeatMs > 0) {
+					coordinationHeartbeatHandle = setInterval(() => {
+						void renewSpeakerLease(
+							this.runtime,
+							speakerLease as SpeakerLease,
+							coordination.leaseMs,
+						).catch((error) => {
+							this.runtime.reportError?.(
+								"discord:coordination.heartbeat",
+								error,
+								{
+									channelId: message.channel.id,
+									messageId: message.id,
+									contenderToken: speakerLease?.contenderToken,
+								},
+							);
+						});
+					}, coordination.heartbeatMs);
+				}
 				const generationPromise = (async () => {
 					if (messageService) {
 						this.runtime.logger.debug(
@@ -2269,12 +2929,26 @@ export class MessageManager {
 				if (generationTimeoutHandle) {
 					clearTimeout(generationTimeoutHandle);
 				}
+				if (coordinationHeartbeatHandle) {
+					clearInterval(coordinationHeartbeatHandle);
+				}
 			}
 
 			if (!responseEmitted) {
 				typingController.stop();
 				statusReactions?.setDone();
 				await finalizePendingDraft();
+				// Generation finished and the agent deliberately produced no reply
+				// (IGNORE/empty). The slot must be released: left `claimed` it expires
+				// and the crash sweeper re-dispatches an edge the agent CHOSE not to
+				// answer, which turns every IGNORE into a recurring redelivery.
+				if (speakerLease) {
+					await releaseSpeakerLease(
+						this.runtime,
+						speakerLease,
+						"no-response-emitted",
+					);
+				}
 			}
 
 			// Generation completed without throwing. Whether the agent emitted a
@@ -2302,6 +2976,11 @@ export class MessageManager {
 				},
 				"Error handling message",
 			);
+			this.runtime.reportError?.(DISCORD_COORDINATION_AUDIT_SCOPE, error, {
+				channelId: message.channel.id,
+				messageId: message.id,
+				accountId: this.accountId,
+			});
 		}
 	}
 
