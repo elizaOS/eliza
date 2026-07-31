@@ -1381,6 +1381,7 @@ type ResolvedMessageOptions = {
 	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
 	 */
 	abortSignal?: AbortSignal;
+	onSettledActionResult?: (result: ActionResult) => void;
 };
 
 function normalizeShouldRespondModelType(
@@ -6134,6 +6135,7 @@ async function runDeterministicPlannerFallback(args: {
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	callback?: HandlerCallback;
+	onSettledActionResult?: (result: ActionResult) => void;
 	plannerError: unknown;
 }): Promise<PlannerLoopResult | null> {
 	const requiredToolMiss = isRequiredToolMissLimit(args.plannerError);
@@ -6216,7 +6218,12 @@ async function runDeterministicPlannerFallback(args: {
 			...(args.callback ? { callback: args.callback } : {}),
 		}),
 		plannerRuntime: args.plannerRuntime,
-		executorOptions: { actions: args.actions },
+		executorOptions: {
+			actions: args.actions,
+			...(args.onSettledActionResult
+				? { onSettledResult: args.onSettledActionResult }
+				: {}),
+		},
 		evaluatorEffects: args.evaluatorEffects,
 		recorder: args.recorder,
 		trajectoryId: args.trajectoryId,
@@ -6816,6 +6823,7 @@ export async function runShortcutGate(args: {
 	state: State;
 	responseId: UUID;
 	senderRole: RoleGateRole;
+	onSettledActionResult?: (result: ActionResult) => void;
 }): Promise<V5MessageRuntimeStage1Result | null> {
 	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
 	const text = getUserMessageText(args.message) ?? "";
@@ -6863,7 +6871,12 @@ export async function runShortcutGate(args: {
 			name: action.name,
 			params: { ...target.parameters, ...match.parameters },
 		},
-		{ actions: [action] },
+		{
+			actions: [action],
+			...(args.onSettledActionResult
+				? { onSettledResult: args.onSettledActionResult }
+				: {}),
+		},
 	);
 	if (captured === undefined) {
 		const executionError = shortcutActionResult.data?.error;
@@ -6994,6 +7007,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	onSettledActionResult?: (result: ActionResult) => void;
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
 	) => Promise<void> | void;
@@ -8171,7 +8185,14 @@ export async function runV5MessageRuntimeStage1(args: {
 											: {}),
 									}),
 									plannerRuntime,
-									executorOptions: { actions: exposedPlannerActions },
+									executorOptions: {
+										actions: exposedPlannerActions,
+										...(args.onSettledActionResult
+											? {
+													onSettledResult: args.onSettledActionResult,
+												}
+											: {}),
+									},
 									evaluatorEffects,
 									recorder,
 									trajectoryId,
@@ -8212,6 +8233,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				trajectoryId,
 				plannerLoopConfig: args.plannerLoopConfig,
 				...(recordingCallback ? { callback: recordingCallback } : {}),
+				...(args.onSettledActionResult
+					? { onSettledActionResult: args.onSettledActionResult }
+					: {}),
 				plannerError: error,
 			});
 			if (!fallbackResult) {
@@ -10576,6 +10600,11 @@ export class DefaultMessageService implements IMessageService {
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+					...(options?.onSettledActionResult
+						? {
+								onSettledActionResult: options.onSettledActionResult,
+							}
+						: {}),
 				};
 
 				const deliveredVisibleTexts = new Set<string>();
@@ -11385,6 +11414,9 @@ export class DefaultMessageService implements IMessageService {
 				state,
 				responseId,
 				senderRole: shortcutSenderRole,
+				...(opts.onSettledActionResult
+					? { onSettledActionResult: opts.onSettledActionResult }
+					: {}),
 			});
 			if (shortcutOutcome && shortcutOutcome.kind === "direct_reply") {
 				strategyResult = shortcutOutcome.result;
@@ -11413,6 +11445,11 @@ export class DefaultMessageService implements IMessageService {
 							responseId,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
+							...(opts.onSettledActionResult
+								? {
+										onSettledActionResult: opts.onSettledActionResult,
+									}
+								: {}),
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 						}),
 					),

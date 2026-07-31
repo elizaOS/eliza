@@ -27,6 +27,7 @@ import {
   executePlannedToolCall,
   getInferenceTimer,
   getSwarmCoordinatorService,
+  hasAppliedUserFacingEffectProof,
   INFERENCE_MARKS,
   INSUFFICIENT_CREDITS_REPLY,
   InferenceTurnTimer,
@@ -40,10 +41,12 @@ import {
   type RolesWorldMetadata,
   type RouteRequestContext,
   recordOwnerGrant,
+  revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
   type TrustedApiPrincipal,
+  tagsMayProduceEffects,
   timeInferenceSpan,
   trackPostDeliveryTask,
   type UUID,
@@ -1011,6 +1014,80 @@ export interface ChatGenerateOptions {
   abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
+}
+
+const POST_COMMIT_INTERRUPTED_REPLY =
+  "The action finished before the response was interrupted. It was not run again.";
+
+function recoverSettledMutatingActionTurn(
+  runtime: AgentRuntime,
+  settledResults: readonly ActionResult[],
+): {
+  text: string;
+  actionResults: ActionResult[];
+  actionNames: string[];
+} | null {
+  const allReceipts = settledResults.flatMap(
+    (result) => result.effectReceipts ?? [],
+  );
+  const revertedReceiptIds = revertedEffectReceiptIds(allReceipts);
+  const actionByName = new Map(
+    runtime.actions.map((action) => [action.name, action]),
+  );
+  const committedResults = settledResults.filter((result) => {
+    const receipts = result.effectReceipts ?? [];
+    const hasActiveAppliedReceipt = receipts.some(
+      (receipt) =>
+        receipt.outcome === "applied" &&
+        !revertedReceiptIds.has(receipt.receiptId),
+    );
+    if (receipts.length > 0) return hasActiveAppliedReceipt;
+    if (
+      result.data?.reconciliationRequired === true &&
+      result.data?.retryable === false
+    ) {
+      return true;
+    }
+    const actionName =
+      typeof result.data?.actionName === "string" ? result.data.actionName : "";
+    return (
+      result.success !== false &&
+      tagsMayProduceEffects(actionByName.get(actionName)?.tags)
+    );
+  });
+  if (committedResults.length === 0) return null;
+
+  let verifiedResult: ActionResult | undefined;
+  try {
+    verifiedResult = [...committedResults]
+      .reverse()
+      .find((result) => hasAppliedUserFacingEffectProof(result, allReceipts));
+  } catch (error) {
+    runtime.logger.warn(
+      {
+        src: "eliza-api",
+        error: getErrorMessage(error),
+      },
+      "Conflicting action receipts prevented exact post-commit reply recovery",
+    );
+  }
+  const verifiedText = verifiedResult?.userFacingText?.trim();
+  const actionNames = Array.from(
+    new Set(
+      committedResults
+        .map((result) =>
+          typeof result.data?.actionName === "string"
+            ? result.data.actionName
+            : "",
+        )
+        .filter((name) => name.length > 0),
+    ),
+  );
+  return {
+    text: verifiedText || POST_COMMIT_INTERRUPTED_REPLY,
+    actionResults: [...settledResults],
+    actionNames,
+  };
 }
 
 function isAppendOnlyStreamDivergenceError(
@@ -3086,6 +3163,7 @@ async function generateChatResponseWithTiming(
           >
         >
       | undefined;
+    const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
     const recordActionCallback = (
       actionTag: string,
@@ -3317,78 +3395,113 @@ async function generateChatResponseWithTiming(
             { phase: "pre-model" },
           );
           generationAbortController.signal.throwIfAborted();
-          result = await timeInferenceSpan(
-            "chat:message-service",
-            async () =>
-              runtime.messageService?.handleMessage(
-                runtime,
-                generationMessage,
-                async (content: Content, actionName?: string) => {
-                  if (content.transcriptVisibility === "internal") {
-                    return [];
-                  }
+          try {
+            result = await timeInferenceSpan(
+              "chat:message-service",
+              async () =>
+                runtime.messageService?.handleMessage(
+                  runtime,
+                  generationMessage,
+                  async (content: Content, actionName?: string) => {
+                    if (content.transcriptVisibility === "internal") {
+                      return [];
+                    }
 
-                  const chunk = extractCompatTextContent(content);
-                  const visibleChunk = isInternalStructuredStreamText(chunk)
-                    ? ""
-                    : chunk;
-                  const attributedActionName = normalizeActionName(actionName);
-                  const progressCallback = isProgressActionCallback(content);
-                  if (!visibleChunk) {
-                    if (attributedActionName) {
-                      recordActionCallback(attributedActionName, false);
-                    }
-                    return [];
-                  }
-                  if (!claimStreamSource("callback")) {
-                    if (attributedActionName) {
-                      recordActionCallback(attributedActionName, false);
-                    }
-                    return [];
-                  }
-                  if (!progressCallback) {
-                    visibleCallbackDeliveries += 1;
-                  }
-                  applyCallbackTextUpdate(content, visibleChunk);
-                  if (attributedActionName) {
-                    recordActionCallback(
-                      attributedActionName,
-                      !progressCallback,
-                      progressCallback ? undefined : visibleChunk,
-                    );
-                  }
-                  return [];
-                },
-                {
-                  abortSignal: generationAbortController.signal,
-                  keepExistingResponses: true,
-                  onStreamChunk: opts?.onChunk
-                    ? async (
-                        chunk: string,
-                        _messageId?: string,
-                        accumulated?: string,
-                      ) => {
-                        if (!chunk) return;
-                        if (isInternalStructuredStreamText(chunk)) {
-                          // A native planner/tool step, not visible reply text:
-                          // fork it onto the working indicator + inline tool row
-                          // instead of leaking JSON into the bubble.
-                          const events =
-                            chatEventsFromStructuredStreamText(chunk);
-                          if (events?.status) emitStatus(events.status);
-                          if (events?.toolEvent) {
-                            opts?.onToolEvent?.(events.toolEvent);
-                          }
-                          return;
-                        }
-                        if (!claimStreamSource("onStreamChunk")) return;
-                        appendIncomingText(chunk, accumulated);
+                    const chunk = extractCompatTextContent(content);
+                    const visibleChunk = isInternalStructuredStreamText(chunk)
+                      ? ""
+                      : chunk;
+                    const attributedActionName =
+                      normalizeActionName(actionName);
+                    const progressCallback = isProgressActionCallback(content);
+                    if (!visibleChunk) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
                       }
-                    : undefined,
-                },
-              ),
-            { phase: "message" },
-          );
+                      return [];
+                    }
+                    if (!claimStreamSource("callback")) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
+                      }
+                      return [];
+                    }
+                    if (!progressCallback) {
+                      visibleCallbackDeliveries += 1;
+                    }
+                    applyCallbackTextUpdate(content, visibleChunk);
+                    if (attributedActionName) {
+                      recordActionCallback(
+                        attributedActionName,
+                        !progressCallback,
+                        progressCallback ? undefined : visibleChunk,
+                      );
+                    }
+                    return [];
+                  },
+                  {
+                    abortSignal: generationAbortController.signal,
+                    keepExistingResponses: true,
+                    onSettledActionResult: (actionResult) => {
+                      settledActionResults.push(actionResult);
+                    },
+                    onStreamChunk: opts?.onChunk
+                      ? async (
+                          chunk: string,
+                          _messageId?: string,
+                          accumulated?: string,
+                        ) => {
+                          if (!chunk) return;
+                          if (isInternalStructuredStreamText(chunk)) {
+                            // A native planner/tool step, not visible reply text:
+                            // fork it onto the working indicator + inline tool row
+                            // instead of leaking JSON into the bubble.
+                            const events =
+                              chatEventsFromStructuredStreamText(chunk);
+                            if (events?.status) emitStatus(events.status);
+                            if (events?.toolEvent) {
+                              opts?.onToolEvent?.(events.toolEvent);
+                            }
+                            return;
+                          }
+                          if (!claimStreamSource("onStreamChunk")) return;
+                          appendIncomingText(chunk, accumulated);
+                        }
+                      : undefined,
+                  },
+                ),
+              { phase: "message" },
+            );
+          } catch (error) {
+            const recovery = recoverSettledMutatingActionTurn(
+              runtime,
+              settledActionResults,
+            );
+            if (!recovery) throw error;
+            responseText = recovery.text;
+            result = {
+              didRespond: true,
+              responseContent: {
+                text: recovery.text,
+                ...(recovery.actionNames.length > 0
+                  ? { actions: recovery.actionNames }
+                  : {}),
+              },
+              responseMessages: [],
+              actionResults: recovery.actionResults,
+              mode: "actions",
+            } as typeof result;
+            runtime.logger.warn(
+              {
+                src: "eliza-api",
+                messageId: message.id,
+                roomId: message.roomId,
+                actionNames: recovery.actionNames,
+                error: getErrorMessage(error),
+              },
+              "Recovered a settled mutating action after message processing stopped",
+            );
+          }
           // A successful return preserves the completed model/message result,
           // but it is not permission to start optional post-processing after a
           // disconnect. The remaining path finalizes that result and only runs
