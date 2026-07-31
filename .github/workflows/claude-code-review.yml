@@ -1,27 +1,128 @@
+# Deep advisory review of every non-draft pull request. A dossier is built
+# first (packages/scripts/pr-deep-review-context.mjs): the evidence-row audit
+# through the repository's own gate parser, live check results for the head
+# commit, changed-source-vs-test pairing, mechanical surface-fix signals, and
+# the prior review conversation. The reviewer is then required to judge the
+# EVIDENCE and the DEPTH of the fix, not just the diff.
+#
+# The `claude-review` job name is load-bearing: repository rules referenced it
+# historically, so it stays stable and always concludes success — the review is
+# advisory (one sticky comment), never a merge blocker. Fork pull requests get
+# no agent run: repository secrets must not meet untrusted head code.
 name: Claude Code Review
 
-# Bootstrap stub for the retired automatic Anthropic review. Keep this workflow
-# and job name stable until repository rules no longer require `claude-review`.
-# PR #16634 contains the agent-review replacement; enabling it is a separate,
-# manually reviewed policy change.
 on:
   pull_request:
     types: [opened, ready_for_review, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: number
 
 concurrency:
-  group: claude-code-review-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: claude-code-review-${{ github.event.pull_request.number || inputs.pr_number }}
   cancel-in-progress: true
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   claude-review:
     name: claude-review
     runs-on: ubuntu-24.04
-    timeout-minutes: 1
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      checks: read
+      actions: read
+      id-token: write
     steps:
-      - name: Report advisory review disabled
+      - name: Classify pull request
+        id: classify
+        env:
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          IS_DRAFT: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
         run: |
-          echo "Automatic Anthropic review is disabled."
-          echo "PR #16634 proposes a replacement; activation is separate."
+          if [ "$IS_FORK" = "true" ]; then
+            echo "run_review=false" >> "$GITHUB_OUTPUT"
+            echo "Fork pull request: secrets do not meet untrusted code; no agent review."
+          elif [ "$IS_DRAFT" = "true" ]; then
+            echo "run_review=false" >> "$GITHUB_OUTPUT"
+            echo "Draft pull request: review runs when it is ready."
+          else
+            echo "run_review=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out base branch tooling
+        if: steps.classify.outputs.run_review == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          # The dossier builder and evidence parser run from the BASE ref: a
+          # pull request must not be able to edit the audit that judges it.
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Build review dossier
+        if: steps.classify.outputs.run_review == 'true'
+        id: dossier
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: node packages/scripts/pr-deep-review-context.mjs
+
+      - name: Deep review
+        if: steps.classify.outputs.run_review == 'true'
+        # Advisory: an unreachable model must not redden the pull request.
+        continue-on-error: true
+        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          use_sticky_comment: "true"
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+
+            You are the deep reviewer for this repository. Read the dossier at
+            `${{ steps.dossier.outputs.dossier_path }}` in full before reading the
+            diff (`gh pr diff`), then review to this standard:
+
+            1. **Correct fix, not a bandaid.** Identify the problem the PR claims
+               to solve (linked issues, description). Trace the change to that
+               problem's ROOT CAUSE. If the change silences a symptom — see the
+               dossier's surface-fix signals, each of which you must explicitly
+               confirm as a real problem or clear as legitimate — say precisely
+               what the deeper fix is and where it belongs. Check the fix is in
+               the right layer and the right file, not the nearest place the
+               error was observable.
+            2. **Evidence.** The dossier audits the evidence rows mechanically;
+               your job is the part a parser cannot do: judge whether the linked
+               logs, screenshots, trajectories, and domain artifacts actually
+               demonstrate the claimed behavior, come from a real run (live model,
+               real device — not the proxy, not a mock), and are current for this
+               head commit. Name every claim that ships unproven.
+            3. **Verification & tests.** Confirm CI is green for the head commit
+               (dossier lists it — a review over red CI must say so first). For
+               each behavior change, point to the test that would catch its
+               regression; where the dossier's coverage section shows a gap,
+               either locate the covering test yourself or require one. Flag any
+               test changed in ways that weaken what it proves.
+            4. **Correctness & safety.** Real bugs, error handling that swallows
+               failures (CLAUDE.md's fail-fast policy), security issues, schema or
+               contract drift, and scope creep beyond the stated intent.
+
+            Output, in order: a verdict line (**APPROVE** / **REQUEST_CHANGES** /
+            **COMMENT** with one-sentence justification); numbered findings, each
+            with file:line, severity, why it matters, and the concrete fix;
+            an "Evidence assessment" section; a "Depth check" section stating in
+            plain words whether this is the deepest fix and why. No praise filler,
+            no style nits, no repeating prior review comments (the dossier lists
+            them — reference and update instead). Post the review as your sticky
+            comment; use `gh pr comment` only if the sticky mechanism fails.
+          claude_args: |
+            --model claude-opus-4-7
+            --allowedTools "Bash(gh pr:*),Bash(gh api:*),Bash(gh run:*),Bash(gh issue view:*),Read,Glob,Grep"
+            --system-prompt "You are reviewing, not fixing: never push commits or edit files. Be exact and terse; every finding must be actionable. Follow CLAUDE.md review standards."

@@ -43,7 +43,11 @@ jobs:
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # ANTHROPIC_API_KEY is the credential that actually exists in this
+          # repository's secrets. The OAuth-token secret this workflow used to
+          # reference was never configured, which left every @claude mention
+          # silently dead behind continue-on-error.
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 
           # Allow cursor bot to trigger reviews
           allowed_bots: "cursor"
