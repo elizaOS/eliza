@@ -164,7 +164,10 @@ test("downloads page centers Eliza App downloads and product CTAs", async ({
     page.getByRole("link", { name: /^Try Eliza Cloud$/ }).last(),
   );
 
-  await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
+  await expect(page.locator(".app-shell")).toHaveCSS(
+    "font-family",
+    "Geist, Arial, sans-serif",
+  );
   await expect(page.locator(".brand-section").first()).toHaveCSS(
     "border-radius",
     "0px",

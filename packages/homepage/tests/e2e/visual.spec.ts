@@ -32,13 +32,30 @@ async function prepare(page: Page, routePath?: string) {
   // control ("Try Now") instead, then give the springs time to reach rest.
   if (routePath === "/" || routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
-    await page
-      .getByText("Try Now")
-      .first()
-      .waitFor({ timeout: 15_000 })
-      .catch(() => {});
-    await page.waitForTimeout(2500);
+    const tryButton = page.getByRole("button", { name: "Try Now" }).first();
+    await tryButton.waitFor({ timeout: 15_000 });
+    await expect
+      .poll(
+        async () =>
+          Number(
+            await tryButton.evaluate(
+              (element) => getComputedStyle(element).opacity,
+            ),
+          ),
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0.98);
+    await page.waitForTimeout(750);
     return;
+  }
+  if (routePath === "/login" || routePath === "/connected") {
+    await page.waitForFunction(
+      () =>
+        window.location.pathname === "/get-started" ||
+        document.body.textContent?.includes("Connected."),
+      undefined,
+      { timeout: 20_000 },
+    );
   }
   await page.waitForTimeout(600);
 }

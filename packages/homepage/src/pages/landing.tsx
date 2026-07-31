@@ -452,6 +452,13 @@ export default function Leaderboard() {
     recognition.start();
   }, [listening]);
 
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    };
+  }, []);
+
   const [selectedCountry, setSelectedCountry] = useState("US");
   const country =
     COUNTRIES.find((c) => c.code === selectedCountry) ?? COUNTRIES[0];
@@ -461,8 +468,9 @@ export default function Leaderboard() {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
+    if (tryInput.length === 0) return;
     el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
-  }, []);
+  }, [tryInput]);
 
   const formatPhone = useCallback((digits: string, pattern: string) => {
     let result = "";
@@ -738,6 +746,10 @@ export default function Leaderboard() {
       <Suspense fallback={null}>
         <ShaderBackground />
       </Suspense>
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')]"
+      />
       <Suspense fallback={null}>
         <ModelB
           ref={modelRef}
@@ -808,7 +820,7 @@ export default function Leaderboard() {
               style={{ gap: tryAppearSpring.tryGap }}
             >
               <AnimatedDiv
-                className="absolute z-1 h-12 bg-white border border-black rounded-xs"
+                className="absolute z-1 h-12 rounded-full border border-white/60 bg-white/30 backdrop-blur-sm"
                 style={{
                   ...indicatorSpring,
                   top: 7,
@@ -823,11 +835,11 @@ export default function Leaderboard() {
                 }}
               />
               <AnimatedDiv
-                className="relative flex items-center gap-1 rounded-xs py-1.5 border border-transparent"
+                className="relative flex items-center gap-1 rounded-full border border-transparent py-1.5"
                 style={barSpring}
               >
                 <AnimatedDiv
-                  className="absolute inset-0 rounded-xs bg-black"
+                  className="absolute inset-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
                   style={{
                     WebkitMaskImage: tabBarBgSpring.reveal.to(
                       (v) =>
@@ -844,7 +856,7 @@ export default function Leaderboard() {
                     <AnimatedButton
                       key={p}
                       onClick={() => changePlatform(p)}
-                      className="relative z-20 flex items-center justify-center size-12 rounded-xs cursor-pointer"
+                      className="relative z-20 flex size-12 cursor-pointer items-center justify-center rounded-full"
                       style={{
                         opacity: iconSprings[i].opacity,
                         scale: iconSprings[i].scale,
@@ -874,7 +886,7 @@ export default function Leaderboard() {
                 }}
               >
                 <AnimatedDiv
-                  className="absolute right-0 top-0 rounded-xs border border-black bg-white"
+                  className="absolute right-0 top-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
                   style={{
                     width: trySpring.width,
                     height: trySpring.height,
@@ -890,7 +902,7 @@ export default function Leaderboard() {
                 />
                 <AnimatedButton
                   onClick={() => navigate("/get-started")}
-                  className="relative z-2 flex items-center justify-center h-full w-full rounded-xs text-black font-semibold text-base whitespace-nowrap cursor-pointer"
+                  className="relative z-2 flex h-full w-full cursor-pointer items-center justify-center whitespace-nowrap rounded-full text-base font-semibold text-neutral-900"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
                   {t("homepage_eliza.leaderboard.tryNow", {

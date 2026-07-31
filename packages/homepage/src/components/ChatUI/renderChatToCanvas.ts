@@ -83,9 +83,9 @@ let wallpaperImg: HTMLImageElement | null = null;
 let tgBgImg: HTMLImageElement | null = null;
 if (typeof window !== "undefined") {
   wallpaperImg = new Image();
-  wallpaperImg.src = "/elizawallpaper.jpeg";
+  wallpaperImg.src = "/elizawallpaper.webp";
   tgBgImg = new Image();
-  tgBgImg.src = "/tbg.jpg";
+  tgBgImg.src = "/tbg.webp";
 }
 
 const SCALE = 4;
@@ -214,7 +214,7 @@ export function measureBubbleHeight(text: string): number {
   const canvas = document.createElement("canvas");
   const ctx = get2dContext(canvas);
   const msgFontSize = s(16);
-  ctx.font = `400 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`;
+  ctx.font = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
   const padX = s(14);
   const padY = s(10);
@@ -244,7 +244,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
   const statusY = topInset - s(36);
   const now = new Date();
   ctx.fillStyle = "#000";
-  ctx.font = `700 ${s(17)}px "Poppins", Arial, system-ui, sans-serif`;
+  ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   const statusBarTime = now.toLocaleTimeString([], {
@@ -353,7 +353,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
 function drawBackButton(ctx: CanvasRenderingContext2D, label: string) {
   const topInset = s(59);
   const navY = topInset;
-  const backBtnFont = `700 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
+  const backBtnFont = `700 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
   ctx.font = backBtnFont;
   const backLabelW = ctx.measureText(label).width;
   const backH = s(40);
@@ -421,14 +421,14 @@ function renderLoginCard(
 
   const textY = s(59) + s(15) + s(20) + s(60);
   ctx.fillStyle = "#000";
-  ctx.font = `600 ${s(22)}px "Poppins", Arial, system-ui, sans-serif`;
+  ctx.font = `600 ${s(22)}px Inter, -apple-system, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText(title, W / 2, textY);
 
   if (subtitle) {
     ctx.fillStyle = "#8e8e93";
-    ctx.font = `400 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
     ctx.fillText(subtitle, W / 2, textY + s(42));
   }
 
@@ -445,6 +445,7 @@ function renderChatContent(
   extraMessages: ExtraMessage[] = [],
 ): HTMLCanvasElement {
   return renderChatToCanvas(
+    undefined,
     visibleCount,
     avatarImg,
     lastMsgProgress,
@@ -456,6 +457,7 @@ function renderChatContent(
 }
 
 export function renderChatToCanvas(
+  targetCanvas: HTMLCanvasElement | undefined,
   visibleCount: number,
   avatarImg?: HTMLImageElement,
   lastMsgProgress = 1,
@@ -469,10 +471,11 @@ export function renderChatToCanvas(
   loginTitle?: string,
   loginSubtitle?: string,
 ): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
+  const canvas = targetCanvas ?? document.createElement("canvas");
+  if (canvas.width !== W) canvas.width = W;
+  if (canvas.height !== H) canvas.height = H;
   const ctx = get2dContext(canvas);
+  ctx.clearRect(0, 0, W, H);
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
@@ -590,7 +593,7 @@ export function renderChatToCanvas(
     const isTGDate = currentRenderPlatform === "telegram";
     const dateText = isTGDate ? "Today" : `Today ${statusTime}`;
     const dateFontSize = s(13);
-    ctx.font = `400 ${dateFontSize}px "Poppins", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${dateFontSize}px Inter, -apple-system, system-ui, sans-serif`;
     const dateY =
       sepY + s(20) - scrollOffset + dateSlide - (isTGDate ? s(65) : 0);
     ctx.textAlign = "center";
@@ -631,7 +634,7 @@ export function renderChatToCanvas(
   const isTGMsg = currentRenderPlatform === "telegram";
   let msgY = sepY + s(32) - scrollOffset - (isTGMsg ? s(60) : 0);
   const msgFontSize = s(16);
-  const msgFont = `400 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`;
+  const msgFont = `400 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
   const padX = s(14);
   const padY = s(10);
@@ -719,7 +722,7 @@ export function renderChatToCanvas(
       : BRAND_COLORS.black;
     ctx.font =
       isUser && !isTG
-        ? `200 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`
+        ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
         : msgFont;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(
@@ -875,7 +878,7 @@ export function renderChatToCanvas(
         : BRAND_COLORS.black;
       ctx.font =
         isUser && !isTG2
-          ? `200 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`
+          ? `200 ${msgFontSize}px Inter, -apple-system, system-ui, sans-serif`
           : msgFont;
       for (let i = 0; i < lines.length; i++) {
         ctx.fillText(
@@ -930,20 +933,20 @@ export function renderChatToCanvas(
     ctx.lineJoin = "miter";
 
     ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(17)}px "Poppins", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillText("Log In", s(36), chevCy + s(2));
     ctx.textBaseline = "alphabetic";
 
     ctx.fillStyle = "#000";
-    ctx.font = `700 ${s(17)}px "Poppins", Arial, system-ui, sans-serif`;
+    ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("Eliza", W / 2, chevCy - s(12));
 
     ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(13)}px "Poppins", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${s(13)}px Inter, -apple-system, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("online", W / 2, chevCy + s(8));
@@ -979,7 +982,7 @@ export function renderChatToCanvas(
     }
     ctx.restore();
   } else {
-    const backBtnFont = `700 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
+    const backBtnFont = `700 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
     ctx.font = backBtnFont;
     const backLabel = "Log In";
     const backLabelW = ctx.measureText(backLabel).width;
@@ -1057,7 +1060,7 @@ export function renderChatToCanvas(
     const avatarCy = contactY + s(26) + s(contentYOffset) - headerShift;
     const avatarR = s(26);
 
-    ctx.font = `800 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
+    ctx.font = `800 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
     const nameText = "Eliza";
     const nameTextW = ctx.measureText(nameText).width;
     const namePadX = s(16);
@@ -1162,7 +1165,7 @@ export function renderChatToCanvas(
   ctx.stroke();
 
   ctx.fillStyle = "#c7c7cc";
-  ctx.font = `400 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
+  ctx.font = `400 ${s(16)}px Inter, -apple-system, system-ui, sans-serif`;
   ctx.textAlign = "left";
   ctx.fillText("iMessage", inputX + s(16), inputFieldY + s(23));
 

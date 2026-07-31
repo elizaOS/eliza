@@ -5,12 +5,13 @@
  * exposes imperative controls used by the surrounding onboarding flow.
  */
 import { animated, useSpring } from "@react-spring/three";
-import { Environment, useGLTF } from "@react-three/drei";
+import { Environment, Lightformer, useGLTF } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -55,27 +56,6 @@ interface ModelBProps {
   introDelayMs?: number;
 }
 
-let triggerSpin: ((direction: 1 | -1) => void) | null = null;
-let triggerRestartMessages: (() => void) | null = null;
-let triggerSendMessage: ((text: string) => void) | null = null;
-let triggerSlideDown: (() => void) | null = null;
-let currentTryActive = false;
-let stopMessageAnimation: (() => void) | null = null;
-let currentOnWaitingChange: ((waiting: boolean) => void) | null = null;
-let currentOnBackClick: (() => void) | null = null;
-let currentOnVideoClick: (() => void) | null = null;
-let currentOnSwitcherDone: (() => void) | null = null;
-let currentOnSwitcherOpen: (() => void) | null = null;
-let switcherOpenFiredEarly = false;
-let switcherDoneFiredEarly = false;
-let currentSwitcherOpen = false;
-let currentLoginTitle: string | undefined;
-let currentLoginSubtitle: string | undefined;
-let switcherPhase: "idle" | "opening" | "open" | "closing" = "idle";
-let switcherProgress = 0;
-let switcherShiftProgress = 0;
-let switcherFinalProgress = 0;
-
 const DEFAULT_BOT_RESPONSES = [
   "sure thing! i'll take care of that right away",
   "on it — give me just a sec",
@@ -88,13 +68,68 @@ const DEFAULT_BOT_RESPONSES = [
   "all done! organized everything so it's easier to find next time",
   "consider it handled",
 ];
-let botResponses = DEFAULT_BOT_RESPONSES;
-let botResponseIndex = 0;
-let backBtnScreenRect: { x: number; y: number; w: number; h: number } | null =
-  null;
-let vidBtnScreenPos: { x: number; y: number } | null = null;
-let cameraZoomDone = false;
-let introDelay = 3000;
+
+type SwitcherPhase = "idle" | "opening" | "open" | "closing";
+
+interface ModelRuntime {
+  triggerSpin: ((direction: 1 | -1) => void) | null;
+  triggerRestartMessages: (() => void) | null;
+  triggerSendMessage: ((text: string) => void) | null;
+  triggerSlideDown: (() => void) | null;
+  tryActive: boolean;
+  stopMessageAnimation: (() => void) | null;
+  onWaitingChange: ((waiting: boolean) => void) | null;
+  onBackClick: (() => void) | null;
+  onVideoClick: (() => void) | null;
+  onSwitcherDone: (() => void) | null;
+  onSwitcherOpen: (() => void) | null;
+  switcherOpenFiredEarly: boolean;
+  switcherDoneFiredEarly: boolean;
+  switcherOpen: boolean;
+  loginTitle: string | undefined;
+  loginSubtitle: string | undefined;
+  switcherPhase: SwitcherPhase;
+  switcherProgress: number;
+  switcherShiftProgress: number;
+  switcherFinalProgress: number;
+  botResponses: string[];
+  botResponseIndex: number;
+  backButtonRect: { x: number; y: number; w: number; h: number } | null;
+  videoButtonPosition: { x: number; y: number } | null;
+  cameraZoomDone: boolean;
+  introDelay: number;
+}
+
+function createModelRuntime(): ModelRuntime {
+  return {
+    triggerSpin: null,
+    triggerRestartMessages: null,
+    triggerSendMessage: null,
+    triggerSlideDown: null,
+    tryActive: false,
+    stopMessageAnimation: null,
+    onWaitingChange: null,
+    onBackClick: null,
+    onVideoClick: null,
+    onSwitcherDone: null,
+    onSwitcherOpen: null,
+    switcherOpenFiredEarly: false,
+    switcherDoneFiredEarly: false,
+    switcherOpen: false,
+    loginTitle: undefined,
+    loginSubtitle: undefined,
+    switcherPhase: "idle",
+    switcherProgress: 0,
+    switcherShiftProgress: 0,
+    switcherFinalProgress: 0,
+    botResponses: DEFAULT_BOT_RESPONSES,
+    botResponseIndex: 0,
+    backButtonRect: null,
+    videoButtonPosition: null,
+    cameraZoomDone: false,
+    introDelay: 3000,
+  };
+}
 
 /** Find the 3D local-space position on a mesh for a given UV coordinate. */
 function uvToMeshLocal(
@@ -156,8 +191,9 @@ function projectToScreen(
   };
 }
 
-function Model() {
-  const { scene } = useGLTF("/models/iphone.glb");
+function Model({ runtime }: { runtime: ModelRuntime }) {
+  const { scene: sourceScene } = useGLTF("/models/iphone-meshopt.glb");
+  const scene = useMemo(() => sourceScene.clone(true), [sourceScene]);
   const cumulative = useRef(0);
   const [target, setTarget] = useState(0);
   const [dipping, setDipping] = useState(false);
@@ -179,6 +215,7 @@ function Model() {
   const responseTimeoutRef = useRef(0);
   const typingAnimFrameRef = useRef(0);
   const responseAnimFrameRef = useRef(0);
+  const spinTimeoutRef = useRef(0);
 
   const { rotation } = useSpring({
     rotation: target,
@@ -197,28 +234,35 @@ function Model() {
     config: { mass: 1, tension: 120, friction: 20 },
   });
 
-  triggerSlideDown = () => {
-    setSlidingDown(true);
-  };
-
-  triggerSpin = (direction: 1 | -1 = 1) => {
-    cumulative.current += direction * Math.PI * 2;
-    setTarget(cumulative.current);
-    setDipping(true);
-    setTimeout(() => setDipping(false), 300);
-  };
+  useEffect(() => {
+    runtime.triggerSlideDown = () => setSlidingDown(true);
+    runtime.triggerSpin = (direction: 1 | -1 = 1) => {
+      cumulative.current += direction * Math.PI * 2;
+      setTarget(cumulative.current);
+      setDipping(true);
+      clearTimeout(spinTimeoutRef.current);
+      spinTimeoutRef.current = window.setTimeout(() => setDipping(false), 300);
+    };
+    return () => {
+      runtime.triggerSlideDown = null;
+      runtime.triggerSpin = null;
+      clearTimeout(spinTimeoutRef.current);
+    };
+  }, [runtime]);
 
   useEffect(() => {
     const avatarImg = new Image();
-    avatarImg.src = "/elizapfp.png";
+    avatarImg.src = "/elizapfp.webp";
     let cancelled = false;
-    const timeout = 0;
     let animFrame = 0;
+    let initialized = false;
 
     const setup = () => {
+      if (cancelled) return;
+      initialized = true;
       const startOffset = -14;
       const chatTexture = new THREE.CanvasTexture(
-        renderChatToCanvas(0, avatarImg, 1, startOffset),
+        renderChatToCanvas(undefined, 0, avatarImg, 1, startOffset),
       );
       chatTexture.flipY = false;
       chatTexture.colorSpace = THREE.SRGBColorSpace;
@@ -281,9 +325,9 @@ function Model() {
           });
         } else if (name.includes("iphone") || name.includes("phone")) {
           child.material = new THREE.MeshPhysicalMaterial({
-            color: 0x222222,
-            metalness: 0.6,
-            roughness: 0.6,
+            color: 0x444444,
+            metalness: 0.35,
+            roughness: 0.45,
             clearcoat: 0,
             clearcoatRoughness: 0.05,
             reflectivity: 1.0,
@@ -292,7 +336,7 @@ function Model() {
       });
 
       // Animate pfp sliding down during camera zoom (3s delay, ~1.7s animation)
-      const offsetStart = performance.now() + introDelay;
+      const offsetStart = performance.now() + runtime.introDelay;
       const offsetDuration = 1100;
 
       const animateOffset = (now: number) => {
@@ -306,7 +350,13 @@ function Model() {
         const eased = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
         const offset = startOffset * (1 - eased);
 
-        chatTexture.image = renderChatToCanvas(0, avatarImg, 1, offset);
+        chatTexture.image = renderChatToCanvas(
+          chatTexture.image as HTMLCanvasElement,
+          0,
+          avatarImg,
+          1,
+          offset,
+        );
         chatTexture.needsUpdate = true;
 
         if (t < 1) {
@@ -326,7 +376,7 @@ function Model() {
         const animateMessage = () => {
           count++;
           msgCountRef.current = count;
-          if (count > getMessageCount() || cancelled || currentTryActive)
+          if (count > getMessageCount() || cancelled || runtime.tryActive)
             return;
 
           const duration = 300;
@@ -338,12 +388,17 @@ function Model() {
             const t = Math.min(elapsed / duration, 1);
             const eased = 1 - (1 - t) ** 3;
 
-            chatTexture.image = renderChatToCanvas(count, avatarImg, eased);
+            chatTexture.image = renderChatToCanvas(
+              chatTexture.image as HTMLCanvasElement,
+              count,
+              avatarImg,
+              eased,
+            );
             chatTexture.needsUpdate = true;
 
             if (t < 1) {
               msgAnimFrameRef.current = requestAnimationFrame(tick);
-            } else if (count < getMessageCount() && !currentTryActive) {
+            } else if (count < getMessageCount() && !runtime.tryActive) {
               msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
             }
           };
@@ -354,12 +409,12 @@ function Model() {
         msgTimeoutRef.current = window.setTimeout(animateMessage, delay);
       };
 
-      stopMessageAnimation = () => {
+      runtime.stopMessageAnimation = () => {
         clearTimeout(msgTimeoutRef.current);
         cancelAnimationFrame(msgAnimFrameRef.current);
       };
 
-      triggerRestartMessages = () => {
+      runtime.triggerRestartMessages = () => {
         clearTimeout(msgTimeoutRef.current);
         cancelAnimationFrame(msgAnimFrameRef.current);
         cancelAnimationFrame(sendAnimFrameRef.current);
@@ -367,17 +422,22 @@ function Model() {
         clearTimeout(responseTimeoutRef.current);
         cancelAnimationFrame(typingAnimFrameRef.current);
         cancelAnimationFrame(responseAnimFrameRef.current);
-        currentOnWaitingChange?.(false);
+        runtime.onWaitingChange?.(false);
         count = 0;
         msgCountRef.current = 0;
         extraMessagesRef.current = [];
         extraScrollRef.current = 0;
-        chatTexture.image = renderChatToCanvas(0, avatarImg, 1);
+        chatTexture.image = renderChatToCanvas(
+          chatTexture.image as HTMLCanvasElement,
+          0,
+          avatarImg,
+          1,
+        );
         chatTexture.needsUpdate = true;
         startMessages(500);
       };
 
-      triggerSendMessage = (text: string) => {
+      runtime.triggerSendMessage = (text: string) => {
         const msg: ExtraMessage = { text, progress: 0, from: "user" };
         extraMessagesRef.current = [...extraMessagesRef.current, msg];
         extraScrollRef.current += measureBubbleHeight(text);
@@ -390,6 +450,7 @@ function Model() {
           msg.progress = 1 - (1 - t) ** 3;
 
           chatTexture.image = renderChatToCanvas(
+            chatTexture.image as HTMLCanvasElement,
             msgCountRef.current,
             avatarImg,
             1,
@@ -407,7 +468,7 @@ function Model() {
         sendAnimFrameRef.current = requestAnimationFrame(tick);
 
         // Set waiting state
-        currentOnWaitingChange?.(true);
+        runtime.onWaitingChange?.(true);
 
         // After 500ms, show typing indicator
         typingTimeoutRef.current = window.setTimeout(() => {
@@ -427,6 +488,7 @@ function Model() {
             const t = Math.min(elapsed / dur, 1);
             typingMsg.progress = 1 - (1 - t) ** 3;
             chatTexture.image = renderChatToCanvas(
+              chatTexture.image as HTMLCanvasElement,
               msgCountRef.current,
               avatarImg,
               1,
@@ -448,8 +510,10 @@ function Model() {
             extraScrollRef.current -= TYPING_BUBBLE_HEIGHT;
 
             const response =
-              botResponses[botResponseIndex % botResponses.length];
-            botResponseIndex++;
+              runtime.botResponses[
+                runtime.botResponseIndex % runtime.botResponses.length
+              ];
+            runtime.botResponseIndex++;
             const responseMsg: ExtraMessage = {
               text: response,
               progress: 0,
@@ -468,6 +532,7 @@ function Model() {
               const t = Math.min(elapsed / dur2, 1);
               responseMsg.progress = 1 - (1 - t) ** 3;
               chatTexture.image = renderChatToCanvas(
+                chatTexture.image as HTMLCanvasElement,
                 msgCountRef.current,
                 avatarImg,
                 1,
@@ -480,7 +545,7 @@ function Model() {
                 responseAnimFrameRef.current =
                   requestAnimationFrame(animResponse);
               } else {
-                currentOnWaitingChange?.(false);
+                runtime.onWaitingChange?.(false);
               }
             };
             responseAnimFrameRef.current = requestAnimationFrame(animResponse);
@@ -488,7 +553,7 @@ function Model() {
         }, 400);
       };
 
-      startMessages(introDelay + 1600);
+      startMessages(runtime.introDelay + 1600);
     };
 
     if (avatarImg.complete) {
@@ -499,10 +564,30 @@ function Model() {
 
     return () => {
       cancelled = true;
-      clearTimeout(timeout);
       cancelAnimationFrame(animFrame);
+      clearTimeout(spinTimeoutRef.current);
+      clearTimeout(msgTimeoutRef.current);
+      clearTimeout(typingTimeoutRef.current);
+      clearTimeout(responseTimeoutRef.current);
+      cancelAnimationFrame(msgAnimFrameRef.current);
+      cancelAnimationFrame(sendAnimFrameRef.current);
+      cancelAnimationFrame(typingAnimFrameRef.current);
+      cancelAnimationFrame(responseAnimFrameRef.current);
+      runtime.triggerRestartMessages = null;
+      runtime.triggerSendMessage = null;
+      runtime.stopMessageAnimation = null;
+      if (initialized) {
+        scene.traverse((child: THREE.Object3D) => {
+          if (!(child instanceof THREE.Mesh)) return;
+          const materials = Array.isArray(child.material)
+            ? child.material
+            : [child.material];
+          for (const material of materials) material.dispose();
+        });
+        chatTextureRef.current?.dispose();
+      }
     };
-  }, [scene]);
+  }, [runtime, scene]);
 
   // Animate scroll when tryActive changes + continuous render for typing dots + switcher
   useFrame(({ camera, size }, delta) => {
@@ -513,18 +598,18 @@ function Model() {
         const tl = projectToScreen(backBtnTLRef.current, mesh, camera, size);
         const br = projectToScreen(backBtnBRRef.current, mesh, camera, size);
         if (tl && br) {
-          backBtnScreenRect = {
+          runtime.backButtonRect = {
             x: Math.min(tl.x, br.x),
             y: Math.min(tl.y, br.y),
             w: Math.abs(br.x - tl.x),
             h: Math.abs(br.y - tl.y),
           };
         } else {
-          backBtnScreenRect = null;
+          runtime.backButtonRect = null;
         }
       }
       if (vidBtnLocalRef.current) {
-        vidBtnScreenPos = projectToScreen(
+        runtime.videoButtonPosition = projectToScreen(
           vidBtnLocalRef.current,
           mesh,
           camera,
@@ -537,82 +622,92 @@ function Model() {
     const THRESH = 0.001;
 
     // State transitions
-    if (currentSwitcherOpen && switcherPhase === "idle") {
-      switcherPhase = "opening";
-      switcherProgress = 0;
-      switcherShiftProgress = 0;
-      switcherFinalProgress = 0;
-      switcherOpenFiredEarly = false;
+    if (runtime.switcherOpen && runtime.switcherPhase === "idle") {
+      runtime.switcherPhase = "opening";
+      runtime.switcherProgress = 0;
+      runtime.switcherShiftProgress = 0;
+      runtime.switcherFinalProgress = 0;
+      runtime.switcherOpenFiredEarly = false;
     }
-    if (!currentSwitcherOpen && switcherPhase === "open") {
-      switcherPhase = "closing";
-      switcherProgress = 0;
-      switcherShiftProgress = 0;
-      switcherFinalProgress = 0;
-      switcherDoneFiredEarly = false;
+    if (!runtime.switcherOpen && runtime.switcherPhase === "open") {
+      runtime.switcherPhase = "closing";
+      runtime.switcherProgress = 0;
+      runtime.switcherShiftProgress = 0;
+      runtime.switcherFinalProgress = 0;
+      runtime.switcherDoneFiredEarly = false;
     }
 
     // Same 3-phase forward animation for both opening and closing
-    if (switcherPhase === "opening" || switcherPhase === "closing") {
+    if (
+      runtime.switcherPhase === "opening" ||
+      runtime.switcherPhase === "closing"
+    ) {
       // Phase 1: scale
-      const scaleDiff = 1 - switcherProgress;
+      const scaleDiff = 1 - runtime.switcherProgress;
       if (Math.abs(scaleDiff) > THRESH) {
-        switcherProgress += scaleDiff * lerpSpeed;
+        runtime.switcherProgress += scaleDiff * lerpSpeed;
       } else {
-        switcherProgress = 1;
+        runtime.switcherProgress = 1;
       }
       // Phase 2: shift — starts once scale done
-      if (switcherProgress > 0.99) {
-        const shiftDiff = 1 - switcherShiftProgress;
+      if (runtime.switcherProgress > 0.99) {
+        const shiftDiff = 1 - runtime.switcherShiftProgress;
         if (Math.abs(shiftDiff) > THRESH) {
-          switcherShiftProgress += shiftDiff * lerpSpeed;
+          runtime.switcherShiftProgress += shiftDiff * lerpSpeed;
         } else {
-          switcherShiftProgress = 1;
+          runtime.switcherShiftProgress = 1;
         }
       }
       // Phase 3: final — starts once shift done
-      if (switcherShiftProgress > 0.99) {
-        const finalDiff = 1 - switcherFinalProgress;
+      if (runtime.switcherShiftProgress > 0.99) {
+        const finalDiff = 1 - runtime.switcherFinalProgress;
         if (Math.abs(finalDiff) > THRESH) {
-          switcherFinalProgress += finalDiff * lerpSpeed;
+          runtime.switcherFinalProgress += finalDiff * lerpSpeed;
         } else {
-          switcherFinalProgress = 1;
+          runtime.switcherFinalProgress = 1;
         }
       }
       // Fire callbacks early so UI bars start appearing sooner
-      if (switcherFinalProgress > 0.8) {
-        if (switcherPhase === "opening" && !switcherOpenFiredEarly) {
-          switcherOpenFiredEarly = true;
-          currentOnSwitcherOpen?.();
+      if (runtime.switcherFinalProgress > 0.8) {
+        if (
+          runtime.switcherPhase === "opening" &&
+          !runtime.switcherOpenFiredEarly
+        ) {
+          runtime.switcherOpenFiredEarly = true;
+          runtime.onSwitcherOpen?.();
         }
-        if (switcherPhase === "closing" && !switcherDoneFiredEarly) {
-          switcherDoneFiredEarly = true;
-          currentOnSwitcherDone?.();
+        if (
+          runtime.switcherPhase === "closing" &&
+          !runtime.switcherDoneFiredEarly
+        ) {
+          runtime.switcherDoneFiredEarly = true;
+          runtime.onSwitcherDone?.();
         }
       }
       // Check completion
-      if (switcherFinalProgress > 0.99) {
-        if (switcherPhase === "opening") {
-          switcherPhase = "open";
+      if (runtime.switcherFinalProgress > 0.99) {
+        if (runtime.switcherPhase === "opening") {
+          runtime.switcherPhase = "open";
         } else {
           // closing done — back to idle
-          switcherPhase = "idle";
-          switcherProgress = 0;
-          switcherShiftProgress = 0;
-          switcherFinalProgress = 0;
+          runtime.switcherPhase = "idle";
+          runtime.switcherProgress = 0;
+          runtime.switcherShiftProgress = 0;
+          runtime.switcherFinalProgress = 0;
         }
       }
     }
 
-    const switcherActive = switcherPhase !== "idle";
+    const switcherActive = runtime.switcherPhase !== "idle";
     const switcherAnimating =
-      switcherPhase === "opening" || switcherPhase === "closing";
-    const switcherReversed = switcherPhase === "closing";
+      runtime.switcherPhase === "opening" ||
+      runtime.switcherPhase === "closing";
+    const switcherReversed = runtime.switcherPhase === "closing";
 
     const hasTyping = extraMessagesRef.current.some((m) => m.typing);
     const preloadScroll = measurePreloadedScrollHeight(msgCountRef.current);
     const initialScroll = preloadScroll > 27 ? preloadScroll - 27 : 0;
-    const goal = currentTryActive ? initialScroll + extraScrollRef.current : 0;
+    const goal = runtime.tryActive ? initialScroll + extraScrollRef.current : 0;
     const current = scrollYRef.current;
     const needsScroll = Math.abs(current - goal) >= 0.1;
 
@@ -631,18 +726,19 @@ function Model() {
     ) {
       if (chatTextureRef.current && avatarImgRef.current) {
         chatTextureRef.current.image = renderChatToCanvas(
+          chatTextureRef.current.image as HTMLCanvasElement,
           msgCountRef.current,
           avatarImgRef.current,
           1,
           0,
           scrollYRef.current,
           extraMessagesRef.current,
-          switcherProgress,
-          switcherShiftProgress,
-          switcherFinalProgress,
+          runtime.switcherProgress,
+          runtime.switcherShiftProgress,
+          runtime.switcherFinalProgress,
           switcherReversed,
-          currentLoginTitle,
-          currentLoginSubtitle,
+          runtime.loginTitle,
+          runtime.loginSubtitle,
         );
         chatTextureRef.current.needsUpdate = true;
       }
@@ -660,9 +756,9 @@ function Model() {
   );
 }
 
-useGLTF.preload("/models/iphone.glb");
+useGLTF.preload("/models/iphone-meshopt.glb");
 
-function FovZoom() {
+function FovZoom({ runtime }: { runtime: ModelRuntime }) {
   const startFov = 2.8;
   const endFov = 90;
   const startY = 19.5;
@@ -670,7 +766,7 @@ function FovZoom() {
   const progress = useRef(0);
   const initialized = useRef(false);
   const elapsed = useRef(0);
-  const delay = introDelay / 1000;
+  const delay = runtime.introDelay / 1000;
 
   useFrame((state, delta) => {
     const cam = state.camera as THREE.PerspectiveCamera;
@@ -685,7 +781,7 @@ function FovZoom() {
       return;
     }
     if (progress.current >= 1) {
-      if (!cameraZoomDone) cameraZoomDone = true;
+      if (!runtime.cameraZoomDone) runtime.cameraZoomDone = true;
       return;
     }
     progress.current = Math.min(progress.current + delta * 0.9, 1);
@@ -718,42 +814,43 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   ref,
 ) {
   const t = useT();
+  const runtime = useMemo(createModelRuntime, []);
   const backBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const vidBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const platformRef = useRef(platform);
 
   useEffect(() => {
-    currentTryActive = tryActive;
+    runtime.tryActive = tryActive;
     if (tryActive) {
-      stopMessageAnimation?.();
+      runtime.stopMessageAnimation?.();
     }
-  }, [tryActive]);
+  }, [runtime, tryActive]);
 
   useEffect(() => {
-    currentOnWaitingChange = onWaitingChange ?? null;
-  }, [onWaitingChange]);
+    runtime.onWaitingChange = onWaitingChange ?? null;
+  }, [onWaitingChange, runtime]);
 
   useEffect(() => {
-    currentOnBackClick = onBackClick ?? null;
-  }, [onBackClick]);
+    runtime.onBackClick = onBackClick ?? null;
+  }, [onBackClick, runtime]);
 
   useEffect(() => {
-    currentSwitcherOpen = switcherOpen;
-  }, [switcherOpen]);
+    runtime.switcherOpen = switcherOpen;
+  }, [runtime, switcherOpen]);
 
   useEffect(() => {
-    currentLoginTitle = loginTitle;
-  }, [loginTitle]);
+    runtime.loginTitle = loginTitle;
+  }, [loginTitle, runtime]);
 
   useEffect(() => {
-    currentLoginSubtitle = loginSubtitle;
-  }, [loginSubtitle]);
+    runtime.loginSubtitle = loginSubtitle;
+  }, [loginSubtitle, runtime]);
 
   useEffect(() => {
-    botResponses = DEFAULT_BOT_RESPONSES.map((defaultValue, i) =>
+    runtime.botResponses = DEFAULT_BOT_RESPONSES.map((defaultValue, i) =>
       t(`homepage_eliza.model.botResponse${i}`, { defaultValue }),
     );
-  }, [t]);
+  }, [runtime, t]);
 
   useEffect(() => {
     platformRef.current = platform;
@@ -763,20 +860,20 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   }, [platform]);
 
   useEffect(() => {
-    if (introDelayMs != null) introDelay = introDelayMs;
-  }, [introDelayMs]);
+    if (introDelayMs != null) runtime.introDelay = introDelayMs;
+  }, [introDelayMs, runtime]);
 
   useEffect(() => {
-    currentOnVideoClick = onVideoClick ?? null;
-  }, [onVideoClick]);
+    runtime.onVideoClick = onVideoClick ?? null;
+  }, [onVideoClick, runtime]);
 
   useEffect(() => {
-    currentOnSwitcherOpen = onSwitcherOpen ?? null;
-  }, [onSwitcherOpen]);
+    runtime.onSwitcherOpen = onSwitcherOpen ?? null;
+  }, [onSwitcherOpen, runtime]);
 
   useEffect(() => {
-    currentOnSwitcherDone = onSwitcherDone ?? null;
-  }, [onSwitcherDone]);
+    runtime.onSwitcherDone = onSwitcherDone ?? null;
+  }, [onSwitcherDone, runtime]);
 
   // Sync overlay div positions every frame from projected 3D coords
   useEffect(() => {
@@ -784,18 +881,19 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     const update = () => {
       const backEl = backBtnOverlayRef.current;
       const vidEl = vidBtnOverlayRef.current;
-      const show = cameraZoomDone;
+      const show = runtime.cameraZoomDone;
 
       if (backEl) {
-        if (backBtnScreenRect && show) {
+        if (runtime.backButtonRect && show) {
+          const rect = runtime.backButtonRect;
           const plat = platformRef.current ?? "imessage";
           const isTG = plat === "telegram";
           backEl.style.display = "block";
           backEl.style.transform = isTG
-            ? `translate(${backBtnScreenRect.x - 12}px, ${backBtnScreenRect.y + 12}px)`
-            : `translate(${backBtnScreenRect.x}px, ${backBtnScreenRect.y}px)`;
-          backEl.style.width = `${backBtnScreenRect.w}px`;
-          backEl.style.height = `${backBtnScreenRect.h}px`;
+            ? `translate(${rect.x - 12}px, ${rect.y + 12}px)`
+            : `translate(${rect.x}px, ${rect.y}px)`;
+          backEl.style.width = `${rect.w}px`;
+          backEl.style.height = `${rect.h}px`;
           backEl.style.backgroundColor = "";
         } else {
           backEl.style.display = "none";
@@ -803,9 +901,15 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
       }
       if (vidEl) {
         const isTG = (platformRef.current ?? "imessage") === "telegram";
-        if (vidBtnScreenPos && show && switcherPhase === "idle" && !isTG) {
+        if (
+          runtime.videoButtonPosition &&
+          show &&
+          runtime.switcherPhase === "idle" &&
+          !isTG
+        ) {
+          const position = runtime.videoButtonPosition;
           vidEl.style.display = "block";
-          vidEl.style.transform = `translate(${vidBtnScreenPos.x - OVERLAY_SIZE / 2}px, ${vidBtnScreenPos.y - OVERLAY_SIZE / 2}px)`;
+          vidEl.style.transform = `translate(${position.x - OVERLAY_SIZE / 2}px, ${position.y - OVERLAY_SIZE / 2}px)`;
         } else {
           vidEl.style.display = "none";
         }
@@ -815,20 +919,20 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     };
     raf = requestAnimationFrame(update);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [runtime]);
 
   useImperativeHandle(ref, () => ({
     spin(direction: 1 | -1 = 1) {
-      triggerSpin?.(direction);
+      runtime.triggerSpin?.(direction);
     },
     restartMessages() {
-      triggerRestartMessages?.();
+      runtime.triggerRestartMessages?.();
     },
     sendMessage(text: string) {
-      triggerSendMessage?.(text);
+      runtime.triggerSendMessage?.(text);
     },
     slideDown() {
-      triggerSlideDown?.();
+      runtime.triggerSlideDown?.();
     },
   }));
 
@@ -836,20 +940,36 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     <div className="fixed inset-0">
       <Canvas
         camera={{ position: [0, 8, 0.6], fov: 45 }}
-        dpr={[1, 2]}
-        gl={{ alpha: true, toneMapping: THREE.NoToneMapping }}
+        dpr={[1, 1.5]}
+        gl={{
+          alpha: true,
+          powerPreference: "high-performance",
+          toneMapping: THREE.NoToneMapping,
+        }}
       >
         <ambientLight intensity={0.5} />
-        <Model />
-        <Environment preset="city" />
-        <FovZoom />
+        <Model runtime={runtime} />
+        <Environment resolution={64}>
+          <Lightformer intensity={2} position={[0, 5, -6]} scale={[10, 5, 1]} />
+          <Lightformer
+            intensity={1.2}
+            position={[-6, 1, 2]}
+            scale={[4, 8, 1]}
+          />
+          <Lightformer
+            intensity={0.8}
+            position={[6, -2, 1]}
+            scale={[3, 5, 1]}
+          />
+        </Environment>
+        <FovZoom runtime={runtime} />
       </Canvas>
       {/* Back button overlay — pill shaped, size set dynamically via rAF */}
       <button
         type="button"
         ref={backBtnOverlayRef}
         onClick={() => {
-          currentOnBackClick?.();
+          runtime.onBackClick?.();
         }}
         aria-label={t("homepage_eliza.model.backAria", {
           defaultValue: "Back",
@@ -872,7 +992,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
         type="button"
         ref={vidBtnOverlayRef}
         onClick={() => {
-          currentOnVideoClick?.();
+          runtime.onVideoClick?.();
         }}
         aria-label={t("homepage_eliza.model.videoAria", {
           defaultValue: "Open video call",

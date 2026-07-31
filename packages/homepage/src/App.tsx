@@ -21,7 +21,7 @@ function RouteFallback() {
       style={{
         background: BRAND_COLORS.orange,
         color: BRAND_COLORS.black,
-        fontFamily: "Poppins",
+        fontFamily: "Geist, Arial, sans-serif",
       }}
     >
       <Loader2 className="h-8 w-8 animate-spin opacity-80" />

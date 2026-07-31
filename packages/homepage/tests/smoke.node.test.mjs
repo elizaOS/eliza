@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -14,11 +14,14 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");
 const globalStylesPath = resolve(__dirname, "../src/index.css");
-const iphoneModelPath = resolve(__dirname, "../public/models/iphone.glb");
-const elizaAvatarPath = resolve(__dirname, "../public/elizapfp.png");
+const iphoneModelPath = resolve(
+  __dirname,
+  "../public/models/iphone-meshopt.glb",
+);
+const elizaAvatarPath = resolve(__dirname, "../public/elizapfp.webp");
 const profileImagePath = resolve(
   __dirname,
-  "../public/eliza-app-profile-image.png",
+  "../public/eliza-app-profile-image.webp",
 );
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
@@ -32,15 +35,27 @@ test("marketing.tsx exports a default function component", () => {
   );
 });
 
-test("landing ships its iPhone GLB model and profile assets", () => {
+test("landing ships compressed iPhone and WebP profile assets", () => {
   const model = readFileSync(iphoneModelPath);
   assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
+  assert.ok(
+    statSync(iphoneModelPath).size < 750_000,
+    "phone model must stay under its 750 KB transfer budget",
+  );
 
-  const pngSignature = Buffer.from([
-    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-  ]);
-  assert.deepEqual(readFileSync(elizaAvatarPath).subarray(0, 8), pngSignature);
-  assert.deepEqual(readFileSync(profileImagePath).subarray(0, 8), pngSignature);
+  for (const assetPath of [elizaAvatarPath, profileImagePath]) {
+    const asset = readFileSync(assetPath);
+    assert.equal(asset.subarray(0, 4).toString("ascii"), "RIFF");
+    assert.equal(asset.subarray(8, 12).toString("ascii"), "WEBP");
+  }
+  assert.ok(
+    statSync(elizaAvatarPath).size < 8_000,
+    "phone avatar must stay under its 8 KB transfer budget",
+  );
+  assert.ok(
+    statSync(profileImagePath).size < 25_000,
+    "profile image must stay under its 25 KB transfer budget",
+  );
 });
 
 test("reduced-motion keeps functional loading indicators animated", () => {
