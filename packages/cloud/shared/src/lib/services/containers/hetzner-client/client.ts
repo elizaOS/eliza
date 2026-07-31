@@ -57,6 +57,11 @@ import {
   HetznerClientError,
   type HetznerContainerMetadata,
 } from "./types";
+import {
+  resolveWorkloadStewardConfigFromEnv,
+  revokeWorkloadForDeletedContainer,
+  sealContainerEnvToWorkload,
+} from "./workload-env-refs";
 
 /**
  * Convert the stored `cpu` allocation (ECS/Fargate-style CPU units, where
@@ -102,6 +107,26 @@ export class HetznerContainersClient {
     }
     const volumeMountPath = validateContainerMountPath(input.volumeMountPath);
 
+    // Workload sealing (CONTAINERS_ENV_VAULT_REFS, default OFF — #17432): move
+    // secret values into Steward's workload-scoped contract BEFORE anything is
+    // persisted or shipped to the node, so the DB row, the SSH
+    // `docker create -e` command line, and `docker inspect` only ever see
+    // `vault://workload/...` sentinels plus the per-container capability.
+    // Fail closed: a Steward failure aborts the provision (throws here, before
+    // the row) instead of degrading to plaintext.
+    let effectiveEnvVars = input.environmentVars;
+    if (effectiveEnvVars && containersEnv.envVaultRefsEnabled()) {
+      const sealed = await sealContainerEnvToWorkload(
+        {
+          organizationId: input.organizationId,
+          projectName: input.projectName,
+          environmentVars: effectiveEnvVars,
+        },
+        resolveWorkloadStewardConfigFromEnv(),
+      );
+      effectiveEnvVars = sealed.env;
+    }
+
     // 1. Pre-create the DB row in `pending` so the rest of the flow has an id.
     const newRow: NewContainer = {
       name: input.name,
@@ -115,7 +140,7 @@ export class HetznerContainersClient {
       desired_count: 1,
       cpu: input.cpu,
       memory: input.memoryMb,
-      environment_vars: input.environmentVars ?? {},
+      environment_vars: effectiveEnvVars ?? {},
       health_check_path: input.healthCheckPath ?? "/health",
       status: "pending",
       metadata: { provider: "hetzner-docker", image: input.image },
@@ -253,7 +278,7 @@ export class HetznerContainersClient {
         bootstrapStats = await hydrateBootstrapSource(ssh, volumePath, input.bootstrapSource);
       }
 
-      const envFlags = Object.entries(input.environmentVars ?? {})
+      const envFlags = Object.entries(effectiveEnvVars ?? {})
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
@@ -600,6 +625,16 @@ export class HetznerContainersClient {
       }
     }
 
+    // Workload capability revocation (#17432): if this container's env was
+    // sealed, revoke its Steward capability + namespace so a captured
+    // STEWARD_WORKLOAD_KEY dies with the container. Keyed off the STORED env
+    // (not the flag) so revocation still runs when the flag was flipped off
+    // between create and delete. error-policy: revocation failure is logged
+    // LOUDLY inside the helper and does not block the teardown.
+    await revokeWorkloadForDeletedContainer(
+      row.environment_vars as Record<string, string> | null | undefined,
+    );
+
     await containersRepository.delete(containerId, organizationId);
   }
 
@@ -634,6 +669,23 @@ export class HetznerContainersClient {
     const row = await this.requireRowWithMeta(containerId, organizationId);
     const { meta } = row;
 
+    // Same sealing gate as createContainer (#17432): PATCHed env secrets must
+    // not reach the node (or the stored row) in plaintext when the flag is on.
+    // Sealing BEFORE the SSH teardown keeps the failure mode clean: a Steward
+    // outage rejects the setEnv while the old container keeps running.
+    let effectiveEnvVars = environmentVars;
+    if (containersEnv.envVaultRefsEnabled()) {
+      const sealed = await sealContainerEnvToWorkload(
+        {
+          organizationId,
+          projectName: row.row.project_name,
+          environmentVars,
+        },
+        resolveWorkloadStewardConfigFromEnv(),
+      );
+      effectiveEnvVars = sealed.env;
+    }
+
     await this.execOnNode(meta, async (ssh) => {
       // error-policy:J6 best-effort stop before the authoritative rm -f below;
       // a stop failure is logged, not thrown, because rm -f performs the real
@@ -647,7 +699,7 @@ export class HetznerContainersClient {
         );
       await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
 
-      const envFlags = Object.entries(environmentVars)
+      const envFlags = Object.entries(effectiveEnvVars)
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
@@ -678,7 +730,7 @@ export class HetznerContainersClient {
     });
 
     const updated = await containersRepository.update(containerId, organizationId, {
-      environment_vars: environmentVars,
+      environment_vars: effectiveEnvVars,
       status: "deploying",
       deployment_log: "Env vars updated; container recreated. Waiting for health check...",
     });

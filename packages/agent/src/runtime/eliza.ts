@@ -41,6 +41,7 @@ import {
   resolveConfigEnvForProcess,
   resolveConnectorSecretSettings,
 } from "./operations/vault-bridge.ts";
+import { resolveWorkloadEnvOverlayForBoot } from "./operations/workload-secrets.ts";
 import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
@@ -3748,8 +3749,18 @@ export async function startEliza(
   // a vault-held token still feeds the lookup.
   const connectorSecretsOverlay =
     await resolveConnectorSecretsOverlayForBoot(config);
+  // Steward WORKLOAD refs (#17432): a cloud container provisioned with
+  // CONTAINERS_ENV_VAULT_REFS carries `vault://workload/...` sentinels plus a
+  // per-container capability in its docker env. Exchange the capability for
+  // the values into a settings-only overlay, then scrub the sentinels AND the
+  // capability key out of process.env. Self-gating: zero work when no
+  // workload refs are present (every non-sealed environment, including
+  // desktop). Runs on the SAME production boot path as the connector overlay
+  // and feeds the SAME settings-only delivery channel.
+  const workloadSecretsOverlay = await resolveWorkloadEnvOverlayForBoot();
   const discordAppIdPromise = autoResolveDiscordAppId(
-    connectorSecretsOverlay.DISCORD_API_TOKEN,
+    connectorSecretsOverlay.DISCORD_API_TOKEN ??
+      workloadSecretsOverlay.DISCORD_API_TOKEN,
   );
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
     config.cloud?.agentId?.trim(),
@@ -4463,7 +4474,13 @@ export async function startEliza(
       managedSkillsDir,
       bundledSkillsDir,
       workspaceSkillsDir,
-      connectorSecretsOverlay,
+      // Workload-resolved values under the connector values: an explicit
+      // connector secret (or local vault ref) wins over a sealed env var of
+      // the same name.
+      connectorSecretsOverlay: {
+        ...workloadSecretsOverlay,
+        ...connectorSecretsOverlay,
+      },
     }),
   });
   installRuntimeMethodBindings(runtime);
@@ -5701,8 +5718,13 @@ export async function startEliza(
           applyConnectorSecretsToEnv(freshConfig);
           const freshConnectorSecretsOverlay =
             await resolveConnectorSecretsOverlayForBoot(freshConfig);
+          // Workload overlay is single-flight cached from cold boot (the
+          // capability key was scrubbed from process.env after the exchange).
+          const freshWorkloadSecretsOverlay =
+            await resolveWorkloadEnvOverlayForBoot();
           await autoResolveDiscordAppId(
-            freshConnectorSecretsOverlay.DISCORD_API_TOKEN,
+            freshConnectorSecretsOverlay.DISCORD_API_TOKEN ??
+              freshWorkloadSecretsOverlay.DISCORD_API_TOKEN,
           );
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
@@ -5810,7 +5832,10 @@ export async function startEliza(
               managedSkillsDir,
               bundledSkillsDir,
               workspaceSkillsDir: freshWorkspaceSkillsDir,
-              connectorSecretsOverlay: freshConnectorSecretsOverlay,
+              connectorSecretsOverlay: {
+                ...freshWorkloadSecretsOverlay,
+                ...freshConnectorSecretsOverlay,
+              },
             }),
           });
           installRuntimeMethodBindings(newRuntime);

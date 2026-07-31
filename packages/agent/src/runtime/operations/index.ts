@@ -44,3 +44,12 @@ export {
   type VaultLike,
   vaultKeyForProviderApiKey,
 } from "./vault-bridge.ts";
+export {
+  isWorkloadRef,
+  parseWorkloadRefName,
+  readWorkloadCapability,
+  resolveWorkloadEnvOverlayForBoot,
+  resolveWorkloadSecretSettings,
+  type WorkloadCapabilityEnv,
+  type WorkloadResolutionResult,
+} from "./workload-secrets.ts";

@@ -326,6 +326,30 @@ export const containersEnv = {
   },
 
   /**
+   * Seal secret-bearing container env vars into Steward's WORKLOAD-scoped
+   * secret contract at provision time (issue #17432): the container env then
+   * carries only `vault://workload/...` reference sentinels plus a
+   * per-container, revocable, least-privilege capability — no plaintext
+   * secret and no tenant-wide credential in the stored jsonb row, the SSH
+   * command line, or `docker inspect` on the node.
+   *
+   * OPT-IN, DEFAULT OFF — existing deployments keep exact legacy behavior.
+   * PAIRING REQUIREMENT: only enable for container images whose agent boot
+   * path carries the workload boot resolver
+   * (`packages/agent/src/runtime/operations/workload-secrets.ts`); without
+   * it agents receive unresolved ref sentinels instead of credentials. The
+   * control plane needs `STEWARD_API_URL` + `STEWARD_TENANT_API_KEY`
+   * (+`STEWARD_TENANT_ID`) configured. When ON, a Steward failure FAILS the
+   * provision (fail closed; no plaintext fallback).
+   * Read via `CONTAINERS_ENV_VAULT_REFS` (with `ELIZA_` fallback); only the
+   * literal string `"true"` enables it.
+   */
+  envVaultRefsEnabled(): boolean {
+    const env = getCloudAwareEnv();
+    return pick(env.CONTAINERS_ENV_VAULT_REFS, env.ELIZA_CONTAINERS_ENV_VAULT_REFS) === "true";
+  },
+
+  /**
    * Auto-recover a node whose dockerd image-pull coordinator has wedged: after
    * repeated failed pre-pulls the provisioning worker restarts docker on the
    * node itself (rate-limited) instead of requiring a manual `systemctl
