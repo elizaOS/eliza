@@ -53,6 +53,14 @@ execution proof is blocked.
 
 - Before non-trivial work, use an existing issue or open one with scope, acceptance criteria, blockers, and an evidence plan.
 - Claim issue work with `CLAIMING: <scope>`. Set the active Project's `Claimed by` field to the lane or agent tag and keep `Status` accurate.
+- Treat `claimed:<lane>`, `in-progress:<lane>`, assignees, and recent claim
+  comments as active ownership. A candidate issue has a known non-bot author
+  and is non-sensitive, unblocked, and unclaimed. A candidate review also has a
+  known non-bot author, is non-draft, has no active review request or reviewer
+  assignment, and has no current-head approval or changes-requested decision.
+  These are safety filters, not authority: re-read live Project fields, labels,
+  assignees, requests, reviews, and newest comments immediately before
+  claiming.
 - Use the standard flow: `Todo` → `Claimed` → `In progress` → `Needs-agent-verify` → `needs-human-verify` → `Done`.
 - Only a managing human or authorized maintainer moves a card to `Done` unless the board explicitly delegates that authority.
 - Claim production deploys, DNS, secrets, billing, staging environments, rollback authority, and other shared levers with `CLAIMING LEVER: <thing>` before use; release the lever afterward.

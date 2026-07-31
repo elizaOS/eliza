@@ -1,8 +1,8 @@
 name: eliza.army
 
 # Builds the contribution site from live elizaOS/eliza data, verifies the
-# canonical skill and browser surface, and publishes only trusted develop,
-# scheduled, or manually dispatched runs to Cloudflare Pages.
+# canonical skill and browser surface, and publishes only trusted develop or
+# explicitly admitted production-candidate runs to Cloudflare Pages.
 
 on:
   pull_request:
@@ -22,7 +22,21 @@ on:
   schedule:
     # Offset from the hour so this refresh does not join the top-of-hour surge.
     - cron: "17 */6 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: "Run checks only, or promote this exact ref as a protected production candidate"
+        required: true
+        default: quality-only
+        type: choice
+        options:
+          - quality-only
+          - production-candidate
+      candidate_pr:
+        description: "Open same-repository PR number into develop (required for non-develop production candidates)"
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: eliza-computer-${{ github.event.pull_request.number || github.ref }}
@@ -50,8 +64,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
           submodules: false
+
+      - name: Verify quality checkout
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [ "$checked_out_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Quality checkout $checked_out_sha does not match the event SHA $GITHUB_SHA."
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -133,19 +157,26 @@ jobs:
           retention-days: 14
 
   deploy:
-    name: Deploy verified develop bundle
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/develop'
+    name: Deploy admitted production bundle
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/develop') ||
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/develop') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'production-candidate')
     needs: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    concurrency:
+      group: eliza-computer-production
+      cancel-in-progress: false
     environment:
       name: eliza-army-production
       url: https://eliza.army
     steps:
-      - name: Checkout develop deployment tooling
+      - name: Checkout exact deployment tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
           submodules: false
 
@@ -155,6 +186,108 @@ jobs:
           checked_out_sha="$(git rev-parse HEAD)"
           if [ "$checked_out_sha" != "$GITHUB_SHA" ]; then
             echo "::error::Deployment checkout $checked_out_sha does not match the verified workflow SHA $GITHUB_SHA."
+            exit 1
+          fi
+
+      - name: Admit release authority
+        env:
+          CANDIDATE_PR: ${{ inputs.candidate_pr }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.release_mode }}
+        run: |
+          set -euo pipefail
+
+          case "$GITHUB_EVENT_NAME" in
+            push|schedule)
+              if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+                echo "::error::$GITHUB_EVENT_NAME production releases are restricted to develop."
+                exit 1
+              fi
+              ;;
+            workflow_dispatch)
+              if [ "$RELEASE_MODE" != "production-candidate" ]; then
+                echo "::error::A manual production release requires release_mode=production-candidate."
+                exit 1
+              fi
+              if [ "$GITHUB_REF_TYPE" != "branch" ]; then
+                echo "::error::A production candidate must be dispatched from a branch, not $GITHUB_REF_TYPE."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::$GITHUB_EVENT_NAME is not authorized to deploy eliza.army."
+              exit 1
+              ;;
+          esac
+
+          if [ "$GITHUB_REF" = "refs/heads/develop" ]; then
+            exit 0
+          fi
+
+          if ! [[ "$CANDIDATE_PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::A non-develop production candidate requires a numeric candidate_pr input."
+            exit 1
+          fi
+
+          response="$RUNNER_TEMP/eliza-computer-candidate-pr.json"
+          status="$(
+            curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --output "$response" \
+              --write-out "%{http_code}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GITHUB_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/$CANDIDATE_PR"
+          )"
+          if [ "$status" != "200" ]; then
+            echo "::error::Candidate PR #$CANDIDATE_PR lookup failed with HTTP $status."
+            exit 1
+          fi
+
+          node --input-type=module - \
+            "$response" \
+            "$GITHUB_SHA" \
+            "$GITHUB_REF_NAME" \
+            "$GITHUB_REPOSITORY" <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const [responsePath, expectedSha, expectedBranch, expectedRepository] =
+            process.argv.slice(2);
+          const pullRequest = JSON.parse(readFileSync(responsePath, "utf8"));
+          const failures = [];
+
+          if (pullRequest.state !== "open") failures.push("state is not open");
+          if (pullRequest.base?.ref !== "develop") failures.push("base is not develop");
+          if (pullRequest.base?.repo?.full_name !== expectedRepository) {
+            failures.push("base repository does not match this repository");
+          }
+          if (pullRequest.head?.repo?.full_name !== expectedRepository) {
+            failures.push("head repository is not this repository");
+          }
+          if (pullRequest.head?.ref !== expectedBranch) {
+            failures.push("head branch does not match the dispatched branch");
+          }
+          if (pullRequest.head?.sha !== expectedSha) {
+            failures.push("head SHA does not match the quality-tested SHA");
+          }
+
+          if (failures.length > 0) {
+            process.stderr.write(
+              `::error::Candidate PR admission failed: ${failures.join("; ")}.\n`,
+            );
+            process.exit(1);
+          }
+          NODE
+
+          git fetch --force --no-tags origin \
+            develop:refs/remotes/origin/develop
+          behind_count="$(
+            git rev-list --count "$GITHUB_SHA..refs/remotes/origin/develop"
+          )"
+          if [ "$behind_count" != "0" ]; then
+            echo "::error::Candidate $GITHUB_SHA is $behind_count commit(s) behind current origin/develop."
             exit 1
           fi
 
@@ -300,34 +433,35 @@ jobs:
         run: |
           set -euo pipefail
           verify_download() {
-            local path="$1"
+            local remote_path="$1"
             local expected="$2"
+            local artifact="$3"
             local received
             local attempt=1
-            received="$RUNNER_TEMP/$(basename "$path")"
+            received="$RUNNER_TEMP/eliza-computer-${artifact//\//-}"
             while [ "$attempt" -le 12 ]; do
               if curl --fail --silent --show-error \
                 --connect-timeout 10 \
                 --max-time 30 \
                 --header "Cache-Control: no-cache" \
                 --header "Pragma: no-cache" \
-                "https://eliza.army/$path?verify=$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-$attempt" \
+                "https://eliza.army${remote_path}?verify=$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-$attempt" \
                 --output "$received" &&
                 cmp --silent "$expected" "$received"; then
                 return 0
               fi
-              echo "::warning::$path verification attempt $attempt did not match the verified build."
+              echo "::warning::$artifact verification attempt $attempt did not match the verified build."
               attempt=$((attempt + 1))
               sleep 5
             done
-            echo "::error::Published $path did not match the verified build."
+            echo "::error::Published $artifact did not match the verified build."
             return 1
           }
-          verify_download index.html packages/eliza-computer/dist/index.html
-          verify_download skill.md packages/eliza-computer/dist/skill.md
-          verify_download mission.md packages/eliza-computer/dist/mission.md
-          verify_download codex.md packages/eliza-computer/dist/codex.md
-          verify_download skill-manifest.json packages/eliza-computer/dist/skill-manifest.json
-          verify_download downloads/contribute-to-eliza.skill packages/eliza-computer/dist/downloads/contribute-to-eliza.skill
-          verify_download downloads/contribute-to-eliza.skill.sha256 packages/eliza-computer/dist/downloads/contribute-to-eliza.skill.sha256
-          verify_download data/leaderboard.json packages/eliza-computer/dist/data/leaderboard.json
+          verify_download / packages/eliza-computer/dist/index.html index.html
+          verify_download /skill.md packages/eliza-computer/dist/skill.md skill.md
+          verify_download /mission.md packages/eliza-computer/dist/mission.md mission.md
+          verify_download /codex.md packages/eliza-computer/dist/codex.md codex.md
+          verify_download /skill-manifest.json packages/eliza-computer/dist/skill-manifest.json skill-manifest.json
+          verify_download /downloads/contribute-to-eliza.skill packages/eliza-computer/dist/downloads/contribute-to-eliza.skill downloads/contribute-to-eliza.skill
+          verify_download /downloads/contribute-to-eliza.skill.sha256 packages/eliza-computer/dist/downloads/contribute-to-eliza.skill.sha256 downloads/contribute-to-eliza.skill.sha256
+          verify_download /data/leaderboard.json packages/eliza-computer/dist/data/leaderboard.json data/leaderboard.json
