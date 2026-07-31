@@ -128,6 +128,7 @@ import type { ChatImageAttachment } from "./server-types.ts";
 export type { ChatImageAttachment, LogEntry };
 
 const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
+const CHAT_APPEND_ONLY_STREAM_DIVERGENCE = "CHAT_APPEND_ONLY_STREAM_DIVERGENCE";
 
 type LocalInferenceChatApi = Pick<
   LocalInferenceRouteApi,
@@ -941,6 +942,15 @@ export interface ChatGenerateOptions {
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
   timeoutDuration?: number;
+}
+
+function isAppendOnlyStreamDivergenceError(
+  error: unknown,
+): error is ElizaError {
+  return (
+    error instanceof ElizaError &&
+    error.code === CHAT_APPEND_ONLY_STREAM_DIVERGENCE
+  );
 }
 
 // LogEntry is canonical in @elizaos/shared and re-exported above.
@@ -2846,6 +2856,10 @@ async function generateChatResponseWithTiming(
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
+    // Snapshot consumers can replace prior text. Append-only transports need
+    // their independently observed prefix so finalization can prove the
+    // authoritative reply still matches bytes that have left the process.
+    let appendOnlyText = "";
     let firstVisibleReplyMarked = false;
     let forcedWalletExecutionText = false;
     let blockedUnexecutedActionPayload = false;
@@ -2891,7 +2905,10 @@ async function generateChatResponseWithTiming(
       if (!chunk) return;
       markFirstVisibleReply();
       responseText += chunk;
-      opts?.onChunk?.(chunk);
+      if (opts?.onChunk) {
+        opts.onChunk(chunk);
+        appendOnlyText += chunk;
+      }
     };
     const emitSnapshot = (text: string): void => {
       if (!text) return;
@@ -2899,9 +2916,11 @@ async function generateChatResponseWithTiming(
       // re-emitting the same fullText forces clients to re-render an identical
       // bubble (and on-the-wire bytes for nothing).
       if (text === responseText) return;
-      markFirstVisibleReply();
       responseText = text;
-      opts?.onSnapshot?.(text);
+      if (opts?.onSnapshot) {
+        markFirstVisibleReply();
+        opts.onSnapshot(text);
+      }
     };
     const claimStreamSource = (
       source: Exclude<StreamSource, "unset">,
@@ -2951,7 +2970,11 @@ async function generateChatResponseWithTiming(
       // Otherwise (structural rewrite — Discord-style "🔍 searching" → "✨ done"
       // or planner restart), snapshot only.
       if (nextText === responseText) return;
-      if (nextText.startsWith(responseText) && responseText.length > 0) {
+      if (
+        nextText.startsWith(responseText) &&
+        responseText.length > 0 &&
+        (opts?.onSnapshot || appendOnlyText === responseText)
+      ) {
         const delta = nextText.slice(responseText.length);
         emitChunk(delta);
         // emitChunk already advanced responseText; re-emit snapshot for
@@ -3683,6 +3706,32 @@ async function generateChatResponseWithTiming(
       resultContentCandidates,
     );
 
+    if (opts?.onChunk && !opts.onSnapshot) {
+      const authoritativeText =
+        transcriptVisibility === "internal" ? "" : finalText;
+      if (!authoritativeText.startsWith(appendOnlyText)) {
+        throw new ElizaError(
+          "Append-only chat stream diverged from the authoritative final reply",
+          {
+            code: CHAT_APPEND_ONLY_STREAM_DIVERGENCE,
+            severity: "fatal",
+            context: {
+              emittedChars: appendOnlyText.length,
+              finalChars: authoritativeText.length,
+              messageId: message.id,
+              roomId: message.roomId,
+            },
+          },
+        );
+      }
+      const remainingText = authoritativeText.slice(appendOnlyText.length);
+      if (remainingText) {
+        markFirstVisibleReply();
+        opts.onChunk(remainingText);
+        appendOnlyText += remainingText;
+      }
+    }
+
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages
       : [];
@@ -4398,12 +4447,19 @@ export async function handleChatRoutes(
               JSON.stringify({
                 error: {
                   message: getErrorMessage(err),
-                  type: "server_error",
+                  type: isAppendOnlyStreamDivergenceError(err)
+                    ? "stream_error"
+                    : "server_error",
+                  ...(isAppendOnlyStreamDivergenceError(err)
+                    ? { code: err.code }
+                    : {}),
                 },
               }),
             );
           }
-          writeSseData(res, "[DONE]");
+          if (!isAppendOnlyStreamDivergenceError(err)) {
+            writeSseData(res, "[DONE]");
+          }
         }
       } finally {
         res.end();
@@ -4778,7 +4834,15 @@ export async function handleChatRoutes(
               res,
               {
                 type: "error",
-                error: { type: "server_error", message: getErrorMessage(err) },
+                error: {
+                  type: isAppendOnlyStreamDivergenceError(err)
+                    ? "stream_error"
+                    : "server_error",
+                  message: getErrorMessage(err),
+                  ...(isAppendOnlyStreamDivergenceError(err)
+                    ? { code: err.code }
+                    : {}),
+                },
               },
               "error",
             );

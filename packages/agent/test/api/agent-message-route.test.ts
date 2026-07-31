@@ -167,6 +167,39 @@ function createMessageService(
   } as unknown as MessageService;
 }
 
+function createCallbackMessageService(
+  finalReply: string,
+  streamedReply?: string,
+): MessageService {
+  const finalContent = { text: finalReply, actions: ["REPLY"] };
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      if (streamedReply) {
+        await callback?.({
+          text: streamedReply,
+          actions: ["REPLY"],
+          merge: "append",
+        });
+      }
+      await callback?.(finalContent);
+      return {
+        didRespond: true,
+        responseContent: finalContent,
+        responseMessages: [
+          { id: stringToUuid("callback-reply-msg"), content: finalContent },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } as unknown as MessageService;
+}
+
 function createRuntime(
   agentId: UUID,
   overrides: Partial<AgentRuntime> = {},
@@ -515,6 +548,155 @@ describe("POST /api/agents/:id/message (issue #7680)", () => {
 describe("compatibility transport transcript visibility", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("streams callback-only replies through the OpenAI-compatible transport", async () => {
+    const agentId = stringToUuid("openai-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService("callback reply"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Reply through the callback" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      choices?: Array<{ delta?: { content?: string } }>;
+    }>;
+    const text = frames
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice) => choice.delta?.content ?? "")
+      .join("");
+    expect(text).toBe("callback reply");
+  });
+
+  it("ends an OpenAI-compatible divergent stream with an observable error, not success", async () => {
+    const agentId = stringToUuid("openai-divergent-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService(
+        "authoritative final reply",
+        "provisional streamed reply",
+      ),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Change the callback reply" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    const frames = parseSseJsonFrames(record) as Array<{
+      error?: { type?: string; code?: string };
+      choices?: Array<{
+        delta?: { content?: string };
+        finish_reason?: string | null;
+      }>;
+    }>;
+    const streamedText = frames
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice) => choice.delta?.content ?? "")
+      .join("");
+    expect(streamedText).toBe("provisional streamed reply");
+    expect(frames).toContainEqual({
+      error: expect.objectContaining({
+        type: "stream_error",
+        code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
+      }),
+    });
+    expect(
+      frames
+        .flatMap((frame) => frame.choices ?? [])
+        .some((choice) => choice.finish_reason === "stop"),
+    ).toBe(false);
+    expect(record.writes.join("")).not.toContain("data: [DONE]");
+  });
+
+  it("streams callback-only replies through the Anthropic-compatible transport", async () => {
+    const agentId = stringToUuid("anthropic-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService("callback reply"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "Reply through the callback" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      type?: string;
+      delta?: { text?: string };
+    }>;
+    const text = frames
+      .filter((frame) => frame.type === "content_block_delta")
+      .map((frame) => frame.delta?.text ?? "")
+      .join("");
+    expect(text).toBe("callback reply");
+  });
+
+  it("ends an Anthropic-compatible divergent stream with an error before completion", async () => {
+    const agentId = stringToUuid("anthropic-divergent-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService(
+        "authoritative final reply",
+        "provisional streamed reply",
+      ),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "Change the callback reply" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    const frames = parseSseJsonFrames(record) as Array<{
+      type?: string;
+      delta?: { text?: string };
+      error?: { type?: string; code?: string };
+    }>;
+    const streamedText = frames
+      .filter((frame) => frame.type === "content_block_delta")
+      .map((frame) => frame.delta?.text ?? "")
+      .join("");
+    expect(streamedText).toBe("provisional streamed reply");
+    expect(frames).toContainEqual({
+      type: "error",
+      error: expect.objectContaining({
+        type: "stream_error",
+        code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
+      }),
+    });
+    expect(frames.map((frame) => frame.type)).not.toContain(
+      "content_block_stop",
+    );
+    expect(frames.map((frame) => frame.type)).not.toContain("message_delta");
+    expect(frames.map((frame) => frame.type)).not.toContain("message_stop");
   });
 
   it("returns empty OpenAI-compatible non-streaming content for an internal turn", async () => {
