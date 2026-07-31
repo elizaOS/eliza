@@ -1,0 +1,407 @@
+/**
+ * Exercises the production migration CLI against real PostgreSQL sessions.
+ * The suite creates disposable databases to prove ledger fencing, catalog
+ * drift rejection, lock contention recovery, and terminal exhaustion.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import pg from "pg";
+
+const { Client } = pg;
+const ROOT = path.resolve(import.meta.dir, "../../../..");
+const MIGRATOR = path.join(import.meta.dir, "migrate-with-diagnostics.ts");
+const PREFLIGHT = path.join(
+  import.meta.dir,
+  "preflight-job-execution-interruptions.ts",
+);
+const MIGRATIONS_DIR = path.join(
+  ROOT,
+  "packages/cloud/shared/src/db/migrations",
+);
+const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
+const ADD_COLUMN_CREATED_AT = 1_785_384_000_000;
+const CATALOG_GUARD_CREATED_AT = 1_785_528_000_001;
+// Read-only production inspection showed these five historical entries absent
+// from the incrementally migrated ledger. Each timestamp moved backward under
+// the former max-timestamp runner, so the absence is legitimate deployed state.
+const PRODUCTION_LEGACY_SKIPPED_CREATED_AT = new Set([
+  1_764_259_200_000, 1_771_275_600_000, 1_771_275_601_000, 1_771_275_602_000,
+  1_771_275_603_000,
+]);
+const BASE_URL =
+  process.env.MIGRATION_TEST_DATABASE_URL ??
+  process.env.TEST_DATABASE_URL ??
+  "";
+const ENABLED =
+  process.env.RUN_REAL_POSTGRES_MIGRATION_TESTS === "1" &&
+  BASE_URL.startsWith("postgres");
+
+interface JournalEntry {
+  when: number;
+  tag: string;
+}
+
+interface CommandResult {
+  exitCode: number;
+  output: string;
+}
+
+let admin: pg.Client;
+const databases = new Set<string>();
+
+function quotedIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function databaseUrl(name: string): string {
+  const url = new URL(BASE_URL);
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
+async function createDatabase(): Promise<{
+  name: string;
+  url: string;
+  client: pg.Client;
+}> {
+  const name = `migration_${Date.now()}_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+  await admin.query(`CREATE DATABASE ${quotedIdentifier(name)}`);
+  databases.add(name);
+  const client = new Client({ connectionString: databaseUrl(name) });
+  await client.connect();
+  return { name, url: databaseUrl(name), client };
+}
+
+async function journalEntries(): Promise<JournalEntry[]> {
+  const journal = JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as {
+    entries: JournalEntry[];
+  };
+  return journal.entries;
+}
+
+async function seedAppliedPrefix(
+  client: pg.Client,
+  length: number,
+): Promise<void> {
+  await client.query(`
+    CREATE TABLE jobs (
+      id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+    );
+    CREATE SCHEMA drizzle;
+    CREATE TABLE drizzle.__drizzle_migrations (
+      id serial PRIMARY KEY,
+      hash text NOT NULL,
+      created_at bigint
+    );
+  `);
+
+  const entries = (await journalEntries())
+    .slice(0, length)
+    .filter((entry) => !PRODUCTION_LEGACY_SKIPPED_CREATED_AT.has(entry.when));
+  for (const entry of entries) {
+    const sql = await readFile(
+      path.join(MIGRATIONS_DIR, `${entry.tag}.sql`),
+      "utf8",
+    );
+    const hash = createHash("sha256").update(sql).digest("hex");
+    await client.query(
+      "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+      [hash, entry.when],
+    );
+  }
+}
+
+async function runScript(
+  script: string,
+  database: string,
+  overrides: Record<string, string> = {},
+): Promise<CommandResult> {
+  const processHandle = Bun.spawn(
+    ["bun", "--conditions=eliza-source", script],
+    {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        DATABASE_URL: database,
+        MIGRATION_LOCK_TIMEOUT_MS: "75",
+        MIGRATION_LOCK_MAX_ATTEMPTS: "20",
+        MIGRATION_LOCK_RETRY_BASE_MS: "5",
+        MIGRATION_LOCK_RETRY_MAX_MS: "20",
+        JOB_INTERRUPTION_PREFLIGHT_MAX_ATTEMPTS: "1",
+        JOB_INTERRUPTION_PREFLIGHT_DELAY_MS: "1",
+        ...overrides,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(processHandle.stdout).text(),
+    new Response(processHandle.stderr).text(),
+    processHandle.exited,
+  ]);
+  return { exitCode, output: `${stdout}${stderr}` };
+}
+
+async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const result = await client.query<{ count: string }>(`
+      SELECT count(*)::text AS count
+      FROM pg_locks
+      WHERE locktype = 'advisory' AND granted
+    `);
+    if (Number(result.rows[0]?.count) >= 1) return;
+    await Bun.sleep(10);
+  }
+  throw new Error("Timed out waiting for migration advisory lock");
+}
+
+describe.skipIf(!ENABLED)(
+  "migrate-with-diagnostics real PostgreSQL safety",
+  () => {
+    beforeAll(async () => {
+      admin = new Client({ connectionString: BASE_URL });
+      await admin.connect();
+    });
+
+    afterAll(async () => {
+      for (const name of databases) {
+        await admin.query(
+          `DROP DATABASE IF EXISTS ${quotedIdentifier(name)} WITH (FORCE)`,
+        );
+      }
+      await admin.end();
+    });
+
+    test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184);
+      await database.client.query("INSERT INTO jobs DEFAULT VALUES");
+
+      const first = await runScript(MIGRATOR, database.url);
+      expect(first.exitCode, first.output).toBe(0);
+      expect(first.output).toContain("pending migrations: 2");
+
+      const catalog = await database.client.query<{
+        data_type: string;
+        is_nullable: string;
+        column_default: string;
+        zeros: string;
+      }>(`
+      SELECT catalog_column.data_type, catalog_column.is_nullable,
+        catalog_column.column_default,
+        (SELECT count(*)::text FROM jobs WHERE execution_interruptions = 0) AS zeros
+      FROM information_schema.columns AS catalog_column
+      WHERE catalog_column.table_schema = 'public'
+        AND catalog_column.table_name = 'jobs'
+        AND catalog_column.column_name = 'execution_interruptions'
+    `);
+      expect(catalog.rows[0]).toEqual({
+        data_type: "integer",
+        is_nullable: "NO",
+        column_default: "0",
+        zeros: "1",
+      });
+
+      const second = await runScript(MIGRATOR, database.url);
+      expect(second.exitCode, second.output).toBe(0);
+      expect(second.output).toContain("pending migrations: 0");
+
+      const preflight = await runScript(PREFLIGHT, database.url);
+      expect(preflight.exitCode, preflight.output).toBe(0);
+      expect(preflight.output).toContain("catalog and journal verified");
+      await database.client.end();
+    }, 30_000);
+
+    test("rejects incompatible catalog drift and malformed ledger prefixes", async () => {
+      const drift = await createDatabase();
+      await seedAppliedPrefix(drift.client, 184);
+      await drift.client.query(
+        "ALTER TABLE jobs ADD COLUMN execution_interruptions text DEFAULT 'wrong'",
+      );
+      const driftResult = await runScript(MIGRATOR, drift.url);
+      expect(driftResult.exitCode).toBe(1);
+      expect(driftResult.output).toContain(
+        "jobs.execution_interruptions catalog mismatch",
+      );
+      const driftJournal = await drift.client.query<{
+        add_column: string;
+        catalog_guard: string;
+      }>(
+        `SELECT
+          count(*) FILTER (WHERE created_at = $1)::text AS add_column,
+          count(*) FILTER (WHERE created_at = $2)::text AS catalog_guard
+         FROM drizzle.__drizzle_migrations`,
+        [ADD_COLUMN_CREATED_AT, CATALOG_GUARD_CREATED_AT],
+      );
+      expect(driftJournal.rows[0]).toEqual({
+        add_column: "1",
+        catalog_guard: "0",
+      });
+      await drift.client.end();
+
+      const generated = await createDatabase();
+      await seedAppliedPrefix(generated.client, 184);
+      await generated.client.query(
+        "ALTER TABLE jobs ADD COLUMN execution_interruptions integer GENERATED ALWAYS AS (0) STORED NOT NULL",
+      );
+      const generatedResult = await runScript(MIGRATOR, generated.url);
+      expect(generatedResult.exitCode).toBe(1);
+      expect(generatedResult.output).toContain(
+        "expected writable integer NOT NULL DEFAULT 0",
+      );
+      await generated.client.end();
+
+      const duplicate = await createDatabase();
+      await seedAppliedPrefix(duplicate.client, 184);
+      const last = (
+        await duplicate.client.query<{ hash: string; created_at: string }>(
+          "SELECT hash, created_at::text FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1",
+        )
+      ).rows[0];
+      await duplicate.client.query(
+        "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+        [last?.hash, last?.created_at],
+      );
+      const duplicateResult = await runScript(MIGRATOR, duplicate.url);
+      expect(duplicateResult.exitCode).toBe(1);
+      expect(duplicateResult.output).toContain("duplicate created_at");
+      await duplicate.client.end();
+
+      const hashMismatch = await createDatabase();
+      await seedAppliedPrefix(hashMismatch.client, 184);
+      await hashMismatch.client.query(
+        "UPDATE drizzle.__drizzle_migrations SET hash = 'wrong' WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)",
+      );
+      const hashMismatchResult = await runScript(MIGRATOR, hashMismatch.url);
+      expect(hashMismatchResult.exitCode).toBe(1);
+      expect(hashMismatchResult.output).toContain("hash mismatch");
+      await hashMismatch.client.end();
+
+      const missingRequired = await createDatabase();
+      await seedAppliedPrefix(missingRequired.client, 184);
+      const entries = await journalEntries();
+      const requiredEntry = entries[100];
+      if (!requiredEntry) throw new Error("Missing required journal fixture");
+      await missingRequired.client.query(
+        "DELETE FROM drizzle.__drizzle_migrations WHERE created_at = $1",
+        [requiredEntry.when],
+      );
+      const missingRequiredResult = await runScript(
+        MIGRATOR,
+        missingRequired.url,
+      );
+      expect(missingRequiredResult.exitCode).toBe(1);
+      expect(missingRequiredResult.output).toContain(
+        `missing required journal entry ${requiredEntry.tag}`,
+      );
+      await missingRequired.client.end();
+
+      const unknownRow = await createDatabase();
+      await seedAppliedPrefix(unknownRow.client, 184);
+      await unknownRow.client.query(
+        "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('unknown', 9999999999999)",
+      );
+      const unknownRowResult = await runScript(MIGRATOR, unknownRow.url);
+      expect(unknownRowResult.exitCode).toBe(1);
+      expect(unknownRowResult.output).toContain("no matching journal entry");
+      await unknownRow.client.end();
+
+      const outOfOrder = await createDatabase();
+      await seedAppliedPrefix(outOfOrder.client, 183);
+      for (const journalIndex of [184, 183]) {
+        const entry = entries[journalIndex];
+        if (!entry) throw new Error(`Missing journal entry ${journalIndex}`);
+        const sql = await readFile(
+          path.join(MIGRATIONS_DIR, `${entry.tag}.sql`),
+          "utf8",
+        );
+        await outOfOrder.client.query(
+          "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+          [createHash("sha256").update(sql).digest("hex"), entry.when],
+        );
+      }
+      const outOfOrderResult = await runScript(MIGRATOR, outOfOrder.url);
+      expect(outOfOrderResult.exitCode).toBe(1);
+      expect(outOfOrderResult.output).toContain("out of journal order");
+      await outOfOrder.client.end();
+    }, 30_000);
+
+    test("serializes concurrent migrators and recovers from table-lock contention", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184);
+      const holder = new Client({ connectionString: database.url });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT count(*) FROM jobs");
+
+      const firstPromise = runScript(MIGRATOR, database.url, {
+        MIGRATION_LOCK_MAX_ATTEMPTS: "100",
+      });
+      const secondPromise = runScript(MIGRATOR, database.url, {
+        MIGRATION_LOCK_MAX_ATTEMPTS: "100",
+      });
+      await waitForAdvisoryLock(database.client);
+      await Bun.sleep(250);
+      await holder.query("COMMIT");
+      await holder.end();
+
+      const [first, second] = await Promise.all([firstPromise, secondPromise]);
+      expect(first.exitCode, first.output).toBe(0);
+      expect(second.exitCode, second.output).toBe(0);
+      const output = `${first.output}${second.output}`;
+      expect(output).toContain("lock timeout on attempt");
+      expect(output).toContain("migration lock busy on attempt");
+      expect(output).toContain("pending migrations: 0");
+
+      const journal = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",
+        [CATALOG_GUARD_CREATED_AT],
+      );
+      expect(journal.rows[0]?.count).toBe("1");
+      await database.client.end();
+    }, 30_000);
+
+    test("fails observably after bounded table-lock retries without partial state", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184);
+      const holder = new Client({ connectionString: database.url });
+      await holder.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT count(*) FROM jobs");
+
+      const result = await runScript(MIGRATOR, database.url, {
+        MIGRATION_LOCK_TIMEOUT_MS: "50",
+        MIGRATION_LOCK_MAX_ATTEMPTS: "2",
+        MIGRATION_LOCK_RETRY_BASE_MS: "1",
+        MIGRATION_LOCK_RETRY_MAX_MS: "1",
+      });
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain("exhausted 2 lock-timeout attempts");
+      expect(result.output).toContain("code=55P03");
+
+      const state = await database.client.query<{
+        columns: string;
+        journal: string;
+      }>(`
+      SELECT
+        (SELECT count(*)::text
+         FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'jobs'
+           AND column_name = 'execution_interruptions') AS columns,
+        (SELECT count(*)::text
+         FROM drizzle.__drizzle_migrations
+         WHERE created_at IN (${ADD_COLUMN_CREATED_AT}, ${CATALOG_GUARD_CREATED_AT})) AS journal
+    `);
+      expect(state.rows[0]).toEqual({ columns: "0", journal: "0" });
+
+      await holder.query("ROLLBACK");
+      await holder.end();
+      await database.client.end();
+    }, 30_000);
+  },
+);
