@@ -70,6 +70,8 @@ function createMockReq(
       }
     } else if (event === "end") {
       setImmediate(() => listener());
+    } else {
+      http.IncomingMessage.prototype.on.call(req, event, listener);
     }
     return req;
   }) as never;
@@ -307,6 +309,7 @@ function createCtx(opts: {
   };
 
   return {
+    req,
     record,
     state,
     invoke: () =>
@@ -576,6 +579,110 @@ describe("compatibility transport transcript visibility", () => {
       .map((choice) => choice.delta?.content ?? "")
       .join("");
     expect(text).toBe("callback reply");
+  });
+
+  it("cancels an OpenAI-compatible stream when the request is aborted", async () => {
+    const agentId = stringToUuid("openai-disconnect-agent") as UUID;
+    let generationStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      generationStarted = resolve;
+    });
+    let observedSignal: AbortSignal | undefined;
+    const runtime = createRuntime(agentId, {
+      messageService: {
+        async handleMessage(_runtime, _message, _callback, options) {
+          observedSignal = options?.abortSignal;
+          generationStarted?.();
+          await new Promise<void>((_resolve, reject) => {
+            options?.abortSignal?.addEventListener(
+              "abort",
+              () => reject(options.abortSignal?.reason),
+              { once: true },
+            );
+          });
+          throw new Error("unreachable");
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      } as unknown as MessageService,
+    });
+    const { req, record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Cancel this turn" }],
+      },
+      runtime,
+    });
+
+    const pending = invoke();
+    await started;
+    req.emit("aborted");
+
+    await expect(pending).resolves.toBe(true);
+    expect(observedSignal?.aborted).toBe(true);
+    expect(record.writes.join("")).not.toContain("data: [DONE]");
+  });
+
+  it("does not treat normal request close as an OpenAI stream disconnect", async () => {
+    const agentId = stringToUuid("openai-request-close-agent") as UUID;
+    let releaseGeneration: (() => void) | undefined;
+    const release = new Promise<void>((resolve) => {
+      releaseGeneration = resolve;
+    });
+    let generationStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      generationStarted = resolve;
+    });
+    let observedSignal: AbortSignal | undefined;
+    const runtime = createRuntime(agentId, {
+      messageService: {
+        async handleMessage(_runtime, _message, _callback, options) {
+          observedSignal = options?.abortSignal;
+          generationStarted?.();
+          await release;
+          return {
+            didRespond: true,
+            responseContent: { text: "still connected" },
+            responseMessages: [],
+          };
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      } as unknown as MessageService,
+    });
+    const { req, record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Finish normally" }],
+      },
+      runtime,
+    });
+
+    const pending = invoke();
+    await started;
+    req.emit("close");
+    expect(observedSignal?.aborted).toBe(false);
+    releaseGeneration?.();
+
+    await expect(pending).resolves.toBe(true);
+    expect(record.writes.join("")).toContain("still connected");
+    expect(record.writes.join("")).toContain("data: [DONE]");
   });
 
   it("ends an OpenAI-compatible divergent stream with an observable error, not success", async () => {

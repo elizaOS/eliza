@@ -1933,6 +1933,13 @@ async function generateTextByModelType(
     // promises defused so an errored, unconsumed result cannot surface as an
     // unhandled rejection.
     let result!: Awaited<ReturnType<typeof streamText>>;
+    const observeStreamCompanions = (streamResult: Awaited<ReturnType<typeof streamText>>) => ({
+      text: handledPromise(streamResult.text),
+      usage: handledPromise(streamResult.usage),
+      finishReason: handledPromise(streamResult.finishReason),
+      toolCalls: handledPromise(streamResult.toolCalls),
+    });
+    let streamCompanions!: ReturnType<typeof observeStreamCompanions>;
     let streamIterator!: AsyncIterator<unknown>;
     let firstItem: IteratorResult<unknown> | undefined;
     for (let attempt = 0; ; attempt++) {
@@ -1944,6 +1951,10 @@ async function generateTextByModelType(
           capturedStreamError = error;
         },
       });
+      // Companion promises can reject at the same instant as the first stream
+      // pull. Observe them before that pull so an owner abort never becomes an
+      // unhandled rejection while textStream remains the authoritative error.
+      streamCompanions = observeStreamCompanions(result);
       const source = params.streamStructured === true ? result.fullStream : result.textStream;
       streamIterator = (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
       try {
@@ -1960,12 +1971,6 @@ async function generateTextByModelType(
         !isTransientProviderError(capturedStreamError)
       ) {
         break;
-      }
-      for (const companion of [result.text, result.usage, result.finishReason, result.toolCalls]) {
-        void Promise.resolve(companion).catch(() => {
-          // error-policy:J5 suppression — this attempt is being abandoned and
-          // retried; its failure is observed via capturedStreamError.
-        });
       }
       const backoffMs = Math.min(3000, 300 * 2 ** attempt) + Math.floor(Math.random() * 200);
       logger.warn(
@@ -1992,6 +1997,7 @@ async function generateTextByModelType(
       resolveStructuredText = resolve;
       rejectStructuredText = reject;
     });
+    const handledStructuredTextPromise = handledPromise(structuredTextPromise);
     const settleStructuredText = (error?: unknown): void => {
       if (params.streamStructured !== true || structuredTextSettled) return;
       structuredTextSettled = true;
@@ -2001,14 +2007,14 @@ async function generateTextByModelType(
       }
       resolveStructuredText(restoreResponseText(responseChunks.join("")));
     };
-    const sdkTextPromise = handledPromise(result.text);
+    const sdkTextPromise = streamCompanions.text;
     const textPromise =
       params.streamStructured === true
-        ? structuredTextPromise
+        ? handledStructuredTextPromise
         : handledMappedPromise(sdkTextPromise, restoreResponseText);
-    const rawUsagePromise = handledPromise(result.usage);
-    const rawFinishReasonPromise = handledPromise(result.finishReason);
-    const rawToolCallsPromise = handledPromise(result.toolCalls);
+    const rawUsagePromise = streamCompanions.usage;
+    const rawFinishReasonPromise = streamCompanions.finishReason;
+    const rawToolCallsPromise = streamCompanions.toolCalls;
     const restoredToolCallsPromise = handledMappedPromise(rawToolCallsPromise, (toolCalls) =>
       restoreRecordArgToolCalls(toolCalls, normalizedToolResult.recordArgTransformsByTool)
     );

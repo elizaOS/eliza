@@ -131,6 +131,77 @@ type LocalInferenceChatApi = Pick<
   "getLocalInferenceChatStatus" | "handleLocalInferenceChatCommand"
 >;
 
+interface StreamingResponseAbortTracker {
+  signal: AbortSignal;
+  dispose: () => void;
+  markCompleted: () => void;
+}
+
+type AbortEventSource = {
+  on?: (event: string, listener: () => void) => unknown;
+  off?: (event: string, listener: () => void) => unknown;
+};
+
+function createStreamingResponseAbortTracker(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  operation: string,
+): StreamingResponseAbortTracker {
+  const controller = new AbortController();
+  const registrations: Array<{
+    source: AbortEventSource;
+    event: string;
+    listener: () => void;
+  }> = [];
+  let completed = false;
+
+  const abort = () => {
+    if (!completed && !controller.signal.aborted) {
+      controller.abort(new Error(`${operation} client disconnected`));
+    }
+  };
+  const register = (
+    source: AbortEventSource | null | undefined,
+    event: string,
+    listener: () => void,
+  ) => {
+    if (typeof source?.on !== "function") return;
+    source.on(event, listener);
+    registrations.push({ source, event, listener });
+  };
+  const onResponseClose = () => {
+    if (!res.writableEnded) abort();
+  };
+
+  // IncomingMessage.close describes request-body completion on current Node
+  // and Bun releases, not the lifetime of the streamed response. The response
+  // and socket events remain live after body parsing and therefore own
+  // disconnect cancellation.
+  register(req, "aborted", abort);
+  register(req, "error", abort);
+  register(res, "close", onResponseClose);
+  register(res, "error", abort);
+  register(req.socket, "close", abort);
+  register(req.socket, "error", abort);
+
+  if (req.aborted || req.destroyed || res.destroyed) {
+    abort();
+  }
+
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      for (const { source, event, listener } of registrations) {
+        source.off?.(event, listener);
+      }
+      registrations.length = 0;
+    },
+    markCompleted: () => {
+      completed = true;
+    },
+  };
+}
+
 let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
 
 /**
@@ -2793,6 +2864,7 @@ async function generateChatResponseWithTiming(
   }
   let closeResponseFinalization: (() => void) | undefined;
   try {
+    generationAbortController.signal.throwIfAborted();
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
@@ -2936,9 +3008,9 @@ async function generateChatResponseWithTiming(
       replaceCallbackText(incoming);
     };
 
-    // Trajectory/session persistence is part of accepting an API turn. A hook
-    // failure must reject before generation rather than produce an answer whose
-    // ingress record is missing.
+    // Inbound event consumers may persist correlation state or apply
+    // turn-shaping policy. Generation cannot safely continue when that
+    // prerequisite fails.
     if (typeof runtime.emitEvent === "function") {
       await timeInferenceSpan("chat:ingress:received-event", () =>
         runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
@@ -2947,6 +3019,7 @@ async function generateChatResponseWithTiming(
         }),
       );
     }
+    generationAbortController.signal.throwIfAborted();
     const trajectoryStepId = readMessageTrajectoryStepId(message);
     const trajectoryContext =
       typeof trajectoryStepId === "string" && trajectoryStepId.trim().length > 0
@@ -2964,6 +3037,7 @@ async function generateChatResponseWithTiming(
           opts,
         }),
     );
+    generationAbortController.signal.throwIfAborted();
     if (androidDirectResult) {
       try {
         if (
@@ -3048,15 +3122,18 @@ async function generateChatResponseWithTiming(
     const generationCapture = await withModelUsageCapture(runtime, () =>
       Promise.resolve(
         runWithTrajectoryContext(trajectoryContext, async () => {
+          generationAbortController.signal.throwIfAborted();
           // Plugin-registered chat pre-handlers (generic direct-dispatch
           // extension point): drained by priority before normal action
           // processing; the first non-null result resolves the turn.
           const preHandlerResult = await runtime.drainChatPreHandlers({
             runtime,
             message,
+            abortSignal: generationAbortController.signal,
             appendText: replaceCallbackText,
             replaceText: emitSnapshot,
           });
+          generationAbortController.signal.throwIfAborted();
           if (preHandlerResult) {
             const directText = preHandlerResult.responseText;
             const finalText = isClientVisibleNoResponse(directText)
@@ -3147,8 +3224,12 @@ async function generateChatResponseWithTiming(
                     name: createTaskAction.name,
                     params: directTaskParameters,
                   },
-                  { actions: [createTaskAction] },
+                  {
+                    actions: [createTaskAction],
+                    abortSignal: generationAbortController.signal,
+                  },
                 );
+                generationAbortController.signal.throwIfAborted();
                 const finalText =
                   actionResponseText ||
                   directActionResult.text ||
@@ -3220,6 +3301,7 @@ async function generateChatResponseWithTiming(
               ),
             { phase: "pre-model" },
           );
+          generationAbortController.signal.throwIfAborted();
           result = await timeInferenceSpan(
             "chat:message-service",
             async () =>
@@ -3292,6 +3374,7 @@ async function generateChatResponseWithTiming(
               ),
             { phase: "message" },
           );
+          generationAbortController.signal.throwIfAborted();
 
           // Ensure MESSAGE_SENT hooks run for API chat flows.
           try {
@@ -4129,10 +4212,11 @@ export async function handleChatRoutes(
 
     if (wantsStream) {
       initSse(res);
-      const disconnectController = new AbortController();
-      req.on("close", () => {
-        disconnectController.abort(new Error("Client disconnected"));
-      });
+      const disconnectTracker = createStreamingResponseAbortTracker(
+        req,
+        res,
+        "OpenAI-compatible stream",
+      );
 
       const sendChunk = (
         delta: Record<string, unknown>,
@@ -4211,7 +4295,7 @@ export async function handleChatRoutes(
             message,
             state.agentName,
             {
-              abortSignal: disconnectController.signal,
+              abortSignal: disconnectTracker.signal,
               onChunk: (chunk) => {
                 fullText += chunk;
                 if (chunk) sendChunk({ content: chunk }, null);
@@ -4247,7 +4331,7 @@ export async function handleChatRoutes(
         sendChunk({}, "stop");
         writeSseData(res, "[DONE]");
       } catch (err) {
-        if (!disconnectController.signal.aborted) {
+        if (!disconnectTracker.signal.aborted) {
           if (isLocalInferenceError(err)) {
             const { getLocalInferenceChatStatus } =
               await getLocalInferenceChatApi();
@@ -4297,6 +4381,8 @@ export async function handleChatRoutes(
           }
         }
       } finally {
+        disconnectTracker.markCompleted();
+        disconnectTracker.dispose();
         res.end();
       }
       return true;
@@ -4499,10 +4585,11 @@ export async function handleChatRoutes(
 
     if (wantsStream) {
       initSse(res);
-      const disconnectController = new AbortController();
-      req.on("close", () => {
-        disconnectController.abort(new Error("Client disconnected"));
-      });
+      const disconnectTracker = createStreamingResponseAbortTracker(
+        req,
+        res,
+        "Anthropic-compatible stream",
+      );
 
       try {
         if (!state.runtime) {
@@ -4607,7 +4694,7 @@ export async function handleChatRoutes(
             message,
             state.agentName,
             {
-              abortSignal: disconnectController.signal,
+              abortSignal: disconnectTracker.signal,
               onChunk: onDelta,
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
@@ -4650,7 +4737,7 @@ export async function handleChatRoutes(
         );
         writeSseJson(res, { type: "message_stop" }, "message_stop");
       } catch (err) {
-        if (!disconnectController.signal.aborted) {
+        if (!disconnectTracker.signal.aborted) {
           if (isNoProviderError(err)) {
             writeSseJson(
               res,
@@ -4684,6 +4771,8 @@ export async function handleChatRoutes(
           }
         }
       } finally {
+        disconnectTracker.markCompleted();
+        disconnectTracker.dispose();
         res.end();
       }
       return true;

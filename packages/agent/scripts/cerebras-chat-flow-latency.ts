@@ -19,6 +19,7 @@ import {
   InferenceTurnTimer,
   inferenceTimingRegistry,
   type Memory,
+  ModelType,
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
@@ -310,6 +311,132 @@ async function main(): Promise<void> {
       );
     }
 
+    const cancellationProof = `CANCEL-${randomUUID()}`;
+    const cancellationMessage = createMessageMemory({
+      id: randomUUID() as UUID,
+      entityId,
+      roomId,
+      content: {
+        text: `Write a detailed response that ends with ${cancellationProof}.`,
+        source: "cerebras_cancellation_audit",
+        channelType: ChannelType.DM,
+      },
+    });
+    const cancellationController = new AbortController();
+    const cancellationReason = new Error(
+      "Cancellation probe owner disconnected",
+    );
+    cancellationReason.name = "AbortError";
+    const originalUseModel = runtime.useModel.bind(runtime);
+    let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+    let liveModelInvocationObserved = false;
+    let invokedModelType: string | null = null;
+    let modelSignalWasAlreadyAborted = false;
+    runtime.useModel = (async (modelType, params) => {
+      const pending = originalUseModel(modelType, params);
+      if (
+        !liveModelInvocationObserved &&
+        modelType === ModelType.RESPONSE_HANDLER
+      ) {
+        liveModelInvocationObserved = true;
+        invokedModelType = modelType;
+        modelSignalWasAlreadyAborted =
+          typeof params === "object" &&
+          params !== null &&
+          "signal" in params &&
+          params.signal instanceof AbortSignal &&
+          params.signal.aborted;
+        cancellationTimer = setTimeout(() => {
+          cancellationController.abort(cancellationReason);
+        }, 25);
+      }
+      return await pending;
+    }) as typeof runtime.useModel;
+
+    const cancellationStartedAt = performance.now();
+    let cancellationError: unknown;
+    try {
+      await generateChatResponse(
+        runtime,
+        cancellationMessage as Memory,
+        runtime.character.name,
+        { abortSignal: cancellationController.signal },
+      );
+      throw new Error("Cancellation probe unexpectedly completed");
+    } catch (error) {
+      cancellationError = error;
+    } finally {
+      runtime.useModel = originalUseModel;
+      if (cancellationTimer) clearTimeout(cancellationTimer);
+    }
+    const cancellationWallMs = performance.now() - cancellationStartedAt;
+    if (!liveModelInvocationObserved) {
+      throw new Error(
+        "Cancellation probe aborted before a live RESPONSE_HANDLER invocation",
+      );
+    }
+    if (!cancellationController.signal.aborted) {
+      throw new Error("Cancellation probe did not abort its owner signal");
+    }
+    if (
+      cancellationError !== cancellationReason &&
+      (!(cancellationError instanceof Error) ||
+        !cancellationError.message.includes(cancellationReason.message))
+    ) {
+      throw new Error(
+        `Cancellation probe rejected with the wrong reason: ${String(cancellationError)}`,
+      );
+    }
+    const cancellationQuiescenceStartedAt = performance.now();
+    const cancellationBackgroundTasks = await drainPostDeliveryTasks(runtime);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const cancellationBackgroundQuiescenceMs =
+      performance.now() - cancellationQuiescenceStartedAt;
+    const memoriesAfterCancellation = await runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: 100,
+    });
+    const lateCancellationReplies = memoriesAfterCancellation.filter(
+      (memory) =>
+        memory.entityId === runtime.agentId &&
+        String((memory.content as { text?: unknown }).text ?? "").includes(
+          cancellationProof,
+        ),
+    );
+    if (lateCancellationReplies.length > 0) {
+      throw new Error(
+        `Cancelled live turn persisted a late assistant reply: ${JSON.stringify(
+          lateCancellationReplies.map((memory) => memory.id),
+        )}`,
+      );
+    }
+    const cancellationProbe = {
+      proof: cancellationProof,
+      execution:
+        "production generateChatResponse path; owner abort scheduled after the live RESPONSE_HANDLER invocation began",
+      liveModelInvocationObserved,
+      invokedModelType,
+      modelSignalWasAlreadyAborted,
+      ownerSignalAborted: cancellationController.signal.aborted,
+      rejection: {
+        name:
+          cancellationError instanceof Error
+            ? cancellationError.name
+            : typeof cancellationError,
+        message:
+          cancellationError instanceof Error
+            ? cancellationError.message
+            : String(cancellationError),
+      },
+      wallMs: rounded(cancellationWallMs),
+      backgroundTasks: cancellationBackgroundTasks,
+      backgroundQuiescenceMs: rounded(cancellationBackgroundQuiescenceMs),
+      lateAssistantPersistenceIds: lateCancellationReplies.map(
+        (memory) => memory.id,
+      ),
+    };
+
     const registeredProviderNames = runtime.providers.map(
       (provider) => provider.name,
     );
@@ -373,6 +500,7 @@ async function main(): Promise<void> {
       >,
       spanHistograms: chatTelemetry.spanHistograms,
       providerTelemetry: chatTelemetry.providers,
+      cancellationProbe,
       allProviderSweep: {
         execution:
           "every registered provider explicitly selected and executed concurrently by AgentRuntime.composeState",
