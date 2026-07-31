@@ -7475,6 +7475,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			? {
 					activeEvaluators: [],
 					appliedPatches: [],
+					candidateActionsAddedByEvaluators: [],
+					candidateActionsClearedByEvaluators: false,
 					errors: [],
 				}
 			: await timeInferenceSpan("evaluators:response-handler", () =>
@@ -7622,14 +7624,20 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
-		// Merge direct-request candidate inference BEFORE the early-ack gate so
-		// the async-handoff check below sees the turn's full candidate set.
+		// Merge direct-request candidate inference before the early-ack gate so
+		// the async-handoff check below sees the turn's full candidate set. An
+		// evaluator that cleared Stage-1 candidates has already established an
+		// authoritative route from richer runtime state, so the generic text
+		// heuristic must not undo that decision.
 		const directPlannerCandidateActions =
 			inferDirectCurrentRequestCandidateActions(
 				args.runtime.actions ?? [],
 				getUserMessageText(args.message) ?? "",
 			);
-		if (directPlannerCandidateActions.length > 0) {
+		if (
+			directPlannerCandidateActions.length > 0 &&
+			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
+		) {
 			messageHandler.plan.candidateActions = uniqueActionNames([
 				...getMessageHandlerCandidateActions(messageHandler),
 				...directPlannerCandidateActions,
