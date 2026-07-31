@@ -101,8 +101,12 @@ describe("viewFollowupRoutingEvaluator", () => {
 		).resolves.toMatchObject({
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
+			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "interact", view: "notes" },
+			},
 		});
 	});
 
@@ -124,9 +128,42 @@ describe("viewFollowupRoutingEvaluator", () => {
 			viewFollowupRoutingEvaluator.evaluate(ctx),
 		).resolves.toMatchObject({
 			debug: [
-				"active view notes supports create; routing follow-up through VIEWS",
+				"active view notes supports create; forcing sole deterministic VIEWS owner",
 			],
 		});
+	});
+
+	it("replaces a broad Stage-1 task route when the focused view owns the referent", async () => {
+		mockLoopback({ viewId: "notes" });
+		const ctx = context("create a new one to eat lunch");
+		ctx.messageHandler.plan.requiresTool = true;
+		ctx.messageHandler.plan.candidateActions = ["CREATE_TASK"];
+		ctx.messageHandler.plan.parentActionHints = ["TASKS"];
+
+		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(true);
+		await expect(
+			viewFollowupRoutingEvaluator.evaluate(ctx),
+		).resolves.toMatchObject({
+			requiresTool: true,
+			clearCandidateActions: true,
+			addCandidateActions: ["VIEWS"],
+			clearParentActionHints: true,
+			addParentActionHints: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "interact", view: "notes" },
+			},
+		});
+	});
+
+	it("leaves an explicit standalone task request on its original route", async () => {
+		mockLoopback({ viewId: "notes" });
+		const ctx = context("create a task to eat lunch");
+		ctx.messageHandler.plan.requiresTool = true;
+		ctx.messageHandler.plan.candidateActions = ["CREATE_TASK"];
+
+		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(false);
+		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
 	it("routes a delete follow-up that references the active view", async () => {
