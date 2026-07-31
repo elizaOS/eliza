@@ -298,4 +298,25 @@ describe("/ask command", () => {
 		expect(h.editedReply).not.toContain("reply:");
 		expect(h.editedComponents?.length ?? 0).toBeGreaterThanOrEqual(1);
 	});
+
+	it("uses neutral text for a components-only answer instead of restoring raw markup", async () => {
+		const ask = getRegisteredCommands().get("ask");
+		const h = makeInteraction("what should I do next?");
+		const answer = [
+			"[FOLLOWUPS]",
+			"reply:Show me the plan=Show plan",
+			"prompt:Start the first step=Start",
+			"[/FOLLOWUPS]",
+		].join("\n");
+		const runtime = makeRuntime(async (_rt, _m, cb) => {
+			await cb({ text: answer, source: "agent" } as Content);
+			return {};
+		});
+		await ask?.execute(h.interaction as never, runtime as never);
+
+		expect(h.editedReply).toBe("Choose an option:");
+		expect(h.editedReply).not.toContain("[FOLLOWUPS]");
+		expect(h.editedReply).not.toContain("reply:");
+		expect(h.editedComponents?.length ?? 0).toBeGreaterThanOrEqual(1);
+	});
 });
