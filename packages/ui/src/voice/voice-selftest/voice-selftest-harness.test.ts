@@ -29,6 +29,10 @@ describe("classifyErrorFallbackReply", () => {
     ["I don't have a reply for that — try rephrasing?", "no_response"],
     ["I don't have a reply for that - try rephrasing?", "no_response"],
     [
+      "The configured AI provider is out of credits or quota. Add credits or increase its quota, then try again.",
+      "insufficient_credits",
+    ],
+    [
       "Eliza Cloud credits are depleted. Top up the cloud balance and try again.",
       "insufficient_credits",
     ],
