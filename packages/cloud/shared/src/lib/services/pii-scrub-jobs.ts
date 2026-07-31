@@ -48,6 +48,7 @@
  * sibling slices of #14808).
  */
 
+import { ElizaError } from "@elizaos/core";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
 import {
   hashPiiScrubContent,
@@ -486,12 +487,32 @@ export async function processPendingPiiScrubJobs(
 
   // Stale recovery (crashed-worker backstop), scoped to this job type only —
   // mirrors the provisioning cycle's ordering.
-  result.recovered = await jobsRepository.recoverStaleJobs({
+  const recovery = await jobsRepository.recoverStaleJobs({
     type: PII_SCRUB_JOB_TYPE,
     staleThresholdMs: options.staleThresholdMs ?? PII_SCRUB_DEFAULT_STALE_THRESHOLD_MS,
   });
+  result.recovered = recovery.retried;
   if (result.recovered > 0) {
     logger.info(`${LOG} Recovered stale pii_scrub jobs`, { recovered: result.recovered });
+  }
+  if (recovery.failures.length > 0) {
+    throw new ElizaError("PII scrub stale-job recovery finished degraded", {
+      code: "PII_SCRUB_RECOVERY_DEGRADED",
+      cause: new AggregateError(
+        recovery.failures.map(({ cause }) => cause),
+        "PII scrub recovery failures",
+      ),
+      context: {
+        scanned: recovery.scanned,
+        retried: recovery.retried,
+        permanentlyFailed: recovery.permanentlyFailed,
+        failures: recovery.failures.map(({ jobId, cause }) => ({
+          jobId,
+          error: cause instanceof Error ? cause.message : String(cause),
+        })),
+      },
+      severity: "ephemeral",
+    });
   }
 
   return result;
