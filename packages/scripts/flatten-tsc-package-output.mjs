@@ -76,6 +76,28 @@ async function hasFlatEntryPoint() {
   );
 }
 
+// Move every file from srcDir into destDir, recursing into subdirectories and
+// overwriting same-named files, WITHOUT deleting unrelated files already in
+// destDir. Replacing the whole directory here destroyed sibling bundler
+// output that shares a dist subdirectory with the tsc declarations — e.g.
+// plugin-app-control's tsup-built dist/workers/app-worker-entry.js was wiped
+// by the d.ts move, so the app worker could never spawn at runtime.
+async function mergeInto(srcDir, destDir) {
+  await fs.mkdir(destDir, { recursive: true });
+  const entries = await fs.readdir(srcDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const from = path.join(srcDir, entry.name);
+    const to = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      await mergeInto(from, to);
+    } else {
+      await removePathRecursive(to);
+      await retryTransientFsOperation(() => fs.rename(from, to));
+    }
+  }
+  await fs.rmdir(srcDir).catch(() => {});
+}
+
 async function flattenNestedSource() {
   const entries = await fs.readdir(nestedSourceDir);
   for (const entry of entries) {
@@ -100,6 +122,14 @@ async function flattenNestedSource() {
       throw error;
     }
 
+    const [stagingStat, targetStat] = await Promise.all([
+      fs.stat(stagingEntry).catch(() => null),
+      fs.stat(targetEntry).catch(() => null),
+    ]);
+    if (stagingStat?.isDirectory() && targetStat?.isDirectory()) {
+      await mergeInto(stagingEntry, targetEntry);
+      continue;
+    }
     await removePathRecursive(targetEntry);
     await retryTransientFsOperation(() => fs.rename(stagingEntry, targetEntry));
   }
