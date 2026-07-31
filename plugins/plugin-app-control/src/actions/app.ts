@@ -1,15 +1,13 @@
 /**
- * @module plugin-app-control/actions/app
- *
- * Unified APP action with actions (`launch`, `relaunch`,
- * `load_from_directory`, `list`, `create`).
+ * Dispatches the unified APP action across launch, relaunch, stop,
+ * load-from-directory, list, and create operations.
  *
  * Validate gates on owner role + structured context + a lookup against
  * any pending APP_CREATE intent task in the same room (so the multi-turn
  * choice reply still resolves).
  *
- * Handler is pure dispatch — sub-handlers live in app-launch / app-relaunch
- * / app-list / app-load-from-directory / app-create.
+ * Sub-handlers own each operation so this module remains the planner contract
+ * and authorization boundary.
  */
 
 import path from "node:path";
@@ -32,10 +30,12 @@ import { runLaunch } from "./app-launch.js";
 import { runList } from "./app-list.js";
 import { runLoadFromDirectory } from "./app-load-from-directory.js";
 import { runRelaunch } from "./app-relaunch.js";
+import { runStop } from "./app-stop.js";
 
 export type AppMode =
 	| "launch"
 	| "relaunch"
+	| "stop"
 	| "load_from_directory"
 	| "list"
 	| "create";
@@ -43,6 +43,7 @@ export type AppMode =
 const MODES: readonly AppMode[] = [
 	"launch",
 	"relaunch",
+	"stop",
 	"load_from_directory",
 	"list",
 	"create",
@@ -104,14 +105,8 @@ function inferMode(
 	if (RELAUNCH_VERBS.test(trimmed) && APP_NOUN.test(trimmed)) return "relaunch";
 
 	if (STOP_VERBS.test(trimmed) && APP_NOUN.test(trimmed)) {
-		// Stop folds into relaunch only when paired with a launch verb;
-		// otherwise it's not an APP-action concern (no close mode).
 		if (LAUNCH_VERBS.test(trimmed)) return "relaunch";
-		// Fall through — stand-alone "close X app" still routes to relaunch
-		// with verify off, treating it as a stop+relaunch is wrong; we
-		// instead route to list so the user can see candidates without
-		// silently restarting.
-		return "list";
+		return "stop";
 	}
 
 	if (LAUNCH_VERBS.test(trimmed) && APP_NOUN.test(trimmed)) return "launch";
@@ -174,6 +169,8 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"RUN_APP",
 			"RESTART_APP",
 			"RELAUNCH_APP",
+			"STOP_APP",
+			"CLOSE_APP",
 			"CREATE_APP",
 			"BUILD_APP",
 			"NEW_APP",
@@ -187,21 +184,22 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"running",
 			"launch",
 			"relaunch",
+			"stop",
 			"scaffold",
 		],
 		description:
-			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=stop stops a running app without uninstalling it; action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 		descriptionCompressed:
-			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
+			"apps launch|relaunch|stop|list|load_folder|create; create scaffolds, coding-agent, verify",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
+			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching, stopping, or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|stop|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
 				name: "action",
 				description:
-					"Operation: launch | relaunch | load_from_directory | list | create.",
+					"Operation: launch | relaunch | stop | load_from_directory | list | create.",
 				required: true,
 				schema: {
 					type: "string",
@@ -220,7 +218,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			{
 				name: "app",
 				description:
-					"App name, slug, or display name (launch / relaunch / create-edit).",
+					"App name, slug, or display name (launch / relaunch / stop / create-edit).",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -233,7 +231,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			{
 				name: "runId",
 				description:
-					"Specific run id to stop before relaunching (relaunch mode).",
+					"Specific run id to stop (stop mode) or stop before relaunching (relaunch mode).",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -374,6 +372,13 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 						options: actionOptions,
 						callback,
 					});
+				case "stop":
+					return runStop({
+						client,
+						message,
+						options: actionOptions,
+						callback,
+					});
 				case "list":
 					return runList({ client });
 				case "load_from_directory":
@@ -397,6 +402,19 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		},
 
 		examples: [
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "stop the shopify app" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: "Shopify stopped.",
+						action: "APP",
+					},
+				},
+			],
 			[
 				{
 					name: "{{user1}}",

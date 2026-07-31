@@ -24,6 +24,7 @@ export interface AppControlClient {
 	listInstalledApps(signal?: AbortSignal): Promise<InstalledAppInfo[]>;
 	listAppRuns(signal?: AbortSignal): Promise<AppRunSummary[]>;
 	launchApp(name: string, signal?: AbortSignal): Promise<AppLaunchResult>;
+	stopApp(name: string, signal?: AbortSignal): Promise<AppStopResult>;
 	stopAppRun(runId: string, signal?: AbortSignal): Promise<AppStopResult>;
 }
 
@@ -62,6 +63,7 @@ async function requestJson<T>(
 	parse: (body: unknown) => T,
 	errorContext: string,
 	deadlineMs: number,
+	acceptExplicitFailure = false,
 ): Promise<T> {
 	const url = `${getApiBase()}${path}`;
 	const deadlineSignal = AbortSignal.timeout(deadlineMs);
@@ -94,10 +96,10 @@ async function requestJson<T>(
 		throw new Error(extractErrorMessage(response.status, body, errorContext));
 	}
 
-	// The server sometimes returns { success: false } with a 200 status (e.g.
-	// app not found). Surface those as explicit errors instead of trying to
-	// parse them into a typed result.
+	// A small number of mutation routes use HTTP 200 for a typed no-op result.
+	// Only callers with a parser for that explicit failure shape may opt in.
 	if (
+		!acceptExplicitFailure &&
 		body &&
 		typeof body === "object" &&
 		(body as AppControlErrorPayload).success === false
@@ -218,12 +220,20 @@ function parseStopResult(body: unknown): AppStopResult {
 	const stoppedAt = entry.stoppedAt;
 	const stopScope = entry.stopScope;
 	const message = entry.message;
+	const success = entry.success;
+	const pluginUninstalled = entry.pluginUninstalled;
+	const needsRestart = entry.needsRestart;
+	const runId = entry.runId;
 	if (
 		typeof appName !== "string" ||
 		typeof stoppedAt !== "string" ||
-		typeof message !== "string"
+		typeof message !== "string" ||
+		typeof success !== "boolean" ||
+		typeof pluginUninstalled !== "boolean" ||
+		typeof needsRestart !== "boolean" ||
+		(runId !== null && typeof runId !== "string")
 	) {
-		throw new Error("Malformed stop result: missing required string fields");
+		throw new Error("Malformed stop result: missing required fields");
 	}
 	if (
 		stopScope !== "plugin-uninstalled" &&
@@ -232,14 +242,13 @@ function parseStopResult(body: unknown): AppStopResult {
 	) {
 		throw new Error(`Malformed stop result: unexpected stopScope ${stopScope}`);
 	}
-	const runId = entry.runId;
 	return {
-		success: entry.success !== false,
+		success,
 		appName,
-		runId: typeof runId === "string" ? runId : null,
+		runId,
 		stoppedAt,
-		pluginUninstalled: Boolean(entry.pluginUninstalled),
-		needsRestart: Boolean(entry.needsRestart),
+		pluginUninstalled,
+		needsRestart,
 		stopScope,
 		message,
 	};
@@ -281,6 +290,21 @@ export function createAppControlClient(): AppControlClient {
 			);
 		},
 
+		async stopApp(name: string, signal?: AbortSignal) {
+			return requestJson(
+				"/api/apps/stop",
+				{
+					method: "POST",
+					body: JSON.stringify({ name }),
+					signal,
+				},
+				parseStopResult,
+				`Failed to stop app ${name}`,
+				LOOPBACK_STOP_DEADLINE_MS,
+				true,
+			);
+		},
+
 		async stopAppRun(runId: string, signal?: AbortSignal) {
 			return requestJson(
 				`/api/apps/runs/${encodeURIComponent(runId)}/stop`,
@@ -288,6 +312,7 @@ export function createAppControlClient(): AppControlClient {
 				parseStopResult,
 				`Failed to stop app run ${runId}`,
 				LOOPBACK_STOP_DEADLINE_MS,
+				true,
 			);
 		},
 	};

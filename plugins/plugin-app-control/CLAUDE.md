@@ -12,7 +12,7 @@ This plugin registers four actions, one natural-language shortcut set, two evalu
 
 | Name | File | Description |
 |---|---|---|
-| `APP` | `src/actions/app.ts` | Unified app control. Sub-modes: `launch`, `relaunch`, `load_from_directory`, `list`, `create`. `create` runs a multi-turn scaffold+coding-agent flow. Owner-gated. |
+| `APP` | `src/actions/app.ts` | Unified app control. Sub-modes: `launch`, `relaunch`, `stop`, `load_from_directory`, `list`, `create`. `stop` uses the canonical name-based `/api/apps/stop` route without uninstalling or relaunching. `create` runs a multi-turn scaffold+coding-agent flow. Owner-gated. |
 | `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `icon`, `rollback`, `delete`/`remove`. Create/edit/icon/rollback/delete are owner-gated; read modes are open. `rollback` resets a created/edited view-or-plugin workdir to the pre-edit git snapshot taken before the coding agent ran (#8915) and re-registers it via `load-from-directory`. |
 | `BACKGROUND` | `src/actions/background.ts` | Change the unified app background from chat. Ops: `set` (color name/hex, a named **programmable GLSL shader** preset — `aurora`/`lava`/`plasma`/`waves`/`nebula` — plus relative uniform tweaks like *slower*/*brighter*/*bigger* (#10694), an uploaded image attachment, or a generated image from a prompt), `undo`, `redo`, `reset`. The action names a preset id + uniform patch only; the GLSL source lives in `@elizaos/ui` (`backgrounds/shader-presets.ts`) where `useBackgroundApplyChannel` resolves id→source, validates it, and `ProgrammableShaderBackground` renders it via three.js with a compile-validate + frame-watchdog + context-loss-recovery + reduced-motion + color-field fallback. Broadcasts a `background:apply` view event via `POST /api/views/events/broadcast`; the renderer applies it to the shared `BackgroundConfig` store. Drives the SAME background as the `/background` view — there is no separate homescreen-scene surface. |
 | `SETTINGS` | `src/actions/settings.ts` | Describe, list, and change built-in settings; mutations use the same semantic routes as the UI. Successful list/set results own canonical reply text and declare a single-operation turn complete once the plan queue is drained, avoiding a redundant evaluator model call on native function-calling backends without suppressing multi-tool evaluation. Owner-gated. |
@@ -69,6 +69,7 @@ src/
     app.ts                        APP action dispatcher; imports sub-handlers below
     app-launch.ts                 launch sub-handler
     app-relaunch.ts               relaunch sub-handler (stop + launch, optional verify)
+    app-stop.ts                   stop sub-handler (canonical name/run route, no relaunch)
     app-list.ts                   list sub-handler
     app-load-from-directory.ts    load_from_directory sub-handler
     app-create.ts                 create sub-handler (multi-turn scaffold + coding agent)
@@ -173,6 +174,7 @@ Follow the same pattern in `src/actions/views.ts` and create a `src/actions/view
 ## Conventions / gotchas
 
 - **Loopback HTTP only.** The client (`src/client/api.ts`) and all action helpers call the Eliza dashboard over `http://127.0.0.1:<port>`. Port is auto-detected; never hardcode it.
+- **APP stop shares the UI route.** Name-based `APP action=stop` calls `/api/apps/stop`, the same canonical AppManager path as `AppsManagementSection`; a successful stop and `nothing-stopped` are distinct typed results.
 - **APP action requires owner role.** `hasOwnerAccess` from `@elizaos/core` gates all `APP` writes. `VIEWS` read modes are open; write modes (`create`, `edit`, `delete`) are owner-gated.
 - **Multi-turn flows.** `APP create` and `VIEWS create` use `hasPendingIntent` / `hasPendingViewsCreateIntent` to detect follow-up choice replies (`new`, `edit-N`, `cancel`). Both check a pending-task record in the runtime before routing to the create sub-handler.
 - **Create flows work outside a checkout and preflight their dependencies.** `src/actions/scaffold-env.ts` resolves the min-plugin / min-project templates from the repo root first and then from the installed `elizaos` package (declared as a dependency so packaged builds ship the templates), lands new plugins in `<stateDir>/plugins` when the repo root has no plugins/ dir, and `preflightCodingDispatch` checks the orchestrator action + a coding CLI on PATH BEFORE scaffolding so a missing prerequisite answers with setup guidance instead of a dead-end error (or a half-created workdir). Keep new scaffold paths on these helpers; do not reintroduce repo-root-only resolution.

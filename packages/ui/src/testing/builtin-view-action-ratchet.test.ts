@@ -48,6 +48,7 @@ const REGISTERED_ACTIONS = new Set([
   ...collectRegisteredActionInventory(repoRoot).map((entry) => entry.name),
   ...canonicalSpecActionNames(),
 ]);
+const REGISTERED_VIEWS = new Set(["cloud-apps"]);
 
 function readRepoSource(sourcePath: string): string {
   return readFileSync(path.join(repoRoot, sourcePath), "utf8");
@@ -83,6 +84,7 @@ describe("builtin view action ratchet (#14369)", () => {
     const result = validateBuiltinViewMutationCoverage({
       readSource: readRepoSource,
       registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
     });
 
     expect(result.findings).toEqual([]);
@@ -113,6 +115,11 @@ describe("builtin view action ratchet (#14369)", () => {
           semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
         }),
         expect.objectContaining({
+          viewId: "my-apps",
+          observedMutationSites: 27,
+          semanticActions: ["APP", "VIEWS"],
+        }),
+        expect.objectContaining({
           viewId: "logs",
           exempt: true,
         }),
@@ -135,6 +142,7 @@ describe("builtin view action ratchet (#14369)", () => {
       baseline: [tasks],
       readSource: () => sourceWithNewButton,
       registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
     });
 
     expect(result.ok).toBe(false);
@@ -169,6 +177,7 @@ describe("builtin view action ratchet (#14369)", () => {
         baseline: [entry],
         readSource,
         registeredActions: REGISTERED_ACTIONS,
+        registeredViews: REGISTERED_VIEWS,
       });
 
       expect(result.ok).toBe(false);
@@ -195,6 +204,7 @@ describe("builtin view action ratchet (#14369)", () => {
       baseline: [automations],
       readSource,
       registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
     });
 
     expect(result.ok).toBe(false);
@@ -221,6 +231,7 @@ describe("builtin view action ratchet (#14369)", () => {
           ? null
           : readRepoSource(sourcePath),
       registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
     });
 
     expect(result.ok).toBe(false);
@@ -244,6 +255,7 @@ describe("builtin view action ratchet (#14369)", () => {
       ],
       readSource: () => "<button onClick={save}>Save</button>",
       registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
     });
 
     expect(result.ok).toBe(false);
@@ -251,6 +263,245 @@ describe("builtin view action ratchet (#14369)", () => {
       expect.objectContaining({
         viewId: "synthetic",
         code: "missing-semantic-action",
+      }),
+    ]);
+  });
+
+  it("inventories every direct and mounted My Apps mutation with explicit authority", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps?.mutationAffordances) {
+      throw new Error("my-apps mutation inventory missing");
+    }
+
+    const claimedByFile = new Map<string, number>();
+    for (const affordance of myApps.mutationAffordances) {
+      claimedByFile.set(
+        affordance.sourceFile,
+        (claimedByFile.get(affordance.sourceFile) ?? 0) + 1,
+      );
+    }
+
+    expect(Object.fromEntries(claimedByFile)).toEqual({
+      "packages/ui/src/components/pages/MyAppsView.tsx": 1,
+      "packages/ui/src/components/settings/AppsManagementSection.tsx": 26,
+    });
+    expect(
+      myApps.mutationAuthorities?.map((authority) => ({
+        action: authority.semanticAction,
+        operations: [...authority.actionOperations],
+      })),
+    ).toEqual([
+      {
+        action: "APP",
+        operations: [
+          "create",
+          "launch",
+          "list",
+          "load_from_directory",
+          "relaunch",
+          "stop",
+        ],
+      },
+      { action: "VIEWS", operations: ["show"] },
+    ]);
+    expect(myApps.mountedSourceFiles).toEqual([
+      expect.objectContaining({
+        sourceFile:
+          "packages/ui/src/components/settings/AppsManagementSection.tsx",
+        mountedBy: "packages/ui/src/components/pages/MyAppsView.tsx",
+      }),
+    ]);
+    expect(
+      myApps.mutationAffordances.find(
+        (affordance) => affordance.id === "cloud-apps.open",
+      )?.viewTarget,
+    ).toEqual({
+      id: "cloud-apps",
+      sourceSignature:
+        '.find((page) => page.id === "cloud-apps")?.path ?? null',
+    });
+  });
+
+  it("fails when the VIEWS.show target is absent from the server view registry", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps) throw new Error("my-apps baseline entry missing");
+    const withoutCloudApps = new Set(
+      [...REGISTERED_VIEWS].filter((viewId) => viewId !== "cloud-apps"),
+    );
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [myApps],
+      readSource: readRepoSource,
+      registeredActions: REGISTERED_ACTIONS,
+      registeredViews: withoutCloudApps,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        viewId: "my-apps",
+        code: "mutation-view-target-drift",
+        message: expect.stringContaining("registered server view inventory"),
+      }),
+    ]);
+  });
+
+  it("fails when the Cloud Apps control stops selecting its declared view target", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps) throw new Error("my-apps baseline entry missing");
+    const page = "packages/ui/src/components/pages/MyAppsView.tsx";
+    const source = readRepoSource(page).replace(
+      '.find((page) => page.id === "cloud-apps")?.path ?? null',
+      '.find((page) => page.id === "cloud-deployments")?.path ?? null',
+    );
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [myApps],
+      readSource: (sourcePath) =>
+        sourcePath === page ? source : readRepoSource(sourcePath),
+      registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        viewId: "my-apps",
+        code: "mutation-view-target-drift",
+      }),
+    ]);
+  });
+
+  it("fails when the mounted app-management child gains an uninventoried mutation", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps) throw new Error("my-apps baseline entry missing");
+    const child =
+      "packages/ui/src/components/settings/AppsManagementSection.tsx";
+    const injected = `${readRepoSource(child)}
+      export function InjectedAppMutation() {
+        return <button onClick={() => window.localStorage.setItem("x", "1")}>Local only</button>;
+      }
+    `;
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [myApps],
+      readSource: (sourcePath) =>
+        sourcePath === child ? injected : readRepoSource(sourcePath),
+      registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          viewId: "my-apps",
+          code: "new-local-mutation",
+        }),
+        expect.objectContaining({
+          viewId: "my-apps",
+          code: "mutation-inventory-count",
+          message: expect.stringContaining("add or remove named operations"),
+        }),
+      ]),
+    );
+  });
+
+  it("fails when a named My Apps operation drifts away from its source", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps) throw new Error("my-apps baseline entry missing");
+    const page = "packages/ui/src/components/pages/MyAppsView.tsx";
+    const source = readRepoSource(page).replace(
+      "onClick={() => navigateBrowserPath(cloudStudioPath)}",
+      "onClick={() => navigateBrowserPath(String(cloudStudioPath))}",
+    );
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [myApps],
+      readSource: (sourcePath) =>
+        sourcePath === page ? source : readRepoSource(sourcePath),
+      registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        viewId: "my-apps",
+        code: "mutation-signature-drift",
+        message: expect.stringContaining("cloud-apps.open"),
+      }),
+    ]);
+  });
+
+  it("fails closed when a named My Apps affordance lacks operation authority", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps?.mutationAffordances) {
+      throw new Error("my-apps mutation inventory missing");
+    }
+    const [first, ...rest] = myApps.mutationAffordances;
+    if (!first) throw new Error("my-apps mutation inventory is empty");
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [
+        {
+          ...myApps,
+          mutationAffordances: [{ ...first, actionOperations: [] }, ...rest],
+        },
+      ],
+      readSource: readRepoSource,
+      registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          viewId: "my-apps",
+          code: "mutation-action-drift",
+          message: expect.stringContaining("has no declared authority"),
+        }),
+      ]),
+    );
+  });
+
+  it("fails when the mounted My Apps child is no longer mounted", () => {
+    const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
+      (entry) => entry.viewId === "my-apps",
+    );
+    if (!myApps) throw new Error("my-apps baseline entry missing");
+    const page = "packages/ui/src/components/pages/MyAppsView.tsx";
+    const source = readRepoSource(page).replace(
+      "<AppsManagementSection />",
+      "<div />",
+    );
+
+    const result = validateBuiltinViewMutationCoverage({
+      baseline: [myApps],
+      readSource: (sourcePath) =>
+        sourcePath === page ? source : readRepoSource(sourcePath),
+      registeredActions: REGISTERED_ACTIONS,
+      registeredViews: REGISTERED_VIEWS,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.findings).toEqual([
+      expect.objectContaining({
+        viewId: "my-apps",
+        code: "mutation-mount-drift",
       }),
     ]);
   });

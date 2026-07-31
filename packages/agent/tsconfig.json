@@ -63,6 +63,12 @@
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],
+      "@elizaos/plugin-app-control": [
+        "../../plugins/plugin-app-control/src/index.ts"
+      ],
+      "@elizaos/plugin-app-control/*": [
+        "../../plugins/plugin-app-control/src/*"
+      ],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
