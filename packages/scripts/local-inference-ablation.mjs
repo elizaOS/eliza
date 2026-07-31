@@ -26,6 +26,11 @@ const DEFAULT_VARIANTS = [
     args: [],
   },
   {
+    name: "stock_no_fa",
+    label: "target only, f16 KV, flash attention disabled",
+    args: ["-fa", "off"],
+  },
+  {
     name: "turbo4_polar_kv",
     label: "target only, Turbo/Polar KV turbo4",
     args: ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"],
@@ -636,18 +641,26 @@ async function main() {
 
   printSummary(report.variants);
 
+  const skipped = report.variants.filter((row) => row.skipped);
+  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
+  const executed = report.variants.filter(
+    (row) => row.ok === true && !row.skipped,
+  );
+  report.executedVariantCount = executed.length;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outPath = path.join(args.outDir, `${stamp}-${args.backend}.json`);
   fs.writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`\nWrote ${outPath}`);
 
-  const skipped = report.variants.filter((row) => row.skipped);
-  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
   let exitCode = 0;
   if (failed.length > 0) {
     console.error(
       `[ablation] ${failed.length} variant(s) failed: ${failed.map((row) => row.name).join(", ")}`,
     );
+    exitCode = 1;
+  }
+  if (executed.length === 0) {
+    console.error("[ablation] zero variants executed successfully");
     exitCode = 1;
   }
   if (args.requireAll && skipped.length > 0) {

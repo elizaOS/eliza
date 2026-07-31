@@ -22,6 +22,19 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Verify PostgreSQL container runtime
+      if: inputs.setup-db == 'true' && inputs.db-backend == 'postgres'
+      shell: bash
+      run: |
+        if ! command -v docker >/dev/null 2>&1; then
+          echo "::error::PostgreSQL-backed cloud tests require the Docker CLI."
+          exit 1
+        fi
+        if ! docker info >/dev/null 2>&1; then
+          echo "::error::PostgreSQL-backed cloud tests require access to the Docker daemon."
+          exit 1
+        fi
+
     - uses: actions/setup-node@v6
       with:
         node-version: "22"
@@ -29,14 +42,6 @@ runs:
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       with:
         bun-version: ${{ inputs.bun-version }}
-
-    - name: Cache Bun install
-      uses: actions/cache@v5
-      with:
-        path: ~/.bun/install/cache
-        key: bun-${{ runner.os }}-${{ hashFiles('packages/cloud/shared/bun.lock') }}
-        restore-keys: |
-          bun-${{ runner.os }}-
 
     - name: Install dependencies
       shell: bash

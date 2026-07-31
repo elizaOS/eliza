@@ -136,7 +136,9 @@ jobs:
         run: bun run test:cloud:integration
 
   e2e-tests:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # This lane starts a real pgvector container. Generic fleet labels do not
+    # attest Docker-daemon access, so use GitHub's Docker-capable image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     needs: [lint-and-types]
     env:
@@ -146,6 +148,7 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
+          db-backend: "postgres"
       - name: Run PostgreSQL lifecycle barrier tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
