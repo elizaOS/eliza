@@ -51,6 +51,7 @@ export type VerificationCheckKind =
 	| "typecheck"
 	| "lint"
 	| "test"
+	| "publish"
 	| "build"
 	| "launch"
 	| "browser"
@@ -1283,9 +1284,51 @@ export class AppVerificationService extends Service {
 			}
 		}
 
-		const verdict: "pass" | "fail" = results.every((r) => r.passed)
+		let verdict: "pass" | "fail" = results.every((r) => r.passed)
 			? "pass"
 			: "fail";
+
+		// Authoritative static publish (opt-in via ELIZA_APP_PUBLISH_DIR): when
+		// every check passed, the verifier itself ships the freshly built dist
+		// to the publish target. The builder's own deploy step is best-effort —
+		// a model can copy before its final rebuild and serve a stale bundle
+		// (live incident: comet-catch published the scaffold placeholder while
+		// the real game sat in dist). Copy-after-pass is deterministic and
+		// idempotent; a failed copy fails the run — "passed" while the live
+		// page is stale would be a false verdict.
+		const publishRoot = process.env.ELIZA_APP_PUBLISH_DIR?.trim();
+		if (
+			verdict === "pass" &&
+			projectKind === "app" &&
+			publishRoot &&
+			opts.appName
+		) {
+			const publishStart = nowMs();
+			const fs = await import("node:fs/promises");
+			const distDir = path.join(opts.workdir, "dist");
+			const target = path.join(publishRoot, opts.appName);
+			let publishLog = `Publishing ${distDir} -> ${target}\n`;
+			let published = false;
+			try {
+				await fs.access(path.join(distDir, "index.html"));
+				await fs.mkdir(target, { recursive: true });
+				await fs.cp(distDir, target, { recursive: true });
+				published = true;
+				publishLog += "Publish complete.\n";
+			} catch (err) {
+				// error-policy:J1 boundary — a publish failure becomes a failed
+				// check on the result, never a silent pass with a stale page.
+				publishLog += `Publish error: ${err instanceof Error ? err.message : String(err)}\n`;
+				verdict = "fail";
+			}
+			results.push({
+				kind: "publish",
+				passed: published,
+				durationMs: nowMs() - publishStart,
+				output: truncate(publishLog, OUTPUT_INLINE_LIMIT),
+				outputPath: await persistOutput(dir, "publish", publishLog),
+			});
+		}
 
 		const result: VerificationResult = {
 			verdict,
