@@ -1,11 +1,7 @@
 /**
- * @module plugin-app-control/actions/views-show
- *
- * show/open sub-mode: resolve a view by name or ID and navigate to it.
- *
- * Navigation uses POST /api/apps/launch with the view's shell path as the
- * target. When the view has no `path`, the agent tells the user the view
- * ID and how to navigate manually.
+ * Resolves a requested view and asks the active shell to navigate to it.
+ * The callback owns the one visible acknowledgement; the returned action
+ * receipt remains available to the planner without becoming a second row.
  */
 
 import type {
@@ -22,7 +18,6 @@ import {
 	targetReferenceLogView,
 	userRequestMessageText,
 } from "../params.js";
-import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
@@ -518,10 +513,6 @@ export async function runViewsShow({
 		navigationLabel,
 	);
 
-	// Record the switch so the compose hook injects the acknowledgement provider
-	// (and the provider phrases it) on this turn's reply and the immediate next.
-	if (result.ok) markViewSwitch(message?.roomId);
-
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
@@ -531,11 +522,10 @@ export async function runViewsShow({
 		text: result.text,
 		...(result.ok
 			? {
-					// This text is the canonical user-facing completion, not an
-					// internal VIEWS diagnostic. Keep it visible at the terminal
-					// boundary so streaming clients still render one acknowledgement
-					// when an early action callback is not transported. The message
-					// service de-duplicates it when that callback was delivered.
+					// The typed callback above owns the visible completion. Keeping the
+					// terminal receipt internal prevents a second assistant row while
+					// preserving its verified text for non-transcript consumers.
+					transcriptVisibility: "internal" as const,
 					userFacingText: result.text,
 					verifiedUserFacing: true,
 					turnComplete: true,

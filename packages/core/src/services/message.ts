@@ -6005,6 +6005,39 @@ function listAvailableContextsForRole(
 	return registry.listAvailable(role);
 }
 
+/**
+ * Whether the routed action owns the response-handler's pre-planner reply.
+ * A deterministic call is already selected, while relevance candidates are
+ * only safe to trust when they all resolve to the same canonical action.
+ */
+function actionOwnsResponseHandlerEarlyReply(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageHandler: MessageHandlerResult,
+): boolean {
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const deterministicToolCall = messageHandler.plan.deterministicToolCall;
+	if (deterministicToolCall) {
+		return (
+			resolveRuntimeAction(actionLookup, deterministicToolCall.name)
+				?.suppressEarlyReply === true
+		);
+	}
+
+	const candidateNames = messageHandler.plan.candidateActions ?? [];
+	if (candidateNames.length === 0) return false;
+
+	const resolvedCandidates = new Map<string, Action>();
+	for (const name of candidateNames) {
+		if (typeof name !== "string" || !name.trim()) return false;
+		const action = resolveRuntimeAction(actionLookup, name);
+		if (!action) return false;
+		resolvedCandidates.set(normalizeActionIdentifier(action.name), action);
+	}
+
+	if (resolvedCandidates.size !== 1) return false;
+	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
+}
+
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
@@ -7599,8 +7632,12 @@ export async function runV5MessageRuntimeStage1(args: {
 			]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		let earlyReplyText =
-			routedResponseHandlerReply || parsedResponseHandlerReply;
+		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
+			args.runtime,
+			messageHandler,
+		)
+			? ""
+			: routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
 			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
