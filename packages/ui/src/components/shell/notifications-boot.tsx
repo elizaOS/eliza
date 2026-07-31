@@ -1,12 +1,11 @@
 /**
  * Headless notification wiring for the app shell. Mounted once in App.tsx, it
- * boots the notification store (hydrate + live WS stream). Live arrivals fan out
- * to the OS/native sinks and the in-app top banner queue (rendered by
- * `NotificationBanners`); this module only needs to boot the store and answer
- * the surface-agnostic OPEN_NOTIFICATION_CENTER_EVENT (desktop menu/tray
- * "Notifications", the `<scheme>://notifications` deep link) by navigating to the
- * home dashboard — the NotificationsHomeCenter widget there IS the notification
- * center, so "open notifications" means "go to the dashboard".
+ * boots the notification store (hydrate + live WS stream). Native platforms
+ * may raise their OS notification, while the persistent Home notification
+ * center is the only in-app surface. This module also answers the
+ * surface-agnostic OPEN_NOTIFICATION_CENTER_EVENT (desktop menu/tray
+ * "Notifications", the `<scheme>://notifications` deep link) by navigating to
+ * Home.
  */
 import { useEffect } from "react";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
