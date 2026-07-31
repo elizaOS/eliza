@@ -1296,11 +1296,21 @@ export class AppVerificationService extends Service {
 		// the real game sat in dist). Copy-after-pass is deterministic and
 		// idempotent; a failed copy fails the run — "passed" while the live
 		// page is stale would be a false verdict.
-		const publishRoot = process.env.ELIZA_APP_PUBLISH_DIR?.trim();
+		// Settings-first with env fallback, mirroring resolvePublishTarget on
+		// the prompt side — a settings-only install must get the authoritative
+		// re-publish, not just the deploy prompt (review finding on #17479).
+		const publishSetting = this.runtime.getSetting("APP_PUBLISH_DIR");
+		const publishRoot =
+			(typeof publishSetting === "string" ? publishSetting.trim() : "") ||
+			process.env.ELIZA_APP_PUBLISH_DIR?.trim();
+		// Only a profile that actually rebuilt dist may publish it — a "fast"
+		// pass would ship whatever stale dist was lying around.
+		const builtFresh = results.some((r) => r.kind === "build" && r.passed);
 		if (
 			verdict === "pass" &&
 			projectKind === "app" &&
 			publishRoot &&
+			builtFresh &&
 			opts.appName
 		) {
 			const publishStart = nowMs();
