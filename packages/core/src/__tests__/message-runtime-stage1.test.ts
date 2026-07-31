@@ -3625,6 +3625,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 		const earlyReply = vi.fn(async () => undefined);
+		const onSettledActionResult = vi.fn();
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -3632,12 +3633,22 @@ describe("runV5MessageRuntimeStage1", () => {
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
+			onSettledActionResult,
 		});
 
 		expect(earlyReply).toHaveBeenCalledWith(
 			expect.objectContaining({ text: "On it." }),
 		);
 		expect(result.kind).toBe("planned_reply");
+		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
+		expect(onSettledActionResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				success: true,
+				effectReceipts: [
+					expect.objectContaining({ receiptId: "receipt-reminder-1" }),
+				],
+			}),
+		);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(canonicalText);
 			expect(result.result.responseContent?.effectReceiptIds).toEqual([

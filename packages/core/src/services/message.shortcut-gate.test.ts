@@ -12,6 +12,7 @@ import {
 	runWithStreamingContext,
 } from "../streaming-context";
 import type { Action } from "../types/components";
+import type { EffectReceipt } from "../types/effects";
 import { EventType } from "../types/events";
 import type { Memory, State, UUID } from "../types/index";
 import { runShortcutGate } from "./message";
@@ -123,6 +124,60 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			EventType.ACTION_COMPLETED,
 			EventType.SLASH_COMMAND_INVOKED,
 		]);
+	});
+
+	it("publishes a receipt-backed shortcut settlement before later turn work", async () => {
+		const receipt: EffectReceipt = {
+			receiptId: "receipt-shortcut-create-1",
+			operation: "test.shortcut.create",
+			resource: { kind: "test.shortcut", id: "created-1" },
+			artifacts: [],
+			idempotency: { key: "shortcut-create-1", replayed: false },
+			observedAt: "2026-07-31T19:00:00.000Z",
+			outcome: "applied",
+			commit: {
+				kind: "durable",
+				id: "created-1",
+				committedAt: "2026-07-31T19:00:00.000Z",
+			},
+		};
+		const text = "Shortcut item created.";
+		const action = echoAction();
+		action.tags = ["capability:write", "effect:receipt-required"];
+		action.handler = async (_rt, _message, _state, _options, callback) => {
+			await callback?.({ text });
+			return {
+				success: true,
+				text,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				effectReceipts: [receipt],
+				userFacingEffectReceiptIds: [receipt.receiptId],
+			};
+		};
+		const onSettledActionResult = vi.fn();
+		const { runtime } = makeRuntime({ actions: [action] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo create"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+			onSettledActionResult,
+		});
+
+		expect(result?.kind).toBe("direct_reply");
+		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
+		expect(onSettledActionResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				success: true,
+				effectReceipts: [
+					expect.objectContaining({ receiptId: receipt.receiptId }),
+				],
+			}),
+		);
 	});
 
 	it("returns null for a non-command message (turn proceeds to the LLM)", async () => {
