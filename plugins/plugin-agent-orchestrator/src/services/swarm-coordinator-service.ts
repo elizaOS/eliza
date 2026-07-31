@@ -258,6 +258,10 @@ export class SwarmCoordinatorService
   private swarmCompleteCallback: SwarmCompleteCallback | null = null;
   private readonly inFlightDecisionSessions = new Set<string>();
   private readonly synthesizedCompletionSessions = new Set<string>();
+  // Sessions that already posted a body-less "App verification passed."
+  // A multi-turn builder re-validates on every turn; repeating the bare
+  // verdict is noise, while a verdict carrying a deliverable always posts.
+  private readonly postedBareValidatorPass = new Set<string>();
   // Sessions whose latest terminal event was ceded to the sub-agent-router
   // (the router-owned skip in `runSwarmComplete`). The one-shot runners
   // (runPromptAndClose / runPromptViaSmithers in actions/tasks.ts) ALWAYS stop
@@ -380,6 +384,7 @@ export class SwarmCoordinatorService
     this.swarmCompleteCallback = null;
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
+    this.postedBareValidatorPass.clear();
     this.routerCededTerminalSessions.clear();
     this.terminalCompletionChains.clear();
     this.enrichmentMetadataCache.clear();
@@ -1112,6 +1117,12 @@ export class SwarmCoordinatorService
         ? `${validatorVerdict}\n\n${sanitizedBody}`
         : validatorVerdict
       : sanitizedBody;
+    if (validatorVerdict && !sanitizedBody && terminalStatus === "completed") {
+      if (this.postedBareValidatorPass.has(sessionId)) {
+        return;
+      }
+      this.postedBareValidatorPass.add(sessionId);
+    }
     const completionSummary =
       sanitizedSummary ||
       (terminalStatus === "completed"
