@@ -10,6 +10,14 @@ import { validateWorkflowSources } from "./ci-workflow-invariants.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const sources = {
+  cloudSetup: readFileSync(
+    path.join(root, ".github/actions/cloud-setup-test-env/action.yml"),
+    "utf8",
+  ),
+  cloudTests: readFileSync(
+    path.join(root, ".github/workflows/cloud-tests.yml"),
+    "utf8",
+  ),
   develop: readFileSync(
     path.join(root, ".github/workflows/develop-pr.yml"),
     "utf8",
@@ -26,6 +34,56 @@ test("accepts the repository workflow graph", () => {
 });
 
 for (const fixture of [
+  {
+    name: "generic runner admission for PostgreSQL e2e",
+    key: "cloudTests",
+    mutate: (source) =>
+      source.replace(
+        "    runs-on: ubuntu-24.04\n",
+        "    runs-on: self-hosted\n",
+      ),
+    pattern: /must use the Docker-capable ubuntu-24.04 runner/,
+  },
+  {
+    name: "late Docker capability preflight",
+    key: "cloudSetup",
+    mutate: (source) =>
+      source.replace(
+        "  steps:\n    - name: Verify PostgreSQL container runtime\n",
+        '  steps:\n    - uses: actions/setup-node@v6\n      with:\n        node-version: "22"\n    - name: Verify PostgreSQL container runtime\n',
+      ),
+    pattern: /Docker daemon preflight must run before/,
+  },
+  {
+    name: "Bun install archive cache",
+    key: "cloudSetup",
+    mutate: (source) =>
+      source.replace(
+        "    - name: Install dependencies\n",
+        "    - uses: actions/cache@v5\n      with:\n        path: ~/.bun/install/cache\n        key: bun-Linux-global\n    - name: Install dependencies\n",
+      ),
+    pattern: /multi-gigabyte Bun install archives are prohibited/,
+  },
+  {
+    name: "degraded Cloud e2e database backend",
+    key: "cloudTests",
+    mutate: (source) =>
+      source.replace(
+        '          db-backend: "postgres"\n',
+        '          db-backend: "pglite"\n',
+      ),
+    pattern: /must explicitly request real PostgreSQL/,
+  },
+  {
+    name: "skipped Cloud database migrations",
+    key: "cloudSetup",
+    mutate: (source) =>
+      source.replace(
+        "    - name: Run database migrations\n      if: inputs.setup-db == 'true'\n",
+        "    - name: Run database migrations\n      if: false\n",
+      ),
+    pattern: /database migrations must remain fail-closed/,
+  },
   {
     name: "conditional lint",
     key: "develop",

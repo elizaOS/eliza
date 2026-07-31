@@ -71,6 +71,7 @@ jobs:
           -config-file .github/actionlint.yaml
           .github/workflows/develop-pr.yml
           .github/workflows/develop-pr-gate.yml
+          .github/workflows/cloud-tests.yml
           .github/workflows/gitleaks.yml
           .github/workflows/local-inference-matrix.yml
           .github/workflows/stale-base-guard.yml
