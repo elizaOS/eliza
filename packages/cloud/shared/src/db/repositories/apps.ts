@@ -110,6 +110,7 @@ export class AppsRepository {
     publish: (app: App | undefined) => Promise<void>,
   ): Promise<App | undefined> {
     return await withAppCacheFence(id, async (tx) => {
+      /* global-scope: cache hydration keyed by appId, which is the fence key; callers authorize before use. */
       const [app] = UUID_PATTERN.test(id)
         ? await tx.select().from(apps).where(eq(apps.id, id)).limit(1)
         : [];

@@ -23,6 +23,10 @@ mock.module("../../../db/helpers", () => ({
 const findAppById = mock();
 mock.module("../../../db/repositories/apps", () => ({
   appsRepository: { findById: findAppById },
+  // Bun's mock.module replaces the module record wholesale; every value export
+  // must be present or other importers hit a link error.
+  AppsRepository: class {},
+  withAppCacheFence: mock(),
 }));
 
 const { appChargeRequestsService } = await import("../app-charge-requests");
