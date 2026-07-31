@@ -2691,13 +2691,15 @@ describe("ChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("gives active transcription the full lane plus one Stop control", () => {
+  it("keeps independent transcript and master-mic stop controls", () => {
+    const stopTranscriptionAndMic = vi.fn();
     render(
       <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
           responding: true,
           canSend: false,
+          stopTranscriptionAndMic,
         } as unknown as Partial<ShellController>)}
       />,
     );
@@ -2710,7 +2712,6 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
     expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
-    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByTestId("chat-composer-action")).toBeNull();
     expect(
@@ -2725,6 +2726,12 @@ describe("ChatOverlay", () => {
     expect(stopTranscription.getAttribute("aria-label")).toBe(
       "stop transcription",
     );
+    const stopMic = screen.getByTestId("chat-composer-mic");
+    expect(stopMic.getAttribute("aria-label")).toBe(
+      "stop transcription and mic",
+    );
+    fireEvent.click(stopMic);
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
     // A stopped agent blocks delivery, not finalization back into the draft.
     expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
     expect(

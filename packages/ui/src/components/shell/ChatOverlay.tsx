@@ -6412,16 +6412,33 @@ export function ChatOverlay({
                   slot="left"
                   reduceMotion={reduce}
                   controlKey={
-                    transcriptionComposerActive ||
-                    draftOwnsTrailingControl ||
-                    generationOwnsTrailingControl
-                      ? null
-                      : "voice"
+                    transcriptionMode
+                      ? "voice-master-stop"
+                      : transcriptionComposerActive ||
+                          draftOwnsTrailingControl ||
+                          generationOwnsTrailingControl
+                        ? null
+                        : "voice"
                   }
                 >
-                  {!transcriptionComposerActive &&
-                  !draftOwnsTrailingControl &&
-                  !generationOwnsTrailingControl ? (
+                  {transcriptionMode ? (
+                    // Transcript capture and the underlying mic are independent:
+                    // this control preserves the one-tap privacy stop while the
+                    // adjacent transcript control can leave listening enabled.
+                    <SoftButton
+                      icon={AudioLines}
+                      label="stop transcription and mic"
+                      disabled={firstRunOpen || transcriptionFinishing}
+                      active
+                      pressed
+                      pulse={recording}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={handleMicClick}
+                      testId="chat-composer-mic"
+                    />
+                  ) : !transcriptionComposerActive &&
+                    !draftOwnsTrailingControl &&
+                    !generationOwnsTrailingControl ? (
                     // Tap starts hands-free conversation; hold inserts
                     // push-to-talk dictation into the editable draft.
                     <SoftButton

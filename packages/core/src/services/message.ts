@@ -11820,11 +11820,11 @@ export class DefaultMessageService implements IMessageService {
 				let deliverableResponseContent = responseContent;
 				if (mode === "simple") {
 					// Keep content hooks before delivery so the wire response carries
-					// their edits. The response-memory DB write runs AFTER the
-					// callback: it is the largest post-LLM cost on this path
-					// (~250-440ms measured via the message:delivery:persistence
-					// InferenceTiming span) and the user must not wait on it. The
-					// persist is still awaited before this turn proceeds, so
+					// their edits. The response-memory DB write starts alongside the
+					// callback so its largest post-LLM cost (~250-440ms measured via
+					// the message:delivery:persistence InferenceTiming span) does not
+					// delay delivery. Both operations still settle before this turn
+					// proceeds, so
 					// everything downstream in THIS turn (MESSAGE_SENT, post-turn
 					// evaluators, followUp) observes the stored reply — and a
 					// CONCURRENT same-room turn started off this delivery waits on

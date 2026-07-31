@@ -85,7 +85,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: PLAYWRIGHT_INSTALL_CWD=packages/ui .github/scripts/install-playwright-browsers.sh chromium
 
       # AgentSurface capability bridge: list/focus/fill/click over synthetic and
       # real plugin-hosted controls.

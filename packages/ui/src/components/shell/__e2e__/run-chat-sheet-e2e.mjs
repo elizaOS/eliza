@@ -2312,7 +2312,7 @@ try {
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await gotoFixture(p, `${url}?phase=responding`);
+    await gotoFixture(p, `${url}?streaming`);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-sheet-grabber").focus();

@@ -24,6 +24,7 @@ import type {
 import {
   ChannelType,
   createMessageMemory,
+  ElizaError,
   logger,
   MemoryType,
   stringToUuid,
@@ -2423,12 +2424,20 @@ export async function runScenario(
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
           await runtime.registerPlugin(candidate);
+          await Promise.all(
+            (candidate.services ?? []).map((service) =>
+              runtime.getServiceLoadPromise(service.serviceType),
+            ),
+          );
           autoLoaded.add(pkg);
         }
       } catch (err) {
-        logger.debug(
-          `[scenario-runner] failed to auto-load required plugin ${pkg}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        // error-policy:J2 Required-plugin startup failures need package context.
+        throw new ElizaError(`Failed to initialize required plugin ${pkg}`, {
+          code: "SCENARIO_REQUIRED_PLUGIN_INIT_FAILED",
+          context: { packageName: pkg },
+          cause: err,
+        });
       }
     }
     const missing = requiredPlugins.filter(
