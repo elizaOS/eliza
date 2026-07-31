@@ -22,6 +22,8 @@ import {
   isChecked,
   isRowSatisfied,
   isRowSatisfiedForContext,
+  MAX_ARTIFACTS_PER_ROW,
+  MAX_ARTIFACTS_TOTAL,
   markerFreeBodyHint,
   parseLabels,
   REQUIRED_EVIDENCE_ROWS,
@@ -768,7 +770,7 @@ describe("check-pr-evidence row primitives", () => {
     assert.equal(
       contributionSite.ok,
       false,
-      "eliza.computer is a rendered UI surface and requires visual proof",
+      "eliza.army is a rendered UI surface and requires visual proof",
     );
   });
 
@@ -1112,6 +1114,71 @@ describe("evaluatePrEvidence verdicts", () => {
 });
 
 describe("remote artifact verification", () => {
+  it("fails closed without fetching when one row exceeds the artifact cap", async () => {
+    let requests = 0;
+    const links = Array.from(
+      { length: MAX_ARTIFACTS_PER_ROW + 1 },
+      (_, index) => `[artifact ${index}](${uploadUrl(100 + index)})`,
+    ).join(" ");
+    const result = await verifyReferencedArtifacts(
+      buildSingleArtifactBody("backend-logs", `- [x] ${links}`),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async () => {
+          requests += 1;
+          return new Response("must not be fetched");
+        },
+      },
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(requests, 0);
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0]?.status, "artifact-limit-exceeded");
+    assert.match(result.findings[0]?.detail ?? "", /row references 9/);
+  });
+
+  it("fails closed without fetching when the PR exceeds the global artifact cap", async () => {
+    let nextSuffix = 200;
+    const overrides = {};
+    for (const { id } of REQUIRED_EVIDENCE_ROWS.slice(0, 5)) {
+      const count =
+        nextSuffix === 200
+          ? MAX_ARTIFACTS_PER_ROW
+          : Math.min(
+              MAX_ARTIFACTS_PER_ROW,
+              MAX_ARTIFACTS_TOTAL + 1 - (nextSuffix - 200),
+            );
+      overrides[id] = `- [x] ${Array.from({ length: count }, (_, index) => {
+        const url = uploadUrl(nextSuffix + index);
+        return `[artifact ${nextSuffix + index}](${url})`;
+      }).join(" ")}`;
+      nextSuffix += count;
+      if (nextSuffix - 200 === MAX_ARTIFACTS_TOTAL + 1) break;
+    }
+    for (const { id } of REQUIRED_EVIDENCE_ROWS.slice(5)) {
+      overrides[id] =
+        "- [ ] `N/A - this evidence type is outside the test scope`.";
+    }
+    let requests = 0;
+    const result = await verifyReferencedArtifacts(
+      buildBody(overrides),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async () => {
+          requests += 1;
+          return new Response("must not be fetched");
+        },
+      },
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(requests, 0);
+    assert.equal(result.findings.length, 1);
+    assert.equal(result.findings[0]?.status, "artifact-limit-exceeded");
+    assert.match(result.findings[0]?.detail ?? "", /33 unique artifacts/);
+  });
+
   it("fetches every distinct artifact with bounded concurrency, redirects, range, and an optional token", async () => {
     let active = 0;
     let maximumActive = 0;
@@ -1236,6 +1303,34 @@ describe("remote artifact verification", () => {
           headers: { "content-type": "video/mp4" },
         }),
       },
+      {
+        expectedStatus: "artifact-kind-mismatch",
+        response: new Response(Uint8Array.from([1, 2, 3, 4, 5]), {
+          headers: { "content-type": "application/octet-stream" },
+        }),
+      },
+      {
+        expectedStatus: "artifact-kind-mismatch",
+        response: new Response(Uint8Array.from([1, 2, 3, 4, 5]), {
+          headers: { "content-type": "image/png" },
+        }),
+      },
+      {
+        expectedStatus: "artifact-kind-mismatch",
+        response: new Response(
+          Uint8Array.from([
+            0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x66, 0x61, 0x6b,
+            0x65,
+          ]),
+          { headers: { "content-type": "video/mp4" } },
+        ),
+      },
+      {
+        expectedStatus: "artifact-kind-mismatch",
+        response: new Response(Uint8Array.from([0xff, 0xd8, 0x00]), {
+          headers: { "content-type": "image/jpeg" },
+        }),
+      },
     ];
 
     for (const { expectedStatus, response } of cases) {
@@ -1250,6 +1345,22 @@ describe("remote artifact verification", () => {
       assert.equal(result.ok, false, expectedStatus);
       assert.equal(result.findings[0]?.status, expectedStatus);
     }
+
+    const fakeVideo = await verifyReferencedArtifacts(
+      buildSingleArtifactBody(
+        "walkthrough-video",
+        `- [x] [walkthrough](${uploadUrl(83)})`,
+      ),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        fetchImpl: async () =>
+          new Response(Uint8Array.from([1, 2, 3, 4, 5]), {
+            headers: { "content-type": "video/mp4" },
+          }),
+      },
+    );
+    assert.equal(fakeVideo.ok, false);
+    assert.equal(fakeVideo.findings[0]?.status, "artifact-kind-mismatch");
   });
 
   it("rejects an image served behind a bare URL claimed as an OCR report", async () => {
@@ -1286,6 +1397,31 @@ describe("remote artifact verification", () => {
     );
     assert.equal(result.ok, false);
     assert.equal(result.findings[0]?.status, "artifact-timeout");
+  });
+
+  it("enforces the deadline when fetch or the response stream ignores AbortSignal", async () => {
+    for (const fetchImpl of [
+      () => new Promise(() => {}),
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull: () => new Promise(() => {}),
+          }),
+        ),
+    ]) {
+      const startedAt = Date.now();
+      const result = await verifyReferencedArtifacts(
+        buildSingleArtifactBody(
+          "backend-logs",
+          `- [x] [logs](${uploadUrl(92)})`,
+        ),
+        REQUIRED_EVIDENCE_ROWS,
+        { fetchImpl, timeoutMs: 5 },
+      );
+      assert.equal(result.ok, false);
+      assert.equal(result.findings[0]?.status, "artifact-timeout");
+      assert.ok(Date.now() - startedAt < 1_000);
+    }
   });
 });
 

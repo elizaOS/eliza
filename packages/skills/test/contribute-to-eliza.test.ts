@@ -4,7 +4,16 @@
  */
 
 import assert from "node:assert";
-import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -139,6 +148,113 @@ describe("contribute-to-eliza skill structure", () => {
     assert.match(source, /package-local `AGENTS\.md` or `CLAUDE\.md`/);
     assert.match(source, /manually inspect every trajectory, log, screenshot/);
     assert.match(source, /Never self-approve or self-merge/);
+    assert.match(source, /--no-ext-diff --no-textconv/);
+    assert.match(source, /worktree alone is not isolation/i);
+    assert.match(source, /network denied by\s+default/i);
+    assert.match(source, /bun install --frozen-lockfile --ignore-scripts/);
+    assert.match(source, /explicit operator approval/i);
+    assert.match(source, /ephemeral,\s+least-privilege credential/i);
+    assert.match(source, /normal `gh` token, credential helper/i);
+  });
+
+  it("suppresses an untrusted postinstall and sanitizes a test fixture environment", {
+    timeout: 30_000,
+  }, () => {
+    const fixtureRoot = mkdtempSync(
+      join(tmpdir(), "contribute-to-eliza-untrusted-pr-"),
+    );
+    const isolatedHome = join(fixtureRoot, "isolated-home");
+    const postinstallSentinel = join(fixtureRoot, "postinstall-executed");
+    const testProbe = join(fixtureRoot, "test-environment.json");
+    try {
+      mkdirSync(isolatedHome);
+      writeFileSync(
+        join(fixtureRoot, "package.json"),
+        `${JSON.stringify(
+          {
+            name: "malicious-pr-fixture",
+            private: true,
+            scripts: {
+              postinstall:
+                'node -e "require(\\"node:fs\\").writeFileSync(\\"postinstall-executed\\", process.env.GITHUB_TOKEN || \\"executed\\")"',
+              test: "node probe.mjs",
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      writeFileSync(
+        join(fixtureRoot, "probe.mjs"),
+        `
+import { writeFileSync } from "node:fs";
+
+const sensitiveNames = Object.keys(process.env).filter((name) =>
+  /^(?:GH_|GITHUB_|AWS_|CLOUDFLARE_|ANTHROPIC_|OPENAI_)/u.test(name),
+);
+writeFileSync(
+  "test-environment.json",
+  JSON.stringify({
+    sensitiveNames,
+    home: process.env.HOME,
+    gitConfigGlobal: process.env.GIT_CONFIG_GLOBAL,
+    gitConfigSystem: process.env.GIT_CONFIG_SYSTEM,
+  }),
+);
+`,
+      );
+      const safeEnvironment = {
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_SYSTEM: "/dev/null",
+        HOME: isolatedHome,
+        PATH: process.env.PATH ?? "",
+        TMPDIR: fixtureRoot,
+      };
+      const install = spawnSync(
+        "bun",
+        ["install", "--ignore-scripts", "--offline"],
+        {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+          env: safeEnvironment,
+        },
+      );
+      assert.strictEqual(install.status, 0, install.stderr);
+      assert.strictEqual(existsSync(postinstallSentinel), false);
+
+      const frozenInstall = spawnSync(
+        "bun",
+        ["install", "--frozen-lockfile", "--ignore-scripts", "--offline"],
+        {
+          cwd: fixtureRoot,
+          encoding: "utf8",
+          env: safeEnvironment,
+        },
+      );
+      assert.strictEqual(frozenInstall.status, 0, frozenInstall.stderr);
+      assert.strictEqual(existsSync(postinstallSentinel), false);
+
+      const testRun = spawnSync("bun", ["run", "test"], {
+        cwd: fixtureRoot,
+        encoding: "utf8",
+        env: safeEnvironment,
+      });
+      assert.strictEqual(testRun.status, 0, testRun.stderr);
+      const observed = JSON.parse(readFileSync(testProbe, "utf8")) as {
+        sensitiveNames: string[];
+        home: string;
+        gitConfigGlobal: string;
+        gitConfigSystem: string;
+      };
+      assert.deepStrictEqual(observed, {
+        sensitiveNames: [],
+        home: isolatedHome,
+        gitConfigGlobal: "/dev/null",
+        gitConfigSystem: "/dev/null",
+      });
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true });
+    }
   });
 
   it("links only existing local references and ships UI metadata", () => {
@@ -195,9 +311,31 @@ describe("live report parsing", () => {
       null,
     );
     assert.strictEqual(
+      parseModelDisclosure("AI provider/model: AI / gpt-5.4"),
+      null,
+    );
+    assert.strictEqual(
+      parseModelDisclosure("AI provider/model: None / gpt-5.4"),
+      null,
+    );
+    for (const generic of [
+      "AI provider/model: N_A / gpt-5.4",
+      "AI provider/model: OpenAI / N/A",
+      "AI provider/model: OpenRouter / anthropic/gpt",
+    ]) {
+      assert.strictEqual(parseModelDisclosure(generic), null, generic);
+    }
+    assert.strictEqual(
       parseModelDisclosure("AI provider/model: OpenAI/gpt-5"),
       null,
     );
+    for (const policyDiscussion of [
+      "The `AI provider/model:` field in your comment is malformed.",
+      "> AI provider/model: quoted / example",
+      "```text\nAI provider/model: example / example-model\n```",
+    ]) {
+      assert.strictEqual(parseModelDisclosure(policyDiscussion), null);
+    }
   });
 
   it("accepts only trusted category-scoped evidence or a specific N/A reason", () => {
@@ -401,6 +539,31 @@ describe("live report parsing", () => {
     const comments = [
       comment(1, "human", "Ordinary human discussion needs no footer."),
       comment(
+        8,
+        "policy-reviewer",
+        "The `AI provider/model:` field in your comment is malformed.",
+      ),
+      comment(
+        9,
+        "quote-reviewer",
+        "> AI provider/model: quoted / example\n\nThis is quoted policy text.",
+      ),
+      comment(
+        10,
+        "fence-reviewer",
+        "```text\nAI provider/model: example / example-model\n```",
+      ),
+      comment(
+        11,
+        "fenced-claimer",
+        "````text\nCLAIMING: policy example\n```\n````",
+      ),
+      comment(
+        12,
+        "indented-claimer",
+        "    CLAIMING REVIEW: indented policy example",
+      ),
+      comment(
         2,
         "human-claimer",
         [
@@ -599,7 +762,13 @@ describe("live report behavior", () => {
       ],
       [
         "repos/elizaOS/eliza/issues/3/comments?per_page=100",
-        [comment(30, "visitor", "Can reproduce this.")],
+        [
+          comment(
+            30,
+            "visitor",
+            "Can reproduce this.\n\n~~~text\nCLAIMING: policy example only\n~~~",
+          ),
+        ],
       ],
       ["repos/elizaOS/eliza/issues/10/comments?per_page=100", []],
       ["repos/elizaOS/eliza/pulls/10/comments?per_page=100", []],

@@ -1,8 +1,8 @@
 # Product
 
-## Register
+## Product category
 
-brand
+Public contribution network for elizaOS.
 
 ## Users
 

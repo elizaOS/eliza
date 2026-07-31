@@ -1451,6 +1451,8 @@ footer p {
   }
 
   .site-header :where(nav a) {
+    min-width: 44px;
+    justify-content: center;
     font-size: 0;
   }
 
