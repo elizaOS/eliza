@@ -3,6 +3,7 @@
  * including the anti-gaming caps and provenance parsing used by live snapshots.
  */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   assertLeaderboardSnapshot,
@@ -10,6 +11,7 @@ import {
   assessModelAttribution,
   createLeaderboardSnapshot,
   dedupeByNodeId,
+  type EvidenceCategory,
   type GitHubActor,
   type GitHubTextSource,
   hasMaterialTestChange,
@@ -19,8 +21,11 @@ import {
   MATERIAL_TEST_ADDITIONS,
   MATERIAL_TEST_CHURN,
   type PullRequestRecord,
+  pullRequestTextSources,
   qualifiesResolvedIssue,
+  SCORE_CAPS,
   SCORE_RULE_VERSION,
+  type VerifiedEvidenceArtifact,
 } from "./leaderboard";
 
 const NOW = "2026-07-30T12:00:00.000Z";
@@ -31,7 +36,7 @@ function actor(login: string, kind: GitHubActor["kind"] = "User"): GitHubActor {
   return {
     id: `ACTOR_${login}`,
     login,
-    avatarUrl: `https://avatars.example/${login}`,
+    avatarUrl: `https://avatars.githubusercontent.com/${login}`,
     url: `https://github.com/${login}`,
     kind,
   };
@@ -43,16 +48,88 @@ function textSource(
   author: GitHubActor = actor("author"),
   kind: GitHubTextSource["kind"] = "comment",
 ): GitHubTextSource {
+  const commentNumber = [...id].reduce(
+    (value, character) => value + character.charCodeAt(0),
+    1,
+  );
   return {
     id,
     artifactId: "PR_1",
     kind,
     body,
-    url: `https://github.com/elizaOS/eliza/pull/1#${id}`,
+    url: `https://github.com/elizaOS/eliza/pull/1#issuecomment-${commentNumber}`,
     createdAt: "2026-07-29T10:00:00.000Z",
     updatedAt: "2026-07-29T10:00:00.000Z",
     author,
+    authorAssociation: "MEMBER",
   };
+}
+
+const TEST_EVIDENCE_ROW_CATEGORY = new Map<string, EvidenceCategory>([
+  ["after-screenshots", "screenshot"],
+  ["backend-logs", "logs"],
+  ["before-screenshots", "screenshot"],
+  ["domain-artifacts", "domain-artifact"],
+  ["frontend-logs", "logs"],
+  ["llm-trajectory", "trajectory"],
+  ["walkthrough-video", "video"],
+]);
+
+function verifiedSourceEvidence(
+  source: GitHubTextSource,
+  pullRequestMergedAt: string | null = "2026-07-30T11:00:00.000Z",
+  pullRequestUpdatedAt = "2026-07-30T11:00:00.000Z",
+): VerifiedEvidenceArtifact[] {
+  const markers = [
+    ...source.body.matchAll(/<!--\s*evidence-row:([a-z-]+)\s*-->/gi),
+  ];
+  return markers.flatMap((marker, index) => {
+    const category = TEST_EVIDENCE_ROW_CATEGORY.get(marker[1].toLowerCase());
+    if (!category) return [];
+    const next = markers[index + 1];
+    const row = source.body.slice(
+      marker.index + marker[0].length,
+      next?.index ?? source.body.length,
+    );
+    const identities = new Set<string>();
+    for (const match of row.matchAll(/https?:\/\/[^\s<>"')\]]+/gi)) {
+      const url = new URL(match[0].replace(/[.,;:!?]+$/, ""));
+      identities.add(
+        `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname}`,
+      );
+    }
+    return [...identities].map((artifactIdentity) => ({
+      pullRequestId: source.artifactId,
+      pullRequestMergedAt,
+      pullRequestHeadOid: "a".repeat(40),
+      pullRequestUpdatedAt,
+      sourceId: source.id,
+      sourceBody: source.body,
+      sourceUpdatedAt: source.updatedAt,
+      category,
+      artifactIdentity,
+      contentSha256: createHash("sha256")
+        .update(artifactIdentity)
+        .digest("hex"),
+    }));
+  });
+}
+
+function verifiedPullRequestEvidence(
+  pullRequests: PullRequestRecord[],
+): VerifiedEvidenceArtifact[] {
+  return pullRequests.flatMap((pullRequest) =>
+    pullRequestTextSources(pullRequest).flatMap((source) =>
+      verifiedSourceEvidence(
+        source,
+        pullRequest.mergedAt ??
+          (() => {
+            throw new Error("Test verified pull request must be merged");
+          })(),
+        pullRequest.updatedAt,
+      ),
+    ),
+  );
 }
 
 function machineAttribution(
@@ -79,7 +156,7 @@ function machineAttribution(
 function pullRequest(
   overrides: Partial<PullRequestRecord> = {},
 ): PullRequestRecord {
-  return {
+  const record: PullRequestRecord = {
     id: "PR_1",
     number: 1,
     title: "Finish the contribution path",
@@ -89,6 +166,7 @@ function pullRequest(
     updatedAt: "2026-07-30T11:00:00.000Z",
     lastEditedAt: null,
     mergedAt: "2026-07-30T11:00:00.000Z",
+    headRefOid: "a".repeat(40),
     isDraft: false,
     reviewDecision: "APPROVED",
     activeReviewRequestCount: 0,
@@ -105,10 +183,15 @@ function pullRequest(
     commitCount: 2,
     ...overrides,
   };
+  return {
+    ...record,
+    url:
+      overrides.url ?? `https://github.com/elizaOS/eliza/pull/${record.number}`,
+  };
 }
 
 function issue(overrides: Partial<IssueRecord> = {}): IssueRecord {
-  return {
+  const record: IssueRecord = {
     id: "ISSUE_1",
     number: 2,
     title: "Reproduce the scheduling failure",
@@ -124,6 +207,12 @@ function issue(overrides: Partial<IssueRecord> = {}): IssueRecord {
     comments: [],
     closedByPullRequests: [],
     ...overrides,
+  };
+  return {
+    ...record,
+    url:
+      overrides.url ??
+      `https://github.com/elizaOS/eliza/issues/${record.number}`,
   };
 }
 
@@ -162,6 +251,13 @@ function input(overrides: Partial<LeaderboardInput> = {}): LeaderboardInput {
         from: VERIFICATION_FROM,
         to: NOW,
       },
+      evidenceVerification: {
+        status: "complete",
+        sourceCount: 0,
+        artifactCount: 0,
+        maxSources: 64,
+        maxArtifacts: 64,
+      },
     },
     mergedPullRequestOutcomes: mergedPullRequests.map((pullRequest) => ({
       id: pullRequest.id,
@@ -186,6 +282,7 @@ function input(overrides: Partial<LeaderboardInput> = {}): LeaderboardInput {
     openIssues: [],
     openPullRequests: [],
     verificationWindowFrom: VERIFICATION_FROM,
+    verifiedEvidence: [],
     ...overrides,
   };
 }
@@ -553,18 +650,20 @@ describe("evidence assessment", () => {
         "<!-- evidence-row:walkthrough-video -->",
         "Video walkthrough: https://github.com/user-attachments/assets/video-id",
         "<!-- evidence-row:backend-logs -->",
-        "Backend logs:",
-        "```text",
-        "[AgentRuntime] request accepted and persisted with request_id=123456789",
-        "```",
+        "Backend logs: https://github.com/user-attachments/assets/log-id",
         "<!-- evidence-row:llm-trajectory -->",
         "Trajectory: https://github.com/elizaOS/eliza/actions/runs/123/artifacts/456",
         "<!-- evidence-row:domain-artifacts -->",
         "Transaction: https://etherscan.io/tx/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       ].join("\n"),
+      actor("author"),
+      "body",
     );
 
-    const result = assessEvidence([source, source]);
+    const result = assessEvidence(
+      [source, source],
+      verifiedSourceEvidence(source),
+    );
 
     expect(result.points).toBe(6);
     expect(result.categories).toEqual([
@@ -622,15 +721,88 @@ describe("evidence assessment", () => {
     });
   });
 
-  it("accepts a category-labeled GitHub user attachment in a PR comment", () => {
+  it("does not score an attachment outside a stable evidence row", () => {
     const source = textSource(
       "COMMENT_ATTACHMENT",
       "Mobile screenshot: https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc",
+      actor("author"),
+      "body",
+    );
+
+    expect(
+      assessEvidence([source], verifiedSourceEvidence(source)),
+    ).toMatchObject({
+      points: 0,
+      categories: [],
+    });
+  });
+
+  it("does not score a forty-character fenced string as logs", () => {
+    const source = textSource(
+      "COMMENT_FAKE_INLINE_LOG",
+      [
+        "<!-- evidence-row:backend-logs -->",
+        "```text",
+        "x".repeat(40),
+        "```",
+      ].join("\n"),
+      actor("author"),
+      "body",
     );
 
     expect(assessEvidence([source])).toMatchObject({
-      points: 1,
-      categories: ["screenshot"],
+      points: 0,
+      categories: [],
+    });
+  });
+
+  it("does not replay a verification after the source body changes", () => {
+    const source = textSource(
+      "COMMENT_EDIT_BINDING",
+      [
+        "<!-- evidence-row:after-screenshots -->",
+        "After screenshot: https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc",
+      ].join("\n"),
+      actor("author"),
+      "body",
+    );
+    const verification = verifiedSourceEvidence(source);
+    const edited = {
+      ...source,
+      body: `${source.body}\nEdited after verification.`,
+    };
+
+    expect(assessEvidence([edited], verification)).toMatchObject({
+      points: 0,
+      categories: [],
+    });
+  });
+
+  it("does not reuse one artifact as several evidence categories", () => {
+    const contextual = textSource(
+      "COMMENT_REUSED_CONTEXTUAL_ARTIFACT",
+      "Screenshot, video, logs, trajectory, and wallet artifact: https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc",
+    );
+    const stableRows = textSource(
+      "COMMENT_REUSED_STABLE_ARTIFACT",
+      [
+        "<!-- evidence-row:after-screenshots -->",
+        "After screenshot: https://github.com/user-attachments/assets/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee?kind=image",
+        "<!-- evidence-row:walkthrough-video -->",
+        "Video: https://github.com/user-attachments/assets/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee?kind=video",
+      ].join("\n"),
+      actor("author"),
+      "body",
+    );
+
+    expect(
+      assessEvidence(
+        [contextual, stableRows],
+        verifiedSourceEvidence(stableRows),
+      ),
+    ).toMatchObject({
+      points: 0,
+      categories: [],
     });
   });
 });
@@ -672,13 +844,17 @@ describe("outcome qualification", () => {
       labels: [{ id: "LABEL_TRIAGED", name: "status: triaged", color: "fff" }],
     });
     const mergedFix = issue({
-      labels: [],
+      labels: [{ id: "LABEL_READY", name: "good first issue", color: "fff" }],
       closedByPullRequests: [
         {
           id: "PR_FIX",
           number: 99,
           url: "https://github.com/elizaOS/eliza/pull/99",
           mergedAt: "2026-07-11T11:00:00.000Z",
+          body: "",
+          createdAt: "2026-07-10T11:00:00.000Z",
+          updatedAt: "2026-07-11T11:00:00.000Z",
+          author: actor("fixer"),
         },
       ],
     });
@@ -697,28 +873,23 @@ describe("outcome qualification", () => {
 describe("scoring and caps", () => {
   it("scores accepted outcomes while capping evidence and reviews", () => {
     const reviewer = actor("reviewer");
-    const evidence = textSource(
-      "COMMENT_EVIDENCE",
-      [
-        "<!-- evidence-row:after-screenshots -->",
-        "After screenshot: https://github.com/user-attachments/assets/desktop-id",
-        "<!-- evidence-row:walkthrough-video -->",
-        "Video: https://github.com/user-attachments/assets/video-id",
-        "<!-- evidence-row:backend-logs -->",
-        "Browser logs:",
-        "```text",
-        "request completed with status 200 and no console errors reported",
-        "```",
-        "<!-- evidence-row:llm-trajectory -->",
-        "Trajectory: https://github.com/elizaOS/eliza/actions/runs/123/artifacts/456",
-        "<!-- evidence-row:domain-artifacts -->",
-        "Artifact: https://github.com/elizaOS/eliza/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/evidence/output.json",
-        "Model: `openai/gpt-5.6-sol`",
-      ].join("\n"),
-    );
+    const evidenceBody = [
+      "<!-- evidence-row:after-screenshots -->",
+      "After screenshot: https://github.com/user-attachments/assets/desktop-id",
+      "<!-- evidence-row:walkthrough-video -->",
+      "Video: https://github.com/user-attachments/assets/video-id",
+      "<!-- evidence-row:backend-logs -->",
+      "Browser logs: https://github.com/user-attachments/assets/log-id",
+      "<!-- evidence-row:llm-trajectory -->",
+      "Trajectory: https://github.com/elizaOS/eliza/actions/runs/123/artifacts/456",
+      "<!-- evidence-row:domain-artifacts -->",
+      "Artifact: https://github.com/elizaOS/eliza/blob/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/evidence/output.json",
+    ].join("\n");
     const pr = pullRequest({
-      body: machineAttribution("OpenAI", "gpt-5.6-sol", "codex"),
-      comments: [evidence, evidence],
+      body: [
+        machineAttribution("OpenAI", "gpt-5.6-sol", "codex"),
+        evidenceBody,
+      ].join("\n"),
       files: [
         {
           path: "src/feature.ts",
@@ -753,10 +924,25 @@ describe("scoring and caps", () => {
       ],
     });
 
+    const resolved = issue({
+      closedByPullRequests: [
+        {
+          id: "PR_RESOLVER",
+          number: 77,
+          url: "https://github.com/elizaOS/eliza/pull/77",
+          mergedAt: "2026-07-30T10:00:00.000Z",
+          body: machineAttribution("OpenAI", "gpt-5.6-sol", "codex"),
+          createdAt: "2026-07-29T10:00:00.000Z",
+          updatedAt: "2026-07-30T10:00:00.000Z",
+          author: actor("reporter"),
+        },
+      ],
+    });
     const snapshot = createLeaderboardSnapshot(
       input({
         mergedPullRequests: [pr, pr],
-        resolvedIssues: [issue(), issue()],
+        resolvedIssues: [resolved, resolved],
+        verifiedEvidence: verifiedPullRequestEvidence([pr]),
       }),
     );
 
@@ -777,7 +963,7 @@ describe("scoring and caps", () => {
         materialTestChanges: 4,
         evidence: 6,
       },
-      reportedModels: ["openai/gpt-5.6-sol"],
+      reportedModels: ["OpenAI/gpt-5.6-sol"],
     });
     expect(reviewerEntry).toMatchObject({
       score: 3,
@@ -842,50 +1028,27 @@ describe("scoring and caps", () => {
   });
 
   it("scores only evidence that existed unchanged when the pull request merged", () => {
-    const preMergeScreenshot = {
-      ...textSource(
-        "COMMENT_PRE_MERGE",
-        [
-          "<!-- evidence-row:after-screenshots -->",
-          "After screenshot: https://github.com/user-attachments/assets/pre-merge",
-        ].join("\n"),
-      ),
-      createdAt: "2026-07-30T10:00:00.000Z",
-      updatedAt: "2026-07-30T10:00:00.000Z",
-    };
-    const editedAfterMerge = {
-      ...textSource(
-        "COMMENT_EDITED_AFTER_MERGE",
-        [
-          "<!-- evidence-row:backend-logs -->",
-          "Backend logs: https://github.com/elizaOS/eliza/actions/runs/123/artifacts/999",
-        ].join("\n"),
-      ),
-      createdAt: "2026-07-30T10:00:00.000Z",
-      updatedAt: "2026-07-30T11:01:00.000Z",
-    };
-    const postedAfterMerge = {
-      ...textSource(
-        "COMMENT_POST_MERGE",
-        [
-          "<!-- evidence-row:walkthrough-video -->",
-          "Video: https://github.com/user-attachments/assets/post-merge",
-        ].join("\n"),
-      ),
-      createdAt: "2026-07-30T11:01:00.000Z",
-      updatedAt: "2026-07-30T11:01:00.000Z",
-    };
+    const commentCopy = textSource(
+      "COMMENT_PRE_MERGE_COPY",
+      [
+        "<!-- evidence-row:walkthrough-video -->",
+        "Video: https://github.com/user-attachments/assets/comment-copy",
+      ].join("\n"),
+    );
+    const scoredPullRequest = pullRequest({
+      body: [
+        "<!-- evidence-row:after-screenshots -->",
+        "After screenshot: https://github.com/user-attachments/assets/pre-merge",
+      ].join("\n"),
+      lastEditedAt: "2026-07-30T10:00:00.000Z",
+      comments: [commentCopy],
+    });
     const snapshot = createLeaderboardSnapshot(
       input({
-        mergedPullRequests: [
-          pullRequest({
-            body: [
-              "<!-- evidence-row:llm-trajectory -->",
-              "Trajectory: https://github.com/elizaOS/eliza/actions/runs/456/artifacts/789",
-            ].join("\n"),
-            lastEditedAt: "2026-07-30T11:02:00.000Z",
-            comments: [preMergeScreenshot, editedAfterMerge, postedAfterMerge],
-          }),
+        mergedPullRequests: [scoredPullRequest],
+        verifiedEvidence: [
+          ...verifiedPullRequestEvidence([scoredPullRequest]),
+          ...verifiedSourceEvidence(commentCopy),
         ],
       }),
     );
@@ -899,7 +1062,9 @@ describe("scoring and caps", () => {
       snapshot.ledger
         .filter((event) => event.category === "evidence")
         .map((event) => event.reason),
-    ).toEqual(["Concrete screenshot evidence was attached or linked."]);
+    ).toEqual([
+      "Remote screenshot evidence passed byte and structure verification.",
+    ]);
   });
 
   it("keeps model disclosure non-scoring", () => {
@@ -920,6 +1085,287 @@ describe("scoring and caps", () => {
       withoutDisclosure.leaders[0].score,
     );
   });
+
+  it("applies every contributor cap newest-first and independently of input order", () => {
+    const contributor = actor("cap-author");
+    const reviewer = actor("cap-reviewer");
+    const richPullRequests = Array.from({ length: 12 }, (_, index) => {
+      const number = index + 1;
+      const body = [
+        machineAttribution("OpenAI", `gpt-5.${number}`),
+        "<!-- evidence-row:after-screenshots -->",
+        `After screenshot: https://github.com/user-attachments/assets/screenshot-${number}`,
+        "<!-- evidence-row:walkthrough-video -->",
+        `Video: https://github.com/user-attachments/assets/video-${number}`,
+        "<!-- evidence-row:backend-logs -->",
+        `Logs: https://github.com/elizaOS/eliza/actions/runs/${number}/artifacts/${number}`,
+        "<!-- evidence-row:llm-trajectory -->",
+        `Trajectory: https://github.com/elizaOS/eliza/actions/runs/${number}/artifacts/${number + 100}`,
+        "<!-- evidence-row:domain-artifacts -->",
+        `Artifact: https://github.com/elizaOS/eliza/blob/${"a".repeat(40)}/evidence/${number}.json`,
+      ].join("\n");
+      return pullRequest({
+        id: `PR_CAP_${number}`,
+        number,
+        title: `Capped pull request ${number}`,
+        body,
+        createdAt: "2026-07-30T09:00:00.000Z",
+        updatedAt: "2026-07-30T11:00:00.000Z",
+        mergedAt: "2026-07-30T11:00:00.000Z",
+        author: contributor,
+        files: [
+          {
+            path: `src/feature-${number}.test.ts`,
+            additions: 12,
+            deletions: 8,
+          },
+        ],
+        reviews: [
+          {
+            id: `REVIEW_CAP_${number}`,
+            body: "The failure path and verification assertions are specific.",
+            state: "APPROVED",
+            submittedAt: "2026-07-30T10:00:00.000Z",
+            url: `https://github.com/elizaOS/eliza/pull/${number}#pullrequestreview-${number}`,
+            author: reviewer,
+            inlineCommentCount: 0,
+          },
+        ],
+      });
+    });
+    const resolvedIssues = Array.from({ length: 7 }, (_, index) => {
+      const number = 101 + index;
+      return issue({
+        id: `ISSUE_CAP_${number}`,
+        number,
+        title: `Resolved issue ${number}`,
+        author: actor(`reporter-${number}`),
+        closedByPullRequests: [
+          {
+            id: `PR_RESOLVER_${number}`,
+            number: number + 1_000,
+            url: `https://github.com/elizaOS/eliza/pull/${number + 1_000}`,
+            mergedAt: "2026-07-30T10:00:00.000Z",
+            body: "",
+            createdAt: "2026-07-30T09:00:00.000Z",
+            updatedAt: "2026-07-30T10:00:00.000Z",
+            author: contributor,
+          },
+        ],
+      });
+    });
+    const verifiedEvidence = verifiedPullRequestEvidence(richPullRequests);
+    const forward = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: richPullRequests,
+        resolvedIssues,
+        verifiedEvidence,
+      }),
+    );
+    const reversed = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: [...richPullRequests].reverse(),
+        resolvedIssues: [...resolvedIssues].reverse(),
+        verifiedEvidence,
+      }),
+    );
+
+    expect(reversed).toEqual(forward);
+    expect(
+      forward.leaders.find((entry) => entry.actor.id === contributor.id),
+    ).toMatchObject({
+      score: 120,
+      acceptedOutcomes: {
+        mergedPullRequests: SCORE_CAPS.mergedPullRequests,
+        resolvedIssues: SCORE_CAPS.resolvedIssues,
+        materialTestChanges: SCORE_CAPS.materialTestChanges,
+        evidenceCategories: 25,
+      },
+      points: {
+        mergedPullRequests: 50,
+        resolvedIssues: 20,
+        materialTestChanges: 20,
+        evidence: SCORE_CAPS.evidencePoints,
+      },
+      reportedModels: [
+        "OpenAI/gpt-5.10",
+        "OpenAI/gpt-5.11",
+        "OpenAI/gpt-5.12",
+        "OpenAI/gpt-5.8",
+        "OpenAI/gpt-5.9",
+      ],
+    });
+    expect(
+      forward.leaders.find((entry) => entry.actor.id === reviewer.id),
+    ).toMatchObject({
+      score: 30,
+      acceptedOutcomes: {
+        substantiveReviews: SCORE_CAPS.substantiveReviews,
+      },
+    });
+    expect(
+      forward.ledger
+        .filter((event) => event.category === "merged-pull-request")
+        .map((event) => event.source.number)
+        .sort((left, right) => right - left),
+    ).toEqual([12, 11, 10, 9, 8]);
+    expect(
+      forward.ledger
+        .filter((event) => event.category === "resolved-issue")
+        .map((event) => event.source.number)
+        .sort((left, right) => right - left),
+    ).toEqual([107, 106, 105, 104, 103]);
+  });
+
+  it("awards a canonical artifact to only its first merged pull request", () => {
+    const sharedUrl =
+      "https://github.com/elizaOS/eliza/releases/download/pr-evidence/shared.log";
+    const first = pullRequest({
+      id: "PR_FIRST_SHARED_EVIDENCE",
+      number: 50,
+      author: actor("first-evidence-author"),
+      mergedAt: "2026-07-29T11:00:00.000Z",
+      body: `<!-- evidence-row:backend-logs -->\nLogs: ${sharedUrl}`,
+    });
+    const later = pullRequest({
+      id: "PR_LATER_SHARED_EVIDENCE",
+      number: 51,
+      author: actor("later-evidence-author"),
+      mergedAt: "2026-07-30T11:00:00.000Z",
+      body: `<!-- evidence-row:backend-logs -->\nLogs: ${sharedUrl}`,
+    });
+    const verifiedEvidence = verifiedPullRequestEvidence([first, later]).map(
+      (artifact) => ({
+        ...artifact,
+        contentSha256: "c".repeat(64),
+      }),
+    );
+
+    const snapshot = createLeaderboardSnapshot(
+      input({ mergedPullRequests: [later, first], verifiedEvidence }),
+    );
+
+    expect(
+      snapshot.leaders.find(
+        (entry) => entry.actor.login === "first-evidence-author",
+      )?.points.evidence,
+    ).toBe(1);
+    expect(
+      snapshot.leaders.find(
+        (entry) => entry.actor.login === "later-evidence-author",
+      )?.points.evidence,
+    ).toBe(0);
+    expect(
+      snapshot.ledger.filter((event) => event.category === "evidence"),
+    ).toHaveLength(1);
+  });
+
+  it("scores evidence only for the contribution author", () => {
+    const contributor = actor("evidence-author");
+    const thirdParty = actor("evidence-bystander");
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: [
+          pullRequest({
+            author: contributor,
+            comments: [
+              {
+                ...textSource(
+                  "COMMENT_THIRD_PARTY_EVIDENCE",
+                  [
+                    "<!-- evidence-row:after-screenshots -->",
+                    "After screenshot: https://github.com/user-attachments/assets/third-party",
+                  ].join("\n"),
+                  thirdParty,
+                ),
+                artifactId: "PR_1",
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    expect(snapshot.leaders).toHaveLength(1);
+    expect(snapshot.leaders[0]).toMatchObject({
+      actor: { login: "evidence-author" },
+      score: 10,
+      points: { evidence: 0 },
+    });
+    expect(snapshot.ledger.some((event) => event.category === "evidence")).toBe(
+      false,
+    );
+  });
+
+  it("attributes issue resolution to the merged fixer rather than the reporter", () => {
+    const reporter = actor("issue-reporter");
+    const fixer = actor("issue-fixer");
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        resolvedIssues: [
+          issue({
+            author: reporter,
+            closedByPullRequests: [
+              {
+                id: "PR_ISSUE_FIX",
+                number: 99,
+                url: "https://github.com/elizaOS/eliza/pull/99",
+                mergedAt: "2026-07-30T10:00:00.000Z",
+                body: machineAttribution("OpenAI", "gpt-5.6-sol"),
+                createdAt: "2026-07-29T10:00:00.000Z",
+                updatedAt: "2026-07-30T10:00:00.000Z",
+                author: fixer,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    expect(snapshot.leaders.map((entry) => entry.actor.login)).toEqual([
+      "issue-fixer",
+    ]);
+    expect(snapshot.leaders[0].points.resolvedIssues).toBe(4);
+    expect(
+      snapshot.ledger.find((event) => event.category === "resolved-issue")?.id,
+    ).toBe("ISSUE_1:resolved-by:PR_ISSUE_FIX");
+    expect(snapshot.attributions[0]).toMatchObject({
+      artifactId: "PR_ISSUE_FIX",
+      actor: fixer,
+      identifier: "openai/gpt-5.6-sol",
+    });
+  });
+
+  it("does not attach unrelated open-work attribution to a scored leader", () => {
+    const contributor = actor("scored-author");
+    const unrelated = issue({
+      id: "ISSUE_UNRELATED_MODEL",
+      number: 88,
+      closedAt: null,
+      stateReason: null,
+      labels: [{ id: "LABEL_READY", name: "help wanted", color: "fff" }],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_UNRELATED_MODEL",
+            machineAttribution("Anthropic", "claude-opus-4-1"),
+            contributor,
+          ),
+          artifactId: "ISSUE_UNRELATED_MODEL",
+          url: "https://github.com/elizaOS/eliza/issues/88#issuecomment-88",
+        },
+      ],
+    });
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: [pullRequest({ author: contributor })],
+        openIssues: [unrelated],
+      }),
+    );
+
+    expect(snapshot.leaders[0].reportedModels).toEqual([]);
+    expect(snapshot.attributions).toEqual([]);
+  });
 });
 
 describe("work queue claims and prioritization", () => {
@@ -929,7 +1375,7 @@ describe("work queue claims and prioritization", () => {
       number: 1,
       closedAt: null,
       stateReason: null,
-      labels: [],
+      labels: [{ id: "LABEL_READY", name: "good first issue", color: "fff" }],
     });
     const claimedIssue = issue({
       id: "ISSUE_LANE_CLAIM",
@@ -937,6 +1383,7 @@ describe("work queue claims and prioritization", () => {
       closedAt: null,
       stateReason: null,
       labels: [
+        { id: "LABEL_READY_2", name: "help wanted", color: "fff" },
         {
           id: "LABEL_LANE_CLAIM",
           name: "claimed:shaw-codex",
@@ -949,15 +1396,58 @@ describe("work queue claims and prioritization", () => {
       number: 3,
       closedAt: null,
       stateReason: null,
-      labels: [{ id: "LABEL_SECURITY", name: "security", color: "fff" }],
+      labels: [
+        { id: "LABEL_READY_3", name: "triage-reviewed", color: "fff" },
+        { id: "LABEL_SECURITY", name: "security", color: "fff" },
+      ],
     });
     const botIssue = issue({
       id: "ISSUE_BOT",
       number: 4,
       closedAt: null,
       stateReason: null,
-      labels: [],
+      labels: [{ id: "LABEL_READY_4", name: "help wanted", color: "fff" }],
       author: actor("renovate"),
+    });
+    const untriagedIssue = issue({
+      id: "ISSUE_UNTRIAGED",
+      number: 5,
+      closedAt: null,
+      stateReason: null,
+      labels: [],
+    });
+    const humanGatedIssue = issue({
+      id: "ISSUE_HUMAN_GATED",
+      number: 6,
+      closedAt: null,
+      stateReason: null,
+      labels: [
+        { id: "LABEL_READY_6", name: "triage-reviewed", color: "fff" },
+        {
+          id: "LABEL_HUMAN",
+          name: "status: needs-human-verify",
+          color: "fff",
+        },
+      ],
+    });
+    const epicIssue = issue({
+      id: "ISSUE_EPIC",
+      number: 7,
+      title: "[Epic] Replace the entire delivery stack",
+      closedAt: null,
+      stateReason: null,
+      labels: [{ id: "LABEL_READY_7", name: "triage-reviewed", color: "fff" }],
+    });
+    const epicLabelIssue = issue({
+      id: "ISSUE_EPIC_LABEL",
+      number: 8,
+      title: "Replace the second delivery stack",
+      closedAt: null,
+      stateReason: null,
+      labels: [
+        { id: "LABEL_READY_8", name: "triage-reviewed", color: "fff" },
+        { id: "LABEL_EPIC_8", name: "Epic 4", color: "fff" },
+      ],
     });
     const reviewCandidate = pullRequest({
       id: "PR_CANDIDATE",
@@ -1001,7 +1491,16 @@ describe("work queue claims and prioritization", () => {
 
     const snapshot = createLeaderboardSnapshot(
       input({
-        openIssues: [issueCandidate, claimedIssue, sensitiveIssue, botIssue],
+        openIssues: [
+          issueCandidate,
+          claimedIssue,
+          sensitiveIssue,
+          botIssue,
+          untriagedIssue,
+          humanGatedIssue,
+          epicIssue,
+          epicLabelIssue,
+        ],
         openPullRequests: [
           reviewCandidate,
           requestedReview,
@@ -1030,6 +1529,10 @@ describe("work queue claims and prioritization", () => {
       "security-sensitive",
     ]);
     expect(selections.get("ISSUE_BOT")?.reasons).toEqual(["bot-authored"]);
+    expect(selections.get("ISSUE_UNTRIAGED")?.reasons).toEqual(["untriaged"]);
+    expect(selections.get("ISSUE_HUMAN_GATED")?.reasons).toEqual(["blocked"]);
+    expect(selections.get("ISSUE_EPIC")?.reasons).toEqual(["untriaged"]);
+    expect(selections.get("ISSUE_EPIC_LABEL")?.reasons).toEqual(["untriaged"]);
     expect(selections.get("PR_REQUESTED")?.reasons).toEqual([
       "active-review-request",
     ]);
@@ -1092,7 +1595,11 @@ describe("work queue claims and prioritization", () => {
     for (const [index, name] of [
       "status:blocked",
       "status: blocked",
+      "status/proposal",
       "do-not-merge",
+      "needs-human-verification",
+      "status: needs-human-verify",
+      "needs-shaw",
     ].entries()) {
       const snapshot = createLeaderboardSnapshot(
         input({
@@ -1102,7 +1609,14 @@ describe("work queue claims and prioritization", () => {
               number: 300 + index,
               closedAt: null,
               stateReason: null,
-              labels: [{ id: `BLOCKED_LABEL_${index}`, name, color: "fff" }],
+              labels: [
+                {
+                  id: `READY_LABEL_${index}`,
+                  name: "help wanted",
+                  color: "fff",
+                },
+                { id: `BLOCKED_LABEL_${index}`, name, color: "fff" },
+              ],
             }),
           ],
         }),
@@ -1317,6 +1831,64 @@ describe("work queue claims and prioritization", () => {
     expect(implementationOnly?.status).toBe("unclaimed");
   });
 
+  it("lets only trusted repository participants reserve work with comments", () => {
+    const readyLabel = { id: "LABEL_READY", name: "help wanted", color: "fff" };
+    const untrusted = issue({
+      id: "ISSUE_UNTRUSTED_CLAIM",
+      number: 18,
+      closedAt: null,
+      stateReason: null,
+      labels: [readyLabel],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_UNTRUSTED_CLAIM",
+            "CLAIMING: an outsider cannot reserve this issue",
+            actor("outside-visitor"),
+          ),
+          artifactId: "ISSUE_UNTRUSTED_CLAIM",
+          authorAssociation: "NONE",
+        },
+      ],
+    });
+    const trusted = issue({
+      id: "ISSUE_TRUSTED_CLAIM",
+      number: 19,
+      closedAt: null,
+      stateReason: null,
+      labels: [readyLabel],
+      comments: [
+        {
+          ...textSource(
+            "COMMENT_TRUSTED_CLAIM",
+            "CLAIMING: a collaborator reserved this issue",
+            actor("repository-collaborator"),
+          ),
+          artifactId: "ISSUE_TRUSTED_CLAIM",
+          authorAssociation: "COLLABORATOR",
+        },
+      ],
+    });
+    const snapshot = createLeaderboardSnapshot(
+      input({ openIssues: [untrusted, trusted] }),
+    );
+    const untrustedItem = snapshot.workQueue.issues.find(
+      (item) => item.id === untrusted.id,
+    );
+    const trustedItem = snapshot.workQueue.issues.find(
+      (item) => item.id === trusted.id,
+    );
+
+    expect(untrustedItem).toMatchObject({
+      claim: { status: "unclaimed" },
+      selection: { status: "candidate", reasons: [] },
+    });
+    expect(trustedItem).toMatchObject({
+      claim: { status: "claimed" },
+      selection: { status: "excluded", reasons: ["claimed"] },
+    });
+  });
+
   it("recognizes claims collected after the scoring cutoff", () => {
     const generatedAt = "2026-07-30T12:05:00.000Z";
     const duringCollection = issue({
@@ -1359,6 +1931,7 @@ describe("work queue claims and prioritization", () => {
       id: "PR_UNCLAIMED",
       number: 30,
       mergedAt: null,
+      createdAt: "2026-07-01T12:00:00.000Z",
       updatedAt: "2026-07-20T12:00:00.000Z",
       labels: [{ id: "LABEL_LOW", name: "priority: low", color: "fff" }],
     });
@@ -1412,6 +1985,72 @@ describe("work queue claims and prioritization", () => {
     ]);
   });
 
+  it("reports verified open-PR evidence without awarding points", () => {
+    const openPullRequest = pullRequest({
+      id: "PR_OPEN_VERIFIED_EVIDENCE",
+      number: 44,
+      mergedAt: null,
+      body: [
+        "<!-- evidence-row:after-screenshots -->",
+        "After screenshot: https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc",
+      ].join("\n"),
+    });
+    const source = pullRequestTextSources(openPullRequest)[0];
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        openPullRequests: [openPullRequest],
+        verifiedEvidence: verifiedSourceEvidence(
+          source,
+          null,
+          openPullRequest.updatedAt,
+        ),
+      }),
+    );
+
+    expect(snapshot.workQueue.pullRequests[0].evidence).toMatchObject({
+      status: "partial",
+      points: 1,
+      categories: ["screenshot"],
+    });
+    expect(snapshot.ledger).toEqual([]);
+  });
+
+  it("does not let a comment copy satisfy an open PR evidence gap", () => {
+    const openPullRequest = pullRequest({
+      id: "PR_OPEN_COMMENT_EVIDENCE",
+      number: 45,
+      mergedAt: null,
+    });
+    const comment = {
+      ...textSource(
+        "COMMENT_OPEN_EVIDENCE_COPY",
+        [
+          "<!-- evidence-row:after-screenshots -->",
+          "After screenshot: https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc",
+        ].join("\n"),
+      ),
+      artifactId: openPullRequest.id,
+    };
+    openPullRequest.comments = [comment];
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        openPullRequests: [openPullRequest],
+        verifiedEvidence: verifiedSourceEvidence(
+          comment,
+          null,
+          openPullRequest.updatedAt,
+        ),
+      }),
+    );
+
+    expect(snapshot.workQueue.pullRequests[0].evidence).toMatchObject({
+      status: "missing",
+      points: 0,
+      categories: [],
+    });
+    expect(snapshot.ledger).toEqual([]);
+  });
+
   it("excludes ordinary discussion from work-item attribution coverage", () => {
     const openIssue = issue({
       id: "ISSUE_COVERAGE",
@@ -1444,9 +2083,9 @@ describe("work queue claims and prioritization", () => {
       invalidSourceCount: 0,
     });
     expect(snapshot.attributionCoverage).toMatchObject({
-      status: "complete",
-      eligibleSourceCount: 1,
-      validSourceCount: 1,
+      status: "missing",
+      eligibleSourceCount: 0,
+      validSourceCount: 0,
     });
     expect(snapshot.leaders).toEqual([]);
   });
@@ -1560,6 +2199,63 @@ describe("deduplication and public schema", () => {
     );
   });
 
+  it("rejects phishing URLs, future snapshots, and actor identity drift", () => {
+    const snapshot = createLeaderboardSnapshot(
+      input({ mergedPullRequests: [pullRequest()] }),
+    );
+    const phishing = structuredClone(snapshot);
+    phishing.leaders[0].actor.url = "https://evil.example/author";
+    const future = structuredClone(snapshot);
+    future.generatedAt = "2100-01-01T00:00:00.000Z";
+    future.source.fetchedAt = future.generatedAt;
+    const identityDrift = structuredClone(snapshot);
+    identityDrift.ledger[0].actor = {
+      ...actor("impostor"),
+      id: identityDrift.leaders[0].actor.id,
+    };
+
+    expect(() => assertLeaderboardSnapshot(phishing)).toThrow(
+      "canonical GitHub profile",
+    );
+    expect(() => assertLeaderboardSnapshot(future)).toThrow(
+      "cannot be in the future",
+    );
+    expect(() => assertLeaderboardSnapshot(identityDrift)).toThrow(
+      "changes identity inside the snapshot",
+    );
+  });
+
+  it("rejects leader arrays whose ranks disguise the published ordering", () => {
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: [
+          pullRequest({ id: "PR_ALPHA", number: 40, author: actor("alpha") }),
+          pullRequest({
+            id: "PR_BETA",
+            number: 41,
+            author: actor("beta"),
+            files: [
+              {
+                path: "src/beta.test.ts",
+                additions: 12,
+                deletions: 8,
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+    const disguised = structuredClone(snapshot);
+    disguised.leaders.reverse();
+    disguised.leaders.forEach((leader, index) => {
+      leader.rank = index + 1;
+    });
+
+    expect(() => assertLeaderboardSnapshot(disguised)).toThrow(
+      "must follow the published rank ordering",
+    );
+  });
+
   it("rejects internally inconsistent scores and attribution coverage", () => {
     const snapshot = createLeaderboardSnapshot(
       input({ mergedPullRequests: [pullRequest()] }),
@@ -1599,6 +2295,24 @@ describe("deduplication and public schema", () => {
     );
   });
 
+  it("rejects model attribution without a same-actor ledger cause", () => {
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        mergedPullRequests: [
+          pullRequest({
+            body: machineAttribution("OpenAI", "gpt-5.6-sol"),
+          }),
+        ],
+      }),
+    );
+    const unrelatedArtifact = structuredClone(snapshot);
+    unrelatedArtifact.attributions[0].artifactId = "PR_UNRELATED";
+
+    expect(() => assertLeaderboardSnapshot(unrelatedArtifact)).toThrow(
+      "is not causally linked to a public ledger event by the same actor",
+    );
+  });
+
   it("rejects a queue that hides actionable unclaimed work below a claim", () => {
     const snapshot = createLeaderboardSnapshot(
       input({
@@ -1625,6 +2339,51 @@ describe("deduplication and public schema", () => {
 
     expect(() => assertLeaderboardSnapshot(malformed)).toThrow(
       "must prioritize actionable, unclaimed, labeled, recent work",
+    );
+  });
+
+  it("rejects queue claim and blocked state that contradict their labels", () => {
+    const snapshot = createLeaderboardSnapshot(
+      input({
+        openIssues: [
+          issue({
+            id: "ISSUE_LABEL_STATE",
+            number: 52,
+            closedAt: null,
+            stateReason: null,
+            labels: [
+              { id: "LABEL_READY", name: "help wanted", color: "ffffff" },
+              { id: "LABEL_CLAIM", name: "claimed", color: "ffffff" },
+              { id: "LABEL_BLOCKED", name: "status/proposal", color: "ffffff" },
+            ],
+          }),
+        ],
+      }),
+    );
+    const unclaimed = structuredClone(snapshot);
+    unclaimed.workQueue.issues[0].claim = {
+      status: "unclaimed",
+      source: "none",
+      kind: null,
+      actors: [],
+      claimedAt: null,
+    };
+    unclaimed.workQueue.issues[0].selection = {
+      status: "excluded",
+      reasons: ["blocked"],
+    };
+    const actionable = structuredClone(snapshot);
+    actionable.workQueue.issues[0].actionability = "actionable";
+    actionable.workQueue.issues[0].selection = {
+      status: "excluded",
+      reasons: ["claimed"],
+    };
+
+    expect(() => assertLeaderboardSnapshot(unclaimed)).toThrow(
+      "claim fields do not describe one valid claim",
+    );
+    expect(() => assertLeaderboardSnapshot(actionable)).toThrow(
+      "actionability does not match its labels",
     );
   });
 });

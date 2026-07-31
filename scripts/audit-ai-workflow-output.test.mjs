@@ -559,7 +559,6 @@ AI provider/model: Anthropic / wrong-model`,
 describe("AI workflow audit integration", () => {
   const paths = [
     ".github/workflows/claude.yml",
-    ".github/workflows/skill-review.yml",
     ".github/workflows/weekly-maintenance.yml",
   ];
   const workflow = (path) =>
@@ -588,7 +587,7 @@ describe("AI workflow audit integration", () => {
     for (const path of paths.slice(1)) {
       assert.doesNotMatch(workflow(path), /track_progress:\s*true/);
     }
-    const weekly = workflow(paths[2]);
+    const weekly = workflow(paths[1]);
     assert.match(
       weekly,
       /github_token:\s*\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/,

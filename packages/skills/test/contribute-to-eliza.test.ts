@@ -55,6 +55,7 @@ function comment(
   body: string | null,
   kind = "User",
   createdAt = "2026-01-18T12:00:00.000Z",
+  authorAssociation = "MEMBER",
 ) {
   return {
     id,
@@ -62,6 +63,7 @@ function comment(
     user: account(author, kind),
     body,
     created_at: createdAt,
+    author_association: authorAssociation,
   };
 }
 
@@ -163,6 +165,20 @@ describe("contribute-to-eliza skill structure", () => {
     assert.match(source, /explicit operator approval/i);
     assert.match(source, /ephemeral,\s+least-privilege credential/i);
     assert.match(source, /normal `gh` token, credential helper/i);
+  });
+
+  it("states the reward without implying a payout formula and links safe wallet setup", () => {
+    const source = readFileSync(skillPath, "utf8");
+
+    assert.match(source, /\$10,000 monthly USDC pool/);
+    assert.match(source, /do not define or guarantee\s+a payout/i);
+    assert.match(source, /https:\/\/eliza\.app\/profile\/edit/);
+    assert.match(source, /public.*Solana or Ethereum address/i);
+    assert.match(source, /hidden\s+GitHub README comment/i);
+    assert.match(
+      source,
+      /Never enter or share a\s+private key or seed phrase/i,
+    );
   });
 
   it("suppresses an untrusted postinstall and sanitizes a test fixture environment", {
@@ -650,6 +666,7 @@ describe("live report parsing", () => {
     assert.strictEqual(isBotAccount(account("dependabot[bot]", "Bot")), true);
     assert.strictEqual(isBotAccount(account("release-bot")), true);
     assert.strictEqual(isBotAccount(account("github-actions")), true);
+    assert.strictEqual(isBotAccount(account("renovate")), true);
     assert.strictEqual(isBotAccount(account("octocat")), false);
     assert.deepStrictEqual(
       parseCliArguments(["--repo", "elizaOS/eliza", "--json"]),
@@ -714,7 +731,7 @@ describe("live report behavior", () => {
         title: "Claimed issue",
         html_url: "https://github.com/elizaOS/eliza/issues/2",
         user: account("human-one"),
-        labels: [],
+        labels: [{ name: "good first issue" }],
         assignees: [],
         comments: 1,
       },
@@ -741,7 +758,7 @@ describe("live report behavior", () => {
         title: "Lane-labeled claim",
         html_url: "https://github.com/elizaOS/eliza/issues/5",
         user: account("human-four"),
-        labels: [{ name: "claimed:shaw-codex" }],
+        labels: [{ name: "good first issue" }, { name: "claimed:shaw-codex" }],
         assignees: [],
         comments: 0,
       },
@@ -750,7 +767,7 @@ describe("live report behavior", () => {
         title: "Blocked issue",
         html_url: "https://github.com/elizaOS/eliza/issues/6",
         user: account("human-five"),
-        labels: [{ name: "status: blocked" }],
+        labels: [{ name: "good first issue" }, { name: "status: blocked" }],
         assignees: [],
         comments: 0,
       },
@@ -760,6 +777,54 @@ describe("live report behavior", () => {
         html_url: "https://github.com/elizaOS/eliza/issues/7",
         user: null,
         labels: [],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 8,
+        title: "Needs maintainer triage",
+        html_url: "https://github.com/elizaOS/eliza/issues/8",
+        user: account("human-six"),
+        labels: [],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 9,
+        title: "[Epic] Replace the whole contribution pipeline",
+        html_url: "https://github.com/elizaOS/eliza/issues/9",
+        user: account("human-seven"),
+        labels: [{ name: "triage-reviewed" }],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 19,
+        title: "Decision reserved for a maintainer",
+        html_url: "https://github.com/elizaOS/eliza/issues/19",
+        user: account("human-eight"),
+        labels: [
+          { name: "triage-reviewed" },
+          { name: "needs-human-verification" },
+        ],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 20,
+        title: "Replace the whole contribution pipeline",
+        html_url: "https://github.com/elizaOS/eliza/issues/20",
+        user: account("human-nine"),
+        labels: [{ name: "triage-reviewed" }, { name: "Epic 4" }],
+        assignees: [],
+        comments: 0,
+      },
+      {
+        number: 21,
+        title: "Proposal awaiting a decision",
+        html_url: "https://github.com/elizaOS/eliza/issues/21",
+        user: account("human-ten"),
+        labels: [{ name: "triage-reviewed" }, { name: "status/proposal" }],
         assignees: [],
         comments: 0,
       },
@@ -906,8 +971,12 @@ describe("live report behavior", () => {
       [4],
     );
     assert.deepStrictEqual(
+      report.filtered.untriagedIssues.map((issue) => issue.number),
+      [8, 9, 20],
+    );
+    assert.deepStrictEqual(
       report.filtered.claimedIssues.map((issue) => issue.number),
-      [2, 5, 6],
+      [2, 5, 6, 19, 21],
     );
     assert.deepStrictEqual(
       report.filtered.draftPullRequests.map((pull) => pull.number),
@@ -975,7 +1044,7 @@ describe("live report behavior", () => {
         title: "Recent comment claim",
         html_url: "https://github.com/elizaOS/eliza/issues/20",
         user: account("author-20"),
-        labels: [],
+        labels: [{ name: "help wanted" }],
         assignees: [],
         comments: 1,
       },
@@ -984,7 +1053,7 @@ describe("live report behavior", () => {
         title: "Expired comment claim",
         html_url: "https://github.com/elizaOS/eliza/issues/21",
         user: account("author-21"),
-        labels: [],
+        labels: [{ name: "help wanted" }],
         assignees: [],
         comments: 1,
       },
@@ -993,7 +1062,7 @@ describe("live report behavior", () => {
         title: "Durably assigned",
         html_url: "https://github.com/elizaOS/eliza/issues/22",
         user: account("author-22"),
-        labels: [],
+        labels: [{ name: "help wanted" }],
         assignees: [account("maintainer")],
         comments: 1,
       },
@@ -1002,7 +1071,16 @@ describe("live report behavior", () => {
         title: "Durably labeled",
         html_url: "https://github.com/elizaOS/eliza/issues/23",
         user: account("author-23"),
-        labels: [{ name: "  status: in-progress  " }],
+        labels: [{ name: "help wanted" }, { name: "  status: in-progress  " }],
+        assignees: [],
+        comments: 1,
+      },
+      {
+        number: 24,
+        title: "Untrusted public claim",
+        html_url: "https://github.com/elizaOS/eliza/issues/24",
+        user: account("author-24"),
+        labels: [{ name: "help wanted" }],
         assignees: [],
         comments: 1,
       },
@@ -1056,6 +1134,19 @@ describe("live report behavior", () => {
           ),
         ],
       ],
+      [
+        24,
+        [
+          comment(
+            240,
+            "outside-visitor",
+            "CLAIMING: cannot reserve work without repository trust",
+            "User",
+            "2026-01-18T12:00:00.000Z",
+            "NONE",
+          ),
+        ],
+      ],
     ]);
     const report = collectLiveReport(
       "elizaOS/eliza",
@@ -1072,7 +1163,7 @@ describe("live report behavior", () => {
 
     assert.deepStrictEqual(
       report.candidateIssues.map((issue) => issue.number),
-      [21],
+      [21, 24],
     );
     assert.deepStrictEqual(
       report.filtered.claimedIssues.map((issue) => issue.number),
@@ -1326,7 +1417,7 @@ describe("live report behavior", () => {
       [],
     );
     assert.doesNotMatch(renderMarkdown(report), /#31/);
-    assert.match(renderMarkdown(report), /comment claims expire after 7 days/);
+    assert.match(renderMarkdown(report), /Claim comments expire after 7 days/);
     assert.match(
       renderMarkdown(report),
       /review requests persist until cleared/,

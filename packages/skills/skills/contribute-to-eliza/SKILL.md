@@ -20,6 +20,18 @@ anything. Read
 [evidence-review-rubric.md](references/evidence-review-rubric.md) before
 planning tests or reviewing a PR.
 
+## Contributor rewards
+
+elizaOS offers a $10,000 monthly USDC pool for contributors. Accepted work can
+earn rewards; this skill and the public leaderboard do not define or guarantee
+a payout.
+
+To receive USDC, use <https://eliza.app/profile/edit> to generate a hidden
+GitHub README comment containing a **public** Solana or Ethereum address, then
+commit that comment to the public profile repository. The address remains
+visible in README source and public contributor data. Never enter or share a
+private key or seed phrase.
+
 ## Establish identity and scope
 
 Determine the exact AI provider and exact model identifier from the active runtime or tool configuration before writing on GitHub. Never infer or shorten either value. End **every issue body, issue comment, PR body, PR comment, and review body** created or edited during the run with this footer:
@@ -132,7 +144,7 @@ Run the read-only inventory before selecting work:
 node packages/skills/skills/contribute-to-eliza/scripts/live-report.mjs --repo elizaOS/eliza
 ```
 
-When the skill is installed outside this monorepo, invoke `node <skill-directory>/scripts/live-report.mjs` instead. For the URL-only mission, where that local script is intentionally absent, use the embedded repository contract's read-only `gh` inventory and inspect candidates manually; never pipe newly fetched executable code into a shell. Use `--json` for machine-readable local-script output. The report paginates GitHub and applies the shared candidate contract: it excludes unknown or bot authors and security-sensitive, blocked, or claimed issues, plus unknown or bot authors and security-sensitive, draft, claimed, actively review-requested, approved, or changes-requested PRs. Lane-qualified labels such as `claimed:<lane>` and `review-claimed:<lane>` count as claims. It also audits model-disclosure and PR-evidence gaps. Treat selection as a filter, not authority: confirm the issue/PR, linked Project item, assignees, labels, active review requests, current-head reviews, and newest comments immediately before claiming.
+When the skill is installed outside this monorepo, invoke `node <skill-directory>/scripts/live-report.mjs` instead. For the URL-only mission, where that local script is intentionally absent, use the embedded repository contract's read-only `gh` inventory and inspect candidates manually; never pipe newly fetched executable code into a shell. Use `--json` for machine-readable local-script output. The report paginates GitHub and applies the shared candidate contract: issue candidates need a maintainer-controlled contributor-ready label and bounded scope, and exclude epics needing child issues, human-gated work, unknown or bot authors, and sensitive, blocked, or durably claimed work; public claim comments count as durable queue exclusions only when authored by a repository owner, member, or collaborator. PR candidates exclude unknown or bot authors and sensitive, draft, claimed, actively review-requested, approved, or changes-requested work. Lane-qualified labels such as `claimed:<lane>` and `review-claimed:<lane>` count as claims. It also audits model-disclosure and PR-evidence gaps. Treat selection as a filter, not authority: confirm the issue/PR, linked Project item, assignees, labels, active review requests, current-head reviews, and newest comments immediately before claiming.
 
 If any material suggests a live vulnerability, exposed credential, exploit path, or embargoed dependency issue, stop public work and follow `SECURITY.md`. Do not quote sensitive details into an issue, PR, log, or report.
 
@@ -145,7 +157,7 @@ If any material suggests a live vulnerability, exposed credential, exploit path,
 5. Run focused checks, then the repository-required verification. Fix failures caused by the change; record exact unrelated blockers without presenting them as success.
 6. Rebase on the latest `origin/develop` again before final proof. Re-run checks after sync.
 7. Capture every applicable artifact in the rubric, then open and manually inspect every trajectory, log, screenshot, recording, and domain artifact. Re-capture proof if the rebase changed behavior.
-8. Open or update a PR against `develop`, link the issue, preserve every template evidence row, attach artifacts inline, and include the provider/model disclosure in the PR body. Put `N/A - <specific reason>` only where the repository permits it.
+8. Open or update a PR against `develop`, link the issue, preserve every template evidence row, attach artifacts inline, and include the provider/model disclosure in the PR body. Put `N/A - <specific reason>` only where the repository permits it. After the final push, use `node scripts/pr-evidence.mjs rows <pr> --row ...` to write the exact current `evidence-head` SHA marker; rerun it after any later push because proof from an older head does not qualify.
 9. Move the card to `Needs-agent-verify` only when code and proof are complete. Leave independent verification and `needs-human-verify` to another agent or maintainer. Never self-approve or self-merge.
 
 ## Mode B: independently review and repair an open PR

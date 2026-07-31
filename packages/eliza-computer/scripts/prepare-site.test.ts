@@ -1,6 +1,6 @@
 /**
- * Verifies that the published skill archive is a complete, checksum-bound copy
- * of the canonical skill and that its generated install command fails closed.
+ * Verifies that the published archive is complete and that the generated
+ * installer fails closed against an independent file-backed GitHub authority.
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -20,7 +20,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createInstallCommand } from "../src/lib/install-command";
+import { createInstallAuthorityFixture } from "../tests/install-authority-fixture";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "..", "..");
@@ -34,6 +36,11 @@ const skillRoot = join(
 const publicRoot = join(packageRoot, "public");
 const archivePath = join(publicRoot, "downloads", "contribute-to-eliza.skill");
 const checksumPath = `${archivePath}.sha256`;
+let authorityRoot: string;
+let testAuthority: { apiOrigin: string; rawOrigin: string };
+let installerArtifactRoot: string;
+let installerArchivePath: string;
+let installerChecksumPath: string;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -53,6 +60,14 @@ interface ArchiveInspection {
 
 function sha256(contents: Buffer | string) {
   return createHash("sha256").update(contents).digest("hex");
+}
+
+function readCommittedSkillFile(path: string): Buffer {
+  return execFileSync(
+    "git",
+    ["show", `HEAD:packages/skills/skills/contribute-to-eliza/${path}`],
+    { cwd: repositoryRoot, encoding: null },
+  );
 }
 
 function asRecord(value: unknown, context: string): JsonRecord {
@@ -202,12 +217,12 @@ print(json.dumps(result))
   };
 }
 
-function installCommand() {
-  const bootstrap = readFileSync(join(publicRoot, "codex.md"), "utf8");
-  const command = bootstrap.match(/```bash\n([\s\S]*?)\n```/)?.[1];
-  if (!command) throw new TypeError("codex.md omitted its bash install block");
-  const localOrigin = pathToFileURL(publicRoot).href.replace(/\/$/, "");
-  return command.replaceAll("https://eliza.army", localOrigin);
+function installCommand(artifactRoot = installerArtifactRoot) {
+  return createInstallCommand(
+    pathToFileURL(artifactRoot).href.replace(/\/$/u, ""),
+    `\${CODEX_HOME:-\${HOME}/.codex}/skills`,
+    { testAuthority },
+  );
 }
 
 function runInstall(
@@ -236,6 +251,115 @@ beforeAll(() => {
     cwd: repositoryRoot,
     stdio: "inherit",
   });
+  const revision = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  }).trim();
+  const committedFiles = Object.fromEntries(
+    execFileSync(
+      "git",
+      [
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        "HEAD",
+        "--",
+        "packages/skills/skills/contribute-to-eliza",
+      ],
+      { cwd: repositoryRoot, encoding: "utf8" },
+    )
+      .split("\0")
+      .filter(Boolean)
+      .map((repositoryPath) => {
+        const path = relative(
+          "packages/skills/skills/contribute-to-eliza",
+          repositoryPath,
+        ).replaceAll("\\", "/");
+        return [
+          path,
+          execFileSync("git", ["show", `HEAD:${repositoryPath}`], {
+            cwd: repositoryRoot,
+            encoding: null,
+          }),
+        ];
+      }),
+  );
+  authorityRoot = mkdtempSync(join(tmpdir(), "eliza-skill-install-authority-"));
+  installerArtifactRoot = join(authorityRoot, "artifacts");
+  const stagedSkill = join(authorityRoot, "packaging", "contribute-to-eliza");
+  for (const [path, contents] of Object.entries(committedFiles)) {
+    const destination = join(stagedSkill, path);
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, contents);
+  }
+  const committedSkill = committedFiles["SKILL.md"];
+  if (!committedSkill) throw new TypeError("committed skill omitted SKILL.md");
+  writeFileSync(
+    join(stagedSkill, "PROVENANCE.json"),
+    `${JSON.stringify(
+      {
+        schemaVersion: "1",
+        name: "contribute-to-eliza",
+        repository: "elizaOS/eliza",
+        revision,
+        revisionStatus: "committed",
+        source: {
+          path: "packages/skills/skills/contribute-to-eliza/SKILL.md",
+          sha256: sha256(committedSkill),
+        },
+        files: Object.entries(committedFiles)
+          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+          .map(([path, contents]) => ({ path, sha256: sha256(contents) })),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  execFileSync(
+    "python3",
+    [
+      join(
+        repositoryRoot,
+        "packages/skills/skills/skill-creator/scripts/package_skill.py",
+      ),
+      stagedSkill,
+      join(installerArtifactRoot, "downloads"),
+    ],
+    { cwd: repositoryRoot, stdio: "inherit" },
+  );
+  installerArchivePath = join(
+    installerArtifactRoot,
+    "downloads",
+    "contribute-to-eliza.skill",
+  );
+  execFileSync(
+    "python3",
+    [
+      join(packageRoot, "scripts", "normalize-skill-archive.py"),
+      installerArchivePath,
+    ],
+    { cwd: repositoryRoot, stdio: "inherit" },
+  );
+  installerChecksumPath = `${installerArchivePath}.sha256`;
+  writeFileSync(
+    installerChecksumPath,
+    `${sha256(readFileSync(installerArchivePath))}  contribute-to-eliza.skill\n`,
+  );
+  testAuthority = createInstallAuthorityFixture(authorityRoot, {
+    developHead: revision,
+    revisions: {
+      [revision]: {
+        files: committedFiles,
+      },
+    },
+  });
+});
+
+afterAll(() => {
+  if (authorityRoot) {
+    rmSync(authorityRoot, { force: true, recursive: true });
+  }
 });
 
 describe("contribution skill package", () => {
@@ -341,6 +465,7 @@ describe("contribution skill package", () => {
       readFileSync(join(publicRoot, "skill-manifest.json"), "utf8"),
       "skill manifest",
     );
+    const codexGuide = readFileSync(join(publicRoot, "codex.md"), "utf8");
     const mission = readFileSync(join(publicRoot, "mission.md"), "utf8");
     const head = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: repositoryRoot,
@@ -381,6 +506,14 @@ describe("contribution skill package", () => {
         "https://eliza.army/downloads/contribute-to-eliza.skill.sha256",
     });
     expect(
+      asRecord(manifest.authority, "skill manifest.authority"),
+    ).toMatchObject({
+      apiOrigin: "https://api.github.com",
+      canonicalPath: "packages/skills/skills/contribute-to-eliza",
+      rawOrigin: "https://raw.githubusercontent.com",
+      releaseCandidateLabel: "eliza-army-release-candidate",
+    });
+    expect(
       Number.isNaN(
         Date.parse(
           asString(manifest.generatedAt, "skill manifest.generatedAt"),
@@ -400,6 +533,10 @@ describe("contribution skill package", () => {
         "utf8",
       ),
     );
+    expect(codexGuide).toContain("https://api.github.com");
+    expect(codexGuide).toContain("https://raw.githubusercontent.com");
+    expect(codexGuide).toContain("ELIZA_ARMY_SKILL_OPERATION=rollback");
+    expect(codexGuide).toContain("ELIZA_ARMY_SKILL_REVISION=");
   });
 
   it("installs the verified archive and refuses mismatched or ambiguous checksums", () => {
@@ -431,7 +568,7 @@ describe("contribution skill package", () => {
         "contribute-to-eliza",
       );
       expect(readFileSync(join(installedRoot, "SKILL.md"))).toEqual(
-        readFileSync(join(skillRoot, "SKILL.md")),
+        readCommittedSkillFile("SKILL.md"),
       );
       const installedProvenance = parseJsonRecord(
         readFileSync(join(installedRoot, "PROVENANCE.json"), "utf8"),
@@ -443,7 +580,7 @@ describe("contribution skill package", () => {
             .sha256,
           "installed provenance.source.sha256",
         ),
-      ).toBe(sha256(readFileSync(join(skillRoot, "SKILL.md"))));
+      ).toBe(sha256(readCommittedSkillFile("SKILL.md")));
       const defaultInstall = runInstall(command, defaultRoot, {
         codexHome: false,
       });
@@ -475,28 +612,23 @@ describe("contribution skill package", () => {
       writeFileSync(join(installedRoot, "SKILL.md"), sentinel);
       const overwrite = runInstall(command, validRoot);
       expect(overwrite.status).not.toBe(0);
-      expect(overwrite.stderr).toContain(
-        "Refusing to overwrite existing skill",
-      );
+      expect(overwrite.stderr).toContain("installed skill differs from GitHub");
       expect(readFileSync(join(installedRoot, "SKILL.md"), "utf8")).toBe(
         sentinel,
       );
 
       mkdirSync(join(corruptPublic, "downloads"), { recursive: true });
       cpSync(
-        checksumPath,
+        installerChecksumPath,
         join(corruptPublic, "downloads", "contribute-to-eliza.skill.sha256"),
       );
-      const corruptArchive = readFileSync(archivePath);
+      const corruptArchive = readFileSync(installerArchivePath);
       corruptArchive[corruptArchive.length - 1] ^= 0xff;
       writeFileSync(
         join(corruptPublic, "downloads", "contribute-to-eliza.skill"),
         corruptArchive,
       );
-      const corruptCommand = installCommand().replaceAll(
-        pathToFileURL(publicRoot).href.replace(/\/$/, ""),
-        pathToFileURL(corruptPublic).href.replace(/\/$/, ""),
-      );
+      const corruptCommand = installCommand(corruptPublic);
       const invalid = runInstall(corruptCommand, invalidRoot);
       expect(invalid.status).not.toBe(0);
       expect(() =>
@@ -513,18 +645,15 @@ describe("contribution skill package", () => {
 
       mkdirSync(join(ambiguousPublic, "downloads"), { recursive: true });
       cpSync(
-        archivePath,
+        installerArchivePath,
         join(ambiguousPublic, "downloads", "contribute-to-eliza.skill"),
       );
-      const validChecksum = readFileSync(checksumPath, "utf8");
+      const validChecksum = readFileSync(installerChecksumPath, "utf8");
       writeFileSync(
         join(ambiguousPublic, "downloads", "contribute-to-eliza.skill.sha256"),
         `${validChecksum}${validChecksum}`,
       );
-      const ambiguousCommand = installCommand().replaceAll(
-        pathToFileURL(publicRoot).href.replace(/\/$/, ""),
-        pathToFileURL(ambiguousPublic).href.replace(/\/$/, ""),
-      );
+      const ambiguousCommand = installCommand(ambiguousPublic);
       const ambiguous = runInstall(ambiguousCommand, ambiguousRoot);
       expect(ambiguous.status).not.toBe(0);
       expect(() =>
@@ -598,10 +727,7 @@ with zipfile.ZipFile(archive_path, "w") as archive:
         `${maliciousArchive}.sha256`,
         `${sha256(readFileSync(maliciousArchive))}  contribute-to-eliza.skill\n`,
       );
-      return installCommand().replaceAll(
-        pathToFileURL(publicRoot).href.replace(/\/$/, ""),
-        pathToFileURL(maliciousPublic).href.replace(/\/$/, ""),
-      );
+      return installCommand(maliciousPublic);
     }
 
     try {
@@ -640,7 +766,7 @@ with zipfile.ZipFile(archive_path, "w") as archive:
       symlinkSync("missing-local-skill", brokenTarget);
       const broken = runInstall(installCommand(), brokenTargetRoot);
       expect(broken.status).not.toBe(0);
-      expect(broken.stderr).toContain("Refusing to overwrite existing skill");
+      expect(broken.stderr).toContain("outside the managed version store");
       expect(lstatSync(brokenTarget).isSymbolicLink()).toBe(true);
     } finally {
       rmSync(traversalRoot, { force: true, recursive: true });
@@ -742,16 +868,11 @@ with zipfile.ZipFile(archive_path, "r") as archive:
         `${forgedArchive}.sha256`,
         `${sha256(forgedPayload)}  contribute-to-eliza.skill\n`,
       );
-      const command = installCommand().replaceAll(
-        pathToFileURL(publicRoot).href.replace(/\/$/, ""),
-        pathToFileURL(forgedPublic).href.replace(/\/$/, ""),
-      );
+      const command = installCommand(forgedPublic);
       const result = runInstall(command, forgedRoot);
 
       expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain(
-        "Archive failed bounded integrity and path checks.",
-      );
+      expect(result.stderr).toContain("Refusing skill operation:");
       expect(
         existsSync(join(forgedRoot, "codex", "skills", "contribute-to-eliza")),
       ).toBe(false);

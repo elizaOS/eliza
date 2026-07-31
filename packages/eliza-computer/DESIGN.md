@@ -59,6 +59,8 @@ background.
 
 ## Components
 
+- **Reward callout:** exact monthly pool, public payout-address setup, and no
+  implied relationship between leaderboard points and payment.
 - **Install console:** a real selectable command, explicit copy feedback,
   agent-specific tabs, raw skill link, and `.skill` download.
 - **Work queue:** live open issue and pull-request links with scope, labels,

@@ -9,9 +9,14 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  planReferencedArtifacts,
+  verifyReferencedArtifacts,
+} from "../../../scripts/check-pr-evidence.mjs";
+import {
   assertLeaderboardSnapshot,
   createLeaderboardSnapshot,
   dedupeByNodeId,
+  type EvidenceCategory,
   type GitHubActor,
   type GitHubActorKind,
   type GitHubLabel,
@@ -25,8 +30,11 @@ import {
   type PullRequestFile,
   type PullRequestRecord,
   type PullRequestReview,
+  pullRequestTextSources,
   SCORE_WINDOW_DAYS,
+  selectUniqueVerifiedEvidence,
   VERIFICATION_WINDOW_DAYS,
+  type VerifiedEvidenceArtifact,
 } from "../src/lib/leaderboard";
 
 export const SEARCH_SAFE_RESULT_LIMIT = 950;
@@ -39,6 +47,13 @@ export const GRAPHQL_REQUEST_TIMEOUT_MS = 20_000;
 export const MAX_GENERATION_COST = 1_500;
 export const MINIMUM_RATE_LIMIT_RESERVE = 100;
 export const MINIMUM_STARTING_RATE_LIMIT = 900;
+export const MAX_EVIDENCE_ARTIFACTS_PER_SNAPSHOT = 64;
+export const MAX_EVIDENCE_SOURCES_PER_SNAPSHOT = 64;
+export const MAX_EVIDENCE_ARTIFACTS_PER_SOURCE =
+  MAX_EVIDENCE_ARTIFACTS_PER_SNAPSHOT;
+export const EVIDENCE_VERIFICATION_CONCURRENCY = 4;
+export const EVIDENCE_ARTIFACT_TIMEOUT_MS = 5_000;
+export const EVIDENCE_CONTENT_DIGEST_LIMIT_BYTES = 32 * 1024 * 1024;
 export const DEFAULT_OUTPUT_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../public/data/leaderboard.json",
@@ -139,6 +154,9 @@ export interface GenerationProgress {
 export interface GenerateOptions {
   now?: Date;
   onProgress?: (progress: GenerationProgress) => void;
+  evidenceFetch?: FetchLike;
+  evidenceToken?: string;
+  evidenceTimeoutMs?: number;
 }
 
 export interface GeneratorDependencies {
@@ -192,6 +210,7 @@ const COMMENT_FIELDS = `
     body
     createdAt
     updatedAt
+    authorAssociation
     url
     author { ...LeaderboardActor }
   }
@@ -279,6 +298,10 @@ const ISSUE_FRAGMENT = `
         number
         url
         mergedAt
+        body
+        createdAt
+        updatedAt
+        author { ...LeaderboardActor }
       }
     }
   }
@@ -494,12 +517,17 @@ const MORE_CLOSING_PULL_REQUESTS_QUERY = `
             number
             url
             mergedAt
+            body
+            createdAt
+            updatedAt
+            author { ...LeaderboardActor }
           }
         }
       }
     }
     rateLimit { cost limit remaining resetAt }
   }
+  ${ACTOR_FRAGMENT}
 `;
 
 export const LEADERBOARD_QUERY_DOCUMENTS = {
@@ -670,6 +698,10 @@ function parseComments(
           createdAt: asString(node.createdAt, `${nodePath}.createdAt`),
           updatedAt: asString(node.updatedAt, `${nodePath}.updatedAt`),
           author: parseActor(node.author, `${nodePath}.author`),
+          authorAssociation: asString(
+            node.authorAssociation,
+            `${nodePath}.authorAssociation`,
+          ),
         };
       },
     ),
@@ -768,6 +800,10 @@ function parseClosingPullRequests(
           number: asNumber(node.number, `${nodePath}.number`),
           url: asString(node.url, `${nodePath}.url`),
           mergedAt: asNullableString(node.mergedAt, `${nodePath}.mergedAt`),
+          body: asString(node.body, `${nodePath}.body`),
+          createdAt: asString(node.createdAt, `${nodePath}.createdAt`),
+          updatedAt: asString(node.updatedAt, `${nodePath}.updatedAt`),
+          author: parseActor(node.author, `${nodePath}.author`),
         };
       },
     ),
@@ -958,6 +994,16 @@ function isTransientNetworkError(value: unknown): boolean {
   );
 }
 
+function isJsonContentType(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+  const mediaType = value.split(";", 1)[0]?.trim().toLowerCase();
+  return (
+    mediaType === "application/json" || mediaType?.endsWith("+json") === true
+  );
+}
+
 async function retryDelay(milliseconds: number): Promise<void> {
   await new Promise<void>((resolveDelay) => {
     setTimeout(resolveDelay, milliseconds);
@@ -1023,7 +1069,8 @@ export class GitHubGraphqlClient implements GraphqlExecutor {
     variables: GraphqlVariables = {},
   ): Promise<JsonRecord> {
     let response: Response | null = null;
-    let responseBody = "";
+    let payload: unknown;
+    let parsedResponse = false;
     for (let attempt = 1; attempt <= MAX_TRANSIENT_ATTEMPTS; attempt += 1) {
       const effectiveMaxGenerationCost = this.#effectiveMaxGenerationCost();
       if (
@@ -1040,6 +1087,7 @@ export class GitHubGraphqlClient implements GraphqlExecutor {
       const timeout = setTimeout(() => {
         controller.abort();
       }, this.#requestTimeoutMs);
+      let responseBody = "";
       try {
         response = await this.#fetch("https://api.github.com/graphql", {
           method: "POST",
@@ -1072,24 +1120,36 @@ export class GitHubGraphqlClient implements GraphqlExecutor {
       } finally {
         clearTimeout(timeout);
       }
-      const retryable = [502, 503, 504].includes(response.status);
-      if (!retryable || attempt === MAX_TRANSIENT_ATTEMPTS) {
-        break;
+      const retryableStatus = [502, 503, 504].includes(response.status);
+      if (retryableStatus && attempt < MAX_TRANSIENT_ATTEMPTS) {
+        await retryDelay(this.#retryBaseDelayMs * 2 ** (attempt - 1));
+        continue;
       }
-      await retryDelay(this.#retryBaseDelayMs * 2 ** (attempt - 1));
+
+      try {
+        payload = JSON.parse(responseBody);
+        parsedResponse = true;
+        break;
+      } catch (cause) {
+        const contentType = response.headers.get("content-type");
+        const retryableMalformedJson =
+          response.ok && isJsonContentType(contentType);
+        if (retryableMalformedJson && attempt < MAX_TRANSIENT_ATTEMPTS) {
+          await retryDelay(this.#retryBaseDelayMs * 2 ** (attempt - 1));
+          continue;
+        }
+        // error-policy:J2 Retain the HTTP boundary context for malformed or
+        // non-JSON API failures; exhausted malformed-JSON retries fail closed.
+        throw new Error(
+          retryableMalformedJson
+            ? `GitHub GraphQL HTTP ${response.status} returned malformed JSON (${attempt}/${MAX_TRANSIENT_ATTEMPTS}; ${contentType ?? "unknown content type"})`
+            : `GitHub GraphQL HTTP ${response.status} returned a non-JSON response (${contentType ?? "unknown content type"})`,
+          { cause },
+        );
+      }
     }
-    if (!response) {
+    if (!response || !parsedResponse) {
       throw new Error("GitHub GraphQL request did not produce a response");
-    }
-    let payload: unknown;
-    try {
-      payload = JSON.parse(responseBody);
-    } catch (cause) {
-      // error-policy:J2 Retain the HTTP boundary context for non-JSON API failures.
-      throw new Error(
-        `GitHub GraphQL HTTP ${response.status} returned a non-JSON response (${response.headers.get("content-type") ?? "unknown content type"})`,
-        { cause },
-      );
     }
     const envelope = asRecord(payload, "GitHub GraphQL response");
     if (!response.ok) {
@@ -1856,6 +1916,7 @@ async function finalizePullRequests(
     });
     return {
       ...pullRequest,
+      headRefOid,
       reviewDecision,
       comments: dedupeByNodeId(pullRequest.comments),
       reviews,
@@ -2035,6 +2096,72 @@ async function collectStableOpenPullRequests(
   );
 }
 
+export async function assertOpenPullRequestReferencesCurrent(
+  client: GraphqlExecutor,
+  repositoryId: string,
+  pullRequests: PullRequestRecord[],
+): Promise<void> {
+  const current = await collectOpenReferences(
+    client,
+    OPEN_PULL_REQUEST_REFERENCES_QUERY,
+    "pullRequests",
+    "PullRequest",
+  );
+  const expected: NodeReference[] = pullRequests.map((pullRequest) => ({
+    id: pullRequest.id,
+    kind: "PullRequest",
+    outcome: null,
+    openVersion: `${pullRequest.updatedAt}:${pullRequest.headRefOid}`,
+  }));
+  if (
+    current.repositoryId !== repositoryId ||
+    !sameReferenceSet(expected, current.references)
+  ) {
+    throw new Error(
+      "Open pull-request set changed during evidence verification",
+    );
+  }
+}
+
+export async function assertOpenIssueReferencesCurrent(
+  client: GraphqlExecutor,
+  repositoryId: string,
+  issues: IssueRecord[],
+): Promise<void> {
+  const current = await collectOpenReferences(
+    client,
+    OPEN_ISSUE_REFERENCES_QUERY,
+    "issues",
+    "Issue",
+  );
+  const expected: NodeReference[] = issues.map((issue) => ({
+    id: issue.id,
+    kind: "Issue",
+    outcome: null,
+    openVersion: `${issue.updatedAt}:`,
+  }));
+  if (
+    current.repositoryId !== repositoryId ||
+    !sameReferenceSet(expected, current.references)
+  ) {
+    throw new Error("Open issue set changed during evidence verification");
+  }
+}
+
+export async function assertOpenWorkReferencesCurrent(
+  client: GraphqlExecutor,
+  repositoryId: string,
+  issues: IssueRecord[],
+  pullRequests: PullRequestRecord[],
+): Promise<void> {
+  await assertOpenIssueReferencesCurrent(client, repositoryId, issues);
+  await assertOpenPullRequestReferencesCurrent(
+    client,
+    repositoryId,
+    pullRequests,
+  );
+}
+
 function estimateBatchedConnectionCost(
   count: number,
   connectionsPerNode: number,
@@ -2102,6 +2229,265 @@ export function deriveSourceUpdatedAt(
           : latest,
       records[0].updatedAt,
     );
+}
+
+const SCORE_EVIDENCE_ROWS: ReadonlyArray<{
+  id: string;
+  label: string;
+  category: EvidenceCategory;
+}> = [
+  {
+    id: "before-screenshots",
+    label: "Before screenshots",
+    category: "screenshot",
+  },
+  {
+    id: "after-screenshots",
+    label: "After screenshots",
+    category: "screenshot",
+  },
+  {
+    id: "walkthrough-video",
+    label: "Walkthrough video",
+    category: "video",
+  },
+  { id: "backend-logs", label: "Backend logs", category: "logs" },
+  { id: "frontend-logs", label: "Frontend logs", category: "logs" },
+  {
+    id: "llm-trajectory",
+    label: "Real-LLM trajectory",
+    category: "trajectory",
+  },
+  {
+    id: "domain-artifacts",
+    label: "Domain artifacts",
+    category: "domain-artifact",
+  },
+];
+
+const SCORE_EVIDENCE_CATEGORY = new Map(
+  SCORE_EVIDENCE_ROWS.map(({ category, id }) => [id, category]),
+);
+
+interface EvidenceVerificationCandidate {
+  pullRequest: PullRequestRecord;
+  source: GitHubTextSource;
+  artifactCount: number;
+}
+
+function evidenceHeadOid(body: string): string | null {
+  const matches = [
+    ...body.matchAll(/<!--\s*evidence-head:([a-f0-9]{40})\s*-->/gi),
+  ];
+  return matches.length === 1 ? matches[0][1].toLowerCase() : null;
+}
+
+function evidenceVerificationCandidates(
+  pullRequests: PullRequestRecord[],
+): EvidenceVerificationCandidate[] {
+  const candidates: EvidenceVerificationCandidate[] = [];
+  for (const pullRequest of pullRequests) {
+    const mergedAt = pullRequest.mergedAt
+      ? Date.parse(pullRequest.mergedAt)
+      : Number.POSITIVE_INFINITY;
+    for (const source of pullRequestTextSources(pullRequest)) {
+      if (
+        source.kind !== "body" ||
+        !source.author ||
+        isBotActor(source.author) ||
+        Date.parse(source.createdAt) > mergedAt ||
+        Date.parse(source.updatedAt) > mergedAt
+      ) {
+        continue;
+      }
+      if (evidenceHeadOid(source.body) !== pullRequest.headRefOid) continue;
+      const artifactCount = planReferencedArtifacts(
+        source.body,
+        SCORE_EVIDENCE_ROWS,
+        { allowedArtifactKinds: ["opaque-upload"] },
+      ).uniqueArtifactCount;
+      if (artifactCount > 0) {
+        candidates.push({ pullRequest, source, artifactCount });
+      }
+    }
+  }
+  return candidates.sort(
+    (left, right) =>
+      left.pullRequest.id.localeCompare(right.pullRequest.id) ||
+      left.source.id.localeCompare(right.source.id),
+  );
+}
+
+async function mapWithFixedConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index]);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+interface CandidateEvidenceVerdict {
+  artifacts: VerifiedEvidenceArtifact[];
+  failedCategories: EvidenceCategory[];
+}
+
+export interface PullRequestEvidenceVerificationResult {
+  artifacts: VerifiedEvidenceArtifact[];
+  status: "complete" | "suppressed-limit";
+  sourceCount: number;
+  artifactCount: number;
+}
+
+/**
+ * Resolves score-bearing proof from the exact, unchanged contributor-authored
+ * source that existed at merge or at the stable open-PR snapshot. The root
+ * evidence verifier owns URL trust, redirects, byte limits, and structure.
+ */
+export async function verifyPullRequestEvidence(
+  pullRequests: PullRequestRecord[],
+  options: Pick<
+    GenerateOptions,
+    "evidenceFetch" | "evidenceTimeoutMs" | "evidenceToken"
+  > = {},
+): Promise<PullRequestEvidenceVerificationResult> {
+  const candidates = evidenceVerificationCandidates(pullRequests);
+  const artifactCount = candidates.reduce(
+    (total, candidate) => total + candidate.artifactCount,
+    0,
+  );
+
+  const selectedCandidates: EvidenceVerificationCandidate[] = [];
+  let selectedArtifactCount = 0;
+  const candidatesByTrust = [...candidates].sort(
+    (left, right) =>
+      Number(left.pullRequest.mergedAt === null) -
+        Number(right.pullRequest.mergedAt === null) ||
+      left.artifactCount - right.artifactCount ||
+      left.pullRequest.id.localeCompare(right.pullRequest.id) ||
+      left.source.id.localeCompare(right.source.id),
+  );
+  for (const candidate of candidatesByTrust) {
+    if (
+      candidate.artifactCount > MAX_EVIDENCE_ARTIFACTS_PER_SOURCE ||
+      selectedCandidates.length >= MAX_EVIDENCE_SOURCES_PER_SNAPSHOT ||
+      selectedArtifactCount + candidate.artifactCount >
+        MAX_EVIDENCE_ARTIFACTS_PER_SNAPSHOT
+    ) {
+      continue;
+    }
+    selectedCandidates.push(candidate);
+    selectedArtifactCount += candidate.artifactCount;
+  }
+  const status =
+    selectedCandidates.length === candidates.length
+      ? "complete"
+      : "suppressed-limit";
+
+  const verdicts = await mapWithFixedConcurrency(
+    selectedCandidates,
+    EVIDENCE_VERIFICATION_CONCURRENCY,
+    async ({ pullRequest, source }): Promise<CandidateEvidenceVerdict> => {
+      const verification = await verifyReferencedArtifacts(
+        source.body,
+        SCORE_EVIDENCE_ROWS,
+        {
+          allowedArtifactKinds: ["opaque-upload"],
+          concurrency: 1,
+          contentDigestLimitBytes: EVIDENCE_CONTENT_DIGEST_LIMIT_BYTES,
+          fetchImpl: options.evidenceFetch,
+          timeoutMs: options.evidenceTimeoutMs ?? EVIDENCE_ARTIFACT_TIMEOUT_MS,
+          token: options.evidenceToken,
+        },
+      );
+      const failedCategories = new Set<EvidenceCategory>();
+      for (const finding of verification.findings) {
+        const category = SCORE_EVIDENCE_CATEGORY.get(finding.id);
+        if (category && finding.status !== "ok") {
+          failedCategories.add(category);
+        }
+      }
+      const artifacts = verification.findings.flatMap((finding) => {
+        const category = SCORE_EVIDENCE_CATEGORY.get(finding.id);
+        if (
+          finding.status !== "ok" ||
+          !category ||
+          failedCategories.has(category) ||
+          finding.artifactKind !== "opaque-upload" ||
+          !finding.contentSha256
+        ) {
+          return [];
+        }
+        let artifactUrl: URL;
+        try {
+          artifactUrl = new URL(finding.url);
+        } catch {
+          // error-policy:J3 verifier output is treated as untrusted boundary
+          // data; a malformed URL cannot become a score-bearing identity.
+          return [];
+        }
+        return [
+          {
+            pullRequestId: pullRequest.id,
+            pullRequestMergedAt: pullRequest.mergedAt,
+            pullRequestHeadOid: pullRequest.headRefOid,
+            pullRequestUpdatedAt: pullRequest.updatedAt,
+            sourceId: source.id,
+            sourceBody: source.body,
+            sourceUpdatedAt: source.updatedAt,
+            category,
+            artifactIdentity: `${artifactUrl.protocol}//${artifactUrl.hostname.toLowerCase()}${artifactUrl.pathname}`,
+            contentSha256: finding.contentSha256,
+          } satisfies VerifiedEvidenceArtifact,
+        ];
+      });
+      return { artifacts, failedCategories: [...failedCategories] };
+    },
+  );
+  const failedByPullRequest = new Set<string>();
+  for (const [index, verdict] of verdicts.entries()) {
+    const pullRequestId = selectedCandidates[index].pullRequest.id;
+    for (const category of verdict.failedCategories) {
+      failedByPullRequest.add(`${pullRequestId}\u0000${category}`);
+    }
+  }
+  const remotelyVerified = verdicts
+    .flatMap(({ artifacts }) => artifacts)
+    .filter(
+      (artifact) =>
+        !failedByPullRequest.has(
+          `${artifact.pullRequestId}\u0000${artifact.category}`,
+        ),
+    )
+    .sort(
+      (left, right) =>
+        left.pullRequestId.localeCompare(right.pullRequestId) ||
+        left.sourceId.localeCompare(right.sourceId) ||
+        left.category.localeCompare(right.category) ||
+        left.artifactIdentity.localeCompare(right.artifactIdentity),
+    );
+  const artifacts = selectUniqueVerifiedEvidence(
+    remotelyVerified,
+    pullRequests,
+  );
+  return {
+    artifacts,
+    status,
+    sourceCount: candidates.length,
+    artifactCount,
+  };
 }
 
 export async function generateLeaderboardFromGitHub(
@@ -2198,6 +2584,16 @@ export async function generateLeaderboardFromGitHub(
     preflight.id,
     onProgress,
   );
+  const evidenceVerification = await verifyPullRequestEvidence(
+    [...mergedPullRequests, ...openPullRequests],
+    options,
+  );
+  await assertOpenWorkReferencesCurrent(
+    client,
+    preflight.id,
+    openIssues,
+    openPullRequests,
+  );
 
   const allRecords = [
     ...mergedPullRequestOutcomes,
@@ -2230,6 +2626,13 @@ export async function generateLeaderboardFromGitHub(
       from: verificationWindowFrom.toISOString(),
       to: now.toISOString(),
     },
+    evidenceVerification: {
+      status: evidenceVerification.status,
+      sourceCount: evidenceVerification.sourceCount,
+      artifactCount: evidenceVerification.artifactCount,
+      maxSources: MAX_EVIDENCE_SOURCES_PER_SNAPSHOT,
+      maxArtifacts: MAX_EVIDENCE_ARTIFACTS_PER_SNAPSHOT,
+    },
   };
   return createLeaderboardSnapshot({
     generatedAt: fetchedAt,
@@ -2244,6 +2647,7 @@ export async function generateLeaderboardFromGitHub(
     openIssues,
     openPullRequests,
     verificationWindowFrom: verificationWindowFrom.toISOString(),
+    verifiedEvidence: evidenceVerification.artifacts,
   });
 }
 
@@ -2275,7 +2679,10 @@ export async function runGenerator(
 ): Promise<LeaderboardSnapshot> {
   const token = await dependencies.getToken();
   const client = dependencies.createClient(token);
-  const snapshot = await dependencies.generate(client, options);
+  const snapshot = await dependencies.generate(client, {
+    ...options,
+    evidenceToken: options.evidenceToken ?? token,
+  });
   await dependencies.write(snapshot, outputPath);
   return snapshot;
 }

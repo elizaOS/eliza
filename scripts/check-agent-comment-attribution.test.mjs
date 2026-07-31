@@ -81,23 +81,6 @@ describe("agent comment attribution", () => {
     assert.equal(result.attribution.model, "anthropic/claude-sonnet-4");
   });
 
-  it("accepts the automated skill-review footer emitted by repository CI", () => {
-    const skillRevision =
-      "N/A - automated SKILL.md review does not invoke the contribution skill";
-    const result = evaluateCommentAttribution(
-      `Blocking finding at SKILL.md:42.
-
-AI provider/model: Anthropic / claude-sonnet-4-6
-Client / agent tooling: claude-code-action
-Contribution skill revision: ${skillRevision}
-Attribution status: self-reported
-— [skill-review-agent]
-<!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-sonnet-4-6","client":"claude-code-action","skill_revision":"${skillRevision}"} -->`,
-    );
-    assert.equal(result.ok, true);
-    assert.equal(result.attribution.client, "claude-code-action");
-  });
-
   it("requires attribution on implementation, review, and lever claims", () => {
     for (const claim of [
       "CLAIMING: issue scope",
@@ -379,7 +362,6 @@ ${machineFooter()}`;
   it("keeps every AI-authored GitHub workflow compatible with the gate", () => {
     for (const path of [
       ".github/workflows/claude.yml",
-      ".github/workflows/skill-review.yml",
       ".github/workflows/weekly-maintenance.yml",
     ]) {
       const result = evaluateCommentAttribution(workflowMachineFooter(path), {

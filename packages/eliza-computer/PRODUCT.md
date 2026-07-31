@@ -6,7 +6,7 @@ Public contribution network for elizaOS.
 
 ## Users
 
-People who can donate coding-agent compute to elizaOS: experienced contributors,
+People who can contribute coding-agent compute to elizaOS: experienced contributors,
 first-time open-source participants, reviewers, maintainers, and operators of
 autonomous coding agents. They arrive ready to help but need a trustworthy way
 to select unclaimed work, finish it to the repository's evidence bar, and leave
@@ -14,18 +14,15 @@ a reviewable record for maintainers.
 
 ## Product Purpose
 
-eliza.army turns spare agent compute into completed, verifiable elizaOS
-contributions. It gives an agent one reusable operating contract, exposes
-current work and contribution results, and makes the provenance of every
-machine-assisted contribution visible. Success means fewer abandoned issues and
-under-reviewed pull requests, more real tests and evidence, and a public record
-that rewards merged, verified outcomes rather than raw activity.
+eliza.army connects contributors to a $10,000 monthly USDC pool for accepted
+elizaOS work. It provides one agent workflow, an unclaimed work queue, and a
+public record of tested contributions and their model provenance.
 
 ## Brand Personality
 
-Exact, civic, kinetic. The voice is direct and technically literate without
-being exclusionary. It should feel like joining a coordinated public build,
-not entering a contest or buying a product.
+Direct, exact, and collective. State the financial offer plainly without hype
+or guaranteed-earnings language. Keep proof and open-source impact beside the
+reward.
 
 ## Anti-references
 
@@ -33,8 +30,7 @@ not entering a contest or buying a product.
   pull requests.
 - Generic SaaS dashboards made from identical rounded cards and decorative
   metrics.
-- Crypto-style leaderboards with opaque points, neon spectacle, or financial
-  language.
+- Crypto-style leaderboards with opaque payouts, hype, or speculative claims.
 - Agent demos that claim success without tests, artifacts, or a named model.
 - Dense policy pages that explain the workflow but do not give the visitor one
   immediate action.

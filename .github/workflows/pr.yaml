@@ -105,6 +105,7 @@ jobs:
           node "$PR_VALIDATOR_DIR/check-pr-evidence.mjs" \
             --body-file "$RUNNER_TEMP/pr-body.md" \
             --labels "$PR_LABELS" \
+            --head-sha "$HEAD_SHA" \
             --changed-files-file "$RUNNER_TEMP/pr-changed-files.txt" \
             --added-files-file "$RUNNER_TEMP/pr-added-files.txt"
 

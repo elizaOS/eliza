@@ -6,12 +6,19 @@
 
 export const LEADERBOARD_REPOSITORY = "elizaOS/eliza" as const;
 export const LEADERBOARD_SCHEMA_VERSION = "1" as const;
-export const SCORE_RULE_VERSION = "eliza-computer-v2" as const;
+export const SCORE_RULE_VERSION = "eliza-computer-v4" as const;
 export const SCORE_WINDOW_DAYS = 30;
 export const VERIFICATION_WINDOW_DAYS = 7;
 export const MATERIAL_TEST_ADDITIONS = 10;
 export const MATERIAL_TEST_CHURN = 20;
 export const CLAIM_MAX_AGE_DAYS = 7;
+export const SCORE_CAPS = {
+  mergedPullRequests: 5,
+  resolvedIssues: 5,
+  materialTestChanges: 5,
+  evidencePoints: 30,
+  substantiveReviews: 10,
+} as const;
 
 export type GitHubActorKind =
   | "Bot"
@@ -43,6 +50,7 @@ export interface GitHubTextSource {
   createdAt: string;
   updatedAt: string;
   author: GitHubActor | null;
+  authorAssociation?: string | null;
 }
 
 export interface PullRequestFile {
@@ -77,6 +85,7 @@ export interface PullRequestRecord {
   updatedAt: string;
   lastEditedAt: string | null;
   mergedAt: string | null;
+  headRefOid: string;
   isDraft: boolean;
   reviewDecision: string | null;
   activeReviewRequestCount: number;
@@ -126,6 +135,10 @@ export interface IssueRecord {
     number: number;
     url: string;
     mergedAt: string | null;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+    author: GitHubActor | null;
   }>;
 }
 
@@ -147,6 +160,24 @@ export interface EvidenceAssessment {
   maxPoints: 6;
   categories: EvidenceCategory[];
   findings: EvidenceFinding[];
+}
+
+/**
+ * Records one artifact that the live generator fetched and structurally
+ * verified. The source body is retained only in the in-memory generation input
+ * so a verdict cannot be replayed after a PR body or comment is edited.
+ */
+export interface VerifiedEvidenceArtifact {
+  pullRequestId: string;
+  pullRequestMergedAt: string | null;
+  pullRequestHeadOid: string;
+  pullRequestUpdatedAt: string;
+  sourceId: string;
+  sourceBody: string;
+  sourceUpdatedAt: string;
+  category: EvidenceCategory;
+  artifactIdentity: string;
+  contentSha256: string;
 }
 
 export interface InvalidAttributionMarker {
@@ -272,6 +303,7 @@ export type WorkItemCandidateExclusion =
   | "claimed"
   | "draft"
   | "security-sensitive"
+  | "untriaged"
   | "unknown-author";
 
 export interface WorkItemSelection {
@@ -349,6 +381,13 @@ export interface LeaderboardSourceMetadata {
     from: string;
     to: string;
   };
+  evidenceVerification: {
+    status: "complete" | "suppressed-limit";
+    sourceCount: number;
+    artifactCount: number;
+    maxSources: number;
+    maxArtifacts: number;
+  };
 }
 
 export interface LeaderboardSnapshot {
@@ -389,6 +428,7 @@ export interface LeaderboardInput {
   openIssues: IssueRecord[];
   openPullRequests: PullRequestRecord[];
   verificationWindowFrom: string;
+  verifiedEvidence: VerifiedEvidenceArtifact[];
 }
 
 const EVIDENCE_WEIGHTS: Record<EvidenceCategory, number> = {
@@ -407,6 +447,23 @@ const CONFIRMATION_LABELS = new Set([
   "validated",
 ]);
 
+const CONTRIBUTOR_READY_LABELS = new Set([
+  "bug-confirmed",
+  "demo-blocker",
+  "good first issue",
+  "help wanted",
+  "launch-qa",
+  "needs-review",
+  "needs testing",
+  "p0",
+  "p1",
+  "p2",
+  "priority: high",
+  "triage-reviewed",
+]);
+
+const TRUSTED_CLAIM_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
+
 const ISSUE_CLAIM_LABEL_PATTERN =
   /^(?:(?:claimed|in[- ]progress|working)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|status:\s*(?:claimed|in[- ]progress))$/i;
 
@@ -414,7 +471,17 @@ const REVIEW_CLAIM_LABEL_PATTERN =
   /^(?:(?:review[- ]claimed|review[- ]in[- ]progress)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|review:\s*claimed)$/i;
 
 const BLOCKED_LABEL_PATTERN =
-  /^(?:blocked|do[- ]not[- ]merge|needs[- ]human[- ]input|status:\s*blocked)$/i;
+  /^(?:blocked|do[- ]not[- ]merge|human[- ]only|needs[- ]human(?:[- ](?:input|review|verify|verification))?|needs[- ]shaw|status\s*[:/]\s*(?:blocked|proposal|human[- ]only|needs[- ]human(?:[- ](?:input|review|verify|verification))?|needs[- ]shaw))$/i;
+
+const EPIC_TITLE_PATTERN = /^\s*(?:\[[^\]]*\bepic\b[^\]]*\]|epic\s*:)/i;
+const EPIC_LABEL_PATTERN = /^epic(?:\s+\d+)?$/i;
+
+function isEpicIssue(title: string, labels: string[]): boolean {
+  return (
+    EPIC_TITLE_PATTERN.test(title) ||
+    labels.some((label) => EPIC_LABEL_PATTERN.test(label.trim()))
+  );
+}
 
 const SECURITY_SENSITIVE_LABEL_PATTERN =
   /(?:^|[-_ ])(?:security|vulnerability|credential[-_ ]?leak|secret[-_ ]?leak|cve)(?:$|[-_ ])/i;
@@ -630,6 +697,20 @@ function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
+function compareRankedEntries(
+  left: Pick<MutableLeaderboardEntry, "actor" | "score">,
+  right: Pick<MutableLeaderboardEntry, "actor" | "score">,
+): number {
+  return (
+    right.score - left.score ||
+    left.actor.login.localeCompare(right.actor.login, undefined, {
+      sensitivity: "base",
+    }) ||
+    left.actor.login.localeCompare(right.actor.login) ||
+    left.actor.id.localeCompare(right.actor.id)
+  );
+}
+
 export function dedupeByNodeId<T extends { id: string }>(records: T[]): T[] {
   const byId = new Map<string, T>();
   for (const record of records) {
@@ -714,14 +795,13 @@ const EVIDENCE_ROW_CATEGORY: Record<string, EvidenceCategory> = {
   "walkthrough-video": "video",
 };
 
-const DOMAIN_ARTIFACT_HOSTS = new Set([
-  "arbiscan.io",
-  "basescan.org",
-  "etherscan.io",
-  "polygonscan.com",
-  "sepolia.etherscan.io",
-  "solscan.io",
-]);
+const EVIDENCE_CATEGORIES: readonly EvidenceCategory[] = [
+  "screenshot",
+  "video",
+  "logs",
+  "trajectory",
+  "domain-artifact",
+];
 
 function extractUrls(body: string): IndexedUrl[] {
   const urls: IndexedUrl[] = [];
@@ -734,47 +814,6 @@ function extractUrls(body: string): IndexedUrl[] {
     }
   }
   return urls;
-}
-
-function isUserAttachment(url: URL): boolean {
-  return (
-    url.hostname.toLowerCase() === "github.com" &&
-    /^\/user-attachments\/assets\/[a-z0-9-]+$/i.test(url.pathname)
-  );
-}
-
-function isAllowedRepositoryArtifact(url: URL): boolean {
-  const host = url.hostname.toLowerCase();
-  if (host === "raw.githubusercontent.com") {
-    return /^\/elizaOS\/eliza\/[a-f0-9]{40}\//i.test(url.pathname);
-  }
-  if (host !== "github.com") {
-    return false;
-  }
-  return (
-    /^\/elizaOS\/eliza\/blob\/[a-f0-9]{40}\//i.test(url.pathname) ||
-    /^\/elizaOS\/eliza\/actions\/runs\/\d+\/artifacts\/\d+\/?$/i.test(
-      url.pathname,
-    )
-  );
-}
-
-function isAllowedDomainArtifact(url: URL): boolean {
-  const host = url.hostname.toLowerCase();
-  if (!DOMAIN_ARTIFACT_HOSTS.has(host)) {
-    return false;
-  }
-  if (host === "solscan.io") {
-    return /^\/tx\/[1-9A-HJ-NP-Za-km-z]{32,100}$/i.test(url.pathname);
-  }
-  return /^\/(?:tx|transaction)\/0x[a-f0-9]{64}$/i.test(url.pathname);
-}
-
-function isAllowedArtifactUrl(url: URL, category: EvidenceCategory): boolean {
-  if (isUserAttachment(url) || isAllowedRepositoryArtifact(url)) {
-    return true;
-  }
-  return category === "domain-artifact" && isAllowedDomainArtifact(url);
 }
 
 function evidenceRows(body: string): Map<EvidenceCategory, string[]> {
@@ -797,133 +836,76 @@ function evidenceRows(body: string): Map<EvidenceCategory, string[]> {
   return rows;
 }
 
-function hasContextualArtifact(
-  body: string,
-  category: EvidenceCategory,
-  contextPattern: RegExp,
-): boolean {
-  for (const candidate of extractUrls(body)) {
-    if (!isAllowedArtifactUrl(candidate.url, category)) {
-      continue;
-    }
-    const context = body.slice(
-      Math.max(0, candidate.index - 180),
-      candidate.index + candidate.raw.length + 80,
-    );
-    if (contextPattern.test(context)) {
-      return true;
-    }
-  }
-  return false;
+function evidenceArtifactIdentity(url: URL): string {
+  return `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname}`;
 }
 
-function fencedBlocks(body: string): Array<{ index: number; content: string }> {
-  const blocks: Array<{ index: number; content: string }> = [];
-  for (const match of body.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
-    blocks.push({ index: match.index, content: match[1].trim() });
-  }
-  return blocks;
+interface EvidenceClaim {
+  category: EvidenceCategory;
+  sourceId: string;
 }
 
-function hasConcreteLogsInStableRow(body: string): boolean {
-  for (const block of fencedBlocks(body)) {
-    if (block.content.length >= 40) {
-      return true;
-    }
-  }
-  return /<details[^>]*>[\s\S]*?<summary[^>]*>[^<]*(?:logs?|console|network)[^<]*<\/summary>[\s\S]{40,}?<\/details>/i.test(
-    body,
-  );
-}
-
-function hasRowArtifact(
-  rows: Map<EvidenceCategory, string[]>,
-  category: EvidenceCategory,
-): boolean {
-  for (const row of rows.get(category) ?? []) {
-    const concrete = withoutNotApplicableRows(row);
-    if (category === "logs" && hasConcreteLogsInStableRow(concrete)) {
-      return true;
-    }
-    if (
-      extractUrls(concrete).some((candidate) =>
-        isAllowedArtifactUrl(candidate.url, category),
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function hasConcreteEvidence(
-  body: string,
-  rows: Map<EvidenceCategory, string[]>,
-  category: EvidenceCategory,
-): boolean {
-  if (hasRowArtifact(rows, category)) {
-    return true;
-  }
-  if (category === "screenshot") {
-    return hasContextualArtifact(
-      body,
-      category,
-      /\b(?:before|after|desktop|mobile|screen(?:shot)?)\b/i,
-    );
-  }
-  if (category === "video") {
-    return hasContextualArtifact(
-      body,
-      category,
-      /\b(?:mp4|recording|video|walkthrough)\b/i,
-    );
-  }
-  if (category === "logs") {
-    return hasContextualArtifact(
-      body,
-      category,
-      /\b(?:backend|browser|client|console|frontend|logs?|network|stderr|stdout)\b/i,
-    );
-  }
-  if (category === "trajectory") {
-    return hasContextualArtifact(
-      body,
-      category,
-      /\b(?:jsonl|model run|run viewer|scenario report|trajectory)\b/i,
-    );
-  }
-  return hasContextualArtifact(
-    body,
-    category,
-    /\b(?:artifact|database row|db row|generated file|memory|scheduled task|transaction|wallet)\b/i,
-  );
+function addEvidenceClaim(
+  claims: Map<string, EvidenceClaim[]>,
+  identity: string,
+  claim: EvidenceClaim,
+): void {
+  const current = claims.get(identity) ?? [];
+  current.push(claim);
+  claims.set(identity, current);
 }
 
 export function assessEvidence(
   sources: GitHubTextSource[],
+  verifiedEvidence: VerifiedEvidenceArtifact[] = [],
 ): EvidenceAssessment {
+  const claims = new Map<string, EvidenceClaim[]>();
   const sourceIds = new Map<EvidenceCategory, Set<string>>();
-  const categories: EvidenceCategory[] = [
-    "screenshot",
-    "video",
-    "logs",
-    "trajectory",
-    "domain-artifact",
-  ];
+  const verifiedClaims = new Set(
+    verifiedEvidence.map(
+      (artifact) =>
+        `${artifact.pullRequestId}\u0000${artifact.sourceId}\u0000${artifact.sourceUpdatedAt}\u0000${artifact.sourceBody}\u0000${artifact.category}\u0000${artifact.artifactIdentity}`,
+    ),
+  );
 
   for (const source of dedupeByNodeId(sources)) {
-    if (source.author && isBotActor(source.author)) {
+    if (
+      source.kind !== "body" ||
+      (source.author && isBotActor(source.author))
+    ) {
       continue;
     }
-    const body = withoutNotApplicableRows(source.body);
     const rows = evidenceRows(source.body);
-    for (const category of categories) {
-      if (hasConcreteEvidence(body, rows, category)) {
-        const ids = sourceIds.get(category) ?? new Set<string>();
-        ids.add(source.id);
-        sourceIds.set(category, ids);
+    for (const category of EVIDENCE_CATEGORIES) {
+      for (const row of rows.get(category) ?? []) {
+        const concrete = withoutNotApplicableRows(row);
+        for (const candidate of extractUrls(concrete)) {
+          const identity = evidenceArtifactIdentity(candidate.url);
+          const verificationKey = `${source.artifactId}\u0000${source.id}\u0000${source.updatedAt}\u0000${source.body}\u0000${category}\u0000${identity}`;
+          if (!verifiedClaims.has(verificationKey)) continue;
+          addEvidenceClaim(claims, identity, {
+            category,
+            sourceId: source.id,
+          });
+        }
       }
     }
+  }
+
+  for (const artifactClaims of claims.values()) {
+    const categories = new Set(artifactClaims.map((claim) => claim.category));
+    if (categories.size !== 1) {
+      continue;
+    }
+    const category = categories.values().next().value;
+    if (!category) {
+      continue;
+    }
+    const ids = sourceIds.get(category) ?? new Set<string>();
+    for (const claim of artifactClaims) {
+      ids.add(claim.sourceId);
+    }
+    sourceIds.set(category, ids);
   }
 
   const findings = [...sourceIds.entries()]
@@ -944,6 +926,52 @@ export function assessEvidence(
     categories: findings.map((finding) => finding.category),
     findings,
   };
+}
+
+/** Keeps one deterministic owner for a canonical URL or identical content. */
+export function selectUniqueVerifiedEvidence(
+  artifacts: VerifiedEvidenceArtifact[],
+  pullRequests: PullRequestRecord[],
+): VerifiedEvidenceArtifact[] {
+  const categoryOrder = new Map<EvidenceCategory, number>(
+    EVIDENCE_CATEGORIES.map((category, index) => [category, index]),
+  );
+  const pullRequestOrder = new Map(
+    [...pullRequests]
+      .sort(
+        (left, right) =>
+          Number(left.mergedAt === null) - Number(right.mergedAt === null) ||
+          (left.mergedAt ?? left.updatedAt).localeCompare(
+            right.mergedAt ?? right.updatedAt,
+          ) ||
+          left.number - right.number ||
+          left.id.localeCompare(right.id),
+      )
+      .map((pullRequest, index) => [pullRequest.id, index]),
+  );
+  const claimedIdentities = new Set<string>();
+  const claimedDigests = new Set<string>();
+  return [...artifacts]
+    .sort(
+      (left, right) =>
+        (pullRequestOrder.get(left.pullRequestId) ?? Number.MAX_SAFE_INTEGER) -
+          (pullRequestOrder.get(right.pullRequestId) ??
+            Number.MAX_SAFE_INTEGER) ||
+        (categoryOrder.get(left.category) ?? Number.MAX_SAFE_INTEGER) -
+          (categoryOrder.get(right.category) ?? Number.MAX_SAFE_INTEGER) ||
+        left.artifactIdentity.localeCompare(right.artifactIdentity),
+    )
+    .filter((artifact) => {
+      if (
+        claimedIdentities.has(artifact.artifactIdentity) ||
+        claimedDigests.has(artifact.contentSha256)
+      ) {
+        return false;
+      }
+      claimedIdentities.add(artifact.artifactIdentity);
+      claimedDigests.add(artifact.contentSha256);
+      return true;
+    });
 }
 
 function parseMarker(value: string):
@@ -1099,6 +1127,7 @@ function markerFooterError(
 
 export function assessModelAttribution(
   sources: GitHubTextSource[],
+  options: { requireEverySource?: boolean } = {},
 ): AttributionAssessment {
   const declarations: ModelAttribution[] = [];
   const invalidMarkers: InvalidAttributionMarker[] = [];
@@ -1106,7 +1135,8 @@ export function assessModelAttribution(
     (source) =>
       source.author &&
       !isBotActor(source.author) &&
-      (hasAttributionEligibilitySignal(source.body) ||
+      (options.requireEverySource === true ||
+        hasAttributionEligibilitySignal(source.body) ||
         hasMarkdownLine(source.body, HUMAN_ONLY_PATTERN) ||
         hasMarkdownLine(source.body, ISSUE_CLAIM_PATTERN) ||
         hasMarkdownLine(source.body, REVIEW_CLAIM_PATTERN)),
@@ -1265,16 +1295,7 @@ export function assessModelAttribution(
 export function pullRequestTextSources(
   pullRequest: PullRequestRecord,
 ): GitHubTextSource[] {
-  const body: GitHubTextSource = {
-    id: `${pullRequest.id}:body`,
-    artifactId: pullRequest.id,
-    kind: "body",
-    body: pullRequest.body,
-    url: pullRequest.url,
-    createdAt: pullRequest.createdAt,
-    updatedAt: pullRequest.lastEditedAt ?? pullRequest.createdAt,
-    author: pullRequest.author,
-  };
+  const body = pullRequestBodySource(pullRequest);
   const reviewSources: GitHubTextSource[] = pullRequest.reviews.map(
     (review) => ({
       id: review.id,
@@ -1353,39 +1374,39 @@ export function isSubstantiveReview(
 function methodology(): LeaderboardMethodology {
   return {
     summary:
-      "Version 2 rewards every merged outcome in the 30-day window and applies verification-intensive bonuses over a complete seven-day detail window.",
+      "Version 3 rewards recent accepted outcomes and verified quality while capping each contributor category so bulk automation cannot dominate the public ranking.",
     scoringRules: [
       {
         id: "merged-pull-request",
         points: "10",
-        cap: "once per immutable merged pull request ID",
+        cap: `newest ${SCORE_CAPS.mergedPullRequests} merged pull requests per contributor and rolling window`,
         qualification:
           "Authored pull request merged during the rolling window.",
       },
       {
         id: "resolved-issue",
         points: "4",
-        cap: "once per immutable issue ID",
+        cap: `newest ${SCORE_CAPS.resolvedIssues} linked issue resolutions per contributor and verification window`,
         qualification:
-          "Issue closed during the seven-day verification window and linked to a merged fix or carrying a trusted confirmed, validated, or triaged label.",
+          "Authored merged pull request is recorded by GitHub as the closer of an issue in the seven-day verification window; issue authorship alone never scores.",
       },
       {
         id: "material-test-change",
         points: "4",
-        cap: "once per qualifying merged pull request",
+        cap: `newest ${SCORE_CAPS.materialTestChanges} qualifying merged pull requests per contributor and verification window`,
         qualification: `For pull requests in the seven-day verification window, recognized test files add at least ${MATERIAL_TEST_ADDITIONS} lines and change at least ${MATERIAL_TEST_CHURN} total lines.`,
       },
       {
         id: "evidence",
         points: "up to 6",
-        cap: "one award per evidence category per merged pull request; six points total",
+        cap: `one award per evidence category per merged pull request, six per pull request, ${SCORE_CAPS.evidencePoints} evidence points per contributor and verification window`,
         qualification:
-          "For pull requests in the seven-day verification window, concrete proof existed in the pull-request body or a comment at merge time and appears in stable evidence rows, category-labeled GitHub attachments, immutable repository artifacts, or supported transaction explorers; N/A rows do not qualify.",
+          "For pull requests in the seven-day verification window, contributor-authored proof existed unchanged at merge, appears in a stable evidence row in the canonical PR body, uses an immutable GitHub attachment URL, and passes bounded remote byte and structure verification. Mutable release assets, comment copies, inline text, N/A rows, unreachable artifacts, and third-party claims do not qualify.",
       },
       {
         id: "substantive-review",
         points: "3",
-        cap: "once per reviewer per merged pull request",
+        cap: `newest ${SCORE_CAPS.substantiveReviews} qualifying pull-request reviews per contributor and verification window`,
         qualification:
           "For pull requests in the seven-day verification window, a pre-merge APPROVED or CHANGES_REQUESTED review has substantive text or inline discussion.",
       },
@@ -1394,7 +1415,7 @@ function methodology(): LeaderboardMethodology {
     materialTestThreshold: {
       minimumAdditions: MATERIAL_TEST_ADDITIONS,
       minimumTotalChurn: MATERIAL_TEST_CHURN,
-      cap: "4 points once per merged pull request",
+      cap: `4 points for each of the newest ${SCORE_CAPS.materialTestChanges} qualifying merged pull requests per contributor`,
     },
     exclusions: [
       "GitHub Bot actors and bot-pattern logins",
@@ -1404,7 +1425,10 @@ function methodology(): LeaderboardMethodology {
       "duplicate immutable GitHub node IDs",
       "repeated reviews by the same reviewer on the same pull request",
       "arbitrary external media links, bare checksums, and unstructured evidence claims",
+      "unreachable, empty, malformed, wrong-kind, or conflicting evidence artifacts",
       "closed issues that only carry GitHub's COMPLETED state reason",
+      "issue reports whose author did not also author the linked merged fix",
+      "score-bearing evidence supplied only by a third party",
     ],
     nonScoringActivity: [
       "raw comments",
@@ -1413,9 +1437,9 @@ function methodology(): LeaderboardMethodology {
       "model disclosure",
     ],
     provenancePolicy:
-      "Coverage is valid-source count over non-bot claims and text sources that declare AI or human-only provenance; ordinary human discussion is not eligible. Exact provider/model declarations, human-only declarations, and eliza-computer-attribution:v1 markers are self-reported provenance. Complete, partial, missing, and invalid states add no points.",
+      "Leaderboard model identifiers come only from text sources causally attached to a scored contribution by the same actor. Exact provider/model declarations, human-only declarations, and eliza-computer-attribution:v1 markers remain self-reported provenance; complete, partial, missing, and invalid states add no points.",
     collectionPolicy:
-      "Every merged pull-request outcome is collected over 30 days with paginated, recursively split UTC time slices below GitHub Search's 1,000-result ceiling. Verification-intensive pull-request bonuses and resolved issues use a complete seven-day detail window. Open queues use complete repository connections. Candidate selection excludes bots, unknown authors, security-sensitive or blocked work, active claims including lane-qualified labels, drafts, active review requests, approvals, and changes-requested decisions; excluded items retain machine-readable reasons. Counts publish both outcome and detail coverage, and immutable node IDs are deduplicated.",
+      "Every merged pull-request outcome is collected over 30 days with paginated, recursively split UTC time slices below GitHub Search's 1,000-result ceiling, then ordered newest-first before per-contributor caps. Verification-intensive bonuses use a complete seven-day detail window. Score-bearing artifacts and open-PR evidence status are fetched with fixed per-source and snapshot source, artifact, concurrency, byte, redirect, and request-time limits. Over-limit sources remain unverified without erasing verified evidence from bounded sources; merged work receives verification capacity before untrusted open work. Open queues use complete repository connections. Issue candidates additionally require a maintainer-controlled contributor-ready label and bounded scope; public claim comments count only from owners, members, or collaborators. Candidate selection excludes bots, unknown authors, epics needing child issues, human-gated, untriaged or sensitive work, blocked work, durable claims, drafts, active review requests, approvals, and changes-requested decisions; excluded items retain machine-readable reasons.",
   };
 }
 
@@ -1466,11 +1490,28 @@ function addScore(
   entries: Map<string, MutableLeaderboardEntry>,
   ledger: ScoreEvent[],
   event: ScoreEvent,
-): void {
+): boolean {
   if (isBotActor(event.actor)) {
-    return;
+    return false;
   }
   const entry = actorEntry(entries, event.actor);
+  const atCap =
+    (event.category === "merged-pull-request" &&
+      entry.acceptedOutcomes.mergedPullRequests >=
+        SCORE_CAPS.mergedPullRequests) ||
+    (event.category === "resolved-issue" &&
+      entry.acceptedOutcomes.resolvedIssues >= SCORE_CAPS.resolvedIssues) ||
+    (event.category === "material-test-change" &&
+      entry.acceptedOutcomes.materialTestChanges >=
+        SCORE_CAPS.materialTestChanges) ||
+    (event.category === "evidence" &&
+      entry.points.evidence + event.points > SCORE_CAPS.evidencePoints) ||
+    (event.category === "substantive-review" &&
+      entry.acceptedOutcomes.substantiveReviews >=
+        SCORE_CAPS.substantiveReviews);
+  if (atCap) {
+    return false;
+  }
   entry.score += event.points;
   if (event.category === "merged-pull-request") {
     entry.points.mergedPullRequests += event.points;
@@ -1489,6 +1530,7 @@ function addScore(
     entry.acceptedOutcomes.substantiveReviews += 1;
   }
   ledger.push(event);
+  return true;
 }
 
 function recordTextActivity(
@@ -1519,6 +1561,61 @@ function evidenceSourcesAtMerge(
       source.kind !== "review" &&
       parseIsoTime(source.createdAt) <= mergedAt &&
       parseIsoTime(source.updatedAt) <= mergedAt,
+  );
+}
+
+function sameActor(
+  left: GitHubActor | null,
+  right: GitHubActor | null,
+): boolean {
+  return (
+    left !== null &&
+    right !== null &&
+    (left.id === right.id ||
+      left.login.toLowerCase() === right.login.toLowerCase())
+  );
+}
+
+function pullRequestBodySource(
+  pullRequest: PullRequestRecord | MergedPullRequestOutcome,
+): GitHubTextSource {
+  return {
+    id: `${pullRequest.id}:body`,
+    artifactId: pullRequest.id,
+    kind: "body",
+    body: pullRequest.body,
+    url: pullRequest.url,
+    createdAt: pullRequest.createdAt,
+    updatedAt:
+      "lastEditedAt" in pullRequest
+        ? (pullRequest.lastEditedAt ?? pullRequest.createdAt)
+        : pullRequest.updatedAt,
+    author: pullRequest.author,
+  };
+}
+
+function resolvedIssueContributor(
+  issue: IssueRecord,
+): IssueRecord["closedByPullRequests"][number] | null {
+  if (!issue.closedAt) {
+    return null;
+  }
+  const closedAt = parseIsoTime(issue.closedAt);
+  return (
+    [...issue.closedByPullRequests]
+      .filter(
+        (pullRequest) =>
+          pullRequest.mergedAt !== null &&
+          parseIsoTime(pullRequest.mergedAt) <= closedAt &&
+          pullRequest.author !== null &&
+          !isBotActor(pullRequest.author),
+      )
+      .sort(
+        (left, right) =>
+          parseIsoTime(right.mergedAt ?? "") -
+            parseIsoTime(left.mergedAt ?? "") ||
+          left.id.localeCompare(right.id),
+      )[0] ?? null
   );
 }
 
@@ -1571,6 +1668,12 @@ function latestClaimComment(
   const matches = dedupeByNodeId(comments)
     .filter((comment) => {
       if (!comment.author || isBotActor(comment.author)) {
+        return false;
+      }
+      if (
+        !comment.authorAssociation ||
+        !TRUSTED_CLAIM_ASSOCIATIONS.has(comment.authorAssociation)
+      ) {
         return false;
       }
       if (
@@ -1738,6 +1841,7 @@ interface CandidateSelectionInput {
   kind: WorkItem["kind"];
   author: GitHubActor | null;
   labels: string[];
+  contributorReady: boolean;
   actionability: WorkItem["actionability"];
   reviewDecision: string | null;
   activeReviewRequestCount: number | null;
@@ -1750,6 +1854,8 @@ function candidateExclusionReasons(
   const reasons: WorkItemCandidateExclusion[] = [];
   if (!input.author) {
     reasons.push("unknown-author");
+  } else if (input.author.kind === "Unknown") {
+    reasons.push("unknown-author");
   } else if (isBotActor(input.author)) {
     reasons.push("bot-authored");
   }
@@ -1757,6 +1863,9 @@ function candidateExclusionReasons(
     input.labels.some((label) => SECURITY_SENSITIVE_LABEL_PATTERN.test(label))
   ) {
     reasons.push("security-sensitive");
+  }
+  if (input.kind === "issue" && !input.contributorReady) {
+    reasons.push("untriaged");
   }
   if (input.claimStatus === "claimed") {
     reasons.push("claimed");
@@ -1826,6 +1935,11 @@ function issueWorkItem(
         kind: "issue",
         author: issue.author,
         labels,
+        contributorReady:
+          !isEpicIssue(issue.title, labels) &&
+          issue.labels.some((label) =>
+            CONTRIBUTOR_READY_LABELS.has(normalizeLabel(label.name)),
+          ),
         actionability,
         reviewDecision: null,
         activeReviewRequestCount: null,
@@ -1841,12 +1955,13 @@ function issueWorkItem(
 function pullRequestWorkItem(
   pullRequest: PullRequestRecord,
   referenceTime: string,
+  verifiedEvidence: VerifiedEvidenceArtifact[],
 ): {
   item: WorkItem;
   attribution: AttributionAssessment;
 } {
   const sources = pullRequestTextSources(pullRequest);
-  const evidence = assessEvidence(sources);
+  const evidence = assessEvidence(sources, verifiedEvidence);
   const attribution = assessModelAttribution(sources);
   const claim = pullRequestClaim(pullRequest, referenceTime);
   const labels = uniqueSorted(pullRequest.labels.map((label) => label.name));
@@ -1876,6 +1991,7 @@ function pullRequestWorkItem(
         kind: "pull-request",
         author: pullRequest.author,
         labels,
+        contributorReady: true,
         actionability,
         reviewDecision: pullRequest.reviewDecision,
         activeReviewRequestCount: pullRequest.activeReviewRequestCount,
@@ -1927,15 +2043,44 @@ export function createLeaderboardSnapshot(
 ): LeaderboardSnapshot {
   const mergedPullRequestOutcomes = dedupeByNodeId(
     input.mergedPullRequestOutcomes,
+  ).sort(
+    (left, right) =>
+      parseIsoTime(right.mergedAt) - parseIsoTime(left.mergedAt) ||
+      right.number - left.number ||
+      left.id.localeCompare(right.id),
   );
-  const mergedPullRequests = dedupeByNodeId(input.mergedPullRequests);
-  const resolvedIssues = dedupeByNodeId(input.resolvedIssues).filter(
-    qualifiesResolvedIssue,
+  const mergedPullRequests = dedupeByNodeId(input.mergedPullRequests).sort(
+    (left, right) =>
+      parseIsoTime(right.mergedAt ?? right.updatedAt) -
+        parseIsoTime(left.mergedAt ?? left.updatedAt) ||
+      right.number - left.number ||
+      left.id.localeCompare(right.id),
   );
+  const resolvedIssues = dedupeByNodeId(input.resolvedIssues)
+    .filter(qualifiesResolvedIssue)
+    .sort(
+      (left, right) =>
+        parseIsoTime(right.closedAt ?? right.updatedAt) -
+          parseIsoTime(left.closedAt ?? left.updatedAt) ||
+        right.number - left.number ||
+        left.id.localeCompare(right.id),
+    );
   const openIssues = dedupeByNodeId(input.openIssues);
   const openPullRequests = dedupeByNodeId(input.openPullRequests);
+  const verifiedEvidence = selectUniqueVerifiedEvidence(
+    input.verifiedEvidence,
+    [...mergedPullRequests, ...openPullRequests],
+  );
   const entries = new Map<string, MutableLeaderboardEntry>();
   const ledger: ScoreEvent[] = [];
+  const scoredAttributionSources = new Map<string, GitHubTextSource>();
+  const recordScoredSources = (sources: GitHubTextSource[]): void => {
+    for (const source of sources) {
+      if (!scoredAttributionSources.has(source.id)) {
+        scoredAttributionSources.set(source.id, source);
+      }
+    }
+  };
   const outcomeIds = new Set(
     mergedPullRequestOutcomes.map((pullRequest) => pullRequest.id),
   );
@@ -1982,7 +2127,7 @@ export function createLeaderboardSnapshot(
       const authorEntry = actorEntry(entries, pullRequest.author);
       authorEntry.rawActivity.additions += pullRequest.additions;
       authorEntry.rawActivity.deletions += pullRequest.deletions;
-      addScore(entries, ledger, {
+      const scored = addScore(entries, ledger, {
         id: `${pullRequest.id}:merged`,
         actor: pullRequest.author,
         category: "merged-pull-request",
@@ -1996,6 +2141,9 @@ export function createLeaderboardSnapshot(
         },
         reason: "Pull request merged during the rolling window.",
       });
+      if (scored) {
+        recordScoredSources([pullRequestBodySource(pullRequest)]);
+      }
     }
   }
 
@@ -2007,7 +2155,7 @@ export function createLeaderboardSnapshot(
       const authorEntry = actorEntry(entries, pullRequest.author);
       authorEntry.rawActivity.commits += pullRequest.commitCount;
       if (hasMaterialTestChange(pullRequest.files)) {
-        addScore(entries, ledger, {
+        const scored = addScore(entries, ledger, {
           id: `${pullRequest.id}:tests`,
           actor: pullRequest.author,
           category: "material-test-change",
@@ -2021,13 +2169,30 @@ export function createLeaderboardSnapshot(
           },
           reason: `Recognized test files met the ${MATERIAL_TEST_ADDITIONS}-addition and ${MATERIAL_TEST_CHURN}-churn threshold.`,
         });
+        if (scored) {
+          recordScoredSources([pullRequestBodySource(pullRequest)]);
+        }
       }
 
+      const attributableEvidenceSources = evidenceSourcesAtMerge(
+        pullRequest,
+        sources,
+      ).filter((source) => sameActor(source.author, pullRequest.author));
       const evidence = assessEvidence(
-        evidenceSourcesAtMerge(pullRequest, sources),
+        attributableEvidenceSources,
+        verifiedEvidence.filter(
+          (artifact) =>
+            artifact.pullRequestId === pullRequest.id &&
+            artifact.pullRequestMergedAt === pullRequest.mergedAt &&
+            artifact.pullRequestHeadOid === pullRequest.headRefOid &&
+            artifact.pullRequestUpdatedAt === pullRequest.updatedAt,
+        ),
+      );
+      const evidenceSourceById = new Map(
+        attributableEvidenceSources.map((source) => [source.id, source]),
       );
       for (const finding of evidence.findings) {
-        addScore(entries, ledger, {
+        const scored = addScore(entries, ledger, {
           id: `${pullRequest.id}:evidence:${finding.category}`,
           actor: pullRequest.author,
           category: "evidence",
@@ -2039,8 +2204,16 @@ export function createLeaderboardSnapshot(
             title: pullRequest.title,
             url: pullRequest.url,
           },
-          reason: `Concrete ${finding.category} evidence was attached or linked.`,
+          reason: `Remote ${finding.category} evidence passed byte and structure verification.`,
         });
+        if (scored) {
+          recordScoredSources(
+            finding.sourceIds.flatMap((sourceId) => {
+              const source = evidenceSourceById.get(sourceId);
+              return source ? [source] : [];
+            }),
+          );
+        }
       }
     }
 
@@ -2070,7 +2243,7 @@ export function createLeaderboardSnapshot(
         continue;
       }
       awardedReviewers.add(review.author.id);
-      addScore(entries, ledger, {
+      const scored = addScore(entries, ledger, {
         id: `${pullRequest.id}:reviewer:${review.author.id}`,
         actor: review.author,
         category: "substantive-review",
@@ -2085,20 +2258,23 @@ export function createLeaderboardSnapshot(
         reason:
           "First qualifying substantive, non-self review submitted before merge.",
       });
+      if (scored) {
+        const source = sources.find((candidate) => candidate.id === review.id);
+        if (source) {
+          recordScoredSources([source]);
+        }
+      }
     }
   }
 
   for (const issue of resolvedIssues) {
     const sources = issueTextSources(issue);
     recordTextActivity(entries, sources);
-    if (
-      issue.author &&
-      !isBotActor(issue.author) &&
-      qualifiesResolvedIssue(issue)
-    ) {
-      addScore(entries, ledger, {
-        id: `${issue.id}:resolved`,
-        actor: issue.author,
+    const contributor = resolvedIssueContributor(issue);
+    if (contributor?.author) {
+      const scored = addScore(entries, ledger, {
+        id: `${issue.id}:resolved-by:${contributor.id}`,
+        actor: contributor.author,
         category: "resolved-issue",
         points: 4,
         source: {
@@ -2109,8 +2285,22 @@ export function createLeaderboardSnapshot(
           url: issue.url,
         },
         reason:
-          "Issue was resolved or explicitly confirmed and closed during the rolling window.",
+          "Contributor authored the merged pull request that resolved this issue.",
       });
+      if (scored) {
+        recordScoredSources([
+          {
+            id: `${contributor.id}:body`,
+            artifactId: contributor.id,
+            kind: "body",
+            body: contributor.body,
+            url: contributor.url,
+            createdAt: contributor.createdAt,
+            updatedAt: contributor.updatedAt,
+            author: contributor.author,
+          },
+        ]);
+      }
     }
   }
 
@@ -2118,24 +2308,22 @@ export function createLeaderboardSnapshot(
     issueWorkItem(record, input.generatedAt),
   );
   const pullRequestQueue = openPullRequests.map((record) =>
-    pullRequestWorkItem(record, input.generatedAt),
+    pullRequestWorkItem(
+      record,
+      input.generatedAt,
+      verifiedEvidence.filter(
+        (artifact) =>
+          artifact.pullRequestId === record.id &&
+          artifact.pullRequestMergedAt === record.mergedAt &&
+          artifact.pullRequestHeadOid === record.headRefOid &&
+          artifact.pullRequestUpdatedAt === record.updatedAt,
+      ),
+    ),
   );
-  const overallAttribution = assessModelAttribution([
-    ...mergedPullRequestOutcomes.map<GitHubTextSource>((pullRequest) => ({
-      id: `${pullRequest.id}:body`,
-      artifactId: pullRequest.id,
-      kind: "body",
-      body: pullRequest.body,
-      url: pullRequest.url,
-      createdAt: pullRequest.createdAt,
-      updatedAt: pullRequest.updatedAt,
-      author: pullRequest.author,
-    })),
-    ...mergedPullRequests.flatMap(pullRequestTextSources),
-    ...resolvedIssues.flatMap(issueTextSources),
-    ...openIssues.flatMap(issueTextSources),
-    ...openPullRequests.flatMap(pullRequestTextSources),
-  ]);
+  const overallAttribution = assessModelAttribution(
+    [...scoredAttributionSources.values()],
+    { requireEverySource: true },
+  );
   const attributions = overallAttribution.declarations;
   for (const attribution of attributions) {
     if (attribution.actor && !isBotActor(attribution.actor)) {
@@ -2145,13 +2333,7 @@ export function createLeaderboardSnapshot(
 
   const leaders = [...entries.values()]
     .filter((entry) => entry.score > 0)
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        left.actor.login.localeCompare(right.actor.login, undefined, {
-          sensitivity: "base",
-        }),
-    )
+    .sort(compareRankedEntries)
     .map<LeaderboardEntry>((entry, index) => ({
       rank: index + 1,
       actor: entry.actor,
@@ -2272,7 +2454,7 @@ function assertIsoTimestamp(
   }
 }
 
-function assertWebUrl(value: unknown, path: string): asserts value is string {
+function secureUrl(value: unknown, path: string): URL {
   assertString(value, path);
   let parsed: URL;
   try {
@@ -2281,8 +2463,62 @@ function assertWebUrl(value: unknown, path: string): asserts value is string {
     // error-policy:J3 a malformed public snapshot URL is explicitly rejected.
     throw new Error(`${path} must be a valid web URL`);
   }
-  if (!["http:", "https:"].includes(parsed.protocol) || !parsed.hostname) {
-    throw new Error(`${path} must be a valid web URL`);
+  if (
+    parsed.protocol !== "https:" ||
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port
+  ) {
+    throw new Error(`${path} must be a credential-free HTTPS URL`);
+  }
+  return parsed;
+}
+
+function assertRepositoryUrl(
+  value: unknown,
+  path: string,
+  expectedKind?: "issue" | "pull-request" | "review",
+  expectedNumber?: number,
+): void {
+  const parsed = secureUrl(value, path);
+  if (parsed.hostname.toLowerCase() !== "github.com" || parsed.search) {
+    throw new Error(`${path} must use the canonical GitHub repository origin`);
+  }
+  const match = parsed.pathname.match(
+    /^\/elizaOS\/eliza\/(issues|pull)\/([1-9][0-9]*)\/?$/i,
+  );
+  if (!match) {
+    throw new Error(
+      `${path} must identify an elizaOS/eliza issue or pull request`,
+    );
+  }
+  const actualKind =
+    match[1].toLowerCase() === "issues" ? "issue" : "pull-request";
+  if (
+    expectedKind &&
+    (expectedKind === "issue"
+      ? actualKind !== "issue"
+      : actualKind !== "pull-request")
+  ) {
+    throw new Error(`${path} kind does not match its repository URL`);
+  }
+  if (expectedNumber !== undefined && Number(match[2]) !== expectedNumber) {
+    throw new Error(`${path} number does not match its repository URL`);
+  }
+  if (expectedKind === "review") {
+    if (!/^#(?:pullrequestreview-|discussion_r)\d+$/i.test(parsed.hash)) {
+      throw new Error(
+        `${path} review URL must identify a GitHub review or inline discussion`,
+      );
+    }
+  } else if (
+    parsed.hash &&
+    !/^#(?:issuecomment-|pullrequestreview-|discussion_r)\d+$/i.test(
+      parsed.hash,
+    )
+  ) {
+    throw new Error(`${path} has an unsupported GitHub fragment`);
   }
 }
 
@@ -2317,8 +2553,27 @@ function assertActorValue(value: unknown, path: string): void {
   if (/\s/.test(actor.login)) {
     throw new Error(`${path}.login must be a GitHub login`);
   }
-  assertWebUrl(actor.avatarUrl, `${path}.avatarUrl`);
-  assertWebUrl(actor.url, `${path}.url`);
+  const avatarUrl = secureUrl(actor.avatarUrl, `${path}.avatarUrl`);
+  if (avatarUrl.hostname.toLowerCase() !== "avatars.githubusercontent.com") {
+    throw new Error(`${path}.avatarUrl must use GitHub's avatar origin`);
+  }
+  const profileUrl = secureUrl(actor.url, `${path}.url`);
+  const normalizedProfilePath = profileUrl.pathname.replace(/\/$/u, "");
+  const directProfilePath = `/${actor.login}`;
+  const appProfileAllowed =
+    actor.kind === "Bot" &&
+    /^\/apps\/[a-z0-9][a-z0-9-]*$/i.test(normalizedProfilePath);
+  if (
+    profileUrl.hostname.toLowerCase() !== "github.com" ||
+    profileUrl.search ||
+    profileUrl.hash ||
+    (!appProfileAllowed &&
+      normalizedProfilePath.toLowerCase() !== directProfilePath.toLowerCase())
+  ) {
+    throw new Error(
+      `${path}.url must match the actor's canonical GitHub profile`,
+    );
+  }
   assertEnum(
     actor.kind,
     ["Bot", "Mannequin", "Organization", "User", "Unknown"],
@@ -2332,6 +2587,32 @@ function assertNullableActor(
 ): asserts value is GitHubActor | null {
   if (value !== null) {
     assertActorValue(value, path);
+  }
+}
+
+function assertActorCoherence(actors: GitHubActor[]): void {
+  const byId = new Map<string, GitHubActor>();
+  const idByLogin = new Map<string, string>();
+  for (const actor of actors) {
+    const previous = byId.get(actor.id);
+    if (
+      previous &&
+      (previous.login !== actor.login ||
+        previous.avatarUrl !== actor.avatarUrl ||
+        previous.url !== actor.url ||
+        previous.kind !== actor.kind)
+    ) {
+      throw new Error(
+        `GitHub actor ${actor.id} changes identity inside the snapshot`,
+      );
+    }
+    const loginKey = actor.login.toLowerCase();
+    const previousId = idByLogin.get(loginKey);
+    if (previousId && previousId !== actor.id) {
+      throw new Error(`GitHub login ${actor.login} maps to multiple actor IDs`);
+    }
+    byId.set(actor.id, actor);
+    idByLogin.set(loginKey, actor.id);
   }
 }
 
@@ -2502,6 +2783,52 @@ function assertSourceValue(value: unknown, path: string): void {
     `${path}.verificationWindow.from`,
   );
   assertIsoTimestamp(verificationWindow.to, `${path}.verificationWindow.to`);
+  const evidenceVerification = assertObject(
+    source.evidenceVerification,
+    `${path}.evidenceVerification`,
+  );
+  assertEnum(
+    evidenceVerification.status,
+    ["complete", "suppressed-limit"],
+    `${path}.evidenceVerification.status`,
+  );
+  const sourceCount = evidenceVerification.sourceCount;
+  const artifactCount = evidenceVerification.artifactCount;
+  const maxSources = evidenceVerification.maxSources;
+  const maxArtifacts = evidenceVerification.maxArtifacts;
+  assertNonNegativeInteger(
+    sourceCount,
+    `${path}.evidenceVerification.sourceCount`,
+  );
+  assertNonNegativeInteger(
+    artifactCount,
+    `${path}.evidenceVerification.artifactCount`,
+  );
+  assertNonNegativeInteger(
+    maxSources,
+    `${path}.evidenceVerification.maxSources`,
+  );
+  assertNonNegativeInteger(
+    maxArtifacts,
+    `${path}.evidenceVerification.maxArtifacts`,
+  );
+  if (
+    evidenceVerification.status === "complete" &&
+    (sourceCount > maxSources || artifactCount > maxArtifacts)
+  ) {
+    throw new Error(
+      `${path}.evidenceVerification complete status exceeds a verification limit`,
+    );
+  }
+  if (
+    evidenceVerification.status === "suppressed-limit" &&
+    sourceCount <= maxSources &&
+    artifactCount <= maxArtifacts
+  ) {
+    throw new Error(
+      `${path}.evidenceVerification suppressed status must exceed a verification limit`,
+    );
+  }
 }
 
 function assertNonNegativeNumber(value: unknown, path: string): void {
@@ -2556,6 +2883,37 @@ function assertLeaderValue(
       acceptedOutcomes[key],
       `${path}.acceptedOutcomes.${key}`,
     );
+  }
+  const acceptedMergedPullRequests = acceptedOutcomes.mergedPullRequests;
+  const acceptedResolvedIssues = acceptedOutcomes.resolvedIssues;
+  const acceptedMaterialTestChanges = acceptedOutcomes.materialTestChanges;
+  const acceptedSubstantiveReviews = acceptedOutcomes.substantiveReviews;
+  const evidencePoints = points.evidence;
+  assertNonNegativeInteger(
+    acceptedMergedPullRequests,
+    `${path}.acceptedOutcomes.mergedPullRequests`,
+  );
+  assertNonNegativeInteger(
+    acceptedResolvedIssues,
+    `${path}.acceptedOutcomes.resolvedIssues`,
+  );
+  assertNonNegativeInteger(
+    acceptedMaterialTestChanges,
+    `${path}.acceptedOutcomes.materialTestChanges`,
+  );
+  assertNonNegativeInteger(
+    acceptedSubstantiveReviews,
+    `${path}.acceptedOutcomes.substantiveReviews`,
+  );
+  assertNonNegativeInteger(evidencePoints, `${path}.points.evidence`);
+  if (
+    acceptedMergedPullRequests > SCORE_CAPS.mergedPullRequests ||
+    acceptedResolvedIssues > SCORE_CAPS.resolvedIssues ||
+    acceptedMaterialTestChanges > SCORE_CAPS.materialTestChanges ||
+    acceptedSubstantiveReviews > SCORE_CAPS.substantiveReviews ||
+    evidencePoints > SCORE_CAPS.evidencePoints
+  ) {
+    throw new Error(`${path} exceeds the published per-contributor score caps`);
   }
 
   const rawActivity = assertObject(entry.rawActivity, `${path}.rawActivity`);
@@ -2644,7 +3002,7 @@ function assertWorkItemValue(
   }
   assertPositiveInteger(item.number, `${path}.number`);
   assertString(item.title, `${path}.title`);
-  assertWebUrl(item.url, `${path}.url`);
+  assertRepositoryUrl(item.url, `${path}.url`, expectedKind, item.number);
   assertNullableActor(item.author, `${path}.author`);
   assertIsoTimestamp(item.createdAt, `${path}.createdAt`);
   assertIsoTimestamp(item.updatedAt, `${path}.updatedAt`);
@@ -2659,6 +3017,20 @@ function assertWorkItemValue(
     ["actionable", "blocked", "draft"],
     `${path}.actionability`,
   );
+  const labelRecords = labels.map((name) => ({ id: name, name, color: "" }));
+  const expectedPriority = workItemPriority(labelRecords);
+  const expectedActionability = workItemActionability(
+    labelRecords,
+    expectedKind === "pull-request" && item.isDraft === true,
+  );
+  if (item.priority !== expectedPriority) {
+    throw new Error(`${path}.priority does not match its labels`);
+  }
+  if (item.actionability !== expectedActionability) {
+    throw new Error(
+      `${path}.actionability does not match its labels and draft state`,
+    );
+  }
   if (expectedKind === "issue") {
     if (
       item.isDraft !== null ||
@@ -2717,6 +3089,9 @@ function assertWorkItemValue(
   }
   const expectedClaimKind =
     expectedKind === "issue" ? "implementation" : "review";
+  const hasClaimLabel = labelRecords.some((label) =>
+    isClaimLabel(label, expectedClaimKind),
+  );
   if (
     (claim.status === "unclaimed" &&
       (claim.source !== "none" ||
@@ -2728,7 +3103,9 @@ function assertWorkItemValue(
     (claim.source === "assignee" && claim.actors.length === 0) ||
     (claim.source === "claim-comment" &&
       (claim.actors.length !== 1 || claim.claimedAt === null)) ||
-    (claim.source !== "claim-comment" && claim.claimedAt !== null)
+    (claim.source !== "claim-comment" && claim.claimedAt !== null) ||
+    (hasClaimLabel && claim.status !== "claimed") ||
+    (claim.source === "label" && !hasClaimLabel)
   ) {
     throw new Error(`${path}.claim fields do not describe one valid claim`);
   }
@@ -2755,6 +3132,7 @@ function assertWorkItemValue(
         "claimed",
         "draft",
         "security-sensitive",
+        "untriaged",
         "unknown-author",
       ],
       `${path}.selection.reasons[${index}]`,
@@ -2764,6 +3142,12 @@ function assertWorkItemValue(
     kind: expectedKind,
     author: item.author,
     labels,
+    contributorReady:
+      expectedKind === "pull-request" ||
+      (!isEpicIssue(item.title, labels) &&
+        labels.some((label) =>
+          CONTRIBUTOR_READY_LABELS.has(normalizeLabel(label)),
+        )),
     actionability: item.actionability,
     reviewDecision: item.reviewDecision,
     activeReviewRequestCount: item.activeReviewRequestCount,
@@ -2912,7 +3296,12 @@ function assertLedgerValue(
   );
   assertPositiveInteger(source.number, `${path}.source.number`);
   assertString(source.title, `${path}.source.title`);
-  assertWebUrl(source.url, `${path}.source.url`);
+  assertRepositoryUrl(
+    source.url,
+    `${path}.source.url`,
+    source.kind,
+    source.number,
+  );
 }
 
 function assertAttributionValue(
@@ -2922,7 +3311,7 @@ function assertAttributionValue(
   const attribution = assertObject(value, path);
   assertString(attribution.id, `${path}.id`);
   assertString(attribution.sourceId, `${path}.sourceId`);
-  assertWebUrl(attribution.sourceUrl, `${path}.sourceUrl`);
+  assertRepositoryUrl(attribution.sourceUrl, `${path}.sourceUrl`);
   assertString(attribution.artifactId, `${path}.artifactId`);
   assertNullableActor(attribution.actor, `${path}.actor`);
   assertString(attribution.provider, `${path}.provider`);
@@ -2973,6 +3362,13 @@ export function assertLeaderboardSnapshot(
   }
   assertIsoTimestamp(snapshot.generatedAt, "snapshot.generatedAt");
   assertIsoTimestamp(snapshot.sourceUpdatedAt, "snapshot.sourceUpdatedAt");
+  const generatedAt = parseIsoTime(snapshot.generatedAt);
+  if (generatedAt > Date.now() + 5 * 60 * 1000) {
+    throw new Error("snapshot.generatedAt cannot be in the future");
+  }
+  if (parseIsoTime(snapshot.sourceUpdatedAt) > generatedAt) {
+    throw new Error("snapshot.sourceUpdatedAt cannot follow generatedAt");
+  }
 
   const window = assertObject(snapshot.window, "snapshot.window");
   assertFiniteNumber(window.days, "snapshot.window.days");
@@ -2981,12 +3377,23 @@ export function assertLeaderboardSnapshot(
   }
   assertIsoTimestamp(window.from, "snapshot.window.from");
   assertIsoTimestamp(window.to, "snapshot.window.to");
+  const windowFrom = window.from;
+  const windowTo = window.to;
   if (
     typeof window.from === "string" &&
     typeof window.to === "string" &&
     parseIsoTime(window.from) >= parseIsoTime(window.to)
   ) {
     throw new Error("snapshot.window.from must precede snapshot.window.to");
+  }
+  if (
+    parseIsoTime(windowTo) > generatedAt ||
+    parseIsoTime(windowTo) - parseIsoTime(windowFrom) !==
+      SCORE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+  ) {
+    throw new Error(
+      "snapshot.window must be the exact rolling window ending no later than generation",
+    );
   }
 
   if (!Array.isArray(snapshot.leaders)) {
@@ -3001,6 +3408,18 @@ export function assertLeaderboardSnapshot(
     validatedLeaders.length
   ) {
     throw new Error("snapshot.leaders must contain unique actors");
+  }
+  for (let index = 1; index < validatedLeaders.length; index += 1) {
+    if (
+      compareRankedEntries(
+        validatedLeaders[index - 1],
+        validatedLeaders[index],
+      ) > 0
+    ) {
+      throw new Error(
+        "snapshot.leaders must follow the published rank ordering",
+      );
+    }
   }
 
   if (!Array.isArray(snapshot.ledger)) {
@@ -3102,6 +3521,35 @@ export function assertLeaderboardSnapshot(
   ) {
     throw new Error("snapshot.attributions must contain unique IDs");
   }
+  for (const attribution of validatedAttributions) {
+    const hasCausalLedgerEvent = validatedLedger.some((event) => {
+      if (!sameActor(event.actor, attribution.actor)) {
+        return false;
+      }
+      if (
+        event.source.kind === "pull-request" &&
+        event.source.id === attribution.artifactId
+      ) {
+        return true;
+      }
+      if (
+        event.category === "substantive-review" &&
+        event.source.kind === "review" &&
+        event.source.id === attribution.sourceId
+      ) {
+        return true;
+      }
+      return (
+        event.category === "resolved-issue" &&
+        event.id === `${event.source.id}:resolved-by:${attribution.artifactId}`
+      );
+    });
+    if (!hasCausalLedgerEvent) {
+      throw new Error(
+        `snapshot attribution ${attribution.id} is not causally linked to a public ledger event by the same actor`,
+      );
+    }
+  }
   for (const leader of validatedLeaders) {
     const reportedModels = uniqueSorted(
       validatedAttributions
@@ -3126,7 +3574,7 @@ export function assertLeaderboardSnapshot(
     const markerPath = `snapshot.invalidAttributionMarkers[${index}]`;
     const marker = assertObject(markerValue, markerPath);
     assertString(marker.sourceId, `${markerPath}.sourceId`);
-    assertWebUrl(marker.sourceUrl, `${markerPath}.sourceUrl`);
+    assertRepositoryUrl(marker.sourceUrl, `${markerPath}.sourceUrl`);
     assertString(marker.reason, `${markerPath}.reason`);
   });
   const attributionCoverage = assertObject(
@@ -3186,7 +3634,32 @@ export function assertLeaderboardSnapshot(
         );
       }
     }
+    for (const item of queue) {
+      if (
+        parseIsoTime(item.createdAt) > parseIsoTime(item.updatedAt) ||
+        parseIsoTime(item.updatedAt) > generatedAt
+      ) {
+        throw new Error(
+          `snapshot.workQueue.${name} contains impossible item timestamps`,
+        );
+      }
+    }
   }
+  assertActorCoherence([
+    ...validatedLeaders.map((entry) => entry.actor),
+    ...validatedLedger.map((event) => event.actor),
+    ...validatedAttributions.flatMap((attribution) =>
+      attribution.actor ? [attribution.actor] : [],
+    ),
+    ...validatedIssues.flatMap((item) => [
+      ...(item.author ? [item.author] : []),
+      ...item.claim.actors,
+    ]),
+    ...validatedPullRequests.flatMap((item) => [
+      ...(item.author ? [item.author] : []),
+      ...item.claim.actors,
+    ]),
+  ]);
   assertSourceValue(snapshot.source, "snapshot.source");
   const source = assertObject(snapshot.source, "snapshot.source");
   if (
@@ -3262,7 +3735,7 @@ export function assertLeaderboardSnapshot(
   if (
     mergedOutcomeEvents.length > mergedPullRequestCount ||
     detailedPullRequestIds.size > detailedMergedPullRequestCount ||
-    resolvedIssueEvents.length !== resolvedIssueCount
+    resolvedIssueEvents.length > resolvedIssueCount
   ) {
     throw new Error(
       "snapshot ledger exceeds the collection coverage published in source.counts",

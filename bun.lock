@@ -994,6 +994,7 @@
         "playwright": "^1.61.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
+        "wrangler": "4.100.0",
       },
     },
     "packages/eliza-hub": {

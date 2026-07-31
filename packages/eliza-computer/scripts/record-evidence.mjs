@@ -493,7 +493,7 @@ try {
       waitUntil: "networkidle",
     });
     await page
-      .getByText("Live GitHub ledger", { exact: true })
+      .getByText("Latest GitHub snapshot", { exact: true })
       .waitFor({ state: "visible", timeout: 20_000 });
     await page.locator("#leaders table").waitFor({ state: "visible" });
     if (previewServer && previewState) {

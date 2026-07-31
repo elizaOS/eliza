@@ -59,9 +59,26 @@ const ISSUE_CLAIM_LABEL_RE =
 const REVIEW_CLAIM_LABEL_RE =
   /^(?:(?:review[- ]claimed|review[- ]in[- ]progress)(?:\s*:\s*[a-z0-9][a-z0-9._/-]*)?|review:\s*claimed)$/i;
 const BLOCKED_LABEL_RE =
-  /^(?:blocked|do[- ]not[- ]merge|needs[- ]human[- ]input|status:\s*blocked)$/i;
+  /^(?:blocked|do[- ]not[- ]merge|human[- ]only|needs[- ]human(?:[- ](?:input|review|verify|verification))?|needs[- ]shaw|status\s*[:/]\s*(?:blocked|proposal|human[- ]only|needs[- ]human(?:[- ](?:input|review|verify|verification))?|needs[- ]shaw))$/i;
 const SENSITIVE_LABEL_RE =
   /(?:^|[-_ ])(?:security|vulnerability|credential[-_ ]?leak|secret[-_ ]?leak|cve)(?:$|[-_ ])/i;
+const EPIC_TITLE_RE = /^\s*(?:\[[^\]]*\bepic\b[^\]]*\]|epic\s*:)/i;
+const EPIC_LABEL_RE = /^epic(?:\s+\d+)?$/i;
+const CONTRIBUTOR_READY_LABELS = new Set([
+  "bug-confirmed",
+  "demo-blocker",
+  "good first issue",
+  "help wanted",
+  "launch-qa",
+  "needs-review",
+  "needs testing",
+  "p0",
+  "p1",
+  "p2",
+  "priority: high",
+  "triage-reviewed",
+]);
+const TRUSTED_CLAIM_ASSOCIATIONS = new Set(["COLLABORATOR", "MEMBER", "OWNER"]);
 const EVIDENCE_MARKER_RE = /<!--\s*evidence-row:([a-z0-9-]+)\s*-->/gi;
 const NA_WITH_REASON_RE =
   /\bN\/?A\b\s*[-:\u2013\u2014]\s*(?!<[^>]+>)(?!\[[^\]]+\])([^\r\n]+)/i;
@@ -356,6 +373,15 @@ export function isBotAccount(account) {
   );
 }
 
+export function isKnownHumanAccount(account) {
+  if (account === null) return false;
+  const record = asRecord(account, "account");
+  if (record.type !== undefined && typeof record.type !== "string") {
+    throw new TypeError("account.type must be a string when present");
+  }
+  return record.type === undefined || record.type.toLowerCase() === "user";
+}
+
 function normalizeComment(value, kind, index) {
   const context = `${kind}[${index}]`;
   const record = asRecord(value, context);
@@ -367,6 +393,11 @@ function normalizeComment(value, kind, index) {
     authorId: accountId(record.user),
     authorKnown: record.user !== null,
     bot: isBotAccount(record.user),
+    authorAssociation: asStringField(
+      record,
+      "author_association",
+      context,
+    ).toUpperCase(),
     body: nullableText(record.body, `${context}.body`),
     createdAt: isoTime(record.created_at, `${context}.created_at`),
   };
@@ -749,6 +780,7 @@ function claimReasons(item, comments, mode, context, referenceTime) {
       (comment) =>
         comment.authorKnown &&
         !comment.bot &&
+        TRUSTED_CLAIM_ASSOCIATIONS.has(comment.authorAssociation) &&
         (mode === "issue" ||
           !(
             (authorId !== null && comment.authorId === authorId) ||
@@ -903,6 +935,7 @@ export function collectLiveReport(
   const botIssues = [];
   const unknownAuthorIssues = [];
   const sensitiveIssues = [];
+  const untriagedIssues = [];
   const claimedIssues = [];
   const issueCommentAudits = [];
 
@@ -914,6 +947,10 @@ export function collectLiveReport(
     }
     if (isBotAccount(item.user)) {
       botIssues.push(summary);
+      continue;
+    }
+    if (!isKnownHumanAccount(item.user)) {
+      unknownAuthorIssues.push(summary);
       continue;
     }
     const comments = listCommentsWhenPresent(
@@ -934,6 +971,23 @@ export function collectLiveReport(
         number: summary.number,
         url: summary.url,
         reason: "security-sensitive label",
+      });
+      continue;
+    }
+    const epic =
+      EPIC_TITLE_RE.test(summary.title) ||
+      labels.some((label) => EPIC_LABEL_RE.test(label.trim()));
+    if (
+      epic ||
+      !labels.some((label) =>
+        CONTRIBUTOR_READY_LABELS.has(label.trim().toLowerCase()),
+      )
+    ) {
+      untriagedIssues.push({
+        ...summary,
+        reason: epic
+          ? "epic requires a bounded child issue"
+          : "missing maintainer contributor-ready label",
       });
       continue;
     }
@@ -970,6 +1024,10 @@ export function collectLiveReport(
     }
     if (isBotAccount(item.user)) {
       botPullRequests.push(summary);
+      continue;
+    }
+    if (!isKnownHumanAccount(item.user)) {
+      unknownAuthorPullRequests.push(summary);
       continue;
     }
     const labels = labelNames(item, context);
@@ -1064,6 +1122,7 @@ export function collectLiveReport(
       botIssues: botIssues.sort(compareByNumber),
       unknownAuthorIssues: unknownAuthorIssues.sort(compareByNumber),
       sensitiveIssues: sensitiveIssues.sort(compareByNumber),
+      untriagedIssues: untriagedIssues.sort(compareByNumber),
       claimedIssues: claimedIssues.sort(compareByNumber),
       botPullRequests: botPullRequests.sort(compareByNumber),
       unknownAuthorPullRequests:
@@ -1111,6 +1170,10 @@ export function renderMarkdown(report) {
     "",
     markdownItems(report.reviewablePullRequests),
     "",
+    "## Open issues awaiting maintainer triage",
+    "",
+    markdownItems(report.filtered.untriagedIssues),
+    "",
     "## Disclosure and evidence gaps",
     "",
   ];
@@ -1144,7 +1207,7 @@ export function renderMarkdown(report) {
   lines.push(gaps.length > 0 ? gaps.join("\n") : "_No audited gaps._");
   lines.push(
     "",
-    `_Read-only heuristic report: comment claims expire after ${CLAIM_RECENCY_DAYS} days unless durable repository state remains; active GitHub review requests persist until cleared. Verify live Project state and newest comments before claiming._`,
+    `_Read-only heuristic report: issue candidates require a maintainer-controlled contributor-ready label. Claim comments expire after ${CLAIM_RECENCY_DAYS} days and count only from repository owners, members, or collaborators unless durable repository state remains; active GitHub review requests persist until cleared. Verify live Project state and newest comments before claiming._`,
     "",
   );
   return lines.join("\n");
