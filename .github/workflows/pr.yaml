@@ -139,6 +139,7 @@ jobs:
           EVENT_ACTOR: ${{ github.actor }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -153,6 +154,7 @@ jobs:
                 "$BASE_REPO" != "$REPOSITORY" ||
                 "$HEAD_REPO" != "$REPOSITORY" ||
                 ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ||
+                ! "$HEAD_SHA" =~ ^[a-fA-F0-9]{40}$ ||
                 "$HEAD_REF" == *".."* ]]; then
             echo "::error::refusing to mutate a PR body without exact Dependabot identity"
             exit 1
@@ -169,6 +171,10 @@ jobs:
           const fs = require("node:fs");
           const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"));
           const existing = typeof event.pull_request.body === "string" ? event.pull_request.body : "";
+          const headSha = process.env.HEAD_SHA;
+          if (!/^[a-f0-9]{40}$/i.test(headSha)) {
+            throw new Error("Dependabot head SHA is invalid");
+          }
           const managedPattern = /<!-- dependabot-policy:v1:start -->[\s\S]*?<!-- dependabot-policy:v1:end -->/g;
           const unmanaged = existing.replace(managedPattern, "").trimEnd();
           const hasCustomPolicy =
@@ -179,6 +185,8 @@ jobs:
           This visible block records deterministic Dependabot provenance and the evidence categories applicable to a dependency metadata proposal. Runtime verification remains reviewer-owned before merge.
 
           ## Evidence Gate
+
+          <!-- evidence-head:${headSha.toLowerCase()} -->
 
           <!-- evidence-row:before-screenshots -->
           - [x] N/A - Dependabot changes dependency metadata and does not directly edit a rendered UI source surface.

@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   assertLeaderboardSnapshot,
+  assertPublishableLeaderboardSnapshot,
   assessEvidence,
   assessModelAttribution,
   createLeaderboardSnapshot,
@@ -92,7 +93,7 @@ function verifiedSourceEvidence(
       next?.index ?? source.body.length,
     );
     const identities = new Set<string>();
-    for (const match of row.matchAll(/https?:\/\/[^\s<>"')\]]+/gi)) {
+    for (const match of row.matchAll(/https?:\/\/[^\s<>"'`)\]]+/gi)) {
       const url = new URL(match[0].replace(/[.,;:!?]+$/, ""));
       identities.add(
         `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname}`,
@@ -776,6 +777,31 @@ describe("evidence assessment", () => {
       points: 0,
       categories: [],
     });
+    expect(
+      assessEvidence(
+        [{ ...source, updatedAt: "2026-07-29T10:01:00.000Z" }],
+        verification,
+      ),
+    ).toMatchObject({ points: 0, categories: [] });
+  });
+
+  it("scores the verifier identity for an inline-code artifact URL", () => {
+    const source = textSource(
+      "COMMENT_INLINE_CODE",
+      [
+        "<!-- evidence-row:after-screenshots -->",
+        "After screenshot: `https://github.com/user-attachments/assets/12345678-1234-1234-1234-123456789abc`",
+      ].join("\n"),
+      actor("author"),
+      "body",
+    );
+
+    expect(
+      assessEvidence([source], verifiedSourceEvidence(source)),
+    ).toMatchObject({
+      points: 1,
+      categories: ["screenshot"],
+    });
   });
 
   it("does not reuse one artifact as several evidence categories", () => {
@@ -1084,6 +1110,30 @@ describe("scoring and caps", () => {
     expect(withDisclosure.leaders[0].score).toBe(
       withoutDisclosure.leaders[0].score,
     );
+  });
+
+  it("orders tied GitHub logins by locale-independent code units", () => {
+    const pullRequests = ["Zed", "aa", "a0", "a-b"].map((login, index) =>
+      pullRequest({
+        id: `PR_TIE_${index}`,
+        number: 500 + index,
+        author: actor(login),
+      }),
+    );
+    const forward = createLeaderboardSnapshot(
+      input({ mergedPullRequests: pullRequests }),
+    );
+    const reversed = createLeaderboardSnapshot(
+      input({ mergedPullRequests: [...pullRequests].reverse() }),
+    );
+
+    expect(forward.leaders.map((entry) => entry.actor.login)).toEqual([
+      "a-b",
+      "a0",
+      "aa",
+      "Zed",
+    ]);
+    expect(reversed.leaders).toEqual(forward.leaders);
   });
 
   it("applies every contributor cap newest-first and independently of input order", () => {
@@ -2199,7 +2249,7 @@ describe("deduplication and public schema", () => {
     );
   });
 
-  it("rejects phishing URLs, future snapshots, and actor identity drift", () => {
+  it("rejects phishing URLs and actor identity drift at the read boundary", () => {
     const snapshot = createLeaderboardSnapshot(
       input({ mergedPullRequests: [pullRequest()] }),
     );
@@ -2217,9 +2267,10 @@ describe("deduplication and public schema", () => {
     expect(() => assertLeaderboardSnapshot(phishing)).toThrow(
       "canonical GitHub profile",
     );
-    expect(() => assertLeaderboardSnapshot(future)).toThrow(
-      "cannot be in the future",
-    );
+    expect(() => assertLeaderboardSnapshot(future)).not.toThrow();
+    expect(() =>
+      assertPublishableLeaderboardSnapshot(future, Date.parse(NOW)),
+    ).toThrow("cannot be in the future");
     expect(() => assertLeaderboardSnapshot(identityDrift)).toThrow(
       "changes identity inside the snapshot",
     );

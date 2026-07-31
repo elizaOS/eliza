@@ -40,6 +40,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { isScriptTestPath } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -437,6 +438,7 @@ function auditScriptFiles(root) {
 
   const failures = [];
   for (const name of files) {
+    if (isScriptTestPath(`packages/scripts/${name}`)) continue;
     if (ORPHAN_SCRIPT_FILE_ALLOWLIST.has(name)) continue;
     if (nonScriptCorpus.includes(name)) continue;
     // Referenced by any OTHER script file (spawn/exec/import/string mention)?

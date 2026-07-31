@@ -36,6 +36,9 @@ const workflowsDirectory = path.join(repositoryRoot, ".github", "workflows");
 const validatorPath = fileURLToPath(
   new URL("./check-pr-agent-attribution.mjs", import.meta.url),
 );
+const evidenceValidatorPath = fileURLToPath(
+  new URL("./check-pr-evidence.mjs", import.meta.url),
+);
 
 function body({
   assistance = "yes",
@@ -70,6 +73,19 @@ function runAttributionCli(markdown) {
   return spawnSync(process.execPath, [validatorPath, "--body-file", bodyPath], {
     encoding: "utf8",
   });
+}
+
+function runEvidenceCli(markdown, headSha) {
+  const fixtureDirectory = mkdtempSync(
+    path.join(tmpdir(), "eliza-pr-evidence-"),
+  );
+  const bodyPath = path.join(fixtureDirectory, "body.md");
+  writeFileSync(bodyPath, markdown);
+  return spawnSync(
+    process.execPath,
+    [evidenceValidatorPath, "--body-file", bodyPath, "--head-sha", headSha],
+    { encoding: "utf8" },
+  );
 }
 
 function generatedPrWorkflowPaths() {
@@ -609,19 +625,32 @@ describe("PR agent attribution", () => {
       policyBlock,
       "Dependabot's visible policy block must be extractable",
     );
-    const attribution = evaluatePrAttribution(policyBlock);
+    const headSha = "a".repeat(40);
+    const renderedPolicyBlock = policyBlock.replace(
+      /\$\{headSha\.toLowerCase\(\)\}/,
+      headSha,
+    );
+    const attribution = evaluatePrAttribution(renderedPolicyBlock);
     assert.equal(
       attribution.ok,
       true,
       attribution.findings.map((finding) => finding.message).join("; "),
     );
-    const evidence = evaluatePrEvidence(policyBlock, REQUIRED_EVIDENCE_ROWS);
+    const evidence = evaluatePrEvidence(
+      renderedPolicyBlock,
+      REQUIRED_EVIDENCE_ROWS,
+    );
     assert.equal(
       evidence.ok,
       true,
       evidence.findings
         .map((finding) => `${finding.id}=${finding.status}`)
         .join("; "),
+    );
+    assert.equal(runEvidenceCli(renderedPolicyBlock, headSha).status, 0);
+    assert.notEqual(
+      runEvidenceCli(renderedPolicyBlock, "b".repeat(40)).status,
+      0,
     );
   });
 

@@ -697,17 +697,22 @@ function uniqueSorted(values: Iterable<string>): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
 }
 
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function compareRankedEntries(
   left: Pick<MutableLeaderboardEntry, "actor" | "score">,
   right: Pick<MutableLeaderboardEntry, "actor" | "score">,
 ): number {
   return (
     right.score - left.score ||
-    left.actor.login.localeCompare(right.actor.login, undefined, {
-      sensitivity: "base",
-    }) ||
-    left.actor.login.localeCompare(right.actor.login) ||
-    left.actor.id.localeCompare(right.actor.id)
+    compareCodeUnits(
+      left.actor.login.toLowerCase(),
+      right.actor.login.toLowerCase(),
+    ) ||
+    compareCodeUnits(left.actor.login, right.actor.login) ||
+    compareCodeUnits(left.actor.id, right.actor.id)
   );
 }
 
@@ -768,33 +773,6 @@ export function hasMaterialTestChange(files: PullRequestFile[]): boolean {
   return additions >= MATERIAL_TEST_ADDITIONS && churn >= MATERIAL_TEST_CHURN;
 }
 
-function withoutNotApplicableRows(body: string): string {
-  return body
-    .split("\n")
-    .filter(
-      (line) =>
-        !/\bN\s*\/?\s*A\b\s*[-:—]/i.test(line) &&
-        !/\bnot applicable\b/i.test(line),
-    )
-    .join("\n");
-}
-
-interface IndexedUrl {
-  index: number;
-  raw: string;
-  url: URL;
-}
-
-const EVIDENCE_ROW_CATEGORY: Record<string, EvidenceCategory> = {
-  "after-screenshots": "screenshot",
-  "backend-logs": "logs",
-  "before-screenshots": "screenshot",
-  "domain-artifacts": "domain-artifact",
-  "frontend-logs": "logs",
-  "llm-trajectory": "trajectory",
-  "walkthrough-video": "video",
-};
-
 const EVIDENCE_CATEGORIES: readonly EvidenceCategory[] = [
   "screenshot",
   "video",
@@ -802,43 +780,6 @@ const EVIDENCE_CATEGORIES: readonly EvidenceCategory[] = [
   "trajectory",
   "domain-artifact",
 ];
-
-function extractUrls(body: string): IndexedUrl[] {
-  const urls: IndexedUrl[] = [];
-  for (const match of body.matchAll(/https?:\/\/[^\s<>"')\]]+/gi)) {
-    const raw = match[0].replace(/[.,;:!?]+$/, "");
-    try {
-      urls.push({ index: match.index, raw, url: new URL(raw) });
-    } catch {
-      // error-policy:J3 malformed text is not an evidence URL.
-    }
-  }
-  return urls;
-}
-
-function evidenceRows(body: string): Map<EvidenceCategory, string[]> {
-  const markers = [...body.matchAll(/<!--\s*evidence-row:([a-z-]+)\s*-->/gi)];
-  const rows = new Map<EvidenceCategory, string[]>();
-  for (const [index, marker] of markers.entries()) {
-    const category = EVIDENCE_ROW_CATEGORY[marker[1].toLowerCase()];
-    if (!category) {
-      continue;
-    }
-    const next = markers[index + 1];
-    const segmentEnd = next ? next.index : body.length;
-    const segment = body
-      .slice(marker.index + marker[0].length, segmentEnd)
-      .split(/\n(?=#{1,2}\s)/, 1)[0];
-    const current = rows.get(category) ?? [];
-    current.push(segment);
-    rows.set(category, current);
-  }
-  return rows;
-}
-
-function evidenceArtifactIdentity(url: URL): string {
-  return `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname}`;
-}
 
 interface EvidenceClaim {
   category: EvidenceCategory;
@@ -861,35 +802,33 @@ export function assessEvidence(
 ): EvidenceAssessment {
   const claims = new Map<string, EvidenceClaim[]>();
   const sourceIds = new Map<EvidenceCategory, Set<string>>();
-  const verifiedClaims = new Set(
-    verifiedEvidence.map(
-      (artifact) =>
-        `${artifact.pullRequestId}\u0000${artifact.sourceId}\u0000${artifact.sourceUpdatedAt}\u0000${artifact.sourceBody}\u0000${artifact.category}\u0000${artifact.artifactIdentity}`,
-    ),
+  const sourcesById = new Map(
+    dedupeByNodeId(sources)
+      .filter(
+        (source) =>
+          source.kind === "body" &&
+          (!source.author || !isBotActor(source.author)),
+      )
+      .map((source) => [source.id, source]),
   );
 
-  for (const source of dedupeByNodeId(sources)) {
+  // URL parsing and normalization belong to the remote verifier; scoring only
+  // rebinds its identity to the exact source revision that was verified.
+  for (const artifact of verifiedEvidence) {
+    const source = sourcesById.get(artifact.sourceId);
     if (
-      source.kind !== "body" ||
-      (source.author && isBotActor(source.author))
+      !source ||
+      source.artifactId !== artifact.pullRequestId ||
+      source.updatedAt !== artifact.sourceUpdatedAt ||
+      source.body !== artifact.sourceBody ||
+      artifact.artifactIdentity.length === 0
     ) {
       continue;
     }
-    const rows = evidenceRows(source.body);
-    for (const category of EVIDENCE_CATEGORIES) {
-      for (const row of rows.get(category) ?? []) {
-        const concrete = withoutNotApplicableRows(row);
-        for (const candidate of extractUrls(concrete)) {
-          const identity = evidenceArtifactIdentity(candidate.url);
-          const verificationKey = `${source.artifactId}\u0000${source.id}\u0000${source.updatedAt}\u0000${source.body}\u0000${category}\u0000${identity}`;
-          if (!verifiedClaims.has(verificationKey)) continue;
-          addEvidenceClaim(claims, identity, {
-            category,
-            sourceId: source.id,
-          });
-        }
-      }
-    }
+    addEvidenceClaim(claims, artifact.artifactIdentity, {
+      category: artifact.category,
+      sourceId: source.id,
+    });
   }
 
   for (const artifactClaims of claims.values()) {
@@ -2395,7 +2334,7 @@ export function createLeaderboardSnapshot(
         .sort(compareWorkItems),
     },
   };
-  assertLeaderboardSnapshot(snapshot);
+  assertPublishableLeaderboardSnapshot(snapshot);
   return snapshot;
 }
 
@@ -3363,9 +3302,6 @@ export function assertLeaderboardSnapshot(
   assertIsoTimestamp(snapshot.generatedAt, "snapshot.generatedAt");
   assertIsoTimestamp(snapshot.sourceUpdatedAt, "snapshot.sourceUpdatedAt");
   const generatedAt = parseIsoTime(snapshot.generatedAt);
-  if (generatedAt > Date.now() + 5 * 60 * 1000) {
-    throw new Error("snapshot.generatedAt cannot be in the future");
-  }
   if (parseIsoTime(snapshot.sourceUpdatedAt) > generatedAt) {
     throw new Error("snapshot.sourceUpdatedAt cannot follow generatedAt");
   }
@@ -3742,4 +3678,17 @@ export function assertLeaderboardSnapshot(
     );
   }
   assertMethodologyValue(snapshot.methodology, "snapshot.methodology");
+}
+
+export function assertPublishableLeaderboardSnapshot(
+  value: unknown,
+  now = Date.now(),
+): asserts value is LeaderboardSnapshot {
+  assertLeaderboardSnapshot(value);
+  if (!Number.isFinite(now)) {
+    throw new Error("publication time must be finite");
+  }
+  if (parseIsoTime(value.generatedAt) > now + 5 * 60 * 1000) {
+    throw new Error("snapshot.generatedAt cannot be in the future");
+  }
 }
