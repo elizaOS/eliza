@@ -31,6 +31,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -49,6 +50,7 @@ const ShaderBackground = lazy(
 const VideoCall = lazy(() => import("@/components/VideoCall"));
 
 import { buildElizaSmsHref } from "@/lib/contact";
+import { INTRO_TIMING_MS, installIntroTimeline } from "@/lib/intro-timeline";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
 type AnimatedHtmlProps<T extends HTMLElement> = Omit<
@@ -113,7 +115,6 @@ const COUNTRIES = COUNTRY_CODES.map((code) => {
 
 type Platform = "imessage" | "telegram" | "discord" | "try";
 
-const INTRO_DELAY = 1000;
 const PLATFORMS: Platform[] = ["imessage", "telegram", "discord", "try"];
 
 const VERIFY_CODE_INPUT_KEYS = [
@@ -398,7 +399,7 @@ export default function Leaderboard() {
     };
   }, [measured]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const update = () => {
       const h = window.innerHeight;
       const w = Math.round(0.478 * h - 22);
@@ -546,13 +547,11 @@ export default function Leaderboard() {
       : { mass: 1, tension: 120, friction: 28 },
   });
 
-  useEffect(() => {
-    const id1 = setTimeout(() => setIntroDone(true), INTRO_DELAY + 680);
-    const id2 = setTimeout(() => setShowUI(true), INTRO_DELAY + 800);
-    return () => {
-      clearTimeout(id1);
-      clearTimeout(id2);
-    };
+  useLayoutEffect(() => {
+    return installIntroTimeline({
+      onIntroDone: () => setIntroDone(true),
+      onShowUi: () => setShowUI(true),
+    });
   }, []);
 
   const tabBarBgSpring = useSpring({
@@ -764,7 +763,7 @@ export default function Leaderboard() {
           loginTitle={loginTitle}
           loginSubtitle={loginSubtitle}
           platform={platform}
-          introDelayMs={INTRO_DELAY}
+          introDelayMs={INTRO_TIMING_MS.animationStart}
         />
       </Suspense>
       <div className="relative z-30 pointer-events-none">

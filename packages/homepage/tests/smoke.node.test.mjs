@@ -10,6 +10,10 @@ import { readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  INTRO_TIMING_MS,
+  installIntroTimeline,
+} from "../src/lib/intro-timeline.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = resolve(__dirname, "../package.json");
@@ -48,6 +52,57 @@ test("marketing.tsx exports a default function component", () => {
     /export\s+default\s+function\s+\w+/,
     "expected `export default function ...` in marketing.tsx",
   );
+});
+
+test("landing installs its intro timeline before first paint", () => {
+  const src = readFileSync(landingPath, "utf8");
+  assert.match(
+    src,
+    /useLayoutEffect\(\(\) => \{\s+return installIntroTimeline\(/,
+    "the intro clock must be installed in a layout effect",
+  );
+  assert.doesNotMatch(
+    src,
+    /useEffect\(\(\) => \{\s+return installIntroTimeline\(/,
+    "a passive effect can miss the first-paint timing origin",
+  );
+});
+
+test("intro timeline uses fixed deadlines and cancels queued callbacks", () => {
+  let nextHandle = 0;
+  const scheduled = [];
+  const cleared = new Set();
+  const clock = {
+    setTimeout(callback, delayMs) {
+      const handle = ++nextHandle;
+      scheduled.push({ callback, delayMs, handle });
+      return handle;
+    },
+    clearTimeout(handle) {
+      cleared.add(handle);
+    },
+  };
+  const events = [];
+
+  const cleanup = installIntroTimeline(
+    {
+      onIntroDone: () => events.push("intro-done"),
+      onShowUi: () => events.push("show-ui"),
+    },
+    clock,
+  );
+
+  assert.deepEqual(
+    scheduled.map(({ delayMs }) => delayMs),
+    [INTRO_TIMING_MS.introDone, INTRO_TIMING_MS.showUi],
+  );
+  scheduled[0].callback();
+  assert.deepEqual(events, ["intro-done"]);
+
+  cleanup();
+  scheduled[1].callback();
+  assert.deepEqual(events, ["intro-done"]);
+  assert.deepEqual(cleared, new Set([1, 2]));
 });
 
 test("landing ships compressed iPhone and WebP profile assets", () => {
