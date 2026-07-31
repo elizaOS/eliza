@@ -414,6 +414,11 @@ export function runScriptTests(options = {}) {
     `--config=${SCRIPT_TEST_BUN_CONFIG}`,
     "test",
     "--conditions=eliza-source",
+    // Script suites exercise process-global env, cwd, signal, and module state.
+    // Separate workers prevent one suite from corrupting another while four
+    // lanes match the hosted runner's CPU capacity without oversubscribing the
+    // many tests that spawn their own child processes.
+    "--parallel=4",
   ];
   if (absoluteJunitPath) {
     mkdirSync(path.dirname(absoluteJunitPath), { recursive: true });

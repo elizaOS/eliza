@@ -1,9 +1,7 @@
 /**
- * Coverage lane composing the DockerSandboxProvider suites for the
- * changed-file gate (#16565) — same pattern as the orchestrator's
- * curated-coding-memory composite: the provider's lifecycle surface spans
- * many co-located suites, and a provider-touching change needs their UNION
- * to exercise the class (no single suite drives create+health+teardown).
+ * Composes the DockerSandboxProvider lifecycle suites into one package-runner
+ * entry. No individual suite drives creation, health checks, and teardown, so
+ * the composite preserves complete lifecycle coverage.
  */
 import { describe, expect, test } from "bun:test";
 import "./app-docker-cmd.test.ts";

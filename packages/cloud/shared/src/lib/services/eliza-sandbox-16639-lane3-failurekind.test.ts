@@ -1,10 +1,8 @@
 /**
- * Coverage lane 3 for the changed-file gate (#16639): the bridge failureKind
- * ladder suite. It drives the REAL host-service `message.send` ladder on
- * ElizaSandboxService (only the sandbox-side fetch boundary is stubbed), so it
- * covers service surface the lane-1 composition never reaches. Runs in its own
- * gate process (coverage-gate.yml runs every changed test file isolated), and
- * its line hits union-merge into the changed-file report.
+ * Exercises the real host-service `message.send` failure ladder on
+ * ElizaSandboxService while replacing only the sandbox-side fetch boundary.
+ * The independent entry keeps fixture state isolated from the other sandbox
+ * composites.
  */
 import { describe, expect, test } from "bun:test";
 import "./eliza-sandbox-bridge-failurekind.test.ts";
