@@ -1415,6 +1415,53 @@ describe("generateChatResponse token streaming", () => {
     expect(signalFromOptions?.aborted).toBe(true);
   });
 
+  it("propagates caller cancellation into chat pre-handlers", async () => {
+    let preHandlerStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      preHandlerStarted = resolve;
+    });
+    let signalFromPreHandler: AbortSignal | undefined;
+    const handleMessage = vi.fn();
+    const runtime = createRuntime({
+      drainChatPreHandlers: vi.fn(async (context) => {
+        signalFromPreHandler = context.abortSignal;
+        preHandlerStarted?.();
+        await new Promise<void>((_resolve, reject) => {
+          context.abortSignal?.addEventListener(
+            "abort",
+            () => reject(context.abortSignal?.reason),
+            { once: true },
+          );
+        });
+        return null;
+      }),
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    const caller = new AbortController();
+    const generation = generateChatResponse(
+      runtime,
+      createChatMessage("cancel the pre-handler"),
+      "Streaming Agent",
+      { abortSignal: caller.signal },
+    );
+    await started;
+    caller.abort(new DOMException("Client disconnected", "AbortError"));
+
+    await expect(generation).rejects.toThrow("Client disconnected");
+    expect(signalFromPreHandler?.aborted).toBe(true);
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+
   it("rejects ingress hook failures before starting message generation", async () => {
     const hookFailure = new Error("trajectory persistence failed");
     const handleMessage = vi.fn(async () => ({

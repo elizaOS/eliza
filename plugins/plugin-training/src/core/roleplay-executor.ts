@@ -730,9 +730,11 @@ export async function executeRoleplayEpisode(
 
     const callbackContents: Content[] = [];
     const abortSignal =
-      options.timeoutMs === undefined
-        ? undefined
-        : AbortSignal.timeout(options.timeoutMs);
+      typeof options.timeoutMs === "number" &&
+      Number.isFinite(options.timeoutMs) &&
+      options.timeoutMs > 0
+        ? AbortSignal.timeout(Math.floor(options.timeoutMs))
+        : undefined;
     const result = await runtime.messageService.handleMessage(
       runtime,
       message,

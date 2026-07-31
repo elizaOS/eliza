@@ -138,6 +138,42 @@ describe("streamStructured tool-input-delta forwarding", () => {
     expect(chunks.every((c) => typeof c === "string" && c.length > 0)).toBe(true);
   }, 20_000);
 
+  it("keeps the structured text companion rejection handled when the stream aborts", async () => {
+    const abortError = new Error("client disconnected");
+    abortError.name = "AbortError";
+    const companionRejectors: Array<(error: unknown) => void> = [];
+    const companion = () =>
+      new Promise<never>((_resolve, reject) => {
+        companionRejectors.push(reject);
+      });
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {})(),
+      fullStream: (async function* fullStream() {
+        for (const reject of companionRejectors) reject(abortError);
+        await Promise.reject(abortError);
+        yield { type: "finish", finishReason: "error" };
+      })(),
+      text: companion(),
+      toolCalls: companion(),
+      finishReason: companion(),
+      usage: companion(),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "abort structured stream",
+      stream: true,
+      streamStructured: true,
+      toolChoice: "required",
+    } as never)) as {
+      textStream: AsyncIterable<string>;
+      text: Promise<string>;
+    };
+
+    await expect(collect(stream)).rejects.toBe(abortError);
+    await expect(stream.text).rejects.toBe(abortError);
+  }, 20_000);
+
   it("without streamStructured: textStream path is used and fullStream is never consumed", async () => {
     let fullStreamTouched = false;
     aiMocks.streamText.mockImplementation(() =>

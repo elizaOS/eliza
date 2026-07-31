@@ -4161,17 +4161,16 @@ export async function startApiServer(opts?: {
   }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
-  // Model work is cancelled by the request's AbortSignal and provider/socket
-  // failures, not an elapsed wall-clock guess. Disable Node's whole-request and
-  // idle-socket deadlines so they cannot sever a healthy streamed turn while
-  // the runtime is still producing output. Header and post-response keepalive
-  // limits remain transport hygiene and do not cap model execution.
-  server.requestTimeout = 0;
+  // requestTimeout bounds receipt of the request body; Node does not apply it
+  // to time spent generating the response. Keep that slow-upload protection
+  // while leaving the idle socket deadline disabled for long model turns.
+  // Generation itself is cancelled by the request owner's AbortSignal.
+  server.requestTimeout = 300_000;
   server.headersTimeout = 60_000;
   server.keepAliveTimeout = 60_000;
   server.timeout = 0;
   logger.debug(
-    "[eliza-api] Server lifecycle: requestTimeout=disabled, idleTimeout=disabled, headersTimeout=60000ms, keepAliveTimeout=60000ms",
+    "[eliza-api] Server lifecycle: requestTimeout=300000ms, idleTimeout=disabled, headersTimeout=60000ms, keepAliveTimeout=60000ms",
   );
 
   const broadcastWs = (payload: unknown): void => {
