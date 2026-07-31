@@ -730,14 +730,23 @@ async function createNewApp({
 	}
 
 	const task = dispatch.agents[0];
-	const text = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits APP_CREATE_DONE.`;
+	// Chat gets one human sentence; the dispatch detail (workdir, session id,
+	// completion event) stays planner-facing in the result text — internal
+	// identifiers in a user-visible message read as a malfunction. The
+	// verified+turnComplete contract makes the callback the turn's single
+	// delivery (the gated evaluator skip), same as LIST_CLOUD_APPS.
+	const text = `Building ${displayName} now — I'll post the link once it's live (usually takes a few minutes).`;
+	const dispatchDetail = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] APP/create new name=${name} workdir=${workdir} dir=${appDirName} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
-		text,
+		text: dispatchDetail,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "create",
 			subMode: "new",
@@ -814,14 +823,19 @@ async function editExistingApp({
 	}
 
 	const task = dispatch.agents[0];
-	const text = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits APP_CREATE_DONE.`;
+	// Same single-human-sentence contract as the create path above.
+	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live (usually takes a few minutes).`;
+	const dispatchDetail = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
-		text,
+		text: dispatchDetail,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "create",
 			subMode: "edit",
