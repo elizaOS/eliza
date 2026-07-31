@@ -37,6 +37,7 @@ import {
   LABEL_STYLE,
   SECONDARY_TEXT_STYLE,
   VIEW_ROOT_STYLE,
+  VIEW_SCROLL_STYLE,
   ViewState,
 } from "./viewPrimitives.js";
 
@@ -492,18 +493,11 @@ export function SimpleCalendarView() {
       data-testid="simple-calendar-view"
       style={VIEW_ROOT_STYLE}
     >
-      <ViewState
-        loading={loading && !snapshot}
-        error={!snapshot ? error : null}
-        empty={false}
-        emptyTitle=""
-        emptyBody=""
-        onRetry={() => void refresh()}
-      />
-
       {snapshot ? (
         <div
+          data-testid="simple-calendar-scroll-region"
           style={{
+            ...VIEW_SCROLL_STYLE,
             display: "grid",
             gridTemplateColumns:
               "repeat(auto-fit, minmax(min(100%, 370px), 1fr))",
@@ -837,7 +831,21 @@ export function SimpleCalendarView() {
             </form>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div
+          data-testid="simple-calendar-scroll-region"
+          style={VIEW_SCROLL_STYLE}
+        >
+          <ViewState
+            loading={loading}
+            error={error}
+            empty={false}
+            emptyTitle=""
+            emptyBody=""
+            onRetry={() => void refresh()}
+          />
+        </div>
+      )}
     </main>
   );
 }
