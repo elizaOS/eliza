@@ -451,19 +451,18 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (viewShellAction) {
 		// A request that names the application surface itself ("show me the
 		// apps", "list running apps", "launch the shopify app") is ambiguous
-		// between the views/apps *page* (VIEWS) and the applications themselves
-		// (the APP control action). Surface BOTH candidates and let the planner
-		// arbitrate from the exposed routing hints; hinting only VIEWS answers
-		// every installed-apps ask with the UI view catalog instead of the app
-		// itself (#9950). Structurally anchored to a registered app-control
-		// action, so runtimes without one are unaffected.
-		const appControlAction = findAppControlActionNameForAppRequest(
-			actions,
-			messageText,
-		);
-		if (appControlAction && appControlAction !== viewShellAction) {
+		// between the views/apps *page* (VIEWS) and the applications themselves.
+		// Surface BOTH candidates and let the planner arbitrate from the exposed
+		// routing hints; hinting only VIEWS answers every installed-apps ask
+		// with the UI view catalog instead of the app itself (#9950). The app
+		// slot resolves to the local app-control action, or to the cloud-apps
+		// action when the message pins the ask to hosted Eliza Cloud apps (see
+		// findAppActionNameForAppRequest). Structurally anchored to a registered
+		// app action, so runtimes without one are unaffected.
+		const appAction = findAppActionNameForAppRequest(actions, messageText);
+		if (appAction && appAction !== viewShellAction) {
 			return {
-				names: [viewShellAction, appControlAction],
+				names: [viewShellAction, appAction],
 				kind: "view-surface",
 			};
 		}
@@ -750,7 +749,33 @@ const APP_CONTROL_ACTION_NAMES = [
 	"LAUNCH_APP",
 ] as const;
 
-function findAppControlActionNameForAppRequest(
+// Cloud-apps action names/similes, in preference order. Mirrors the cloud-apps
+// action's own simile vocabulary (plugin-cloud-apps LIST_CLOUD_APPS); consulted
+// only when an app-shaped message carries a cloud qualifier token below, so
+// agents without a cloud-apps action are unaffected.
+const CLOUD_APPS_ACTION_NAMES = [
+	"LIST_CLOUD_APPS",
+	"MY_CLOUD_APPS",
+	"CLOUD_APPS",
+] as const;
+
+// Tokens that pin an app-shaped message to the user's HOSTED Eliza Cloud apps
+// ("list my cloud apps", "my deployed apps") rather than apps installed or
+// running on this device. Compared in singular-normalized token space.
+const CLOUD_APP_QUALIFIER_TOKENS: ReadonlySet<string> = new Set<string>([
+	"CLOUD",
+	"DEPLOYED",
+	"HOSTED",
+]);
+
+// Resolve the app action an app-shaped message targets. A cloud qualifier next
+// to the APP token pins the ask to the user's hosted Eliza Cloud apps, where
+// the local app-control action is wrong by its own routing contract — without
+// this the cloud-apps action is never on the planner surface and the local APP
+// action wins by forfeit. Falls back to the local app-control surface when no
+// cloud-apps action is registered, so those runtimes keep their previous
+// candidates.
+function findAppActionNameForAppRequest(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
 ): string | undefined {
@@ -759,6 +784,13 @@ function findAppControlActionNameForAppRequest(
 	);
 	if (!tokens.some((token) => token === "APP" || token === "APPLICATION")) {
 		return undefined;
+	}
+	if (tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))) {
+		const cloudAppsAction = findAvailableActionName(
+			actions,
+			CLOUD_APPS_ACTION_NAMES,
+		);
+		if (cloudAppsAction) return cloudAppsAction;
 	}
 	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }
