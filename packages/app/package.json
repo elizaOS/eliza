@@ -113,6 +113,7 @@
     "capture:ios-sim:boot": "node scripts/ios-device-capture.mjs --platform sim",
     "build:android": "node ../../packages/app-core/scripts/run-mobile-build.mjs android",
     "build:android:chat-harness": "ELIZA_CHAT_UI_HARNESS=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android",
+    "build:android:cloud-hybrid": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-hybrid",
     "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:cloud:debug": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
