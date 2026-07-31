@@ -20,6 +20,7 @@ const PLACEHOLDER_RE =
   /<[^>]+>|\byes\s*\/\s*no\b|\bprovider\/model\b|\bmodel-name\b|\bfill\b|\btbd\b/i;
 const FULL_SKILL_REVISION_RE =
   /^[a-z0-9_.-]+\/[a-z0-9_.-]+@[0-9a-f]{40}:[^\s`]+$/i;
+const GENERIC_PROVIDER_IDS = new Set(["ai", "model", "na", "none", "provider"]);
 const MODEL_SEGMENT_PLACEHOLDERS = new Set([
   "claude",
   "default",
@@ -28,10 +29,29 @@ const MODEL_SEGMENT_PLACEHOLDERS = new Set([
   "latest",
   "llama",
   "model",
+  "na",
+  "none",
+  "null",
   "provider",
   "unknown",
   "unspecified",
 ]);
+
+function identifierKey(value) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isGenericProvider(value) {
+  return GENERIC_PROVIDER_IDS.has(identifierKey(value));
+}
+
+function isGenericModel(value) {
+  const segments = value.split("/");
+  return (
+    MODEL_SEGMENT_PLACEHOLDERS.has(identifierKey(value)) ||
+    MODEL_SEGMENT_PLACEHOLDERS.has(identifierKey(segments.at(-1) ?? ""))
+  );
+}
 
 export const REQUIRED_ATTRIBUTION_ROWS = [
   "ai-assistance",
@@ -78,9 +98,11 @@ export function extractModelIds(value) {
     const model = modelSegments.join("/");
     const finalModelSegment = modelSegments.at(-1) ?? "";
     if (
-      !MODEL_SEGMENT_PLACEHOLDERS.has(provider) &&
-      !MODEL_SEGMENT_PLACEHOLDERS.has(model) &&
-      !MODEL_SEGMENT_PLACEHOLDERS.has(finalModelSegment)
+      !isGenericProvider(provider) &&
+      !isGenericProvider(id) &&
+      !isGenericModel(provider) &&
+      !isGenericModel(model) &&
+      !isGenericModel(finalModelSegment)
     ) {
       ids.add(id);
     }

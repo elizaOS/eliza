@@ -632,10 +632,46 @@ export function evaluatePrEvidence(
 const ARTIFACT_READ_LIMIT_BYTES = 16 * 1024;
 const DEFAULT_ARTIFACT_CONCURRENCY = 4;
 const DEFAULT_ARTIFACT_TIMEOUT_MS = 10_000;
+export const MAX_ARTIFACTS_PER_ROW = 8;
+export const MAX_ARTIFACTS_TOTAL = 32;
 const UNRELIABLE_CONTENT_TYPES = new Set([
   "",
   "application/octet-stream",
   "binary/octet-stream",
+]);
+const ISO_BMFF_IMAGE_BRANDS = new Set([
+  "avif",
+  "avis",
+  "heic",
+  "heix",
+  "hevc",
+  "hevx",
+  "mif1",
+  "msf1",
+]);
+const ISO_BMFF_VIDEO_BRANDS = new Set([
+  "3g2a",
+  "3g2b",
+  "3gp4",
+  "3gp5",
+  "3gp6",
+  "M4V ",
+  "M4VH",
+  "M4VP",
+  "MSNV",
+  "avc1",
+  "cmfc",
+  "cmfv",
+  "dash",
+  "iso2",
+  "iso3",
+  "iso4",
+  "iso5",
+  "iso6",
+  "isom",
+  "mp41",
+  "mp42",
+  "qt  ",
 ]);
 
 function expectedArtifactKind(rowId, artifact, rowText) {
@@ -679,7 +715,12 @@ function mediaKindFromBytes(bytes) {
   ) {
     return "image";
   }
-  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[2] === 0xff
+  ) {
     return "image";
   }
   if (
@@ -708,17 +749,41 @@ function mediaKindFromBytes(bytes) {
     bytes.length >= 12 &&
     new TextDecoder().decode(bytes.subarray(4, 8)) === "ftyp"
   ) {
-    const brand = new TextDecoder().decode(bytes.subarray(8, 12));
-    return brand === "avif" || brand === "avis" ? "image" : "video";
+    const declaredSize = new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength,
+    ).getUint32(0);
+    const availableEnd = Math.min(
+      bytes.length,
+      declaredSize >= 16 ? declaredSize : bytes.length,
+    );
+    const brands = [];
+    for (let offset = 8; offset + 4 <= availableEnd; offset += 4) {
+      // Offset 12 is the minor version rather than a compatible brand.
+      if (offset !== 12) {
+        brands.push(
+          new TextDecoder().decode(bytes.subarray(offset, offset + 4)),
+        );
+      }
+    }
+    if (brands.some((brand) => ISO_BMFF_IMAGE_BRANDS.has(brand))) {
+      return "image";
+    }
+    if (brands.some((brand) => ISO_BMFF_VIDEO_BRANDS.has(brand))) {
+      return "video";
+    }
   }
   return null;
 }
 
 function contentKind(contentType, bytes) {
-  if (contentType.startsWith("image/")) return "image";
-  if (contentType.startsWith("video/")) return "video";
+  const mediaKind = mediaKindFromBytes(bytes);
+  if (contentType.startsWith("image/") || contentType.startsWith("video/")) {
+    return mediaKind;
+  }
   if (!UNRELIABLE_CONTENT_TYPES.has(contentType)) return "document";
-  return mediaKindFromBytes(bytes);
+  return mediaKind;
 }
 
 function isHtmlResponse(contentType, bytes) {
@@ -737,7 +802,27 @@ function isHtmlResponse(contentType, bytes) {
   );
 }
 
-async function readResponsePrefix(response) {
+function withAbort(promise, signal) {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason);
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(promise).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function readResponsePrefix(response, signal) {
   if (!response.body) return new Uint8Array();
   const reader = response.body.getReader();
   const chunks = [];
@@ -745,7 +830,7 @@ async function readResponsePrefix(response) {
   let complete = false;
   try {
     while (length < ARTIFACT_READ_LIMIT_BYTES) {
-      const { done, value } = await reader.read();
+      const { done, value } = await withAbort(reader.read(), signal);
       if (done) {
         complete = true;
         break;
@@ -758,12 +843,9 @@ async function readResponsePrefix(response) {
     }
   } finally {
     if (!complete) {
-      try {
-        await reader.cancel();
-      } catch {
-        // error-policy:J6 response cancellation is best-effort after the
-        // validator has already captured the bounded prefix it needs.
-      }
+      // Promise.race installs rejection handling on cancellation without
+      // letting a hostile response stream extend the request deadline.
+      await Promise.race([reader.cancel(), Promise.resolve()]);
     }
   }
 
@@ -786,12 +868,15 @@ async function verifyArtifact(artifact, fetchImpl, token, timeoutMs) {
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   try {
-    const response = await fetchImpl(artifact.url, {
-      headers,
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    const response = await withAbort(
+      fetchImpl(artifact.url, {
+        headers,
+        method: "GET",
+        redirect: "follow",
+        signal: controller.signal,
+      }),
+      controller.signal,
+    );
     if (!response.ok) {
       return {
         status: "artifact-http-error",
@@ -799,7 +884,7 @@ async function verifyArtifact(artifact, fetchImpl, token, timeoutMs) {
       };
     }
 
-    const bytes = await readResponsePrefix(response);
+    const bytes = await readResponsePrefix(response, controller.signal);
     if (bytes.length === 0) {
       return {
         status: "artifact-empty",
@@ -819,14 +904,16 @@ async function verifyArtifact(artifact, fetchImpl, token, timeoutMs) {
     }
 
     const actualKind = contentKind(contentType, bytes);
+    const requiresRecognizedMedia =
+      artifact.expectedKind === "image" || artifact.expectedKind === "video";
     if (
       artifact.expectedKind &&
-      actualKind &&
-      artifact.expectedKind !== actualKind
+      ((requiresRecognizedMedia && actualKind !== artifact.expectedKind) ||
+        (actualKind && artifact.expectedKind !== actualKind))
     ) {
       return {
         status: "artifact-kind-mismatch",
-        detail: `expected ${artifact.expectedKind}, received ${actualKind}`,
+        detail: `expected ${artifact.expectedKind}, received ${actualKind ?? "unrecognized bytes"}`,
       };
     }
     return { status: "ok" };
@@ -888,7 +975,10 @@ export async function verifyReferencedArtifacts(
   );
   const timeoutMs = Math.max(
     1,
-    Math.trunc(options.timeoutMs ?? DEFAULT_ARTIFACT_TIMEOUT_MS),
+    Math.min(
+      60_000,
+      Math.trunc(options.timeoutMs ?? DEFAULT_ARTIFACT_TIMEOUT_MS),
+    ),
   );
   // This standalone script runs outside Turbo task caching; credentials affect
   // transport access, never the deterministic evidence verdict.
@@ -900,11 +990,22 @@ export async function verifyReferencedArtifacts(
   const rows = extractEvidenceRows(String(body ?? ""));
   const references = [];
   const uniqueArtifacts = new Map();
+  const limitFindings = [];
 
   for (const { id, label } of requiredRows) {
     const rowText = rows.get(id);
     if (rowText === undefined) continue;
-    for (const artifact of trustedArtifacts(rowText)) {
+    const rowArtifacts = trustedArtifacts(rowText);
+    if (rowArtifacts.length > MAX_ARTIFACTS_PER_ROW) {
+      limitFindings.push({
+        id,
+        label,
+        url: "(artifact count)",
+        status: "artifact-limit-exceeded",
+        detail: `row references ${rowArtifacts.length} artifacts; maximum is ${MAX_ARTIFACTS_PER_ROW}`,
+      });
+    }
+    for (const artifact of rowArtifacts) {
       const reference = {
         ...artifact,
         expectedKind: expectedArtifactKind(id, artifact, rowText),
@@ -919,6 +1020,25 @@ export async function verifyReferencedArtifacts(
   }
 
   const artifacts = [...uniqueArtifacts.values()];
+  if (artifacts.length > MAX_ARTIFACTS_TOTAL) {
+    const firstReference = references[0];
+    limitFindings.push({
+      id: firstReference?.id ?? requiredRows[0]?.id ?? "evidence",
+      label:
+        firstReference?.label ??
+        requiredRows[0]?.label ??
+        "Referenced evidence artifacts",
+      url: "(artifact count)",
+      status: "artifact-limit-exceeded",
+      detail: `PR references ${artifacts.length} unique artifacts; maximum is ${MAX_ARTIFACTS_TOTAL}`,
+    });
+  }
+  if (limitFindings.length > 0) {
+    return {
+      ok: false,
+      findings: limitFindings,
+    };
+  }
   const results = await mapWithConcurrency(artifacts, concurrency, (artifact) =>
     verifyArtifact(artifact, fetchImpl, token, timeoutMs),
   );

@@ -84,18 +84,62 @@ describe("App", () => {
     expect(command).toContain("sha256sum");
     expect(command).toContain("shasum -a 256");
     expect(command).toContain("--max-filesize 10485760");
-    expect(command).toContain('unzip -tq "$ARCHIVE"');
-    expect(command).toContain('unzip -Z1 "$ARCHIVE"');
-    expect(command).toContain('index($0, "contribute-to-eliza/") != 1');
+    expect(command).toContain("python3 is required");
+    expect(command).toContain("max_entries = 32");
+    expect(command).toContain("max_entry_bytes = 1_048_576");
+    expect(command).toContain("max_total_bytes = 4_194_304");
+    expect(command).toContain("zlib.decompressobj(-zlib.MAX_WBITS)");
+    expect(command).toContain("local and central archive metadata disagree");
+    expect(command).toContain("actual extracted size exceeds limit");
     expect(command).toContain(
-      'find "$STAGE_ROOT" ! -type f ! -type d -print -quit',
+      "archive size or CRC metadata does not match payload",
     );
+    expect(command).toContain("skill provenance file manifest is incomplete");
+    expect(command).toContain(
+      "Archive failed bounded integrity and path checks.",
+    );
+    expect(command).toContain(
+      `SKILLS_ROOT="\${CODEX_HOME:-\${HOME}/.codex}/skills"`,
+    );
+    expect(command).not.toContain('SKILLS_ROOT="\\${CODEX_HOME');
     expect(command).toContain("Refusing to overwrite existing skill");
     expect(command).toContain('test -f "$TARGET/PROVENANCE.json"');
     expect(command.indexOf('test "$ACTUAL" = "$EXPECTED"')).toBeLessThan(
       command.indexOf('mkdir -p "$SKILLS_ROOT"'),
     );
+    expect(command.indexOf("python3 -")).toBeLessThan(
+      command.indexOf('mkdir -p "$SKILLS_ROOT"'),
+    );
     expect(await screen.findByRole("button", { name: "Copied" })).toBeVisible();
+  });
+
+  it("does not label ordinary discussion as missing model attribution", async () => {
+    const snapshot = snapshotFixture();
+    snapshot.workQueue.issues[0].model = {
+      status: "missing",
+      identifiers: [],
+      machineMarkerCount: 0,
+      invalidMarkerCount: 0,
+      eligibleSourceCount: 0,
+      validSourceCount: 0,
+      missingSourceCount: 0,
+      invalidSourceCount: 0,
+      humanOnlySourceCount: 0,
+      provenance: "none",
+    };
+    mockFetch(
+      new Response(JSON.stringify(snapshot), {
+        headers: { "Content-Type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("no attribution-eligible activity"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/model missing 0\/0/i)).not.toBeInTheDocument();
   });
 
   it("renders an observable error and retries instead of fabricating empty data", async () => {

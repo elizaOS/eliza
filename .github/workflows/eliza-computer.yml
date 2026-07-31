@@ -145,9 +145,18 @@ jobs:
       - name: Checkout develop deployment tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: develop
+          ref: ${{ github.sha }}
           persist-credentials: false
           submodules: false
+
+      - name: Verify deployment checkout
+        run: |
+          set -euo pipefail
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [ "$checked_out_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Deployment checkout $checked_out_sha does not match the verified workflow SHA $GITHUB_SHA."
+            exit 1
+          fi
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -180,6 +189,8 @@ jobs:
           response="$RUNNER_TEMP/eliza-computer-pages-project.json"
           status="$(
             curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
               --output "$response" \
               --write-out "%{http_code}" \
               --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -206,16 +217,22 @@ jobs:
           esac
 
       - name: Deploy to Cloudflare Pages
+        id: pages-deploy
         working-directory: packages/eliza-computer
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # wrangler.toml owns pages_build_output_dir. A positional directory
+        # bypasses that deployment contract and must not be added here.
         run: |
           set -euo pipefail
+          printf '%s\n' "started_at=$(node -e 'process.stdout.write(Date.now().toString())')" >> "$GITHUB_OUTPUT"
           for attempt in 1 2 3; do
-            if bunx wrangler@4.100.0 pages deploy dist \
+            if bunx wrangler@4.100.0 pages deploy \
               --project-name=eliza-computer \
-              --branch=develop; then
+              --branch=develop \
+              --commit-hash="$GITHUB_SHA" \
+              --commit-dirty=false; then
               exit 0
             fi
             if [ "$attempt" = "3" ]; then
@@ -225,6 +242,59 @@ jobs:
             echo "::warning::Cloudflare Pages deploy attempt ${attempt} failed; retrying."
             sleep $((attempt * 10))
           done
+
+      - name: Verify Cloudflare deployment commit metadata
+        id: deployment-metadata
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DEPLOYMENT_NOT_BEFORE: ${{ steps.pages-deploy.outputs.started_at }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/eliza-computer-production-deployments.json"
+          for attempt in $(seq 1 18); do
+            status="$(
+              curl --silent --show-error \
+                --connect-timeout 10 \
+                --max-time 30 \
+                --output "$response" \
+                --write-out "%{http_code}" \
+                --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                --header "Cache-Control: no-cache" \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/eliza-computer/deployments?env=production&per_page=25"
+            )"
+            if [ "$status" = "200" ]; then
+              if deployment="$(
+                node packages/eliza-computer/scripts/select-pages-deployment.mjs \
+                  "$response" "$GITHUB_SHA" "$DEPLOYMENT_NOT_BEFORE"
+              )"; then
+                IFS=$'\t' read -r deployment_id deployment_url deployment_created_on <<< "$deployment"
+                printf '%s\n' "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+                printf '%s\n' "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+                echo "::notice::Cloudflare production deployment $deployment_id for $GITHUB_SHA is successful at $deployment_url"
+                {
+                  echo "Cloudflare deployment: \`$deployment_id\`"
+                  echo
+                  echo "URL: $deployment_url"
+                  echo
+                  echo "Created: $deployment_created_on"
+                } >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              else
+                selector_status="$?"
+                if [ "$selector_status" != "2" ]; then
+                  echo "::error::Cloudflare deployment metadata response was malformed."
+                  exit "$selector_status"
+                fi
+              fi
+            else
+              echo "::warning::Cloudflare deployment metadata lookup returned HTTP $status."
+            fi
+            echo "::warning::Successful production metadata for $GITHUB_SHA is not visible yet (attempt $attempt/18)."
+            sleep 5
+          done
+          echo "::error::Cloudflare did not report a new, successful, clean production deployment for commit $GITHUB_SHA."
+          exit 1
 
       - name: Verify published skill and leaderboard
         run: |
@@ -237,7 +307,11 @@ jobs:
             received="$RUNNER_TEMP/$(basename "$path")"
             while [ "$attempt" -le 12 ]; do
               if curl --fail --silent --show-error \
-                "https://eliza.army/$path" \
+                --connect-timeout 10 \
+                --max-time 30 \
+                --header "Cache-Control: no-cache" \
+                --header "Pragma: no-cache" \
+                "https://eliza.army/$path?verify=$GITHUB_SHA-$GITHUB_RUN_ATTEMPT-$attempt" \
                 --output "$received" &&
                 cmp --silent "$expected" "$received"; then
                 return 0

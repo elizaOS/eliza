@@ -331,6 +331,23 @@ describe("PR agent attribution", () => {
     const generic = evaluatePrAttribution(body({ models: "`openai/model`" }));
     assert.equal(generic.ok, false);
     assert.ok(generic.findings.some((finding) => finding.id === "models"));
+
+    for (const models of [
+      "`AI/gpt-5.4`",
+      "`none/gpt-5.4`",
+      "`na/gpt-5.4`",
+      "`n_a/gpt-5.4`",
+      "`n/a`",
+      "`openai/N-A`",
+      "`openrouter/anthropic/gpt`",
+    ]) {
+      const genericProvider = evaluatePrAttribution(body({ models }));
+      assert.equal(genericProvider.ok, false, models);
+      assert.ok(
+        genericProvider.findings.some((finding) => finding.id === "models"),
+        models,
+      );
+    }
   });
 
   it("does not treat incidental no/none prose as a human-only declaration", () => {
@@ -492,11 +509,11 @@ describe("PR agent attribution", () => {
     const workflow = workflowSource(".github/workflows/docs-ci.yml");
     assert.match(
       workflow,
-      /git diff --binary "\$\{\{ steps\.link-base\.outputs\.sha \}\}" HEAD/,
+      /git diff --no-ext-diff --no-textconv --binary\s*\\\s*"\$\{\{ steps\.link-base\.outputs\.sha \}\}" HEAD/,
     );
     assert.match(
       workflow,
-      /git diff --binary "\$\{\{ steps\.quality-base\.outputs\.sha \}\}" HEAD/,
+      /git diff --no-ext-diff --no-textconv --binary\s*\\\s*"\$\{\{ steps\.quality-base\.outputs\.sha \}\}" HEAD/,
     );
     assert.match(workflow, /name: docs-link-fixes-\$\{\{ github\.run_id \}\}/);
     assert.match(
