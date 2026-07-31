@@ -19,7 +19,7 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-000000002187";
 const OBJECT_SET_ID = "00000000-0000-4000-8000-000000003187";
 const OTHER_OBJECT_SET_ID = "00000000-0000-4000-8000-000000004187";
 const CREATED_AT = "2026-07-26T12:00:00.000Z";
-const migrationUrl = new URL("./migrations/0189_agent_backup_write_epochs.sql", import.meta.url);
+const migrationUrl = new URL("./migrations/0190_agent_backup_write_epochs.sql", import.meta.url);
 
 let dbWrite!: typeof import("./client").dbWrite;
 let closeDb: typeof import("./client").closeDatabaseConnectionsForTests | undefined;
@@ -107,7 +107,7 @@ afterAll(async () => {
   if (closeDb) await closeDb();
 });
 
-describe("0187 backup write epochs", () => {
+describe("0190 backup write epochs", () => {
   test("is registered once in the migration journal", () => {
     const journal = JSON.parse(
       readFileSync(
@@ -116,7 +116,7 @@ describe("0187 backup write epochs", () => {
       ),
     ) as { entries: Array<{ tag: string }> };
     expect(
-      journal.entries.filter((entry) => entry.tag === "0189_agent_backup_write_epochs"),
+      journal.entries.filter((entry) => entry.tag === "0190_agent_backup_write_epochs"),
     ).toHaveLength(1);
   });
 
