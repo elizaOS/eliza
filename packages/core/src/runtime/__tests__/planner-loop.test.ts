@@ -3249,6 +3249,9 @@ describe("v5 planner loop — evaluator gate", () => {
 		};
 		expect(dispatched.params).toMatchObject({ key: "shell", value: "off" });
 		expect(dispatched.params?.[TURN_SCOPE_ARG]).toBeUndefined();
+		expect(executeToolCall.mock.calls[0]?.[1]).toMatchObject({
+			plannerCompleted: false,
+		});
 	});
 
 	it("SKIPS in native-mode when the call declares final scope alongside a terminal action result", async () => {
@@ -3374,6 +3377,12 @@ describe("v5 planner loop — evaluator gate", () => {
 		});
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(executeToolCall.mock.calls[0]?.[1]).toMatchObject({
+			plannerCompleted: false,
+		});
+		expect(executeToolCall.mock.calls[1]?.[1]).toMatchObject({
+			plannerCompleted: true,
+		});
 		expect(evaluate).toHaveBeenCalledTimes(2);
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(
