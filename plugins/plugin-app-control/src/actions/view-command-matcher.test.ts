@@ -42,6 +42,8 @@ describe("matchViewCommand — explicit user examples", () => {
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
 		["open cloud apps", "cloud-apps"],
+		["show my cloud applications", "cloud-apps"],
+		["go to the app studio", "cloud-apps"],
 		["show my deployed apps", "cloud-apps"],
 		["go to app deployments", "cloud-apps"],
 		["open plugins", "plugins-page"],
@@ -68,11 +70,14 @@ describe("matchViewCommand — multilingual", () => {
 		// pt
 		["abrir configurações", "settings"],
 		["mostre meu calendário", "calendar"],
+		["abra aplicações na nuvem", "cloud-apps"],
 		// fr
 		["ouvre les paramètres", "settings"],
 		["montre-moi mon calendrier", "calendar"],
+		["ouvre applications cloud", "cloud-apps"],
 		// de
 		["öffne die einstellungen", "settings"],
+		["öffne cloud-apps", "cloud-apps"],
 		// zh
 		["打开设置", "settings"],
 		["打开我的钱包", "wallet"],
@@ -84,8 +89,10 @@ describe("matchViewCommand — multilingual", () => {
 		["설정 열어", "settings"],
 		["내 캘린더 보여줘", "calendar"],
 		["지갑 열어줘", "wallet"],
+		["클라우드 앱 열어줘", "cloud-apps"],
 		// vi
 		["mở cài đặt", "settings"],
+		["mở ứng dụng đám mây", "cloud-apps"],
 		// tl
 		["buksan ang settings", "settings"],
 		["abre aplicaciones en la nube", "cloud-apps"],

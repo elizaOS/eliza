@@ -39,6 +39,25 @@ function ids(page: ViewEntry[]): string[] {
   return page.map((e) => e.id);
 }
 
+function registeredView(
+  id: string,
+  { bundleUrl, path = `/${id}` }: { bundleUrl?: string; path?: string } = {},
+): ViewRegistryEntry {
+  return {
+    id,
+    label: id === "simple-calendar" ? "Calendar" : id,
+    viewType: "gui",
+    path,
+    bundleUrl,
+    available: true,
+    pluginName:
+      id === "simple-calendar"
+        ? "@elizaos/plugin-simple-views"
+        : "@elizaos/plugin-calendar",
+    visibleInManager: true,
+  };
+}
+
 const APPS_ONLY = { developer: false, preview: false } as const;
 
 function registryEntry(
@@ -332,6 +351,69 @@ describe("curateLauncherPages", () => {
     ).toEqual(["simple-calendar", "notes"]);
   });
 
+  it("shows only Simple Views Calendar when connected Calendar is also registered", () => {
+    const page = curateLauncherPages(
+      [
+        entry("calendar", {
+          label: "Calendar",
+          path: "/calendar",
+          builtin: true,
+        }),
+        entry("simple-calendar", {
+          label: "Calendar",
+          path: "/simple-calendar",
+          view: registeredView("simple-calendar", {
+            bundleUrl: "/api/views/simple-calendar/bundle.js",
+            path: "/simple-calendar",
+          }),
+        }),
+      ],
+      { isAosp: false, enabledKinds: APPS_ONLY, cloudActive: false },
+    );
+
+    expect(ids(page)).toEqual(["simple-calendar"]);
+    expect(page[0]?.path).toBe("/simple-calendar");
+  });
+
+  it("keeps connected Calendar as a fallback when Simple Views is absent", () => {
+    const page = curateLauncherPages(
+      [
+        entry("calendar", {
+          label: "Calendar",
+          path: "/calendar",
+          builtin: true,
+        }),
+      ],
+      { isAosp: false, enabledKinds: APPS_ONLY, cloudActive: false },
+    );
+
+    expect(ids(page)).toEqual(["calendar"]);
+    expect(page[0]?.path).toBe("/calendar");
+  });
+
+  it("prefers the native app-shell Simple Calendar when remote bundle URLs are stripped", () => {
+    const page = curateLauncherPages(
+      [
+        entry("calendar", {
+          label: "Calendar",
+          path: "/calendar",
+          builtin: true,
+        }),
+        entry("simple-calendar", {
+          label: "Calendar",
+          path: "/simple-calendar",
+          view: registeredView("simple-calendar", {
+            path: "/simple-calendar",
+          }),
+        }),
+      ],
+      { isAosp: true, enabledKinds: APPS_ONLY, cloudActive: false },
+    );
+
+    expect(ids(page)).toEqual(["simple-calendar"]);
+    expect(page[0]?.path).toBe("/simple-calendar");
+  });
+
   it("collapses duplicate wallet + automations registrations, keeping Tasks its own tile", () => {
     const page = curateLauncherPages(
       [
@@ -472,6 +554,18 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("my-apps", { label: "My Apps", builtin: true }),
     // The native Cloud Applications studio — folded into My Apps, never a tile.
     entry("cloud-apps", { label: "Cloud Apps" }),
+    entry("calendar", {
+      label: "Calendar",
+      view: registeredView("calendar", { path: "/calendar" }),
+    }),
+    entry("simple-calendar", {
+      label: "Calendar",
+      view: registeredView("simple-calendar", {
+        bundleUrl: "/api/views/simple-calendar/bundle.js",
+        path: "/simple-calendar",
+      }),
+    }),
+    entry("notes", { label: "Notes" }),
     entry("browser"),
     entry("character", { viewKind: "system" }),
     entry("documents", { viewKind: "system" }),
@@ -519,6 +613,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       "settings",
       "wallet",
       "tasks",
+      "simple-calendar",
+      "notes",
       "automations",
       "my-apps",
       "browser",
@@ -552,6 +648,8 @@ describe("curateLauncherPages — full realistic view set", () => {
       "settings",
       "wallet",
       "tasks",
+      "simple-calendar",
+      "notes",
       "automations",
       "my-apps",
       "browser",
@@ -776,6 +874,18 @@ describe("launcher label-duplication lint", () => {
       entry("chat", { label: "Chat", viewKind: "system" }),
       entry("settings", { label: "Settings", viewKind: "system" }),
       entry("wallet", { label: "Wallet", viewKind: "system" }),
+      entry("calendar", {
+        label: "Calendar",
+        view: registeredView("calendar", { path: "/calendar" }),
+      }),
+      entry("simple-calendar", {
+        label: "Calendar",
+        view: registeredView("simple-calendar", {
+          bundleUrl: "/api/views/simple-calendar/bundle.js",
+          path: "/simple-calendar",
+        }),
+      }),
+      entry("notes", { label: "Notes" }),
       entry("browser", { label: "Browser" }),
       entry("automations", { label: "Automations", viewKind: "system" }),
       entry("tasks", { label: "Projects", builtin: true }),

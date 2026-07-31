@@ -179,6 +179,32 @@ describe("LauncherSurface", () => {
     expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
   });
 
+  it("keeps catalog-only and uncurated registered apps off the demo rail", () => {
+    const catalogOnly: ViewEntry = {
+      key: "app:@elizaos/plugin-birdclaw",
+      id: "@elizaos/plugin-birdclaw",
+      label: "Birdclaw",
+      modality: "gui",
+      state: "available",
+      kind: "app",
+      appName: "@elizaos/plugin-birdclaw",
+      hasHero: false,
+    };
+    setEntries([
+      viewToEntry(view("settings", "Settings", "/settings")),
+      viewToEntry(view("inbox", "Inbox", "/apps/inbox")),
+      catalogOnly,
+    ]);
+
+    render(<LauncherSurface catalogMode="demo" />);
+
+    expect(
+      screen.queryByTestId("launcher-tile-@elizaos/plugin-birdclaw"),
+    ).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-inbox")).toBeNull();
+    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
+  });
+
   it("collapses duplicate wallet registrations to a single tile", () => {
     render(<LauncherSurface />);
     expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
