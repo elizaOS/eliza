@@ -7,6 +7,7 @@ import type { LeaderboardSnapshot } from "../src/lib/leaderboard";
 
 export function snapshotFixture(): LeaderboardSnapshot {
   const generatedAt = new Date().toISOString();
+  const windowTo = "2026-07-30T00:00:00.000Z";
   const leaderActor: LeaderboardSnapshot["leaders"][number]["actor"] = {
     id: "U_fixture",
     login: "finish-line",
@@ -24,7 +25,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
     window: {
       days: 30,
       from: "2026-06-30T00:00:00.000Z",
-      to: "2026-07-30T00:00:00.000Z",
+      to: windowTo,
     },
     methodology: {
       summary: "Accepted outcomes score; raw activity does not.",
@@ -84,7 +85,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
     source: {
       provider: "github-graphql",
       fetchedAt: generatedAt,
-      cutoffAt: generatedAt,
+      cutoffAt: windowTo,
       repositoryId: "R_fixture",
       requestCount: 7,
       searchSliceCount: 3,
@@ -106,7 +107,7 @@ export function snapshotFixture(): LeaderboardSnapshot {
       verificationWindow: {
         days: 7,
         from: "2026-07-23T00:00:00.000Z",
-        to: "2026-07-30T00:00:00.000Z",
+        to: windowTo,
       },
     },
     leaders: [
