@@ -120,18 +120,27 @@ export interface RuntimeOptions {
   settings?: Record<string, string | undefined>;
 }
 
-/** Builds a runtime from a REAL persisted config, through REAL projection. */
+/**
+ * Builds a runtime from a REAL persisted config, through REAL projection.
+ *
+ * `getSetting` mirrors the real runtime's precedence: `character.secrets` is
+ * consulted BEFORE the ambient settings map. That is what makes the credential
+ * lane faithful — the projection strips tokens out of `settings.slack` and
+ * republishes them as secrets, so a harness that only read the settings map
+ * would report every token as missing and hide a broken key derivation.
+ */
 export function runtimeFromPersistedConfig(
   config: ElizaConfig,
   options: RuntimeOptions = {},
 ): IAgentRuntime {
   const character = buildCharacterFromConfig(config);
   const settings = options.settings ?? {};
+  const secrets = (character.secrets ?? {}) as Record<string, string>;
   return {
     agentId: "agent-slack-policy",
     character,
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    getSetting: vi.fn((key: string) => settings[key]),
+    getSetting: vi.fn((key: string) => secrets[key] ?? settings[key]),
     emitEvent: vi.fn(),
     createMemory: vi.fn(),
     createEntity: vi.fn(),

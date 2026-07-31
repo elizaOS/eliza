@@ -8,6 +8,75 @@
  */
 
 /**
+ * Builds the character-settings key under which a PER-ACCOUNT connector
+ * credential is published.
+ *
+ * Connector policy (channels, DM rules, mention defaults) is projected onto
+ * `character.settings.<connector>` so the plugin can enforce it, but connector
+ * CREDENTIALS must never travel that path: `character.settings.secrets` is the
+ * only boundary the runtime's redactor scans, so a token in plain settings is a
+ * token that can be echoed into model output, logs, and exports.
+ *
+ * Base-level credentials already have a secret lane through the connector env
+ * map (`connectors.slack.botToken` -> `SLACK_BOT_TOKEN`). Per-account
+ * credentials (`connectors.slack.accounts.<id>.botToken`) had none, which is
+ * what made projecting them as plain settings look necessary. They get this key
+ * on the secret path instead.
+ *
+ * Lives in @elizaos/core so the projection side (packages/agent) and the
+ * consuming side (the connector plugin) derive the identical key from one
+ * definition rather than two that can silently drift apart.
+ */
+export function connectorAccountCredentialSettingKey(
+	provider: string,
+	accountId: string,
+	field: string,
+): string {
+	return [
+		normalizeConnectorKeySegment(provider),
+		"ACCOUNT",
+		normalizeConnectorKeySegment(accountId),
+		normalizeConnectorKeySegment(field),
+	].join("_");
+}
+
+/**
+ * Builds the character-settings key under which a BASE-LEVEL connector
+ * credential is published.
+ *
+ * Connector schemas of the `AccountSchema.extend({accounts})` family (Slack,
+ * Google Chat, …) treat the top level as an account config that every entry in
+ * `accounts` inherits from, so a base-level token is the credential for every
+ * account that does not override it. Routing base credentials through the flat
+ * ambient env key instead would conflate "the operator wrote this in config,
+ * so every account inherits it" with "a token happened to be in the host
+ * environment", which only the default account may use. This key keeps that
+ * distinction intact while still living on the redactable secret path.
+ */
+export function connectorBaseCredentialSettingKey(
+	provider: string,
+	field: string,
+): string {
+	return [
+		normalizeConnectorKeySegment(provider),
+		"BASE",
+		normalizeConnectorKeySegment(field),
+	].join("_");
+}
+
+function normalizeConnectorKeySegment(value: string): string {
+	return (
+		value
+			.trim()
+			// camelCase -> SNAKE_CASE so `botToken` reads as `BOT_TOKEN`.
+			.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+			.replace(/[^a-zA-Z0-9]+/g, "_")
+			.replace(/^_+|_+$/g, "")
+			.toUpperCase() || "UNKNOWN"
+	);
+}
+
+/**
  * True when a connector configuration block is present and "configured
  * enough" for the connector plugin to do real work. The exact criteria are
  * connector-specific (e.g. bluebubbles needs both serverUrl and password,

@@ -24,6 +24,10 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
+  PROJECTED_CONNECTOR_KEYS,
+  projectConnectorPolicy,
+} from "../config/connector-policy-projection.ts";
+import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
@@ -229,30 +233,39 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // ever bridged, via the env-var map above, so a policy written under
   // `connectors.slack.channels[...]` — the documented production shape — never
   // reached the plugin: the gate saw `characterSlack: null` and admitted
-  // everything. Credentials keep flowing through `secrets` (redactable);
-  // this projects the non-credential POLICY object so the plugin can enforce
-  // what the operator actually configured.
+  // everything.
+  //
+  // What is projected is a TYPED CREDENTIAL-FREE VIEW, never the canonical
+  // object. `SlackAccountSchema` carries botToken/appToken/userToken/
+  // signingSecret at both the base level AND inside every `accounts.<id>`
+  // entry, so assigning `connectors.slack` wholesale would move all of them
+  // out of `settings.secrets` — the only boundary the runtime's redactor
+  // scans — and into ordinary settings. `projectConnectorPolicy()` deep-clones
+  // (no shared reference with the persisted config) and drops every
+  // credential-classified key at any depth, returning the per-account
+  // credentials separately so they can be published on the SECRET path where
+  // they remain redactable.
   //
   // Explicit agent-entry settings still win: `agents.list[0].settings.slack`
   // is merged last so an injected sandbox character can override file config.
-  const connectorPolicyKeys = ["slack"] as const;
   const rawConnectors = (config.connectors ??
     (config as unknown as Record<string, unknown>).channels ??
     {}) as Record<string, unknown>;
-  // The connector block is deserialized from eliza.json, so it is
-  // JSON-serializable by construction; `CharacterSettings` values are
-  // `JsonValue`, and the object-shape guard below is what makes that safe.
   const connectorPolicySettings: Record<string, JsonValue> = {};
-  for (const key of connectorPolicyKeys) {
-    const connectorConfig = rawConnectors[key];
-    if (
-      !connectorConfig ||
-      typeof connectorConfig !== "object" ||
-      Array.isArray(connectorConfig)
-    ) {
-      continue;
+  for (const key of PROJECTED_CONNECTOR_KEYS) {
+    const { policy, credentialSecrets } = projectConnectorPolicy(
+      key,
+      rawConnectors[key],
+    );
+    if (policy) {
+      connectorPolicySettings[key] = policy;
     }
-    connectorPolicySettings[key] = connectorConfig as JsonValue;
+    // Per-account credentials have no env lane (only the base-level ones map
+    // to SLACK_BOT_TOKEN et al), so publish them as secrets rather than
+    // letting multi-account support become the reason tokens go plaintext.
+    for (const [secretKey, secretValue] of Object.entries(credentialSecrets)) {
+      secrets[secretKey] = secretValue;
+    }
   }
 
   // Normalise messageExamples to the {examples: [{name,content}]} shape
@@ -311,9 +324,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     // Agent-entry connector policy is authoritative over the file-level
     // connector block when both are present (injected sandbox characters).
     ...Object.fromEntries(
-      connectorPolicyKeys
-        .filter((key) => agentEntry?.settings?.[key] !== undefined)
-        .map((key) => [key, agentEntry?.settings?.[key]]),
+      PROJECTED_CONNECTOR_KEYS.filter(
+        (key) => agentEntry?.settings?.[key] !== undefined,
+      ).map((key) => [key, agentEntry?.settings?.[key]]),
     ),
   };
 

@@ -32,6 +32,15 @@ export {
   getConnectorAccountManager,
   resetConnectorAccountManagerForTests,
 } from "../../../core/src/connectors/account-manager.ts";
+// Real (unstubbed) connector credential key builders. These define WHERE a
+// connector credential lives on the redactable secret path; the projection
+// side (packages/agent) and the consuming plugin must derive byte-identical
+// keys, so stubbing them here would let a key mismatch — i.e. a credential the
+// plugin cannot find — pass the suite.
+export {
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+} from "../../../core/src/connectors/connector-config.ts";
 export { readRequestedConnectorRole } from "../../../core/src/connectors/oauth-role.ts";
 // Real (unstubbed) structured-error foundation. Plugins' fail-fast throw sites
 // (#12182 family) construct these; keep the genuine class so instanceof / code

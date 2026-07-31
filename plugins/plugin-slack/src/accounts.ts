@@ -8,7 +8,12 @@
  * `SlackService` reads these to build one runtime per workspace; the OWNER vs
  * AGENT role decides whether outbound posts use the user or bot token.
  */
-import type { ConnectorAccountRole, IAgentRuntime } from "@elizaos/core";
+import {
+  type ConnectorAccountRole,
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+  type IAgentRuntime,
+} from "@elizaos/core";
 
 /**
  * Default account identifier used when no specific account is configured
@@ -282,6 +287,46 @@ export function resolveSlackUserToken(raw?: string | null): string | undefined {
 }
 
 /**
+ * Reads one configured credential from the SECRET path.
+ *
+ * The upstream projection publishes credentials under
+ * `character.settings.secrets` — the boundary the runtime's redactor scans —
+ * rather than in the plain `settings.slack` policy object.
+ * `runtime.getSetting` consults secrets before settings, so the real value
+ * resolves while the token never appears in plain settings.
+ *
+ * Precedence mirrors the config merge exactly: a per-account credential
+ * overrides the base-level credential every account inherits
+ * (`SlackConfigSchema` is `SlackAccountSchema.extend({accounts})`). The flat
+ * `SLACK_*` env lane is checked by the caller AFTER this, and only for the
+ * default account.
+ *
+ * Returns `undefined` (never an empty string) so callers' `??` chains fall
+ * through correctly.
+ */
+function resolveAccountCredential(
+  runtime: IAgentRuntime,
+  accountId: string,
+  field: string,
+): string | undefined {
+  return (
+    nonEmptySetting(
+      runtime,
+      connectorAccountCredentialSettingKey("slack", accountId, field),
+    ) ??
+    nonEmptySetting(runtime, connectorBaseCredentialSettingKey("slack", field))
+  );
+}
+
+function nonEmptySetting(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
  * Normalises an inbound role string into a `ConnectorAccountRole`.
  * Unknown values fall back to AGENT — the default for legacy single
  * bot-token deployments where the agent IS the bot.
@@ -296,7 +341,7 @@ export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
 }
 
 /**
- * Gets the multi-account configuration from runtime settings.
+ * Gets the multi-account POLICY configuration from runtime settings.
  *
  * Reads `character.settings.slack` WHOLE. The previous implementation
  * hand-picked four keys (`enabled`, `botToken`, `appToken`, `accounts`) and
@@ -306,6 +351,14 @@ export function normalizeSlackAccountRole(raw: unknown): ConnectorAccountRole {
  * `SlackConfigSchema` is `SlackAccountSchema.extend({accounts})`, the top level
  * IS an account config; passing it through verbatim is both correct and the
  * only way the schema's own shape can be honored.
+ *
+ * What arrives here is credential-free BY CONSTRUCTION: the upstream projection
+ * (`projectConnectorPolicy`) strips every credential-classified key at any
+ * depth before this object reaches plain character settings, because plain
+ * settings sit outside the runtime's secret-redaction boundary. Tokens are read
+ * separately by `resolveAccountCredential()` from the SECRET path. Do not
+ * "restore" token reads to this object — a token visible here is a token that
+ * has escaped redaction.
  */
 export function getMultiAccountConfig(
   runtime: IAgentRuntime,
@@ -446,11 +499,22 @@ export function resolveSlackAccount(
 
   const allowEnv = normalizedAccountId === DEFAULT_ACCOUNT_ID;
 
+  // Credentials come from the SECRET path only.
+  //
+  // `character.settings.slack` is deliberately credential-free (see
+  // `getMultiAccountConfig`), so per-account tokens are read from the
+  // per-account secret keys the projection publishes, and the default account
+  // additionally falls back to the flat `SLACK_*` env credentials. Both lanes
+  // resolve through `runtime.getSetting`, which checks secrets FIRST, so a
+  // token never has to exist in plain settings to be resolvable.
+  const accountCredential = (field: string): string | undefined =>
+    resolveAccountCredential(runtime, normalizedAccountId, field);
+
   // Resolve bot token
   const envBotToken = allowEnv
     ? resolveSlackBotToken(runtime.getSetting("SLACK_BOT_TOKEN") as string)
     : undefined;
-  const configBotToken = resolveSlackBotToken(merged.botToken);
+  const configBotToken = resolveSlackBotToken(accountCredential("botToken"));
   const botToken = configBotToken ?? envBotToken;
   const botTokenSource: SlackTokenSource = configBotToken
     ? "config"
@@ -462,7 +526,7 @@ export function resolveSlackAccount(
   const envAppToken = allowEnv
     ? resolveSlackAppToken(runtime.getSetting("SLACK_APP_TOKEN") as string)
     : undefined;
-  const configAppToken = resolveSlackAppToken(merged.appToken);
+  const configAppToken = resolveSlackAppToken(accountCredential("appToken"));
   const appToken = configAppToken ?? envAppToken;
   const appTokenSource: SlackTokenSource = configAppToken
     ? "config"
@@ -472,14 +536,16 @@ export function resolveSlackAccount(
 
   // Resolve signing secret
   const signingSecret =
-    merged.signingSecret ??
-    (runtime.getSetting("SLACK_SIGNING_SECRET") as string);
+    accountCredential("signingSecret") ??
+    (allowEnv
+      ? ((runtime.getSetting("SLACK_SIGNING_SECRET") as string) ?? undefined)
+      : undefined);
 
   // Resolve user token
   const envUserToken = allowEnv
     ? resolveSlackUserToken(runtime.getSetting("SLACK_USER_TOKEN") as string)
     : undefined;
-  const configUserToken = resolveSlackUserToken(merged.userToken);
+  const configUserToken = resolveSlackUserToken(accountCredential("userToken"));
   const userToken = configUserToken ?? envUserToken;
 
   // Resolve role. Precedence: per-account config role > env override

@@ -759,3 +759,125 @@ describe("ADVERSARIAL: per-account policy isolation", () => {
     ).toMatchObject({ allowed: false, reason: "mention_required" });
   });
 });
+
+/* ------------------------------------------------------------------------ */
+/* [P0-3] Credential boundary                                                */
+/* ------------------------------------------------------------------------ */
+
+describe("ADVERSARIAL [P0-3]: credentials must never reach plain character settings", () => {
+  // FAILED BEFORE: buildCharacterFromConfig assigned the entire canonical
+  // connectors.slack object to character.settings.slack. SlackAccountSchema
+  // declares botToken/appToken/userToken/signingSecret at the base level AND
+  // per account, so every one of those values left the settings.secrets
+  // boundary the runtime redactor scans and became an ordinary setting.
+  const CANARIES = {
+    baseBot: "xoxb-BASE-CANARY",
+    baseApp: "xapp-BASE-CANARY",
+    baseSigning: "BASE-SIGNING-CANARY",
+    houseBot: "xoxb-HOUSE-CANARY",
+    houseUser: "xoxp-HOUSE-CANARY",
+  };
+
+  function credentialConfig() {
+    return {
+      agents: { list: [{ name: "Salem", system: "house agent" }] },
+      connectors: {
+        slack: {
+          botToken: CANARIES.baseBot,
+          appToken: CANARIES.baseApp,
+          signingSecret: CANARIES.baseSigning,
+          groupPolicy: "allowlist",
+          channels: { [CHANNEL_ID]: { enabled: false } },
+          accounts: {
+            house: {
+              botToken: CANARIES.houseBot,
+              userToken: CANARIES.houseUser,
+              channels: { [OTHER_CHANNEL_ID]: { requireMention: true } },
+            },
+          },
+        },
+      },
+    } as unknown as Parameters<typeof buildCharacterFromConfig>[0];
+  }
+
+  function containsValue(node: unknown, needle: string): boolean {
+    if (typeof node === "string") return node.includes(needle);
+    if (Array.isArray(node)) {
+      return node.some((entry) => containsValue(entry, needle));
+    }
+    if (node && typeof node === "object") {
+      return Object.values(node as Record<string, unknown>).some((entry) =>
+        containsValue(entry, needle),
+      );
+    }
+    return false;
+  }
+
+  it("keeps every base and per-account token out of settings.slack", () => {
+    const character = buildCharacterFromConfig(credentialConfig());
+    const slack = character.settings?.slack as Record<string, unknown>;
+
+    for (const canary of Object.values(CANARIES)) {
+      expect(containsValue(slack, canary)).toBe(false);
+    }
+    for (const field of [
+      "botToken",
+      "appToken",
+      "userToken",
+      "signingSecret",
+    ]) {
+      expect(field in slack).toBe(false);
+      expect(
+        field in
+          ((slack.accounts as Record<string, Record<string, unknown>>).house ??
+            {}),
+      ).toBe(false);
+    }
+
+    // The policy the operator wrote is untouched by the stripping.
+    expect(slack.groupPolicy).toBe("allowlist");
+    expect(
+      (slack.channels as Record<string, { enabled?: boolean }>)[CHANNEL_ID]
+        .enabled,
+    ).toBe(false);
+  });
+
+  it("still resolves those tokens for the account, from the secret path", () => {
+    // The boundary must not cost functionality: a stripped credential that the
+    // plugin can no longer find would be a fail-closed bug of its own.
+    const runtime = runtimeFromPersistedConfig(credentialConfig());
+
+    const base = resolveSlackAccount(runtime, "default");
+    expect(base.botToken).toBe(CANARIES.baseBot);
+    expect(base.appToken).toBe(CANARIES.baseApp);
+    expect(base.signingSecret).toBe(CANARIES.baseSigning);
+
+    // Per-account credential overrides the inherited base credential …
+    const house = resolveSlackAccount(runtime, "house");
+    expect(house.botToken).toBe(CANARIES.houseBot);
+    expect(house.userToken).toBe(CANARIES.houseUser);
+    // … while an unset per-account field still inherits from the base.
+    expect(house.appToken).toBe(CANARIES.baseApp);
+  });
+
+  it("enforces per-account policy at the handler while tokens stay redactable", async () => {
+    const harness = await bootHarness(credentialConfig(), {
+      accountId: "house",
+    });
+
+    // Policy still enforced for the account that owns it.
+    await harness.handlers.message?.({
+      message: channelMessage({ channel: OTHER_CHANNEL_ID }),
+      client: {},
+    });
+    expect(harness.processAgentMessage).not.toHaveBeenCalled();
+
+    // And no token is reachable from anything the gate can see.
+    for (const canary of Object.values(CANARIES)) {
+      expect(containsValue(harness.runtime.character.settings, canary)).toBe(
+        false,
+      );
+    }
+    expect(harness.account.botToken).toBe(CANARIES.houseBot);
+  });
+});
