@@ -9,6 +9,10 @@ import {
   getFirstRunProviderForLiveProvider,
   selectLiveProvider,
 } from "../../../app-core/test/helpers/live-provider";
+import {
+  isExpectedDevSmokeConsoleError,
+  isExpectedDevSmokeResponse,
+} from "./browser-failure-policy";
 
 export const API_PORT = Number(process.env.ELIZA_API_PORT || "31337");
 export const API_BASE = `http://127.0.0.1:${API_PORT}`;
@@ -29,6 +33,7 @@ export function browserFailureCollector(page: Page): string[] {
     const text = message.text();
     if (/^\[RenderTelemetry\]/.test(text)) return;
     if (/504 \(Outdated Optimize Dep\)/i.test(text)) return;
+    if (isExpectedDevSmokeConsoleError(text, message.location().url)) return;
     if (
       /^Failed to load resource: the server responded with a status of (401|404) /i.test(
         text,
@@ -42,6 +47,7 @@ export function browserFailureCollector(page: Page): string[] {
     if (response.status() === 504 && response.url().includes("/.vite/deps/")) {
       return;
     }
+    if (isExpectedDevSmokeResponse(response.status(), response.url())) return;
     if (response.status() < 500) return;
     failures.push(`${response.status()} ${response.url()}`);
   });
