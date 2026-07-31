@@ -71,19 +71,16 @@ interface FakeUpstream {
 }
 
 function messagesResponseBody(text: string): string {
-  return JSON.stringify(
-    {
-      id: "msg_e2e_fake_upstream",
-      type: "message",
-      role: "assistant",
-      model: MODEL,
-      content: [{ type: "text", text }],
-      stop_reason: "end_turn",
-      stop_sequence: null,
-      usage: { input_tokens: 12, output_tokens: 5 },
-    },
-    createIsolatedAccountStoragePolicy(home),
-  );
+  return JSON.stringify({
+    id: "msg_e2e_fake_upstream",
+    type: "message",
+    role: "assistant",
+    model: MODEL,
+    content: [{ type: "text", text }],
+    stop_reason: "end_turn",
+    stop_sequence: null,
+    usage: { input_tokens: 12, output_tokens: 5 },
+  });
 }
 
 // Each upstream instance takes a FRESH port from the assigned range. Reusing
@@ -192,19 +189,22 @@ function writeSubscriptionAccount(
   access: string,
   createdAt: number,
 ): void {
-  saveAccount({
-    id,
-    providerId: "anthropic-subscription",
-    label: id,
-    source: "oauth",
-    credentials: {
-      access,
-      refresh: `${access}-refresh`,
-      expires: FAR_FUTURE,
+  saveAccount(
+    {
+      id,
+      providerId: "anthropic-subscription",
+      label: id,
+      source: "oauth",
+      credentials: {
+        access,
+        refresh: `${access}-refresh`,
+        expires: FAR_FUTURE,
+      },
+      createdAt,
+      updatedAt: Date.now(),
     },
-    createdAt,
-    updatedAt: Date.now(),
-  });
+    createIsolatedAccountStoragePolicy(home),
+  );
 }
 
 function oauthRuntime(baseUrl: string): IAgentRuntime {
