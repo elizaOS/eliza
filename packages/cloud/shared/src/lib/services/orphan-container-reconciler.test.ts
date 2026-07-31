@@ -1,46 +1,81 @@
 /**
- * Tests for the SHARED orphan-container reconciler — the single implementation
- * behind both the agent (`docker-node-workloads.ts`) and app
- * (`app-container-orphan-reconciler.ts`) paths.
- *
- * The per-path suites cover each path's wiring; this suite proves the shared
- * diff handles BOTH key modes correctly:
- *
- *   1. UNIQUE keys (agents): `agent_sandboxes.id` is a PRIMARY KEY, so each key
- *      maps to at most ONE row. The group-by-key `every-terminal` fold then
- *      reduces to a plain single-status check — identical to the previous
- *      per-agent last-write-wins `Map<id,status>`. This is the behavior-
- *      preservation proof: same inputs → same reaping decisions.
- *
- *   2. DUPLICATE keys (apps): `containers.name` has NO unique constraint, so one
- *      key maps to MANY rows. The #9307 fail-safe protects a live container that
- *      shares a key with stale terminal rows — a key is reaped ONLY when EVERY
- *      row is terminal, order-independently.
+ * Covers Docker-list parsing and fail-closed ownership classification shared
+ * by the agent and app orphan reconcilers.
  */
 
 import { describe, expect, test } from "bun:test";
 import {
+  classifyContainersForReconciliation,
   computeOrphanContainersToReap,
   type LiveContainerRef,
   type NodeContainerRef,
   type OrphanReconcilerConfig,
+  parseNodeContainerList,
 } from "./orphan-container-reconciler";
 
-const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+const AGED_NOW_MS = 10 * 60_000;
+const container = (name: string, id: string): NodeContainerRef => ({
+  name,
+  id,
+  createdAtMs: 0,
+});
 const live = (key: string, status: string): LiveContainerRef => ({ key, status });
 
-describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wins)", () => {
-  // keyOf parses the id out of `k-<id>`; terminal vocab is arbitrary here.
+describe("parseNodeContainerList", () => {
+  test("parses Docker timestamps by their numeric offsets", () => {
+    const output = [
+      "agent-utc|id-utc|2026-07-07 16:45:01 +0000 UTC",
+      "agent-pacific|id-pacific|2026-07-07 09:45:01 -0700 PDT",
+      "agent-india|id-india|2026-07-07 22:15:01.250 +0530 IST",
+    ].join("\n");
+
+    expect(parseNodeContainerList(output, "agent-")).toEqual([
+      {
+        name: "agent-utc",
+        id: "id-utc",
+        createdAtMs: Date.UTC(2026, 6, 7, 16, 45, 1),
+      },
+      {
+        name: "agent-pacific",
+        id: "id-pacific",
+        createdAtMs: Date.UTC(2026, 6, 7, 16, 45, 1),
+      },
+      {
+        name: "agent-india",
+        id: "id-india",
+        createdAtMs: Date.UTC(2026, 6, 7, 16, 45, 1, 250),
+      },
+    ]);
+  });
+
+  test("retains an entry without age when Docker emits an invalid timestamp", () => {
+    expect(
+      parseNodeContainerList("agent-live|id-live|2026-02-30 10:00:00 +0000 UTC", "agent-"),
+    ).toEqual([{ name: "agent-live", id: "id-live" }]);
+  });
+
+  test("rejects substring matches without treating them as managed", () => {
+    expect(
+      parseNodeContainerList("my-agent-live|wrong-prefix|2026-07-07 16:45:01 +0000 UTC", "agent-"),
+    ).toEqual([]);
+  });
+
+  test("surfaces malformed managed rows so the node is skipped", () => {
+    expect(() =>
+      parseNodeContainerList("agent-no-id||2026-07-07 16:45:01 +0000 UTC", "agent-"),
+    ).toThrow("invalid managed-container listing row");
+    expect(() =>
+      parseNodeContainerList("agent-extra|id-extra|2026-07-07 16:45:01 +0000 UTC|extra", "agent-"),
+    ).toThrow("invalid managed-container listing row");
+  });
+});
+
+describe("shared diff with unique agent keys", () => {
   const diff: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses"> = {
     keyOf: (name) => (name.startsWith("k-") && name.length > 2 ? name.slice(2) : null),
     terminalStatuses: new Set(["stopped", "error"]),
   };
 
-  // For a UNIQUE key there is at most one status. `every(terminal)` over a
-  // singleton list `[s]` is exactly `terminal.has(s)`, and a missing key is
-  // `no_db_row` either way. So for every single-row input the group-by-key fold
-  // produces the SAME decision the old last-write-wins map would. We assert that
-  // equivalence directly over the full decision table.
   const singleStatusReference = (status: string | undefined) => {
     if (status === undefined) return "no_db_row";
     return diff.terminalStatuses.has(status) ? "terminal_db_row" : null;
@@ -49,7 +84,13 @@ describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wi
   for (const status of [undefined, "running", "stopped", "error", "pending"] as const) {
     test(`status=${String(status)} → matches single-status check`, () => {
       const rows = status === undefined ? [] : [live("id1", status)];
-      const orphans = computeOrphanContainersToReap([container("k-id1", "c1")], rows, diff);
+      const orphans = computeOrphanContainersToReap(
+        [container("k-id1", "c1")],
+        rows,
+        diff,
+        undefined,
+        AGED_NOW_MS,
+      );
       const expected = singleStatusReference(status);
       if (expected === null) {
         expect(orphans).toEqual([]);
@@ -64,8 +105,9 @@ describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wi
       [container("k-a", "ca"), container("k-b", "cb"), container("k-c", "cc")],
       [live("a", "running"), live("b", "stopped")],
       diff,
+      undefined,
+      AGED_NOW_MS,
     );
-    // a=running → keep; b=stopped → reap; c=missing → reap.
     expect(orphans.map((o) => `${o.key}:${o.reason}`).sort()).toEqual([
       "b:terminal_db_row",
       "c:no_db_row",
@@ -73,14 +115,13 @@ describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wi
   });
 });
 
-describe("shared diff — DUPLICATE-key mode (app, #9307 every-terminal fail-safe)", () => {
-  // keyOf is identity (the name IS the key), matching the app path.
+describe("shared diff with duplicate app keys", () => {
   const diff: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses"> = {
     keyOf: (name) => (name.startsWith("app-") && name.length > 4 ? name : null),
     terminalStatuses: new Set(["stopped", "failed", "deleted"]),
   };
 
-  test("ANY non-terminal row among duplicates protects the key (both orders)", () => {
+  test("a non-terminal row among duplicates protects the key in either order", () => {
     expect(
       computeOrphanContainersToReap(
         [container("app-dup", "c")],
@@ -97,7 +138,7 @@ describe("shared diff — DUPLICATE-key mode (app, #9307 every-terminal fail-saf
     ).toEqual([]);
   });
 
-  test("reaps only when EVERY duplicate row is terminal", () => {
+  test("reaps only when every duplicate row is terminal", () => {
     const orphans = computeOrphanContainersToReap(
       [container("app-dead", "c")],
       [live("app-dead", "stopped"), live("app-dead", "failed"), live("app-dead", "deleted")],
@@ -109,8 +150,70 @@ describe("shared diff — DUPLICATE-key mode (app, #9307 every-terminal fail-saf
   });
 });
 
-describe("node-aware diff (#15228 — reap the stale twin a re-provision left behind)", () => {
-  // Agent config: node-aware, 5-min grace. keyOf parses `agent-<id>`.
+describe("retention decision reasons", () => {
+  const diff: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses"> = {
+    keyOf: (name) => (name.startsWith("agent-") ? name.slice("agent-".length) : null),
+    terminalStatuses: new Set(["stopped"]),
+  };
+
+  test("distinguishes unknown age, grace, live ownership, and unmanaged names", () => {
+    const decisions = classifyContainersForReconciliation(
+      [
+        { name: "agent-unknown", id: "unknown" },
+        { name: "agent-young", id: "young", createdAtMs: AGED_NOW_MS - 1_000 },
+        container("agent-live", "live"),
+        container("postgres", "postgres"),
+      ],
+      [live("live", "running")],
+      diff,
+      undefined,
+      AGED_NOW_MS,
+    );
+
+    expect(decisions.map(({ id, action, reason }) => ({ id, action, reason }))).toEqual([
+      { id: "unknown", action: "retain", reason: "no_db_row_age_unknown" },
+      { id: "young", action: "retain", reason: "no_db_row_within_grace" },
+      { id: "live", action: "retain", reason: "live_db_row" },
+      { id: "postgres", action: "retain", reason: "unmanaged_name" },
+    ]);
+  });
+
+  test("retains rowless containers when any age input is non-finite", () => {
+    const decisions = classifyContainersForReconciliation(
+      [
+        { name: "agent-created-nan", id: "created-nan", createdAtMs: Number.NaN },
+        container("agent-clock-nan", "clock-nan"),
+      ],
+      [],
+      diff,
+      undefined,
+      Number.NaN,
+    );
+
+    expect(decisions.map(({ action, reason }) => ({ action, reason }))).toEqual([
+      { action: "retain", reason: "no_db_row_age_unknown" },
+      { action: "retain", reason: "no_db_row_age_unknown" },
+    ]);
+  });
+
+  test("rejects invalid grace configuration before classifying a container", () => {
+    for (const graceKind of ["rowlessGraceMs", "nodeMoveGraceMs"] as const) {
+      for (const graceMs of [Number.NaN, -1]) {
+        expect(() =>
+          classifyContainersForReconciliation(
+            [container("agent-live", "live")],
+            [live("live", "running")],
+            { ...diff, [graceKind]: graceMs },
+            undefined,
+            AGED_NOW_MS,
+          ),
+        ).toThrow("grace must be a non-negative duration");
+      }
+    }
+  });
+});
+
+describe("node-aware stale-twin classification", () => {
   const cfg: Pick<
     OrphanReconcilerConfig,
     "keyOf" | "terminalStatuses" | "nodeAware" | "nodeMoveGraceMs"
@@ -132,16 +235,35 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     nodeId,
     updatedAtMs: NOW - ageMs,
   });
-  // Containers default to OLD (past grace) so each test isolates the row-side
-  // condition; the container-age race has its own cases below.
   const c = (id: string, containerAgeMs = 60 * 60_000): NodeContainerRef => ({
     name: `agent-${id}`,
     id: `docker-${id}`,
     createdAtMs: NOW - containerAgeMs,
   });
 
-  test("live row points at a DIFFERENT node, stable past grace → reap as wrong_node", () => {
-    // container observed on nodeA; the agent's live row says it lives on nodeB.
+  test("tunes rowless and wrong-node evidence windows independently", () => {
+    const independentGrace = {
+      ...cfg,
+      rowlessGraceMs: 20 * 60_000,
+      nodeMoveGraceMs: 5 * 60_000,
+    };
+    const tenMinutesOld = c("x", 10 * 60_000);
+
+    expect(
+      computeOrphanContainersToReap([tenMinutesOld], [], independentGrace, "nodeA", NOW),
+    ).toEqual([]);
+    expect(
+      computeOrphanContainersToReap(
+        [tenMinutesOld],
+        [onNode("x", "running", "nodeB", 10 * 60_000)],
+        independentGrace,
+        "nodeA",
+        NOW,
+      ),
+    ).toEqual([{ name: "agent-x", id: "docker-x", key: "x", reason: "wrong_node" }]);
+  });
+
+  test("reaps a stable container whose live row points at a different node", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
       [onNode("x", "running", "nodeB", 10 * 60_000)],
@@ -152,11 +274,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans).toEqual([{ name: "agent-x", id: `docker-x`, key: "x", reason: "wrong_node" }]);
   });
 
-  test("FRESH container + stale wrong-node row → keep (re-placement in flight)", () => {
-    // The worker creates the container on the new node BEFORE updating the row,
-    // so mid-provision the old row (old timestamp, old node) is exactly what a
-    // legitimate re-placement looks like. Caught live: a 29-second-old container
-    // drew a wrong_node verdict against a 12-day-old row.
+  test("retains a fresh container while placement is in flight", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x", 29_000)],
       [onNode("x", "running", "nodeB", 12 * 24 * 60 * 60_000)],
@@ -167,7 +285,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans).toEqual([]);
   });
 
-  test("container age unknown → never wrong_node-reaped (fail safe)", () => {
+  test("retains a container with unknown age", () => {
     const orphans = computeOrphanContainersToReap(
       [{ name: "agent-x", id: "docker-x" }],
       [onNode("x", "running", "nodeB", 10 * 60_000)],
@@ -178,7 +296,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans).toEqual([]);
   });
 
-  test("live row points at THIS node → keep (this is the canonical container)", () => {
+  test("retains the container on its canonical node", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
       [onNode("x", "running", "nodeA", 10 * 60_000)],
@@ -189,9 +307,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans).toEqual([]);
   });
 
-  test("mismatch but WITHIN grace → keep (protects the mid-provision race)", () => {
-    // row just moved to nodeB 30s ago; a container still on nodeA might be the
-    // draining old one OR a race — do not reap until it is stably wrong.
+  test("retains a node mismatch within the row grace window", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
       [onNode("x", "running", "nodeB", 30_000)],
@@ -202,7 +318,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans).toEqual([]);
   });
 
-  test("row missing nodeId → cannot prove elsewhere → keep", () => {
+  test("retains a row whose placement evidence is incomplete", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
       [{ key: "x", status: "running" }],
@@ -224,7 +340,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans[0]?.reason).toBe("terminal_db_row");
   });
 
-  test("no nodeId arg (non-node-aware call) → node logic inert, legacy behavior", () => {
+  test("retains when the caller omits node context", () => {
     const orphans = computeOrphanContainersToReap(
       [c("x")],
       [onNode("x", "running", "nodeB", 10 * 60_000)],
@@ -235,7 +351,7 @@ describe("node-aware diff (#15228 — reap the stale twin a re-provision left be
     expect(orphans).toEqual([]);
   });
 
-  test("nodeAware off → a wrong-node container is NEVER reaped (apps semantics)", () => {
+  test("retains a wrong-node container when node awareness is disabled", () => {
     const appsCfg = { ...cfg, nodeAware: false };
     const orphans = computeOrphanContainersToReap(
       [c("x")],

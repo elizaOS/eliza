@@ -1,20 +1,10 @@
 /**
- * Tests for the AGENT orphan-container reconciler. The diff and orchestration
- * loop now live in the shared `orphan-container-reconciler.ts`; this suite pins
- * the AGENT-specific wiring: the `agentIdFromContainerName` keyOf (parse the id
- * out of `agent-<id>`), the agent terminal-status vocab, and that the shared
- * diff reaps an agent container ONLY when its id has no live DB row (or a
- * terminal one) and NEVER when the name does not match the managed pattern. The
- * orchestration test pins the "never reap on an unreachable node" invariant
- * (SSH listing returned null → skip, not reap).
- *
- * Because `agent_sandboxes.id` is a PRIMARY KEY, each agent id maps to AT MOST
- * one DB row, so the shared group-by-key `every-terminal` diff reduces to a
- * plain single-status check here — identical reaping decisions to the previous
- * per-agent `Map<id,status>` last-write-wins implementation.
+ * Covers the agent-specific name, status, placement, and orchestration rules
+ * supplied to the shared Docker orphan reconciler.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
+import { logger } from "../utils/logger";
 import { agentIdFromContainerName } from "./docker-node-workloads";
 import {
   computeOrphanContainersToReap,
@@ -25,7 +15,6 @@ import {
   reconcileOrphanContainers,
 } from "./orphan-container-reconciler";
 
-/** The agent reconciler's pure-diff deltas (matches the production config). */
 const AGENT_DIFF: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses"> = {
   keyOf: agentIdFromContainerName,
   terminalStatuses: new Set(["stopped", "error", "sleeping", "deletion_failed"]),
@@ -48,13 +37,40 @@ describe("agentIdFromContainerName", () => {
 
 describe("computeOrphanContainersToReap (agent diff)", () => {
   const live = (key: string, status: string): LiveContainerRef => ({ key, status });
-  const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+  const NOW_MS = 10 * 60_000;
+  const container = (name: string, id: string): NodeContainerRef => ({
+    name,
+    id,
+    createdAtMs: 0,
+  });
   const compute = (containers: readonly NodeContainerRef[], rows: readonly LiveContainerRef[]) =>
-    computeOrphanContainersToReap(containers, rows, AGENT_DIFF);
+    computeOrphanContainersToReap(containers, rows, AGENT_DIFF, undefined, NOW_MS);
 
-  test("reaps a container whose agent id has NO db row", () => {
+  test("reaps a container whose agent id has no database row", () => {
     const orphans = compute([container("agent-gone", "c1")], []);
     expect(orphans).toEqual([{ name: "agent-gone", id: "c1", key: "gone", reason: "no_db_row" }]);
+  });
+
+  test("retains a young container without a database row during the grace window", () => {
+    const young: NodeContainerRef = {
+      name: "agent-gone",
+      id: "c1",
+      createdAtMs: NOW_MS - 1_000,
+    };
+    expect(computeOrphanContainersToReap([young], [], AGENT_DIFF, undefined, NOW_MS)).toEqual([]);
+  });
+
+  test("retains a rowless container when Docker did not provide its age", () => {
+    const unknownAge: NodeContainerRef = { name: "agent-gone", id: "c1" };
+    expect(computeOrphanContainersToReap([unknownAge], [], AGENT_DIFF, undefined, NOW_MS)).toEqual(
+      [],
+    );
+  });
+
+  test("retains a rowless container when no classification clock is available", () => {
+    expect(computeOrphanContainersToReap([container("agent-gone", "c1")], [], AGENT_DIFF)).toEqual(
+      [],
+    );
   });
 
   test("reaps a container whose db row is in a terminal state", () => {
@@ -72,7 +88,7 @@ describe("computeOrphanContainersToReap (agent diff)", () => {
     }
   });
 
-  test("does NOT reap a container with a live (running) db row", () => {
+  test("retains a container with a live database row", () => {
     const orphans = compute([container("agent-live", "c3")], [live("live", "running")]);
     expect(orphans).toEqual([]);
   });
@@ -118,7 +134,7 @@ describe("computeOrphanContainersToReap (agent diff)", () => {
     ).toEqual([{ name: "agent-same", id: "ghost", key: "same", reason: "wrong_node" }]);
   });
 
-  test("does NOT reap a row in deletion_pending (delete job owns teardown)", () => {
+  test("retains deletion_pending while the delete job owns teardown", () => {
     const orphans = compute(
       [container("agent-deleting", "c4")],
       [live("deleting", "deletion_pending")],
@@ -126,7 +142,7 @@ describe("computeOrphanContainersToReap (agent diff)", () => {
     expect(orphans).toEqual([]);
   });
 
-  test("does NOT reap provisioning / pending / disconnected rows", () => {
+  test("retains provisioning, pending, and disconnected rows", () => {
     for (const status of ["provisioning", "pending", "disconnected"]) {
       const orphans = compute([container("agent-x", "cx")], [live("x", status)]);
       expect(orphans).toEqual([]);
@@ -180,8 +196,8 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "agent-orphan", id: "c-orph" },
-        { name: "agent-live", id: "c-live" },
+        { name: "agent-orphan", id: "c-orph", createdAtMs: 0 },
+        { name: "agent-live", id: "c-live", createdAtMs: 0 },
       ]),
       removeContainer,
     });
@@ -194,7 +210,48 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
     expect(result).toEqual({ nodesScanned: 1, nodesSkipped: 0, reaped: 1, reapFailed: 0 });
   });
 
-  test("SKIPS a node whose container listing failed — never reaps on a blind node", async () => {
+  test("logs structured retain and reap decisions", async () => {
+    const debugLog = spyOn(logger, "debug").mockImplementation(() => {});
+    const infoLog = spyOn(logger, "info").mockImplementation(() => {});
+    const node = makeNode({
+      listContainers: mock(async () => [
+        { name: "agent-live", id: "c-live", createdAtMs: 0 },
+        { name: "agent-stopped", id: "c-stopped", createdAtMs: 0 },
+      ]),
+    });
+
+    try {
+      await reconcileOrphanContainers(
+        [node],
+        makeConfig(async () => [
+          { key: "live", status: "running" },
+          { key: "stopped", status: "stopped" },
+        ]),
+      );
+
+      expect(debugLog).toHaveBeenCalledWith(
+        "[orphan-reconciler] Retained container",
+        expect.objectContaining({
+          containerId: "c-live",
+          decision: "retain",
+          reason: "live_db_row",
+        }),
+      );
+      expect(infoLog).toHaveBeenCalledWith(
+        "[orphan-reconciler] Reaped orphan container",
+        expect.objectContaining({
+          containerId: "c-stopped",
+          decision: "reap",
+          reason: "terminal_db_row",
+        }),
+      );
+    } finally {
+      debugLog.mockRestore();
+      infoLog.mockRestore();
+    }
+  });
+
+  test("skips a node whose container listing failed", async () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({ listContainers: mock(async () => null), removeContainer });
 
@@ -207,7 +264,7 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
     expect(result).toEqual({ nodesScanned: 0, nodesSkipped: 1, reaped: 0, reapFailed: 0 });
   });
 
-  test("SKIPS a non-healthy node (defensive: caller should pre-filter)", async () => {
+  test("skips a non-healthy node before listing containers", async () => {
     const listContainers = mock(async () => [] as NodeContainerRef[]);
     const node = makeNode({ status: "offline", listContainers });
 
@@ -224,8 +281,8 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
   test("counts a failed removal as reapFailed without aborting the rest", async () => {
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "agent-a", id: "ca" },
-        { name: "agent-b", id: "cb" },
+        { name: "agent-a", id: "ca", createdAtMs: 0 },
+        { name: "agent-b", id: "cb", createdAtMs: 0 },
       ]),
       removeContainer: mock(async (id: string) => {
         if (id === "ca") throw new Error("ssh broke");

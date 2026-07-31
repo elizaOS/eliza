@@ -141,6 +141,17 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
   `);
 
   await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandboxes_container_name_idx"
+      ON "agent_sandboxes" ("container_name")
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandboxes_replacement_cleanup_container_name_idx"
+      ON "agent_sandboxes" ("replacement_cleanup_container_name")
+      WHERE "replacement_cleanup_container_name" IS NOT NULL
+  `);
+
+  await dbWrite.execute(sql`
     CREATE INDEX IF NOT EXISTS "agent_sandboxes_replacement_cleanup_pending_idx"
       ON "agent_sandboxes" ("replacement_cleanup_created_at")
       WHERE "replacement_cleanup_sandbox_id" IS NOT NULL
