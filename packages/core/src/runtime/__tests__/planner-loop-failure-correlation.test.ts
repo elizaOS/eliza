@@ -152,6 +152,81 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 
+	it("clears a failure when the retry differs only in free-text description narration (live incident: builders re-narrate retried commands, and the stale failure authority replaced their terminal completion proof)", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "verify-1",
+							name: "SHELL",
+							arguments: {
+								action: "run",
+								command: "bun run typecheck && bun run lint && bun run test",
+								description: "Run the verification commands",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "verify-2",
+							name: "SHELL",
+							arguments: {
+								action: "run",
+								command: "bun run typecheck && bun run lint && bun run test",
+								description: "Re-run verification after formatting fixes",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: 'APP_CREATE_DONE {"appName":"demo"}' },
+						},
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "lint failed",
+					text: "biome check failed on generated code",
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "all checks pass",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Fix formatting and re-run.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Emit the completion proof.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toContain("APP_CREATE_DONE");
+	});
+
 	it("keeps a failed SHELL command authoritative when an unrelated command succeeds before REPLY", async () => {
 		const runtime = {
 			useModel: vi

@@ -2247,9 +2247,21 @@ export class SubAgentRouter extends Service {
       cachedDead.length > 0
         ? `\nThese URL(s) are stale cached 404s. Their exact filenames are unavailable for this retry; do not recreate them and do not leave any HTML reference pointing to them. Create fresh asset filenames in the same app directory (for example, add a version suffix), update every HTML reference to the fresh filenames, then verify the fresh public URLs:\n${formatDeadLines(cachedDead)}\n`
         : "";
+    // A root-absolute asset path under a sub-path deploy is the dominant
+    // real-world cause of a dead sub-resource (vite base "/" emitting
+    // /assets/... for a page served at /apps/<slug>/). Name that diagnosis
+    // explicitly — the generic "files missing, create them" framing sent
+    // every retry rebuilding fresh files without ever touching the base,
+    // burning the whole retry budget on an unfixable path.
+    const rootAbsoluteDead = missingDead.some((d) =>
+      /^https?:\/\/[^/]+\/(?:assets|static)\//.test(d.url),
+    );
+    const basePathHint = rootAbsoluteDead
+      ? `\nAt least one dead URL is a ROOT-absolute asset path (e.g. /assets/…) while the page is served under a sub-path. This is a build base-path problem, NOT a missing file: rebuild with a relative base (vite: \`--base ./\` or base: "./" in vite.config), redeploy the build output, and verify the page's referenced asset URLs resolve UNDER the page's own path.\n`
+      : "";
     const missingFeedback =
       missingDead.length > 0
-        ? `\nThese URL(s) are not reachable, which means the corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty:\n${formatDeadLines(missingDead)}\n`
+        ? `\nThese URL(s) are not reachable:\n${formatDeadLines(missingDead)}\n${basePathHint || "\nThe corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty.\n"}`
         : "";
     const retryTask = `--- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
 The previous attempt reported the task complete, but verification failed. This feedback overrides conflicting filename or URL instructions in the original task.${cachedFeedback}${missingFeedback}
