@@ -131,18 +131,19 @@ describe("runSupervisorTick (#8900)", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it("a delivery failure doesn't poison dedup (retries next tick)", async () => {
-    const send = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("connector down"))
-      .mockResolvedValueOnce(undefined);
+  it("damps a permanent delivery failure: remembers it undeliverable, no same-digest retry (ebdc4bc storm guard)", async () => {
+    const send = vi.fn().mockRejectedValue(new Error("connector down"));
     const seen = new Map<string, string>();
     const views = [view({ id: "t1" })];
     const first = await runSupervisorTick(views, send, seen);
-    expect(first.posted).toEqual([]); // failed, not recorded
-    expect(seen.has(ROOM_A)).toBe(false);
+    expect(first.posted).toEqual([]); // failed, nothing posted
+    // A failed digest is REMEMBERED as `undeliverable:<digest>` so the loop does
+    // not re-hammer a permanently-dead target every tick (the ~1871 warns/day
+    // storm ebdc4bc fixed). It re-posts only when the digest CHANGES — staleness
+    // bands mutate it within minutes; covered by the escalation test below.
+    expect(seen.get(ROOM_A)?.startsWith("undeliverable:")).toBe(true);
     const second = await runSupervisorTick(views, send, seen);
-    expect(second.posted).toEqual([ROOM_A]); // retried successfully
+    expect(second.posted).toEqual([]); // same digest still dead → damped, not retried
   });
 
   it("re-posts a STUCK task when its staleness band escalates (not deduped silent)", async () => {

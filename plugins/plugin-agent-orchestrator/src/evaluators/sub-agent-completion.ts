@@ -313,8 +313,10 @@ function stripRouterAnnotations(text: string): string {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const body =
     lines[0]?.startsWith("[sub-agent:") === true ? lines.slice(1) : lines;
-  const annotationIndex = body.findIndex((line) =>
-    line.startsWith("[verification:"),
+  const annotationIndex = body.findIndex(
+    (line) =>
+      line.startsWith("[verification:") ||
+      line.startsWith("[verification note:"),
   );
   return (annotationIndex >= 0 ? body.slice(0, annotationIndex) : body)
     .join("\n")

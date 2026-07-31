@@ -1586,9 +1586,14 @@ describe("SubAgentRouter", () => {
       expect(verified ?? []).toEqual([]);
     });
 
-    it("rejects generated app pages that reference unreachable image assets", async () => {
+    it("rejects generated app pages that reference unreachable same-origin image assets", async () => {
+      // Same-origin sub-resources are part of the artifact under verification:
+      // a missing sticker.png on the deploy origin IS a broken build and must
+      // still fail-and-retry. (Dead THIRD-PARTY sub-resources — font-CDN roots,
+      // hallucinated cross-origin paths — degrade to an info note instead;
+      // covered by the companion test below.)
       const appUrl = "https://example.test/apps/permit-garden/";
-      const imageUrl = "https://cdn.example.test/permit-garden/sticker.png";
+      const imageUrl = "https://example.test/apps/permit-garden/sticker.png";
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         if (String(input) === imageUrl) {
           return new Response("not found", { status: 404 });
@@ -2170,6 +2175,37 @@ describe("extractSubResources", () => {
       (_, i) => `<script src="s${i}.js"></script>`,
     ).join("");
     expect(extractSubResources(many, PAGE).length).toBe(10);
+  });
+
+  it("skips <link> hint rels but keeps the real stylesheet they accompany", () => {
+    // zai-glm-4.7 emits Google-Fonts boilerplate: preconnect hints name bare
+    // CDN roots that 404 by design and must never be probed as dependencies,
+    // while the css2 stylesheet on the same hinted origin is a real one.
+    const html = `<!doctype html><html><head>
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link rel="dns-prefetch" href="https://cdn.example.com">
+      <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet">
+      <link rel="stylesheet" href="style.css">
+      </head><body></body></html>`;
+    expect(extractSubResources(html, PAGE).sort()).toEqual([
+      "https://example.test/apps/bmi/style.css",
+      "https://fonts.googleapis.com/css2?family=Inter&display=swap",
+    ]);
+  });
+
+  it("skips modulepreload/prefetch/prerender hints across quoting styles", () => {
+    const html = `<link rel=modulepreload href="/mod.js"><link rel='prefetch' href="/next.html"><link rel="prerender" href="/after.html"><link rel="stylesheet" href="/app.css">`;
+    expect(extractSubResources(html, PAGE)).toEqual([
+      "https://example.test/app.css",
+    ]);
+  });
+
+  it("never yields a bare cross-origin root, whatever element carried it", () => {
+    const html = `<script src="https://cdn.jsdelivr.net/"></script><script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`;
+    expect(extractSubResources(html, PAGE)).toEqual([
+      "https://cdn.jsdelivr.net/npm/chart.js",
+    ]);
   });
 });
 

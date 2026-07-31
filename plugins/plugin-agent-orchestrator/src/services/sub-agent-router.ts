@@ -3493,6 +3493,11 @@ export async function annotateUnverifiedUrls(
     return result;
   };
   const dead: DeadUrl[] = [];
+  // Dead sub-resources on a THIRD-PARTY origin (font-CDN roots, analytics
+  // beacons, preconnect hint origins) are collected separately: their bare
+  // roots routinely 404 by design, so their unreachability must never read
+  // as "the build did not complete". Deploy-scoped dead URLs stay in `dead`.
+  const deadThirdParty: DeadUrl[] = [];
   await Promise.all(
     urls.map(async (url) => {
       const result = await probe(url);
@@ -3517,7 +3522,16 @@ export async function annotateUnverifiedUrls(
           subResources.map(async (subUrl) => {
             const subResult = await probe(subUrl);
             if (subResult.status !== null) {
-              dead.push({ url: subUrl, status: subResult.status, via: url });
+              // Same-origin and route-mapped (deploy-host) sub-resources are
+              // part of the artifact under verification — a missing style.css
+              // IS a broken build. A cross-origin third party is not; keyed on
+              // structured URL origins, never on narration text.
+              const entry = { url: subUrl, status: subResult.status, via: url };
+              if (isThirdPartySubResource(subUrl, url, routeVerification)) {
+                deadThirdParty.push(entry);
+              } else {
+                dead.push(entry);
+              }
               return;
             }
             const subLocalStatus = verifyMappedLocalUrl(
@@ -3533,12 +3547,28 @@ export async function annotateUnverifiedUrls(
       }
     }),
   );
+  // Tally page-level dead against the mentioned set and sub-resource dead
+  // separately: sub-resources are DISCOVERED from page HTML, not mentioned,
+  // so folding them into one "N dead of M mentioned" count let N exceed M.
+  const pageDeadCount = dead.filter((d) => d.via === undefined).length;
   log?.(
-    `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
+    `[verify] done @ ${new Date().toISOString()} — ${pageDeadCount} dead of ${urls.length} mentioned, ${dead.length - pageDeadCount} dead sub-resource(s), ${deadThirdParty.length} third-party sub-resource(s) unreachable (informational)`,
   );
   if (dead.length === 0) {
+    // Only third-party sub-resources (if anything) failed to respond: every
+    // claimed page probed live, so completion proceeds with all verified URLs
+    // intact. A single-line note keeps the signal observable to the planner
+    // and the trajectory WITHOUT instructing the model to report a failure
+    // that did not happen. Single line by contract: the completion-summary
+    // and annotation strippers key on the "[verification note:" line prefix,
+    // which is deliberately disjoint from the "[verification:" failure marker
+    // the completion evaluator treats as a failed build.
+    const annotated =
+      deadThirdParty.length === 0
+        ? text
+        : `${text}\n\n[verification note: referenced page URL(s) verified reachable. ${deadThirdParty.length} cross-origin third-party sub-resource(s) did not respond to a probe (${deadThirdParty.map((d) => `${d.url} → ${d.status}`).join(", ")}) — common by design for font/CDN/analytics hosts; this is not a build failure]`;
     return {
-      text,
+      text: annotated,
       dead,
       verifiedUrls: canonicalUserFacingVerifiedUrls(urls, routeVerification),
     };
@@ -3560,6 +3590,42 @@ export async function annotateUnverifiedUrls(
       routeVerification,
     ),
   };
+}
+
+// Scope verification FAILURE semantics to the deploy surface. A dead
+// sub-resource is deploy-scoped — a hard verification failure — only when it
+// shares the referencing page's origin or lands on a configured route-mapping
+// origin (the deploy host or its public/loopback alias). Any other
+// cross-origin target (a Google-Fonts preconnect hint origin, a beacon, a CDN
+// root) is outside the build: those roots routinely 404 or refuse GETs by
+// design, and treating them as build failures produced false "not live"
+// reports for pages that themselves probed 200. Keys only on structured URL
+// origins and the route-mapping shape — never on prose or hostname lists.
+function isThirdPartySubResource(
+  subUrl: string,
+  pageUrl: string,
+  routeVerification: RouteUrlVerification | undefined,
+): boolean {
+  let sub: URL;
+  let page: URL;
+  try {
+    sub = new URL(subUrl);
+    page = new URL(pageUrl);
+  } catch {
+    // error-policy:J3 URL parse of untrusted probe targets; an unclassifiable
+    // ref keeps the strict (hard-failure) path rather than silently degrading.
+    return false;
+  }
+  if (sub.origin === page.origin) return false;
+  if (!routeVerification) return true;
+  return !routeVerification.mappings.some((mapping) => {
+    try {
+      return new URL(mapping.urlPrefix).origin === sub.origin;
+    } catch {
+      // error-policy:J3 URL parse of an untrusted route prefix; no match.
+      return false;
+    }
+  });
 }
 
 // A reachable URL is only a user-facing *deliverable* when it is a routed
@@ -3763,18 +3829,46 @@ async function detectCachedMiss(
     : null;
 }
 
+// <link> rel values that declare network hints — origins the browser MAY
+// warm up — rather than resources the page needs to render. A hint href is
+// typically a bare third-party root (https://fonts.googleapis.com) that 404s
+// by design, so probing it fails verification of a perfectly healthy build.
+const HINT_LINK_RELS = new Set([
+  "preconnect",
+  "dns-prefetch",
+  "prefetch",
+  "prerender",
+  "modulepreload",
+]);
+
 /**
  * Extract the sub-resource URLs an HTML document declares via common
  * resource-bearing attributes, resolved absolute against the page URL.
  * Mechanical extraction from a structured document — not intent
- * classification. Skips in-page anchors and data:/mailto: refs, and caps
+ * classification. Skips in-page anchors, data:/mailto: refs, and <link>
+ * hint rels (a preconnect origin is not a page dependency), and caps
  * the result so a pathological page can't fan out unbounded probes.
  */
 export function extractSubResources(html: string, pageUrl: string): string[] {
   const refs = new Set<string>();
-  const attrRe =
-    /<(?:link|script|img|source|video|audio|iframe)\b[^>]*?\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+  // Tags are matched whole (name + attribute chunk) rather than jumping
+  // straight to href/src: a <link>'s meaning depends on its rel attribute,
+  // so the extractor must see the full attribute list before following.
+  const tagRe = /<(link|script|img|source|video|audio|iframe)\b([^>]*)/gi;
+  const urlAttrRe = /\b(?:href|src)\s*=\s*["']([^"']+)["']/i;
+  const relAttrRe = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i;
   const srcsetRe = /<(?:img|source)\b[^>]*?\bsrcset\s*=\s*["']([^"']+)["']/gi;
+  // Anchors the bare-root guard in addRef below; an unparseable page URL
+  // leaves it null, so every absolute bare-root ref reads as cross-origin —
+  // the conservative direction for that guard. In practice pageUrl was
+  // already fetched successfully by the caller, so it always parses.
+  let pageOrigin: string | null = null;
+  try {
+    pageOrigin = new URL(pageUrl).origin;
+  } catch {
+    // error-policy:J3 URL parse of the caller-supplied page URL; relative
+    // refs already fail to resolve in addRef when it is unparseable.
+  }
   const addRef = (rawRef: string | undefined) => {
     const ref = rawRef?.trim();
     if (
@@ -3787,9 +3881,17 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
     }
     try {
       const resolved = new URL(ref, pageUrl);
-      if (resolved.protocol === "http:" || resolved.protocol === "https:") {
-        refs.add(resolved.toString());
+      if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
+        return;
       }
+      // Belt-and-braces under the rel filter: a bare cross-origin root is
+      // never a real page dependency (no site serves an app asset at "/"),
+      // whatever element carried it — it is the origin half of a hint or
+      // weak-model boilerplate, and CDN roots commonly 404 by design.
+      if (resolved.pathname === "/" && resolved.origin !== pageOrigin) {
+        return;
+      }
+      refs.add(resolved.toString());
     } catch {
       // error-policy:J3 URL parse of an untrusted HTML ref; unparseable → skip.
       // unparseable ref — skip
@@ -3797,8 +3899,18 @@ export function extractSubResources(html: string, pageUrl: string): string[] {
   };
   let match: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
-  while ((match = attrRe.exec(html)) !== null) {
-    addRef(match[1]);
+  while ((match = tagRe.exec(html)) !== null) {
+    if ((match[1] ?? "").toLowerCase() === "link") {
+      const relMatch = relAttrRe.exec(match[2] ?? "");
+      const rel = (relMatch?.[1] ?? relMatch?.[2] ?? relMatch?.[3] ?? "")
+        .toLowerCase();
+      // rel is a space-separated token list; any hint token disqualifies —
+      // a rel mixing a hint with a real keyword is malformed boilerplate.
+      if (rel.split(/\s+/).some((token) => HINT_LINK_RELS.has(token))) {
+        continue;
+      }
+    }
+    addRef(urlAttrRe.exec(match[2] ?? "")?.[1]);
     if (refs.size >= 10) break;
   }
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
