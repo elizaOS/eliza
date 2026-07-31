@@ -14,7 +14,7 @@ import type {
 import {
   assertOpenPullRequestReferencesCurrent,
   assertOpenWorkReferencesCurrent,
-  buildUtcDaySlices,
+  collectSearchReferences,
   deriveCurrentHeadReviewDecision,
   deriveSourceUpdatedAt,
   estimateFirstPageDetailCost,
@@ -1399,27 +1399,87 @@ describe("current-head review selection", () => {
 });
 
 describe("rolling-window slicing", () => {
-  it("splits a rolling range at UTC day boundaries", () => {
-    const slices = buildUtcDaySlices(
-      new Date("2026-07-28T12:34:56.000Z"),
-      new Date("2026-07-30T01:02:03.000Z"),
+  it("splits saturated search ranges without gaps and deduplicates boundaries", async () => {
+    const queries: string[] = [];
+    const client: GraphqlExecutor = {
+      execute: async (_document, variables) => {
+        const searchQuery = String(variables?.searchQuery);
+        queries.push(searchQuery);
+        const saturated = queries.length === 1;
+        return {
+          search: {
+            issueCount: saturated ? SEARCH_SAFE_RESULT_LIMIT : 1,
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: saturated
+              ? []
+              : [{ __typename: "Issue", id: "ISSUE_BOUNDARY" }],
+          },
+        };
+      },
+      getRequestCount: () => queries.length,
+      getRateLimit: () => ({
+        cost: 1,
+        consumedDuringRun: queries.length,
+        limit: 5_000,
+        remaining: 5_000 - queries.length,
+        resetAt: "2026-07-30T01:00:00.000Z",
+      }),
+    };
+    const stats = { searchSliceCount: 0 };
+
+    const references = await collectSearchReferences(
+      client,
+      new Date("2026-07-30T00:00:00.000Z"),
+      new Date("2026-07-30T00:02:00.000Z"),
+      "closed",
+      "is:issue is:closed",
+      "Issue",
+      stats,
     );
 
-    expect(slices).toEqual([
-      {
-        from: new Date("2026-07-28T12:34:56.000Z"),
-        to: new Date("2026-07-29T00:00:00.000Z"),
-      },
-      {
-        from: new Date("2026-07-29T00:00:00.000Z"),
-        to: new Date("2026-07-30T00:00:00.000Z"),
-      },
-      {
-        from: new Date("2026-07-30T00:00:00.000Z"),
-        to: new Date("2026-07-30T01:02:03.000Z"),
-      },
-    ]);
-    expect(SEARCH_SAFE_RESULT_LIMIT).toBeLessThan(1_000);
+    expect(references.map(({ id }) => id)).toEqual(["ISSUE_BOUNDARY"]);
+    expect(queries).toHaveLength(3);
+    expect(queries[1]).toContain(
+      "closed:2026-07-30T00:00:00.000Z..2026-07-30T00:00:59.000Z",
+    );
+    expect(queries[2]).toContain(
+      "closed:2026-07-30T00:01:00.000Z..2026-07-30T00:01:59.000Z",
+    );
+    expect(stats.searchSliceCount).toBe(3);
+  });
+
+  it("fails closed when a one-minute search range reaches the result cap", async () => {
+    const client: GraphqlExecutor = {
+      execute: async () => ({
+        search: {
+          issueCount: SEARCH_SAFE_RESULT_LIMIT,
+          pageInfo: { hasNextPage: false, endCursor: null },
+          nodes: [],
+        },
+      }),
+      getRequestCount: () => 1,
+      getRateLimit: () => ({
+        cost: 1,
+        consumedDuringRun: 1,
+        limit: 5_000,
+        remaining: 4_999,
+        resetAt: "2026-07-30T01:00:00.000Z",
+      }),
+    };
+
+    await expect(
+      collectSearchReferences(
+        client,
+        new Date("2026-07-30T00:00:00.000Z"),
+        new Date("2026-07-30T00:01:00.000Z"),
+        "closed",
+        "is:issue is:closed",
+        "Issue",
+        { searchSliceCount: 0 },
+      ),
+    ).rejects.toThrow(
+      "refusing a snapshot that could hit the 1,000-result cap",
+    );
   });
 
   it("uses the latest record update instead of the collection cutoff", () => {

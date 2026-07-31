@@ -255,6 +255,7 @@ describe("AI workflow attribution audit", () => {
         [created.key, created],
       ]),
       [AUTHOR],
+      EXPECTED.lane,
     );
     assert.deepEqual(
       mutations.map((entry) => entry.key),
@@ -307,6 +308,7 @@ describe("AI workflow attribution audit", () => {
       snapshot([], { scope: "repository", number: undefined }),
       new Map([[createdIssue.key, createdIssue]]),
       [AUTHOR],
+      EXPECTED.lane,
     );
     assert.equal(mutations.length, 1);
     assert.equal(validateWorkflowMutations(mutations, EXPECTED).ok, true);
@@ -327,6 +329,7 @@ describe("AI workflow attribution audit", () => {
       snapshot([], { scope: "repository", number: undefined }),
       new Map([[oldBotIssue.key, oldBotIssue]]),
       [AUTHOR],
+      EXPECTED.lane,
     );
     assert.deepEqual(mutations, []);
   });
@@ -346,7 +349,31 @@ describe("AI workflow attribution audit", () => {
       snapshot([], { scope: "repository", number: undefined }),
       new Map([[historicalReview.key, historicalReview]]),
       [AUTHOR],
+      EXPECTED.lane,
     );
+    assert.deepEqual(mutations, []);
+  });
+
+  it("ignores concurrent bot writes from another workflow", () => {
+    const unrelated = record({
+      id: 90,
+      body: "Unrelated deterministic automation output.",
+    });
+    const otherAiWorkflow = record({
+      id: 91,
+      body: machineFooter({ lane: "another-agent" }),
+    });
+
+    const mutations = findWorkflowMutations(
+      snapshot(),
+      new Map([
+        [unrelated.key, unrelated],
+        [otherAiWorkflow.key, otherAiWorkflow],
+      ]),
+      [AUTHOR],
+      EXPECTED.lane,
+    );
+
     assert.deepEqual(mutations, []);
   });
 

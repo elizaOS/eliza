@@ -360,6 +360,27 @@ describe("App", () => {
     expect(screen.getByText("Snapshot update delayed")).toBeInTheDocument();
   });
 
+  it("accepts a valid snapshot when the visitor clock is behind", async () => {
+    vi.useFakeTimers();
+    const snapshot = snapshotFixture();
+    vi.setSystemTime(new Date(Date.parse(snapshot.generatedAt) - 10 * 60_000));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => structuredClone(snapshot),
+    } as Response);
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Latest GitHub snapshot")).toBeInTheDocument();
+    expect(
+      screen.getByText("Launch the eliza.army contribution protocol"),
+    ).toBeInTheDocument();
+  });
+
   it("progressively reveals a large score ledger in bounded pages", async () => {
     const snapshot = snapshotFixture();
     const leader = snapshot.leaders[0];
