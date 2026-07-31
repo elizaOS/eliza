@@ -2965,23 +2965,7 @@ async function handleSearch(
 			);
 		}
 
-		let requester: Awaited<ReturnType<typeof buildAccessContext>>;
-		try {
-			requester = await buildAccessContext(runtime, message);
-		} catch (error) {
-			// Role/world lookup failure degrades to requester-only access, which
-			// denies elevated scopes instead of widening recall.
-			logger.warn(
-				`[MESSAGE/search] access context resolution failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			requester = {
-				requesterEntityId: message.entityId,
-				source:
-					typeof message.content.source === "string"
-						? message.content.source
-						: undefined,
-			};
-		}
+		const requester = await buildAccessContext(runtime, message);
 		const recall = await searchCanonicalConversationMemories({
 			runtime,
 			embedding,

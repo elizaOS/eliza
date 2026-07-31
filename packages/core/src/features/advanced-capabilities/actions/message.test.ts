@@ -238,6 +238,39 @@ describe("MESSAGE op=list_connections", () => {
 	});
 });
 
+describe("MESSAGE op=search access context", () => {
+	it("fails closed when role or world resolution fails", async () => {
+		const searchMemories = vi.fn(async () => []);
+		const runtime = {
+			...mockRuntime([]),
+			useModel: async () => [0.1, 0.2, 0.3],
+			getSearchCategory: () => undefined,
+			registerSearchCategory: () => undefined,
+			getRoom: async () => {
+				throw new Error("world database unavailable");
+			},
+			searchMemories,
+		} as unknown as IAgentRuntime;
+
+		const result = await messageAction.handler(
+			runtime,
+			message,
+			undefined,
+			{ parameters: { action: "search", query: "quarterly plan" } },
+			undefined,
+			undefined,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({
+			operation: "search",
+			error: "MESSAGE_SEARCH_FAILED",
+		});
+		expect(result?.text).toContain("world database unavailable");
+		expect(searchMemories).not.toHaveBeenCalled();
+	});
+});
+
 describe("MESSAGE trusted connector account routing", () => {
 	it("passes the envelope account to a dispatcher and ignores Content spoofing", async () => {
 		let routedAccountId: string | undefined;
