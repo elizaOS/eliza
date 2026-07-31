@@ -27,7 +27,11 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
-import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
+import {
+  type StoredAgentSandboxBackup,
+  WARM_POOL_ORG_ID,
+  WARM_POOL_USER_ID,
+} from "../../db/schemas/agent-sandboxes";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -4570,6 +4574,87 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       apiKeySpy.mockRestore();
       ensureStartedSpy.mockRestore();
       getProviderSpy.mockRestore();
+    }
+  });
+
+  test("a warm-pool provision becomes running only through the final readiness CAS", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const handle = providerHandle();
+    const row: AgentSandbox = {
+      ...provisioningReadyRow(),
+      organization_id: WARM_POOL_ORG_ID,
+      user_id: WARM_POOL_USER_ID,
+      execution_tier: "dedicated-always",
+      pool_status: "unclaimed",
+    };
+    const adoptedRow: AgentSandbox = {
+      ...row,
+      status: "provisioning",
+      sandbox_id: handle.sandboxId,
+      node_id: handle.metadata.nodeId,
+      container_name: handle.metadata.containerName,
+      bridge_url: handle.bridgeUrl,
+      health_url: handle.healthUrl,
+      docker_image: handle.metadata.dockerImage,
+      image_digest: handle.metadata.imageDigest,
+    };
+    const readyRow: AgentSandbox = {
+      ...adoptedRow,
+      status: "running",
+      pool_ready_at: new Date("2026-07-30T12:00:00.000Z"),
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(row);
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => (data.status === "provisioning" ? adoptedRow : row),
+    );
+    const commitReadySpy = spyOn(
+      agentSandboxesRepository,
+      "commitPoolEntryReady",
+    ).mockResolvedValue(readyRow);
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const provider: SandboxProvider = {
+      create: mock(async () => handle),
+      stop: mock(async () => {}),
+      checkHealth: async () => true,
+    };
+    const svc = new ElizaSandboxService(provider);
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+
+    try {
+      const result = await svc.provision(AGENT, WARM_POOL_ORG_ID);
+
+      expect(result.success).toBe(true);
+      expect(result.sandboxRecord).toBe(readyRow);
+      expect(updateSpy.mock.calls.some(([, data]) => data.status === "running")).toBe(false);
+      expect(commitReadySpy).toHaveBeenCalledTimes(1);
+      expect(commitReadySpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "provisioning",
+          pool_ready_at: null,
+          sandbox_id: handle.sandboxId,
+          node_id: handle.metadata.nodeId,
+          bridge_url: handle.bridgeUrl,
+        }),
+      );
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      commitReadySpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
     }
   });
 

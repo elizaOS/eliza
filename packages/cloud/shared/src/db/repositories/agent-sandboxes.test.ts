@@ -1,4 +1,4 @@
-// Exercises cloud DB agent sandboxes behavior with deterministic repository fixtures.
+/** Exercises sandbox repository behavior with deterministic database fixtures. */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL, SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -869,6 +869,7 @@ describe("AgentSandboxesRepository", () => {
       // replenisher sees a full pool while every claim skips it (starvation).
       capturedWhere = undefined;
       selectRows = [{ count: 0 }];
+      useWriteSelectMock = true;
 
       const { AgentSandboxesRepository } = await import("./agent-sandboxes");
       await new AgentSandboxesRepository().countUnclaimedPool({ image: IMAGE });
@@ -890,7 +891,16 @@ describe("AgentSandboxesRepository", () => {
           return { rows: [] };
         }
         // Skip-count query: two null-node rows were left behind.
-        return { rows: [{ count: 2 }] };
+        return {
+          rows: [
+            {
+              count: 2,
+              missing_bridge: 0,
+              missing_node: 2,
+              missing_readiness: 0,
+            },
+          ],
+        };
       };
 
       const { AgentSandboxesRepository } = await import("./agent-sandboxes");
@@ -901,8 +911,14 @@ describe("AgentSandboxesRepository", () => {
       expect(result).toBeNull();
       // Observability: the skip is warned (not silent) with the counter event.
       const warned = warnLog.mock.calls.some((c) => {
-        const meta = c[1] as { event?: string; skippedNullNodeCount?: number } | undefined;
-        return meta?.event === "warm_pool.null_node_skipped" && meta?.skippedNullNodeCount === 2;
+        const meta = c[1] as
+          | { event?: string; skippedCount?: number; missingNodeCount?: number }
+          | undefined;
+        return (
+          meta?.event === "warm_pool.unclaimable_entries_skipped" &&
+          meta.skippedCount === 2 &&
+          meta.missingNodeCount === 2
+        );
       });
       expect(warned).toBe(true);
     });

@@ -36,7 +36,6 @@ const WARM_POOL_ORG_ID = "warm-pool-sentinel-org";
 const repo = {
   createPoolEntry: mock(),
   update: mock(),
-  markPoolEntryReady: mock(),
   findById: mock(),
   deletePoolEntry: mock(),
 };
@@ -149,25 +148,47 @@ describe("createPoolContainer fail-closed", () => {
     sandbox.provision.mockResolvedValue({ success: false, error: "no capacity" });
 
     const creator = getHetznerPoolContainerCreator();
-    await expect(creator.createPoolContainer("img:latest")).rejects.toThrow(
-      /pool provision failed: no capacity/,
-    );
+    await expect(creator.createPoolContainer("img:latest")).rejects.toThrow(/no capacity/);
     expect(repo.update).toHaveBeenCalledWith("row-1", {
       status: "error",
       error_message: "no capacity",
     });
-    expect(repo.markPoolEntryReady).not.toHaveBeenCalled();
   });
 
   test("successful provision returns the real id + nodeId — the healthy path stays intact", async () => {
     repo.createPoolEntry.mockResolvedValue({ id: "row-2" });
-    sandbox.provision.mockResolvedValue({ success: true, sandboxRecord: { node_id: "node-9" } });
-    repo.markPoolEntryReady.mockResolvedValue({ node_id: "node-9", bridge_url: "http://x" });
+    sandbox.provision.mockResolvedValue({
+      success: true,
+      sandboxRecord: {
+        status: "running",
+        pool_ready_at: new Date("2026-07-30T00:00:00.000Z"),
+        node_id: "node-9",
+        bridge_url: "http://x",
+      },
+    });
 
     const creator = getHetznerPoolContainerCreator();
     await expect(creator.createPoolContainer("img:latest")).resolves.toEqual({
       id: "row-2",
       nodeId: "node-9",
+    });
+  });
+
+  test("a success response without the atomic readiness stamp fails closed", async () => {
+    repo.createPoolEntry.mockResolvedValue({ id: "row-unready" });
+    sandbox.provision.mockResolvedValue({
+      success: true,
+      sandboxRecord: {
+        status: "running",
+        pool_ready_at: null,
+        node_id: "node-9",
+        bridge_url: "http://x",
+      },
+    });
+
+    const creator = getHetznerPoolContainerCreator();
+    await expect(creator.createPoolContainer("img:latest")).rejects.toMatchObject({
+      code: "WARM_POOL_READINESS_INVARIANT_BROKEN",
     });
   });
 });
