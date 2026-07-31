@@ -1,13 +1,14 @@
 /**
  * Unit coverage for the live development smoke's narrow optional-capability
- * failure policy.
+ * failure policy. Keeping this outside Playwright's test directory prevents
+ * its Vitest API from being collected as a browser specification.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   isExpectedDevSmokeConsoleError,
   isExpectedDevSmokeResponse,
-} from "./browser-failure-policy";
+} from "../test/dev-smoke/browser-failure-policy";
 
 describe("development smoke browser failure policy", () => {
   it("accepts only the inactive LifeOps activity-signal response", () => {
