@@ -277,7 +277,7 @@ END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
-  ALTER TABLE "agent_sandbox_backups"
+ALTER TABLE "agent_sandbox_backups"
     ADD CONSTRAINT "agent_sandbox_backups_write_epoch_check"
     CHECK (
       NOT (
