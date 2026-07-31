@@ -1,26 +1,19 @@
 /**
- * @module plugin-app-control/runtime/current-view-hook
- * @description The `compose_state_providers` hook that injects the `current_view`
- * acknowledgement provider into the curated Stage-1 response state — but only on
- * turns where a view switch is happening or just happened.
- *
- * Extracted from the plugin entry so the gating decision is unit-testable
- * without booting a runtime. See #8788.
+ * Injects current-view state into the curated response prompt only for an
+ * explicit navigation request in the current turn. Completed switches never
+ * leak acknowledgement instructions into a later, unrelated message.
  */
 import type { PipelineHookContextForPhase } from "@elizaos/core";
 import { resolveIntentView } from "../actions/views-show.js";
 import { userRequestMessageText } from "../params.js";
-import { hasFreshViewSwitch } from "./view-switch-signal.js";
 
 export const CURRENT_VIEW_HOOK_ID = "app-control:current-view-on-switch";
 
 /**
- * Add `current_view` to the response provider set when this turn is a switch
- * turn. A switch turn is:
- *  - an imminent explicit command — `resolveIntentView` matches the same way the
- *    early shortcut forces VIEWS, so the reply can acknowledge it same-turn; or
- *  - a switch the agent just executed in this room (VIEWS action / contextual
- *    evaluator recorded it via the process-local signal).
+ * Add `current_view` to the response provider set when this turn explicitly
+ * asks to switch. `resolveIntentView` matches the early shortcut, so the
+ * requested target remains authoritative while the renderer still reports the
+ * previous view.
  *
  * Only augments the curated `onlyInclude` compose (the Stage-1 response/reply
  * state). The planner compose already includes `current_view` by default, so
@@ -35,8 +28,7 @@ export function applyCurrentViewComposeHook(
 	// imminent view-switch command.
 	const text = userRequestMessageText(ctx.message);
 	const imminent = resolveIntentView(text) != null;
-	const recent = hasFreshViewSwitch(ctx.message?.roomId);
-	if (imminent || recent) {
+	if (imminent) {
 		ctx.providers.current = [...ctx.providers.current, "current_view"];
 	}
 }

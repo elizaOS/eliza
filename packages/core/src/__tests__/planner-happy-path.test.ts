@@ -205,6 +205,8 @@ function makeMockAction(opts: {
 	}>;
 	tags?: string[];
 	suppressActionResultClipboard?: boolean;
+	suppressEarlyReply?: boolean;
+	suppressPostActionContinuation?: boolean;
 }): Action {
 	return {
 		name: opts.name,
@@ -219,6 +221,10 @@ function makeMockAction(opts: {
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
 		...(opts.suppressActionResultClipboard
 			? { suppressActionResultClipboard: true }
+			: {}),
+		...(opts.suppressEarlyReply ? { suppressEarlyReply: true } : {}),
+		...(opts.suppressPostActionContinuation
+			? { suppressPostActionContinuation: true }
 			: {}),
 	} as Action;
 }
@@ -1016,6 +1022,168 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			ModelType.ACTION_PLANNER,
 			ModelType.RESPONSE_HANDLER,
 		]);
+	});
+
+	it("suppresses a speculative Stage 1 reply when a deterministic action owns the callback", async () => {
+		let viewCalls = 0;
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			handler: async () => {
+				viewCalls++;
+				return {
+					success: true,
+					text: "Opened Notes.",
+					userFacingText: "Opened Notes.",
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_deterministic_view",
+			priority: 10,
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "notes" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS"],
+						replyText: "Opening Notes now.",
+						thought: "The view switch is deterministic.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening Notes.",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "notes" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The view is open.",
+						messageToUser: "Opened Notes.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("open notes"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(viewCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
+	});
+
+	it("keeps the Stage 1 reply when mixed candidates do not share response ownership", async () => {
+		let viewCalls = 0;
+		let otherCalls = 0;
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			suppressEarlyReply: true,
+			handler: async () => {
+				viewCalls++;
+				return { success: true, text: "Opened the view." };
+			},
+		});
+		const otherAction = makeMockAction({
+			name: "OTHER_ACTION",
+			handler: async () => {
+				otherCalls++;
+				return { success: true, text: "Updated the other resource." };
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [views, otherAction],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS", "OTHER_ACTION"],
+						replyText: "I'll update that now.",
+						thought: "One of two tools may be needed.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Updating the other resource.",
+						toolCalls: [{ id: "other-call", name: "OTHER_ACTION", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The other resource was updated.",
+						messageToUser: "The update is complete.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("update that resource"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledOnce();
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "I'll update that now." }),
+		);
+		expect(viewCalls).toBe(0);
+		expect(otherCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
 	});
 
 	it("sanitizes drifted callback text at the wire while planner-echo suppression still matches the raw form (#15888)", async () => {
