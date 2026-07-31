@@ -121,7 +121,6 @@ function shouldConsiderViewFollowup(
 	context: ResponseHandlerEvaluatorContext,
 ): CapabilityFamily | null {
 	if (context.messageHandler.processMessage === "STOP") return null;
-	if (context.messageHandler.plan.requiresTool === true) return null;
 	if (!hasRegisteredViewsAction(context)) return null;
 
 	const tokens = tokenize(getUserMessageText(context.message));
@@ -168,7 +167,11 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.view-followup-routing",
 	description:
 		"Routes context-dependent mutation follow-ups for the active UI view through the VIEWS action.",
-	priority: 20,
+	// Focused-view referential intent is stronger than a broad Stage-1 action
+	// guess. Phrases such as "create a new one to eat lunch" otherwise resemble
+	// generic tasks, so replace the candidate surface only after the active view
+	// proves it owns the requested capability.
+	priority: 10,
 	shouldRun: (context) => shouldConsiderViewFollowup(context) !== null,
 	evaluate: async (context) => {
 		const family = shouldConsiderViewFollowup(context);
@@ -180,12 +183,21 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		return {
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
 			addContexts: [GENERAL_CONTEXT],
+			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
+			clearParentActionHints: true,
 			addParentActionHints: [VIEWS_ACTION_NAME],
+			deterministicToolCall: {
+				name: VIEWS_ACTION_NAME,
+				params: {
+					action: "interact",
+					view: activeView.id,
+					...(activeView.viewType ? { viewType: activeView.viewType } : {}),
+				},
+			},
 			debug: [
-				`active view ${activeView.id} supports ${family}; routing follow-up through VIEWS`,
+				`active view ${activeView.id} supports ${family}; forcing sole deterministic VIEWS owner`,
 			],
 		};
 	},
