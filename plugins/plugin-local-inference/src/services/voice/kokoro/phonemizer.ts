@@ -19,6 +19,7 @@
  * silent garbage out is worse than a surfaced error (AGENTS.md §3).
  */
 
+import { readAliasedEnv } from "@elizaos/shared";
 import {
 	type KokoroPhonemeSequence,
 	type KokoroPhonemizer,
@@ -583,7 +584,7 @@ export async function resolvePhonemizer(
 	if (
 		process.env.ELIZA_BIONIC_HOST_DELEGATED?.trim() === "1" ||
 		["android", "ios"].includes(
-			process.env.ELIZA_PLATFORM?.trim().toLowerCase() ?? "",
+			readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() ?? "",
 		)
 	) {
 		return new CmuEnglishPhonemizer();
