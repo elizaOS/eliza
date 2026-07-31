@@ -289,7 +289,11 @@ export function FeesTab() {
                 backgroundColor: "#1a1a1a",
                 border: "1px solid #333",
               }}
-              labelFormatter={(date) => new Date(date).toLocaleDateString()}
+              labelFormatter={(date) =>
+                typeof date === "string" || typeof date === "number"
+                  ? new Date(date).toLocaleDateString()
+                  : date
+              }
               formatter={(value) => {
                 const numericValue = Array.isArray(value)
                   ? Number(value[0] ?? 0)

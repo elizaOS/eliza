@@ -33,7 +33,7 @@
     "@feed/shared": "workspace:*"
   },
   "devDependencies": {
-    "@elizaos/core": "2.0.0-alpha.109",
+    "@elizaos/core": "workspace:*",
     "@playwright/test": "1.61.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

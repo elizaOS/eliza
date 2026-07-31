@@ -1,4 +1,28 @@
+/**
+ * Instruments server actions with sanitized Sentry span and error context.
+ * Next.js owns exception capture, so this boundary enriches and rethrows.
+ */
+
 import * as Sentry from "@sentry/nextjs";
+
+interface ServerActionTelemetry {
+  startSpan<R>(
+    config: {
+      op: string;
+      name: string;
+      attributes: Record<string, string>;
+    },
+    callback: () => Promise<R>,
+  ): Promise<R>;
+  setTag(key: string, value: string): void;
+  setContext(name: string, context: Record<string, unknown>): void;
+}
+
+const sentryTelemetry: ServerActionTelemetry = {
+  startSpan: (config, callback) => Sentry.startSpan(config, callback),
+  setTag: (key, value) => Sentry.setTag(key, value),
+  setContext: (name, context) => Sentry.setContext(name, context),
+};
 
 const SENSITIVE_KEY_PATTERN =
   /(token|secret|password|authorization|cookie|jwt|api[-_]?key|signature|session|credential|wallet|private[-_]?key)/i;
@@ -71,9 +95,10 @@ function sanitizeActionArgs(args: unknown[]): Record<string, unknown> {
 export function wrapServerActionWithSentry<T extends unknown[], R>(
   actionName: string,
   action: (...args: T) => Promise<R>,
+  telemetry: ServerActionTelemetry = sentryTelemetry,
 ): (...args: T) => Promise<R> {
   return async (...args: T): Promise<R> => {
-    return Sentry.startSpan(
+    return telemetry.startSpan(
       {
         op: "server.action",
         name: `server-action.${actionName}`,
@@ -86,10 +111,10 @@ export function wrapServerActionWithSentry<T extends unknown[], R>(
         try {
           return await action(...args);
         } catch (error) {
-          Sentry.setTag("runtime", "nodejs");
-          Sentry.setTag("surface", "server-action");
-          Sentry.setTag("action", actionName);
-          Sentry.setContext("serverAction", sanitizeActionArgs(args));
+          telemetry.setTag("runtime", "nodejs");
+          telemetry.setTag("surface", "server-action");
+          telemetry.setTag("action", actionName);
+          telemetry.setContext("serverAction", sanitizeActionArgs(args));
           throw error;
         }
       },

@@ -13,28 +13,10 @@ import {
   isDigestDue,
   listDigestCandidates,
 } from "@/lib/services/notification-digest-service";
+import { shouldProcessUser } from "./partition";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
-
-/**
- * Determines whether this environment should process a given user.
- * When fan-out is active (both staging and production execute), each environment
- * processes a deterministic subset based on user ID hash to avoid double-processing.
- */
-export function shouldProcessUser(userId: string, isFanOut: boolean): boolean {
-  if (!isFanOut) {
-    return true;
-  }
-  // Partition users by hashing their ID - production handles even, staging handles odd
-  // This ensures deterministic, non-overlapping processing across environments
-  const isProduction = getDeploymentEnvironment() === "production";
-  const hash = userId
-    .split("")
-    .reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const isEvenHash = hash % 2 === 0;
-  return isProduction ? isEvenHash : !isEvenHash;
-}
 
 const cronHandler = async (request: NextRequest) => {
   const startTime = new Date();
@@ -47,6 +29,7 @@ const cronHandler = async (request: NextRequest) => {
   const isRelayedDigestRequest =
     request.headers.get("x-cron-relay") === "notifications-digest";
   const isFanOut = relay.forwarded || isRelayedDigestRequest;
+  const isProduction = getDeploymentEnvironment() === "production";
 
   if (isFanOut) {
     // Note: Fan-out architecture — both environments execute after relay.
@@ -76,7 +59,7 @@ const cronHandler = async (request: NextRequest) => {
 
   for (const candidate of candidates) {
     // Skip users assigned to other environment during fan-out
-    if (!shouldProcessUser(candidate.id, isFanOut)) {
+    if (!shouldProcessUser(candidate.id, isFanOut, isProduction)) {
       skippedPartition += 1;
       continue;
     }

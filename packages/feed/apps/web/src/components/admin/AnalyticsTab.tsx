@@ -31,7 +31,13 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+  useTransition,
+} from "react";
 import {
   Area,
   AreaChart,
@@ -114,8 +120,8 @@ export function AnalyticsTab() {
     return () => clearInterval(interval);
   }, [fetchAnalytics]);
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+  const formatDate = (dateValue: string) => {
+    const date = new Date(dateValue);
     if (period === "month") {
       return date.toLocaleDateString("en-US", {
         month: "short",
@@ -124,6 +130,11 @@ export function AnalyticsTab() {
     }
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
+
+  const formatTooltipDate = (dateValue: ReactNode): ReactNode =>
+    typeof dateValue === "string" || typeof dateValue === "number"
+      ? formatDate(String(dateValue))
+      : dateValue;
 
   const formatNumber = (value: number) => {
     if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
@@ -366,7 +377,7 @@ export function AnalyticsTab() {
                 border: "1px solid #333",
                 borderRadius: "8px",
               }}
-              labelFormatter={(label) => formatDate(label)}
+              labelFormatter={formatTooltipDate}
             />
             <Area
               type="monotone"
@@ -404,7 +415,7 @@ export function AnalyticsTab() {
                   border: "1px solid #333",
                   borderRadius: "8px",
                 }}
-                labelFormatter={(label) => formatDate(label)}
+                labelFormatter={formatTooltipDate}
               />
               <Legend />
               <Bar
@@ -445,7 +456,7 @@ export function AnalyticsTab() {
                   border: "1px solid #333",
                   borderRadius: "8px",
                 }}
-                labelFormatter={(label) => formatDate(label)}
+                labelFormatter={formatTooltipDate}
               />
               <Legend />
               <Line

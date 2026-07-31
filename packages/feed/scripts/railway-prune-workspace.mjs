@@ -9,13 +9,11 @@
  * the excluded packages, which makes `bun install` fail with "Workspace
  * dependency not found".
  *
- * This script scans the (pruned) tree for the package names that are actually
- * present, then removes every `workspace:*` dependency that points to an absent
- * package, from the root and from every present manifest. The Feed build only
- * needs `apps/web` + `@feed/*` + `@elizaos/shared` (and its present transitive
- * workspace deps) resolvable; the other kept packages are present for
- * resolution only and are never built, so dropping their dangling workspace
- * deps is safe.
+ * This script scans the pruned tree for present package names, requires every
+ * workspace loaded by the production runtime, then removes dangling development
+ * workspace references. The required-set check prevents a Docker ignore rule
+ * from turning a missing inference or storage plugin into a healthy-looking
+ * image.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,12 +28,7 @@ const SKIP_DIRS = new Set([
 ]);
 
 function findManifests(dir, acc) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
+  const entries = readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
     if (e.name.startsWith(".") && e.name !== ".") continue;
     if (SKIP_DIRS.has(e.name)) continue;
@@ -54,12 +47,36 @@ findManifests(".", manifests);
 // 1. Collect the package names actually present in the build context.
 const present = new Set();
 for (const fp of manifests) {
-  try {
-    const name = JSON.parse(readFileSync(fp, "utf8")).name;
-    if (name) present.add(name);
-  } catch {
-    /* ignore unparseable manifests */
-  }
+  const name = JSON.parse(readFileSync(fp, "utf8")).name;
+  if (name) present.add(name);
+}
+
+const REQUIRED_PRODUCTION_WORKSPACES = [
+  "@elizaos/core",
+  "@elizaos/shared",
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-openai",
+  "@elizaos/plugin-sql",
+];
+const missingRequired = REQUIRED_PRODUCTION_WORKSPACES.filter(
+  (packageName) => !present.has(packageName),
+);
+if (missingRequired.length > 0) {
+  throw new Error(
+    `[prune-workspace] production workspace(s) missing from Docker context: ${missingRequired.join(", ")}`,
+  );
+}
+const REQUIRED_BUILD_FILES = [
+  "plugins/plugin-build.ts",
+  "plugins/plugin-build-externals.ts",
+];
+const missingBuildFiles = REQUIRED_BUILD_FILES.filter(
+  (filePath) => !existsSync(filePath),
+);
+if (missingBuildFiles.length > 0) {
+  throw new Error(
+    `[prune-workspace] plugin build file(s) missing from Docker context: ${missingBuildFiles.join(", ")}`,
+  );
 }
 
 // 2. Strip workspace:* deps that point to absent packages, prune root workspaces.
@@ -69,15 +86,36 @@ const DEP_KEYS = [
   "optionalDependencies",
   "peerDependencies",
 ];
+const ROOT_BUILD_TOOLS = new Set([
+  "@elizaos/vitest-vite",
+  "@typescript/typescript6",
+  "bun-types",
+  "turbo",
+]);
 let stripped = 0;
 for (const fp of manifests) {
-  let pkg;
-  try {
-    pkg = JSON.parse(readFileSync(fp, "utf8"));
-  } catch {
-    continue;
-  }
+  const pkg = JSON.parse(readFileSync(fp, "utf8"));
   let changed = false;
+  if (fp === "package.json") {
+    // Turbo and tsc6 coordinate retained workspace builds from the root. The
+    // Vitest/Vite alias and Bun types satisfy repository-wide resolution pins
+    // used while bundling core and plugin declarations. Product dependencies
+    // belong to their consuming workspaces; retaining the root product matrix
+    // would install thousands of unrelated packages.
+    for (const key of DEP_KEYS) {
+      const deps = pkg[key];
+      if (!deps) continue;
+      for (const dependency of Object.keys(deps)) {
+        if (!ROOT_BUILD_TOOLS.has(dependency)) {
+          delete deps[dependency];
+          changed = true;
+        }
+      }
+      if (Object.keys(deps).length === 0) {
+        delete pkg[key];
+      }
+    }
+  }
   for (const key of DEP_KEYS) {
     const deps = pkg[key];
     if (!deps) continue;

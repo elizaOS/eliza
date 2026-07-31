@@ -42,8 +42,7 @@
       "@/*": ["../web/src/*"],
       "@web/*": ["../web/src/*"],
       "@/mobile/*": ["./src/*"]
-    },
-    "baseUrl": "."
+    }
   },
   "include": [
     "next-env.d.ts",

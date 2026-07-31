@@ -12,7 +12,6 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }

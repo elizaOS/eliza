@@ -47,7 +47,6 @@
       }
     ],
     // Path aliases for shared code and Next.js
-    "baseUrl": ".",
     "paths": {
       "@feed/db": ["../../packages/db/src/index.ts"],
       "@feed/db/*": ["../../packages/db/src/*"],

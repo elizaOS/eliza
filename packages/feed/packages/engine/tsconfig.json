@@ -7,7 +7,6 @@
     "types": ["bun-types"],
     // Disable unused locals check - engine has some batch methods reserved for future optimization
     "noUnusedLocals": false,
-    "baseUrl": ".",
     "paths": {
       "@feed/shared": ["../shared/src/index.ts"],
       "@feed/shared/*": ["../shared/src/*"],
