@@ -186,9 +186,8 @@ export const manageMessageAction: Action = {
 			logger.info(
 				`[ManageMessage] op=${opLabel} messageId=${parsed.messageId} not ok: ${text}`,
 			);
-			if (callback) {
-				await callback({ text, action: "MESSAGE" });
-			}
+			// No visible callback: raw service reasons are tool-speak. The failure
+			// stays planner-facing so the evaluator phrases it once, in voice.
 			return {
 				success: false,
 				text,
@@ -201,14 +200,34 @@ export const manageMessageAction: Action = {
 			};
 		}
 
-		const text = `Applied ${opLabel} to message ${messageId}.`;
+		const text =
+			{
+				archive: "Archived that message.",
+				trash: "Moved that message to trash.",
+				spam: "Marked that message as spam.",
+				mark_read:
+					parsed.operation.kind === "mark_read" && !parsed.operation.read
+						? "Marked it unread."
+						: "Marked it read.",
+				label_add: "Added the label.",
+				label_remove: "Removed the label.",
+				tag_add: "Tagged that message.",
+				tag_remove: "Removed the tag.",
+				mute_thread: "Muted that thread.",
+				unsubscribe: "Unsubscribed from that sender.",
+			}[opLabel] ?? "Done.";
 		logger.info(`[ManageMessage] op=${opLabel} messageId=${messageId} ok`);
 		if (callback) {
 			await callback({ text, action: "MESSAGE" });
 		}
+		// The confirmation is the complete answer: verified + turnComplete make
+		// it the sole delivery; the op kind and message id stay in data.
 		return {
 			success: true,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			data: {
 				ok: true,
 				messageId,

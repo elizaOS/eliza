@@ -322,7 +322,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		): Promise<ActionResult> => {
 			const actionOptions = normalizeActionOptions(options);
 			if (!(await canManageApps(runtime, message))) {
-				const text = "Permission denied: only the owner may manage apps.";
+				const text = "Sorry — only my owner can manage apps.";
 				await callback?.({ text });
 				return { success: false, text };
 			}
@@ -348,9 +348,11 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 			const mode = inferMode(text, actionOptions);
 			if (!mode) {
+				// Planner-facing only: the canned mode menu double-messaged next to
+				// the evaluator's in-voice clarification. The evaluator owns asking
+				// the user, in voice.
 				const reply =
-					'Tell me which app to control. Try: "launch shopify", "list running apps", "create a new note-taking app".';
-				await callback?.({ text: reply });
+					"No app-control mode could be inferred; ask the user whether they want to launch, relaunch, list, load, or create an app.";
 				return { success: false, text: reply };
 			}
 

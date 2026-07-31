@@ -757,10 +757,13 @@ async function runCreateLegacy(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    const text =
-      "ACP subprocess service is not available. Install acpx and ensure @elizaos/plugin-agent-orchestrator is loaded.";
-    await callbackText(callback, text);
-    return errorResult("SERVICE_UNAVAILABLE");
+    // Planner-facing only: the install boilerplate is dev tool-speak in chat
+    // next to the evaluator's in-voice reply. The evaluator owns telling the
+    // user coding tasks are unavailable.
+    return errorResult(
+      "SERVICE_UNAVAILABLE",
+      "ACP subprocess service is not available (acpx missing or plugin not loaded); tell the user coding tasks cannot run right now.",
+    );
   }
 
   const text = messageText(message);
@@ -1201,9 +1204,15 @@ async function runCreateLegacy(
   const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
   await callbackText(callback, proseText);
 
+  // The creation ack is the complete answer to a single-operation turn:
+  // verified + turnComplete make the callback the sole delivery instead of
+  // double-messaging with the evaluator's paraphrase.
   return {
     success: true,
     text: proseText,
+    userFacingText: proseText,
+    verifiedUserFacing: true,
+    turnComplete: true,
     data: {
       agents: results,
       taskId: threadId,
@@ -1909,17 +1918,19 @@ async function runSpawnAgent(
       },
     };
   } catch (error) {
-    // error-policy:J1 spawn action boundary → user-facing error message + a
-    // structured failure result.
+    // error-policy:J1 spawn action boundary → structured failure to the
+    // planner; no visible callback (see runSend's catch) — the evaluator
+    // reports the failure in voice instead of a raw canned bubble.
     const messageTextValue = failureMessage(error);
     const code = isAuthError(error) ? "INVALID_CREDENTIALS" : messageTextValue;
-    await callbackText(
-      callback,
-      isAuthError(error)
-        ? "Invalid credentials for task agent."
+    return {
+      success: false,
+      error: code,
+      text: isAuthError(error)
+        ? "Task-agent credentials are invalid; tell the user the coding agent could not authenticate."
         : `Failed to spawn agent: ${messageTextValue}`,
-    );
-    return { success: false, error: code, continueChain: false };
+      continueChain: false,
+    };
   }
 }
 
@@ -1931,12 +1942,14 @@ async function runSend(
   state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
-  callback: HandlerCallback | undefined,
+  _callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "ACP service is not available.");
-    return errorResult("SERVICE_UNAVAILABLE");
+    // Planner-facing only throughout runSend: acks and guards are progress
+    // notes, not the user's answer — the evaluator's in-voice reply is the
+    // turn's single delivery.
+    return errorResult("SERVICE_UNAVAILABLE", "ACP service is not available.");
   }
 
   try {
@@ -1950,20 +1963,19 @@ async function runSend(
 
     if (!target.session) {
       if (target.missingId) {
-        const text = `Session ${target.missingId} not found.`;
-        await callbackText(callback, text);
-        return errorResult("SESSION_NOT_FOUND");
+        return errorResult(
+          "SESSION_NOT_FOUND",
+          `Session ${target.missingId} not found.`,
+        );
       }
-      await callbackText(
-        callback,
-        "No active task-agent sessions. Spawn an agent first.",
+      return errorResult(
+        "NO_SESSION",
+        "No active task-agent sessions; spawn an agent first.",
       );
-      return errorResult("NO_SESSION");
     }
 
     if (keys) {
       await service.sendKeysToSession(target.session.id, keys);
-      await callbackText(callback, "Sent key sequence");
       return {
         success: true,
         text: "Sent key sequence",
@@ -1978,7 +1990,6 @@ async function runSend(
     if (textInput) {
       await service.sendToSession(target.session.id, textInput);
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
-      await callbackText(callback, text);
       return {
         success: true,
         text,
@@ -2056,8 +2067,7 @@ async function runStopAgent(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "ACP service is not available.");
-    return errorResult("SERVICE_UNAVAILABLE");
+    return errorResult("SERVICE_UNAVAILABLE", "ACP service is not available.");
   }
 
   try {
@@ -2076,9 +2086,18 @@ async function runStopAgent(
           }
         ).codingSession = undefined;
       if (state) (state as { codingSessions?: unknown }).codingSessions = [];
-      const text = `Stopped ${sessions.length} sessions`;
+      // The stop confirmation is the complete answer to a single-operation
+      // turn: verified + turnComplete make the callback the sole delivery.
+      const text = `Stopped ${sessions.length} task agent${sessions.length === 1 ? "" : "s"}.`;
       await callbackText(callback, text);
-      return { success: true, text, data: { stoppedCount: sessions.length } };
+      return {
+        success: true,
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        turnComplete: true,
+        data: { stoppedCount: sessions.length },
+      };
     }
 
     const requestedId =
@@ -2091,12 +2110,20 @@ async function runStopAgent(
 
     if (!target) {
       if (requestedId) {
-        const text = `Session ${requestedId} not found.`;
-        await callbackText(callback, text);
-        return errorResult("SESSION_NOT_FOUND");
+        return errorResult(
+          "SESSION_NOT_FOUND",
+          `Session ${requestedId} not found.`,
+        );
       }
-      await callbackText(callback, "No sessions to stop");
-      return { success: true, text: "No sessions to stop" };
+      const noneText = "There are no task agents running.";
+      await callbackText(callback, noneText);
+      return {
+        success: true,
+        text: noneText,
+        userFacingText: noneText,
+        verifiedUserFacing: true,
+        turnComplete: true,
+      };
     }
 
     await service.stopSession(target.id);
@@ -2106,17 +2133,21 @@ async function runStopAgent(
     ) {
       (state as { codingSession?: unknown }).codingSession = undefined;
     }
-    await callbackText(callback, `Stopped task-agent session ${target.id}.`);
+    const stoppedText = "Stopped the task agent.";
+    await callbackText(callback, stoppedText);
     return {
       success: true,
-      text: `Stopped session ${target.id}`,
+      text: stoppedText,
+      userFacingText: stoppedText,
+      verifiedUserFacing: true,
+      turnComplete: true,
       data: { sessionId: target.id, agentType: String(target.agentType) },
     };
   } catch (error) {
-    // error-policy:J1 stop action boundary → user-facing error + structured failure.
+    // error-policy:J1 stop action boundary → structured failure to the
+    // planner; the evaluator reports the failure in voice.
     const msg = failureMessage(error);
-    await callbackText(callback, `Failed to stop agent: ${msg}`);
-    return { success: false, error: msg };
+    return { success: false, error: msg, text: `Failed to stop agent: ${msg}` };
   }
 }
 
@@ -2201,8 +2232,7 @@ async function runCancel(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "ACP service is not available.");
-    return errorResult("SERVICE_UNAVAILABLE");
+    return errorResult("SERVICE_UNAVAILABLE", "ACP service is not available.");
   }
 
   try {
@@ -2222,11 +2252,16 @@ async function runCancel(
           service.stopSession(session.id));
         stoppedSessions.push(session.id);
       }
-      const text = `Canceled ${stoppedSessions.length} task(s).`;
+      // The cancel confirmation is the complete answer to a single-operation
+      // turn: verified + turnComplete make the callback the sole delivery.
+      const text = `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}.`;
       await callbackText(callback, text);
       return {
         success: true,
         text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        turnComplete: true,
         data: { canceledCount: stoppedSessions.length, stoppedSessions },
       };
     }
@@ -2242,22 +2277,28 @@ async function runCancel(
         : newestSession(sessions);
 
     if (!target) {
+      // Planner-facing only: the not-found guard next to the evaluator's
+      // in-voice reply was a double message.
       const code = sessionId ? "SESSION_NOT_FOUND" : "TASK_NOT_FOUND";
-      const text = sessionId
-        ? `Session ${sessionId} not found.`
-        : "No matching task found.";
-      await callbackText(callback, text);
-      return errorResult(code);
+      return errorResult(
+        code,
+        sessionId
+          ? `Session ${sessionId} not found.`
+          : "No matching task found.",
+      );
     }
 
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
     const id = threadId ?? target.id;
-    const text = `Canceled task ${id}`;
+    const text = `Canceled task ${id}.`;
     await callbackText(callback, text);
     return {
       success: true,
       text,
+      userFacingText: text,
+      verifiedUserFacing: true,
+      turnComplete: true,
       data: {
         ...(threadId ? { threadId } : {}),
         sessionId: target.id,
@@ -2266,10 +2307,14 @@ async function runCancel(
       },
     };
   } catch (error) {
-    // error-policy:J1 cancel action boundary → user-facing error + structured failure.
+    // error-policy:J1 cancel action boundary → structured failure to the
+    // planner; the evaluator reports the failure in voice.
     const msg = failureMessage(error);
-    await callbackText(callback, `Failed to cancel task: ${msg}`);
-    return { success: false, error: msg };
+    return {
+      success: false,
+      error: msg,
+      text: `Failed to cancel task: ${msg}`,
+    };
   }
 }
 
@@ -2790,9 +2835,9 @@ async function runControl(
   );
 
   if (!action) {
+    // Planner-facing only: the evaluator owns asking the user, in voice.
     const msg =
-      "No task-control action was specified. Use pause, stop, resume, continue, archive, or reopen.";
-    if (callback) await callback({ text: msg });
+      "No task-control action was specified; ask the user whether they want to pause, stop, resume, continue, archive, or reopen the task.";
     return failureResult("TASKS:control", "INVALID_OPERATION", msg, {
       reason: "invalid_operation",
     });
@@ -2832,12 +2877,11 @@ async function runControl(
       try {
         resumedTask = await taskService.resumeTask(controlTaskId);
       } catch (err) {
-        // error-policy:J1 control action boundary → warns + user-facing error +
-        // structured failure result.
+        // error-policy:J1 control action boundary → warns + structured failure
+        // to the planner; the evaluator reports the failure in voice.
         const errMsg = err instanceof Error ? err.message : String(err);
         coreLogger.warn(`[TASKS:control] resume failed: ${errMsg}`);
         const out = `Failed to resume coding task ${controlTaskId}: ${errMsg}`;
-        if (callback) await callback({ text: out });
         return failureResult("TASKS:control", "LIFECYCLE_FAILED", out, {
           reason: "lifecycle_failed",
           taskId: controlTaskId,
@@ -2853,11 +2897,16 @@ async function runControl(
   );
   if (!target.session) {
     if (resumedTask && controlTaskId) {
-      const out = `Resumed coding task ${controlTaskId}. No active ACP session to instruct — the task is unpaused.`;
+      const out = "Resumed the coding task.";
       if (callback) await callback({ text: out });
       return {
         success: true,
-        text: out,
+        // Planner-facing text keeps the id for follow-ups; the visible layer
+        // stays human.
+        text: `Resumed coding task ${controlTaskId}`,
+        userFacingText: out,
+        verifiedUserFacing: true,
+        turnComplete: true,
         data: {
           actionName: "TASKS:control",
           action,
@@ -2866,10 +2915,11 @@ async function runControl(
         },
       };
     }
+    // Planner-facing only: the not-found guard next to the evaluator's
+    // in-voice reply was a double message.
     const msg = target.missingId
       ? `Session ${target.missingId} not found.`
       : "No active ACP session found.";
-    if (callback) await callback({ text: msg });
     return failureResult("TASKS:control", "SESSION_NOT_FOUND", msg, {
       reason: "session_not_found",
       action,
@@ -2888,19 +2938,24 @@ async function runControl(
   let responseText = "";
   if (action === "stop") {
     await service.stopSession(target.session.id);
-    responseText = `Stopped ACP session ${target.session.id}.`;
+    responseText = "Stopped the coding task.";
   } else {
     const nextInstruction =
       instruction?.trim() || "Continue with the current task.";
     await service.sendToSession(target.session.id, nextInstruction);
-    responseText = `Sent follow-up instructions to ACP session ${target.session.id}.`;
+    responseText = "Passed your follow-up instructions to the coding agent.";
     data = { ...data, instruction: nextInstruction };
   }
 
+  // The control outcome is the complete answer to a single-operation turn:
+  // verified + turnComplete make the callback the sole delivery.
   if (callback) await callback({ text: responseText });
   return {
     success: true,
     text: responseText,
+    userFacingText: responseText,
+    verifiedUserFacing: true,
+    turnComplete: true,
     data: data as ActionResult["data"],
   };
 }
@@ -2946,7 +3001,8 @@ async function runShare(
     `Workspace: ${target.session.workdir}`,
   ].join("\n");
 
-  if (callback) await callback({ text: responseText });
+  // No visible callback: session internals and absolute paths are
+  // planner-facing detail — the evaluator voices what the user needs.
   return {
     success: true,
     text: responseText,
@@ -3016,12 +3072,14 @@ async function runProvisionWorkspace(
   }
 
   const useWorktree = paramUseWorktree ?? content.useWorktree === true;
+  // Planner-facing only for these guards: canned parameter clarifications in
+  // chat next to the evaluator's in-voice reply were a double message.
   if (!repo && !useWorktree) {
-    if (callback)
-      await callback({
-        text: "Please specify a repository URL or use worktree mode with a parent workspace.",
-      });
-    return { success: false, error: "MISSING_REPO" };
+    return {
+      success: false,
+      error: "MISSING_REPO",
+      text: "No repository URL found in the request; ask the user which repository to provision (or to use worktree mode with a parent workspace).",
+    };
   }
 
   if (repo) {
@@ -3029,11 +3087,11 @@ async function runProvisionWorkspace(
     const ALLOWED_DOMAINS =
       /^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\//i;
     if (!ALLOWED_DOMAINS.test(repo)) {
-      if (callback)
-        await callback({
-          text: "Repository URL must be from github.com, gitlab.com, or bitbucket.org.",
-        });
-      return { success: false, error: "INVALID_REPO_DOMAIN" };
+      return {
+        success: false,
+        error: "INVALID_REPO_DOMAIN",
+        text: "The repository URL is not from github.com, gitlab.com, or bitbucket.org; ask the user for a supported repository URL.",
+      };
     }
   }
 
@@ -3042,21 +3100,21 @@ async function runProvisionWorkspace(
     if (state?.codingWorkspace) {
       parentWorkspaceId = (state.codingWorkspace as { id: string }).id;
     } else {
-      if (callback)
-        await callback({
-          text: "Worktree mode requires a parent workspace. Clone a repo first or specify parentWorkspaceId.",
-        });
-      return { success: false, error: "MISSING_PARENT" };
+      return {
+        success: false,
+        error: "MISSING_PARENT",
+        text: "Worktree mode requires a parent workspace; ask the user to clone a repo first or provide parentWorkspaceId.",
+      };
     }
   }
   if (useWorktree && !repo && parentWorkspaceId) {
     const parentWorkspace = workspaceService.getWorkspace(parentWorkspaceId);
     if (!parentWorkspace) {
-      if (callback)
-        await callback({
-          text: `Parent workspace ${parentWorkspaceId} not found.`,
-        });
-      return { success: false, error: "WORKSPACE_NOT_FOUND" };
+      return {
+        success: false,
+        error: "WORKSPACE_NOT_FOUND",
+        text: `Parent workspace ${parentWorkspaceId} not found.`,
+      };
     }
     repo = parentWorkspace.repo;
   }
@@ -3086,17 +3144,21 @@ async function runProvisionWorkspace(
       };
     }
 
-    if (callback)
-      await callback({
-        text:
-          `Created workspace at ${workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS)}\n` +
-          `Branch: ${workspace.branch}\n` +
-          `Type: ${workspace.isWorktree ? "worktree" : "clone"}`,
-      });
+    const createdText =
+      `Created workspace at ${workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS)}\n` +
+      `Branch: ${workspace.branch}\n` +
+      `Type: ${workspace.isWorktree ? "worktree" : "clone"}`;
+    if (callback) await callback({ text: createdText });
 
+    // The provisioning confirmation is the complete answer to a
+    // single-operation turn: verified + turnComplete make the callback the
+    // sole delivery.
     return {
       success: true,
-      text: `Created workspace ${workspace.id}`,
+      text: createdText,
+      userFacingText: createdText,
+      verifiedUserFacing: true,
+      turnComplete: true,
       data: {
         workspaceId: workspace.id,
         path: workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS),
@@ -3170,31 +3232,38 @@ async function runSubmitWorkspace(
   if (!workspaceId) {
     const workspaces = workspaceService.listWorkspaces();
     if (workspaces.length === 0) {
-      if (callback)
-        await callback({
-          text: "No workspaces available. Provision a workspace first.",
-        });
-      return { success: false, error: "NO_WORKSPACE" };
+      // Planner-facing only: the guard next to the evaluator's in-voice reply
+      // was a double message.
+      return {
+        success: false,
+        error: "NO_WORKSPACE",
+        text: "No workspaces available; provision a workspace first.",
+      };
     }
     workspaceId = workspaces[workspaces.length - 1].id;
   }
 
   const workspace = workspaceService.getWorkspace(workspaceId);
   if (!workspace) {
-    if (callback)
-      await callback({ text: `Workspace ${workspaceId} not found.` });
-    return { success: false, error: "WORKSPACE_NOT_FOUND" };
+    return {
+      success: false,
+      error: "WORKSPACE_NOT_FOUND",
+      text: `Workspace ${workspaceId} not found.`,
+    };
   }
 
   try {
     const status = await workspaceService.getStatus(workspaceId);
 
     if (status.clean && status.staged.length === 0) {
-      if (callback)
-        await callback({ text: "No changes to commit in this workspace." });
+      const noChangesText = "No changes to commit in this workspace.";
+      if (callback) await callback({ text: noChangesText });
       return {
         success: true,
-        text: "No changes to commit",
+        text: noChangesText,
+        userFacingText: noChangesText,
+        verifiedUserFacing: true,
+        turnComplete: true,
         data: { workspaceId, status },
       };
     }
@@ -3232,28 +3301,22 @@ async function runSubmitWorkspace(
       });
     }
 
-    if (callback) {
-      if (prInfo) {
-        await callback({
-          text:
-            `Workspace finalized!\n` +
-            `Commit: ${commitHash.slice(0, 8)}\n` +
-            `PR #${prInfo.number}: ${prInfo.url}`,
-        });
-      } else {
-        await callback({
-          text:
-            `Workspace changes committed and pushed.\n` +
-            `Commit: ${commitHash.slice(0, 8)}`,
-        });
-      }
-    }
+    const finalizedText = prInfo
+      ? `Workspace finalized!\n` +
+        `Commit: ${commitHash.slice(0, 8)}\n` +
+        `PR #${prInfo.number}: ${prInfo.url}`
+      : `Workspace changes committed and pushed.\n` +
+        `Commit: ${commitHash.slice(0, 8)}`;
+    if (callback) await callback({ text: finalizedText });
 
+    // The finalize confirmation is the complete answer to a single-operation
+    // turn: verified + turnComplete make the callback the sole delivery.
     return {
       success: true,
-      text: prInfo
-        ? `Created PR #${prInfo.number}`
-        : "Changes committed and pushed",
+      text: finalizedText,
+      userFacingText: finalizedText,
+      verifiedUserFacing: true,
+      turnComplete: true,
       data: {
         workspaceId,
         commitHash,
@@ -3261,11 +3324,14 @@ async function runSubmitWorkspace(
       },
     };
   } catch (error) {
-    // error-policy:J1 submit action boundary → user-facing error + structured failure.
+    // error-policy:J1 submit action boundary → structured failure to the
+    // planner; the evaluator reports the failure in voice.
     const errorMessage = error instanceof Error ? error.message : String(error);
-    if (callback)
-      await callback({ text: `Failed to finalize workspace: ${errorMessage}` });
-    return { success: false, error: "FINALIZE_FAILED" };
+    return {
+      success: false,
+      error: "FINALIZE_FAILED",
+      text: `Failed to finalize workspace: ${errorMessage}`,
+    };
   }
 }
 
@@ -3378,20 +3444,30 @@ async function handleIssueAction(
               });
               created.push(issue);
             }
-            if (callback) {
-              const summary = created
-                .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
-                .join("\n");
-              await callback({
-                text: `Created ${created.length} issues:\n${summary}`,
-              });
-            }
-            return { success: true, data: { issues: created } };
+            // Create/list/get answers are the complete answer to the turn:
+            // verified + turnComplete make the callback the sole delivery.
+            // Missing-param clarifications stay planner-facing — the
+            // evaluator owns asking the user, in voice.
+            const summary = created
+              .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
+              .join("\n");
+            const bulkText = `Created ${created.length} issues:\n${summary}`;
+            if (callback) await callback({ text: bulkText });
+            return {
+              success: true,
+              text: bulkText,
+              userFacingText: bulkText,
+              verifiedUserFacing: true,
+              turnComplete: true,
+              data: { issues: created },
+            };
           }
 
-          if (callback)
-            await callback({ text: "Issue title is required for create." });
-          return { success: false, error: "MISSING_TITLE" };
+          return {
+            success: false,
+            error: "MISSING_TITLE",
+            text: "No issue title found in the request; ask the user what the issue title should be.",
+          };
         }
 
         const labels = parseLabels(params.labels);
@@ -3400,11 +3476,16 @@ async function handleIssueAction(
           body: body ?? "",
           labels: labels.length > 0 ? labels : undefined,
         });
-        if (callback)
-          await callback({
-            text: `Created issue #${issue.number}: ${issue.title}\n${issue.url}`,
-          });
-        return { success: true, data: { issue } };
+        const createdText = `Created issue #${issue.number}: ${issue.title}\n${issue.url}`;
+        if (callback) await callback({ text: createdText });
+        return {
+          success: true,
+          text: createdText,
+          userFacingText: createdText,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { issue },
+        };
       }
 
       case "list": {
@@ -3416,43 +3497,56 @@ async function handleIssueAction(
             labels: labels.length > 0 ? labels : undefined,
           })
         ).slice(0, ISSUE_RESULT_LIMIT);
-        if (callback) {
-          if (issues.length === 0) {
-            await callback({
-              text: `No ${stateFilter} issues found in ${repo}.`,
-            });
-          } else {
-            const summary = issues
-              .map(
-                (i) =>
-                  `#${i.number} [${i.state}] ${i.title}${i.labels.length > 0 ? ` (${i.labels.join(", ")})` : ""}`,
-              )
-              .join("\n");
-            await callback({ text: `Issues in ${repo}:\n${summary}` });
-          }
-        }
-        return { success: true, data: { issues } };
+        const listText =
+          issues.length === 0
+            ? `No ${stateFilter} issues found in ${repo}.`
+            : `Issues in ${repo}:\n${issues
+                .map(
+                  (i) =>
+                    `#${i.number} [${i.state}] ${i.title}${i.labels.length > 0 ? ` (${i.labels.join(", ")})` : ""}`,
+                )
+                .join("\n")}`;
+        if (callback) await callback({ text: listText });
+        return {
+          success: true,
+          text: listText,
+          userFacingText: listText,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { issues },
+        };
       }
 
       case "get": {
         const issueNumber = Number(params.issueNumber);
         if (!issueNumber) {
-          if (callback) await callback({ text: "Issue number is required." });
-          return { success: false, error: "MISSING_ISSUE_NUMBER" };
+          return {
+            success: false,
+            error: "MISSING_ISSUE_NUMBER",
+            text: "No issue number found in the request; ask the user which issue they mean.",
+          };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        if (callback)
-          await callback({
-            text: `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`,
-          });
-        return { success: true, data: { issue } };
+        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
+        if (callback) await callback({ text: issueText });
+        return {
+          success: true,
+          text: issueText,
+          userFacingText: issueText,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          data: { issue },
+        };
       }
 
       case "update": {
         const issueNumber = Number(params.issueNumber);
         if (!issueNumber) {
-          if (callback) await callback({ text: "Issue number is required." });
-          return { success: false, error: "MISSING_ISSUE_NUMBER" };
+          return {
+            success: false,
+            error: "MISSING_ISSUE_NUMBER",
+            text: "No issue number found in the request; ask the user which issue they mean.",
+          };
         }
         const labels = parseLabels(params.labels);
         const issue = await service.updateIssue(repo, issueNumber, {
@@ -3471,11 +3565,11 @@ async function handleIssueAction(
         const issueNumber = Number(params.issueNumber);
         const body = params.body as string;
         if (!issueNumber || !body) {
-          if (callback)
-            await callback({
-              text: "Issue number and comment body are required.",
-            });
-          return { success: false, error: "MISSING_PARAMS" };
+          return {
+            success: false,
+            error: "MISSING_PARAMS",
+            text: "Missing the issue number or comment body; ask the user for both.",
+          };
         }
         const comment = await service.addComment(repo, issueNumber, body);
         if (callback)
@@ -3488,8 +3582,11 @@ async function handleIssueAction(
       case "close": {
         const issueNumber = Number(params.issueNumber);
         if (!issueNumber) {
-          if (callback) await callback({ text: "Issue number is required." });
-          return { success: false, error: "MISSING_ISSUE_NUMBER" };
+          return {
+            success: false,
+            error: "MISSING_ISSUE_NUMBER",
+            text: "No issue number found in the request; ask the user which issue they mean.",
+          };
         }
         const issue = await service.closeIssue(repo, issueNumber);
         if (callback)
@@ -3502,8 +3599,11 @@ async function handleIssueAction(
       case "reopen": {
         const issueNumber = Number(params.issueNumber);
         if (!issueNumber) {
-          if (callback) await callback({ text: "Issue number is required." });
-          return { success: false, error: "MISSING_ISSUE_NUMBER" };
+          return {
+            success: false,
+            error: "MISSING_ISSUE_NUMBER",
+            text: "No issue number found in the request; ask the user which issue they mean.",
+          };
         }
         const issue = await service.reopenIssue(repo, issueNumber);
         if (callback)
@@ -3517,9 +3617,11 @@ async function handleIssueAction(
         const issueNumber = Number(params.issueNumber);
         const labels = parseLabels(params.labels);
         if (!issueNumber || labels.length === 0) {
-          if (callback)
-            await callback({ text: "Issue number and labels are required." });
-          return { success: false, error: "MISSING_PARAMS" };
+          return {
+            success: false,
+            error: "MISSING_PARAMS",
+            text: "Missing the issue number or labels; ask the user for both.",
+          };
         }
         await service.addLabels(repo, issueNumber, labels);
         if (callback)

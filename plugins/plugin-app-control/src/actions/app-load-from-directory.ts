@@ -179,10 +179,21 @@ export async function runLoadFromDirectory({
 }: RunLoadFromDirectoryInput): Promise<ActionResult> {
 	const directory = readStringOption(options, "directory");
 	if (!directory) {
+		// The path ask is the designed answer the user must respond to: verified
+		// + turnComplete make the callback the sole delivery instead of pairing
+		// it with a second evaluator reply, and the wording stays free of raw
+		// option-JSON tool-speak.
 		const text =
-			'I need an absolute directory path. Try: pass { directory: "/abs/path/to/apps" }.';
+			"Which folder should I load apps from? I need the full absolute path.";
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: true,
+			text: "No directory provided; asked the user for the absolute apps folder path.",
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { awaitingDirectory: true },
+		};
 	}
 
 	if (!path.isAbsolute(directory)) {
@@ -195,9 +206,17 @@ export async function runLoadFromDirectory({
 		APP_REGISTRY_SERVICE_TYPE,
 	) as AppRegistryService | null;
 	if (!service) {
-		const text = "AppRegistryService is not registered; cannot load apps.";
+		// Chat gets one human sentence without the internal service name; the
+		// machine detail stays planner-facing in the result text.
+		const text =
+			"I can't load apps right now — app loading isn't available in this build.";
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: false,
+			text: "AppRegistryService is not registered; cannot load apps.",
+			userFacingText: text,
+			verifiedUserFacing: true,
+		};
 	}
 
 	const { apps: discovered, rejectedManifests } = await discoverApps(directory);

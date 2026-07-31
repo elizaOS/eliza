@@ -267,7 +267,9 @@ async function dispatchEditAgent({
 	}
 
 	const task = agents[0];
-	const text = `Started view edit task for ${view.label} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
+	// Session ids and workdirs read as a malfunction in a chat bubble; the
+	// machine detail stays planner-facing in values/data.
+	const text = `Started editing ${view.label} — I'll report back here when the change is done.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] VIEWS/edit viewId=${view.id} workdir=${workdir} session=${task.sessionId}`,
@@ -317,7 +319,7 @@ export async function runViewsEdit({
 	const resolution = resolveTargetView(targetStr, views);
 
 	if (resolution.kind === "none") {
-		const text = `No view matches "${targetStr}". Try \`action=list\` to see available views.`;
+		const text = `I couldn't find a view matching "${targetStr}". Ask me to list the views to see what's available.`;
 		await callback?.({ text });
 		return { success: false, text, data: { target: targetStr } };
 	}

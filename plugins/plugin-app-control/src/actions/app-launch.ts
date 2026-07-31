@@ -26,22 +26,41 @@ export async function runLaunch({
 }: RunLaunchInput): Promise<ActionResult> {
 	const target = extractLaunchTarget(message, options);
 	if (!target) {
-		const text =
-			'I need the app name to launch. Try: "launch shopify" or pass { app: "feed" }.';
+		// The clarification IS the designed ask the user must answer: verified +
+		// turnComplete make it the turn's sole delivery instead of pairing it
+		// with a second evaluator reply.
+		const text = 'Which app should I launch? For example: "launch shopify".';
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: true,
+			text: "No app name found in the launch request; asked the user which app to launch",
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { awaitingAppName: true },
+		};
 	}
 
 	const installed = await client.listInstalledApps();
 	const resolution = resolveInstalledApp(target, installed);
 
 	if (resolution.kind === "ambiguous") {
+		// Same contract as the missing-name clarify: the candidate menu is the
+		// complete answer the user must pick from.
 		const candidates = resolution.candidates ?? [];
 		const text = `"${target}" matches multiple apps:\n${formatAppCandidates(
 			candidates,
 		)}\nPlease specify which one.`;
 		await callback?.({ text });
-		return { success: false, text, data: { candidates } };
+		return {
+			success: true,
+			text: `"${target}" matched multiple installed apps; asked the user to pick one`,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { awaitingAppChoice: true },
+			data: { candidates },
+		};
 	}
 
 	if (resolution.kind === "none") {

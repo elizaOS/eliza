@@ -1804,9 +1804,9 @@ async function handleSet(
 	callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
 	if (!request.sectionId) {
+		// Planner-facing only: the evaluator owns asking the user, in voice.
 		const reply =
-			"Tell me which settings section to change (e.g. permissions, model, background).";
-		await callback?.({ text: reply });
+			"No settings section named in the request; ask the user which section to change (e.g. permissions, model, background).";
 		return { success: false, text: reply };
 	}
 	const cap = SETTINGS_WRITE_REGISTRY[request.sectionId];
@@ -1815,8 +1815,8 @@ async function handleSet(
 		// Point the planner at the dedicated action rather than duplicating its
 		// write. routingHint already prefers that action; this is the safety net
 		// for when the planner reached SETTINGS anyway.
+		// Planner-facing only: raw action names are routing guidance, not chat.
 		const reply = `Changing ${request.sectionId} runs through the ${cap.action} action — ${cap.summary}`;
-		await callback?.({ text: reply });
 		return {
 			success: false,
 			text: reply,
@@ -1826,7 +1826,6 @@ async function handleSet(
 
 	if (cap.kind === "readonly") {
 		const reply = `${request.sectionId} is read-only: ${cap.summary}`;
-		await callback?.({ text: reply });
 		return { success: false, text: reply };
 	}
 
@@ -1927,8 +1926,8 @@ function handleGet(
 	callback: HandlerCallback | undefined,
 ): ActionResult {
 	if (!request.sectionId) {
-		const reply = "Which settings section do you want to read?";
-		void callback?.({ text: reply });
+		const reply =
+			"No settings section named in the request; ask the user which section they want to read.";
 		return { success: false, text: reply };
 	}
 	const cap = SETTINGS_WRITE_REGISTRY[request.sectionId];
@@ -1942,6 +1941,9 @@ function handleGet(
 				: cap.summary;
 	const reply = `${label}: ${summary}`;
 	void callback?.({ text: reply });
+	// Deliberately un-gated: get is a capability probe the planner composes
+	// with (the write-capability data is machine-facing), unlike list/set
+	// which own their canonical reply.
 	return {
 		success: true,
 		text: reply,

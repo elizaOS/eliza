@@ -1962,8 +1962,8 @@ async function runViewsLayout({
 	if (targets.length < 2 && !singleViewPlacement) {
 		const reply =
 			mode === "split"
-				? 'Tell me two views to split, e.g. action=split views=["notes","calendar"] layout=horizontal.'
-				: 'Tell me two or more views to tile, e.g. action=tile views=["notes","calendar"].';
+				? 'Tell me which two views to put side by side — for example, "split notes and calendar".'
+				: 'Tell me which views to tile together — for example, "tile notes and calendar".';
 		await callback?.({ text: reply });
 		return {
 			success: false,

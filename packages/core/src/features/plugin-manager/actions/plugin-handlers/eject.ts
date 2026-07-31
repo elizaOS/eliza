@@ -47,16 +47,20 @@ export async function runEject({
 		return { success: false, text };
 	}
 
+	// Human wording, no raw path or commit hash (those stay in values/data);
+	// verified + turnComplete make the confirmation the sole delivery.
 	const text =
-		`Ejected ${result.pluginName} to ${result.ejectedPath} ` +
-		`(commit ${result.upstreamCommit.slice(0, 8)})` +
+		`Ejected ${result.pluginName} — the local copy is ready to edit.` +
 		(result.requiresRestart
-			? "\nRestart required to load the local copy."
+			? " A restart is needed to load the local copy."
 			: "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "eject",
 			name: result.pluginName,

@@ -62,7 +62,7 @@ export const triageMessagesAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		const params = parseTriageParams(options);
 		const service = getDefaultTriageService();
@@ -79,13 +79,8 @@ export const triageMessagesAction: Action = {
 
 		logger.info(`[TriageMessages] ${summary}`);
 
-		if (callback) {
-			await callback({
-				text: summary,
-				action: "MESSAGE",
-			});
-		}
-
+		// No visible callback: "Fetched N message(s)" is tool progress-speak —
+		// the evaluator's triage summary is the user's single answer.
 		return {
 			success: true,
 			text: summary,

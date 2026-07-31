@@ -188,11 +188,17 @@ export async function editFileHandler(
   const text = `Replaced ${replacements} occurrence${replacements === 1 ? "" : "s"} in ${resolved} (first at line ${firstLine})`;
   if (callback) await callback({ text, source: "coding-tools" });
 
-  return userFacingSuccessResult(text, {
-    path: resolved,
-    replacements,
-    firstLine,
-    addedLines,
-    removedLines,
-  });
+  // Same single-delivery contract as the write op: the edit confirmation is
+  // the complete answer to a single-operation turn.
+  return {
+    ...userFacingSuccessResult(text, {
+      path: resolved,
+      replacements,
+      firstLine,
+      addedLines,
+      removedLines,
+    }),
+    verifiedUserFacing: true,
+    turnComplete: true,
+  };
 }

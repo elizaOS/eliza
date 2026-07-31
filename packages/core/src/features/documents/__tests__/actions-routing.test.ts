@@ -411,7 +411,9 @@ describe("documentAction.handler structured routing", () => {
 			error: "missing_sub_action",
 			missing: ["query"],
 		});
-		expect(clarifications).toHaveLength(1);
+		// Planner-facing contract: the clarification ask rides result.text;
+		// no visible callback fires (the evaluator voices the question).
+		expect(clarifications).toHaveLength(0);
 	});
 
 	it("asks for clarification when write has no text the extractor can supply", async () => {
@@ -447,7 +449,9 @@ describe("documentAction.handler structured routing", () => {
 			error: "missing_sub_action",
 			missing: ["text"],
 		});
-		expect(clarifications).toHaveLength(1);
+		// Planner-facing contract: the clarification ask rides result.text;
+		// no visible callback fires (the evaluator voices the question).
+		expect(clarifications).toHaveLength(0);
 	});
 
 	it("forwards a structured documentId to read without scanning the text", async () => {

@@ -195,7 +195,7 @@ export const createOAuthIntentAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const client = runtime.getService<Service & OAuthIntentsClient>(
@@ -225,10 +225,9 @@ export const createOAuthIntentAction: Action = {
 			`[CREATE_OAUTH_INTENT] oauthIntentId=${envelope.oauthIntentId} provider=${envelope.provider}`,
 		);
 
+		// No visible callback: intent creation is an intermediate step (the link
+		// is still undelivered), so the id/provider detail stays planner-facing.
 		const text = `Created OAuth intent ${envelope.oauthIntentId} for ${envelope.provider}.`;
-		if (callback) {
-			await callback({ text, action: "CREATE_OAUTH_INTENT" });
-		}
 
 		return {
 			success: true,

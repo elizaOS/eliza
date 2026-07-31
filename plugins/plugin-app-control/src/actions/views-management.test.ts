@@ -456,7 +456,7 @@ describe("view management actions", () => {
 			});
 			expect(callback).toHaveBeenCalledWith(
 				expect.objectContaining({
-					text: expect.stringContaining("Started view create task"),
+					text: expect.stringContaining("view now"),
 				}),
 			);
 		} finally {

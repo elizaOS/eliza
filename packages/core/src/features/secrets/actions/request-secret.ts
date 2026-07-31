@@ -107,9 +107,15 @@ export async function requestSecretHandler(
 			if (exists) {
 				const text = `The secret '${key}' is already available. You can use it now.`;
 				if (callback) await callback({ text, action: "SECRETS" });
+				// The already-available confirmation is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				return {
 					success: true,
 					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					data: {
 						actionName: "SECRETS",
 						action: "request",
