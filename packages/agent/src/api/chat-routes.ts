@@ -2846,6 +2846,9 @@ async function generateChatResponseWithTiming(
     const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
+    // Snapshot transports can replace responseText; SSE transports can only
+    // append, so their delivered prefix must be tracked independently.
+    let appendOnlyText = "";
     let firstVisibleReplyMarked = false;
     let forcedWalletExecutionText = false;
     let blockedUnexecutedActionPayload = false;
@@ -2891,6 +2894,7 @@ async function generateChatResponseWithTiming(
       if (!chunk) return;
       markFirstVisibleReply();
       responseText += chunk;
+      appendOnlyText += chunk;
       opts?.onChunk?.(chunk);
     };
     const emitSnapshot = (text: string): void => {
@@ -2899,9 +2903,11 @@ async function generateChatResponseWithTiming(
       // re-emitting the same fullText forces clients to re-render an identical
       // bubble (and on-the-wire bytes for nothing).
       if (text === responseText) return;
-      markFirstVisibleReply();
       responseText = text;
-      opts?.onSnapshot?.(text);
+      if (opts?.onSnapshot) {
+        markFirstVisibleReply();
+        opts.onSnapshot(text);
+      }
     };
     const claimStreamSource = (
       source: Exclude<StreamSource, "unset">,
@@ -2951,7 +2957,11 @@ async function generateChatResponseWithTiming(
       // Otherwise (structural rewrite — Discord-style "🔍 searching" → "✨ done"
       // or planner restart), snapshot only.
       if (nextText === responseText) return;
-      if (nextText.startsWith(responseText) && responseText.length > 0) {
+      if (
+        nextText.startsWith(responseText) &&
+        responseText.length > 0 &&
+        (opts?.onSnapshot || appendOnlyText === responseText)
+      ) {
         const delta = nextText.slice(responseText.length);
         emitChunk(delta);
         // emitChunk already advanced responseText; re-emit snapshot for
@@ -3682,6 +3692,33 @@ async function generateChatResponseWithTiming(
       result?.actionResults,
       resultContentCandidates,
     );
+    if (finalText && transcriptVisibility !== "internal") {
+      markFirstVisibleReply();
+    }
+    if (
+      !opts?.onSnapshot &&
+      opts?.onChunk &&
+      transcriptVisibility !== "internal" &&
+      finalText !== appendOnlyText
+    ) {
+      if (finalText.startsWith(appendOnlyText)) {
+        const delta = finalText.slice(appendOnlyText.length);
+        if (delta) {
+          appendOnlyText = finalText;
+          opts.onChunk(delta);
+        }
+      } else {
+        runtime.logger.debug(
+          {
+            src: "eliza-api",
+            emittedChars: appendOnlyText.length,
+            finalChars: finalText.length,
+            messageId: message.id,
+          },
+          "[eliza-api] Held final reply rewrite from append-only stream",
+        );
+      }
+    }
 
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages
