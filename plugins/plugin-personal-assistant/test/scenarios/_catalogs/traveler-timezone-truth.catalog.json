@@ -225,7 +225,7 @@
       "tier": "T2",
       "surface": "scenario-runner",
       "status": "authored",
-      "notes": "Edge-case augmentation (a bare 'nine' mid-itinerary is underdetermined in both zone and referent across two seeded calls). Authored to close the persona pack's ambiguous-referent gap: zero semantic responseExcludes, three LLM-judge hooks (two per-turn responseJudge plus an end-to-end judgeRubric), and structural gates only (plannerExcludes, expectNoExternalSendDispatch, definitionCountDelta on both seeded calls, memoryWriteOccurred). Owner turns are deliberately vague so the safeguard must fire from standing policy rather than from the user restating it. Status is authored: these are live-only rows and no live-model trajectory has been captured in this environment."
+      "notes": "Edge-case augmentation (a bare 'nine' mid-itinerary is underdetermined in both zone and referent across two seeded calls). Authored to close the persona pack's ambiguous-referent gap: zero semantic responseExcludes, three LLM-judge hooks (two per-turn responseJudge plus an end-to-end judgeRubric), and structural gates for no external send plus the persisted destination timezone and 09:00 local due time. The first owner turn is deliberately vague so the safeguard must fire before the second turn supplies Tokyo and its local clock. Status is authored: these are live-only rows and no live-model trajectory has been captured in this environment."
     },
     {
       "id": "traveler-corrected-home-timezone-supersedes",

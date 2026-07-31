@@ -3,8 +3,8 @@
  * no timezone: "nine" can mean the zone she is standing in, the zone she lands
  * in, or the counterparty's. Two seeded calls sit on either side of the hop, so
  * the referent is genuinely underdetermined and a silent zone assumption is
- * exactly the failure this persona exists to catch. The owner's turns never
- * name the rule — the clarifier must come from the assistant.
+ * exactly the failure this persona exists to catch. The first turn withholds
+ * both facts; the clarification then names the destination and local clock.
  */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectNoExternalSendDispatch } from "./_helpers/approval-outcome.ts";
@@ -91,7 +91,7 @@ export default scenario({
       kind: "message",
       name: "owner-disambiguates",
       room: "main",
-      text: "the one after i land, and nine where i'm landing not where i am.",
+      text: "the one after i land in Tokyo, and nine Tokyo time, not where i am now.",
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
       responseJudge: {
         minimumScore: 0.75,
@@ -112,6 +112,8 @@ export default scenario({
       title: "Elena partner call after landing",
       delta: 1,
       cadenceKind: "once",
+      expectedTimeZone: "Asia/Tokyo",
+      expectedDueLocalTimes: [{ hour: 9, minute: 0, timeZone: "Asia/Tokyo" }],
     },
     {
       type: "custom",
