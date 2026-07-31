@@ -8,13 +8,11 @@ changelog:
     labels:
       - ignore-for-release
       - skip-changelog
+    # Dependency bots stay INCLUDED: their bumps are often security-relevant
+    # and land under 📦 Dependencies. Only repo-automation noise is excluded.
     authors:
       - github-actions
       - github-actions[bot]
-      - dependabot
-      - dependabot[bot]
-      - renovate
-      - renovate[bot]
   categories:
     - title: ⚠️ Breaking Changes
       labels:
@@ -43,7 +41,6 @@ changelog:
       labels:
         - Docs
         - documentation
-        - needs_documentation
     - title: 📦 Dependencies
       labels:
         - dependencies
@@ -76,6 +73,10 @@ changelog:
         - ops
         - deploy
         - refactor
+    - title: 🧪 Tests
+      labels:
+        - Tests
+        - testing
     - title: Other Changes
       labels:
         - "*"
