@@ -18,15 +18,29 @@ import { shellHistory } from "../../surface-realm-channel";
 import { openExternalUrl } from "../../utils/openExternalUrl";
 import { getAppSlug } from "../apps/helpers";
 import { Launcher } from "./Launcher";
-import { curateLauncherPages } from "./launcher-curation";
+import {
+  canonicalLauncherId,
+  curateLauncherPages,
+  LAUNCHER_AOSP_ONLY_IDS,
+  LAUNCHER_APPS_ORDER,
+  LAUNCHER_DEVELOPER_ORDER,
+} from "./launcher-curation";
 
 export interface LauncherSurfaceProps {
   /** Full-screen route or natural-height content inside Home's app scroller. */
   layout?: "page" | "embedded";
+  /**
+   * Whether this surface may add installable catalog entries. The Home↔Apps
+   * rail is a demo navigation surface and shows only the curated registered
+   * set; the dedicated `/apps` page keeps the full catalog so users can
+   * discover and launch installable apps.
+   */
+  catalogMode?: "all" | "demo";
 }
 
 export const LauncherSurface = React.memo(function LauncherSurface({
   layout = "page",
+  catalogMode = "all",
 }: LauncherSurfaceProps): React.JSX.Element {
   const { entries, get, loading } = useViewCatalog();
   const enabledKinds = useEnabledViewKinds();
@@ -43,12 +57,25 @@ export const LauncherSurface = React.memo(function LauncherSurface({
 
   const page = React.useMemo<ViewEntry[]>(
     () =>
-      curateLauncherPages(entries, {
-        isAosp,
-        enabledKinds,
-        cloudActive: elizaCloudConnected,
-      }),
-    [entries, isAosp, enabledKinds, elizaCloudConnected],
+      curateLauncherPages(
+        catalogMode === "demo"
+          ? entries.filter((entry) => {
+              if (entry.kind !== "view") return false;
+              const id = canonicalLauncherId(entry.id);
+              return (
+                LAUNCHER_APPS_ORDER.includes(id) ||
+                LAUNCHER_DEVELOPER_ORDER.includes(id) ||
+                LAUNCHER_AOSP_ONLY_IDS.includes(id)
+              );
+            })
+          : entries,
+        {
+          isAosp,
+          enabledKinds,
+          cloudActive: elizaCloudConnected,
+        },
+      ),
+    [catalogMode, entries, isAosp, enabledKinds, elizaCloudConnected],
   );
 
   const handleLaunch = React.useCallback(
