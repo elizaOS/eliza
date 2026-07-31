@@ -21,10 +21,12 @@ import {
 	describeScreenshotWithVision,
 	detectPackageManager,
 	ensureVerificationDir,
+	loadAppFromWorkdir,
 	type PackageManager,
 	parseEslintOutput,
 	parseTscOutput,
 	parseVitestOutput,
+	stripAnsi,
 	truncate,
 } from "./verification-helpers.js";
 
@@ -187,6 +189,19 @@ function packageScriptCommand(
 	return { file: "npm", args: ["run", "--silent", script] };
 }
 
+// Non-interactive child env (no TTY prompts, no color). NO_COLOR is the only
+// lever color libs honor by PRESENCE alone — tinyrainbow (vitest) treats the
+// mere presence of FORCE_COLOR or CI as force-ON, so `FORCE_COLOR: "0"`
+// cannot disable color by itself.
+function nonInteractiveEnv(): NodeJS.ProcessEnv {
+	return {
+		...process.env,
+		CI: process.env.CI ?? "1",
+		FORCE_COLOR: "0",
+		NO_COLOR: "1",
+	};
+}
+
 async function runScript(
 	pm: PackageManager,
 	script: string,
@@ -198,8 +213,7 @@ async function runScript(
 		cwd: workdir,
 		timeout: timeoutMs,
 		maxBuffer: EXEC_BUFFER,
-		// Ensure non-interactive child processes (no TTY prompts).
-		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		env: nonInteractiveEnv(),
 		// On Windows, `npm` resolves to `npm.cmd` and `bun` to `bun.exe`.
 		// Without `shell: true`, Node's execFile won't apply PATHEXT and
 		// fails with ENOENT. Enabling the shell is the standard Windows
@@ -243,7 +257,12 @@ async function persistOutput(
 	return outputPath;
 }
 
-function combineOutput(stdout: string, stderr: string): string {
+function combineOutput(rawStdout: string, rawStderr: string): string {
+	// Every parsed check (typecheck/lint/test/build) funnels through here
+	// before persistence and parsing — the one place stripping ANSI protects
+	// all the line-anchored parsers at once.
+	const stdout = stripAnsi(rawStdout);
+	const stderr = stripAnsi(rawStderr);
 	if (!stdout) return stderr;
 	if (!stderr) return stdout;
 	return `${stdout}\n--- stderr ---\n${stderr}`;
@@ -326,7 +345,7 @@ async function runTests(
 		cwd: workdir,
 		timeout: TIMEOUTS.test,
 		maxBuffer: EXEC_BUFFER,
-		env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+		env: nonInteractiveEnv(),
 	};
 	let stdout = "";
 	let stderr = "";
@@ -1173,6 +1192,18 @@ export class AppVerificationService extends Service {
 					if (!client) {
 						throw new Error(
 							"Launch check requested but AppControlClient was not initialized",
+						);
+					}
+					// Register-before-launch: launch resolves through the runtime's
+					// registry, but a freshly built app used to be registered only by
+					// the PASS-path room bridge — circular with this check, so a
+					// first-build launch check could never pass. Same idempotent
+					// load-from-directory the bridge uses; when registration fails the
+					// launch check itself reports the unresolvable name.
+					const load = await loadAppFromWorkdir(opts.workdir);
+					if (!load.ok) {
+						logger.warn(
+							`[AppVerificationService] pre-launch app registration failed: ${load.error}`,
 						);
 					}
 					result = await runLaunchCheck(dir, client, check.appName, launchCtx);

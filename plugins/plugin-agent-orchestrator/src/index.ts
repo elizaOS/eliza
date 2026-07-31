@@ -860,6 +860,7 @@ function stripToolTranscripts(raw: string): string {
     if (insideToolOutput) continue;
     if (trimmed.startsWith("[sub-agent:")) continue;
     if (trimmed.startsWith("[verification:")) continue;
+    if (trimmed.startsWith("[verification note:")) continue;
     if (/^\/[^\s]+/.test(trimmed)) continue;
     out.push(line);
   }

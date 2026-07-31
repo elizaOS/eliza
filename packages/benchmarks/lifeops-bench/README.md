@@ -344,6 +344,19 @@ python3 -m pytest tests/ -v
 python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json
 ```
 
+`pytest tests/` collects 25,967 tests across 44 files and takes 70+ minutes of CPU, so
+it looks hung long before it is. Of those, 24,589 come from
+`test_conformance.py` alone, which parameterizes one PerfectAgent-scores-1.0
+and two WrongAgent-scores-0 invariants across `ALL_SCENARIOS` — a registry of
+16,511 scenarios. The count is expected, not a runaway.
+
+For local work, run the files covering what you changed; the full sweep belongs
+in CI rather than in an edit loop:
+
+```bash
+python3 -m pytest tests/test_hermes_agent.py tests/test_budget.py -q
+```
+
 Regenerate `manifests/actions.manifest.json` and `manifests/actions.summary.md`
 after changing LifeOps or todo action metadata:
 

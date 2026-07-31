@@ -264,7 +264,7 @@ describe("coding-tools WEB_FETCH", () => {
     });
   });
 
-  it("reports a missing JSON extract path clearly", async () => {
+  it("falls back to the full JSON when the extract path is missing", async () => {
     usePinnedRoutes({
       "https://public.example.test/data": new Response(
         JSON.stringify({ data: { price: 42 } }),
@@ -277,7 +277,10 @@ describe("coding-tools WEB_FETCH", () => {
       extract: "data.missing",
     });
 
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("JSON extract path not found: data.missing");
+    // The extract path is a best-effort hint from the planner; a miss must not
+    // fail the whole fetch. The model gets the full JSON and picks what it
+    // needs instead of the turn dying on an io_error.
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"price":42');
   });
 });

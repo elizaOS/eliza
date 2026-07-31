@@ -8,10 +8,10 @@
  * Deterministic: in-memory runtime/state stubs with real temp-dir files for the
  * artifact cases.
  */
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
@@ -64,6 +64,110 @@ describe("handleSwarmSynthesis", () => {
     );
 
     expect(routed).toEqual(["https://example.com/apps/breath-ring/"]);
+  });
+
+  // A stopped Claude session's newest jsonl ends mid-turn: its last assistant
+  // text is inner monologue, not a result. Seed the REAL reader path
+  // (~/.claude/projects/<sanitized-workdir>/) with such a transcript and prove
+  // the non-completed status gate keeps it out of the routed text. Seeded dirs
+  // live in the developer's real ~/.claude/projects, so track and remove them.
+  const seededProjectDirs: string[] = [];
+  afterEach(async () => {
+    while (seededProjectDirs.length > 0) {
+      const dir = seededProjectDirs.pop();
+      if (dir) await rm(dir, { recursive: true, force: true });
+    }
+  });
+  async function seedClaudeTranscript(narration: string): Promise<string> {
+    const workdir = await mkdtemp(path.join(tmpdir(), "swarm-stop-"));
+    const projectDir = path.join(
+      homedir(),
+      ".claude",
+      "projects",
+      workdir.replace(/[/.]/g, "-"),
+    );
+    seededProjectDirs.push(projectDir);
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(
+      path.join(projectDir, "session.jsonl"),
+      `${JSON.stringify({
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: narration }],
+        },
+      })}\n`,
+      "utf8",
+    );
+    return workdir;
+  }
+
+  it("relays only the verification verdict for a stopped Claude task, never the transcript tail", async () => {
+    const narration =
+      "Now let me read the launch check itself to see exactly how it resolves the app.";
+    const workdir = await seedClaudeTranscript(narration);
+    const routed: string[] = [];
+
+    await handleSwarmSynthesis(
+      { runtime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-stopped",
+            label: "app",
+            agentType: "claude",
+            originalTask: "make an app showcasing eliza",
+            status: "stopped",
+            completionSummary: "raw lastOutput that must not relay either",
+            validationSummary: "verification failed: launch check did not pass",
+            workdir,
+          },
+        ],
+        total: 1,
+        completed: 0,
+        stopped: 1,
+        errored: 0,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual(["verification failed: launch check did not pass"]);
+  });
+
+  it("falls back to a lifecycle line for a stopped Claude task with no verdict", async () => {
+    const workdir = await seedClaudeTranscript(
+      "Let me grep the registry cache next.",
+    );
+    const routed: string[] = [];
+
+    await handleSwarmSynthesis(
+      { runtime },
+      {
+        tasks: [
+          {
+            sessionId: "pty-stopped-2",
+            label: "app",
+            agentType: "claude",
+            originalTask: "make an app showcasing eliza",
+            status: "stopped",
+            completionSummary: "",
+            workdir,
+          },
+        ],
+        total: 1,
+        completed: 0,
+        stopped: 1,
+        errored: 0,
+      },
+      async (text) => {
+        routed.push(text);
+      },
+    );
+
+    expect(routed).toEqual([
+      "make an app showcasing eliza — stopped before completion.",
+    ]);
   });
 
   it("strips captured tool-output envelopes from the completionSummary, preserving evidence URLs (#11578)", async () => {

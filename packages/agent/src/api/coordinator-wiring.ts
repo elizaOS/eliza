@@ -48,7 +48,9 @@ export interface WireResult {
 }
 
 const POLL_INTERVAL_MS = 2_000;
-const POLL_TIMEOUT_MS = 90_000;
+/** After this long the poll slows to POLL_SLOW_INTERVAL_MS and logs once. */
+const POLL_SLOW_AFTER_MS = 90_000;
+const POLL_SLOW_INTERVAL_MS = 10_000;
 const RETRY_DELAY_MS = 500;
 const MAX_RETRIES = 5;
 
@@ -139,43 +141,55 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
       return result;
     }
 
-    const deadline = Date.now() + POLL_TIMEOUT_MS;
-    let serviceFound = false;
+    // No hard deadline: the coordinator ships in a DEFERRED plugin whose
+    // resolution starts only after all deferred boot work completes, so its
+    // arrival time is unbounded — a heavy boot (deferred vault-hydration alone
+    // ran ~94s in one restart) pushes it past any fixed timeout, permanently
+    // disabling the bridges until the next restart (which hits the same race).
+    // The poll is a cheap service-map lookup; slow it after POLL_SLOW_AFTER_MS
+    // and stop only when this wiring call is stale (runtime swapped —
+    // onRuntimeSwapped starts a fresh call for the replacement runtime).
+    const pollStart = Date.now();
+    let slowLogged = false;
 
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    while (state.runtime === runtime) {
+      const slow = Date.now() - pollStart >= POLL_SLOW_AFTER_MS;
+      if (slow && !slowLogged) {
+        slowLogged = true;
+        const pluginPresent =
+          runtime.hasService?.(SWARM_COORDINATOR_SERVICE_TYPE) ?? false;
+        if (pluginPresent) {
+          logger.warn(
+            `[eliza-api] coordinator service registered but not yet ` +
+              `discoverable after ${POLL_SLOW_AFTER_MS / 1000}s (${context}) — ` +
+              `still polling; coding-agent features stay disabled until it appears.`,
+          );
+        } else {
+          logger.debug?.(
+            `[eliza-api] coordinator not available after ${POLL_SLOW_AFTER_MS / 1000}s (${context}) — ` +
+              `still polling (deferred plugin may not have loaded yet).`,
+          );
+        }
+      }
+      await new Promise((r) => {
+        const timer = setTimeout(
+          r,
+          slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS,
+        );
+        timer.unref?.();
+      });
 
       const svc = discoverCoordinator(runtime);
       if (svc) {
-        serviceFound = true;
         logger.debug?.(`[eliza-api] coordinator service detected (${context})`);
         break;
       }
     }
 
-    if (!serviceFound) {
-      // Service never appeared. Distinguish the two very different causes so
-      // this isn't a generic "disabled" that hides a real degradation:
-      //   (a) The orchestrator plugin isn't installed/enabled at all — normal
-      //       for non-coding deployments → debug.
-      //   (b) The plugin IS installed but the coordinator never registered or
-      //       never bound its ACP stream (the bind race) → warn, with the
-      //       coordinator's own actionable reason if it exposes one.
-      const pluginPresent =
-        runtime.hasService?.(SWARM_COORDINATOR_SERVICE_TYPE) ?? false;
-      if (pluginPresent) {
-        logger.warn(
-          `[eliza-api] coordinator service registered but never became ` +
-            `discoverable after ${POLL_TIMEOUT_MS / 1000}s (${context}) — ` +
-            `coding-agent supervision DEGRADED. This usually means the ` +
-            `orchestrator's SWARM_COORDINATOR service failed to start; ` +
-            `check the service-start logs above.`,
-        );
-      } else {
-        logger.debug?.(
-          `[eliza-api] coordinator not available after ${POLL_TIMEOUT_MS / 1000}s (${context}) — coding agent features disabled`,
-        );
-      }
+    if (state.runtime !== runtime) {
+      logger.debug?.(
+        `[eliza-api] coordinator polling superseded by runtime swap (${context})`,
+      );
       return result;
     }
 

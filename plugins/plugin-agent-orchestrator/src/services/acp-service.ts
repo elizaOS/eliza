@@ -424,7 +424,9 @@ const ACP_SCRATCH_DIR_NAME_RE =
 export function isAcpScratchDirName(name: string): boolean {
   return ACP_SCRATCH_DIR_NAME_RE.test(name);
 }
-const ACP_METADATA_ISOLATED_WORKDIR = "isolatedWorkdir";
+// Exported for the residuals gate's workdir-class check: a route-mapped dir
+// only counts as "shared" when the session did NOT get its own isolated subdir.
+export const ACP_METADATA_ISOLATED_WORKDIR = "isolatedWorkdir";
 const ACP_METADATA_WORKDIR_ROOT = "workdirRoot";
 const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";

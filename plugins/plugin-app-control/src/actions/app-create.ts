@@ -730,14 +730,23 @@ async function createNewApp({
 	}
 
 	const task = dispatch.agents[0];
-	const text = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits APP_CREATE_DONE.`;
+	// Chat gets one human sentence; the dispatch detail (workdir, session id,
+	// completion event) stays planner-facing in the result text — internal
+	// identifiers in a user-visible message read as a malfunction. The
+	// verified+turnComplete contract makes the callback the turn's single
+	// delivery (the gated evaluator skip), same as LIST_CLOUD_APPS.
+	const text = `Building ${displayName} now — I'll post the link once it's live (usually takes a few minutes).`;
+	const dispatchDetail = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] APP/create new name=${name} workdir=${workdir} dir=${appDirName} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
-		text,
+		text: dispatchDetail,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "create",
 			subMode: "new",
@@ -814,14 +823,19 @@ async function editExistingApp({
 	}
 
 	const task = dispatch.agents[0];
-	const text = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits APP_CREATE_DONE.`;
+	// Same single-human-sentence contract as the create path above.
+	const text = `Updating ${app.displayName} now — I'll post the link once the changes are live (usually takes a few minutes).`;
+	const dispatchDetail = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification runs when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
-		text,
+		text: dispatchDetail,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "create",
 			subMode: "edit",
@@ -976,7 +990,22 @@ export async function runCreate({
 		});
 	}
 
-	const installed = await appClient.listInstalledApps();
+	// error-policy:J4 designed degrade — this list only powers the optional
+	// "edit an existing app?" offer. On a cold registry cache the server's
+	// load (network fetch + workspace scans) exceeds the 2s loopback read
+	// deadline and this read aborts; failing the whole create over it turned
+	// every first post-restart build into "The operation timed out." Degrade
+	// to create-new instead; the load-bearing edit-path reads stay strict.
+	let installed: InstalledAppInfo[] = [];
+	try {
+		installed = await appClient.listInstalledApps();
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] APP/create could not list installed apps (${
+				err instanceof Error ? err.message : String(err)
+			}); proceeding to create-new`,
+		);
+	}
 	const matches = rankMatches(intent, installed);
 
 	if (matches.length === 0) {

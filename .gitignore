@@ -1409,3 +1409,7 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 # both are build output and must never be committed (#16970 review).
 /fused-lib/
 /.fused-lib/
+
+# App-create scaffolds: the workspace app root the APP create flow builds into
+# (<checkout>/eliza/apps/<dir>). Generated per-user app workdirs, never repo code.
+/eliza/

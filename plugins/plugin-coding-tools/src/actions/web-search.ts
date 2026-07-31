@@ -174,8 +174,6 @@ export const webSearchAction: Action = {
           { reason: "no_match", message: "search returned no usable results" },
           { action: "WEB_SEARCH", provider: null },
         );
-        if (callback)
-          await callback({ text: result.text, source: "coding-tools" });
         return result;
       }
 
@@ -195,8 +193,6 @@ export const webSearchAction: Action = {
         { reason: "io_error", message },
         { action: "WEB_SEARCH" },
       );
-      if (callback)
-        await callback({ text: result.text, source: "coding-tools" });
       return result;
     }
   },

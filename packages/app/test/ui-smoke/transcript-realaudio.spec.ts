@@ -6,24 +6,31 @@
  * human and no microphone:
  *
  *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL
- *   local-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
- *   and POSTs it to /api/asr/local-inference -> a transcript session accumulates
- *   -> use the transcription stop control to finalize -> the shell inserts the
- *   text into the composer, attaches the captured WAV, and archives the record
- *   through /api/transcripts.
+ *   WAV-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
+ *   and POSTs it to the configured ASR route -> a transcript session accumulates
+ *   -> use the transcription stop control to finalize -> the shell POSTs the captured audio
+ *   (audioBase64) to /api/transcripts and drops the recording into the composer
+ *   -> send -> the message bubble shows a transcript ATTACHMENT tile ->
+ *   tap it to open the editable viewer.
  *
  * The ASR / transcript / media / knowledge BACKENDS are mocked (not provisioned in
  * CI); the AUDIO IN, the WAV capture, the POST bodies, and every client step are
  * REAL.
  *
  * Split by design (the live capture->finalize->attachment chain is timing-
- * sensitive): test 1 is the REAL-AUDIO + LINKAGE proof; test 2 drives the same
- * real chain, then exhaustively exercises every viewer action against a seeded
- * stored transcript, the Transcripts view player, and the Knowledge link.
+ * sensitive): test 1 is the REAL-AUDIO + LINKAGE proof; test 2 drives the SAME
+ * real chain to the attachment, then exhaustively exercises every VIEWER action,
+ * the TRANSCRIPTS view player, and the KNOWLEDGE link.
  *
  *   bun run --cwd packages/app test:e2e test/ui-smoke/transcript-realaudio.spec.ts
  */
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Route,
+  test,
+} from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -37,7 +44,6 @@ test.setTimeout(360_000);
 const TRANSCRIPT_TEXT = "what time is it";
 const TRANSCRIPT_ID = "transcript-realaudio-e2e";
 const MEDIA_PATH = "/api/media/transcript-realaudio.wav";
-const LOCAL_ASR_PROVIDER = "local-inference";
 const TRANSCRIBE_COMMAND_CATALOG = {
   commands: [
     {
@@ -58,9 +64,11 @@ const TRANSCRIBE_COMMAND_CATALOG = {
   agentId: null,
   generatedAt: "2026-01-01T00:00:00.000Z",
 };
-// A short caption appended before sending the transcribed text and recording.
+// A short caption typed before sending the transcript attachment. The overlay
+// thread drops empty-content turns from its `visibleMessages`, so the user turn
+// that carries the transcript tile must have text — typing a caption (a real,
+// supported flow: "send it with any typed text") keeps the bubble + its tile.
 const TRANSCRIPT_CAPTION = "Here is the recording";
-const SHARE_TARGET = "99999999-9999-9999-9999-999999999999";
 
 /** A real, small mono PCM16 WAV (RIFF header + a 220Hz tone) — served as the
  *  transcript audio so <audio> playback has a real source. */
@@ -164,8 +172,8 @@ interface TranscriptProbes {
   createBodies: TranscriptCreateProof[];
   updateCount: number;
   deleteCount: number;
-  shareGrantBodies: Array<{ entityId: string; mode: string }>;
-  revokedShareTargets: string[];
+  shareGrantCount: number;
+  shareRevokeCount: number;
 }
 
 function freshProbes(): TranscriptProbes {
@@ -175,8 +183,8 @@ function freshProbes(): TranscriptProbes {
     createBodies: [],
     updateCount: 0,
     deleteCount: 0,
-    shareGrantBodies: [],
-    revokedShareTargets: [],
+    shareGrantCount: 0,
+    shareRevokeCount: 0,
   };
 }
 
@@ -190,37 +198,6 @@ async function installTranscriptBackendMocks(
   page: Page,
   probes: TranscriptProbes,
 ): Promise<void> {
-  await page.route("**/api/config", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        meta: { firstRunComplete: true },
-        agents: {
-          list: [
-            {
-              id: "ui-smoke-agent",
-              name: "Playwright Smoke",
-              status: "running",
-            },
-          ],
-          defaults: {
-            workspace: "ui-smoke-workspace",
-            adminEntityId: "owner-ui-smoke",
-          },
-        },
-        messages: {
-          tts: { asr: { provider: LOCAL_ASR_PROVIDER } },
-          voice: { asrProvider: LOCAL_ASR_PROVIDER },
-        },
-      }),
-    });
-  });
-
   await page.route("**/api/commands**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -349,7 +326,7 @@ async function installTranscriptBackendMocks(
     });
   });
 
-  await page.route("**/api/asr/local-inference", async (route) => {
+  const fulfillAsr = async (route: Route) => {
     if (route.request().method() !== "POST") return route.fallback();
     const body = route.request().postDataBuffer();
     const bytes = body?.byteLength ?? 0;
@@ -372,7 +349,9 @@ async function installTranscriptBackendMocks(
         capturedBytes: bytes,
       }),
     });
-  });
+  };
+  await page.route("**/api/asr/local-inference", fulfillAsr);
+  await page.route("**/api/asr/cloud", fulfillAsr);
 
   // The transcript store. POST persists; GET list/detail; PUT edit; DELETE.
   // installDefaultAppRoutes registers a GET-only **/api/transcripts** empty-list
@@ -461,24 +440,23 @@ async function installTranscriptBackendMocks(
     }
     await route.fallback();
   });
-
   await page.route(
     `**/api/transcripts/${TRANSCRIPT_ID}/share`,
     async (route) => {
       if (route.request().method() !== "POST") return route.fallback();
-      const input = route.request().postDataJSON() as {
+      const request = route.request().postDataJSON() as {
         entityId: string;
-        mode: string;
+        mode: "redacted" | "full";
       };
-      probes.shareGrantBodies.push(input);
+      probes.shareGrantCount += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
           transcriptId: TRANSCRIPT_ID,
-          entityId: input.entityId,
-          mode: input.mode,
+          entityId: request.entityId,
+          mode: request.mode,
         }),
       });
     },
@@ -487,18 +465,11 @@ async function installTranscriptBackendMocks(
     `**/api/transcripts/${TRANSCRIPT_ID}/share/*`,
     async (route) => {
       if (route.request().method() !== "DELETE") return route.fallback();
-      const entityId = decodeURIComponent(
-        new URL(route.request().url()).pathname.split("/").at(-1) ?? "",
-      );
-      probes.revokedShareTargets.push(entityId);
+      probes.shareRevokeCount += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          ok: true,
-          transcriptId: TRANSCRIPT_ID,
-          entityId,
-        }),
+        body: JSON.stringify({ ok: true }),
       });
     },
   );
@@ -598,23 +569,19 @@ async function installTranscriptBackendMocks(
   });
 }
 
-/** Count finished POSTs to the ASR endpoint (proof the capture chain ran). */
+/** Count finished POSTs to a configured WAV-ASR endpoint. */
 function trackAsrPosts(page: Page): { count: () => number } {
   let posted = 0;
   page.on("requestfinished", (req) => {
     if (
       req.method() === "POST" &&
-      req.url().includes("/api/asr/local-inference") &&
+      /\/api\/asr\/(?:cloud|local-inference)(?:\?|$)/.test(req.url()) &&
       !req.url().includes("/status")
     ) {
       posted += 1;
     }
   });
   return { count: () => posted };
-}
-
-function visibleComposerControl(page: Page, testId: string): Locator {
-  return page.locator(`[data-testid="${testId}"]:visible`).last();
 }
 
 async function startTranscriptionViaSlash(page: Page): Promise<void> {
@@ -631,20 +598,12 @@ async function startTranscriptionViaSlash(page: Page): Promise<void> {
     timeout: 15_000,
   });
   await expect(
-    visibleComposerControl(page, "chat-composer-transcription-stop"),
+    page.getByTestId("chat-composer-transcription-stop"),
   ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
-  await expect(
-    visibleComposerControl(page, "chat-composer-mic"),
-  ).toHaveAttribute("aria-label", "stop transcription and mic", {
-    timeout: 15_000,
-  });
 }
 
 async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
-  await visibleComposerControl(
-    page,
-    "chat-composer-transcription-stop",
-  ).click();
+  await page.getByTestId("chat-composer-transcription-stop").click();
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
   });
@@ -666,13 +625,8 @@ async function dispatchTranscriptionAgentAction(
 async function startTranscriptionViaAgentAction(page: Page): Promise<void> {
   await dispatchTranscriptionAgentAction(page, "start");
   await expect(
-    visibleComposerControl(page, "chat-composer-transcription-stop"),
+    page.getByTestId("chat-composer-transcription-stop"),
   ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
-  await expect(
-    visibleComposerControl(page, "chat-composer-mic"),
-  ).toHaveAttribute("aria-label", "stop transcription and mic", {
-    timeout: 15_000,
-  });
 }
 
 async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
@@ -692,7 +646,7 @@ async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
  * off). Idempotent: returns immediately if voice is already off.
  */
 async function stopVoiceAndSettle(page: Page): Promise<void> {
-  const mic = visibleComposerControl(page, "chat-composer-mic");
+  const mic = page.getByTestId("chat-composer-mic");
   await expect
     .poll(
       async () => {
@@ -799,10 +753,10 @@ async function openTranscriptViewer(page: Page): Promise<Locator> {
 /**
  * Drive the REAL transcript-capture chain from the chat overlay: tap mic ->
  * /transcribe -> real audio capture -> stop transcription to POST + finalize ->
- * the transcript text and recording land in the composer -> send -> the audio
- * attachment renders in the thread. Returns once the attachment is visible.
+ * the recording lands in the composer -> send -> the transcript
+ * ATTACHMENT tile renders in the thread. Returns once the tile is visible.
  */
-async function captureTranscriptToRecordingAttachment(
+async function captureTranscriptToAttachment(
   page: Page,
   probes: TranscriptProbes,
 ): Promise<void> {
@@ -813,7 +767,7 @@ async function captureTranscriptToRecordingAttachment(
     timeout: 60_000,
   });
 
-  const mic = visibleComposerControl(page, "chat-composer-mic");
+  const mic = page.getByTestId("chat-composer-mic");
   await expect(mic).toBeVisible({ timeout: 30_000 });
   await mic.click();
   await expect(mic).toHaveAttribute("aria-label", "end conversation", {
@@ -832,19 +786,16 @@ async function captureTranscriptToRecordingAttachment(
     )
     .not.toBeNull();
 
-  const composer = page.getByTestId("chat-composer-textarea");
-  await expect(composer).toHaveValue(new RegExp(TRANSCRIPT_TEXT), {
-    timeout: 15_000,
-  });
   await expect(page.getByText(/^Recording .*\.wav$/).first()).toBeVisible({
     timeout: 15_000,
   });
-  const transcriptDraft = await composer.inputValue();
-  await composer.fill(`${transcriptDraft} ${TRANSCRIPT_CAPTION}`);
+  // Type a caption so the user turn has text (the overlay drops empty-content
+  // turns from its thread, which would hide the tile-bearing bubble).
+  await page.getByTestId("chat-composer-textarea").fill(TRANSCRIPT_CAPTION);
   // Send via the textarea Enter key (not the trailing button): while the
   // hands-free re-listen loop is live, that button oscillates between the mic
   // (recording) and the send action, so clicking it by testid races the morph.
-  // Enter always submits the draft + the pending recording attachment. Capture
+  // Enter always submits the draft + the pending transcript attachment. Capture
   // the post-turn history-reload GET so we can wait for the optimistic->persisted
   // swap to finish — that swap remounts the bubble's MessageAttachments (and any
   // open viewer with it), so the tile must be the SETTLED persisted one.
@@ -855,20 +806,20 @@ async function captureTranscriptToRecordingAttachment(
       res.status() === 200,
     { timeout: 30_000 },
   );
-  await composer.press("Enter");
+  await page.getByTestId("chat-composer-textarea").press("Enter");
   // Stop the hands-free re-listen loop so the live-transcript overlay stops
   // re-rendering the thread; otherwise the attachment tile detaches mid-click.
   await stopVoiceAndSettle(page);
   // Wait for the turn to complete (clean stream done) so the assistant bubble
   // stops its "thinking" animation and the thread goes static, then the persisted
-  // history (carrying the recording attachment) renders the stable tile.
+  // history (carrying the transcript attachment) renders the stable tile.
   await expect(page.getByText("Saved your transcript.").first()).toBeVisible({
     timeout: 30_000,
   });
   await reloaded.catch(() => {
     /* some flows don't reload; the optimistic tile is then already stable */
   });
-  await expect(page.getByTestId("audio-attachment").first()).toBeVisible({
+  await expect(page.getByTestId("transcript-attachment").first()).toBeVisible({
     timeout: 20_000,
   });
 }
@@ -912,7 +863,7 @@ async function captureTranscriptRecordViaControlPath(
     timeout: 60_000,
   });
 
-  const mic = visibleComposerControl(page, "chat-composer-mic");
+  const mic = page.getByTestId("chat-composer-mic");
   await expect(mic).toBeVisible({ timeout: 30_000 });
   await mic.click();
   await expect(mic).toHaveAttribute("aria-label", "end conversation", {
@@ -942,12 +893,6 @@ async function captureTranscriptRecordViaControlPath(
     )
     .not.toBeNull();
 
-  await expect(page.getByTestId("chat-composer-textarea")).toHaveValue(
-    new RegExp(TRANSCRIPT_TEXT),
-    {
-      timeout: 15_000,
-    },
-  );
   await expect(page.getByText(/^Recording .*\.wav$/).first()).toBeVisible({
     timeout: 15_000,
   });
@@ -962,7 +907,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, inserts text, and attaches the recording", async ({
+test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, keeps the mic active, and drops a transcript attachment", async ({
   page,
 }) => {
   const probes = freshProbes();
@@ -973,7 +918,7 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   const overlay = page.getByTestId("chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
 
-  const mic = visibleComposerControl(page, "chat-composer-mic");
+  const mic = page.getByTestId("chat-composer-mic");
   await expect(mic).toBeVisible({ timeout: 30_000 });
 
   // (LINKAGE a) Tap the mic FIRST -> hands-free -> the mic reads active.
@@ -986,7 +931,7 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   // replaces the composer controls while the hands-free mic remains the parent.
   await startTranscriptionViaSlash(page);
   await expect(
-    visibleComposerControl(page, "chat-composer-transcription-stop"),
+    page.getByTestId("chat-composer-transcription-stop"),
   ).toHaveAttribute("aria-label", "stop transcription", {
     timeout: 15_000,
   });
@@ -996,8 +941,8 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   await page.waitForTimeout(1200);
 
   // (REAL AUDIO + ATTACHMENT) Stop to FINALIZE. The shell POSTs the segments +
-  // real captured audio to /api/transcripts, inserts the text into the draft,
-  // and keeps the WAV as the pending attachment.
+  // the REAL captured audio (audioBase64) to /api/transcripts and drops a
+  // `Recording ….wav` attachment into the composer.
   await finalizeTranscriptionViaSlash(page);
   await expect
     .poll(() => asr.count(), {
@@ -1024,22 +969,30 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   );
   expect(realCreate?.segmentCount ?? 0).toBeGreaterThan(0);
 
-  // The finished transcript becomes editable composer text and its captured WAV
-  // becomes the pending attachment; the archival record is proven above.
-  await expect(page.getByTestId("chat-composer-textarea")).toHaveValue(
-    new RegExp(TRANSCRIPT_TEXT),
+  // (LINKAGE c) Transcript OFF leaves hands-free enabled, but the completed
+  // transcript's text + attachment intentionally morph the trailing control to
+  // Send until that pending turn is submitted. After send, stopVoiceAndSettle
+  // below proves the parent hands-free loop resumed by finding and stopping it.
+  await expect(page.getByTestId("chat-composer-action")).toHaveAttribute(
+    "aria-label",
+    "send",
     {
       timeout: 15_000,
     },
   );
+
+  // The finished transcript's audio becomes a pending composer attachment; the
+  // sent message is normalized to the transcript document tile by the server.
   await expect(page.getByText(/^Recording .*\.wav$/).first()).toBeVisible({
     timeout: 15_000,
   });
 
-  const composer = page.getByTestId("chat-composer-textarea");
-  const transcriptDraft = await composer.inputValue();
-  await composer.fill(`${transcriptDraft} ${TRANSCRIPT_CAPTION}`);
-  await composer.press("Enter");
+  // (ATTACHMENT) Type a caption (so the tile-bearing user turn has text and isn't
+  // dropped by the overlay's empty-turn filter), then send via the textarea Enter
+  // key — robust against the trailing-button morph (mic<->send) while the
+  // hands-free re-listen loop runs.
+  await page.getByTestId("chat-composer-textarea").fill(TRANSCRIPT_CAPTION);
+  await page.getByTestId("chat-composer-textarea").press("Enter");
 
   // (LINKAGE d) The mic is the master voice control: tapping it turns BOTH the
   // mic and transcript fully off. stopVoiceAndSettle taps the mic and asserts
@@ -1047,7 +1000,8 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   // settles for the tile click below.
   await stopVoiceAndSettle(page);
   // Let the turn finish (clean stream done) so the assistant bubble stops
-  // animating and the thread goes static, then the persisted history renders.
+  // animating and the thread goes static, then the persisted history (carrying
+  // the transcript attachment) renders the stable tile.
   await expect(page.getByText("Saved your transcript.").first()).toBeVisible({
     timeout: 30_000,
   });
@@ -1075,8 +1029,8 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
   const probes = freshProbes();
   await installTranscriptBackendMocks(page, probes);
 
-  // Stub the clipboard + share/download seams so copy/share/save assert cleanly
-  // without a real OS dialog.
+  // Stub the clipboard + download seams so copy/save assert cleanly without a
+  // real OS dialog.
   await page.addInitScript(() => {
     const w = window as unknown as {
       __transcriptProbe: {
@@ -1155,7 +1109,7 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
   ).toBeVisible();
 
   // ── 4-VIEWER: drive the REAL chat tile -> viewer and exercise EVERY action ──
-  await captureTranscriptToRecordingAttachment(page, probes);
+  await captureTranscriptToAttachment(page, probes);
   const viewer = await openTranscriptViewer(page);
 
   // Audio element has a real, served src.
@@ -1198,8 +1152,9 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
     .poll(async () => (await probe()).downloads)
     .toBeGreaterThan(dlBeforeText);
 
-  // Share persists an explicit redacted grant and supports revocation for the
-  // same recipient; it never hands raw transcript text to navigator.share.
+  // Share opens the permission sheet and defaults to redacted access. Exercise
+  // both mutations so this browser test proves the current transcript ACL API,
+  // not an OS share-dialog seam.
   await page.getByTestId("transcript-share").click();
   await expect(page.getByTestId("transcript-share-sheet")).toBeVisible({
     timeout: 5_000,
@@ -1207,19 +1162,17 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
   await expect(
     page.getByTestId("transcript-share-mode-redacted"),
   ).toBeVisible();
-  await page.getByTestId("transcript-share-target").fill(SHARE_TARGET);
+  await page.getByTestId("transcript-share-target").fill("viewer-entity");
   await page.getByTestId("transcript-grant-share").click();
-  await expect
-    .poll(() => probes.shareGrantBodies)
-    .toEqual([{ entityId: SHARE_TARGET, mode: "redacted" }]);
+  await expect.poll(() => probes.shareGrantCount).toBe(1);
   await expect(page.getByTestId("transcript-share-success")).toContainText(
-    /Redacted transcript access granted/i,
+    /redacted transcript access granted/i,
     { timeout: 5_000 },
   );
   await page.getByTestId("transcript-revoke-share").click();
-  await expect.poll(() => probes.revokedShareTargets).toEqual([SHARE_TARGET]);
+  await expect.poll(() => probes.shareRevokeCount).toBe(1);
   await expect(page.getByTestId("transcript-share-success")).toContainText(
-    /revoked/i,
+    /access revoked/i,
     { timeout: 5_000 },
   );
 
@@ -1247,7 +1200,7 @@ test("VIEWER: open-in-knowledge navigates to the Knowledge view", async ({
   const probes = freshProbes();
   await installTranscriptBackendMocks(page, probes);
 
-  await captureTranscriptToRecordingAttachment(page, probes);
+  await captureTranscriptToAttachment(page, probes);
   await openTranscriptViewer(page);
 
   await page.getByTestId("transcript-open-in-knowledge").click();

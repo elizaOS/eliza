@@ -468,3 +468,91 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		});
 	});
 });
+
+// Regression fence: a cloud-qualified app ask ("list my cloud apps") must
+// surface the cloud-apps action in the app slot, not the local APP control
+// action. With only [VIEWS, APP] hinted, the planner answered cloud-apps asks
+// with the installed-app list or a similarly-named cloud action —
+// LIST_CLOUD_APPS was never on the surface to win.
+describe("cloud-apps surface request inference", () => {
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: [],
+		tags: [],
+	};
+	const appAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "APP",
+		similes: ["LIST_APPS", "LAUNCH_APP"],
+		tags: ["apps"],
+	};
+	const cloudAppsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "LIST_CLOUD_APPS",
+		similes: ["MY_CLOUD_APPS", "CLOUD_APPS", "MY_DEPLOYED_APPS"],
+		tags: [],
+	};
+
+	it("surfaces LIST_CLOUD_APPS instead of local APP for cloud-qualified asks", () => {
+		for (const message of [
+			"list my cloud apps",
+			"show my cloud apps",
+			"what cloud apps do I have",
+			"list my deployed apps",
+			"show me my hosted apps",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[viewsAction, appAction, cloudAppsAction],
+					message,
+				),
+			).toEqual(["VIEWS", "LIST_CLOUD_APPS"]);
+		}
+	});
+
+	it("keeps local APP for unqualified installed-app asks", () => {
+		for (const message of ["show me the apps", "list installed apps"]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[viewsAction, appAction, cloudAppsAction],
+					message,
+				),
+			).toEqual(["VIEWS", "APP"]);
+		}
+	});
+
+	it("falls back to local APP when no cloud-apps action is registered", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction],
+				"list my cloud apps",
+			),
+		).toEqual(["VIEWS", "APP"]);
+	});
+
+	it("resolves the cloud action by simile when the canonical name differs", () => {
+		const renamed: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "SHOW_CLOUD_PORTFOLIO",
+			similes: ["MY_CLOUD_APPS"],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction, renamed],
+				"list my cloud apps",
+			),
+		).toEqual(["VIEWS", "SHOW_CLOUD_PORTFOLIO"]);
+	});
+
+	it("still routes a bare view name to VIEWS with the cloud action registered", () => {
+		const navViews: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "VIEWS",
+			similes: [],
+			tags: ["settings"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[navViews, appAction, cloudAppsAction],
+				"settings",
+			),
+		).toEqual(["VIEWS"]);
+	});
+});

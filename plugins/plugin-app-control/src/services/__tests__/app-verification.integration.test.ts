@@ -184,6 +184,45 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 	);
 
 	itIf(pkgManagerAvailable)(
+		"proves the vitest summary through ANSI-colorized test output",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-ansi-proof-"));
+			writeMinimalTsProject(workdir, PASS_TS);
+			// The live failure shape: vitest colorizes because the spawn env's
+			// FORCE_COLOR/CI PRESENCE forces color on in tinyrainbow, burying the
+			// `Tests` summary line under escapes. This shim ignores NO_COLOR, so
+			// the case specifically exercises the combineOutput ANSI strip.
+			writeFileSync(
+				path.join(workdir, "test-shim.mjs"),
+				`process.stdout.write("\\x1b[2m Tests\\x1b[22m \\x1b[1m2 passed\\x1b[22m\\x1b[90m (2)\\x1b[39m\\n"); process.exit(0);\n`,
+				"utf8",
+			);
+
+			const result = await service.verifyPlugin({
+				workdir,
+				profile: "full",
+				runId: "int-ansi-proof",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "PLUGIN_CREATE_DONE",
+					pluginName: "verify-ansi-fixture",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(
+				result.checks.find((check) => check.kind === "structured-proof")
+					?.passed,
+			).toBe(true);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
 		"returns verdict=fail with non-empty diagnostics when TS has a type error",
 		async () => {
 			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));

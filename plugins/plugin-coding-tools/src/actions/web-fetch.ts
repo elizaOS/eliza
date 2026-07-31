@@ -121,10 +121,11 @@ function extractBody(
   ) {
     const parsed = JSON.parse(body) as unknown;
     const selected = extract ? resolveJsonPath(parsed, extract) : parsed;
-    if (extract && selected === undefined) {
-      throw new Error(`JSON extract path not found: ${extract}`);
-    }
-    return { value: JSON.stringify(selected), kind: "json" };
+    // A fuzzy or unresolved extract path must not hard-fail the fetch: fall back
+    // to the full JSON so the model can still read it and pick out what it needs,
+    // rather than surfacing an io_error for a best-effort path hint.
+    const jsonValue = extract && selected === undefined ? parsed : selected;
+    return { value: JSON.stringify(jsonValue), kind: "json" };
   }
   return { value: body.trim(), kind: "text" };
 }
@@ -191,8 +192,6 @@ export const webFetchAction: Action = {
             status: response.status,
           },
         );
-        if (callback)
-          await callback({ text: result.text, source: "coding-tools" });
         return result;
       }
 
@@ -221,8 +220,6 @@ export const webFetchAction: Action = {
         { reason: "io_error", message },
         { action: "WEB_FETCH", url },
       );
-      if (callback)
-        await callback({ text: result.text, source: "coding-tools" });
       return result;
     }
   },

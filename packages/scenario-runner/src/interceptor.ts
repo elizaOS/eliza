@@ -62,9 +62,13 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
  *
  * Functions, symbols, and undefined are dropped rather than stringified -
  * substituting a placeholder would put a value in the trace that the action was
- * never called with. Cycles resolve to null because they indicate runtime
- * plumbing leaked into the data graph. The depth cap matches the downstream
- * canonical JSON boundary so every accepted value remains intact.
+ * never called with. Cycles resolve to null: `seen` tracks ancestors only, so
+ * recursion always terminates on a cyclic graph without truncating siblings.
+ *
+ * The depth cap matches the downstream canonical JSON boundary: depth 128 is
+ * accepted intact, while deeper data becomes null before report serialization.
+ * A lower cap silently rewrites valid workflow result data and makes truncation
+ * indistinguishable from a genuine empty node result.
  */
 const MAX_CAPTURED_PARAM_DEPTH = 128;
 
