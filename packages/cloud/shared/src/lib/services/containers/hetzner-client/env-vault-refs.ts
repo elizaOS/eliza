@@ -7,19 +7,27 @@
  * the SSH command line, and (3) in `docker inspect` output on the node —
  * all plaintext. With sealing enabled, secret-bearing values are written to
  * the Steward secret vault at provision time and the container env carries
- * only `vault://<key>` reference sentinels; the agent-side boot resolver
- * (see `packages/agent/src/runtime/operations/vault-bridge.ts`, the OWNER
- * of the `vault://` sentinel format — do NOT fork the scheme) hydrates the
- * real values inside the container.
+ * only `vault://<key>` reference sentinels. The sentinel format is OWNED by
+ * `packages/agent/src/runtime/operations/vault-bridge.ts` — do NOT fork the
+ * scheme.
+ *
+ * NOT YET END-TO-END: no in-container resolver for `vault://cloud/env/...`
+ * refs exists in this repo today — the agent-side vault bridge resolves
+ * against the LOCAL @elizaos/vault and explicitly fail-closes vault refs on
+ * ELIZA_CLOUD_PROVISIONED containers. Flipping the flag before a
+ * Steward-backed boot resolver ships would hand containers the literal
+ * sentinel strings as credentials. The flag MUST stay off until that
+ * resolver lands (sibling lane).
  *
  * FLAG-GATED, DEFAULT OFF: sealing only runs when
  * `CONTAINERS_ENV_VAULT_REFS=true` (containersEnv.envVaultRefsEnabled), so
  * existing deployments keep the legacy plaintext behavior byte-for-byte.
- * To migrate: configure `STEWARD_API_URL` + `STEWARD_TENANT_API_KEY` on the
- * control-plane sidecar, ensure the Steward secrets surface accepts the
- * tenant machine credential (the `/v1/kms/*` lane), flip the flag, then
- * recreate containers (env cannot be mutated on a live container anyway —
- * setEnv recreates and reseals).
+ * To migrate (once the in-container resolver exists): configure
+ * `STEWARD_API_URL` + `STEWARD_TENANT_API_KEY` on the control-plane
+ * sidecar, ensure the Steward secrets surface accepts the tenant machine
+ * credential (the `/v1/kms/*` lane), flip the flag, then recreate
+ * containers (env cannot be mutated on a live container anyway — setEnv
+ * recreates and reseals).
  *
  * ERROR POLICY: fail CLOSED. When the flag is on and a vault write fails,
  * provisioning throws — a fallback to plaintext injection would silently
