@@ -17,6 +17,7 @@ import type {
   SwarmEventListener,
 } from "@elizaos/core";
 import {
+  FAILED_TOOL_FALLBACK_MESSAGE,
   ElizaError,
   logger,
   Service,
@@ -949,6 +950,23 @@ export class SwarmCoordinatorService
       return;
     }
 
+    // A verify-retry session reports its outcome under the ORIGINAL session's
+    // validated completion (dispatchCustomValidatorResult runs on the lineage
+    // root, which claims the synthesis slot). The retry session's own teardown
+    // `stopped` is plumbing — synthesizing it posts a false
+    // "<label> — stopped before completion." into a room that already received
+    // the pass verdict. A retry that genuinely dies without ANY lineage
+    // completion still synthesizes: the root never claimed the slot.
+    if (event === "stopped") {
+      const retryOf = readString(
+        await this.getFreshSessionMetadata(sessionId),
+        "retryOfSessionId",
+      );
+      if (retryOf && this.synthesizedCompletionSessions.has(retryOf)) {
+        return;
+      }
+    }
+
     // Ownership rule (issue elizaOS/eliza#11634): the sub-agent-router owns the
     // completion→chat post for origin-routed sessions — it is origin-aware,
     // dedupe-keyed, respawn/retry-suppressing, and feeds the planner's clean
@@ -1078,9 +1096,17 @@ export class SwarmCoordinatorService
     const bodyBudget = validatorVerdict
       ? DEFAULT_MAX_RELAY_CHARS - validatorVerdict.length - 2
       : DEFAULT_MAX_RELAY_CHARS;
-    const sanitizedBody = rawSummary
+    let sanitizedBody = rawSummary
       ? sanitizeCompletionRelay(rawSummary, bodyBudget)
       : "";
+    // A retried lineage can leave the planner's generic failed-tool apology as
+    // the root session's finalText; next to a pass verdict it contradicts the
+    // outcome ("verification passed" + "the runtime step failed"). Identity
+    // match on the exported constant — the same recognition the message
+    // service uses to drop it as redundant.
+    if (validatorVerdict && sanitizedBody === FAILED_TOOL_FALLBACK_MESSAGE) {
+      sanitizedBody = "";
+    }
     const sanitizedSummary = validatorVerdict
       ? sanitizedBody && sanitizedBody !== validatorVerdict
         ? `${validatorVerdict}\n\n${sanitizedBody}`
