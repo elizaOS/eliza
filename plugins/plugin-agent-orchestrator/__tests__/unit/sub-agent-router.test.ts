@@ -1589,9 +1589,7 @@ describe("SubAgentRouter", () => {
     it("rejects generated app pages that reference unreachable same-origin image assets", async () => {
       // Same-origin sub-resources are part of the artifact under verification:
       // a missing sticker.png on the deploy origin IS a broken build and must
-      // still fail-and-retry. (Dead THIRD-PARTY sub-resources — font-CDN roots,
-      // hallucinated cross-origin paths — degrade to an info note instead;
-      // covered by the companion test below.)
+      // still fail-and-retry.
       const appUrl = "https://example.test/apps/permit-garden/";
       const imageUrl = "https://example.test/apps/permit-garden/sticker.png";
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1629,11 +1627,10 @@ describe("SubAgentRouter", () => {
       expect(fetchMock).toHaveBeenCalledWith(imageUrl, expect.anything());
     });
 
-    it("degrades a dead cross-origin third-party sub-resource to an info note, not a build failure", async () => {
-      // A font-CDN / analytics host that 404s a bare probe is not evidence the
-      // build tanked (the driftwave regression). The page itself probes 200, so
-      // completion must POST — with a single "[verification note:" line, never
-      // the "[verification:" failure marker — and no verify-retry may fire.
+    it("rejects a generated page whose cross-origin dependency is unreachable", async () => {
+      // A fetched stylesheet, script, image, or media asset is part of the
+      // delivered page even when a CDN hosts it. Hint-only links and bare CDN
+      // roots are filtered before this probe.
       const appUrl = "https://example.test/apps/permit-garden/";
       const cdnUrl = "https://cdn.example.test/permit-garden/sticker.png";
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -1662,12 +1659,12 @@ describe("SubAgentRouter", () => {
       });
       await new Promise((r) => setTimeout(r, 200));
 
-      expect(spawnSession).not.toHaveBeenCalled();
-      expect(handleMessage).toHaveBeenCalledTimes(1);
-      const posted = handleMessage.mock.calls[0]?.[1];
-      expect(posted?.content?.text).toContain(appUrl);
-      expect(posted?.content?.text).toContain("[verification note:");
-      expect(posted?.content?.text).not.toContain("[verification:");
+      expect(spawnSession).toHaveBeenCalledTimes(1);
+      const retryTask = String(spawnSession.mock.calls[0]?.[0]?.initialTask);
+      expect(retryTask).toContain("--- VERIFICATION FEEDBACK");
+      expect(retryTask).toContain(cdnUrl);
+      expect(retryTask).toContain("HTTP 404");
+      expect(handleMessage).not.toHaveBeenCalled();
       expect(fetchMock).toHaveBeenCalledWith(cdnUrl, expect.anything());
     });
 
