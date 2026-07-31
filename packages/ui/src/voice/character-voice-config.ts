@@ -8,7 +8,7 @@ import {
 } from "@elizaos/shared";
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
-import { PREMADE_VOICES } from "./types";
+import { hasConfiguredApiKey, PREMADE_VOICES } from "./types";
 import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
@@ -78,25 +78,60 @@ function resolveLegacyVoiceId(characterId: string): string | null {
   return voice?.voiceId ?? null;
 }
 
+function isExplicitElevenLabsChoice(config: VoiceConfig | null): boolean {
+  const apiKey = config?.elevenlabs?.apiKey?.trim() ?? "";
+  // GET /api/config replaces a stored secret with this sentinel. It is not a
+  // usable browser key, but it is durable evidence that the user configured
+  // ElevenLabs; treating it as absent would rewrite their provider on load.
+  const hasStoredKeyEvidence =
+    apiKey.toUpperCase() === "[REDACTED]" ||
+    apiKey.toUpperCase() === "REDACTED";
+  return Boolean(
+    config?.provider === "elevenlabs" &&
+      (config.mode === "cloud" ||
+        config.mode === "own-key" ||
+        hasConfiguredApiKey(apiKey) ||
+        hasStoredKeyEvidence),
+  );
+}
+
+function withoutVoiceProvider(config: VoiceConfig): VoiceConfig {
+  const providerNeutralConfig = { ...config };
+  delete providerNeutralConfig.provider;
+  return providerNeutralConfig;
+}
+
 export function resolveCharacterVoiceConfigFromAppConfig(args: {
   config: Record<string, unknown>;
   uiLanguage: string;
-}): { voiceConfig: VoiceConfig | null; shouldPersist: boolean } {
+}): VoiceConfig | null {
   const storedVoiceConfig = resolveStoredVoiceConfig(args.config);
   const selectedCharacterVoice = resolveSelectedCharacterVoiceId(
     args.config,
     args.uiLanguage,
   );
   if (!selectedCharacterVoice) {
-    return { voiceConfig: storedVoiceConfig, shouldPersist: false };
+    return storedVoiceConfig;
   }
 
   if (
     storedVoiceConfig?.provider &&
     storedVoiceConfig.provider !== "elevenlabs"
   ) {
-    return { voiceConfig: storedVoiceConfig, shouldPersist: false };
+    return storedVoiceConfig;
   }
+
+  // Character presets select a voice, not a transport. Old configs coupled the
+  // two by stamping `provider: elevenlabs` without a mode or usable key, which
+  // bypasses capability defaults and guarantees a fail-closed first utterance.
+  // A mode or usable key is an explicit modern ElevenLabs choice and remains
+  // authoritative; otherwise remove only the legacy provider pin.
+  const releaseLegacyProvider =
+    storedVoiceConfig?.provider === "elevenlabs" &&
+    !isExplicitElevenLabsChoice(storedVoiceConfig);
+  const providerNeutralConfig = releaseLegacyProvider
+    ? withoutVoiceProvider(storedVoiceConfig)
+    : storedVoiceConfig;
 
   const currentVoiceId =
     typeof storedVoiceConfig?.elevenlabs?.voiceId === "string"
@@ -105,29 +140,38 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
   const legacyVoiceId = resolveLegacyVoiceId(
     selectedCharacterVoice.characterId,
   );
-  const shouldPersist =
+  const shouldUpdatePresetVoice =
     selectedCharacterVoice.voiceId !== currentVoiceId &&
     (!currentVoiceId ||
       currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
       currentVoiceId === legacyVoiceId);
 
-  if (!shouldPersist) {
-    return { voiceConfig: storedVoiceConfig, shouldPersist: false };
+  if (!releaseLegacyProvider && !shouldUpdatePresetVoice) {
+    return storedVoiceConfig;
   }
 
-  return {
-    voiceConfig: {
-      ...storedVoiceConfig,
-      provider: "elevenlabs",
-      elevenlabs: {
-        ...(storedVoiceConfig?.elevenlabs ?? {}),
-        voiceId: selectedCharacterVoice.voiceId,
-        modelId:
-          storedVoiceConfig?.elevenlabs?.modelId ?? DEFAULT_ELEVENLABS_MODEL_ID,
-      },
+  if (!shouldUpdatePresetVoice) {
+    // Provider-neutralizing an old preset is a read-time compatibility rule,
+    // not an implicit settings mutation. This also keeps signed-out clients
+    // from retrying a protected config write every time voice state reloads.
+    return providerNeutralConfig;
+  }
+
+  const voiceConfig: VoiceConfig = {
+    ...providerNeutralConfig,
+    elevenlabs: {
+      ...(providerNeutralConfig?.elevenlabs ?? {}),
+      voiceId: selectedCharacterVoice.voiceId,
+      modelId:
+        providerNeutralConfig?.elevenlabs?.modelId ??
+        DEFAULT_ELEVENLABS_MODEL_ID,
     },
-    shouldPersist: true,
   };
+
+  // The preset voice is deterministic character state. Keeping it derived
+  // avoids a protected settings write during ordinary chat startup; explicit
+  // choices made in Voice Settings still persist through that surface.
+  return voiceConfig;
 }
 
 /**
