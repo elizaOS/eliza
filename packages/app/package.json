@@ -32,7 +32,6 @@
     "audit:app:capture": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --project=audit-app",
     "audit:live": "node scripts/visual-qa-live.mjs",
     "audit:cloud": "VITE_PLAYWRIGHT_TEST_AUTH=true node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --project=audit-cloud",
-    "audit:app:minimalism:update": "bun scripts/update-minimalism-baseline.mjs",
     "mvp:visual-verify": "node scripts/mvp-visual-verify.mjs",
     "mvp:visual-verify:overflow-demo": "node scripts/mvp-visual-verify/overflow-invariant-demo.mjs",
     "audit:app:verify": "bun run audit:app:capture && ELIZA_MVP_OCR_ENGINE=packaged bun run audit:ocr && ELIZA_MVP_OCR_ENGINE=packaged bun run mvp:visual-verify -- --strict --require-baseline-states",
