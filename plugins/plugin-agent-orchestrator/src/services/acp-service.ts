@@ -133,7 +133,12 @@ import {
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
-import { captureBaselineDirty, captureBaselineSha } from "./workspace-diff.js";
+import {
+  captureBaselineDirty,
+  captureBaselineSha,
+  captureWorkspaceDirtyPaths,
+  captureWorkspaceTreeSha,
+} from "./workspace-diff.js";
 import {
   getSharedWorkspaceRegistry,
   resolveDiskBudgetConfig,
@@ -1680,6 +1685,8 @@ export class AcpService extends Service {
       // own edit/write tool-call paths.
       const baselineSha = await captureBaselineSha(workdir);
       const baselineDirty = await captureBaselineDirty(workdir);
+      const baselineSnapshotDirty = await captureWorkspaceDirtyPaths(workdir);
+      const baselineTreeSha = await captureWorkspaceTreeSha(workdir);
 
       // Give each concurrent ACP session its own copied git index so sequential
       // commits in the SAME worktree never drop another session's staged tree.
@@ -1755,6 +1762,14 @@ export class AcpService extends Service {
             }
           : {}),
         ...(baselineSha ? { codingBaselineSha: baselineSha } : {}),
+        ...(baselineTreeSha ? { codingBaselineTreeSha: baselineTreeSha } : {}),
+        ...(baselineSha &&
+        (!baselineTreeSha || baselineSnapshotDirty === undefined)
+          ? { codingBaselineTreeUnavailable: true }
+          : {}),
+        ...(baselineTreeSha && (baselineSnapshotDirty?.length ?? 0) > 0
+          ? { codingBaselineSnapshotDirty: baselineSnapshotDirty }
+          : {}),
         ...(baselineSha && baselineDirty.length > 0
           ? { codingBaselineDirty: baselineDirty }
           : {}),

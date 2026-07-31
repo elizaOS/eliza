@@ -48,7 +48,7 @@ import {
   type OrchestratorTaskType,
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
-import { ACP_METADATA_ISOLATED_WORKDIR, AcpService } from "./acp-service.js";
+import { AcpService } from "./acp-service.js";
 import {
   type AdmissionRecord,
   orderQueue,
@@ -693,16 +693,20 @@ export function residualsOrchestratorOwnedArtifacts(
 /** Spawn-time residuals context, parsed structurally from the reporting
  * session's metadata — every key is orchestrator-stamped at spawn
  * (`AcpService.spawnSession` / the TASKS spawn path), never worker-writable.
- * `codingBaselineDirty` (tracked files already dirty at spawn) becomes the
- * gate's pre-existing-churn baseline; a `workdirRouteId` on a NON-isolated
- * session marks a shared route-mapped app checkout
- * (`TASK_AGENT_WORKDIR_ROUTES`, e.g. agent-home) whose git state is shared
- * across tasks and must not block every completion there. Absent/foreign
- * metadata contributes nothing — prior behavior is unchanged. Exported for
- * direct unit coverage. */
+ * The content tree and commit SHA let the gate subtract unchanged workspace
+ * state without exempting a path merely because it was dirty at spawn. Older
+ * sessions retain the tracked-path fallback. Exported for direct unit
+ * coverage. */
 export function residualsSpawnBaseline(
   session: Pick<OrchestratorTaskSession, "metadata"> | undefined,
-): Pick<CompletionResidualsInput, "baselineDirtyPaths" | "sharedRouteWorkdir"> {
+): Pick<
+  CompletionResidualsInput,
+  | "baselineDirtyPaths"
+  | "baselineTreeSha"
+  | "baselineTreeUnavailable"
+  | "baselineSnapshotDirtyPaths"
+  | "baselineCommitSha"
+> {
   const meta = session?.metadata;
   if (!isRecord(meta)) return {};
   const baselineDirtyPaths = Array.isArray(meta.codingBaselineDirty)
@@ -710,13 +714,24 @@ export function residualsSpawnBaseline(
         (path): path is string => typeof path === "string" && path.length > 0,
       )
     : [];
-  const sharedRouteWorkdir =
-    typeof meta.workdirRouteId === "string" &&
-    meta.workdirRouteId.trim().length > 0 &&
-    meta[ACP_METADATA_ISOLATED_WORKDIR] !== true;
+  const baselineTreeSha = str(meta.codingBaselineTreeSha);
+  const baselineTreeUnavailable = meta.codingBaselineTreeUnavailable === true;
+  const baselineSnapshotDirtyPaths = Array.isArray(
+    meta.codingBaselineSnapshotDirty,
+  )
+    ? meta.codingBaselineSnapshotDirty.filter(
+        (path): path is string => typeof path === "string" && path.length > 0,
+      )
+    : [];
+  const baselineCommitSha = str(meta.codingBaselineSha);
   return {
     ...(baselineDirtyPaths.length > 0 ? { baselineDirtyPaths } : {}),
-    ...(sharedRouteWorkdir ? { sharedRouteWorkdir: true } : {}),
+    ...(baselineTreeSha ? { baselineTreeSha } : {}),
+    ...(baselineTreeUnavailable ? { baselineTreeUnavailable: true } : {}),
+    ...(baselineSnapshotDirtyPaths.length > 0
+      ? { baselineSnapshotDirtyPaths }
+      : {}),
+    ...(baselineCommitSha ? { baselineCommitSha } : {}),
   };
 }
 

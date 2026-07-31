@@ -22,15 +22,16 @@
  * `ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0` disables the gate (mirrors the
  * `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` flag convention).
  */
-import { spawnSync } from "node:child_process";
 import { statSync } from "node:fs";
 import {
   type OrchestratorOwnedArtifact,
   ownedArtifactStillMatches,
 } from "./orchestrator-artifact-ownership.js";
-
-const GIT_TIMEOUT_MS = 10_000;
-const GIT_MAX_BUFFER = 8 * 1024 * 1024;
+import {
+  captureWorkspaceTreeSha,
+  parseWorkspaceStatus,
+  runWorkspaceGit,
+} from "./workspace-diff.js";
 
 /** Cap on the residual path/detail lists so a giant dirty tree cannot bloat
  * the task metadata or the correction prompt. */
@@ -97,11 +98,6 @@ export interface CompletionResidualsResult {
    * incentive inverts and the disclosure disappears. Surfaced to the user as
    * caveats on the relayed completion instead. */
   disclosedRisks?: string[];
-  /** Present when the git legs were DELIBERATELY skipped because the session
-   * ran in a shared route-mapped checkout whose git state is not attributable
-   * to this run. Rides the persisted snapshot so the exemption is auditable,
-   * never a silent pass. */
-  gitLegsSkipped?: "shared_route_workdir";
   workdir?: string;
   checkedAt: number;
 }
@@ -131,13 +127,17 @@ export interface CompletionResidualsInput {
    * pre-existing churn was not produced by this run. Tracked modifications
    * only — untracked paths are never baseline-exempt. */
   baselineDirtyPaths?: readonly string[];
-  /** True when the session ran in a SHARED, route-mapped app checkout
-   * (`TASK_AGENT_WORKDIR_ROUTES`) rather than a task-provisioned workspace.
-   * A shared checkout carries dirt and unpushed commits from before the run
-   * and from sibling tasks, so its git facts are not attributable to this
-   * session; the git legs are skipped (envelope legs still apply). Ignored
-   * when `repoExpected` — an explicit repo claim keeps full strictness. */
-  sharedRouteWorkdir?: boolean;
+  /** Content tree of the non-ignored workspace at spawn. When present, only
+   * completion-time changes relative to this exact tree count as dirty. */
+  baselineTreeSha?: string;
+  /** The session started in a repo but its exact tree snapshot failed. */
+  baselineTreeUnavailable?: boolean;
+  /** All paths dirty at spawn whose exact content is represented by
+   * `baselineTreeSha`. */
+  baselineSnapshotDirtyPaths?: readonly string[];
+  /** Commit checked out at spawn, used to subtract pre-existing unpushed
+   * history while retaining commits created during the session. */
+  baselineCommitSha?: string;
   testResults?: ReadonlyArray<{
     command: string;
     exitCode: number;
@@ -146,27 +146,6 @@ export interface CompletionResidualsInput {
   residualRisks?: readonly string[];
   /** Files the orchestrator wrote and can verify by content fingerprint. */
   orchestratorOwnedArtifacts?: readonly OrchestratorOwnedArtifact[];
-}
-
-interface GitProbe {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-function runGit(workdir: string, args: string[]): GitProbe {
-  const result = spawnSync("git", args, {
-    cwd: workdir,
-    timeout: GIT_TIMEOUT_MS,
-    maxBuffer: GIT_MAX_BUFFER,
-    windowsHide: true,
-    encoding: "utf8",
-  });
-  return {
-    ok: result.status === 0,
-    stdout: typeof result.stdout === "string" ? result.stdout : "",
-    stderr: typeof result.stderr === "string" ? result.stderr : "",
-  };
 }
 
 function cap(items: string[]): string[] {
@@ -223,6 +202,45 @@ function isBaselineDirtyLine(
   );
 }
 
+async function treeEntryOid(
+  workdir: string,
+  treeSha: string,
+  path: string,
+): Promise<string | undefined> {
+  const result = await runWorkspaceGit(workdir, [
+    "rev-parse",
+    "--verify",
+    `${treeSha}:${path}`,
+  ]);
+  return result.ok ? result.stdout.trim() || undefined : undefined;
+}
+
+async function isUnchangedBaselineDirtyLine(
+  paths: readonly string[],
+  workdir: string,
+  baselineTreeSha: string,
+  currentTreeSha: string,
+  baselineDirtyPaths: ReadonlySet<string>,
+): Promise<boolean> {
+  if (
+    paths.length === 0 ||
+    !paths.every((path) => baselineDirtyPaths.has(path))
+  ) {
+    return false;
+  }
+  return (
+    await Promise.all(
+      paths.map(async (path) => {
+        const [before, after] = await Promise.all([
+          treeEntryOid(workdir, baselineTreeSha, path),
+          treeEntryOid(workdir, currentTreeSha, path),
+        ]);
+        return before === after;
+      }),
+    )
+  ).every(Boolean);
+}
+
 /**
  * Run every applicable residuals leg and aggregate the verdict. Purely
  * deterministic — no model call, no network; the only side effects are the
@@ -237,20 +255,6 @@ export async function collectCompletionResiduals(
   const orchestratorOwnedArtifacts = ownedArtifactsByPath(
     input.orchestratorOwnedArtifacts ?? [],
   );
-  // Shared route-mapped app checkouts (TASK_AGENT_WORKDIR_ROUTES → e.g. an
-  // agent-home static-apps dir) are pre-existing directories shared by every
-  // task the route matches: their dirty paths and unpushed commits predate the
-  // run or belong to sibling tasks, so git facts there are not attributable to
-  // the reporting session — counting them blocks every completion in that
-  // checkout forever. Skip the git legs for that class (envelope legs still
-  // apply) and record the skip on the snapshot so the exemption is auditable.
-  // An explicit repo claim always wins: a repo-bound task never gets the
-  // exemption, so genuinely incomplete work on a task-provisioned workspace
-  // still blocks.
-  const sharedWorkdirExempt =
-    input.sharedRouteWorkdir === true && !input.repoExpected;
-  let gitLegsSkipped: CompletionResidualsResult["gitLegsSkipped"];
-
   // Envelope legs apply regardless of workspace presence: a self-reported
   // failing test contradicts "done" even for a Q&A task.
   const failing = (input.testResults ?? []).filter((row) => row.exitCode !== 0);
@@ -327,7 +331,10 @@ export async function collectCompletionResiduals(
       if (stats === undefined) probe = "missing";
       else if (!stats.isDirectory()) probe = "not_directory";
       else {
-        const inside = runGit(workdir, ["rev-parse", "--is-inside-work-tree"]);
+        const inside = await runWorkspaceGit(workdir, [
+          "rev-parse",
+          "--is-inside-work-tree",
+        ]);
         probe =
           inside.ok && inside.stdout.trim() === "true"
             ? "worktree"
@@ -373,13 +380,19 @@ export async function collectCompletionResiduals(
     }
     // Unbound + missing/non-git scratch dir: skip the git legs; the envelope
     // legs above still decide the verdict.
-  } else if (workdir !== undefined && sharedWorkdirExempt) {
-    // A real worktree, but a shared route-mapped checkout (see
-    // sharedWorkdirExempt above): deliberately not inspected. The marker rides
-    // the persisted snapshot so the skip is visible, never a silent pass.
-    gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
-    const status = runGit(workdir, ["status", "--porcelain"]);
+    if (input.baselineTreeUnavailable) {
+      return unverifiable(
+        "git_failed",
+        `spawn-time workspace tree could not be captured in ${workdir}`,
+      );
+    }
+    const status = await runWorkspaceGit(workdir, [
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--untracked-files=all",
+    ]);
     if (!status.ok) {
       return unverifiable(
         "git_failed",
@@ -395,19 +408,48 @@ export async function collectCompletionResiduals(
         .map((path) => path.trim())
         .filter((path) => path.length > 0),
     );
-    const dirty = status.stdout
-      .split("\n")
-      .map((line) => line.trimEnd())
-      .filter((line) => line.length > 0)
-      .filter(
-        (line) =>
-          !isOrchestratorOwnedDirtyLine(
-            line,
+    const statusEntries = parseWorkspaceStatus(status.stdout).filter(
+      (entry) =>
+        !isOrchestratorOwnedDirtyLine(
+          entry.display,
+          workdir,
+          orchestratorOwnedArtifacts,
+        ),
+    );
+    let dirty: string[];
+    const baselineTreeSha = input.baselineTreeSha;
+    if (baselineTreeSha) {
+      const currentTreeSha = await captureWorkspaceTreeSha(workdir);
+      if (!currentTreeSha) {
+        return unverifiable(
+          "git_failed",
+          `failed to capture completion workspace tree in ${workdir}`,
+        );
+      }
+      const baselineDirtyPaths = new Set(
+        (input.baselineSnapshotDirtyPaths ?? [])
+          .map((path) => path.trim())
+          .filter(Boolean),
+      );
+      const unchanged = await Promise.all(
+        statusEntries.map((entry) =>
+          isUnchangedBaselineDirtyLine(
+            entry.paths,
             workdir,
-            orchestratorOwnedArtifacts,
+            baselineTreeSha,
+            currentTreeSha,
+            baselineDirtyPaths,
           ),
-      )
-      .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths));
+        ),
+      );
+      dirty = statusEntries
+        .filter((_, index) => !unchanged[index])
+        .map((entry) => entry.display);
+    } else {
+      dirty = statusEntries
+        .map((entry) => entry.display)
+        .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths));
+    }
     if (dirty.length > 0) {
       residuals.push({
         kind: "uncommitted_changes",
@@ -421,14 +463,18 @@ export async function collectCompletionResiduals(
     // The upstream leg only applies when an upstream is configured: a local
     // throwaway repo (or a detached/unborn HEAD) legitimately has nothing to
     // push, and treating that as a residual would block every scratch task.
-    const upstream = runGit(workdir, [
+    const upstream = await runWorkspaceGit(workdir, [
       "rev-parse",
       "--abbrev-ref",
       "--symbolic-full-name",
       "@{u}",
     ]);
     if (upstream.ok) {
-      const unpushed = runGit(workdir, ["rev-list", "@{u}..HEAD"]);
+      const unpushed = await runWorkspaceGit(workdir, [
+        "rev-list",
+        "@{u}..HEAD",
+        ...(input.baselineCommitSha ? ["--not", input.baselineCommitSha] : []),
+      ]);
       if (!unpushed.ok) {
         return unverifiable(
           "git_failed",
@@ -451,7 +497,6 @@ export async function collectCompletionResiduals(
 
   return {
     status: residuals.length > 0 ? "residuals" : "clean",
-    ...(gitLegsSkipped !== undefined ? { gitLegsSkipped } : {}),
     ...base,
   };
 }

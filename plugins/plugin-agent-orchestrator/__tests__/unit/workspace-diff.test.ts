@@ -12,8 +12,11 @@ import {
   captureBaselineDirty,
   captureBaselineSha,
   captureChangeSet,
+  captureWorkspaceTreeSha,
   getWorkspaceBranch,
   parseLsFiles,
+  parseWorkspaceStatus,
+  runWorkspaceGit,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
 } from "../../src/services/workspace-diff.ts";
@@ -218,6 +221,46 @@ describe("workspace-diff — real git capture", () => {
     writeFileSync(join(dir, "index.html"), "<h1>agent edited it</h1>\n");
     const cs = await captureChangeSet(dir, base, ["index.html"], baselineDirty);
     expect(cs?.changedFiles).toContain("index.html");
+  });
+
+  it("captures the exact tracked and untracked workspace state without changing the real index", async () => {
+    writeFileSync(join(dir, "index.html"), "<h1>dirty</h1>\n");
+    writeFileSync(join(dir, "new.html"), "<p>untracked</p>\n");
+    const before = execFileSync("git", ["status", "--porcelain"], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    const treeSha = await captureWorkspaceTreeSha(dir);
+    const after = execFileSync("git", ["status", "--porcelain"], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    expect(treeSha).toMatch(/^[0-9a-f]{40}$/);
+    expect(after).toBe(before);
+    expect(
+      (
+        await runWorkspaceGit(dir, [
+          "ls-tree",
+          "-r",
+          "--name-only",
+          treeSha ?? "",
+        ])
+      ).stdout,
+    ).toContain("new.html");
+  });
+
+  it("parses NUL-delimited status paths without quoting loss", () => {
+    expect(
+      parseWorkspaceStatus(
+        "?? line\nbreak.txt\0R  renamed.txt\0old name.txt\0",
+      ),
+    ).toEqual([
+      { display: "?? line\nbreak.txt", paths: ["line\nbreak.txt"] },
+      {
+        display: "R  old name.txt -> renamed.txt",
+        paths: ["old name.txt", "renamed.txt"],
+      },
+    ]);
   });
 
   it("summarizes a change set into a one-line banner", () => {

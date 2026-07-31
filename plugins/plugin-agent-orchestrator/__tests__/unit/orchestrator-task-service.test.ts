@@ -2832,23 +2832,27 @@ describe("residualsSpawnBaseline — spawn-time metadata classification", () => 
     ).toEqual({ baselineDirtyPaths: ["a.ts", "b.ts"] });
   });
 
-  it("classifies a route-mapped, non-isolated workdir as shared", () => {
-    expect(
-      residualsSpawnBaseline({ metadata: { workdirRouteId: "agent-home" } }),
-    ).toEqual({ sharedRouteWorkdir: true });
-  });
-
-  it("never classifies an isolated per-session workdir as shared, route or not", () => {
+  it("parses exact tree and commit baselines", () => {
     expect(
       residualsSpawnBaseline({
-        metadata: { workdirRouteId: "agent-home", isolatedWorkdir: true },
+        metadata: {
+          codingBaselineTreeSha: "tree-sha",
+          codingBaselineSha: "commit-sha",
+          codingBaselineSnapshotDirty: ["a.ts", "new.ts"],
+        },
       }),
-    ).toEqual({});
+    ).toEqual({
+      baselineTreeSha: "tree-sha",
+      baselineCommitSha: "commit-sha",
+      baselineSnapshotDirtyPaths: ["a.ts", "new.ts"],
+    });
   });
 
-  it("ignores a blank route id", () => {
+  it("fails closed when a repo session could not capture its tree", () => {
     expect(
-      residualsSpawnBaseline({ metadata: { workdirRouteId: "   " } }),
-    ).toEqual({});
+      residualsSpawnBaseline({
+        metadata: { codingBaselineTreeUnavailable: true },
+      }),
+    ).toEqual({ baselineTreeUnavailable: true });
   });
 });

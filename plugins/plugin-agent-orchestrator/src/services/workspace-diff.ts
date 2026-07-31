@@ -6,7 +6,6 @@
  * budget, and an unborn HEAD (a fresh repo with zero commits) is diffed against
  * the canonical empty-tree hash so the whole working tree reads as added.
  */
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
@@ -19,7 +18,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 const GIT_TIMEOUT_MS = 10_000;
-const GIT_MAX_BUFFER = 8 * 1024 * 1024;
+const GIT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const MAX_DIFF_CHARS = 6_000;
 const MAX_CHANGED_FILES = 60;
 const MAX_FILE_DIFFS = 12;
@@ -30,10 +29,89 @@ const MAX_FILE_DIFFS = 12;
 // instead (issue elizaOS/eliza#11578 FIX C).
 const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
-function outputToString(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (value instanceof Uint8Array) return Buffer.from(value).toString("utf8");
-  return undefined;
+export interface WorkspaceGitResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+export interface WorkspaceStatusEntry {
+  display: string;
+  paths: string[];
+}
+
+/** Parses porcelain-v1 `-z` output without Git's path quoting ambiguity. */
+export function parseWorkspaceStatus(output: string): WorkspaceStatusEntry[] {
+  const records = output.split("\0");
+  const entries: WorkspaceStatusEntry[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record || record.length < 4) continue;
+    const status = record.slice(0, 2);
+    const firstPath = record.slice(3);
+    if (status.includes("R") || status.includes("C")) {
+      const secondPath = records[index + 1];
+      if (!secondPath) continue;
+      index += 1;
+      entries.push({
+        display: `${status} ${secondPath} -> ${firstPath}`,
+        paths: [secondPath, firstPath],
+      });
+      continue;
+    }
+    entries.push({ display: `${status} ${firstPath}`, paths: [firstPath] });
+  }
+  return entries;
+}
+
+/** Git subprocess boundary with real captured output under Bun. */
+export async function runWorkspaceGit(
+  workdir: string,
+  args: string[],
+  envPatch?: Record<string, string>,
+): Promise<WorkspaceGitResult> {
+  const outputDir = mkdtempSync(join(tmpdir(), "workspace-git-"));
+  const stdoutPath = join(outputDir, "stdout");
+  const stderrPath = join(outputDir, "stderr");
+  writeFileSync(stdoutPath, "");
+  writeFileSync(stderrPath, "");
+  try {
+    const child = Bun.spawn(["git", ...args], {
+      cwd: workdir,
+      env: { ...process.env, ...envPatch },
+      stdin: "ignore",
+      stdout: Bun.file(stdoutPath),
+      stderr: Bun.file(stderrPath),
+    });
+    const timer = setTimeout(() => child.kill(), GIT_TIMEOUT_MS);
+    try {
+      const exitCode = await child.exited;
+      if (
+        statSync(stdoutPath).size > GIT_MAX_OUTPUT_BYTES ||
+        statSync(stderrPath).size > GIT_MAX_OUTPUT_BYTES
+      ) {
+        return {
+          ok: false,
+          stdout: "",
+          stderr: `git output exceeded ${GIT_MAX_OUTPUT_BYTES} bytes`,
+        };
+      }
+      const stdout = readFileSync(stdoutPath, "utf8");
+      const stderr = readFileSync(stderrPath, "utf8");
+      return { ok: exitCode === 0, stdout, stderr };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (error) {
+    // error-policy:J3 process-spawn failure is an explicit failed probe.
+    return {
+      ok: false,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+    };
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -72,48 +150,13 @@ export interface WorkspaceArtifactVerification {
 async function git(
   workdir: string,
   args: string[],
+  envPatch?: Record<string, string>,
 ): Promise<string | undefined> {
-  const direct = spawnSync("git", args, {
-    cwd: workdir,
-    timeout: GIT_TIMEOUT_MS,
-    maxBuffer: GIT_MAX_BUFFER,
-    windowsHide: true,
-  });
-  const directStdout = outputToString(direct.stdout);
-  if (directStdout && directStdout.length > 0) return directStdout;
-
-  // Bun's test runner can report a successful git process with an empty stdout
-  // pipe. In that environment only, ask the shell to redirect stdout itself.
-  if (direct.status !== 0 && !process.versions.bun) return undefined;
-  if (!process.versions.bun) return directStdout;
-
-  const outDir = mkdtempSync(join(tmpdir(), "workspace-diff-git-"));
-  const outPath = join(outDir, "stdout");
-  writeFileSync(outPath, "");
-  const result = spawnSync(
-    "sh",
-    ["-c", 'git "$@" > "$WORKSPACE_DIFF_GIT_STDOUT"', "git", ...args],
-    {
-      cwd: workdir,
-      env: { ...process.env, WORKSPACE_DIFF_GIT_STDOUT: outPath },
-      timeout: GIT_TIMEOUT_MS,
-      maxBuffer: GIT_MAX_BUFFER,
-      stdio: ["ignore", "ignore", "pipe"],
-      windowsHide: true,
-    },
-  );
-
-  // `git diff --no-index` exits 1 when files differ — that's the success case
-  // for us and the diff is on stdout. Everything else (not a repo, git missing,
-  // detached state) is best-effort: change capture must never disturb the
-  // session lifecycle.
-  try {
-    const stdout = readFileSync(outPath, "utf8");
-    if (result.status === 0 || stdout.length > 0) return stdout;
-    return undefined;
-  } finally {
-    rmSync(outDir, { recursive: true, force: true });
-  }
+  const result = await runWorkspaceGit(workdir, args, envPatch);
+  // `git diff --no-index` exits 1 when files differ; non-empty stdout is still
+  // the useful result for that command.
+  if (result.ok || result.stdout.length > 0) return result.stdout;
+  return undefined;
 }
 
 async function isWorkTree(workdir: string): Promise<boolean> {
@@ -156,6 +199,54 @@ export async function captureBaselineDirty(workdir: string): Promise<string[]> {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+}
+
+/** Every tracked, staged, deleted, renamed, and untracked path dirty at spawn. */
+export async function captureWorkspaceDirtyPaths(
+  workdir: string,
+): Promise<string[] | undefined> {
+  if (!(await isWorkTree(workdir))) return undefined;
+  const status = await runWorkspaceGit(workdir, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+  ]);
+  if (!status.ok) return undefined;
+  return [
+    ...new Set(
+      parseWorkspaceStatus(status.stdout).flatMap((entry) => entry.paths),
+    ),
+  ];
+}
+
+/**
+ * Writes the current non-ignored workspace state to an unreachable git tree
+ * through a temporary index. The real index and working files are untouched;
+ * callers can later distinguish unchanged pre-existing churn from edits made
+ * during a session.
+ */
+export async function captureWorkspaceTreeSha(
+  workdir: string,
+): Promise<string | undefined> {
+  if (!(await isWorkTree(workdir))) return undefined;
+  const dir = mkdtempSync(join(tmpdir(), "workspace-tree-"));
+  const indexFile = join(dir, "index");
+  const env = { GIT_INDEX_FILE: indexFile };
+  try {
+    const readTree = await runWorkspaceGit(
+      workdir,
+      ["read-tree", "--empty"],
+      env,
+    );
+    if (!readTree.ok) return undefined;
+    const add = await runWorkspaceGit(workdir, ["add", "-A", "--", "."], env);
+    if (!add.ok) return undefined;
+    const tree = await runWorkspaceGit(workdir, ["write-tree"], env);
+    return tree.ok ? tree.stdout.trim() || undefined : undefined;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
