@@ -19,10 +19,9 @@
  *    unsupported (no `getUserMedia` / `AudioContext`), which is the one case
  *    where no cloud/local WAV path exists.
  *
- * The factory serializes start/stop transitions and owns exactly one backend
- * instance. A stop requested during permission/backend startup waits for that
- * startup before draining, while disposal cancels any backend that arrives
- * after its caller has gone away.
+ * Mic permission + AudioContext + MediaStream lifecycle is owned by the
+ * underlying primitives ({@link startLocalAsrRecorder} + browser
+ * `SpeechRecognition`). This factory adds nothing on top besides routing.
  */
 
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
@@ -259,9 +258,6 @@ export function createVoiceCapture(
   let recognition: SpeechRecognitionInstance | null = null;
   let browserStopWait: Promise<void> | null = null;
   let resolveBrowserStop: (() => void) | null = null;
-  let lifecycleTail: Promise<void> = Promise.resolve();
-  let pendingStart: Promise<void> | null = null;
-  let pendingStop: Promise<void> | null = null;
   // Native TalkMode (Android/iOS SpeechRecognizer) capture state.
   let talkModeHandles: PluginListenerHandle[] = [];
   let lastTalkModeInterim = "";
@@ -272,20 +268,6 @@ export function createVoiceCapture(
     onStateChange?.(next, error);
   }
 
-  function serialize(operation: () => Promise<void>): Promise<void> {
-    const result = lifecycleTail.then(operation);
-    lifecycleTail = result.catch(() => undefined);
-    return result;
-  }
-
-  function clearPending(
-    kind: "start" | "stop",
-    operation: Promise<void>,
-  ): void {
-    if (kind === "start" && pendingStart === operation) pendingStart = null;
-    if (kind === "stop" && pendingStop === operation) pendingStop = null;
-  }
-
   // Shared WAV-capture start for both the local-inference and cloud backends —
   // identical mic setup; the backends diverge only at stop() (which route the
   // WAV is POSTed to).
@@ -293,15 +275,9 @@ export function createVoiceCapture(
     const next = await startLocalAsrRecorder({
       ...(localAsrAutoStop ? { autoStop: localAsrAutoStop } : {}),
       onAutoStop: () => {
-        // error-policy:J5 stop failures are observed through onStateChange("error")
-        // by the owning surface.
-        void stop().catch(() => undefined);
+        void stop();
       },
     });
-    if (disposed) {
-      next.cancel();
-      return;
-    }
     recorder = next;
     active = true;
     voiceCaptureDebug("start", { backend: backendKind ?? "wav" });
@@ -368,10 +344,6 @@ export function createVoiceCapture(
       },
     );
     talkModeHandles = [transcriptHandle, errorHandle];
-    if (disposed) {
-      await removeTalkModeHandles();
-      return;
-    }
     const result = await talkMode.start({
       config: {
         stt: { language: lang, modelSize: "base", sampleRate: 16000 },
@@ -382,12 +354,6 @@ export function createVoiceCapture(
     if (!result?.started) {
       await removeTalkModeHandles();
       throw new Error(result?.error ?? "Speech recognition failed to start");
-    }
-    if (disposed) {
-      await removeTalkModeHandles();
-      // error-policy:J6 teardown after disposal during native startup.
-      await talkMode.stop().catch(() => undefined);
-      return;
     }
     active = true;
     setState("listening");
@@ -440,48 +406,32 @@ export function createVoiceCapture(
     setState("listening");
   }
 
-  async function startBackend(): Promise<void> {
-    if (disposed || active) return;
-    setState("starting");
-    backendKind = await resolveBackendKind(asrProvider, cloudConnected);
-    if (disposed) return;
-    if (backendKind === "talkmode") {
-      await startTalkMode();
-    } else if (backendKind === "local-inference" || backendKind === "cloud") {
-      await startWavRecorder();
-    } else {
-      startBrowser();
-    }
-  }
-
-  function start(): Promise<void> {
+  async function start(): Promise<void> {
     if (disposed) {
-      return Promise.reject(new Error("VoiceCapture handle has been disposed"));
+      throw new Error("VoiceCapture handle has been disposed");
     }
-    if (active) return Promise.resolve();
-    if (pendingStart) return pendingStart;
-
-    const operation = serialize(async () => {
-      try {
-        await startBackend();
-      } catch (err) {
-        // error-policy:J1 capture boundary — the failure renders the voice
-        // error state and still propagates to the caller
-        const error = err instanceof Error ? err : new Error(String(err));
-        setState("error", error);
-        throw error;
+    if (active) return;
+    setState("starting");
+    try {
+      backendKind = await resolveBackendKind(asrProvider, cloudConnected);
+      if (backendKind === "talkmode") {
+        await startTalkMode();
+      } else if (backendKind === "local-inference" || backendKind === "cloud") {
+        await startWavRecorder();
+      } else {
+        startBrowser();
       }
-    });
-    pendingStart = operation;
-    void operation.then(
-      () => clearPending("start", operation),
-      () => clearPending("start", operation),
-    );
-    return operation;
+    } catch (err) {
+      // error-policy:J1 capture boundary — the failure renders the voice
+      // error state and still propagates to the caller
+      const error = err instanceof Error ? err : new Error(String(err));
+      setState("error", error);
+      throw error;
+    }
   }
 
-  async function stopBackend(): Promise<void> {
-    if (!active) return;
+  async function stop(): Promise<void> {
+    if (!active && state !== "starting") return;
 
     if (backendKind === "talkmode") {
       active = false;
@@ -495,7 +445,10 @@ export function createVoiceCapture(
       if (finalizeOnStop && pending) {
         onTranscript({ text: pending, final: true, backend: "talkmode" });
       }
-      await getTalkModePlugin().stop();
+      // error-policy:J6 teardown — the recognizer may already be stopped
+      await getTalkModePlugin()
+        .stop()
+        .catch(() => {});
       await new Promise((resolve) =>
         setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
       );
@@ -512,54 +465,63 @@ export function createVoiceCapture(
         setState("stopped");
         return;
       }
-      const wav = await current.stop();
-      // Pre-POST silence guard (#voice-V5): an accidental / near-silent tap
-      // captured a few frames (so `stop()` didn't throw the empty-capture
-      // error) but carries no speech. POSTing it burns a cloud STT round-trip
-      // / credit and surfaces a spurious "empty transcript" error. Treat it as
-      // a quiet no-op instead: no transcript, no error toast — just settle the
-      // state machine back to idle so the next tap re-arms cleanly. (Gates the
-      // cloud path where the round-trip has a cost; the local-inference path
-      // is free/offline, so it stays unguarded to avoid clipping quiet-mic
-      // users whose real speech reads near the silence floor on-device.)
-      if (kind === "cloud" && isSilentWav(wav)) {
-        voiceCaptureDebug("silent:drop", { backend: kind });
-        // Subtle "didn't catch that" hint instead of pure silence: the guard
-        // is right (no cloud round-trip for a silent WAV), but crickets with
-        // zero feedback is a UX bug even when the guard fires correctly.
-        onSilentDrop?.();
+      try {
+        const wav = await current.stop();
+        // Pre-POST silence guard (#voice-V5): an accidental / near-silent tap
+        // captured a few frames (so `stop()` didn't throw the empty-capture
+        // error) but carries no speech. POSTing it burns a cloud STT round-trip
+        // / credit and surfaces a spurious "empty transcript" error. Treat it as
+        // a quiet no-op instead: no transcript, no error toast — just settle the
+        // state machine back to idle so the next tap re-arms cleanly. (Gates the
+        // cloud path where the round-trip has a cost; the local-inference path
+        // is free/offline, so it stays unguarded to avoid clipping quiet-mic
+        // users whose real speech reads near the silence floor on-device.)
+        if (kind === "cloud" && isSilentWav(wav)) {
+          voiceCaptureDebug("silent:drop", { backend: kind });
+          // Subtle "didn't catch that" hint instead of pure silence: the guard
+          // is right (no cloud round-trip for a silent WAV), but crickets with
+          // zero feedback is a UX bug even when the guard fires correctly.
+          onSilentDrop?.();
+          setState("stopped");
+          setState("idle");
+          return;
+        }
+        if (kind === "cloud") {
+          // Cloud STT returns text only (no per-word timings); the WAV is still
+          // attached so the transcript recorder can retain the audio. A ~15s
+          // per-attempt timeout + one auto-retry (#voice-V4) rides inside
+          // transcribeCloudWav so flaky cellular doesn't hard-fail the turn.
+          voiceCaptureDebug("posted", { backend: kind, wavBytes: wav.length });
+          const text = await transcribeCloudWav(wav);
+          voiceCaptureDebug("transcript", {
+            backend: kind,
+            chars: text.length,
+          });
+          onTranscript({
+            text,
+            final: true,
+            backend: "cloud",
+            audioWav: wav,
+          });
+        } else {
+          const { text, words } = await transcribeLocalInferenceWav(wav);
+          onTranscript({
+            text,
+            final: true,
+            backend: "local-inference",
+            audioWav: wav,
+            words,
+          });
+        }
         setState("stopped");
-        setState("idle");
-        return;
+      } catch (err) {
+        // error-policy:J1 stop/transcribe boundary — the failure renders the
+        // voice error state and still propagates to the caller. Cloud STT
+        // failures surface here (fail-loud): no silent downgrade to browser STT.
+        const error = err instanceof Error ? err : new Error(String(err));
+        setState("error", error);
+        throw error;
       }
-      if (kind === "cloud") {
-        // Cloud STT returns text only (no per-word timings); the WAV is still
-        // attached so the transcript recorder can retain the audio. A ~15s
-        // per-attempt timeout + one auto-retry (#voice-V4) rides inside
-        // transcribeCloudWav so flaky cellular doesn't hard-fail the turn.
-        voiceCaptureDebug("posted", { backend: kind, wavBytes: wav.length });
-        const text = await transcribeCloudWav(wav);
-        voiceCaptureDebug("transcript", {
-          backend: kind,
-          chars: text.length,
-        });
-        onTranscript({
-          text,
-          final: true,
-          backend: "cloud",
-          audioWav: wav,
-        });
-      } else {
-        const { text, words } = await transcribeLocalInferenceWav(wav);
-        onTranscript({
-          text,
-          final: true,
-          backend: "local-inference",
-          audioWav: wav,
-          words,
-        });
-      }
-      setState("stopped");
       return;
     }
 
@@ -580,39 +542,15 @@ export function createVoiceCapture(
     setState("stopped");
   }
 
-  function stop(): Promise<void> {
-    if (pendingStop) return pendingStop;
-    if (!active && !pendingStart && state !== "starting") {
-      return Promise.resolve();
-    }
-
-    const operation = serialize(async () => {
-      try {
-        await stopBackend();
-      } catch (err) {
-        // error-policy:J1 stop/transcribe boundary — stop and ASR failures render
-        // the voice error state and still propagate to the caller.
-        const error = err instanceof Error ? err : new Error(String(err));
-        setState("error", error);
-        throw error;
-      }
-    });
-    pendingStop = operation;
-    void operation.then(
-      () => clearPending("stop", operation),
-      () => clearPending("stop", operation),
-    );
-    return operation;
-  }
-
-  async function disposeResources(): Promise<void> {
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
     if (talkModeHandles.length > 0) {
-      await removeTalkModeHandles();
-      // error-policy:J6 disposal is best-effort and the native recognizer may
-      // already have ended itself.
-      await getTalkModePlugin()
+      void removeTalkModeHandles();
+      // error-policy:J6 teardown — dispose is best-effort by design
+      void getTalkModePlugin()
         .stop?.()
-        .catch(() => undefined);
+        .catch(() => {});
       lastTalkModeInterim = "";
     }
     if (recorder) {
@@ -628,26 +566,12 @@ export function createVoiceCapture(
     }
     active = false;
     if (resolveBrowserStop) {
-      const resolve = resolveBrowserStop;
+      const r = resolveBrowserStop;
       resolveBrowserStop = null;
       browserStopWait = null;
-      resolve();
+      r();
     }
     setState("idle");
-  }
-
-  function dispose(): void {
-    if (disposed) return;
-    disposed = true;
-    active = false;
-    // Release an already-owned backend immediately. The serialized pass below
-    // catches a recorder/listener that is still inside asynchronous startup.
-    // error-policy:J6 dispose has no async result; resources are idempotent and
-    // the owning surface has already ended this capture.
-    void disposeResources().catch(() => undefined);
-    const operation = serialize(disposeResources);
-    // error-policy:J6 catches teardown that arrived after asynchronous startup.
-    void operation.catch(() => undefined);
   }
 
   return {

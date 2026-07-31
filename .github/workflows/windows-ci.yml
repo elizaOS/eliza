@@ -131,7 +131,6 @@ jobs:
           - lane: build-and-helper-smokes
             timeout: 90
             commands:
-              - pwsh -NoLogo -NoProfile -File packages/scripts/__tests__/windows-ci-command-runner.test.ps1
               # Prove the process that hit STATUS_DLL_INIT_FAILED in isolation,
               # then retain agent's dependency build graph at serial pressure.
               - bun run --cwd plugins/plugin-coding-tools build
@@ -203,17 +202,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          Import-Module "$PWD/packages/scripts/windows-ci-command-runner.psm1" -Force
           $commands = '${{ toJson(matrix.commands) }}' | ConvertFrom-Json
           foreach ($command in $commands) {
             Write-Host "::group::$command"
-            try {
-              $code = Invoke-WindowsCiCommand -Command $command
-            } finally {
-              Write-Host "::endgroup::"
-            }
+            Invoke-Expression $command
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
             if ($code -ne 0) {
-              Write-Error -ErrorAction Continue "Command failed with exit code $code`: $command"
+              Write-Error "Command failed with exit code $code`: $command"
               exit $code
             }
           }

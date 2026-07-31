@@ -78,20 +78,6 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     const localChat = stepBlock("Run iOS local-chat simulator smoke");
     expect(localChat).toContain("mobile-local-chat-smoke.mjs");
     expect(localChat).toContain("--platform ios --require-installed");
-    expect(localChat).toContain("ELIZA_HOST_AGENT_SMOKE_MODEL_PATH");
-  });
-
-  it("provisions the real host-agent GGUF before the local-chat smoke", () => {
-    const provision = stepBlock("Provision iOS host-agent smoke GGUF");
-    expect(provision).toContain("curl -fL");
-    expect(provision).toContain("EXPECTED_BYTES=1270808512");
-    expect(provision).toContain("shasum -a 256");
-    expect(workflow).toContain(
-      "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2",
-    );
-    expect(
-      workflow.indexOf("Provision iOS host-agent smoke GGUF"),
-    ).toBeLessThan(workflow.indexOf("Run iOS local-chat simulator smoke"));
   });
 
   it("keeps the composed auth + full-Bun lane blocking and captures reviewable evidence", () => {

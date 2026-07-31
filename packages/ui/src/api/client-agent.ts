@@ -36,7 +36,6 @@ import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
-import { parseAccountsListResponse } from "./client-agent-accounts-validator";
 import { ElizaClient } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import type {
@@ -4868,8 +4867,7 @@ ElizaClient.prototype.saveStreamSettings = async function (
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
-  const response = await this.fetch<unknown>("/api/accounts");
-  return parseAccountsListResponse(response);
+  return this.fetch<AccountsListResponse>("/api/accounts");
 };
 
 ElizaClient.prototype.createApiKeyAccount = async function (

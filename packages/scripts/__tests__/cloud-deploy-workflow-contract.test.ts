@@ -11,11 +11,6 @@ interface WorkflowTrigger {
 
 interface WorkflowJob {
   if?: string;
-  needs?: string | string[];
-  concurrency?: {
-    group?: string;
-    "cancel-in-progress"?: boolean;
-  };
 }
 
 interface Workflow {
@@ -34,8 +29,6 @@ function readWorkflow(name: string): Workflow {
 const canonicalSource = readWorkflowSource("cloud-cf-deploy.yml");
 const canonical = readWorkflow("cloud-cf-deploy.yml");
 const legacy = readWorkflow("cloud-deploy-backend.yml");
-const appsWorkerSource = readWorkflowSource("deploy-apps-worker.yml");
-const appsWorker = readWorkflow("deploy-apps-worker.yml");
 
 describe("Cloud deployment workflow trigger contract", () => {
   test("canonical push and pull-request deploys cover app-core changes", () => {
@@ -70,27 +63,5 @@ describe("Cloud deployment workflow trigger contract", () => {
     expect(legacy.jobs).toHaveProperty("migrate-db");
     expect(legacy.jobs).toHaveProperty("deploy");
     expect(legacy.jobs?.deploy?.if).toContain("inputs.deploy_legacy_vps");
-  });
-
-  test("apps worker migrates the target environment before restarting", () => {
-    expect(appsWorker.on?.push?.paths).toContain(
-      "packages/cloud/shared/src/db/**",
-    );
-    expect(appsWorker.jobs).toHaveProperty("migrate-db");
-    expect(appsWorker.jobs?.["migrate-db"]?.needs).toBe("determine-env");
-    expect(appsWorker.jobs?.["migrate-db"]?.concurrency?.group).toContain(
-      "cloud-db-migrate-v2-",
-    );
-    expect(
-      appsWorker.jobs?.["migrate-db"]?.concurrency?.["cancel-in-progress"],
-    ).toBe(false);
-    expect(appsWorker.jobs?.deploy?.needs).toEqual([
-      "determine-env",
-      "migrate-db",
-    ]);
-    expect(appsWorkerSource).toContain("bun run db:cloud:migrate");
-    expect(appsWorkerSource).toContain(
-      "Refusing to restart the apps worker against an unknown schema.",
-    );
   });
 });

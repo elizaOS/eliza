@@ -6,6 +6,7 @@
 import type {
   Action,
   ActionResult,
+  HandlerCallback,
   IAgentRuntime,
   Memory,
   State,
@@ -124,10 +125,11 @@ export const webSearchAction: Action = {
   ],
   validate: async () => isCodingWebSearchEnabled(),
   handler: async (
-    runtime: IAgentRuntime,
+    _runtime: IAgentRuntime,
     _message: Memory,
     _state?: State,
     options?: unknown,
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     if (!isCodingWebSearchEnabled()) {
       return failureToActionResult({
@@ -186,18 +188,12 @@ export const webSearchAction: Action = {
         truncated: results.length > WEB_SEARCH_RESULT_CHARS,
       });
     } catch (error) {
-      const diagnostic = error instanceof Error ? error.message : String(error);
-      runtime.logger.warn(
-        { error: diagnostic },
-        "[CodingTools] WEB_SEARCH provider request failed",
-      );
-      return failureToActionResult(
-        {
-          reason: "io_error",
-          message: "search providers failed before returning usable results",
-        },
+      const message = error instanceof Error ? error.message : String(error);
+      const result = failureToActionResult(
+        { reason: "io_error", message },
         { action: "WEB_SEARCH" },
       );
+      return result;
     }
   },
 };

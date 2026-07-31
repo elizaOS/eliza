@@ -96,9 +96,9 @@ const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
               className={`inline-flex items-center rounded-full border px-2 py-0.5 text-2xs font-medium ${
                 (
                   {
-                    agent: "border-accent/25 bg-accent/10 text-accent",
+                    agent: "border-accent/25 bg-accent/10 text-accent-fg",
                     cloud: "border-accent/20 bg-accent/8 text-accent",
-                    plugins: "border-accent/25 bg-accent/10 text-accent",
+                    plugins: "border-accent/25 bg-accent/10 text-accent-fg",
                   } as Record<string, string>
                 )[t] ?? "border-border/35 bg-bg-hover text-muted-strong"
               }`}

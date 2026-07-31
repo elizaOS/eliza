@@ -6093,44 +6093,38 @@ export class AgentRuntime implements IAgentRuntime {
 							attemptMeta,
 						);
 					}
-					let deliverableChunk = safeChunk;
+					streamedText += safeChunk;
 					// Per-token hook dispatch: skip the whole ceremony (trajectory
 					// lookup, context-object build, awaited invoke) when nothing is
 					// registered for the phase — the common zero-hook stream would
-					// otherwise pay it for every token. Mutating hooks may blank or
-					// rewrite the chunk; read the same context back before any client,
-					// structured extractor, or TTS path can observe it.
+					// otherwise pay it for every token. The length check reads the
+					// cached per-phase list, so a hook registered mid-stream is still
+					// picked up on the next chunk.
 					if (this.hooksForPhase("model_stream_chunk").length > 0) {
 						const trajStream = getTrajectoryContext();
-						const hookContext = modelStreamChunkPipelineHookContext({
-							source: "use_model",
-							chunk: safeChunk,
-							messageId: msgId,
-							roomId:
-								(trajStream?.roomId as UUID | undefined) ??
-								this.currentRoomId ??
-								this.agentId,
-							runId: this.getCurrentRunId(),
-							...(trajStream?.messageId
-								? { responseId: trajStream.messageId as UUID }
-								: {}),
-							accumulated: `${streamedText}${safeChunk}`,
-						});
 						await this.invokePipelineHooks(
 							"model_stream_chunk",
-							hookContext,
+							modelStreamChunkPipelineHookContext({
+								source: "use_model",
+								chunk: safeChunk,
+								messageId: msgId,
+								roomId:
+									(trajStream?.roomId as UUID | undefined) ??
+									this.currentRoomId ??
+									this.agentId,
+								runId: this.getCurrentRunId(),
+								...(trajStream?.messageId
+									? { responseId: trajStream.messageId as UUID }
+									: {}),
+								accumulated: streamedText,
+							}),
 							"Model stream chunk (useModel)",
 							false,
 						);
-						deliverableChunk = hookContext.chunk;
 					}
-					if (deliverableChunk.length === 0) return;
-					streamedText += deliverableChunk;
 					await runInsideModelStreamChunkDelivery(async () => {
-						const deliverableVisibleChunk =
-							deliverableChunk === safeChunk ? visibleChunk : deliverableChunk;
 						if (structuredExtractor) {
-							structuredExtractor.push(deliverableVisibleChunk);
+							structuredExtractor.push(visibleChunk);
 							return;
 						}
 						// A structured caller with no approved stream fields must
@@ -6138,10 +6132,8 @@ export class AgentRuntime implements IAgentRuntime {
 						// result is available. Falling through here would expose
 						// routing JSON and unverified reply text token-by-token.
 						if (suppressStructuredStream) return;
-						if (paramsChunk)
-							await paramsChunk(deliverableVisibleChunk, msgId, undefined);
-						if (ctxChunk)
-							await ctxChunk(deliverableVisibleChunk, msgId, undefined);
+						if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
+						if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
 					});
 				};
 				// When a guard is active, route every chunk through the scanner: it

@@ -112,7 +112,6 @@ import {
 } from "./lifeops/access.js";
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
-import { registerLifeOpsAudienceDeliveryHook } from "./lifeops/audience-policy.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
@@ -1071,7 +1070,6 @@ const rawPersonalAssistantPlugin: Plugin = {
 
     const ownerFactStore = createOwnerFactStore(runtime);
     registerOwnerFactStore(runtime, ownerFactStore);
-    registerLifeOpsAudienceDeliveryHook(runtime);
     registerCoreFactMemoryBridge(runtime);
 
     const promptRegistry = createMultilingualPromptRegistry();

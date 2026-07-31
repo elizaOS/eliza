@@ -116,7 +116,6 @@ function makeFragment(
 		id: id as UUID,
 		agentId: "agent-1" as UUID,
 		roomId: "room-1" as UUID,
-		worldId: "world-1" as UUID,
 		content: { text },
 		metadata: {
 			type: MemoryType.FRAGMENT,
@@ -134,40 +133,16 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 	const fragments = opts.fragments ?? [];
 	const agentId = "agent-1" as UUID;
 	const queryDocumentFragments = vi.fn(
-		async (params: {
-			limit: number;
-			requesterEntityId: UUID;
-			requesterRole: "OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME";
-			roomId?: UUID;
-			worldId?: UUID;
-		}) =>
-			fragments
-				.filter((fragment) => {
-					if (params.roomId && fragment.roomId !== params.roomId) return false;
-					if (params.worldId && fragment.worldId !== params.worldId)
-						return false;
-					const metadata = fragment.metadata as
-						| Record<string, unknown>
-						| undefined;
-					if (
-						params.requesterRole === "OWNER" ||
-						params.requesterRole === "AGENT" ||
-						params.requesterRole === "RUNTIME"
-					) {
-						return true;
-					}
-					if (metadata?.scope === "user-private") {
-						return (
-							params.requesterRole === "ADMIN" ||
-							metadata.scopedToEntityId === params.requesterEntityId
-						);
-					}
-					return (
-						metadata?.scope !== "owner-private" &&
-						metadata?.scope !== "agent-private"
-					);
-				})
-				.slice(0, params.limit),
+		async (params: { requesterEntityId: UUID }) =>
+			fragments.filter((fragment) => {
+				const metadata = fragment.metadata as
+					| Record<string, unknown>
+					| undefined;
+				return (
+					metadata?.scope !== "user-private" ||
+					metadata.scopedToEntityId === params.requesterEntityId
+				);
+			}),
 	);
 
 	return {
@@ -185,17 +160,11 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 		}),
 		searchMemories: vi.fn(async (_params: unknown) => fragments),
 		getMemories: vi.fn(async (_params: unknown) => fragments),
-		getRoomsForParticipants: vi.fn(async () => [
-			"room-1" as UUID,
-			"room-2" as UUID,
-		]),
-		getRoom: vi.fn(async (roomId: UUID) => ({
-			id: roomId,
+		getRoomsForParticipants: vi.fn(async () => ["room-1" as UUID]),
+		getRoom: vi.fn(async () => ({
+			id: "room-1" as UUID,
 			agentId,
-			worldId:
-				roomId === ("room-2" as UUID)
-					? ("world-2" as UUID)
-					: ("world-1" as UUID),
+			worldId: "world-1" as UUID,
 		})),
 		getWorld: vi.fn(async () => ({
 			id: "world-1" as UUID,
@@ -350,171 +319,6 @@ describe("DocumentService.searchDocuments", () => {
 
 			expect(results.map((result) => result.id)).toEqual(["frag-owned"]);
 		});
-	});
-
-	describe("delegated access context", () => {
-		it.each(["vector", "hybrid"] as const)(
-			"authorizes before the %s candidate limit",
-			async (mode) => {
-				const authorizedEntity = "user-1" as UUID;
-				const inaccessible = Array.from({ length: 45 }, (_, index) =>
-					makeFragment(
-						`inaccessible-${index}`,
-						"launch launch launch",
-						1 - index / 100,
-						{
-							scope: "user-private",
-							scopedToEntityId: "user-2" as UUID,
-						},
-					),
-				);
-				const authorized = makeFragment("authorized", "launch note", 0.1, {
-					scope: "user-private",
-					scopedToEntityId: authorizedEntity,
-				});
-				const rt = buildRuntime({
-					hasEmbedding: true,
-					fragments: [...inaccessible, authorized],
-				});
-				const svc = buildService(rt);
-
-				const results = await svc.searchDocuments(
-					makeMessage("launch", rt.agentId),
-					{ roomId: "room-1" as UUID },
-					mode,
-					{
-						requesterEntityId: authorizedEntity,
-						worldId: "world-1" as UUID,
-						role: "USER",
-						isOwner: false,
-					},
-				);
-
-				expect(results.map((result) => result.id)).toContain("authorized");
-				expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
-					expect.objectContaining({
-						requesterEntityId: authorizedEntity,
-						requesterRole: "USER",
-					}),
-				);
-			},
-		);
-
-		it("preserves ADMIN document semantics at the adapter boundary", async () => {
-			const adminEntity = "admin-1" as UUID;
-			const rt = buildRuntime({
-				hasEmbedding: false,
-				fragments: [
-					makeFragment("owner-secret", "launch note", undefined, {
-						scope: "owner-private",
-					}),
-					makeFragment("room-user-note", "launch note", undefined, {
-						scope: "user-private",
-						scopedToEntityId: "user-2" as UUID,
-					}),
-				],
-			});
-			const svc = buildService(rt);
-
-			const results = await svc.searchDocuments(
-				makeMessage("launch", rt.agentId),
-				{ roomId: "room-1" as UUID },
-				"keyword",
-				{
-					requesterEntityId: adminEntity,
-					worldId: "world-1" as UUID,
-					role: "ADMIN",
-					isOwner: false,
-				},
-			);
-
-			expect(results.map((result) => result.id)).toEqual(["room-user-note"]);
-			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
-				expect.objectContaining({
-					requesterEntityId: adminEntity,
-					requesterRole: "ADMIN",
-				}),
-			);
-		});
-
-		it.each([
-			{ role: "USER", isOwner: false },
-			{ role: "ADMIN", isOwner: false },
-			{ role: "OWNER", isOwner: true },
-		] as const)(
-			"rejects a conflicting $role human requester identity",
-			async ({ role, isOwner }) => {
-				const rt = buildRuntime({ hasEmbedding: false });
-				const svc = buildService(rt);
-
-				await expect(
-					svc.searchDocuments(
-						makeMessage("launch", "user-1" as UUID),
-						{ roomId: "room-1" as UUID },
-						"keyword",
-						{
-							requesterEntityId: "user-2" as UUID,
-							worldId: "world-1" as UUID,
-							role,
-							isOwner,
-						},
-					),
-				).rejects.toMatchObject({
-					code: "DOCUMENT_REQUESTER_CONTEXT_CONFLICT",
-				});
-				expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
-			},
-		);
-
-		it("rejects an elevated context outside its granting world", async () => {
-			const rt = buildRuntime({ hasEmbedding: false });
-			const svc = buildService(rt);
-
-			await expect(
-				svc.searchDocuments(
-					makeMessage("launch", rt.agentId),
-					{ roomId: "room-2" as UUID },
-					"keyword",
-					{
-						requesterEntityId: "admin-1" as UUID,
-						worldId: "world-1" as UUID,
-						role: "ADMIN",
-						isOwner: false,
-					},
-				),
-			).rejects.toMatchObject({
-				code: "DOCUMENT_REQUESTER_WORLD_CONFLICT",
-			});
-			expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
-		});
-
-		it.each([
-			{ label: "ADMIN role", role: "ADMIN", isOwner: false },
-			{ label: "OWNER role", role: "OWNER", isOwner: true },
-			{ label: "isOwner flag", role: undefined, isOwner: true },
-		] as const)(
-			"requires a world for an elevated $label context",
-			async ({ role, isOwner }) => {
-				const rt = buildRuntime({ hasEmbedding: false });
-				const svc = buildService(rt);
-
-				await expect(
-					svc.searchDocuments(
-						makeMessage("launch", rt.agentId),
-						{ roomId: "room-1" as UUID },
-						"keyword",
-						{
-							requesterEntityId: "elevated-1" as UUID,
-							role,
-							isOwner,
-						},
-					),
-				).rejects.toMatchObject({
-					code: "DOCUMENT_REQUESTER_WORLD_REQUIRED",
-				});
-				expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
-			},
-		);
 	});
 
 	describe("hybrid mode", () => {

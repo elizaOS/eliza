@@ -12,8 +12,8 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountManagementPanel } from "./AccountManagementPanel";
 
-const accounts = vi.hoisted(() => {
-  const initialData = {
+const accounts = vi.hoisted(() => ({
+  data: {
     providers: [
       {
         providerId: "openai-api",
@@ -36,21 +36,17 @@ const accounts = vi.hoisted(() => {
         ],
       },
     ],
-  };
-  return {
-    initialData,
-    data: initialData as typeof initialData | null,
-    loading: false,
-    error: null as string | null,
-    patch: vi.fn().mockResolvedValue(undefined),
-    refresh: vi.fn().mockResolvedValue(undefined),
-    refreshUsage: vi.fn().mockResolvedValue(undefined),
-    remove: vi.fn().mockResolvedValue(undefined),
-    saving: new Set<string>(),
-    setStrategy: vi.fn().mockResolvedValue(undefined),
-    test: vi.fn().mockResolvedValue(undefined),
-  };
-});
+  },
+  loading: false,
+  error: null,
+  patch: vi.fn().mockResolvedValue(undefined),
+  refresh: vi.fn().mockResolvedValue(undefined),
+  refreshUsage: vi.fn().mockResolvedValue(undefined),
+  remove: vi.fn().mockResolvedValue(undefined),
+  saving: new Set<string>(),
+  setStrategy: vi.fn().mockResolvedValue(undefined),
+  test: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("../../hooks/useAccounts", () => ({ useAccounts: () => accounts }));
 vi.mock("../../providers", () => ({
@@ -130,9 +126,6 @@ describe("AccountManagementPanel", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-    accounts.data = accounts.initialData;
-    accounts.loading = false;
-    accounts.error = null;
   });
 
   it("renders health, opens add-account, and wires account operations", async () => {
@@ -199,19 +192,5 @@ describe("AccountManagementPanel", () => {
     expect(toggle.querySelector("svg")?.getAttribute("class")).toContain(
       "rotate-90",
     );
-  });
-
-  it("renders a load error instead of a healthy empty state", () => {
-    accounts.data = null;
-    accounts.error =
-      "Failed to load accounts: Invalid /api/accounts response at response.providers";
-
-    render(<AccountManagementPanel />);
-
-    expect(screen.getByText("Couldn't load your accounts.")).toBeTruthy();
-    expect(screen.getByText(accounts.error)).toBeTruthy();
-    expect(screen.queryByText("No accounts connected yet")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(accounts.refresh).toHaveBeenCalledTimes(1);
   });
 });

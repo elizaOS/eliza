@@ -60,15 +60,17 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
  * Holding that closure would also pin the planner's state alive for the whole
  * report.
  *
- * Functions, symbols, and undefined are dropped rather than stringified -
+ * Functions, symbols, and undefined are dropped rather than stringified —
  * substituting a placeholder would put a value in the trace that the action was
  * never called with. Cycles resolve to null: `seen` tracks ancestors only, so
  * recursion always terminates on a cyclic graph without truncating siblings.
  *
- * The depth cap matches the downstream canonical JSON boundary: depth 128 is
- * accepted intact, while deeper data becomes null before report serialization.
- * A lower cap silently rewrites valid workflow result data and makes truncation
- * indistinguishable from a genuine empty node result.
+ * The depth cap is a backstop ABOVE the downstream limit, never below it:
+ * `canonicalJsonValue` rejects nesting past 128, so anything it would accept
+ * must survive sanitization intact. An earlier cap of 12 silently rewrote real
+ * data to null — a captured workflow execution nests
+ * `data.resultData.runData.<node>.0.data.main.0.0.json` well past that, and the
+ * truncated `null` looked exactly like a genuine empty node result.
  */
 const MAX_CAPTURED_PARAM_DEPTH = 128;
 
@@ -84,7 +86,7 @@ function toJsonSafe(
   }
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return value;
-  if (depth > MAX_CAPTURED_PARAM_DEPTH) return null;
+  if (depth >= MAX_CAPTURED_PARAM_DEPTH) return null;
 
   const obj = value as object;
   if (seen.has(obj)) return null;
@@ -335,9 +337,9 @@ export function captureConnectorDispatchesFromAction(
   parameters: unknown,
   result: unknown,
 ): void {
-  const paramsRecord = toRecord(toJsonSafe(parameters));
+  const paramsRecord = toRecord(parameters);
   const params = toRecord(paramsRecord?.parameters) ?? paramsRecord;
-  const resultRecord = toRecord(toJsonSafe(result));
+  const resultRecord = toRecord(result);
   const resultData = toRecord(resultRecord?.data);
   // Only record a dispatch as delivered when the action explicitly reports
   // success. Defaulting to `true` would let a "messageDelivered" final check

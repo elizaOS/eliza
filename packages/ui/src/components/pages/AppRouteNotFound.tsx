@@ -63,7 +63,6 @@ export function AppRouteNotFound({
       <div className="mt-2 flex flex-col items-center gap-2">
         {matchedView ? (
           <Button
-            variant="surfaceAccent"
             data-testid="app-route-not-found-open-view"
             onClick={() => navigatePath(matchedView.path)}
           >

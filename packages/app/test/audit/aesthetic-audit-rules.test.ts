@@ -625,9 +625,7 @@ describe("minimalism baseline parse/build (#9950 update path)", () => {
 
   it("the COMMITTED baseline file parses (spec-load integrity)", () => {
     // Support both root and package-scoped Vitest invocation.
-    const packageRoot = existsSync(
-      path.join(process.cwd(), "packages/app/package.json"),
-    )
+    const packageRoot = existsSync(path.join(process.cwd(), "packages/app"))
       ? path.join(process.cwd(), "packages/app")
       : process.cwd();
     const committed = readFileSync(

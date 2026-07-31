@@ -6,7 +6,7 @@
 
 import type { AgentNotification } from "@elizaos/core";
 import type { Meta, StoryObj } from "@storybook/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
@@ -36,14 +36,13 @@ function Seeded({
   notifications: Array<Partial<AgentNotification>>;
 }): React.JSX.Element | null {
   const [ready, setReady] = useState(false);
-  const notificationsRef = useRef(notifications);
   useEffect(() => {
     __resetNotificationStoreForTests();
     seq = 0;
-    for (const n of notificationsRef.current) seed(n);
+    for (const n of notifications) seed(n);
     setReady(true);
     return () => __resetNotificationStoreForTests();
-  }, []);
+  }, [notifications]);
   if (!ready) return null;
   // Definite width AND height: the centered story layout shrink-wraps its
   // item, so `w-full`/`max-w-md` resolve against a zero-width parent and the
@@ -51,7 +50,7 @@ function Seeded({
   // 0x480 column — the "blank-render: single-color" gate verdict. 28rem is
   // max-w-md's value as a definite width.
   return (
-    <div className="flex h-[480px] w-[28rem] max-w-full flex-col">
+    <div className="flex h-[480px] w-[28rem] flex-col">
       <NotificationsHomeCenter />
     </div>
   );

@@ -5,11 +5,11 @@
  * result array down to the readable set.
  *
  * Composes with — never duplicates — Postgres RLS: RLS gates on
- * `entity_id`/`server_id`, this gates on `metadata.scope`. Document fragments
- * must not delegate authorization here: their denormalized metadata is not
- * authoritative, and document ADMIN semantics differ. Document reads authorize
- * the stored parent through the adapter capability before ranking. An
- * unresolved role fails closed to the least-privileged `USER` tier.
+ * `entity_id`/`server_id`, this gates on `metadata.scope`. For the four
+ * document scopes the ladder is byte-identical to the documents plugin's
+ * `canReadDocumentMemory`, so that plugin can delegate here without behavior
+ * change; keep the two in lockstep. An unresolved role fails closed to the
+ * least-privileged `USER` tier.
  */
 import { isAdminRank, type RoleName } from "../roles";
 import type { AccessContext, MemoryScope, UUID } from "../types";
@@ -73,11 +73,13 @@ export function actorFromAccessContext(
 }
 
 /**
- * Whether `actor` may read a memory of the given `scope`. The generic core
+ * Whether `actor` may read a memory of the given `scope`. For the four document
+ * scopes this is byte-equivalent to the documents plugin's `canReadDocumentMemory`
+ * so that plugin can delegate here without changing behavior. The generic core
  * scopes fold in: `shared`/`room` read like `global`, `private` like
  * `user-private`. `scopedEntityId` is the memory's owning entity (used only by
  * the entity-scoped tiers); `opts.scopedToEntityId` lets an OWNER read on behalf
- * of a specific entity.
+ * of a specific entity, matching the documents filter.
  */
 export function canReadScope(
 	scope: MemoryScope,

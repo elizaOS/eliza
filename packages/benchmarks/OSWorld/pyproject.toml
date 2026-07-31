@@ -5,10 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "eliza-adapter",
     "numpy",
     "backoff",
-    "pandas~=3.0.5",
+    "pandas",
     "openai",
     "anthropic",
     "fastapi",
@@ -38,7 +37,7 @@ dependencies = [
     "transformers~=5.14.1",
     "torch~=2.13.0",
     "accelerate",
-    "opencv-python-headless~=4.13.0.92",
+    "opencv-python~=5.0.0.93",
     "matplotlib~=3.11.0",
     "psutil~=7.2.2",
     "tqdm~=4.70.0",
@@ -89,16 +88,7 @@ dependencies = [
     "tldextract>=5.3.0",
 ]
 
-[dependency-groups]
-dev = [
-    "pytest>=9,<10",
-]
-
 [tool.uv]
 override-dependencies = [
-    "gitpython>=3.1.57",
     "pyjwt>=2.10.1",
 ]
-
-[tool.uv.sources]
-eliza-adapter = { path = "../eliza-adapter", editable = true }

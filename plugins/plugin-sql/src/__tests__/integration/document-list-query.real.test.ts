@@ -191,7 +191,7 @@ describe("document list query (real SQL parity)", () => {
     const sqlResult = await adapter.queryDocuments(params);
     const inMemoryResult = await inMemory.queryDocuments(params);
 
-    expect(withEntityContext).toHaveBeenCalledWith(agentId, expect.any(Function));
+    expect(withEntityContext).toHaveBeenCalledWith(REQUESTER_ID, expect.any(Function));
     expect(sqlResult).toMatchObject({
       totalVisible: 2,
       totalAvailable: 2,
@@ -240,7 +240,7 @@ describe("document list query (real SQL parity)", () => {
     });
   });
 
-  it("keeps global reads agent-wide while private reads remain room-scoped", async () => {
+  it("keeps OWNER, RUNTIME, and AGENT global while USER remains room-limited", async () => {
     const otherRoomId = v4() as UUID;
     await adapter.createRooms([
       {
@@ -252,17 +252,7 @@ describe("document list query (real SQL parity)", () => {
         type: ChannelType.DM,
       } as Room,
     ]);
-    const documents = [
-      document(1),
-      document(2, { roomId: otherRoomId }),
-      document(3, {
-        roomId: otherRoomId,
-        metadata: {
-          scope: "user-private",
-          scopedToEntityId: REQUESTER_ID,
-        },
-      }),
-    ];
+    const documents = [document(1), document(2, { roomId: otherRoomId })];
     await seedSql(documents);
     const inMemory = await seedInMemory(documents);
     const baseParams: Omit<DocumentListQueryParams, "requesterRole"> = {
@@ -276,21 +266,7 @@ describe("document list query (real SQL parity)", () => {
     const userSql = await adapter.queryDocuments({ ...baseParams, requesterRole: "USER" });
     const userMemory = await inMemory.queryDocuments({ ...baseParams, requesterRole: "USER" });
     expect(userSql).toEqual(userMemory);
-    expect(new Set(ids(userSql.documents))).toEqual(new Set([documents[0]?.id, documents[1]?.id]));
-    await expect(
-      adapter.getDocument({
-        ...baseParams,
-        requesterRole: "USER",
-        documentId: documents[1]!.id!,
-      })
-    ).resolves.toMatchObject({ id: documents[1]?.id });
-    await expect(
-      adapter.getDocument({
-        ...baseParams,
-        requesterRole: "USER",
-        documentId: documents[2]!.id!,
-      })
-    ).resolves.toBeNull();
+    expect(ids(userSql.documents)).toEqual([documents[0]?.id]);
 
     for (const requesterRole of ["OWNER", "RUNTIME", "AGENT"] as const) {
       const roleParams = {
@@ -302,7 +278,7 @@ describe("document list query (real SQL parity)", () => {
       const memoryResult = await inMemory.queryDocuments(roleParams);
       expect(sqlResult).toEqual(memoryResult);
       expect(new Set(ids(sqlResult.documents))).toEqual(new Set(ids(documents)));
-      expect(sqlResult.totalVisible).toBe(3);
+      expect(sqlResult.totalVisible).toBe(2);
     }
   });
 

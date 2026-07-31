@@ -78,12 +78,8 @@ export function AccountManagementPanel({
   const [showAvailable, setShowAvailable] = useState(false);
 
   const providerMap = useMemo(() => {
-    if (!accounts.data) return new Map();
     return new Map(
-      accounts.data.providers.map((provider) => [
-        provider.providerId,
-        provider,
-      ]),
+      accounts.data?.providers.map((p) => [p.providerId, p]) ?? [],
     );
   }, [accounts.data]);
 
@@ -92,13 +88,11 @@ export function AccountManagementPanel({
   const { connectedOptions, availableOptions } = useMemo(() => {
     const all: AccountProviderOption[] = [];
     const seen = new Set<LinkedAccountProviderId>();
-    if (accounts.data) {
-      for (const provider of accounts.data.providers) {
-        const option = getAccountProviderOption(provider.providerId);
-        if (option && !seen.has(option.id)) {
-          all.push(option);
-          seen.add(option.id);
-        }
+    for (const p of accounts.data?.providers ?? []) {
+      const option = getAccountProviderOption(p.providerId);
+      if (option && !seen.has(option.id)) {
+        all.push(option);
+        seen.add(option.id);
       }
     }
     for (const option of ACCOUNT_PROVIDER_OPTIONS) {

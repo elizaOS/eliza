@@ -14,7 +14,6 @@ import { describe, expect, test } from "bun:test";
 
 import {
   deploymentIdFor,
-  publicDeploymentErrorFor,
   publicStatusFor,
 } from "@elizaos/cloud-shared/lib/services/app-deployments-helpers.ts";
 import { DeployBodySchema } from "../v1/apps/[id]/deploy/schema";
@@ -66,23 +65,6 @@ describe("publicStatusFor", () => {
     expect(publicStatusFor("deploying")).toBe("BUILDING");
     expect(publicStatusFor("deployed")).toBe("READY");
     expect(publicStatusFor("failed")).toBe("ERROR");
-  });
-});
-
-describe("publicDeploymentErrorFor", () => {
-  test("returns a stable public failure without accepting internal diagnostics", () => {
-    expect(publicDeploymentErrorFor("failed")).toEqual({
-      code: "DEPLOYMENT_FAILED",
-      message:
-        "Deployment failed. Retry the deployment or contact support with the deployment ID.",
-    });
-  });
-
-  test("returns no error for non-failed deployment states", () => {
-    expect(publicDeploymentErrorFor("draft")).toBeNull();
-    expect(publicDeploymentErrorFor("building")).toBeNull();
-    expect(publicDeploymentErrorFor("deploying")).toBeNull();
-    expect(publicDeploymentErrorFor("deployed")).toBeNull();
   });
 });
 

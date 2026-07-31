@@ -2,10 +2,10 @@
 //
 // `perf-load-kpi.spec.ts` measures load-time web-vitals; this measures *sustained
 // interaction framerate* — the 60/120fps target the issue is about. An in-page
-// requestAnimationFrame loop records inter-frame deltas while an interaction
-// runs (scroll, drag, view transition), and a long-task observer attributes
-// main-thread stalls. Samples use the same math as the in-app meter
-// (`summarizeFrameSamples`, packages/ui/src/hooks/frame-budget.ts).
+// requestAnimationFrame loop records inter-frame deltas while an interaction runs
+// (scroll, drag, view transition); the deltas are summarized with the SAME math
+// as the in-app meter (`summarizeFrameSamples`, packages/ui/src/hooks/frame-budget.ts)
+// so the KPI numbers agree with the live HUD and the render-telemetry monitor.
 //
 // The summary is inlined here (not imported from @elizaos/ui) deliberately:
 // importing the UI package into the node-side spec would pull the whole browser
@@ -30,22 +30,8 @@ export interface FrameKpiSummary {
   worstFrameMs: number;
   /** Frames whose duration exceeded the budget (dropped/janky). */
   droppedFrames: number;
-  /** Main-thread tasks lasting at least 50 ms during the sample window. */
-  longTasks: number;
   /** The per-frame budget the summary was computed against (ms). */
   budgetMs: number;
-}
-
-export interface RepeatedFrameKpiWindow {
-  idle: FrameKpiSummary;
-  interaction: FrameKpiSummary;
-}
-
-export interface RepeatedFrameKpiSummary {
-  windowCount: number;
-  medianIdleP95FrameMs: number;
-  medianInteractionP95FrameMs: number;
-  worstInteractionP95FrameMs: number;
 }
 
 /** Nearest-rank percentile; mirrors frame-budget.ts `percentile`. */
@@ -73,7 +59,6 @@ export function summarizeFrameDeltas(
       p95FrameMs: 0,
       worstFrameMs: 0,
       droppedFrames: 0,
-      longTasks: 0,
       budgetMs,
     };
   }
@@ -86,46 +71,7 @@ export function summarizeFrameDeltas(
     p95FrameMs: percentile(samples, 0.95),
     worstFrameMs: samples.reduce((max, delta) => Math.max(max, delta), 0),
     droppedFrames: samples.filter((delta) => delta > budgetMs).length,
-    longTasks: 0,
     budgetMs,
-  };
-}
-
-function median(values: readonly number[]): number {
-  if (values.length === 0) {
-    throw new RangeError("A frame-window median requires at least one value");
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  const upper = sorted[middle];
-  if (upper === undefined) {
-    throw new RangeError("The frame-window median index is out of bounds");
-  }
-  if (sorted.length % 2 === 1) return upper;
-  const lower = sorted[middle - 1];
-  if (lower === undefined) {
-    throw new RangeError("The frame-window median index is out of bounds");
-  }
-  return (lower + upper) / 2;
-}
-
-/** Summarize repeated raw interaction windows without baseline subtraction. */
-export function summarizeRepeatedFrameKpis(
-  windows: readonly RepeatedFrameKpiWindow[],
-): RepeatedFrameKpiSummary {
-  if (windows.length === 0) {
-    throw new RangeError("Repeated frame KPIs require at least one window");
-  }
-
-  return {
-    windowCount: windows.length,
-    medianIdleP95FrameMs: median(windows.map(({ idle }) => idle.p95FrameMs)),
-    medianInteractionP95FrameMs: median(
-      windows.map(({ interaction }) => interaction.p95FrameMs),
-    ),
-    worstInteractionP95FrameMs: Math.max(
-      ...windows.map(({ interaction }) => interaction.p95FrameMs),
-    ),
   };
 }
 
@@ -134,12 +80,10 @@ const SAMPLER_GLOBAL = "__elizaFramePerf__";
 interface FrameSamplerWindow {
   deltas: number[];
   last: number | null;
-  longTasks: number;
-  observer: PerformanceObserver | null;
   raf: number;
   running: boolean;
   start(): void;
-  stop(): { deltas: number[]; longTasks: number };
+  stop(): number[];
 }
 
 /**
@@ -153,27 +97,12 @@ export async function installFrameSampler(page: Page): Promise<void> {
     const sampler = {
       deltas: [] as number[],
       last: null as number | null,
-      longTasks: 0,
-      observer: null as PerformanceObserver | null,
       raf: 0,
       running: false,
       start() {
         this.deltas = [];
         this.last = null;
-        this.longTasks = 0;
         this.running = true;
-        this.observer?.disconnect();
-        this.observer = null;
-        if (typeof PerformanceObserver === "function") {
-          try {
-            this.observer = new PerformanceObserver((list) => {
-              this.longTasks += list.getEntries().length;
-            });
-            this.observer.observe({ entryTypes: ["longtask"] });
-          } catch {
-            this.observer = null;
-          }
-        }
         const tick = (now: number) => {
           if (!this.running) return;
           if (this.last !== null) this.deltas.push(now - this.last);
@@ -185,12 +114,7 @@ export async function installFrameSampler(page: Page): Promise<void> {
       stop() {
         this.running = false;
         if (this.raf) cancelAnimationFrame(this.raf);
-        this.observer?.disconnect();
-        this.observer = null;
-        return {
-          deltas: this.deltas.slice(),
-          longTasks: this.longTasks,
-        };
+        return this.deltas.slice();
       },
     };
     win[key] = sampler;
@@ -211,21 +135,17 @@ export async function measureFrames(
     (window as unknown as Record<string, FrameSamplerWindow>)[key]?.start();
   }, SAMPLER_GLOBAL);
   await interaction();
-  const samples = await page.evaluate((key: string) => {
+  const deltas = await page.evaluate((key: string) => {
     const s = (window as unknown as Record<string, FrameSamplerWindow>)[key];
-    return s ? s.stop() : { deltas: [], longTasks: 0 };
+    return s ? s.stop() : [];
   }, SAMPLER_GLOBAL);
-  return {
-    ...summarizeFrameDeltas(samples.deltas, budgetMs),
-    longTasks: samples.longTasks,
-  };
+  return summarizeFrameDeltas(deltas, budgetMs);
 }
 
 export function formatFrameSummary(label: string, s: FrameKpiSummary): string {
   return (
     `${label}: ${s.fps.toFixed(0)}fps · p95 ${s.p95FrameMs.toFixed(1)}ms · ` +
-    `worst ${s.worstFrameMs.toFixed(1)}ms · dropped ${s.droppedFrames}/${s.sampleCount} · ` +
-    `long tasks ${s.longTasks} ` +
+    `worst ${s.worstFrameMs.toFixed(1)}ms · dropped ${s.droppedFrames}/${s.sampleCount} ` +
     `(budget ${s.budgetMs.toFixed(1)}ms)`
   );
 }

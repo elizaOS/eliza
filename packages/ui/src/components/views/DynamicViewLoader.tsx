@@ -45,7 +45,6 @@ import {
 import * as AgentSurfaceHost from "../../agent-surface";
 import {
   AgentElementOverlay,
-  type AgentElementSnapshot,
   AgentSurfaceElementReporter,
   AgentSurfaceProvider,
   getViewRegistry,
@@ -972,38 +971,9 @@ function readElementValue(el: HTMLElement): unknown {
   return undefined;
 }
 
-function parseDomAgentElementRole(
-  value: string | null,
-): AgentElementSnapshot["role"] {
-  switch (value) {
-    case "button":
-    case "link":
-    case "text-input":
-    case "number-input":
-    case "textarea":
-    case "select":
-    case "toggle":
-    case "slider":
-    case "tab":
-    case "menu-item":
-    case "list-item":
-    case "card":
-    case "metric":
-    case "status":
-    case "image":
-    case "chart":
-    case "region":
-    case "heading":
-    case "custom":
-      return value;
-    default:
-      return "region";
-  }
-}
-
-function snapshotDomAgentElement(el: HTMLElement): AgentElementSnapshot {
+function snapshotDomAgentElement(el: HTMLElement) {
   const rect = el.getBoundingClientRect();
-  const role = parseDomAgentElementRole(el.getAttribute("data-agent-role"));
+  const role = el.getAttribute("data-agent-role") || "region";
   const descriptor = {
     id: el.getAttribute("data-agent-id") || "",
     label: el.getAttribute("data-agent-label") || "",
@@ -1038,31 +1008,6 @@ function listDomAgentElements(containerEl: HTMLElement | null) {
   return [...containerEl.querySelectorAll<HTMLElement>("[data-agent-id]")]
     .map(snapshotDomAgentElement)
     .filter((item) => item.id.length > 0);
-}
-
-function mergeAgentElementInventories(
-  registry: ViewAgentRegistry | undefined,
-  containerEl: HTMLElement | null,
-) {
-  const elementsById = new Map<string, AgentElementSnapshot>();
-
-  for (const element of registry?.snapshot().elements ?? []) {
-    elementsById.set(element.id, element);
-  }
-  for (const element of listDomAgentElements(containerEl)) {
-    if (!elementsById.has(element.id)) {
-      elementsById.set(element.id, element);
-    }
-  }
-
-  return [...elementsById.values()];
-}
-
-function registryHasAgentElement(
-  registry: ViewAgentRegistry | undefined,
-  id: string,
-): boolean {
-  return registry?.describe(id) != null;
 }
 
 function handleDomAgentSurfaceCapability(
@@ -1173,73 +1118,6 @@ function handleDomAgentSurfaceCapability(
   }
 }
 
-function handleMixedAgentSurfaceCapability(
-  viewId: string,
-  viewType: "gui" | "tui" | "xr",
-  registry: ViewAgentRegistry | undefined,
-  capability: string,
-  params: Record<string, unknown> | undefined,
-  containerEl: HTMLElement | null,
-): unknown {
-  switch (capability) {
-    case "list-elements": {
-      const role = typeof params?.role === "string" ? params.role : null;
-      const group = typeof params?.group === "string" ? params.group : null;
-      let elements = mergeAgentElementInventories(registry, containerEl);
-      if (role) elements = elements.filter((element) => element.role === role);
-      if (group) {
-        elements = elements.filter((element) => element.group === group);
-      }
-      return elements;
-    }
-
-    case "get-agent-state": {
-      const elements = mergeAgentElementInventories(registry, containerEl);
-      return {
-        viewId,
-        viewType,
-        elementCount: elements.length,
-        focusedId: elements.find((element) => element.focused)?.id ?? null,
-        elements,
-        updatedAt: registry?.snapshot().updatedAt ?? Date.now(),
-      };
-    }
-
-    case "get-focus": {
-      const element =
-        mergeAgentElementInventories(registry, containerEl).find(
-          (candidate) => candidate.focused,
-        ) ?? null;
-      return { focusedId: element?.id ?? null, element };
-    }
-
-    case "set-highlight":
-      return registry && registry.size() > 0
-        ? handleAgentSurfaceCapability(registry, capability, params)
-        : handleDomAgentSurfaceCapability(
-            viewId,
-            viewType,
-            capability,
-            params,
-            containerEl,
-          );
-
-    default: {
-      const id = agentIdParam(params);
-      if (id && registry && registryHasAgentElement(registry, id)) {
-        return handleAgentSurfaceCapability(registry, capability, params);
-      }
-      return handleDomAgentSurfaceCapability(
-        viewId,
-        viewType,
-        capability,
-        params,
-        containerEl,
-      );
-    }
-  }
-}
-
 /**
  * Handle a standard capability on the view container element.
  * Called when a view module does not export an `interact` function, or when
@@ -1289,17 +1167,9 @@ async function handleStandardCapability(
     case "focus-element": {
       // Addressing by registered agent id takes precedence over raw selectors.
       const id = agentIdParam(params);
-      if (id && registry && registryHasAgentElement(registry, id)) {
+      if (id && registry) {
         const result = registry.focus(id);
         return { focused: result.ok, id, reason: result.reason };
-      }
-      if (id) {
-        const target = getAgentElementById(containerEl, id);
-        if (target) {
-          target.focus();
-          return { focused: true, id };
-        }
-        return { focused: false, id, reason: "element not found" };
       }
       const { target, selector } = resolveInteractTarget(containerEl, params);
       if (target) {
@@ -1311,17 +1181,9 @@ async function handleStandardCapability(
 
     case "click-element": {
       const id = agentIdParam(params);
-      if (id && registry && registryHasAgentElement(registry, id)) {
+      if (id && registry) {
         const result = registry.click(id);
         return { clicked: result.ok, id, reason: result.reason };
-      }
-      if (id) {
-        const target = getAgentElementById(containerEl, id);
-        if (target) {
-          target.click();
-          return { clicked: true, id };
-        }
-        return { clicked: false, id, reason: "element not found" };
       }
       const { target, selector } = resolveInteractTarget(containerEl, params);
       if (target) {
@@ -1337,7 +1199,7 @@ async function handleStandardCapability(
         return { filled: false, reason: "value must be a string" };
       }
       const id = agentIdParam(params);
-      if (id && registry && registryHasAgentElement(registry, id)) {
+      if (id && registry) {
         const result = registry.fill(id, value);
         return {
           filled: result.ok,
@@ -1346,15 +1208,9 @@ async function handleStandardCapability(
           ...(result.ok ? { value } : {}),
         };
       }
-      const { target, selector } = id
-        ? { target: getAgentElementById(containerEl, id), selector: null }
-        : resolveInteractTarget(containerEl, params);
+      const { target, selector } = resolveInteractTarget(containerEl, params);
       if (!target) {
-        return {
-          filled: false,
-          ...(id ? { id } : {}),
-          reason: "element not found",
-        };
+        return { filled: false, reason: "element not found" };
       }
       if (
         target instanceof HTMLInputElement ||
@@ -1378,18 +1234,14 @@ async function handleStandardCapability(
         ) {
           return {
             filled: false,
-            ...(id ? { id } : { selector }),
+            selector,
             reason: SENSITIVE_AGENT_ELEMENT_REASON,
           };
         }
         setNativeInputValue(target, value);
-        return { filled: true, ...(id ? { id } : { selector }), value };
+        return { filled: true, selector, value };
       }
-      return {
-        filled: false,
-        ...(id ? { id } : {}),
-        reason: "element is not fillable",
-      };
+      return { filled: false, reason: "element is not fillable" };
     }
 
     default:
@@ -1529,12 +1381,14 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
         async (capability, params) => {
           const registry = getViewRegistry(viewId, viewType);
           // Generic agent-surface capabilities (list-elements, agent-fill, …)
-          // operate across hook-registered and DOM-backed elements.
+          // operate on the view's element registry.
           if (isAgentSurfaceCapability(capability)) {
-            return handleMixedAgentSurfaceCapability(
+            if (registry && registry.size() > 0) {
+              return handleAgentSurfaceCapability(registry, capability, params);
+            }
+            return handleDomAgentSurfaceCapability(
               viewId,
               viewType,
-              registry,
               capability,
               params,
               containerRef.current,

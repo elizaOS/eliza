@@ -7,7 +7,6 @@ import { getTalkModePlugin } from "../bridge/native-plugins";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,
-  type LocalAsrRecorder,
   type LocalAsrRecorderOptions,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
@@ -89,94 +88,6 @@ describe("createVoiceCapture", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("serializes a stop requested during startup and drains the captured WAV through ASR", async () => {
-    let releaseRecorder: (recorder: LocalAsrRecorder) => void = () => {
-      throw new Error("Recorder startup resolver was not initialized");
-    };
-    const recorderReady = new Promise<LocalAsrRecorder>((resolve) => {
-      releaseRecorder = resolve;
-    });
-    const wav = new Uint8Array([82, 73, 70, 70, 1, 2, 3]);
-    const recorderStop = vi.fn().mockResolvedValue(wav);
-    startLocalAsrRecorderMock.mockReturnValue(recorderReady);
-    const onTranscript = vi.fn();
-    const onStateChange = vi.fn();
-    const capture = createVoiceCapture({
-      asrProvider: "eliza-cloud",
-      onTranscript,
-      onStateChange,
-    });
-
-    const firstStart = capture.start();
-    const repeatedStart = capture.start();
-    const stopDuringStart = capture.stop();
-
-    expect(repeatedStart).toBe(firstStart);
-    await waitFor(() =>
-      expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1),
-    );
-    expect(recorderStop).not.toHaveBeenCalled();
-
-    releaseRecorder({
-      stop: recorderStop,
-      cancel: vi.fn(),
-      analyser: null,
-    });
-    await Promise.all([firstStart, stopDuringStart]);
-
-    expect(recorderStop).toHaveBeenCalledTimes(1);
-    expect(transcribeCloudWavMock).toHaveBeenCalledExactlyOnceWith(wav);
-    expect(onTranscript).toHaveBeenCalledExactlyOnceWith({
-      text: "Grace Hopper",
-      final: true,
-      backend: "cloud",
-      audioWav: wav,
-    });
-    expect(onStateChange.mock.calls.map(([next]) => next)).toEqual([
-      "starting",
-      "listening",
-      "stopped",
-    ]);
-    expect(capture.isActive()).toBe(false);
-  });
-
-  it("cancels a recorder that finishes startup after disposal", async () => {
-    let releaseRecorder: (recorder: LocalAsrRecorder) => void = () => {
-      throw new Error("Recorder startup resolver was not initialized");
-    };
-    const recorderReady = new Promise<LocalAsrRecorder>((resolve) => {
-      releaseRecorder = resolve;
-    });
-    const cancel = vi.fn();
-    startLocalAsrRecorderMock.mockReturnValue(recorderReady);
-    const onStateChange = vi.fn();
-    const capture = createVoiceCapture({
-      asrProvider: "eliza-cloud",
-      onTranscript: vi.fn(),
-      onStateChange,
-    });
-
-    const starting = capture.start();
-    await waitFor(() =>
-      expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1),
-    );
-    capture.dispose();
-    releaseRecorder({
-      stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
-      cancel,
-      analyser: null,
-    });
-    await starting;
-    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
-
-    expect(capture.isActive()).toBe(false);
-    expect(capture.getAnalyser()).toBeNull();
-    expect(onStateChange.mock.calls.map(([next]) => next)).not.toContain(
-      "listening",
-    );
-    await expect(capture.start()).rejects.toThrow(/disposed/);
   });
 
   it("auto-stops local ASR turns and emits the final transcript", async () => {

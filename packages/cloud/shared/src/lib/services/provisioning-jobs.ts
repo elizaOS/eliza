@@ -3220,11 +3220,7 @@ export class ProvisioningJobService {
         return async (tx) => {
           await tx
             .update(apps)
-            .set({
-              deployment_status: "failed",
-              deployment_error: errorMsg,
-              updated_at: new Date(),
-            })
+            .set({ deployment_status: "failed", updated_at: new Date() })
             .where(eq(apps.id, appId));
           logger.warn(
             "[provisioning-jobs] Marked app deployment as failed after permanent failure",
@@ -3262,11 +3258,7 @@ export class ProvisioningJobService {
           if (!appId || !isValidUUID(appId)) return;
           await tx
             .update(apps)
-            .set({
-              deployment_status: "failed",
-              deployment_error: errorMsg,
-              updated_at: new Date(),
-            })
+            .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)));
           logger.warn(
             "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",

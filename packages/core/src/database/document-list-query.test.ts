@@ -15,7 +15,6 @@ import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 const AGENT_ID = "00000000-0000-0000-0000-00000000a9e7" as UUID;
 const REQUESTER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
-const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000d00e" as UUID;
 
 const params: DocumentListQueryParams = {
 	agentId: AGENT_ID,
@@ -198,33 +197,6 @@ describe("document-list capability contract", () => {
 		expect(new Set(admin.documents.map((memory) => memory.id))).toEqual(
 			new Set([owned.id, other.id]),
 		);
-	});
-
-	it("keeps global reads agent-wide while private reads remain room-scoped", () => {
-		const globalOtherRoom = { ...document(1), roomId: OTHER_ROOM_ID };
-		const privateOtherRoom = {
-			...document(2),
-			roomId: OTHER_ROOM_ID,
-			metadata: {
-				type: MemoryType.DOCUMENT,
-				scope: "user-private",
-				scopedToEntityId: REQUESTER_ID,
-			},
-		};
-
-		for (const requesterRole of ["USER", "ADMIN"] as const) {
-			const result = queryDocumentsInMemory(
-				[globalOtherRoom, privateOtherRoom],
-				{
-					...params,
-					requesterRole,
-					requesterRoomIds: [ROOM_ID],
-				},
-			);
-			expect(result.documents.map((memory) => memory.id)).toEqual([
-				globalOtherRoom.id,
-			]);
-		}
 	});
 
 	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {

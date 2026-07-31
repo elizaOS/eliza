@@ -19,19 +19,9 @@ on:
       - "packages/lifeops-bench/**"
       - ".github/workflows/benchmark-tests.yml"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "packages/lifeops-bench/**"
-      - "plugins/plugin-personal-assistant/**"
-      - "packages/agent/**"
-      - "packages/app-core/test/helpers/**"
-      - "packages/core/**"
-      - "packages/shared/**"
-      - "package.json"
-      - "bun.lock"
-      - "turbo.json"
-      - "tsconfig*.json"
-      - ".github/actions/setup-bun-workspace/**"
       - ".github/workflows/benchmark-tests.yml"
   workflow_dispatch:
 
@@ -45,7 +35,7 @@ permissions:
 jobs:
   benchmark:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -76,10 +66,6 @@ jobs:
 
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
-
-      - name: Build benchmark workspace dependency closure
-        if: ${{ matrix.lane == 'benchmark-tests' }}
-        run: bunx turbo run build --filter=@elizaos/lifeops-bench
 
       - name: Run ${{ matrix.lane }} lane
         env:

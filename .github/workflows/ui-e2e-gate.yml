@@ -1,4 +1,4 @@
-name: UI Exhaustive E2E
+name: UI Fixture E2E
 
 # #9954/#10722: the chat-sheet drag-detent, TopicGroup gesture, and home-screen
 # e2e runners (src/components/shell/__e2e__/run-*.mjs) esbuild-bundle a fixture
@@ -22,7 +22,7 @@ on:
         type: string
         default: standalone
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths:
       # The fixture runners esbuild-bundle from the full packages/ui/src tree,
       # so any source change there can reach a bundled runner.

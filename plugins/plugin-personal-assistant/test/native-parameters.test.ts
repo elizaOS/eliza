@@ -4,7 +4,6 @@
  * directly, and CALENDAR is a flat action-valued umbrella. Deterministic, mocked extractor.
  */
 import {
-  ChannelType,
   type HandlerOptions,
   type IAgentRuntime,
   listSubactionsFromParameters,
@@ -56,13 +55,6 @@ function makeRuntime(): IAgentRuntime {
     getService: vi.fn(() => {
       throw new Error("calendar writer should not be called");
     }),
-    getRoom: vi.fn(async (roomId) => ({ id: roomId, type: ChannelType.DM })),
-    getParticipantsForRoom: vi.fn(async () => [
-      "agent-native-params",
-      "owner-1",
-    ]),
-    getAgent: vi.fn(async () => ({ id: "agent-native-params" })),
-    reportError: vi.fn(),
     async getCache<T>(key: string): Promise<T | null> {
       const value = cache.get(key);
       return value === undefined ? null : (value as T);
@@ -81,9 +73,9 @@ function makeMessage(text = "reject req-1"): Memory {
   return {
     id: "message-native-parameters",
     entityId: "owner-1",
-    roomId: "room-native-params",
+    roomId: "room-native-parameters",
     createdAt: Date.parse("2026-07-06T12:00:00.000Z"),
-    content: { text, channelType: ChannelType.DM },
+    content: { text },
   } as Memory;
 }
 
@@ -137,8 +129,6 @@ describe("LifeOps native options.parameters migration", () => {
     mocks.queue.byId.mockResolvedValue({
       id: "req-1",
       action: "send_message",
-      channel: "sms",
-      reason: "one",
       subjectUserId: "owner-1",
       state: "pending",
       payload: { action: "send_message" },
@@ -191,8 +181,6 @@ describe("LifeOps native options.parameters migration", () => {
     mocks.queue.byId.mockResolvedValue({
       id: "req-1",
       action: "send_message",
-      channel: "sms",
-      reason: "one",
       subjectUserId: "owner-1",
       state: "pending",
       payload: { action: "send_message" },

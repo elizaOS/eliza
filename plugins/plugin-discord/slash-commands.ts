@@ -718,8 +718,7 @@ const askCommand: SlashCommand = {
 			rendered.components.length > 0
 				? buildDiscordComponents(rendered.components)
 				: undefined;
-		const cleanedAnswer =
-			rendered.text.trim() || (components ? "Choose an option:" : answer);
+		const cleanedAnswer = rendered.text.trim() || answer;
 
 		// Discord caps a message at 2000 chars; the first chunk edits the
 		// deferred reply, the rest follow up in the same thread. Buttons ride

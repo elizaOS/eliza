@@ -13,6 +13,7 @@
 
 import {
   ElizaError,
+  evaluateOwnerExclusiveDisclosure,
   getAccountPrivacy,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -27,11 +28,7 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
-import {
-  authorizeLifeOpsPrivateContext,
-  type LifeOpsAudienceGateResult,
-  type LifeOpsAudienceSource,
-} from "../lifeops/audience-policy.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
@@ -60,22 +57,6 @@ const INTERNAL_URL = new URL("http://127.0.0.1/");
 const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
 const MAX_ACCOUNT_LINES = 5;
-
-function lifeOpsPrivateContextSources(): LifeOpsAudienceSource[] {
-  return [
-    { kind: "private_memory", id: "lifeops.owner_profile" },
-    { kind: "calendar", id: "lifeops.calendar" },
-    { kind: "gmail", id: "lifeops.gmail" },
-  ];
-}
-
-export async function resolveLifeOpsProviderAudienceGate(
-  runtime: IAgentRuntime,
-  message: Memory,
-  sources: readonly LifeOpsAudienceSource[] = lifeOpsPrivateContextSources(),
-): Promise<LifeOpsAudienceGateResult> {
-  return authorizeLifeOpsPrivateContext({ runtime, message, sources });
-}
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -380,20 +361,21 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const audienceGate = await resolveLifeOpsProviderAudienceGate(
-      runtime,
-      message,
-    );
-    if (!audienceGate.canLoadPrivateContext) {
-      return {
-        text: "",
-        values: {},
-        data: {
-          lifeOpsAudienceReceipts: audienceGate.receipts,
-        },
-      };
+    // The destination decides the audience, never the sender's claim about
+    // itself: an unattested turn (or one attested to a shared room) reads as
+    // public here even when its own metadata says "OWNER". `plugin.ts` stamps
+    // this provider with OWNER_EXCLUSIVE_DISCLOSURE_GATE via
+    // `ownerPrivateProvider`, and this check is the same evidence read inside
+    // the provider so a direct call cannot bypass it.
+    const disclosure = evaluateOwnerExclusiveDisclosure(message);
+    const audience: LifeOpsAudience = disclosure.allowed ? "owner" : "public";
+    if (audience !== "owner") {
+      return { text: "", values: {}, data: {} };
     }
-    const audience: LifeOpsAudience = "owner";
+    const isOwner = await hasLifeOpsAccess(runtime, message);
+    if (!isOwner) {
+      return { text: "", values: {}, data: {} };
+    }
 
     try {
       const service = new LifeOpsService(runtime);
@@ -780,7 +762,6 @@ export const lifeOpsProvider: Provider = {
           agentActiveGoals: overview.agentOps.summary.activeGoalCount,
         },
         data: {
-          lifeOpsAudienceReceipts: audienceGate.receipts,
           ownerProfile,
           overview: {
             ...overview,

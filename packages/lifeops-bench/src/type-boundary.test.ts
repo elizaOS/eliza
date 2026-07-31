@@ -12,53 +12,31 @@ interface BenchTypeScriptConfig {
   };
 }
 
-const REQUIRED_TYPE_PATHS = {
-  "@elizaos/agent/runtime/core-plugins": [
-    "../agent/dist/runtime/core-plugins.d.ts",
-  ],
-  "@elizaos/agent/runtime/plugin-types": [
-    "../agent/dist/runtime/plugin-types.d.ts",
-  ],
-  "@elizaos/plugin-local-inference/runtime": [
-    "../../plugins/plugin-local-inference/dist/runtime/index.d.ts",
-  ],
-  "@elizaos/plugin-personal-assistant": [
-    "../../plugins/plugin-personal-assistant/dist/index.d.ts",
-  ],
-  "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store": [
-    "../../plugins/plugin-personal-assistant/dist/lifeops/owner/fact-store.d.ts",
-  ],
-};
-
-const FORBIDDEN_BROAD_TYPE_PATHS = [
-  "@elizaos/agent",
-  "@elizaos/agent/*",
-  "@elizaos/plugin-local-inference",
-  "@elizaos/plugin-local-inference/*",
-] as const;
-
 describe("LifeOps bench type boundary", () => {
-  it("keeps agent imports on the required built declaration boundary", () => {
+  it("resolves narrow agent imports through built declarations", () => {
     const configPath = fileURLToPath(
       new URL("../tsconfig.json", import.meta.url),
     );
     const config = JSON.parse(
       readFileSync(configPath, "utf8"),
     ) as BenchTypeScriptConfig;
-    const configuredPaths = config.compilerOptions?.paths;
 
-    expect(configuredPaths).toBeDefined();
-    if (!configuredPaths) {
-      throw new Error(
-        "LifeOps bench tsconfig must declare compiler path mappings",
-      );
-    }
-
-    expect(configuredPaths).toMatchObject(REQUIRED_TYPE_PATHS);
-    expect(
-      FORBIDDEN_BROAD_TYPE_PATHS.filter(
-        (mapping) => mapping in configuredPaths,
-      ),
-    ).toEqual([]);
+    expect(config.compilerOptions?.paths).toEqual({
+      "@elizaos/agent/runtime/core-plugins": [
+        "../agent/dist/runtime/core-plugins.d.ts",
+      ],
+      "@elizaos/agent/runtime/plugin-types": [
+        "../agent/dist/runtime/plugin-types.d.ts",
+      ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "../../plugins/plugin-local-inference/dist/runtime/index.d.ts",
+      ],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/dist/index.d.ts",
+      ],
+      "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store": [
+        "../../plugins/plugin-personal-assistant/dist/lifeops/owner/fact-store.d.ts",
+      ],
+    });
   });
 });

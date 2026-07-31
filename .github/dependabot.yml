@@ -30,6 +30,8 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 2
     ignore:
+      # Transitive via wandb; advisory has no patched version yet (opened 2026-04).
+      - dependency-name: "gitpython"
       # Transitive via fabric -> paramiko; libsodium 1.0.20 bundled in PyNaCl 1.6.x
       # already includes the disallowed-inputs fix.
       - dependency-name: "pynacl"

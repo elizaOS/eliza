@@ -45,7 +45,7 @@ function memory(
 }
 
 describe("InMemoryDatabaseAdapter document list capability", () => {
-  it("preserves global document metadata across rooms and excludes fragments", async () => {
+  it("preserves document metadata and excludes mixed table types by room", async () => {
     const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
     await adapter.initialize();
     const roomADocument = memory(1, ROOM_A);
@@ -91,10 +91,8 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
       offset: 0,
     });
 
-    expect(result.totalVisible).toBe(2);
-    expect(new Set(result.documents.map((document) => document.id))).toEqual(
-      new Set([roomADocument.id, roomBDocument.id])
-    );
+    expect(result.totalVisible).toBe(1);
+    expect(result.documents.map((document) => document.id)).toEqual([roomADocument.id]);
 
     for (const requesterRole of ["OWNER", "RUNTIME", "AGENT"] as const) {
       const privileged = await adapter.queryDocuments({

@@ -126,7 +126,6 @@ export const apps = pgTable(
 
     // Deployment status
     deployment_status: appDeploymentStatusEnum("deployment_status").notNull().default("draft"),
-    deployment_error: text("deployment_error"),
     production_url: text("production_url"),
     last_deployed_at: timestamp("last_deployed_at"),
 

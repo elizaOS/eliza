@@ -42,7 +42,6 @@ app.get("/", async (c) => {
         deploymentId: null,
         status: "DRAFT" as const,
         vercelUrl: null,
-        errorCode: null,
         error: null,
         startedAt: null,
       });
@@ -53,7 +52,6 @@ app.get("/", async (c) => {
       deploymentId: record.deploymentId,
       status: record.status,
       vercelUrl: record.vercelUrl,
-      errorCode: record.errorCode,
       error: record.error,
       startedAt: record.startedAt,
     });

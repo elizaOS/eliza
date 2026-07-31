@@ -15,7 +15,7 @@ import {
 	resolveActionArgs,
 	type SubactionsMap,
 } from "../../actions/resolve-action-args";
-import { ElizaError, isElizaError } from "../../errors";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
@@ -478,35 +478,6 @@ function result(
 			...(extra.data ?? {}),
 		},
 	};
-}
-
-function documentActionFailure(error: unknown): {
-	code: string;
-	message: string;
-} {
-	if (!isElizaError(error)) {
-		return {
-			code: "operation_failed",
-			message: error instanceof Error ? error.message : String(error),
-		};
-	}
-
-	switch (error.code) {
-		case "DOCUMENT_MUTATION_FORBIDDEN":
-			return {
-				code: "forbidden",
-				message:
-					"Only the owner can edit or delete global and owner-private documents.",
-			};
-		case "DOCUMENT_NOT_FOUND":
-			return { code: "not_found", message: error.message };
-		case "DOCUMENT_MUTATION_CONFLICT":
-			return { code: "conflict", message: error.message };
-		case "DOCUMENT_AUTHORIZATION_INVALID":
-			return { code: "authorization_invalid", message: error.message };
-		default:
-			return { code: error.code, message: error.message };
-	}
 }
 
 async function emit(
@@ -1273,48 +1244,32 @@ export const documentAction: Action = {
 		try {
 			switch (subaction) {
 				case "search":
-					return await handleSearch(service, message, params, callback);
+					return handleSearch(service, message, params, callback);
 				case "read":
-					return await handleRead(service, message, params, callback);
+					return handleRead(service, message, params, callback);
 				case "write":
-					return await handleWrite(runtime, service, message, params, callback);
+					return handleWrite(runtime, service, message, params, callback);
 				case "edit":
-					return await handleEdit(service, message, params, callback);
+					return handleEdit(service, message, params, callback);
 				case "delete":
-					return await handleDelete(service, message, params, callback);
+					return handleDelete(service, message, params, callback);
 				case "list":
-					return await handleList(service, message, params, callback);
+					return handleList(service, message, params, callback);
 				case "import_file":
-					return await handleImportFile(
-						runtime,
-						service,
-						message,
-						params,
-						callback,
-					);
+					return handleImportFile(runtime, service, message, params, callback);
 				case "import_url":
-					return await handleImportUrl(
-						runtime,
-						service,
-						message,
-						params,
-						callback,
-					);
+					return handleImportUrl(runtime, service, message, params, callback);
 			}
 		} catch (error) {
-			// error-policy:J1 action boundary translates operation failures
-			// into a structured result the planner can inspect.
 			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
-			const failure = documentActionFailure(error);
-			const text =
-				failure.code === "forbidden"
-					? failure.message
-					: `I couldn't ${subaction.replace("_", " ")} documents: ${failure.message}`;
+			const text = `I couldn't ${subaction.replace("_", " ")} documents: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
 			await emit(callback, { text });
 			return result(false, text, subaction, {
 				error: error instanceof Error ? error.message : String(error),
 				values: {
-					error: failure.code,
+					error: error instanceof Error ? error.message : String(error),
 				},
 			});
 		}

@@ -292,7 +292,7 @@ export const FormRequest = memo(function FormRequest({
           type="submit"
           size="sm"
           disabled={submitted}
-          className="bg-[color-mix(in_srgb,var(--accent)_70%,black)] text-white hover:bg-[color-mix(in_srgb,var(--accent)_60%,black)]"
+          className="bg-[color-mix(in_srgb,var(--accent)_70%,black)] text-accent-fg hover:bg-[color-mix(in_srgb,var(--accent)_60%,black)]"
         >
           {submitted ? "Submitted" : form.submitLabel}
         </Button>

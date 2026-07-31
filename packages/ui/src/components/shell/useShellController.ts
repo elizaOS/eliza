@@ -326,7 +326,7 @@ function describeCaptureFailure(err: unknown): string {
   ) {
     return "No microphone was found. Connect a microphone to use voice.";
   }
-  return "Voice capture failed. Check your microphone and connection, then try again.";
+  return "Could not start the microphone. Check your microphone permissions and try again.";
 }
 
 /** Shallow equality for two optional string lists (topic-change detection). */
@@ -557,12 +557,6 @@ export function useShellController(): ShellController {
   // whether the agent's reply is spoken back — typed turns stay silent.
   const [lastTurnVoice, setLastTurnVoice] = React.useState(false);
   const captureRef = React.useRef<VoiceCaptureHandle | null>(null);
-  const captureEpochRef = React.useRef(0);
-  // A handle remains the sole owner until its stop/transcribe work settles.
-  // `captureRef` is cleared before draining so stale callbacks cannot mutate a
-  // replacement, while this barrier prevents that replacement from opening
-  // early.
-  const captureDrainRef = React.useRef<Promise<void> | null>(null);
   // Wall-clock (ms) the current capture handle was created. On the installed
   // iOS PWA the native getUserMedia permission dialog steals focus the instant
   // capture starts, firing visibilitychange → APP_PAUSE; discarding there kills
@@ -822,8 +816,7 @@ export function useShellController(): ShellController {
     [sendChatText],
   );
 
-  const stopCaptureAndDrain = React.useCallback((): Promise<void> => {
-    if (captureDrainRef.current) return captureDrainRef.current;
+  const stopCaptureAndDrain = React.useCallback(async () => {
     const handle = captureRef.current;
     captureRef.current = null;
     // Mark this as a user-initiated stop so the clean-auto-stop carryover does
@@ -832,34 +825,19 @@ export function useShellController(): ShellController {
     explicitStopRef.current = true;
     turnCarryoverRef.current = "";
     turnAggregatorRef.current?.reset();
-    const drain = (async () => {
+    if (handle) {
       try {
-        if (handle) await handle.stop();
-      } catch (err) {
-        // error-policy:J1 shell UI boundary — capture drain failures must be
-        // visible even when the initiating control cannot await/rethrow them.
-        if (!captureFailureNoticedRef.current) {
-          captureFailureNoticedRef.current = true;
-          setActionNotice(describeCaptureFailure(err), "error", 6000);
-        }
+        await handle.stop();
+      } catch {
+        /* stop is best-effort from UI controls */
       } finally {
-        handle?.dispose();
-        setAnalyser(null);
-        setRecording(false);
-        setTranscript("");
+        handle.dispose();
       }
-    })();
-    captureDrainRef.current = drain;
-    void drain.then(
-      () => {
-        if (captureDrainRef.current === drain) captureDrainRef.current = null;
-      },
-      () => {
-        if (captureDrainRef.current === drain) captureDrainRef.current = null;
-      },
-    );
-    return drain;
-  }, [setActionNotice]);
+    }
+    setAnalyser(null);
+    setRecording(false);
+    setTranscript("");
+  }, []);
 
   const stopCapture = React.useCallback(() => {
     void stopCaptureAndDrain();
@@ -920,9 +898,7 @@ export function useShellController(): ShellController {
       // whenever the agent could not respond yet (e.g. no model loaded) even
       // though typing-and-sending worked. Only guard against a capture already
       // in flight.
-      if (captureRef.current || captureDrainRef.current) return;
-      const captureEpoch = captureEpochRef.current + 1;
-      captureEpochRef.current = captureEpoch;
+      if (captureRef.current) return;
       // Converse (always-on) routes finals through the semantic end-of-turn
       // aggregator so a slow speaker who pauses mid-clause isn't cut off; a turn
       // only sends once it reads as complete. Dictation (push-to-talk) bypasses
@@ -1000,11 +976,9 @@ export function useShellController(): ShellController {
         // crickets (#voice-crickets). Info-severity + short: it's a nudge to
         // speak up, not an error.
         onSilentDrop: () => {
-          if (captureEpochRef.current !== captureEpoch) return;
           setActionNotice("Didn't catch that — try again.", "info", 2500);
         },
         onTranscript: (segment) => {
-          if (captureEpochRef.current !== captureEpoch) return;
           const text = segment.text.trim();
           if (!segment.final) {
             // Surface the interim best-guess as live transcription, prefixed by
@@ -1115,12 +1089,7 @@ export function useShellController(): ShellController {
             setTranscript(committed ? "" : aggregator.pending);
           }
         },
-        onStateChange: (state: VoiceCaptureState, error?: Error) => {
-          if (captureEpochRef.current !== captureEpoch) return;
-          if (state === "error" && error && !captureFailureNoticedRef.current) {
-            captureFailureNoticedRef.current = true;
-            setActionNotice(describeCaptureFailure(error), "error", 6000);
-          }
+        onStateChange: (state: VoiceCaptureState) => {
           if (state === "error" || state === "stopped" || state === "idle") {
             // Capture ended (clean stop, dispose, or error). Drop the handle and
             // analyser so the shell phase returns to idle/summoned and a later
@@ -1151,7 +1120,6 @@ export function useShellController(): ShellController {
       handle
         .start()
         .then(() => {
-          if (captureEpochRef.current !== captureEpoch) return;
           // A clean start clears the failure latch so a later denial re-notifies.
           captureFailureNoticedRef.current = false;
           // A successful getUserMedia call proves the grant is live. Clear a
@@ -1165,9 +1133,7 @@ export function useShellController(): ShellController {
           if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
         })
         .catch((err: unknown) => {
-          handle.dispose();
-          if (captureEpochRef.current !== captureEpoch) return;
-          if (captureRef.current === handle) captureRef.current = null;
+          captureRef.current = null;
           setAnalyser(null);
           setRecording(false);
           // A hands-free tap optimistically lit the mic ("end conversation")
@@ -1664,9 +1630,7 @@ export function useShellController(): ShellController {
     if (transcriptionModeRef.current) {
       setTranscriptionMode(false);
       transcriptionModeRef.current = false;
-      if (captureRef.current || captureDrainRef.current) {
-        await stopCaptureAndDrain();
-      }
+      if (captureRef.current) await stopCaptureAndDrain();
       // Close the recording session → Transcript record + chat link-widget.
       finalizeTranscriptSession();
       // Turning transcript OFF must leave the mic ON: resume the hands-free
@@ -1696,9 +1660,7 @@ export function useShellController(): ShellController {
       // this mode switch. Drain it before opening the transcription recorder so
       // both captures reach ASR in order and the old handle cannot dispose the
       // new capture's state.
-      if (captureRef.current || captureDrainRef.current) {
-        await stopCaptureAndDrain();
-      }
+      if (captureRef.current) await stopCaptureAndDrain();
       startCapture("transcription");
     }
   }, [
@@ -1715,9 +1677,7 @@ export function useShellController(): ShellController {
   const stopTranscriptionAndMic = React.useCallback(async () => {
     setTranscriptionMode(false);
     transcriptionModeRef.current = false;
-    if (captureRef.current || captureDrainRef.current) {
-      await stopCaptureAndDrain();
-    }
+    if (captureRef.current) await stopCaptureAndDrain();
     finalizeTranscriptSession();
     resumeHandsFreeAfterTranscriptRef.current = false;
     // Turn the mic fully off like a hands-free tap-off: persist the prior

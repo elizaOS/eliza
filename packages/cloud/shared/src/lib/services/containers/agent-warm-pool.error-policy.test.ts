@@ -18,7 +18,11 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { PoolContainerCreator } from "./agent-warm-pool";
 
 const repo = {
-  listUnclaimedPool: mock(async () => [] as Array<{ id: string }>),
+  listClaimablePool: mock(async () => [] as Array<{ id: string }>),
+  listWarmPoolReconciliationCandidates: mock(async () => []),
+  promoteStrandedPoolEntryReady: mock(async () => undefined),
+  reserveUnclaimablePoolEntryForReap: mock(async () => undefined),
+  reserveStuckPoolEntryForReap: mock(async () => undefined),
   findStuckPoolProvisioning: mock(async () => [] as Array<{ id: string }>),
   countAllPoolEntries: mock(async () => ({ ready: 0, provisioning: 0 })),
   countUserProvisionsByHour: mock(async () => [] as number[]),
@@ -60,7 +64,9 @@ function fakeCreator(overrides: Partial<PoolContainerCreator> = {}): {
 
 beforeEach(() => {
   warmPoolEnabled = true;
-  repo.listUnclaimedPool.mockReset();
+  repo.listClaimablePool.mockReset();
+  repo.listWarmPoolReconciliationCandidates.mockReset();
+  repo.listWarmPoolReconciliationCandidates.mockResolvedValue([]);
   repo.findStuckPoolProvisioning.mockReset();
   repo.findStuckPoolProvisioning.mockResolvedValue([]);
 });
@@ -72,7 +78,7 @@ afterEach(() => {
 describe("healthCheck fails closed on an internal probe failure", () => {
   test("a probe THROW propagates and destroys NOTHING", async () => {
     const { WarmPoolManager } = await load();
-    repo.listUnclaimedPool.mockResolvedValue([{ id: "row-1" }, { id: "row-2" }]);
+    repo.listClaimablePool.mockResolvedValue([{ id: "row-1" }, { id: "row-2" }]);
 
     const dbError = new Error("findById: connection reset");
     const destroy = mock(async () => undefined);
@@ -92,7 +98,7 @@ describe("healthCheck fails closed on an internal probe failure", () => {
 describe("healthCheck designed paths stay distinct from the failure", () => {
   test("a designed `false` (unreachable) reaps the row — destroy IS called", async () => {
     const { WarmPoolManager } = await load();
-    repo.listUnclaimedPool.mockResolvedValue([{ id: "dead-1" }]);
+    repo.listClaimablePool.mockResolvedValue([{ id: "dead-1" }]);
 
     const destroy = mock(async () => undefined);
     const probe = mock(async () => false);
@@ -108,7 +114,7 @@ describe("healthCheck designed paths stay distinct from the failure", () => {
 
   test("a `true` probe keeps the row alive — destroy NOT called", async () => {
     const { WarmPoolManager } = await load();
-    repo.listUnclaimedPool.mockResolvedValue([{ id: "healthy-1" }]);
+    repo.listClaimablePool.mockResolvedValue([{ id: "healthy-1" }]);
 
     const destroy = mock(async () => undefined);
     const probe = mock(async () => true);
@@ -124,7 +130,7 @@ describe("healthCheck designed paths stay distinct from the failure", () => {
 
   test("J6 teardown: a destroy failure on a dead row is RECORDED, not thrown", async () => {
     const { WarmPoolManager } = await load();
-    repo.listUnclaimedPool.mockResolvedValue([{ id: "dead-2" }]);
+    repo.listClaimablePool.mockResolvedValue([{ id: "dead-2" }]);
 
     const probe = mock(async () => false);
     const destroy = mock(async () => {
@@ -151,8 +157,20 @@ describe("healthCheck honors the disabled no-op", () => {
     const manager = new WarmPoolManager(creator);
 
     const result = await manager.healthCheck();
-    expect(result).toEqual({ probed: 0, alive: 0, removed: [] });
-    expect(repo.listUnclaimedPool).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      probed: 0,
+      alive: 0,
+      reconciliation: {
+        scanned: 0,
+        probed: 0,
+        promoted: [],
+        reaped: [],
+        deferred: [],
+        failed: [],
+      },
+      removed: [],
+    });
+    expect(repo.listClaimablePool).not.toHaveBeenCalled();
     expect(destroy).not.toHaveBeenCalled();
   });
 });

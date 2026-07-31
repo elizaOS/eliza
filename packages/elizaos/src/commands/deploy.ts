@@ -53,7 +53,6 @@ interface DeployResponse {
   deploymentId?: string | null;
   status?: DeployStatus;
   startedAt?: string | null;
-  errorCode?: string | null;
   error?: string;
 }
 
@@ -421,13 +420,8 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
 
     const finalStatus = await pollDeploymentStatus(apiBaseUrl, apiKey, appId);
     if (finalStatus.status === "ERROR") {
-      const errorCode = finalStatus.errorCode
-        ? ` [${finalStatus.errorCode}]`
-        : "";
       console.error(
-        pc.red(
-          `Deploy failed${errorCode}: ${finalStatus.error ?? "unknown error"}`,
-        ),
+        pc.red(`Deploy failed: ${finalStatus.error ?? "unknown error"}`),
       );
       return 1;
     }

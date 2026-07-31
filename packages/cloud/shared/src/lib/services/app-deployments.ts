@@ -3,8 +3,8 @@
  *
  * Backs `POST /api/v1/apps/:id/deploy` and `GET /api/v1/apps/:id/deploy/status`.
  *
- * Source of truth is the `apps` table itself: deployment status, terminal
- * error, production URL, and start timestamp are persisted together.
+ * Source of truth is the `apps` table itself: the `deployment_status`,
+ * `production_url`, and `last_deployed_at` columns added in migration 0007.
  * A deployment is identified by `<appId>:<last_deployed_at_iso>` so the
  * CLI can correlate POST → GET polls without a separate `deployments` table.
  * The real build/deploy pipeline has landed (Apps / Product 2): when a deploy
@@ -17,10 +17,8 @@ import { logger } from "../utils/logger";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
 import {
   assertDeployable,
-  type DeploymentErrorCode,
   type DeploymentStatus,
   deploymentIdFor,
-  publicDeploymentErrorFor,
   publicStatusFor,
 } from "./app-deployments-helpers";
 import { appsService } from "./apps";
@@ -53,7 +51,6 @@ export interface DeploymentRecord {
   deploymentId: string;
   status: DeploymentStatus;
   vercelUrl: string | null;
-  errorCode: DeploymentErrorCode | null;
   error: string | null;
   startedAt: string;
 }
@@ -140,7 +137,6 @@ export class AppDeploymentsService {
     const deploymentMetadata = deployMetadataFor(existing.metadata ?? {}, input);
     const updated = await appsService.update(input.appId, {
       deployment_status: "building",
-      deployment_error: null,
       last_deployed_at: startedAt,
       ...(deploymentMetadata ? { metadata: deploymentMetadata } : {}),
     });
@@ -167,15 +163,11 @@ export class AppDeploymentsService {
           await this.deployRunner.run(input.appId, deployOptions);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error("[AppDeployments] deploy trigger failed", {
           appId: input.appId,
-          error: errorMessage,
+          error: error instanceof Error ? error.message : String(error),
         });
-        await appsService.update(input.appId, {
-          deployment_status: "failed",
-          deployment_error: errorMessage,
-        });
+        await appsService.update(input.appId, { deployment_status: "failed" });
         throw error;
       }
     }
@@ -190,13 +182,11 @@ export class AppDeploymentsService {
       envKeys: input.env ? Object.keys(input.env).length : 0,
     });
 
-    const publicError = publicDeploymentErrorFor(updated.deployment_status);
     return {
       deploymentId: deploymentIdFor(updated),
       status: publicStatusFor(updated.deployment_status),
       vercelUrl: updated.production_url ?? null,
-      errorCode: publicError?.code ?? null,
-      error: publicError?.message ?? null,
+      error: null,
       startedAt: startedAt.toISOString(),
     };
   }
@@ -213,13 +203,11 @@ export class AppDeploymentsService {
     if (app.deployment_status === "draft" && !app.last_deployed_at) {
       return null;
     }
-    const publicError = publicDeploymentErrorFor(app.deployment_status);
     return {
       deploymentId: deploymentIdFor(app),
       status: publicStatusFor(app.deployment_status),
       vercelUrl: app.production_url ?? null,
-      errorCode: publicError?.code ?? null,
-      error: publicError?.message ?? null,
+      error: null,
       // `app` may come from the Redis/KV cache (`getById`), where the timestamp
       // round-tripped through JSON to an ISO STRING — `new Date(...)` coerces both
       // a Date and a string; calling `.toISOString()` on the raw string 500s.

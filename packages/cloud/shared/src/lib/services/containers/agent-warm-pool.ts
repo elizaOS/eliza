@@ -137,8 +137,9 @@ export interface PoolContainerCreator {
    *   1. Insert a pool entry via `agentSandboxesRepository.createPoolEntry`
    *      with status='pending', `docker_image` set, `pool_status='unclaimed'`.
    *   2. Allocate a node and start the container.
-   *   3. On health-check pass, call `markPoolEntryReady(id)`.
-   *   4. On failure, mark status='error' (the stuck-reaper will delete it).
+   *   3. Complete the provision path, whose final repository CAS commits
+   *      status='running' and `pool_ready_at` together.
+   *   4. On failure, leave a non-claimable row for reconciliation.
    */
   createPoolContainer(image: string): Promise<{ id: string; nodeId: string | null }>;
 
@@ -158,6 +159,7 @@ export interface PoolContainerCreator {
 export interface ReplenishResult {
   decision: ReplenishDecision;
   state: PoolStateSnapshot;
+  reconciliation: WarmPoolReconciliationResult;
   created: Array<{ id: string; nodeId: string | null }>;
   failed: Array<{ error: string }>;
 }
@@ -171,7 +173,17 @@ export interface DrainResult {
 export interface HealthCheckResult {
   probed: number;
   alive: number;
+  reconciliation: WarmPoolReconciliationResult;
   removed: Array<{ id: string; reason: string }>;
+}
+
+export interface WarmPoolReconciliationResult {
+  scanned: number;
+  probed: number;
+  promoted: string[];
+  reaped: Array<{ id: string; reason: string }>;
+  deferred: string[];
+  failed: Array<{ id: string; error: string }>;
 }
 
 export interface RolloutResult {
@@ -191,8 +203,8 @@ export class WarmPoolManager {
    * Compute current pool state + forecast. Pure-ish: only reads.
    */
   async snapshot(image: string): Promise<PoolStateSnapshot> {
-    const counts = await agentSandboxesRepository.countAllPoolEntries();
-    const unclaimedRows = await agentSandboxesRepository.listUnclaimedPool();
+    const counts = await agentSandboxesRepository.countAllPoolEntries({ image });
+    const unclaimedRows = await agentSandboxesRepository.listClaimablePool({ image });
 
     const buckets = await this.collectHourlyBuckets(this.policy.forecastWindowHours);
     const forecast = computeForecast({
@@ -206,15 +218,13 @@ export class WarmPoolManager {
     return {
       readyCount: counts.ready,
       provisioningCount: counts.provisioning,
-      unclaimedRows: unclaimedRows
-        .filter((r) => r.docker_image === image || r.docker_image === null)
-        .map((r) => ({
-          id: r.id,
-          pool_ready_at: r.pool_ready_at,
-          docker_image: r.docker_image,
-          node_id: r.node_id,
-          health_url: r.health_url,
-        })),
+      unclaimedRows: unclaimedRows.map((r) => ({
+        id: r.id,
+        pool_ready_at: r.pool_ready_at,
+        docker_image: r.docker_image,
+        node_id: r.node_id,
+        health_url: r.health_url,
+      })),
       predictedRate: forecast.predictedRate,
       targetPoolSize: forecast.targetPoolSize,
     };
@@ -225,11 +235,16 @@ export class WarmPoolManager {
       return {
         decision: { toCreate: 0, reason: "WARM_POOL_ENABLED=false (no-op)" },
         state: emptyState(),
+        reconciliation: emptyReconciliation(),
         created: [],
         failed: [],
       };
     }
 
+    // Reconciliation runs on the production replenish path, not only the
+    // manually-invoked health route. A stranded row is repaired or fenced
+    // before the capacity snapshot decides whether to create a replacement.
+    const reconciliation = await this.reconcileUnclaimable();
     const state = await this.snapshot(image);
     const decision = decideReplenish(state, this.policy);
     const created: Array<{ id: string; nodeId: string | null }> = [];
@@ -259,8 +274,14 @@ export class WarmPoolManager {
       target: state.targetPoolSize,
       created: created.length,
       failed: failed.length,
+      reconciled: {
+        promoted: reconciliation.promoted.length,
+        reaped: reconciliation.reaped.length,
+        deferred: reconciliation.deferred.length,
+        failed: reconciliation.failed.length,
+      },
     });
-    return { decision, state, created, failed };
+    return { decision, state, reconciliation, created, failed };
   }
 
   async drainIdle(image: string): Promise<DrainResult> {
@@ -299,12 +320,18 @@ export class WarmPoolManager {
 
   async healthCheck(): Promise<HealthCheckResult> {
     if (!containersEnv.warmPoolEnabled()) {
-      return { probed: 0, alive: 0, removed: [] };
+      return {
+        probed: 0,
+        alive: 0,
+        reconciliation: emptyReconciliation(),
+        removed: [],
+      };
     }
 
-    const rows = await agentSandboxesRepository.listUnclaimedPool();
-    const removed: Array<{ id: string; reason: string }> = [];
-    let alive = 0;
+    const rows = await agentSandboxesRepository.listClaimablePool();
+    const reconciliation = await this.reconcileUnclaimable();
+    const removed: Array<{ id: string; reason: string }> = [...reconciliation.reaped];
+    let alive = reconciliation.promoted.length;
 
     for (const row of rows) {
       // `healthProbe` is contracted to return false for an unreachable
@@ -335,6 +362,11 @@ export class WarmPoolManager {
       this.policy.stuckProvisioningMs,
     );
     for (const row of stuck) {
+      const reserved = await agentSandboxesRepository.reserveStuckPoolEntryForReap(
+        row,
+        this.policy.stuckProvisioningMs,
+      );
+      if (!reserved) continue;
       try {
         await this.creator.destroyPoolContainer(row.id);
         removed.push({ id: row.id, reason: "stuck in provisioning past threshold" });
@@ -353,8 +385,19 @@ export class WarmPoolManager {
       alive,
       removed: removed.length,
       stuck: stuck.length,
+      reconciled: {
+        promoted: reconciliation.promoted.length,
+        reaped: reconciliation.reaped.length,
+        deferred: reconciliation.deferred.length,
+        failed: reconciliation.failed.length,
+      },
     });
-    return { probed: rows.length, alive, removed };
+    return {
+      probed: rows.length + reconciliation.probed,
+      alive,
+      reconciliation,
+      removed,
+    };
   }
 
   async rollout(image: string): Promise<RolloutResult> {
@@ -366,7 +409,7 @@ export class WarmPoolManager {
       };
     }
 
-    const rows = await agentSandboxesRepository.listUnclaimedPool();
+    const rows = await agentSandboxesRepository.listAllRunningPoolEntries();
     const decision = decideRollout(rows, image);
     const replaced: string[] = [];
     const failed: Array<{ id: string; error: string }> = [];
@@ -393,7 +436,7 @@ export class WarmPoolManager {
 
   async rolloutStatus(image: string): Promise<ImageRolloutSummary> {
     const rows = containersEnv.warmPoolEnabled()
-      ? await agentSandboxesRepository.listUnclaimedPool()
+      ? await agentSandboxesRepository.listAllRunningPoolEntries()
       : [];
     return summarizeImageRollout({
       desiredImage: image,
@@ -411,6 +454,59 @@ export class WarmPoolManager {
   private async collectHourlyBuckets(windowHours: number): Promise<number[]> {
     return agentSandboxesRepository.countUserProvisionsByHour(windowHours);
   }
+
+  /**
+   * Repair the historical running-without-readiness crash shape and fence every
+   * other unclaimable running generation before teardown. Probe results are
+   * committed through generation CAS operations so stale network observations
+   * cannot promote or destroy a replacement container.
+   */
+  private async reconcileUnclaimable(): Promise<WarmPoolReconciliationResult> {
+    const candidates = await agentSandboxesRepository.listWarmPoolReconciliationCandidates(
+      this.policy.stuckProvisioningMs,
+    );
+    const result = emptyReconciliation();
+    result.scanned = candidates.length;
+
+    for (const candidate of candidates) {
+      const row = candidate.sandbox;
+      if (candidate.canPromote) {
+        result.probed += 1;
+        const alive = await this.creator.healthProbe(row.id);
+        if (alive) {
+          const promoted = await agentSandboxesRepository.promoteStrandedPoolEntryReady(row);
+          if (promoted) result.promoted.push(row.id);
+          else result.deferred.push(row.id);
+          continue;
+        }
+      }
+
+      const reason = candidate.canPromote
+        ? "Warm-pool readiness probe failed during reconciliation"
+        : "Warm-pool row is missing a required claim locator";
+      const reserved = await agentSandboxesRepository.reserveUnclaimablePoolEntryForReap(
+        row,
+        reason,
+      );
+      if (!reserved) {
+        result.deferred.push(row.id);
+        continue;
+      }
+      try {
+        await this.creator.destroyPoolContainer(row.id);
+        result.reaped.push({ id: row.id, reason });
+      } catch (error) {
+        // error-policy:J6 best-effort teardown — the durable deletion_failed
+        // fence prevents reuse, and the stuck sweep retries this exact row.
+        result.failed.push({
+          id: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return result;
+  }
 }
 
 function emptyState(): PoolStateSnapshot {
@@ -420,6 +516,17 @@ function emptyState(): PoolStateSnapshot {
     unclaimedRows: [],
     predictedRate: 0,
     targetPoolSize: 0,
+  };
+}
+
+function emptyReconciliation(): WarmPoolReconciliationResult {
+  return {
+    scanned: 0,
+    probed: 0,
+    promoted: [],
+    reaped: [],
+    deferred: [],
+    failed: [],
   };
 }
 

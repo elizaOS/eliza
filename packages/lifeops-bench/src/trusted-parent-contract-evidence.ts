@@ -154,8 +154,9 @@ async function ensureHouseholdEntity(
     entityId: string;
     preferredName: string;
     role: "child" | "current_partner";
-    subjectEntityIds: readonly string[];
+    /** Set for household-scoped scenarios; school-source fixtures have none. */
     householdId?: string;
+    subjectEntityIds: readonly string[];
     attributes?: Record<string, EntityAttribute>;
   },
 ): Promise<void> {
@@ -189,7 +190,6 @@ async function ensureHouseholdEntity(
     toEntityId: input.entityId,
     type: input.role === "child" ? "parent_of" : "partner_of",
     metadata: {
-      ...(input.householdId ? { householdId: input.householdId } : {}),
       householdRole: input.role,
       // The membership guard matches role AND household, so a household-scoped
       // fixture must carry the id or every scoped operation is refused. Absent
@@ -374,10 +374,10 @@ function operationsProvenance(input: {
 async function prepareG30(runtime: AgentRuntime): Promise<void> {
   await ensureHouseholdEntity(runtime, {
     entityId: G30_CHILD_ENTITY_ID,
+    householdId: G30_HOUSEHOLD_ID,
     preferredName: "Lee",
     role: "child",
     subjectEntityIds: [G30_CHILD_ENTITY_ID],
-    householdId: G30_HOUSEHOLD_ID,
   });
   const operations = getHouseholdOperationsService(runtime);
   if (!operations) {
@@ -480,10 +480,10 @@ function responsibilityDefinition(
 async function prepareG38(runtime: AgentRuntime): Promise<void> {
   await ensureHouseholdEntity(runtime, {
     entityId: G38_PARTNER_ENTITY_ID,
+    householdId: G38_HOUSEHOLD_ID,
     preferredName: "Household partner",
     role: "current_partner",
     subjectEntityIds: [],
-    householdId: G38_HOUSEHOLD_ID,
   });
   const operations = getHouseholdOperationsService(runtime);
   if (!operations) {

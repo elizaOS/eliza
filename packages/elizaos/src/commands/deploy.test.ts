@@ -160,41 +160,6 @@ describe("runDeploy", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("prints the stable public error code for a failed deployment", async () => {
-    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
-    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
-    process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = "0";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(
-          { success: true, deploymentId: "dep-1", status: "BUILDING" },
-          202,
-        ),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          success: true,
-          deploymentId: "dep-1",
-          status: "ERROR",
-          errorCode: "DEPLOYMENT_FAILED",
-          error:
-            "Deployment failed. Retry the deployment or contact support with the deployment ID.",
-        }),
-      );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    const code = await runDeploy({ appId: "app-1" });
-
-    expect(code).toBe(1);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Deploy failed [DEPLOYMENT_FAILED]: Deployment failed.",
-      ),
-    );
-  });
-
   it("fails corrupt project metadata before app lookup", async () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
     const projectDir = mkdtempSync(

@@ -2308,8 +2308,7 @@ try {
     await p.close();
   }
 
-  // responding: the in-progress status belongs inside the empty assistant
-  // response slot, never as a standalone row before that slot exists.
+  // responding: an in-progress status row inside the opened sheet
   {
     const p = await ctrl();
     attachConsole(p, sink);

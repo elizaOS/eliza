@@ -13,14 +13,11 @@
  *   - mark the turn as interrupted  → mode: "interrupt"
  *   - drop an empty assistant turn  → mode: "drop"
  *
- * This primitive is the single mutation path for all of them, so
- * `useChatSend.ts` and `useChatCallbacks.ts` share one equality check instead
- * of each hand-rolling `setMessages(prev => prev.map(...))`. The hot path:
+ * This primitive is the single map pass for all of them, so `useChatSend.ts` and
+ * `useChatCallbacks.ts` share one equality check instead of each hand-rolling
+ * `setMessages(prev => prev.map(...))`. The map pass:
  *
  *   - matches the target message by id,
- *   - checks the newest row first because the in-flight assistant turn lives at
- *     the transcript tail,
- *   - batches text and tool-event changes into one array copy,
  *   - returns the previous array unchanged when the modification produces
  *     no observable delta (referential equality preserved → no re-render),
  *   - supports the same updater-fn semantics as React's `setState`.
@@ -107,11 +104,6 @@ export type StreamingTextModification =
       mode: "drop";
     };
 
-type NonStructuralStreamingTextModification = Exclude<
-  StreamingTextModification,
-  { mode: "complete" | "rekey" | "drop" }
->;
-
 /**
  * Compute the patched message for a single modification, or return `null`
  * if the modification produces no observable change.
@@ -196,128 +188,52 @@ function computeNextMessage(
   }
 }
 
-function applyGeneralModification(
-  prev: ConversationMessage[],
-  mod: StreamingTextModification,
-): ConversationMessage[] {
-  if (mod.mode === "drop") {
-    const filtered = prev.filter((message) => message.id !== mod.messageId);
-    return filtered.length === prev.length ? prev : filtered;
-  }
-
-  let changed = false;
-  let next = prev.map((message) => {
-    if (message.id !== mod.messageId) return message;
-    const patched = computeNextMessage(message, mod);
-    if (patched === null) return message;
-    changed = true;
-    return patched;
-  });
-  // Terminal id reconciliation is deliberately a full pass: a proactive WS
-  // echo may already carry the persisted id before the SSE done event arrives.
-  if (
-    (mod.mode === "complete" || mod.mode === "rekey") &&
-    mod.persistedMessageId !== mod.messageId
-  ) {
-    let seen = false;
-    const deduped = next.filter((message) => {
-      if (message.id !== mod.persistedMessageId) return true;
-      if (seen) return false;
-      seen = true;
-      return true;
-    });
-    if (deduped.length !== next.length) {
-      next = deduped;
-      changed = true;
-    }
-  }
-  return changed ? next : prev;
-}
-
-function isNonStructuralModification(
-  mod: StreamingTextModification,
-): mod is NonStructuralStreamingTextModification {
-  return mod.mode !== "complete" && mod.mode !== "rekey" && mod.mode !== "drop";
-}
-
-function findTargetMessageIndex(
-  messages: ConversationMessage[],
-  messageId: string,
-): number {
-  const tailIndex = messages.length - 1;
-  if (tailIndex >= 0 && messages[tailIndex]?.id === messageId) {
-    return tailIndex;
-  }
-  for (let index = tailIndex - 1; index >= 0; index -= 1) {
-    if (messages[index]?.id === messageId) return index;
-  }
-  return -1;
-}
-
-/**
- * Reduce one or more streaming mutations into a message array.
- *
- * Text and tool events for one in-flight turn use a targeted tail-row update
- * and one array copy. Structural and terminal changes retain complete
- * duplicate-id reconciliation because they are rare and correctness-sensitive.
- */
-export function applyStreamingTextModificationsToMessages(
-  prev: ConversationMessage[],
-  modifications: readonly StreamingTextModification[],
-): ConversationMessage[] {
-  if (modifications.length === 0) return prev;
-
-  const messageId = modifications[0]?.messageId;
-  const canUseTargetedPath =
-    messageId !== undefined &&
-    modifications.every(
-      (modification) =>
-        modification.messageId === messageId &&
-        isNonStructuralModification(modification),
-    );
-
-  if (!canUseTargetedPath) {
-    return modifications.reduce(applyGeneralModification, prev);
-  }
-
-  const targetIndex = findTargetMessageIndex(prev, messageId);
-  if (targetIndex < 0) return prev;
-  let target = prev[targetIndex];
-  if (!target) return prev;
-  let changed = false;
-  for (const modification of modifications) {
-    const patched = computeNextMessage(target, modification);
-    if (patched === null) continue;
-    target = patched;
-    changed = true;
-  }
-  if (!changed) return prev;
-
-  const next = prev.slice();
-  next[targetIndex] = target;
-  return next;
-}
-
-/** Apply multiple streaming mutations through one state update. */
-export function applyStreamingTextModifications(
-  setMessages: StreamingTextSetter,
-  modifications: readonly StreamingTextModification[],
-): void {
-  if (modifications.length === 0) return;
-  setMessages((prev: ConversationMessage[]) =>
-    applyStreamingTextModificationsToMessages(prev, modifications),
-  );
-}
-
 /**
  * Apply one streaming-text modification to the chat-message reducer.
  *
- * Referential equality is preserved when the target is missing or the
- * modification is idempotent.
+ * Returns referentially-equal `prev` when the modification is a no-op
+ * (target id missing, text already matches, failureKind already set, etc.).
  */
 export function applyStreamingTextModification(
   setMessages: StreamingTextSetter,
   mod: StreamingTextModification,
 ): void {
-  applyStreamingTextModifications(setMessages, [mod]);
+  setMessages((prev: ConversationMessage[]) => {
+    if (mod.mode === "drop") {
+      const filtered = prev.filter((message) => message.id !== mod.messageId);
+      return filtered.length === prev.length ? prev : filtered;
+    }
+
+    let changed = false;
+    let next = prev.map((message) => {
+      if (message.id !== mod.messageId) return message;
+      const patched = computeNextMessage(message, mod);
+      if (patched === null) return message;
+      changed = true;
+      return patched;
+    });
+    // Id-swap dedupe: when terminal reconciliation rebinds a temp bubble to the
+    // persisted server id, a proactive-message WS echo carrying that same
+    // persisted id may have ALREADY appended its own bubble (action-callback
+    // turns persist + broadcast mid-turn, before the SSE `done` arrives). Keep
+    // only the FIRST occurrence — the swapped streamed bubble at the thread
+    // position the user watched (echoes append after it) — and drop the copy.
+    if (
+      (mod.mode === "complete" || mod.mode === "rekey") &&
+      mod.persistedMessageId !== mod.messageId
+    ) {
+      let seen = false;
+      const deduped = next.filter((message) => {
+        if (message.id !== mod.persistedMessageId) return true;
+        if (seen) return false;
+        seen = true;
+        return true;
+      });
+      if (deduped.length !== next.length) {
+        next = deduped;
+        changed = true;
+      }
+    }
+    return changed ? next : prev;
+  });
 }

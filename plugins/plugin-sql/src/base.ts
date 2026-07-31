@@ -35,7 +35,6 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
-  type DocumentRequesterContext,
   documentMutationSnapshotMatches,
   documentRoleHasGlobalVisibility,
   ElizaError,
@@ -257,14 +256,6 @@ function documentVisibilityCondition(
       )
     )
   )`;
-}
-
-function documentEntityContext(params: Pick<DocumentRequesterContext, "agentId">): UUID {
-  // Document authorization is agent-scoped and enforced by the explicit
-  // scope/room predicates below. Using the requester entity as the RLS context
-  // would hide global documents authored by another entity before those
-  // predicates can evaluate them.
-  return params.agentId;
 }
 
 function documentTimestampExpression(): SQL {
@@ -1696,7 +1687,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
     validateDocumentListQueryParams(params);
     const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
-    const entityContext = documentEntityContext(params);
+    const entityContext = hasGlobalVisibility ? params.agentId : params.requesterEntityId;
     return this.withEntityContext(entityContext, async (tx) => {
       const visibleConditions: SQL[] = [
         eq(memoryTable.type, "documents"),
@@ -1707,14 +1698,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         visibleConditions.push(
-          sql`(
-            ${memoryTable.metadata}->>'scope' = 'global'
-            OR ${
-              params.requesterRoomIds.length > 0
-                ? inArray(memoryTable.roomId, params.requesterRoomIds)
-                : sql`false`
-            }
-          )`
+          params.requesterRoomIds.length > 0
+            ? inArray(memoryTable.roomId, params.requesterRoomIds)
+            : sql`false`
         );
       }
       visibleConditions.push(documentVisibilityCondition(params));
@@ -2061,14 +2047,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ...(hasGlobalVisibility
         ? []
         : [
-            sql`(
-              ${memoryTable.metadata}->>'scope' = 'global'
-              OR ${
-                params.requesterRoomIds.length > 0
-                  ? inArray(memoryTable.roomId, params.requesterRoomIds)
-                  : sql`false`
-              }
-            )`,
+            params.requesterRoomIds.length > 0
+              ? inArray(memoryTable.roomId, params.requesterRoomIds)
+              : sql`false`,
           ]),
       documentVisibilityCondition(params),
     ];
@@ -2087,7 +2068,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
     validateDocumentRequesterContext(params);
-    return this.withEntityContext(documentEntityContext(params), async (tx) => {
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2100,7 +2084,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
     const expectedEmbeddingDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
     validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension);
-    return this.withEntityContext(documentEntityContext(params), async (tx) => {
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
       const parent = alias(memoryTable, "document_parent");
       const fragment = alias(memoryTable, "document_fragment");
       const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
@@ -2120,14 +2107,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         conditions.push(
-          sql`(
-            ${parent.metadata}->>'scope' = 'global'
-            OR ${
-              params.requesterRoomIds.length > 0
-                ? inArray(parent.roomId, params.requesterRoomIds)
-                : sql`false`
-            }
-          )`
+          params.requesterRoomIds.length > 0
+            ? inArray(parent.roomId, params.requesterRoomIds)
+            : sql`false`
         );
       }
       if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));
@@ -2179,7 +2161,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     params: DocumentCompareAndSwapParams
   ): Promise<DocumentMutationResult> {
     validateDocumentRequesterContext(params);
-    return this.withEntityContext(documentEntityContext(params), async (tx) => {
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
       const rows = await tx
         .select()
         .from(memoryTable)
@@ -2214,7 +2199,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
     validateDocumentRequesterContext(params);
-    return this.withEntityContext(documentEntityContext(params), async (tx) => {
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
       const rows = await tx
         .select()
         .from(memoryTable)

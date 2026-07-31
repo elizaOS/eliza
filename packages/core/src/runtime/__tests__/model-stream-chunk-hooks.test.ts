@@ -93,30 +93,6 @@ describe("AgentRuntime.useModel model_stream_chunk hooks", () => {
 		]);
 	});
 
-	it("honors mutating delivery hooks before any downstream stream callback", async () => {
-		const runtime = makeRuntime();
-		registerStreamingModel(runtime);
-		const received: string[] = [];
-		runtime.registerPipelineHook({
-			id: "deny-stream-delivery",
-			phase: "model_stream_chunk",
-			mutatesPrimary: true,
-			handler: (_rt, ctx) => {
-				if (ctx.phase === "model_stream_chunk") {
-					ctx.chunk = "";
-					ctx.accumulated = "";
-				}
-			},
-		});
-
-		await runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt: "stream it",
-			onStreamChunk: (chunk: string) => received.push(chunk),
-		});
-
-		expect(received).toEqual([]);
-	});
-
 	it("picks up a hook registered mid-stream on the next chunk (cache invalidation)", async () => {
 		const runtime = makeRuntime();
 		registerStreamingModel(runtime);

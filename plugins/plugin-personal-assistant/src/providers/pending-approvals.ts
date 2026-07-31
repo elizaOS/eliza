@@ -13,6 +13,7 @@
  * that turn classifies into. The happy-path render is empty and the read is
  * one bounded SQL, per the always-on provider contract.
  */
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -22,7 +23,6 @@ import type {
 } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalRequest } from "../lifeops/approval-queue.types.js";
-import { authorizeLifeOpsPrivateContext } from "../lifeops/audience-policy.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -107,19 +107,8 @@ export const pendingApprovalsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const audienceGate = await authorizeLifeOpsPrivateContext({
-      runtime,
-      message,
-      sources: [{ kind: "approvals", id: "approval-queue.pending" }],
-    });
-    if (!audienceGate.canLoadPrivateContext) {
-      return {
-        ...EMPTY,
-        data: {
-          pendingApprovals: [],
-          lifeOpsAudienceReceipts: audienceGate.receipts,
-        },
-      };
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return EMPTY;
     }
     // Approvals are enqueued with subjectUserId = the requesting owner's
     // entityId (see actions/owner-surfaces.ts), and RESOLVE_REQUEST lists by

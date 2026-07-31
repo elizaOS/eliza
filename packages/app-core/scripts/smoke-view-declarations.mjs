@@ -24,10 +24,9 @@ import ts from "typescript";
 
 /**
  * One GUI declaration per shipped plugin view: `[id, label, pluginDirName,
- * path, componentExport, viewType?, surface?]`. Every entry must pass
- * `checkSmokeViewParity` — its plugin directory exists and its source both
- * declares the `id` and exports the `componentExport`. Do NOT add a view here
- * for a plugin that no longer exists.
+ * path, componentExport]`. Every entry must pass `checkSmokeViewParity` — its
+ * plugin directory exists and its source both declares the `id` and exports the
+ * `componentExport`. Do NOT add a view here for a plugin that no longer exists.
  */
 export const smokeViewDeclarations = [
   ["birdclaw", "Birdclaw", "plugin-birdclaw", "/birdclaw", "BirdclawView"],
@@ -103,8 +102,6 @@ export const smokeViewDeclarations = [
     "plugin-task-coordinator",
     "/orchestrator",
     "OrchestratorView",
-    "gui",
-    { capabilities: ["agent-surface"] },
   ],
   [
     "trajectory-logger",

@@ -81,17 +81,12 @@ jobs:
           tags: eliza-training-cpu:ci
           load: true
           cache-from: type=gha,scope=training-cpu
-          # Pull-request caches are isolated to refs/pull/*/merge, so exporting
-          # this multi-gigabyte image cannot warm develop or another PR. Trusted
-          # runs refresh the shared cache within a bounded best-effort budget.
-          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,scope=training-cpu,mode=max,timeout=12m,ignore-error=true' || '' }}
+          cache-to: type=gha,scope=training-cpu,mode=max
 
       - name: Install ruff (host)
         # ruff lint is fast on the host and gives a clean GitHub
         # Annotations surface — no need to shell into the container.
-        # Ruff 0.16 expands its implicit default from 59 to 413 rules, so keep
-        # this existing gate stable until that rule migration is reviewed.
-        run: pipx install --force ruff==0.15.22 || pip install --user ruff==0.15.22
+        run: pipx install ruff || pip install --user ruff
 
       - name: Lint packages/training/scripts/
         run: ruff check packages/training/scripts/

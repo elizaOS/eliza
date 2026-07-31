@@ -208,8 +208,8 @@ export function isDocumentVisibleToRequester(
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
-	if (snapshot.scope === "global") return true;
 	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
+	if (snapshot.scope === "global") return true;
 	if (snapshot.scope !== "user-private") return false;
 	if (params.requesterRole === "ADMIN") return true;
 	return snapshot.scopedToEntityId === params.requesterEntityId;

@@ -1,10 +1,9 @@
 // Pins the CI Bun-version contract (#13402) against synthetic repo trees: a
 // clean tree with every gate pinned to the canonical version passes (and a
 // `canary` named only in a comment is ignored), while a divergent concrete pin,
-// a gate floated back to `canary`, a gate missing the pin, an ISO setup fed by
-// an expression or missing package metadata, and a floating source of truth each
-// fail. Also runs the shipped contract against the real repo so the guard stays
-// true as workflows change. Deterministic — no workflow runs.
+// a gate floated back to `canary`, a gate missing the pin, and a floating source
+// of truth each fail. Also runs the shipped contract against the real repo so
+// the guard stays true as workflows change. Deterministic — no workflow runs.
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,7 +22,6 @@ const GATE_WORKFLOWS = [
   "ci.yaml",
   "test.yml",
   "cloud-cf-deploy.yml",
-  "build-linux-iso.yml",
   "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
@@ -51,19 +49,6 @@ jobs:
 `;
 }
 
-function directGateStub(version = CANONICAL): string {
-  return `name: Gate
-on: [push]
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "${version}"
-`;
-}
-
 const GATE_FLOATING = `name: Gate
 on: [push]
 jobs:
@@ -82,37 +67,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - run: echo "no bun setup here"
-`;
-
-const ISO_EXPRESSION_PIN = `name: Build elizaOS Linux ISO
-on: [push]
-env:
-  BUN_VERSION: "${CANONICAL}"
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: \${{ vars.BUN_VERSION }}
-`;
-
-const ISO_PACKAGE_METADATA_RESOLVER = `name: Build elizaOS Linux ISO
-on: [push]
-env:
-  BUN_VERSION: "${CANONICAL}"
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Resolve Bun version from package metadata
-        id: bun-version
-        run: |
-          PACKAGE_MANAGER=$(node -p "require('./package.json').packageManager")
-          echo "version=\${PACKAGE_MANAGER#bun@}" >> "$GITHUB_OUTPUT"
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: \${{ steps.bun-version.outputs.version }}
 `;
 
 // A non-gate workflow carrying a concrete pin that diverges from canonical.
@@ -147,8 +101,7 @@ function buildRepo({
   for (const name of GATE_WORKFLOWS) {
     writeFileSync(
       join(root, ".github", "workflows", name),
-      overrides[name] ??
-        (name === "build-linux-iso.yml" ? directGateStub() : gateStub()),
+      overrides[name] ?? gateStub(),
     );
   }
   for (const [name, content] of Object.entries(extra)) {
@@ -194,32 +147,6 @@ describe("ci-bun-version-contract", () => {
     try {
       expect(() => runContract(root)).toThrow(
         /does not wire the canonical Bun pin/,
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("fails when Linux ISO setup uses an expression despite a canonical decoy", () => {
-    const root = buildRepo({
-      overrides: { "build-linux-iso.yml": ISO_EXPRESSION_PIN },
-    });
-    try {
-      expect(() => runContract(root)).toThrow(
-        /must wire bun-version directly to the canonical Bun pin/,
-      );
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("fails when Linux ISO setup resolves from nonexistent package metadata", () => {
-    const root = buildRepo({
-      overrides: { "build-linux-iso.yml": ISO_PACKAGE_METADATA_RESOLVER },
-    });
-    try {
-      expect(() => runContract(root)).toThrow(
-        /Expressions and metadata resolvers are not deterministic setup inputs/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

@@ -15,6 +15,7 @@
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
 import { existsSync, statSync } from "node:fs";
+import { filterByAccessContext } from "../../access-control/filter";
 import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
@@ -248,14 +249,6 @@ export async function resolveDocumentRequester(
 	message?: Memory,
 ): Promise<DocumentRequester> {
 	const requester = await resolveDocumentRequesterRole(runtime, message);
-	return resolveDocumentRequesterRooms(runtime, requester, message?.roomId);
-}
-
-async function resolveDocumentRequesterRooms(
-	runtime: IAgentRuntime,
-	requester: Pick<DocumentRequester, "entityId" | "role">,
-	roomId?: UUID,
-): Promise<DocumentRequester> {
 	if (documentRoleHasGlobalVisibility(requester.role)) {
 		return { ...requester, roomIds: [] };
 	}
@@ -273,182 +266,17 @@ async function resolveDocumentRequesterRooms(
 			context: {
 				agentId: runtime.agentId,
 				entityId: requester.entityId,
-				roomId,
+				roomId: message?.roomId,
 			},
 			severity: "ephemeral",
 		});
 		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
 			agentId: runtime.agentId,
 			entityId: requester.entityId,
-			roomId,
+			roomId: message?.roomId,
 		});
 		throw error;
 	}
-}
-
-async function resolveAccessContextRequester(
-	runtime: IAgentRuntime,
-	accessContext: AccessContext,
-	roomId?: UUID,
-): Promise<DocumentRequester> {
-	const role: DocumentListRequesterRole =
-		accessContext.requesterEntityId === runtime.agentId
-			? "AGENT"
-			: accessContext.isOwner || accessContext.role === "OWNER"
-				? "OWNER"
-				: accessContext.role === "ADMIN"
-					? "ADMIN"
-					: "USER";
-	return resolveDocumentRequesterRooms(
-		runtime,
-		{ entityId: accessContext.requesterEntityId, role },
-		roomId,
-	);
-}
-
-function intersectDocumentRequesters(
-	runtime: IAgentRuntime,
-	messageRequester: DocumentRequester,
-	contextRequester: DocumentRequester,
-	roomId?: UUID,
-): DocumentRequester {
-	if (messageRequester.entityId !== contextRequester.entityId) {
-		const messageIsProxy =
-			messageRequester.entityId === runtime.agentId &&
-			(messageRequester.role === "AGENT" ||
-				messageRequester.role === "RUNTIME");
-		if (messageIsProxy) return contextRequester;
-		const contextIsProxy =
-			contextRequester.entityId === runtime.agentId &&
-			(contextRequester.role === "AGENT" ||
-				contextRequester.role === "RUNTIME");
-		if (contextIsProxy) return messageRequester;
-
-		// Two human identities require a multi-principal storage capability.
-		// Privilege on either side cannot stand in for identity intersection.
-		const error = new ElizaError(
-			"Document search requester identities conflict",
-			{
-				code: "DOCUMENT_REQUESTER_CONTEXT_CONFLICT",
-				context: {
-					agentId: runtime.agentId,
-					messageRequesterEntityId: messageRequester.entityId,
-					contextRequesterEntityId: contextRequester.entityId,
-					roomId,
-				},
-				severity: "ephemeral",
-			},
-		);
-		runtime.reportError("DocumentService.searchRequester", error, {
-			agentId: runtime.agentId,
-			messageRequesterEntityId: messageRequester.entityId,
-			contextRequesterEntityId: contextRequester.entityId,
-			roomId,
-		});
-		throw error;
-	}
-
-	const role: DocumentListRequesterRole =
-		messageRequester.role === "USER" || contextRequester.role === "USER"
-			? "USER"
-			: messageRequester.role === "ADMIN" || contextRequester.role === "ADMIN"
-				? "ADMIN"
-				: messageRequester.role === "OWNER" || contextRequester.role === "OWNER"
-					? "OWNER"
-					: messageRequester.role === "AGENT" ||
-							contextRequester.role === "AGENT"
-						? "AGENT"
-						: "RUNTIME";
-	if (documentRoleHasGlobalVisibility(role)) {
-		return { entityId: messageRequester.entityId, role, roomIds: [] };
-	}
-	const contextRoomIds = new Set(contextRequester.roomIds);
-	return {
-		entityId: messageRequester.entityId,
-		role,
-		roomIds: messageRequester.roomIds.filter((id) => contextRoomIds.has(id)),
-	};
-}
-
-async function assertAccessContextWorld(
-	runtime: IAgentRuntime,
-	accessContext: AccessContext,
-	message: Memory,
-	scope?: { roomId?: UUID; worldId?: UUID },
-): Promise<void> {
-	const elevatedHuman =
-		accessContext.requesterEntityId !== runtime.agentId &&
-		(accessContext.isOwner ||
-			accessContext.role === "OWNER" ||
-			accessContext.role === "ADMIN");
-	if (!accessContext.worldId) {
-		if (!elevatedHuman) return;
-		const error = new ElizaError(
-			"Elevated document search context requires a world",
-			{
-				code: "DOCUMENT_REQUESTER_WORLD_REQUIRED",
-				context: {
-					agentId: runtime.agentId,
-					requesterEntityId: accessContext.requesterEntityId,
-					role: accessContext.role,
-				},
-				severity: "ephemeral",
-			},
-		);
-		runtime.reportError("DocumentService.searchRequesterWorld", error, {
-			agentId: runtime.agentId,
-			requesterEntityId: accessContext.requesterEntityId,
-			role: accessContext.role,
-		});
-		throw error;
-	}
-
-	const roomId = scope?.roomId ?? message.roomId;
-	let targetWorldId = scope?.worldId ?? message.worldId;
-	if (roomId) {
-		try {
-			const room = await runtime.getRoom(roomId);
-			targetWorldId = room?.worldId ?? targetWorldId;
-		} catch (cause) {
-			const error = new ElizaError("Document search room lookup failed", {
-				code: "DOCUMENT_SEARCH_ROOM_LOOKUP_FAILED",
-				cause,
-				context: {
-					agentId: runtime.agentId,
-					requesterEntityId: accessContext.requesterEntityId,
-					roomId,
-				},
-				severity: "ephemeral",
-			});
-			runtime.reportError("DocumentService.searchRequesterWorld", error, {
-				agentId: runtime.agentId,
-				requesterEntityId: accessContext.requesterEntityId,
-				roomId,
-			});
-			throw error;
-		}
-	}
-	if (!targetWorldId || targetWorldId === accessContext.worldId) return;
-
-	const error = new ElizaError("Document search requester world conflicts", {
-		code: "DOCUMENT_REQUESTER_WORLD_CONFLICT",
-		context: {
-			accessWorldId: accessContext.worldId,
-			agentId: runtime.agentId,
-			requesterEntityId: accessContext.requesterEntityId,
-			roomId,
-			targetWorldId,
-		},
-		severity: "ephemeral",
-	});
-	runtime.reportError("DocumentService.searchRequesterWorld", error, {
-		accessWorldId: accessContext.worldId,
-		agentId: runtime.agentId,
-		requesterEntityId: accessContext.requesterEntityId,
-		roomId,
-		targetWorldId,
-	});
-	throw error;
 }
 
 function normalizeDocumentScope(
@@ -1296,38 +1124,21 @@ export class DocumentService extends Service {
 		}
 
 		const queryText = message.content.text;
-		if (accessContext) {
-			await assertAccessContextWorld(
-				this.runtime,
-				accessContext,
-				message,
-				scope,
-			);
-		}
+		// The caller's AccessContext governs the read when supplied. Deriving the
+		// requester from the message sender alone is wrong whenever the two
+		// differ — an agent-authored search carries the AGENT role, which has
+		// global document visibility, so an owner-private document would reach a
+		// requester the caller explicitly scoped down to a plain user.
+		const requester = accessContext
+			? await resolveDocumentRequesterFromAccessContext(
+					this.runtime,
+					accessContext,
+				)
+			: await resolveDocumentRequester(this.runtime, message);
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
-		if (scope?.worldId) {
-			filterScope.worldId = scope.worldId;
-		} else if (accessContext?.worldId) {
-			filterScope.worldId = accessContext.worldId;
-		}
+		if (scope?.worldId) filterScope.worldId = scope.worldId;
 		if (scope?.entityId) filterScope.entityId = scope.entityId;
-		const messageRequester = await resolveDocumentRequester(
-			this.runtime,
-			message,
-		);
-		const requester = accessContext
-			? intersectDocumentRequesters(
-					this.runtime,
-					messageRequester,
-					await resolveAccessContextRequester(
-						this.runtime,
-						accessContext,
-						scope?.roomId ?? message.roomId,
-					),
-					scope?.roomId ?? message.roomId,
-				)
-			: messageRequester;
 
 		// Determine effective mode, falling back to keyword when no embedding model
 		const hasEmbeddingModel = Boolean(
@@ -1363,7 +1174,16 @@ export class DocumentService extends Service {
 			);
 		}
 
-		return results;
+		// The caller-supplied AccessContext stays a second, strictly-subtractive
+		// gate on top of the adapter-level requester filtering. The adapter query
+		// filters by who the MESSAGE says is asking; a caller whose identity
+		// differs from the message identity (an agent-initiated search on behalf
+		// of a user) must still be narrowed to ITS view, and no caller can widen
+		// its view by threading a context. Fragments missing an entityId fall to
+		// the deny side of scoped reads (fail closed). Pinned by
+		// packages/agent/src/api/chat-augmentation.access-context.test.ts.
+		if (!accessContext) return results;
+		return filterByAccessContext(results, accessContext, this.runtime.agentId);
 	}
 
 	/** Pure vector (cosine-similarity) search. */

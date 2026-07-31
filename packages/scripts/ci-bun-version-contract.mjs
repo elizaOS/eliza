@@ -52,7 +52,6 @@ const GATE_WORKFLOWS = [
   "ci.yaml",
   "test.yml",
   "cloud-cf-deploy.yml",
-  "build-linux-iso.yml",
   "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
@@ -60,11 +59,6 @@ const GATE_WORKFLOWS = [
   "windows-desktop-preload-smoke.yml",
   "feed-env-audit.yml",
 ];
-
-// Release-image setup must not depend on metadata that may name an unpublished
-// Bun version. Keep this input concrete so setup is deterministic before any
-// repository code executes.
-const DIRECT_PIN_WORKFLOWS = new Set(["build-linux-iso.yml"]);
 
 // A concrete pin: a plain semver, optionally with a prerelease/build suffix.
 // `canary`, `latest`, and `${{ ... }}` expressions deliberately do not match.
@@ -145,20 +139,6 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     const rel = join(WORKFLOW_DIR, name);
     const text = read(rel);
     const values = bunVersionValues(text);
-
-    if (DIRECT_PIN_WORKFLOWS.has(name)) {
-      const setupPins = values.filter((value) => value.key === "bun-version");
-      assert(
-        setupPins.length > 0,
-        `${rel}: must wire bun-version directly to the canonical Bun pin ${canonical} (${VERSION_FILE}).`,
-      );
-      const indirectPin = setupPins.find((value) => value.raw !== canonical);
-      assert(
-        indirectPin === undefined,
-        `${rel}: must wire bun-version directly to the canonical Bun pin ${canonical} ` +
-          `(${VERSION_FILE}), got ${JSON.stringify(indirectPin?.raw)}. Expressions and metadata resolvers are not deterministic setup inputs.`,
-      );
-    }
 
     const floats = values.find(
       (v) => !isExpression(v.raw) && FLOATING.has(v.raw),
