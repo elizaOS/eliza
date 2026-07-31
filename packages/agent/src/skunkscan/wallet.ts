@@ -442,6 +442,13 @@ warnings: [],
           );
         }
 
+        // A "partial" status (e.g. a wallet with too many distinct tokens
+        // for Moralis's endpoint to enumerate) still has usable .data - the
+        // warning explaining what's incomplete must reach the caller here,
+        // not get silently discarded once .data.balances is extracted below.
+        const investigationWarnings: string[] =
+          tokenBalancesResult.warnings.map((warning) => warning.message);
+
         const tokenHoldings: WalletTokenHolding[] =
           tokenBalancesResult.data.balances.map((tokenBalance) => {
             const contractAddress = tokenBalance.asset.contractAddress;
@@ -615,7 +622,7 @@ warnings: [],
           summary: `Wallet found. Current balance: ${ethBalance.toFixed(
             6,
           )} ETH. Recent transaction sample: ${recentTransactions.length}.`,
-          warnings: [],
+          warnings: investigationWarnings,
         };
       } catch (error) {
         return {

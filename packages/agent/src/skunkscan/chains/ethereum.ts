@@ -158,6 +158,7 @@ export const ethereumConnectorDescriptor: BlockchainConnectorDescriptor = {
     "Transaction contents (native/token transfers, contract interactions) are not yet decoded - transactions are listed but not parsed.",
     "Program/protocol classifications are not yet connected.",
     "Balance, token holdings, NFT holdings, and transaction-list shapes are live-spot-checked against Moralis (see moralis.ts's header comment); pagination cursor-threading on the transaction-history endpoint is not yet live-verified.",
+    "For wallets holding an extremely large number of distinct tokens, Moralis's token-balances endpoint refuses the request outright regardless of pagination - the token list degrades to partial/empty with a warning rather than failing the whole wallet investigation.",
   ],
 };
 
@@ -239,28 +240,39 @@ export class EthereumBlockchainConnector implements BlockchainConnector {
     address: string,
   ): Promise<ChainOperationResult<TokenBalancesResult>> {
     try {
-      const holdings = await getEthereumTokenHoldings(address);
+      const { holdings, truncated } = await getEthereumTokenHoldings(address);
 
-      return createSuccessResult({
-        chainId: ETHEREUM_CHAIN_ID,
-        address: address.trim(),
-        balances: holdings.map((holding) => ({
-          asset: {
-            chainId: ETHEREUM_CHAIN_ID,
-            assetType: "fungible_token",
-            assetId: `ethereum:token:${holding.contractAddress}`,
-            symbol: holding.symbol,
-            name: holding.name,
-            decimals: holding.decimals,
-            contractAddress: holding.contractAddress,
-            tokenId: null,
-          },
-          rawAmount: holding.rawAmount,
-          decimalAmount: null,
-          estimatedUsdValue: null,
-        })),
-        retrievedAt: new Date().toISOString(),
-      });
+      return createSuccessResult(
+        {
+          chainId: ETHEREUM_CHAIN_ID,
+          address: address.trim(),
+          balances: holdings.map((holding) => ({
+            asset: {
+              chainId: ETHEREUM_CHAIN_ID,
+              assetType: "fungible_token",
+              assetId: `ethereum:token:${holding.contractAddress}`,
+              symbol: holding.symbol,
+              name: holding.name,
+              decimals: holding.decimals,
+              contractAddress: holding.contractAddress,
+              tokenId: null,
+            },
+            rawAmount: holding.rawAmount,
+            decimalAmount: null,
+            estimatedUsdValue: null,
+          })),
+          retrievedAt: new Date().toISOString(),
+        },
+        truncated
+          ? [
+              {
+                code: "ETHEREUM_TOKEN_BALANCE_COUNT_EXCEEDS_PROVIDER_LIMIT",
+                message:
+                  "This wallet holds more distinct tokens than Moralis's token-balances endpoint can enumerate - the token list below is incomplete, not an accurate 'this wallet holds no/few tokens' result.",
+              },
+            ]
+          : [],
+      );
     } catch (error) {
       return createErrorResult(
         error,
