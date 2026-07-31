@@ -1,13 +1,20 @@
 /**
- * Verifies Turbo typecheck invocations materialize generated declarations
- * before scheduling, across every argv shape run-turbo accepts: `run <task>`,
- * bare `<task>`, and flags in any position (#15847). Real subprocesses, no
- * mocks — the fixture generator stands in for generate-keywords.mjs only so
- * tests can observe invocation counts and argv without touching src/.
+ * Verifies Turbo build/typecheck invocations materialize generated modules
+ * before scheduling, including the filtered agent-image graph from an empty
+ * generated tree. Subprocess fixtures isolate production source outputs.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -17,7 +24,37 @@ const keywordGenerator = join(
   repoRoot,
   "packages/shared/scripts/generate-keywords.mjs",
 );
+const keywordSources = join(repoRoot, "packages/shared/src/i18n/keywords");
 const tempDirs: string[] = [];
+
+const agentImageFilters = [
+  "@elizaos/app",
+  "@elizaos/agent",
+  "@elizaos/plugin-sql",
+  "@elizaos/plugin-video",
+  "@elizaos/plugin-agent-skills",
+  "@elizaos/plugin-pdf",
+  "@elizaos/plugin-browser",
+  "@elizaos/plugin-capacitor-bridge",
+  "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-native-filesystem",
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-commands",
+  "@elizaos/plugin-computeruse",
+  "@elizaos/plugin-discord",
+  "@elizaos/plugin-edge-tts",
+  "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-imessage",
+  "@elizaos/plugin-local-inference",
+  "@elizaos/plugin-mcp",
+  "@elizaos/plugin-signal",
+  "@elizaos/plugin-streaming",
+  "@elizaos/plugin-telegram",
+  "@elizaos/plugin-whatsapp",
+  "@elizaos/plugin-wallet",
+  "@elizaos/plugin-workflow",
+  "@elizaos/plugin-x402",
+];
 
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "run-turbo-prerequisite-"));
@@ -52,9 +89,18 @@ afterEach(async () => {
   await Promise.all(
     tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
   );
-});
+}, 30_000);
 
-describe("run-turbo typecheck prerequisites", () => {
+describe("run-turbo generated-source prerequisites", () => {
+  test("runs the generator once before a build task", async () => {
+    const { generator, marker } = await fixture();
+
+    expect(
+      await invoke(["run", "build", "--filter=@elizaos/app"], generator),
+    ).toBe(0);
+    expect(await readFile(marker, "utf8")).toBe("generated\n");
+  });
+
   test("runs the generator once before a typecheck task", async () => {
     const { generator, marker } = await fixture();
 
@@ -144,6 +190,80 @@ describe("run-turbo typecheck prerequisites", () => {
 
     expect(await invoke(["typecheck"], generator, 7)).toBe(7);
   });
+});
+
+describe("filtered build generated outputs", () => {
+  test("materializes every consumed output before the agent-image graph starts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "run-turbo-filtered-build-"));
+    tempDirs.push(dir);
+
+    const copiedRunTurbo = join(dir, "packages/scripts/run-turbo.mjs");
+    const copiedGenerator = join(
+      dir,
+      "packages/shared/scripts/generate-keywords.mjs",
+    );
+    const copiedKeywords = join(dir, "packages/shared/src/i18n/keywords");
+    const fakeTurbo = join(dir, "fake-turbo.mjs");
+    const turboArgsFile = join(dir, "turbo-args.json");
+    const outputs = [
+      "packages/shared/src/i18n/generated/validation-keyword-data.ts",
+      "packages/shared/src/i18n/generated/validation-keyword-data.js",
+      "packages/core/src/i18n/generated/validation-keyword-data.ts",
+    ];
+
+    await mkdir(join(dir, "packages/scripts"), { recursive: true });
+    await mkdir(join(dir, "packages/shared/scripts"), { recursive: true });
+    await copyFile(runTurbo, copiedRunTurbo);
+    await copyFile(keywordGenerator, copiedGenerator);
+    await cp(keywordSources, copiedKeywords, { recursive: true });
+    await writeFile(
+      fakeTurbo,
+      `import { readFileSync, writeFileSync } from "node:fs";\nimport { resolve } from "node:path";\nconst outputs = ${JSON.stringify(outputs)};\nfor (const output of outputs) {\n  const source = readFileSync(resolve(output), "utf8");\n  if (!source.includes("VALIDATION_KEYWORD_DOCS")) {\n    throw new Error(\`generated output is incomplete: \${output}\`);\n  }\n}\nwriteFileSync(${JSON.stringify(turboArgsFile)}, JSON.stringify(process.argv.slice(2)));\n`,
+    );
+
+    for (const output of outputs) {
+      await expect(readFile(join(dir, output), "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    }
+
+    const args = [
+      "run",
+      "build",
+      "--concurrency=8",
+      ...agentImageFilters.map((filter) => `--filter=${filter}`),
+    ];
+    const child = Bun.spawn([process.execPath, copiedRunTurbo, ...args], {
+      cwd: dir,
+      env: {
+        ...process.env,
+        RUN_TURBO_BIN: fakeTurbo,
+        RUN_TURBO_BUN_LOCKFILE: join(dir, "absent-bun.lock"),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await child.exited;
+    const stderr = await new Response(child.stderr).text();
+
+    expect(child.exitCode, stderr).toBe(0);
+    for (const output of outputs) {
+      expect(await readFile(join(dir, output), "utf8")).toContain(
+        "VALIDATION_KEYWORD_DOCS",
+      );
+    }
+    expect(
+      (await readdir(join(dir, "packages/shared/src/i18n/generated"))).sort(),
+    ).toEqual(["validation-keyword-data.js", "validation-keyword-data.ts"]);
+    expect(JSON.parse(await readFile(turboArgsFile, "utf8"))).toEqual(
+      expect.arrayContaining([
+        "run",
+        "build",
+        "--concurrency=8",
+        ...agentImageFilters.map((filter) => `--filter=${filter}`),
+      ]),
+    );
+  }, 30_000);
 });
 
 describe("generate-keywords argv contract", () => {

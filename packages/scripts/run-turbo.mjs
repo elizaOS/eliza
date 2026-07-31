@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Runs Turbo with repository-wide safeguards shared by local and CI commands.
- * Typecheck prerequisites are materialized before Turbo hashes or schedules the
- * graph so package-specific task overrides cannot race generated declarations.
+ * Generated-source prerequisites are materialized before Turbo hashes or
+ * schedules build/typecheck graphs so cached tasks and package-specific
+ * overrides cannot omit files consumed outside their owning package.
  */
 
 import { spawn, spawnSync } from "node:child_process";
@@ -78,7 +79,8 @@ const positionalArgs = turboOwnArgs.filter((arg) => !arg.startsWith("-"));
 const requestedTasks =
   positionalArgs[0] === "run" ? positionalArgs.slice(1) : positionalArgs;
 
-if (requestedTasks.includes("typecheck")) {
+const generatedSourceTasks = new Set(["build", "typecheck"]);
+if (requestedTasks.some((task) => generatedSourceTasks.has(task))) {
   const generator = process.env.RUN_TURBO_KEYWORD_GENERATOR
     ? path.resolve(process.env.RUN_TURBO_KEYWORD_GENERATOR)
     : path.join(repoRoot, "packages/shared/scripts/generate-keywords.mjs");
@@ -89,7 +91,7 @@ if (requestedTasks.includes("typecheck")) {
   });
   if (result.error) {
     console.error(
-      `[run-turbo] Failed to generate typecheck prerequisites: ${result.error.message}`,
+      `[run-turbo] Failed to generate generated-source prerequisites: ${result.error.message}`,
     );
     process.exit(1);
   }
