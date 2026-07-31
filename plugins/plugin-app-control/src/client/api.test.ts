@@ -65,7 +65,7 @@ describe("app-control client deadlines", () => {
 		await client.stopAppRun("run-1");
 		await client.launchApp("chess");
 
-		expect(deadlines).toEqual([2_000, 2_000, 10_000, 120_000]);
+		expect(deadlines).toEqual([10_000, 2_000, 10_000, 120_000]);
 	});
 
 	it("propagates caller cancellation through the combined request signal", async () => {

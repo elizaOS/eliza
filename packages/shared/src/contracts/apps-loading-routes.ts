@@ -12,7 +12,8 @@
  *
  * Routes covered:
  *   POST /api/apps/load-from-directory
- *     body:    { directory: string }   (must be absolute)
+ *     body:    { directory: string, entry?: string }
+ *              (directory must be absolute; entry selects one direct child)
  *     200:     { ok: true, directory, registered: number,
  *                items: [{slug, canonicalName}],
  *                rejectedManifests: [{directory, packageName,
@@ -39,6 +40,21 @@ export const PostLoadFromDirectoryRequestSchema = z
       .refine((value) => nodePath.isAbsolute(value), {
         message: "directory must be an absolute path",
       }),
+    entry: z
+      .string()
+      .trim()
+      .min(1, "entry must not be empty")
+      .refine(
+        (value) =>
+          value !== "." &&
+          value !== ".." &&
+          !value.includes("/") &&
+          !value.includes("\\"),
+        {
+          message: "entry must be a direct child name",
+        },
+      )
+      .optional(),
   })
   .strict();
 

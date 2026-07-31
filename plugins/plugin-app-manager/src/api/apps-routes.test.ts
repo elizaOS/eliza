@@ -87,6 +87,7 @@ async function callRoute(args: {
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
   actorRole?: AppsRouteActorRole | null;
+  runtime?: unknown;
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -105,7 +106,7 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     actorRole: args.actorRole,
-    runtime: null,
+    runtime: args.runtime ?? null,
     getPluginManager:
       args.getPluginManager ??
       (() =>
@@ -149,6 +150,56 @@ function sanitizeExpectedFavorites(values: readonly string[]): string[] {
 }
 
 describe("handleAppsRoutes", () => {
+  it("registers only the selected direct child from an app workspace", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "apps-route-register-"));
+    const register = vi.fn(async () => undefined);
+    try {
+      for (const name of ["app-target", "app-sibling"]) {
+        const directory = path.join(root, name);
+        await mkdir(directory, { recursive: true });
+        await writeFile(
+          path.join(directory, "package.json"),
+          JSON.stringify({
+            name: `@local/${name}`,
+            elizaos: {
+              app: {
+                slug: name.replace(/^app-/, ""),
+                displayName: name,
+              },
+            },
+          }),
+          "utf8",
+        );
+      }
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        body: { directory: root, entry: "app-target" },
+        runtime: {
+          getService: (type: string) =>
+            type === "app-registry" ? { register } : null,
+        },
+      });
+
+      expect(result.res.status).toBe(200);
+      expect(result.res.body).toMatchObject({
+        registered: 1,
+        items: [{ slug: "target", canonicalName: "@local/app-target" }],
+      });
+      expect(register).toHaveBeenCalledTimes(1);
+      expect(register).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slug: "target",
+          directory: path.join(root, "app-target"),
+        }),
+        expect.objectContaining({ trust: "external" }),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects malformed favorite updates before writing the store", async () => {
     const store = createFavoriteStore(["@elizaos/plugin-phone"]);
 

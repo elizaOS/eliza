@@ -266,13 +266,16 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		coordinator.__emit(appPassEvent());
 		await flush();
 
-		// It POSTed the app's PARENT dir to the app-register route so a subsequent
-		// listInstalledApps() + launch resolves the freshly built app.
+		// It selects only the built app under the parent workspace so unrelated
+		// sibling apps are not registered as a side effect.
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			expect.stringContaining("/api/apps/load-from-directory"),
 			expect.objectContaining({
 				method: "POST",
-				body: JSON.stringify({ directory: "/repo/eliza/apps" }),
+				body: JSON.stringify({
+					directory: "/repo/eliza/apps",
+					entry: "app-notes",
+				}),
 			}),
 		);
 

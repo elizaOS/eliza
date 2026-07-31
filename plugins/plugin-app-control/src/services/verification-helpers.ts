@@ -56,12 +56,10 @@ export interface RegisteredAppItem {
 /**
  * Register a freshly built app into the running runtime via the loopback agent
  * API so a subsequent `launch <name>` resolves. The
- * `/api/apps/load-from-directory` route scans a *parent* directory for app
- * subdirs and registers each valid one through the AppRegistryService
- * (`trust: "external"`), so we pass the workdir's parent, not the workdir
- * itself. That register is idempotent by slug and the worker host returns the
- * existing worker for an already-registered sibling, so re-scanning the shared
- * apps dir does not churn unrelated apps. Returns the registered items so
+ * `/api/apps/load-from-directory` route scans a parent directory, with an
+ * optional direct-child selector. Passing both the parent and the workdir's
+ * basename prevents verification from registering unrelated sibling apps.
+ * Returns the registered items so
  * callers can confirm the app is actually launchable instead of promising a
  * `launch` that would fail with "No installed app matches". Used by the
  * verification launch check (register-before-launch) and by the room bridge's
@@ -74,20 +72,18 @@ export async function loadAppFromWorkdir(
 > {
 	const port = resolveServerOnlyPort(process.env);
 	const directory = path.dirname(workdir);
+	const entry = path.basename(workdir);
 	try {
 		const resp = await fetch(
 			`http://127.0.0.1:${port}/api/apps/load-from-directory`,
 			{
 				method: "POST",
 				headers: createViewsRequestHeaders(),
-				body: JSON.stringify({ directory }),
+				body: JSON.stringify({ directory, entry }),
 				signal: AbortSignal.timeout(30_000),
 			},
 		);
-		const body = (await resp.json().catch(() => ({}))) as Record<
-			string,
-			unknown
-		>;
+		const body = (await resp.json()) as Record<string, unknown>;
 		if (resp.ok && body.ok === true) {
 			const items = Array.isArray(body.items)
 				? body.items.filter(
@@ -98,6 +94,12 @@ export async function loadAppFromWorkdir(
 							typeof (item as RegisteredAppItem).canonicalName === "string",
 					)
 				: [];
+			if (items.length === 0) {
+				return {
+					ok: false,
+					error: `register did not find an app in ${workdir}`,
+				};
+			}
 			return { ok: true, items };
 		}
 		return {
@@ -108,6 +110,8 @@ export async function loadAppFromWorkdir(
 					: `register returned HTTP ${resp.status}`,
 		};
 	} catch (err) {
+		// error-policy:J1 the loopback registration boundary returns an explicit
+		// failure that verification surfaces to the user.
 		return {
 			ok: false,
 			error: err instanceof Error ? err.message : String(err),

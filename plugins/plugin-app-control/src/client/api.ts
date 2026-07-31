@@ -16,6 +16,7 @@ import type {
 	InstalledAppInfo,
 } from "../types.js";
 
+const APP_INVENTORY_DEADLINE_MS = 10_000;
 const LOOPBACK_READ_DEADLINE_MS = 2_000;
 const LOOPBACK_STOP_DEADLINE_MS = 10_000;
 const APP_LAUNCH_DEADLINE_MS = 120_000;
@@ -253,7 +254,7 @@ export function createAppControlClient(): AppControlClient {
 				{ method: "GET", signal },
 				parseInstalledApps,
 				"Failed to list installed apps",
-				LOOPBACK_READ_DEADLINE_MS,
+				APP_INVENTORY_DEADLINE_MS,
 			);
 		},
 

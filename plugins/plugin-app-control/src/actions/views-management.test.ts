@@ -3387,4 +3387,25 @@ describe("view management actions", () => {
 		});
 		expect(viewResult.text).toContain("cancel = Cancel");
 	});
+
+	it("does not dispatch a create when installed-app inventory is unavailable", async () => {
+		const { runtime, codingHandler } = createRuntime();
+		const appClient = {
+			listInstalledApps: vi.fn(async () => {
+				throw new Error("registry unavailable");
+			}),
+		};
+
+		await expect(
+			runCreate({
+				runtime: runtime as never,
+				client: appClient as never,
+				message: message("Create a notes app for me") as never,
+				callback: vi.fn(),
+				repoRoot: "/tmp/no-app-create",
+			}),
+		).rejects.toThrow("registry unavailable");
+		expect(codingHandler).not.toHaveBeenCalled();
+		expect(runtime.createTask).not.toHaveBeenCalled();
+	});
 });

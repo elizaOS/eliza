@@ -1601,6 +1601,9 @@ export async function handleAppsRoutes(
 
     try {
       const entries = await fs.readdir(directory, { withFileTypes: true });
+      const selectedEntries = parsed.data.entry
+        ? entries.filter((entry) => entry.name === parsed.data.entry)
+        : entries;
       let registered = 0;
       const items: Array<{ slug: string; canonicalName: string }> = [];
       const rejectedManifests: Array<{
@@ -1609,7 +1612,7 @@ export async function handleAppsRoutes(
         reason: string;
         path: string;
       }> = [];
-      for (const entry of entries) {
+      for (const entry of selectedEntries) {
         if (!entry.isDirectory()) continue;
         const subdir = path.join(directory, entry.name);
         const pkgPath = path.join(subdir, "package.json");

@@ -17,6 +17,26 @@ describe("PostLoadFromDirectoryRequestSchema", () => {
     expect(parsed.directory).toBe("/tmp/apps");
   });
 
+  it("accepts a direct-child selector", () => {
+    const parsed = PostLoadFromDirectoryRequestSchema.parse({
+      directory: "/tmp/apps",
+      entry: "app-notes",
+    });
+    expect(parsed.entry).toBe("app-notes");
+  });
+
+  it.each(["", ".", "..", "nested/app", String.raw`nested\app`])(
+    "rejects an unsafe child selector %j",
+    (entry) => {
+      expect(() =>
+        PostLoadFromDirectoryRequestSchema.parse({
+          directory: "/tmp/apps",
+          entry,
+        }),
+      ).toThrow();
+    },
+  );
+
   it("rejects a relative path", () => {
     expect(() =>
       PostLoadFromDirectoryRequestSchema.parse({ directory: "apps" }),
