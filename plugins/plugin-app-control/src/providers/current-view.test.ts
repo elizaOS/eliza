@@ -13,7 +13,8 @@ vi.mock("../actions/views-client.js", () => ({
 
 import { currentViewProvider } from "./current-view.js";
 
-const runtime = {} as IAgentRuntime;
+const reportError = vi.fn();
+const runtime = { reportError } as unknown as IAgentRuntime;
 function msg(text: string): Memory {
 	return {
 		id: "00000000-0000-0000-0000-000000000000",
@@ -23,10 +24,29 @@ function msg(text: string): Memory {
 	} as Memory;
 }
 
-describe("current_view acknowledgement provider (#8788)", () => {
-	beforeEach(() => h.getCurrentView.mockReset());
+function augmented(userRequest: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+		"<contextual_documents>",
+		'<source title="source-1">Open the inbox to review messages.</source>',
+		"</contextual_documents>",
+		"<user_request>",
+		userRequest,
+		"</user_request>",
+	].join("\n");
+}
 
-	it("phrases an imminent explicit switch as a forward-looking acknowledgement", async () => {
+describe("current_view state provider", () => {
+	beforeEach(() => {
+		h.getCurrentView.mockReset();
+		reportError.mockReset();
+	});
+
+	it("declares its planner routing context explicitly", () => {
+		expect(currentViewProvider.contexts).toEqual(["general"]);
+	});
+
+	it("makes an imminent explicit target authoritative over the current renderer", async () => {
 		h.getCurrentView.mockResolvedValue({
 			viewId: "settings",
 			viewLabel: "Settings",
@@ -39,13 +59,34 @@ describe("current_view acknowledgement provider (#8788)", () => {
 			data: {},
 			text: "",
 		});
-		expect(r.text).toContain("switching them there now");
+		expect(r.text).toContain("Requested view target: Wallet");
+		expect(r.text).toContain("still on Settings");
+		expect(r.text).toContain("authoritative for this turn");
+		expect(r.text).not.toContain("acknowledge");
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
-		expect(r.values?.viewJustSwitched).toBe(true);
+		expect(r.values?.viewSwitchPending).toBe(true);
 	});
 
-	it("acknowledges a switch the agent just executed (server justSwitched, source agent)", async () => {
+	it("uses the user request rather than a surface named in retrieved context", async () => {
+		h.getCurrentView.mockResolvedValue({
+			viewId: "chat",
+			viewLabel: "Messages",
+			viewPath: "/chat",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+		const result = await currentViewProvider.get(
+			runtime,
+			msg(augmented("Open Notes")),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(result.text).toContain("Notes");
+		expect(result.text).not.toContain("Inbox");
+		expect(result.values?.switchingToViewId).toBe("notes");
+	});
+
+	it("reports a recent agent switch as state without requesting another acknowledgement", async () => {
 		h.getCurrentView.mockResolvedValue({
 			viewId: "calendar",
 			viewLabel: "Calendar",
@@ -60,7 +101,8 @@ describe("current_view acknowledgement provider (#8788)", () => {
 			data: {},
 			text: "",
 		});
-		expect(r.text).toContain("You just switched the user to the Calendar view");
+		expect(r.text).toContain("currently viewing the Calendar view");
+		expect(r.text).not.toContain("acknowledge");
 	});
 
 	it("does not claim credit when the user switched themselves (source user)", async () => {
@@ -78,9 +120,7 @@ describe("current_view acknowledgement provider (#8788)", () => {
 			data: {},
 			text: "",
 		});
-		expect(r.text).toContain(
-			"switched to the Calendar view (/calendar) themselves",
-		);
+		expect(r.text).toContain("currently viewing the Calendar view (/calendar)");
 		expect(r.text).not.toContain("You just switched");
 	});
 
@@ -111,7 +151,7 @@ describe("current_view acknowledgement provider (#8788)", () => {
 		expect(r.text).toBe("");
 	});
 
-	it("still acknowledges an imminent switch even with no prior current view", async () => {
+	it("reports an imminent target even with no prior current view", async () => {
 		h.getCurrentView.mockResolvedValue(null);
 		const r = await currentViewProvider.get(runtime, msg("open my wallet"), {
 			values: {},
@@ -120,6 +160,23 @@ describe("current_view acknowledgement provider (#8788)", () => {
 		});
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
+	});
+
+	it("reports an unavailable current-view boundary without breaking composition", async () => {
+		const error = new Error("loopback unavailable");
+		h.getCurrentView.mockRejectedValue(error);
+		const message = msg("how are you");
+		const r = await currentViewProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+		expect(r.text).toBe("");
+		expect(reportError).toHaveBeenCalledWith(
+			"app-control.current-view",
+			error,
+			{ messageId: message.id, roomId: message.roomId },
+		);
 	});
 
 	it("surfaces the open subview/section for a view that has one (#9945)", async () => {
