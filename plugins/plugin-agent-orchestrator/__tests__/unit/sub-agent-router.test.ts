@@ -1640,10 +1640,13 @@ describe("SubAgentRouter", () => {
         if (String(input) === cdnUrl) {
           return new Response("not found", { status: 404 });
         }
-        return new Response(`<!doctype html><img src="${cdnUrl}" alt="Sticker">`, {
-          status: 200,
-          headers: { "content-type": "text/html" },
-        });
+        return new Response(
+          `<!doctype html><img src="${cdnUrl}" alt="Sticker">`,
+          {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          },
+        );
       });
       stubFetch(fetchMock);
       session = sessionWithTask(`build and verify ${appUrl}`);

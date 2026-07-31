@@ -48,10 +48,7 @@ import {
   type OrchestratorTaskType,
   shouldRequireGoalContract,
 } from "./acceptance-criteria.js";
-import {
-  ACP_METADATA_ISOLATED_WORKDIR,
-  AcpService,
-} from "./acp-service.js";
+import { ACP_METADATA_ISOLATED_WORKDIR, AcpService } from "./acp-service.js";
 import {
   type AdmissionRecord,
   orderQueue,

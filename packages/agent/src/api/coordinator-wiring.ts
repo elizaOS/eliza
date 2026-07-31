@@ -172,7 +172,10 @@ export async function wireCoordinatorBridgesWhenReady<S extends WirableState>(
         }
       }
       await new Promise((r) => {
-        const timer = setTimeout(r, slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS);
+        const timer = setTimeout(
+          r,
+          slow ? POLL_SLOW_INTERVAL_MS : POLL_INTERVAL_MS,
+        );
         timer.unref?.();
       });
 

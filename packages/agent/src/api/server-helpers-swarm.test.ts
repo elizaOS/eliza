@@ -8,10 +8,10 @@
  * Deterministic: in-memory runtime/state stubs with real temp-dir files for the
  * artifact cases.
  */
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   handleSwarmSynthesis,
   routeAutonomyTextToUser,
@@ -69,7 +69,15 @@ describe("handleSwarmSynthesis", () => {
   // A stopped Claude session's newest jsonl ends mid-turn: its last assistant
   // text is inner monologue, not a result. Seed the REAL reader path
   // (~/.claude/projects/<sanitized-workdir>/) with such a transcript and prove
-  // the non-completed status gate keeps it out of the routed text.
+  // the non-completed status gate keeps it out of the routed text. Seeded dirs
+  // live in the developer's real ~/.claude/projects, so track and remove them.
+  const seededProjectDirs: string[] = [];
+  afterEach(async () => {
+    while (seededProjectDirs.length > 0) {
+      const dir = seededProjectDirs.pop();
+      if (dir) await rm(dir, { recursive: true, force: true });
+    }
+  });
   async function seedClaudeTranscript(narration: string): Promise<string> {
     const workdir = await mkdtemp(path.join(tmpdir(), "swarm-stop-"));
     const projectDir = path.join(
@@ -78,11 +86,15 @@ describe("handleSwarmSynthesis", () => {
       "projects",
       workdir.replace(/[/.]/g, "-"),
     );
+    seededProjectDirs.push(projectDir);
     await mkdir(projectDir, { recursive: true });
     await writeFile(
       path.join(projectDir, "session.jsonl"),
       `${JSON.stringify({
-        message: { role: "assistant", content: [{ type: "text", text: narration }] },
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: narration }],
+        },
       })}\n`,
       "utf8",
     );
@@ -120,9 +132,7 @@ describe("handleSwarmSynthesis", () => {
       },
     );
 
-    expect(routed).toEqual([
-      "verification failed: launch check did not pass",
-    ]);
+    expect(routed).toEqual(["verification failed: launch check did not pass"]);
   });
 
   it("falls back to a lifecycle line for a stopped Claude task with no verdict", async () => {

@@ -9,8 +9,8 @@ import {
   type SupervisorTaskView,
   statusEmoji,
   supervisorStalenessLabel,
-  taskOldEnoughForDigest,
   TaskSupervisorService,
+  taskOldEnoughForDigest,
 } from "../../src/services/task-supervisor-service.js";
 
 const ROOM_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
