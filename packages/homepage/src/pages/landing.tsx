@@ -175,6 +175,7 @@ export default function Leaderboard() {
   const t = useT();
   const modelRef = useRef<ModelBHandle>(null);
   const [phoneSettled, setPhoneSettled] = useState(false);
+  const [chatSettled, setChatSettled] = useState(false);
   const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
   const [showUI, setShowUI] = useState(false);
@@ -755,7 +756,7 @@ export default function Leaderboard() {
       <div
         aria-hidden="true"
         className="fixed inset-0 pointer-events-none"
-        data-phone-model={phoneSettled ? "settled" : "loading"}
+        data-phone-model={phoneSettled && chatSettled ? "settled" : "loading"}
       />
       <Suspense fallback={null}>
         <ModelB
@@ -765,6 +766,7 @@ export default function Leaderboard() {
           onWaitingChange={setWaiting}
           onVideoClick={handleVideoClick}
           onReady={() => setPhoneSettled(true)}
+          onChatSettled={setChatSettled}
           onBackClick={handleLoginClick}
           onSwitcherDone={handleSwitcherDone}
           onSwitcherOpen={handleSwitcherOpen}

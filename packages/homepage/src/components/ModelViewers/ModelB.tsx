@@ -51,6 +51,7 @@ interface ModelBProps {
   onBackClick?: () => void;
   onVideoClick?: () => void;
   onReady?: () => void;
+  onChatSettled?: (settled: boolean) => void;
   onSwitcherDone?: () => void;
   onSwitcherOpen?: () => void;
   loginTitle?: string;
@@ -86,6 +87,7 @@ interface ModelRuntime {
   onBackClick: (() => void) | null;
   onVideoClick: (() => void) | null;
   onReady: (() => void) | null;
+  onChatSettled: ((settled: boolean) => void) | null;
   onSwitcherDone: (() => void) | null;
   onSwitcherOpen: (() => void) | null;
   switcherOpenFiredEarly: boolean;
@@ -122,6 +124,7 @@ function createModelRuntime(): ModelRuntime {
     onBackClick: null,
     onVideoClick: null,
     onReady: null,
+    onChatSettled: null,
     onSwitcherDone: null,
     onSwitcherOpen: null,
     switcherOpenFiredEarly: false,
@@ -498,8 +501,13 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
         const animateMessage = () => {
           count++;
           msgCountRef.current = count;
-          if (count > getMessageCount() || cancelled || runtime.tryActive)
+          if (count > getMessageCount() || cancelled || runtime.tryActive) {
+            // A user interaction (tryActive) legitimately ends the intro
+            // sequence, so the deferred content is at its final state and the
+            // readiness contract must still resolve.
+            if (!cancelled) runtime.onChatSettled?.(true);
             return;
+          }
 
           const duration = 300;
           const startTime = performance.now();
@@ -523,6 +531,11 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
               msgAnimFrameRef.current = requestAnimationFrame(tick);
             } else if (count < getMessageCount() && !runtime.tryActive) {
               msgTimeoutRef.current = window.setTimeout(animateMessage, 700);
+            } else {
+              // Final intro message committed at full progress (or the intro
+              // was handed off to user interaction): the chat canvas is at
+              // its final deferred-visual state.
+              runtime.onChatSettled?.(true);
             }
           };
 
@@ -546,6 +559,9 @@ function Model({ runtime }: { runtime: ModelRuntime }) {
         cancelAnimationFrame(typingAnimFrameRef.current);
         cancelAnimationFrame(responseAnimFrameRef.current);
         runtime.onWaitingChange?.(false);
+        // Restarting replays the intro, so the canvas is deferred again until
+        // the replayed sequence commits its last message.
+        runtime.onChatSettled?.(false);
         count = 0;
         msgCountRef.current = 0;
         extraMessagesRef.current = [];
@@ -953,6 +969,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
     onBackClick,
     onVideoClick,
     onReady,
+    onChatSettled,
     onSwitcherDone,
     onSwitcherOpen,
     loginTitle,
@@ -1025,6 +1042,10 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   useEffect(() => {
     runtime.onReady = onReady ?? null;
   }, [onReady, runtime]);
+
+  useEffect(() => {
+    runtime.onChatSettled = onChatSettled ?? null;
+  }, [onChatSettled, runtime]);
 
   useEffect(() => {
     runtime.onSwitcherOpen = onSwitcherOpen ?? null;
