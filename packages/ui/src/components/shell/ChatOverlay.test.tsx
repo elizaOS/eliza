@@ -67,7 +67,11 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
-import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
+import {
+  CHAT_PREFILL_EVENT,
+  ELIZA_BACK_INTENT_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "../../events";
 import {
   resetNativeBackdropForTests,
   setNativeBackdropEncoderForTests,
@@ -771,6 +775,71 @@ describe("ChatOverlay", () => {
       <ChatOverlay
         controller={makeController({
           currentTab: "settings",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).not.toBe(composer);
+  });
+
+  it("preserves focused typing through one agent-command view navigation", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "notes",
+            viewPath: "/notes",
+            source: "agent",
+          },
+        }),
+      );
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "notes",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("does not arm a focus lease for an agent open-window action", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      window.dispatchEvent(
+        new CustomEvent(NAVIGATE_VIEW_EVENT, {
+          detail: {
+            viewId: "notes",
+            viewPath: "/notes",
+            source: "agent",
+            action: "open-window",
+          },
+        }),
+      );
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "notes",
         } as Partial<ShellController>)}
       />,
     );
@@ -1523,8 +1592,11 @@ describe("ChatOverlay", () => {
     expect(fade.className).toContain("z-30");
     expect(fade.style.opacity).not.toBe("");
     expect(fade.style.backgroundImage).toContain("linear-gradient");
+    expect(fade.style.backgroundImage).toContain("28%");
     expect(rim.className).toContain("z-40");
     expect(rim.className).toContain("border-border-strong");
+    const content = screen.getByTestId("chat-content");
+    expect(content.style.clipPath).toContain("inset(1px round");
     expect(viewport.style.maskImage).toBe("");
     expect(viewport.style.webkitMaskImage).toBe("");
   });
@@ -1917,6 +1989,16 @@ describe("ChatOverlay", () => {
     // Once the read resolves, a thumbnail + send control appear.
     await screen.findByLabelText("send");
     expect(screen.getByLabelText(/remove pic\.png/)).toBeTruthy();
+
+    // Pending attachments must not disable the sheet's own drag handle. The
+    // attachment tiles have their own controls; the handle remains the path to
+    // reveal history without requiring the user to send or remove the image.
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    expect(grabber.style.pointerEvents).toBe("auto");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 21 });
+    fireEvent.pointerMove(grabber, { clientY: 340, pointerId: 21 });
+    await waitFor(() => expect(screen.getByTestId("chat-thread")).toBeTruthy());
+    fireEvent.pointerUp(grabber, { clientY: 340, pointerId: 21 });
 
     fireEvent.click(screen.getByLabelText("send"));
     expect(controller.send).toHaveBeenCalledWith(
@@ -2495,7 +2577,7 @@ describe("ChatOverlay", () => {
     const grabber = screen.getByTestId("chat-sheet-grabber");
     const content = screen.getByTestId("chat-content");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-    expect(content.style.clipPath).toContain("inset(0 round");
+    expect(content.style.clipPath).toContain("inset(1px round");
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
     // A downward drag past the threshold collapses the input away into the pill.
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -2691,15 +2773,15 @@ describe("ChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("keeps independent transcript and master-mic stop controls", () => {
-    const stopTranscriptionAndMic = vi.fn();
+  it("gives transcription the right control without leaving a duplicate pulsing waveform", () => {
     render(
       <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
+          handsFree: true,
+          recording: true,
           responding: true,
           canSend: false,
-          stopTranscriptionAndMic,
         } as unknown as Partial<ShellController>)}
       />,
     );
@@ -2712,6 +2794,7 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
     expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByTestId("chat-composer-action")).toBeNull();
     expect(
@@ -2726,12 +2809,6 @@ describe("ChatOverlay", () => {
     expect(stopTranscription.getAttribute("aria-label")).toBe(
       "stop transcription",
     );
-    const stopMic = screen.getByTestId("chat-composer-mic");
-    expect(stopMic.getAttribute("aria-label")).toBe(
-      "stop transcription and mic",
-    );
-    fireEvent.click(stopMic);
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
     // A stopped agent blocks delivery, not finalization back into the draft.
     expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
     expect(
@@ -3461,10 +3538,23 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       '[data-chat-message-bubble="true"]',
     );
     await waitFor(() =>
-      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
+      expect(
+        bubble?.querySelector(
+          '[data-chat-selectable="true"][data-chat-search-highlight="true"]',
+        ),
+      ).toBeTruthy(),
     );
-    expect(bubble?.style.outline).toContain("var(--accent)");
-    expect(bubble?.style.outlineOffset).toBe("-2px");
+    const highlight = bubble?.querySelector<HTMLElement>(
+      '[data-chat-selectable="true"][data-chat-search-highlight="true"]',
+    );
+    expect(bubble?.style.outline).toBe("");
+    expect(bubble?.style.boxShadow).toBe("");
+    expect(highlight?.style.display).toBe("inline-block");
+    expect(highlight?.style.width).toBe("fit-content");
+    expect(highlight?.style.borderRadius).toBe("0.75rem");
+    expect(highlight?.style.boxShadow).toContain("rgba(255, 255, 255, 0.28)");
+    expect(highlight?.style.filter).toContain("drop-shadow");
+    expect(highlight?.style.textShadow).toContain("rgba(255, 255, 255, 0.72)");
     expect(aroundSpy).not.toHaveBeenCalled();
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -4042,7 +4132,7 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       ?.querySelector("div.select-text") as HTMLElement;
   }
 
-  it("reserves an animated reply lane without focusing and clears it when the sheet closes", async () => {
+  it("reserves an animated reply lane, focuses the composer, and clears it when the sheet closes", async () => {
     openThreadWith({
       messages: [
         {
@@ -4070,7 +4160,7 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     expect(replyLane.className).toContain("overflow-hidden");
     expect(replyLane.className).not.toContain("absolute");
     expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
-    expect(document.activeElement).not.toBe(input);
+    expect(document.activeElement).toBe(input);
 
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => {
