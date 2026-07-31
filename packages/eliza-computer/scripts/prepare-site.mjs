@@ -119,12 +119,18 @@ const trackedSkillFiles = execFileSync(
 const actualSkillFiles = listRegularSkillFiles(skillRoot).sort();
 if (
   trackedSkillFiles.length === 0 ||
+  trackedSkillFiles.includes("PROVENANCE.json") ||
   trackedSkillFiles.some(
     (path) => path === ".." || path.startsWith("../") || path.includes("/../"),
   )
 ) {
   throw new TypeError(
-    "[ElizaComputer] tracked skill file manifest is empty or escaped its root",
+    "[ElizaComputer] tracked skill file manifest is empty, escaped its root, or reserves PROVENANCE.json",
+  );
+}
+if (trackedSkillFiles.length > 32) {
+  throw new TypeError(
+    "[ElizaComputer] canonical skill exceeds the installer's 32-file authority bound",
   );
 }
 if (
@@ -260,8 +266,14 @@ writeFileSync(join(publicRoot, "mission.md"), standaloneMission);
 
 const codexBootstrap = `# Install contribute-to-eliza for Codex
 
-Install the checksum-verified complete skill archive into its own directory.
-This does not replace a repository's \`AGENTS.md\` or any local instructions.
+Install or update the complete skill archive. The installer accepts the current
+\`develop\` commit, a develop ancestor only while its complete canonical skill
+tree remains byte-identical to current \`develop\`, or a same-repository,
+non-draft pull request labeled
+\`eliza-army-release-candidate\` after its exact current-head event and fully
+synchronized with \`develop\`, then independently compares every packaged byte
+with GitHub's immutable source. This does not replace a repository's \`AGENTS.md\`
+or any local instructions.
 
 \`\`\`bash
 ${createInstallCommand(
@@ -276,6 +288,16 @@ Then ask Codex:
 Use $contribute-to-eliza to finish one scoped elizaOS issue or independently
 review one open elizaOS pull request.
 \`\`\`
+
+Versions live beside one atomic \`contribute-to-eliza\` symlink. Re-running the
+command is a no-op at the same revision and updates only when GitHub proves the
+installed revision is an ancestor of the newly authorized revision. The prior
+verified version is retained. To roll back explicitly, export
+\`ELIZA_ARMY_SKILL_OPERATION=rollback\` and
+\`ELIZA_ARMY_SKILL_REVISION=<retained-40-character-revision>\`, then run the
+same command. The rollback revalidates both the active and retained versions
+against GitHub before switching the symlink. Unset both variables afterward so
+the next invocation returns to install/update mode.
 
 Inspect the installed source before running it:
 
@@ -310,6 +332,17 @@ const manifest = {
     url: `${publicSiteOrigin}/downloads/${archiveName}`,
     sha256: archiveDigest,
     checksumUrl: `${publicSiteOrigin}/downloads/${archiveName}.sha256`,
+  },
+  authority: {
+    apiOrigin: "https://api.github.com",
+    rawOrigin: "https://raw.githubusercontent.com",
+    canonicalPath: skillRepositoryPath,
+    releaseCandidateLabel: "eliza-army-release-candidate",
+    acceptedRevisions: [
+      "current develop head",
+      "develop ancestor whose complete canonical skill tree is byte-identical to current develop",
+      "open non-draft same-repository PR head into develop, zero behind current develop, with a release-candidate label event after the exact current-head event",
+    ],
   },
   provenance: {
     status: "self-reported",

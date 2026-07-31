@@ -35,12 +35,9 @@ export class ErrorBoundary extends Component<
       return (
         <main className="fatal-error" role="alert">
           <span aria-hidden="true">!</span>
-          <p className="eyebrow">Observable failure</p>
-          <h1>The contribution desk could not render.</h1>
-          <p>
-            No empty ledger has been substituted. Reload to request the
-            validated snapshot again.
-          </p>
+          <p className="eyebrow">Page error</p>
+          <h1>eliza.army could not load.</h1>
+          <p>Reload to try again.</p>
           <button onClick={() => window.location.reload()} type="button">
             Reload the page
           </button>

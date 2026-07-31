@@ -3,7 +3,7 @@
  * generated GitHub snapshot, raw skill endpoints, archive, and responsive UI.
  */
 
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -18,7 +18,9 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { test as base, expect } from "@playwright/test";
+import { createInstallCommand } from "../../src/lib/install-command";
 import { assertLeaderboardSnapshot } from "../../src/lib/leaderboard";
+import { createInstallAuthorityFixture } from "../install-authority-fixture";
 
 const test = base.extend<{ browserDiagnostics: undefined }>({
   browserDiagnostics: [
@@ -57,23 +59,29 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/", { waitUntil: "networkidle" });
 });
 
-test("loads live ledger, switches queues, and exposes provenance", async ({
+test("loads latest snapshot, switches queues, and exposes provenance", async ({
   page,
 }) => {
   await expect(
     page.getByRole("heading", {
-      name: /your agent can finish elizaOS work/i,
+      name: /earn money contributing to open source/i,
     }),
   ).toBeVisible();
   await expect(
-    page.getByText(/Live GitHub ledger|Ledger update delayed/),
+    page.getByText(/\$10,000 monthly pool, paid in USDC/i),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /set payout address/i }),
+  ).toHaveAttribute("href", "https://eliza.app/profile/edit");
+  await expect(
+    page.getByText(/Latest GitHub snapshot|Snapshot update delayed/),
   ).toBeVisible();
   await expect(page.getByText("7-day proof review")).toBeVisible();
   await expect(page.locator("#methodology")).toContainText(
     /complete verification coverage \d+(?:\.\d+)?[KM]? merged PRs \+ \d+(?:\.\d+)?[KM]? closed issues \/ 7 days/i,
   );
   await expect(
-    page.getByRole("heading", { name: /Choose work/ }),
+    page.getByRole("heading", { name: /Pick unfinished work/ }),
   ).toBeVisible();
 
   const issuesButton = page.getByRole("button", { name: /^Issues/ });
@@ -102,7 +110,7 @@ test("links every displayed leader to their score ledger", async ({
   if (snapshot.leaders.length === 0) {
     expect(snapshot.ledger).toEqual([]);
     await expect(
-      page.getByText("The rolling window has no accepted outcomes yet."),
+      page.getByText("No accepted work in this window."),
     ).toBeVisible();
     return;
   }
@@ -125,6 +133,11 @@ test("links every displayed leader to their score ledger", async ({
   await summary.click();
 
   const evidenceLinks = firstRow.locator(".score-evidence li > a");
+  for (let pageIndex = 1; pageIndex * 25 < events.length; pageIndex += 1) {
+    const showMore = firstRow.getByRole("button", { name: /^Show \d+ more$/u });
+    await expect(showMore).toBeVisible();
+    await showMore.click();
+  }
   await expect(evidenceLinks).toHaveCount(events.length);
   const renderedLinks = await evidenceLinks.evaluateAll((anchors) =>
     anchors.map((anchor) => ({
@@ -159,15 +172,21 @@ test("installs safely, copies the selected command, and serves verified artifact
   const copiedCommand = await page.evaluate(() =>
     navigator.clipboard.readText(),
   );
-  expect(copiedCommand).toContain(
-    `${siteOrigin}/downloads/contribute-to-eliza.skill`,
-  );
+  expect(copiedCommand).toContain(`'${siteOrigin}'`);
+  expect(copiedCommand).toContain("'https://api.github.com'");
+  expect(copiedCommand).toContain("'https://raw.githubusercontent.com'");
   expect(copiedCommand).not.toContain("https://eliza.army/");
 
   const skillResponse = await request.get("/skill.md");
   expect(skillResponse.status()).toBe(200);
   expect(skillResponse.headers()["content-type"]).toContain("text/markdown");
   expect(await skillResponse.text()).toContain("name: contribute-to-eliza");
+
+  const installerGuideResponse = await request.get("/codex.md");
+  expect(installerGuideResponse.status()).toBe(200);
+  const installerGuide = await installerGuideResponse.text();
+  expect(installerGuide).toContain("https://api.github.com");
+  expect(installerGuide).toContain("ELIZA_ARMY_SKILL_OPERATION=rollback");
 
   const archiveResponse = await request.get(
     "/downloads/contribute-to-eliza.skill",
@@ -203,8 +222,55 @@ test("installs safely, copies the selected command, and serves verified artifact
       join(downloadsRoot, "contribute-to-eliza.skill.sha256"),
       checksum,
     );
+    const archivePath = join(downloadsRoot, "contribute-to-eliza.skill");
+    const archiveInspection = JSON.parse(
+      execFileSync(
+        "python3",
+        [
+          "-c",
+          `
+import base64
+import json
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    provenance = json.loads(archive.read("contribute-to-eliza/PROVENANCE.json"))
+    files = {
+        record["path"]: base64.b64encode(
+            archive.read(f"contribute-to-eliza/{record['path']}")
+        ).decode("ascii")
+        for record in provenance["files"]
+    }
+print(json.dumps({"revision": provenance["revision"], "files": files}))
+`,
+          archivePath,
+        ],
+        { encoding: "utf8" },
+      ),
+    ) as { files: Record<string, string>; revision: string };
+    expect(archiveInspection.revision).toMatch(/^[0-9a-f]{40}$/u);
+    const authority = createInstallAuthorityFixture(
+      join(installSandbox, "authority"),
+      {
+        developHead: archiveInspection.revision,
+        revisions: {
+          [archiveInspection.revision]: {
+            files: Object.fromEntries(
+              Object.entries(archiveInspection.files).map(
+                ([path, contents]) => [path, Buffer.from(contents, "base64")],
+              ),
+            ),
+          },
+        },
+      },
+    );
     const localOrigin = pathToFileURL(publicRoot).href.replace(/\/$/u, "");
-    const localCommand = copiedCommand.replaceAll(siteOrigin, localOrigin);
+    const localCommand = createInstallCommand(
+      localOrigin,
+      `\${CODEX_HOME:-\${HOME}/.codex}/skills`,
+      { testAuthority: authority },
+    );
     const codexHome = join(installSandbox, "codex-home");
     const target = join(codexHome, "skills", "contribute-to-eliza");
     const validInstall = spawnSync("/bin/sh", ["-c", localCommand], {
@@ -220,10 +286,8 @@ test("installs safely, copies the selected command, and serves verified artifact
       encoding: "utf8",
       env: { ...process.env, CODEX_HOME: codexHome },
     });
-    expect(overwriteAttempt.status).not.toBe(0);
-    expect(overwriteAttempt.stderr).toContain(
-      "Refusing to overwrite existing skill",
-    );
+    expect(overwriteAttempt.status, overwriteAttempt.stderr).toBe(0);
+    expect(overwriteAttempt.stdout).toContain("no changes made");
     expect(readFileSync(join(target, "SKILL.md"))).toEqual(installedSkill);
 
     writeFileSync(
@@ -298,7 +362,7 @@ with zipfile.ZipFile(
     });
     expect(highCompressionInstall.status).not.toBe(0);
     expect(highCompressionInstall.stderr).toContain(
-      "Archive failed bounded integrity and path checks.",
+      "Refusing skill operation:",
     );
     expect(
       existsSync(join(highCompressionHome, "skills", "contribute-to-eliza")),
@@ -332,7 +396,7 @@ with zipfile.ZipFile(
     );
     expect(oversizedDirectoryInstall.status).not.toBe(0);
     expect(oversizedDirectoryInstall.stderr).toContain(
-      "Archive failed bounded integrity and path checks.",
+      "Refusing skill operation:",
     );
     expect(
       existsSync(join(oversizedDirectoryHome, "skills", "contribute-to-eliza")),
@@ -435,7 +499,7 @@ with zipfile.ZipFile(archive_path, "r") as archive:
     });
     expect(forgedActualSizeInstall.status).not.toBe(0);
     expect(forgedActualSizeInstall.stderr).toContain(
-      "Archive failed bounded integrity and path checks.",
+      "Refusing skill operation:",
     );
     expect(
       existsSync(join(forgedActualSizeHome, "skills", "contribute-to-eliza")),
@@ -512,12 +576,60 @@ test("has no accessibility violations or horizontal page overflow", async ({
   expect(overflow.document).toBeLessThanOrEqual(1);
   expect(overflow.leaderboard).toBeLessThanOrEqual(1);
 
-  const buildIssueTarget = await page
-    .getByRole("link", { name: "Build issue" })
+  const walletTarget = await page
+    .getByRole("link", { exact: true, name: "Payout address" })
     .boundingBox();
-  expect(buildIssueTarget).not.toBeNull();
-  expect(buildIssueTarget?.width).toBeGreaterThanOrEqual(44);
-  expect(buildIssueTarget?.height).toBeGreaterThanOrEqual(44);
+  expect(walletTarget).not.toBeNull();
+  expect(walletTarget?.width).toBeGreaterThanOrEqual(44);
+  expect(walletTarget?.height).toBeGreaterThanOrEqual(44);
+
+  const requiredTargets = page.locator(".contributor, .footer-links a");
+  const targetCount = await requiredTargets.count();
+  expect(targetCount).toBeGreaterThan(0);
+  for (let index = 0; index < targetCount; index += 1) {
+    const bounds = await requiredTargets.nth(index).boundingBox();
+    expect(bounds, `required target ${index} must be rendered`).not.toBeNull();
+    expect(
+      bounds?.width,
+      `required target ${index} width`,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      bounds?.height,
+      `required target ${index} height`,
+    ).toBeGreaterThanOrEqual(44);
+  }
+
+  const firstScoreSummary = page.locator(".score-evidence summary").first();
+  if ((await firstScoreSummary.count()) > 0) {
+    await firstScoreSummary.click();
+    const showMore = page.locator(".load-score-events").first();
+    if ((await showMore.count()) > 0) {
+      const bounds = await showMore.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds?.width).toBeGreaterThanOrEqual(44);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
+    }
+  }
+
+  const handle = page.locator(".contributor strong").first();
+  if ((await handle.count()) > 0) {
+    const longLogin = `@${"long-contributor-handle".repeat(2)}`;
+    const metrics = await handle.evaluate((element, login) => {
+      element.textContent = login;
+      const style = getComputedStyle(element);
+      return {
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+        text: element.textContent,
+        textOverflow: style.textOverflow,
+        whiteSpace: style.whiteSpace,
+      };
+    }, longLogin);
+    expect(metrics.text).toBe(longLogin);
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    expect(metrics.textOverflow).not.toBe("ellipsis");
+    expect(metrics.whiteSpace).toBe("normal");
+  }
 });
 
 test("surfaces an invalid leaderboard snapshot as an error state", async ({
@@ -534,12 +646,12 @@ test("surfaces an invalid leaderboard snapshot as an error state", async ({
   });
   await page.reload({ waitUntil: "networkidle" });
 
-  expect(interceptedRequests).toBe(1);
+  await expect.poll(() => interceptedRequests).toBe(2);
   const alert = page.getByRole("alert");
   await expect(alert).toHaveCount(1);
   await expect(alert).toContainText("did not load");
-  await expect(alert).toContainText("No empty result has been substituted");
+  await expect(alert).toContainText("Try again");
   await expect(page.locator("#leaders")).not.toContainText(
-    "The rolling window has no accepted outcomes",
+    "No accepted work in this window",
   );
 });

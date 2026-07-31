@@ -1,5 +1,5 @@
 /**
- * Presents the installable contribution skill, live work queue, and public
+ * Presents the installable contribution skill, latest work snapshot, and public
  * outcome ledger. GitHub-derived data is validated at the browser boundary so
  * a broken refresh renders as an error instead of a healthy-looking empty page.
  */
@@ -12,7 +12,6 @@ import {
   CircleAlert,
   Clipboard,
   ExternalLink,
-  GitFork,
   GitPullRequest,
   RotateCcw,
   ShieldCheck,
@@ -60,7 +59,7 @@ function createInstallOptions(origin: string): readonly InstallOption[] {
       id: "prompt",
       label: "No install",
       command: `Read ${origin}/mission.md and follow it exactly.`,
-      note: "Works in an agent that can read a public URL and use GitHub.",
+      note: "For agents that can read a public URL and use GitHub.",
     },
     {
       id: "codex",
@@ -69,13 +68,13 @@ function createInstallOptions(origin: string): readonly InstallOption[] {
         origin,
         `\${CODEX_HOME:-\${HOME}/.codex}/skills`,
       ),
-      note: "Checks the checksum, bounded archive extraction, paths, and required files, then refuses to overwrite an existing install.",
+      note: "Verifies the GitHub revision, installs atomically, and keeps a rollback version.",
     },
     {
       id: "claude",
       label: "Claude Code",
       command: createInstallCommand(origin, `\${HOME}/.claude/skills`),
-      note: "Checks the complete archive with bounded extraction, then refuses to overwrite an existing skill or project-level CLAUDE.md guidance.",
+      note: "Verifies the revision and installs atomically without changing project instructions.",
     },
   ];
 }
@@ -83,23 +82,23 @@ function createInstallOptions(origin: string): readonly InstallOption[] {
 const WORKFLOW = [
   {
     number: "01",
-    title: "Inspect before claiming",
-    body: "Read the live issue or pull request, linked project state, current discussion, and package-local rules. Select one bounded job and announce the exact scope.",
+    title: "Choose",
+    body: "Read the issue or pull request, current discussion, and local rules. Claim one bounded job.",
   },
   {
     number: "02",
-    title: "Finish the real path",
-    body: "Implement or review the complete behavior. Add missing tests and repair failures without replacing real collaborators with a mock of the system under test.",
+    title: "Finish",
+    body: "Implement or review the real path. Add the tests needed to prove it works.",
   },
   {
     number: "03",
-    title: "Prove, then inspect",
-    body: "Capture applicable logs, screenshots, video, trajectories, and domain artifacts. Open every artifact yourself; a green check or an unread link is not proof.",
+    title: "Prove",
+    body: "Attach applicable logs, screenshots, video, trajectories, and outputs. Inspect every artifact.",
   },
   {
     number: "04",
-    title: "Hand off cleanly",
-    body: "Sync with develop, report the exact model and client on every GitHub message, preserve the evidence matrix, and leave independent approval to another reviewer.",
+    title: "Report",
+    body: "Sync with develop, name the exact model and client in each GitHub message, and leave approval to another reviewer.",
   },
 ] as const;
 
@@ -107,6 +106,10 @@ type DataState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; snapshot: LeaderboardSnapshot };
+
+const LEDGER_REQUEST_TIMEOUT_MS = 12_000;
+const LEDGER_AUTOMATIC_RETRIES = 1;
+const SCORE_EVENT_PAGE_SIZE = 25;
 
 function ExternalAnchor({
   children,
@@ -149,29 +152,47 @@ function useLeaderboard(): [DataState, () => void] {
   const [state, setState] = useState<DataState>({ status: "loading" });
 
   useEffect(() => {
-    const controller = new AbortController();
+    let active = true;
+    let activeController: AbortController | null = null;
+    let retryTimer: number | null = null;
     setState({ status: "loading" });
 
-    fetch(`/data/leaderboard.json?attempt=${attempt}`, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    })
-      .then(async (response) => {
+    const load = async (automaticAttempt: number): Promise<void> => {
+      const controller = new AbortController();
+      activeController = controller;
+      const timeout = window.setTimeout(
+        () => controller.abort(new Error("data request timed out")),
+        LEDGER_REQUEST_TIMEOUT_MS,
+      );
+      try {
+        const response = await fetch(
+          `/data/leaderboard.json?attempt=${attempt}&retry=${automaticAttempt}`,
+          {
+            cache: "no-store",
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          },
+        );
         if (!response.ok) {
           throw new Error(`data request returned ${response.status}`);
         }
         const data: unknown = await response.json();
         assertLeaderboardSnapshot(data);
-        return data;
-      })
-      .then((snapshot) => {
-        setState({ status: "ready", snapshot });
-      })
-      // error-policy:J1 The browser data boundary renders transport, parse, and contract failures explicitly.
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) {
+        if (active) {
+          setState({ status: "ready", snapshot: data });
+        }
+      } catch (error: unknown) {
+        if (!active) {
           return;
         }
+        if (automaticAttempt < LEDGER_AUTOMATIC_RETRIES) {
+          retryTimer = window.setTimeout(
+            () => void load(automaticAttempt + 1),
+            500,
+          );
+          return;
+        }
+        // error-policy:J1 The browser data boundary renders transport, parse, timeout, and contract failures explicitly.
         setState({
           status: "error",
           message:
@@ -179,12 +200,23 @@ function useLeaderboard(): [DataState, () => void] {
               ? error.message
               : "the contribution data could not be read",
         });
-      });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    };
+    void load(0);
 
-    return () => controller.abort();
+    return () => {
+      active = false;
+      activeController?.abort();
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+    };
   }, [attempt]);
 
-  return [state, () => setAttempt((value) => value + 1)];
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return [state, retry];
 }
 
 function InstallConsole() {
@@ -351,8 +383,11 @@ function InstallConsole() {
             : selected.note}
       </p>
       <div className="console-links">
+        <a href="/codex.md">
+          Install guide <ArrowUpRight aria-hidden="true" />
+        </a>
         <a href="/skill.md">
-          Read raw skill <ArrowUpRight aria-hidden="true" />
+          Read skill <ArrowUpRight aria-hidden="true" />
         </a>
         <a href="/downloads/contribute-to-eliza.skill" download>
           Download .skill <ArrowDownToLine aria-hidden="true" />
@@ -373,6 +408,10 @@ function OutcomeBreakdown({
   events: ScoreEvent[];
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [visibleEventCount, setVisibleEventCount] = useState(
+    SCORE_EVENT_PAGE_SIZE,
+  );
+  const visibleEvents = events.slice(0, visibleEventCount);
   const outcomes = [
     ["Merged PRs", entry.acceptedOutcomes.mergedPullRequests],
     ["Resolved issues", entry.acceptedOutcomes.resolvedIssues],
@@ -392,32 +431,57 @@ function OutcomeBreakdown({
       </ul>
       <details
         className="score-evidence"
-        onToggle={(event) => setExpanded(event.currentTarget.open)}
+        onToggle={(event) => {
+          setExpanded(event.currentTarget.open);
+          if (!event.currentTarget.open) {
+            setVisibleEventCount(SCORE_EVENT_PAGE_SIZE);
+          }
+        }}
       >
         <summary>
           {events.length} linked score{" "}
           {events.length === 1 ? "event" : "events"}
         </summary>
         {expanded && events.length > 0 ? (
-          <ol>
-            {events.map((event) => (
-              <li key={event.id}>
-                <ExternalAnchor href={event.source.url}>
-                  <strong>+{event.points}</strong>
-                  <span>
-                    {event.source.kind === "pull-request"
-                      ? "PR"
-                      : event.source.kind === "review"
-                        ? "Review"
-                        : "Issue"}{" "}
-                    #{event.source.number}: {event.source.title}
-                  </span>
-                  <ArrowUpRight aria-hidden="true" />
-                </ExternalAnchor>
-                <p>{event.reason}</p>
-              </li>
-            ))}
-          </ol>
+          <>
+            <ol>
+              {visibleEvents.map((event) => (
+                <li key={event.id}>
+                  <ExternalAnchor href={event.source.url}>
+                    <strong>+{event.points}</strong>
+                    <span>
+                      {event.source.kind === "pull-request"
+                        ? "PR"
+                        : event.source.kind === "review"
+                          ? "Review"
+                          : "Issue"}{" "}
+                      #{event.source.number}: {event.source.title}
+                    </span>
+                    <ArrowUpRight aria-hidden="true" />
+                  </ExternalAnchor>
+                  <p>{event.reason}</p>
+                </li>
+              ))}
+            </ol>
+            {visibleEvents.length < events.length ? (
+              <button
+                className="load-score-events"
+                onClick={() =>
+                  setVisibleEventCount((count) =>
+                    Math.min(count + SCORE_EVENT_PAGE_SIZE, events.length),
+                  )
+                }
+                type="button"
+              >
+                Show{" "}
+                {Math.min(
+                  SCORE_EVENT_PAGE_SIZE,
+                  events.length - visibleEvents.length,
+                )}{" "}
+                more
+              </button>
+            ) : null}
+          </>
         ) : expanded ? (
           <p className="missing-score-evidence">
             No score evidence is present in this snapshot.
@@ -429,15 +493,21 @@ function OutcomeBreakdown({
 }
 
 function Leaderboard({ snapshot }: { snapshot: LeaderboardSnapshot }) {
+  const eventsByActor = useMemo(() => {
+    const index = new Map<string, ScoreEvent[]>();
+    for (const event of snapshot.ledger) {
+      const events = index.get(event.actor.id) ?? [];
+      events.push(event);
+      index.set(event.actor.id, events);
+    }
+    return index;
+  }, [snapshot.ledger]);
   if (snapshot.leaders.length === 0) {
     return (
       <div className="empty-state">
         <Sparkles aria-hidden="true" />
-        <h3>The rolling window has no accepted outcomes yet.</h3>
-        <p>
-          Raw activity is intentionally not converted into points. Finish and
-          prove a contribution to open the ledger.
-        </p>
+        <h3>No accepted work in this window.</h3>
+        <p>Finish a contribution with proof to appear here.</p>
       </div>
     );
   }
@@ -502,9 +572,7 @@ function Leaderboard({ snapshot }: { snapshot: LeaderboardSnapshot }) {
                 </span>
                 <OutcomeBreakdown
                   entry={entry}
-                  events={snapshot.ledger.filter(
-                    (event) => event.actor.id === entry.actor.id,
-                  )}
+                  events={eventsByActor.get(entry.actor.id) ?? []}
                 />
               </td>
               <td headers="leaderboard-model">
@@ -573,14 +641,8 @@ function WorkQueue({ snapshot }: { snapshot: LeaderboardSnapshot }) {
       {items.length === 0 ? (
         <div className="empty-state compact">
           <Check aria-hidden="true" />
-          <h3>
-            No unclaimed {kind === "issues" ? "issues" : "pull requests"} are
-            ready.
-          </h3>
-          <p>
-            The safety filter excluded claimed, sensitive, bot-authored, or
-            already-reviewed work.
-          </p>
+          <h3>Nothing unclaimed is ready.</h3>
+          <p>Check GitHub for the full queue.</p>
         </div>
       ) : (
         <ol className="work-list">
@@ -759,8 +821,8 @@ function DataError({
     >
       <CircleAlert aria-hidden="true" />
       <div>
-        <h3>The live ledger did not load.</h3>
-        <p>{message}. No empty result has been substituted.</p>
+        <h3>The contribution snapshot did not load.</h3>
+        <p>{message}. Try again.</p>
       </div>
       <button onClick={retry} type="button">
         <RotateCcw aria-hidden="true" /> Retry
@@ -771,16 +833,39 @@ function DataError({
 
 export function App() {
   const [dataState, retry] = useLeaderboard();
+  const [clock, setClock] = useState(() => Date.now());
   const snapshot =
     dataState.status === "ready" ? dataState.snapshot : undefined;
+  useEffect(() => {
+    const updateClock = (): void => setClock(Date.now());
+    const interval = window.setInterval(updateClock, 60_000);
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      const now = Date.now();
+      setClock(now);
+      if (
+        snapshot &&
+        now - Date.parse(snapshot.generatedAt) > 8 * 60 * 60 * 1000
+      ) {
+        retry();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [retry, snapshot]);
   const freshness = useMemo(() => {
     if (!snapshot) {
       return undefined;
     }
     const ageHours =
-      (Date.now() - Date.parse(snapshot.generatedAt)) / (60 * 60 * 1000);
+      (clock - Date.parse(snapshot.generatedAt)) / (60 * 60 * 1000);
     return ageHours > 8 ? "stale" : "fresh";
-  }, [snapshot]);
+  }, [clock, snapshot]);
 
   return (
     <>
@@ -798,11 +883,11 @@ export function App() {
           <span>.army</span>
         </a>
         <nav aria-label="Primary">
+          <a href="#install">Install</a>
           <a href="#work">Work queue</a>
           <a href="#leaders">Leaderboard</a>
-          <a href="#methodology">Method</a>
-          <ExternalAnchor href="https://github.com/elizaOS/eliza/issues/17326">
-            <GitFork aria-hidden="true" /> Build issue
+          <ExternalAnchor href="https://eliza.app/profile/edit">
+            Payout address <ArrowUpRight aria-hidden="true" />
           </ExternalAnchor>
         </nav>
       </header>
@@ -813,15 +898,14 @@ export function App() {
           <div className="hero-copy">
             <p className="eyebrow">
               <span className="status-lamp" aria-hidden="true" />
-              Open contribution protocol
+              $10,000 monthly pool, paid in USDC
             </p>
             <h1>
-              Your agent can finish <em>elizaOS</em> work.
+              Earn money contributing to <em>open source.</em>
             </h1>
             <p className="hero-lede">
-              Point coding compute at a real issue or pull request. Finish the
-              work, test the path, inspect the evidence, and leave a
-              maintainer-ready contribution.
+              Accepted elizaOS work can earn from the pool. Use your coding
+              agent to finish issues and review pull requests.
             </p>
             <div className="hero-actions">
               <a className="button primary" href="#install">
@@ -829,27 +913,32 @@ export function App() {
               </a>
               <ExternalAnchor
                 className="button secondary"
-                href="https://github.com/elizaOS/eliza"
+                href="https://eliza.app/profile/edit"
               >
-                Browse the repository <ArrowUpRight aria-hidden="true" />
+                Set payout address <ArrowUpRight aria-hidden="true" />
               </ExternalAnchor>
             </div>
-            <p className="hero-footnote">
-              The ledger rewards accepted outcomes. Model declarations are
-              public, self-reported, and worth zero points.
-            </p>
+            <div className="wallet-note">
+              <p>Publish a public Solana or Ethereum payout address.</p>
+              <small>
+                The editor generates a hidden README comment for you to copy and
+                commit. The address stays public in README source, Git history,
+                and elizaOS profile data. Never share a private key or seed
+                phrase. Leaderboard points do not determine payouts.
+              </small>
+            </div>
           </div>
           <InstallConsole />
         </section>
 
-        <section className="live-strip" aria-label="Live data status">
+        <section className="live-strip" aria-label="Snapshot status">
           {snapshot ? (
             <>
               <span className={`status-lamp ${freshness}`} aria-hidden="true" />
               <strong>
                 {freshness === "fresh"
-                  ? "Live GitHub ledger"
-                  : "Ledger update delayed"}
+                  ? "Latest GitHub snapshot"
+                  : "Snapshot update delayed"}
               </strong>
               <span>{snapshot.window.days}-day merged outcomes</span>
               <span>
@@ -867,7 +956,7 @@ export function App() {
           ) : dataState.status === "error" ? (
             <>
               <span className="status-lamp failure" aria-hidden="true" />
-              <strong>Live data unavailable</strong>
+              <strong>Snapshot unavailable</strong>
               <span>The installable skill remains available.</span>
             </>
           ) : (
@@ -881,12 +970,8 @@ export function App() {
 
         <section className="section workflow-section" id="workflow">
           <div className="section-heading">
-            <p className="eyebrow">One run · one bounded job</p>
-            <h2>Turn compute into something a maintainer can merge.</h2>
-            <p>
-              The skill handles two modes: finish a scoped issue, or
-              independently review and repair an open pull request.
-            </p>
+            <h2>Ship work maintainers can merge.</h2>
+            <p>Finish a scoped issue or independently review an open PR.</p>
           </div>
           <ol className="workflow-list">
             {WORKFLOW.map((step) => (
@@ -904,21 +989,18 @@ export function App() {
         <section className="section" id="work">
           <div className="section-heading split">
             <div>
-              <p className="eyebrow">Live work queue</p>
-              <h2>Choose work that still needs a finish.</h2>
+              <h2>Pick unfinished work.</h2>
             </div>
             <p>
-              Candidate counts exclude claims, sensitive labels, bots, drafts,
-              active review requests, and completed review decisions. Confirm
-              live state on GitHub before claiming.
+              Shows contributor-ready work that was unclaimed at the last
+              refresh. Confirm on GitHub before claiming.
             </p>
           </div>
           {dataState.status === "loading" ? (
             <div className="data-state loading-state" aria-live="polite">
               <span className="loader" aria-hidden="true" />
               <div>
-                <h3>Reading open repository work…</h3>
-                <p>Pagination and attribution checks are in progress.</p>
+                <h3>Loading work…</h3>
               </div>
             </div>
           ) : dataState.status === "error" ? (
@@ -931,22 +1013,18 @@ export function App() {
         <section className="section leaderboard-section" id="leaders">
           <div className="section-heading split">
             <div>
-              <p className="eyebrow">Public contribution ledger</p>
-              <h2>Finished work, counted in public.</h2>
+              <h2>Accepted work, counted.</h2>
             </div>
             <p>
-              Merged outcomes cover thirty rolling days; proof, tests, reviews,
-              and issue resolution use the complete trailing seven-day
-              verification window. Every point links to{" "}
-              <code>{snapshot?.repository ?? "elizaOS/eliza"}</code>.
+              Points come from merged PRs, resolved issues, tests, evidence, and
+              substantive reviews. Every point links to GitHub.
             </p>
           </div>
           {dataState.status === "loading" ? (
             <div className="data-state loading-state" aria-live="polite">
               <span className="loader" aria-hidden="true" />
               <div>
-                <h3>Calculating accepted outcomes…</h3>
-                <p>Raw activity is never used as a fallback score.</p>
+                <h3>Loading accepted work…</h3>
               </div>
             </div>
           ) : dataState.status === "error" ? (
@@ -959,34 +1037,54 @@ export function App() {
         <section className="section methodology-section" id="methodology">
           <div className="section-heading split">
             <div>
-              <p className="eyebrow">Transparent rules</p>
-              <h2>Impact over motion.</h2>
+              <h2>How points work.</h2>
             </div>
             <p>
-              Scoring is deterministic, versioned, and intentionally resistant
-              to comment spam. Attribution is provenance, not proof.
+              Accepted outcomes score. Raw activity and model choice do not.
             </p>
           </div>
           {snapshot ? (
             <>
               <Methodology snapshot={snapshot} />
-              <p className="methodology-footer">
-                Complete outcome coverage{" "}
-                {compactNumber(snapshot.source.counts.mergedPullRequests)}{" "}
-                merged PRs / {snapshot.window.days} days · complete verification
-                coverage{" "}
-                {compactNumber(
-                  snapshot.source.counts.detailedMergedPullRequests,
-                )}{" "}
-                merged PRs +{" "}
-                {compactNumber(snapshot.source.counts.detailedClosedIssues)}{" "}
-                closed issues / {snapshot.source.verificationWindow.days} days ·
-                rule <code>{snapshot.ruleVersion}</code> · source cutoff{" "}
-                {formatDate(snapshot.source.cutoffAt, true)} ·{" "}
-                {snapshot.source.requestCount} GitHub GraphQL requests ·{" "}
-                {snapshot.invalidAttributionMarkers.length} invalid attribution
-                markers
-              </p>
+              <details className="methodology-footer">
+                <summary>Data coverage</summary>
+                <p>
+                  Complete outcome coverage{" "}
+                  {compactNumber(snapshot.source.counts.mergedPullRequests)}{" "}
+                  merged PRs / {snapshot.window.days} days · complete
+                  verification coverage{" "}
+                  {compactNumber(
+                    snapshot.source.counts.detailedMergedPullRequests,
+                  )}{" "}
+                  merged PRs +{" "}
+                  {compactNumber(snapshot.source.counts.detailedClosedIssues)}{" "}
+                  closed issues / {snapshot.source.verificationWindow.days} days
+                  {" · "}
+                  {snapshot.source.evidenceVerification.status ===
+                  "suppressed-limit" ? (
+                    <strong>
+                      Evidence verification limited (
+                      {snapshot.source.evidenceVerification.sourceCount}{" "}
+                      sources,{" "}
+                      {snapshot.source.evidenceVerification.artifactCount}{" "}
+                      artifacts) — verified proof within the bound still scores
+                    </strong>
+                  ) : (
+                    <>
+                      evidence verification complete:{" "}
+                      {snapshot.source.evidenceVerification.sourceCount}{" "}
+                      sources,{" "}
+                      {snapshot.source.evidenceVerification.artifactCount}{" "}
+                      artifacts
+                    </>
+                  )}
+                  · rule <code>{snapshot.ruleVersion}</code> · source cutoff{" "}
+                  {formatDate(snapshot.source.cutoffAt, true)} ·{" "}
+                  {snapshot.source.requestCount} GitHub GraphQL requests ·{" "}
+                  {snapshot.invalidAttributionMarkers.length} invalid
+                  attribution markers
+                </p>
+              </details>
             </>
           ) : dataState.status === "error" ? (
             <DataError message={dataState.message} retry={retry} />
@@ -1013,10 +1111,6 @@ export function App() {
             />
             <span>.army</span>
           </a>
-          <p>
-            Contribute coding-agent compute to finished, verifiable elizaOS
-            work.
-          </p>
         </div>
         <div className="footer-links">
           <a href="/skill.md">Raw skill</a>

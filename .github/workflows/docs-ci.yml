@@ -78,10 +78,8 @@ jobs:
 
       - name: Check and Fix Dead Links with Claude
         id: claude-fix-links
-        # Don't fail docs CI when the Anthropic API is unavailable (low
-        # credit balance, rate limit, transient outage). The fix pass is
-        # best-effort; downstream "Check for Changes" steps already handle
-        # the no-op path.
+        # Preserve control flow long enough to diagnose partial output, then
+        # fail closed in the immediately following outcome gate.
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
         with:
@@ -128,13 +126,15 @@ jobs:
             --disable-slash-commands
             --no-session-persistence
 
-      - name: Reject partial output from a failed link model run
+      - name: Fail closed after an unsuccessful link model run
         if: steps.claude-fix-links.outcome != 'success'
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "The failed model run left partial workspace output." >&2
-            exit 1
+          else
+            echo "The model run failed without producing workspace output." >&2
           fi
+          exit 1
 
       - name: Validate bounded link-fix output
         run: node scripts/docs-ci-boundary.mjs validate "$RUNNER_TEMP/docs-ci-boundary.json" "${{ steps.link-base.outputs.sha }}"
@@ -214,10 +214,8 @@ jobs:
 
       - name: Check and Fix Quality Issues with Claude
         id: claude-fix-quality
-        # Don't fail docs CI when the Anthropic API is unavailable (low
-        # credit balance, rate limit, transient outage). The fix pass is
-        # best-effort; downstream "Check for Changes" steps already handle
-        # the no-op path.
+        # Preserve control flow long enough to diagnose partial output, then
+        # fail closed in the immediately following outcome gate.
         continue-on-error: true
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
         with:
@@ -265,13 +263,15 @@ jobs:
             --disable-slash-commands
             --no-session-persistence
 
-      - name: Reject partial output from a failed quality model run
+      - name: Fail closed after an unsuccessful quality model run
         if: steps.claude-fix-quality.outcome != 'success'
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "The failed model run left partial workspace output." >&2
-            exit 1
+          else
+            echo "The model run failed without producing workspace output." >&2
           fi
+          exit 1
 
       - name: Validate bounded quality-fix output
         run: node scripts/docs-ci-boundary.mjs validate "$RUNNER_TEMP/docs-ci-boundary.json" "${{ steps.quality-base.outputs.sha }}"
@@ -310,7 +310,11 @@ jobs:
   # ===========================================
   create-pr:
     needs: [check-links, check-quality]
-    if: always() && (needs.check-links.result == 'success' || needs.check-quality.result == 'success')
+    if: |
+      always() &&
+      (needs.check-links.result == 'success' || needs.check-links.result == 'skipped') &&
+      (needs.check-quality.result == 'success' || needs.check-quality.result == 'skipped') &&
+      (needs.check-links.result == 'success' || needs.check-quality.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
