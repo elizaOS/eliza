@@ -60,7 +60,6 @@ function lacksRecoveryProtectedExecutionLease(): SQL {
   return sql`NOT (${hasRecoveryProtectedExecutionLease()})`;
 }
 
-
 /** In-transaction dependent-row settlement — the contract incrementAttempt's
  * onFailedInTx already speaks; recovery is its second caller. */
 export type JobFailureWriteback = (tx: DbTransaction, failedJob: Job) => Promise<void>;

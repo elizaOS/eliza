@@ -6,7 +6,6 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { eq, type SQL } from "drizzle-orm";
-import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import {
@@ -16,6 +15,7 @@ import {
   userDatabaseStatusEnum,
 } from "../../schemas/apps";
 import { generations } from "../../schemas/generations";
+import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { type Job, jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
