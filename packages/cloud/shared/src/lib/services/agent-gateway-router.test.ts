@@ -178,8 +178,8 @@ function routeArgs(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// Shared across both describes: reset at file level so isolation never depends
-// on describe declaration order (the discord suite leaves guild fixtures set).
+// These collaborators span phone and Discord cases, so file-level reset keeps
+// either suite valid when test ordering or filtering changes.
 beforeEach(() => {
   findByDiscordIdWithOrganization.mockReset();
   findByManagedDiscordGuildId.mockReset();
@@ -664,7 +664,6 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
   });
 
   test("an authenticated user with ZERO sandboxes continues onboarding under their identity", async () => {
-    // Web login created the account; provisioning never happened.
     findByDiscordIdWithOrganization.mockResolvedValue({
       id: "user-1",
       organization_id: "org-1",
@@ -690,8 +689,8 @@ describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {
   });
 
   test("GUILD context never onboards — the login URL must not land in a public channel", async () => {
-    // Guild-linked sandbox owned by the sender, gateway-bound, but no user
-    // row: the resolver yields unknown_owner in GUILD context.
+    // This fixture reaches unknown_owner through the guild resolver, proving
+    // the DM guard is enforced on the shared reason rather than assumed.
     findByManagedDiscordGuildId.mockResolvedValue([
       { id: "sb-1", agent_config: {}, organization_id: "org-1" },
     ]);

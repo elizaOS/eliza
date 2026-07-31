@@ -641,14 +641,13 @@ export class AgentGatewayRouterService {
     });
 
     if (!resolved.target) {
-      // DM-GATED on purpose: `unknown_owner` also fires in guild context, and
-      // onboarding there would post the login URL — whose session id embeds
-      // the guessable `platform:discord:<senderId>` — into a public channel.
+      // Unknown-owner resolution also occurs for guild traffic. Keeping the
+      // onboarding credential in a DM prevents disclosure in a public channel.
       const isDm = !args.guildId?.trim();
 
       if (isDm && resolved.reason === "unknown_owner") {
-        // First contact: same onboarding the phone path runs, so a new user
-        // who DMs the bot gets the pitch + login link instead of silence.
+        // All messaging entry points share one onboarding transcript and
+        // provisioning path so channel choice cannot change account setup.
         const onboarding = await this.runOnboardingChat({
           message: args.content,
           platform: "discord",
@@ -674,9 +673,8 @@ export class AgentGatewayRouterService {
         resolved.organizationId &&
         !resolved.agentId
       ) {
-        // Authenticated user with ZERO sandboxes: the web login created the
-        // account but provisioning never happened (dropped off mid-funnel).
-        // Continue onboarding under their identity, mirroring the phone path.
+        // A known owner without any sandbox has no runtime target, so the
+        // authenticated onboarding path must finish provisioning instead.
         const onboarding = await this.runOnboardingChat({
           message: args.content,
           platform: "discord",
@@ -698,9 +696,8 @@ export class AgentGatewayRouterService {
         };
       }
 
-      // Everything else keeps today's behavior — including stopped-agent
-      // owners (agentId present), where parity with the phone path is
-      // deliberate silence, not a status reply.
+      // A stopped agent remains a resolved owner resource, not an onboarding
+      // candidate; silently provisioning another agent would duplicate it.
       return {
         handled: false,
         reason: resolved.reason,
