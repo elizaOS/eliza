@@ -20,11 +20,11 @@ const { parseDocument } = require("yaml");
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const WORKFLOW_PATHS = Object.freeze({
+  ciBunVersion: ".github/ci-bun-version.json",
   cloudSetup: ".github/actions/cloud-setup-test-env/action.yml",
   cloudTests: ".github/workflows/cloud-tests.yml",
   develop: ".github/workflows/develop-pr.yml",
   gitleaks: ".github/workflows/gitleaks.yml",
-  packageJson: "package.json",
   qualityFork: ".github/workflows/quality-fork.yml",
   setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
   tests: ".github/workflows/test.yml",
@@ -111,6 +111,7 @@ function normalizedNeeds(job) {
 }
 
 export function validateWorkflowSources(sources) {
+  const ciBunVersion = JSON.parse(sources.ciBunVersion);
   const cloudSetup = parseYamlMapping(
     WORKFLOW_PATHS.cloudSetup,
     sources.cloudSetup,
@@ -130,7 +131,6 @@ export function validateWorkflowSources(sources) {
     sources.setupWorkspace,
   );
   const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
-  const packageJson = JSON.parse(sources.packageJson);
 
   const cloudE2e = requireJob(
     cloudTests,
@@ -219,14 +219,13 @@ export function validateWorkflowSources(sources) {
   );
 
   invariant(
-    typeof packageJson.packageManager === "string" &&
-      packageJson.packageManager.startsWith("bun@"),
-    `${WORKFLOW_PATHS.packageJson}: packageManager must pin Bun`,
+    typeof ciBunVersion.version === "string" &&
+      /^\d+\.\d+\.\d+$/.test(ciBunVersion.version),
+    `${WORKFLOW_PATHS.ciBunVersion}: version must be a concrete Bun release`,
   );
-  const repositoryBunVersion = packageJson.packageManager.slice("bun@".length);
   invariant(
-    qualityFork.env?.BUN_VERSION === repositoryBunVersion,
-    `${WORKFLOW_PATHS.qualityFork}: fork validation must use the repository Bun version`,
+    qualityFork.env?.BUN_VERSION === ciBunVersion.version,
+    `${WORKFLOW_PATHS.qualityFork}: fork validation must use the canonical CI Bun version`,
   );
   invariant(
     qualityFork.on &&
@@ -337,6 +336,10 @@ export function validateWorkflowSources(sources) {
 
 export function run(repoRoot = REPO_ROOT) {
   return validateWorkflowSources({
+    ciBunVersion: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.ciBunVersion),
+      "utf8",
+    ),
     cloudSetup: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.cloudSetup),
       "utf8",
@@ -348,10 +351,6 @@ export function run(repoRoot = REPO_ROOT) {
     develop: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.develop), "utf8"),
     gitleaks: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.gitleaks),
-      "utf8",
-    ),
-    packageJson: readFileSync(
-      path.join(repoRoot, WORKFLOW_PATHS.packageJson),
       "utf8",
     ),
     qualityFork: readFileSync(
