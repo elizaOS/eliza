@@ -195,10 +195,11 @@ jobs:
         inputs.deploy_homepage
       }}
     permissions:
-      contents: write
+      contents: read
     uses: ./.github/workflows/deploy-homepage.yml
     with:
       ref: v${{ needs.publish-npm.outputs.version }}
+      source_sha: ${{ needs.publish-npm.outputs.source_sha }}
     secrets: inherit
 
   summary:

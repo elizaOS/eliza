@@ -1,16 +1,9 @@
-# Deploy packages/homepage to the eliza-app-home Cloudflare Pages project.
+# Builds, validates, and deploys packages/homepage from one immutable source commit.
 #
-# What this does:
-#   1. Builds packages/homepage (Vite static site) — the `prebuild` script in
-#      packages/homepage/package.json regenerates
-#      src/generated/release-data.ts from the GitHub Releases API before vite
-#      runs, so download buttons always reflect the latest published assets.
-#   2. Runs the browser route and visual suites against that static build.
-#   3. Publishes dist/ to Cloudflare Pages as the production deployment serving
-#      eliza.app and www.eliza.app.
-#
-# Required secrets on elizaOS/eliza:
-#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# Automatic develop pushes deploy only while the event SHA remains in protected
+# develop history. Release calls additionally require a published stable SemVer
+# tag that resolves to the caller's explicit source SHA. Both authorities are
+# revalidated after the artifact is downloaded and before production access.
 
 name: Deploy Homepage
 
@@ -29,29 +22,178 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: "Git ref to build the homepage from (defaults to the calling workflow ref)"
-        required: false
+        description: "Published stable SemVer tag to deploy, for example v2.0.0"
+        required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to build the homepage from"
-        required: false
+      source_sha:
+        description: "Exact release source commit verified by the caller"
+        required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-deploy:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 20
+  resolve-source:
+    name: Resolve immutable source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      authority_ref: ${{ steps.source.outputs.authority_ref }}
+      authority_ref_oid: ${{ steps.source.outputs.authority_ref_oid }}
+      source_ref: ${{ steps.source.outputs.source_ref }}
+      source_ref_oid: ${{ steps.source.outputs.source_ref_oid }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
     steps:
-      - name: Checkout source repo
+      - name: Checkout release policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
           submodules: false
+
+      - name: Resolve and authorize immutable source
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUESTED_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$*"
+            exit 1
+          }
+
+          resolve_remote_oid() {
+            local remote="$1"
+            local ref="$2"
+            local result
+            result="$(git ls-remote --exit-code --refs "$remote" "$ref")"
+            [ "$(printf '%s\n' "$result" | wc -l)" -eq 1 ] ||
+              fail "Expected exactly one remote object for $ref."
+            printf '%s\n' "$result" | awk '{print $1}'
+          }
+
+          verify_develop_ancestry() {
+            local source_sha="$1"
+            local develop_oid="$2"
+            local comparison="$RUNNER_TEMP/homepage-compare-${source_sha}.json"
+            curl --fail --silent --show-error --location --retry 3 \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GITHUB_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --output "$comparison" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/compare/${source_sha}...${develop_oid}"
+            COMPARISON="$comparison" SOURCE_SHA="$source_sha" node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const comparison = JSON.parse(readFileSync(process.env.COMPARISON, "utf8"));
+              if (
+                !["ahead", "identical"].includes(comparison.status) ||
+                comparison.merge_base_commit?.sha !== process.env.SOURCE_SHA
+              ) {
+                throw new Error("Source commit is not contained in protected develop history.");
+              }
+            '
+          }
+
+          [ "$GITHUB_REPOSITORY" = "elizaOS/eliza" ] ||
+            fail "Production homepage deploys are restricted to elizaOS/eliza."
+          [ "$EVENT_REF" = "refs/heads/develop" ] ||
+            fail "Production homepage authority must originate from refs/heads/develop."
+          [[ "$EVENT_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+            fail "The event did not provide an immutable commit SHA."
+
+          remote="https://github.com/${GITHUB_REPOSITORY}.git"
+          authority_ref="refs/heads/develop"
+          authority_ref_oid="$(resolve_remote_oid "$remote" "$authority_ref")"
+
+          case "$EVENT_NAME" in
+            push)
+              [ -z "$REQUESTED_REF" ] ||
+                fail "Push deployments may not override their source ref."
+              [ -z "$EXPECTED_SOURCE_SHA" ] ||
+                fail "Push deployments may not override their source SHA."
+              source_ref="$authority_ref"
+              source_ref_oid="$EVENT_SHA"
+              source_sha="$EVENT_SHA"
+              ;;
+            workflow_call)
+              [[ "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+                fail "Release deployments require the caller's exact source SHA."
+              [[ "$REQUESTED_REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
+                fail "Release deployments require a stable immutable SemVer tag."
+              source_ref="refs/tags/$REQUESTED_REF"
+              source_ref_oid="$(resolve_remote_oid "$remote" "$source_ref")"
+              git fetch --no-tags "$remote" "$source_ref"
+              source_sha="$(git rev-parse 'FETCH_HEAD^{commit}')"
+              [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] ||
+                fail "The release tag did not resolve to a commit."
+              [ "$source_sha" = "$EXPECTED_SOURCE_SHA" ] ||
+                fail "The release tag does not match the caller's verified source SHA."
+
+              release_json="$RUNNER_TEMP/homepage-release.json"
+              curl --fail --silent --show-error --location --retry 3 \
+                --header "Accept: application/vnd.github+json" \
+                --header "Authorization: Bearer $GITHUB_TOKEN" \
+                --header "X-GitHub-Api-Version: 2022-11-28" \
+                --output "$release_json" \
+                "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$REQUESTED_REF"
+              RELEASE_JSON="$release_json" REQUESTED_REF="$REQUESTED_REF" node --input-type=module -e '
+                import { readFileSync } from "node:fs";
+                const release = JSON.parse(readFileSync(process.env.RELEASE_JSON, "utf8"));
+                if (
+                  release.tag_name !== process.env.REQUESTED_REF ||
+                  release.draft !== false ||
+                  release.prerelease !== false
+                ) {
+                  throw new Error("Release tag is not a published stable release.");
+                }
+              '
+              ;;
+            *)
+              fail "Unsupported production deployment event: $EVENT_NAME"
+              ;;
+          esac
+
+          verify_develop_ancestry "$source_sha" "$authority_ref_oid"
+
+          {
+            echo "authority_ref=$authority_ref"
+            echo "authority_ref_oid=$authority_ref_oid"
+            echo "source_ref=$source_ref"
+            echo "source_ref_oid=$source_ref_oid"
+            echo "source_sha=$source_sha"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and validate immutable artifact
+    needs: resolve-source
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.resolve-source.outputs.source_sha }}
+          submodules: false
+
+      - name: Verify exact source checkout
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.resolve-source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$SOURCE_SHA" ] ||
+            { echo "::error::Checkout does not match the authorized source SHA."; exit 1; }
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -68,112 +210,222 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node ../app-core/scripts/write-homepage-release-data.mjs
 
-      - name: Check homepage release data
-        id: release_data_check
+      - name: Validate homepage release data
         working-directory: packages/homepage
-        shell: bash
-        run: |
-          if bun run check:release-data; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "::error::Release-triggered homepage deploys require published release data."
-            exit 1
-          fi
-
-          echo "::warning::No complete published release data is available; skipping homepage deploy for this develop push."
-          echo "available=false" >> "$GITHUB_OUTPUT"
-
-      # Vite inlines these identifiers into the public bundle. Verifying them
-      # at the deploy boundary prevents publishing inactive channel controls.
-      - name: Verify channel build config
-        if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
-        env:
-          ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
-          VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
-          VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
-          VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
-        run: node scripts/verify-channel-build-config.mjs
+        run: bun run check:release-data
 
       - name: Build homepage
-        if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
-        run: bun run build
         env:
           ELIZA_REQUIRE_CHANNEL_CONFIG: "1"
+          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
           VITE_TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
-          VITE_DISCORD_CLIENT_ID: ${{ vars.VITE_DISCORD_CLIENT_ID }}
           VITE_WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: bun run build
 
       - name: Install homepage browser
-        if: steps.release_data_check.outputs.available == 'true'
         working-directory: packages/homepage
         run: ./node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Generate missing snapshot baselines
-        if: steps.release_data_check.outputs.available == 'true'
-        id: gen-baselines
-        working-directory: packages/homepage
-        run: |
-          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          # 6 routes × 2 viewports × 1 browser project = 12 expected snapshots
-          EXPECTED=12
-          ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
-          if [ "$ACTUAL" -lt "$EXPECTED" ]; then
-            echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
-            rm -f "$SNAP_DIR"/*.png 2>/dev/null || true
-            bun run test:e2e -- --update-snapshots || true
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit new snapshot baselines
-        if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'true'
-        continue-on-error: true
-        run: |
-          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
-          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add $SNAP_DIR
-            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
-            echo "Pushed new snapshot baselines."
-          fi
-
-      - name: Test homepage downloads
-        if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'false'
+      - name: Run homepage E2E and snapshot validation
         working-directory: packages/homepage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run test:e2e
 
-      - name: Verify Cloudflare credentials
-        if: steps.release_data_check.outputs.available == 'true'
+      - name: Create SHA-bound deployment artifact
+        id: artifact
+        shell: bash
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AUTHORITY_REF: ${{ needs.resolve-source.outputs.authority_ref }}
+          AUTHORITY_REF_OID: ${{ needs.resolve-source.outputs.authority_ref_oid }}
+          SOURCE_REF: ${{ needs.resolve-source.outputs.source_ref }}
+          SOURCE_REF_OID: ${{ needs.resolve-source.outputs.source_ref_oid }}
+          SOURCE_SHA: ${{ needs.resolve-source.outputs.source_sha }}
         run: |
-          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN is required"; exit 1; }
-          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
+          set -euo pipefail
+          bundle="packages/homepage/release-bundle"
+          rm -rf "$bundle"
+          mkdir -p "$bundle"
 
-      - name: Deploy production homepage to Cloudflare Pages
-        if: steps.release_data_check.outputs.available == 'true'
-        working-directory: packages/homepage
+          SOURCE_SHA="$SOURCE_SHA" \
+          SOURCE_REF="$SOURCE_REF" \
+          SOURCE_REF_OID="$SOURCE_REF_OID" \
+          AUTHORITY_REF="$AUTHORITY_REF" \
+          AUTHORITY_REF_OID="$AUTHORITY_REF_OID" \
+          GITHUB_RUN_ID="$GITHUB_RUN_ID" \
+          node --input-type=module -e '
+            import { writeFileSync } from "node:fs";
+            const provenance = {
+              source_sha: process.env.SOURCE_SHA,
+              source_ref: process.env.SOURCE_REF,
+              source_ref_oid: process.env.SOURCE_REF_OID,
+              authority_ref: process.env.AUTHORITY_REF,
+              authority_ref_oid: process.env.AUTHORITY_REF_OID,
+              workflow_run_id: process.env.GITHUB_RUN_ID,
+            };
+            writeFileSync(
+              "packages/homepage/dist/.deployment-source.json",
+              JSON.stringify(provenance, null, 2) + "\n",
+            );
+          '
+
+          artifact_digest="$(
+            cd packages/homepage/dist
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 sha256sum |
+              sha256sum |
+              awk '{print $1}'
+          )"
+          cp -R packages/homepage/dist "$bundle/dist"
+          printf '%s\n' "$artifact_digest" > "$bundle/homepage-artifact.sha256"
+          echo "name=homepage-$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Upload exact homepage artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.artifact.outputs.name }}
+          path: packages/homepage/release-bundle
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: false
+
+  deploy:
+    name: Deploy verified artifact
+    needs:
+      - resolve-source
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: homepage-production
+    steps:
+      - name: Download exact homepage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: homepage-${{ needs.resolve-source.outputs.source_sha }}
+          path: release-bundle
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+
+      - name: Verify artifact identity and reject ref movement
+        shell: bash
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AUTHORITY_REF: ${{ needs.resolve-source.outputs.authority_ref }}
+          AUTHORITY_REF_OID: ${{ needs.resolve-source.outputs.authority_ref_oid }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_REF: ${{ needs.resolve-source.outputs.source_ref }}
+          SOURCE_REF_OID: ${{ needs.resolve-source.outputs.source_ref_oid }}
+          SOURCE_SHA: ${{ needs.resolve-source.outputs.source_sha }}
         run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$*"
+            exit 1
+          }
+
+          resolve_remote_oid() {
+            local remote="$1"
+            local ref="$2"
+            local result
+            result="$(git ls-remote --exit-code --refs "$remote" "$ref")"
+            [ "$(printf '%s\n' "$result" | wc -l)" -eq 1 ] ||
+              fail "Expected exactly one remote object for $ref."
+            printf '%s\n' "$result" | awk '{print $1}'
+          }
+
+          verify_develop_ancestry() {
+            local source_sha="$1"
+            local develop_oid="$2"
+            local comparison="$RUNNER_TEMP/homepage-compare-${source_sha}.json"
+            curl --fail --silent --show-error --location --retry 3 \
+              --header "Accept: application/vnd.github+json" \
+              --header "Authorization: Bearer $GITHUB_TOKEN" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --output "$comparison" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/compare/${source_sha}...${develop_oid}"
+            COMPARISON="$comparison" SOURCE_SHA="$source_sha" node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              const comparison = JSON.parse(readFileSync(process.env.COMPARISON, "utf8"));
+              if (
+                !["ahead", "identical"].includes(comparison.status) ||
+                comparison.merge_base_commit?.sha !== process.env.SOURCE_SHA
+              ) {
+                throw new Error("Source commit is not contained in protected develop history.");
+              }
+            '
+          }
+
+          expected_digest="$(cat release-bundle/homepage-artifact.sha256)"
+          actual_digest="$(
+            cd release-bundle/dist
+            find . -type f -print0 |
+              LC_ALL=C sort -z |
+              xargs -0 sha256sum |
+              sha256sum |
+              awk '{print $1}'
+          )"
+          [ "$actual_digest" = "$expected_digest" ] ||
+            fail "Downloaded homepage artifact digest does not match the build output."
+
+          PROVENANCE="release-bundle/dist/.deployment-source.json" \
+          SOURCE_SHA="$SOURCE_SHA" \
+          SOURCE_REF="$SOURCE_REF" \
+          SOURCE_REF_OID="$SOURCE_REF_OID" \
+          AUTHORITY_REF="$AUTHORITY_REF" \
+          AUTHORITY_REF_OID="$AUTHORITY_REF_OID" \
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const provenance = JSON.parse(readFileSync(process.env.PROVENANCE, "utf8"));
+            const expected = {
+              source_sha: process.env.SOURCE_SHA,
+              source_ref: process.env.SOURCE_REF,
+              source_ref_oid: process.env.SOURCE_REF_OID,
+              authority_ref: process.env.AUTHORITY_REF,
+              authority_ref_oid: process.env.AUTHORITY_REF_OID,
+            };
+            for (const [key, value] of Object.entries(expected)) {
+              if (provenance[key] !== value) {
+                throw new Error("Artifact provenance mismatch for " + key + ".");
+              }
+            }
+          '
+
+          remote="https://github.com/${GITHUB_REPOSITORY}.git"
+          current_authority_oid="$(resolve_remote_oid "$remote" "$AUTHORITY_REF")"
+          verify_develop_ancestry "$SOURCE_SHA" "$current_authority_oid"
+          if [ "$SOURCE_REF" != "$AUTHORITY_REF" ]; then
+            [ "$(resolve_remote_oid "$remote" "$SOURCE_REF")" = "$SOURCE_REF_OID" ] ||
+              fail "Deployment release tag moved after the build."
+          fi
+
+      - name: Verify Cloudflare credentials
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$CLOUDFLARE_API_TOKEN" ] ||
+            { echo "::error::CLOUDFLARE_API_TOKEN is required."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] ||
+            { echo "::error::CLOUDFLARE_ACCOUNT_ID is required."; exit 1; }
+
+      - name: Deploy verified production homepage
+        working-directory: release-bundle
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SOURCE_SHA: ${{ needs.resolve-source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
           bunx wrangler@4.116.0 pages deploy dist \
             --project-name eliza-app-home \
             --branch main \
-            --commit-hash "$GITHUB_SHA" \
-            --commit-dirty=true
+            --commit-hash "$SOURCE_SHA" \
+            --commit-dirty=false
