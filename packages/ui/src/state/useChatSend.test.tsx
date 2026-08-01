@@ -949,6 +949,8 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
       activeConversationId: "conv-1",
       conversations: [conversation("conv-1", "room-1")],
     });
+    const setMessagesSpy = vi.fn(deps.setConversationMessages);
+    deps.setConversationMessages = setMessagesSpy;
     const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
     const { result } = renderHook(() => useChatSend(deps));
 
@@ -961,6 +963,7 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
       await Promise.resolve();
       await Promise.resolve();
     });
+    setMessagesSpy.mockClear();
 
     // One SSE burst: a token, a status phase, and a tool call all arrive in the
     // same tick — before the queued microtask runs.
@@ -982,6 +985,7 @@ describe("useChatSend streaming-burst coalescing (text + status + tool)", () => 
       await Promise.resolve();
     });
 
+    expect(setMessagesSpy).toHaveBeenCalledTimes(1);
     const assistantAfter = deps.conversationMessagesRef.current.find(
       (m) => m.role === "assistant",
     );

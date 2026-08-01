@@ -378,6 +378,28 @@ describe("streaming → useChatSend paint coalescing", () => {
 
   it("bounds paints across separate fast token events and flushes terminal text immediately", async () => {
     vi.useFakeTimers();
+    let nextFrameId = 1;
+    const frameCallbacks = new Map<number, FrameRequestCallback>();
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        const id = nextFrameId;
+        nextFrameId += 1;
+        frameCallbacks.set(id, callback);
+        return id;
+      }),
+    );
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn((id: number) => {
+        frameCallbacks.delete(id);
+      }),
+    );
+    const paintFrame = () => {
+      const callbacks = [...frameCallbacks.values()];
+      frameCallbacks.clear();
+      for (const callback of callbacks) callback(performance.now());
+    };
     let onToken!: (token: string, accumulatedText?: string) => void;
     let resolveStream!: (data: { text: string; completed: boolean }) => void;
     apiMocks.client.sendConversationMessageStream.mockImplementation(
@@ -432,6 +454,13 @@ describe("streaming → useChatSend paint coalescing", () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(STREAMING_RENDER_INTERVAL_MS);
+    });
+    // The cadence timer only makes the latest snapshot eligible; React state
+    // stays untouched until the browser's next paint boundary.
+    expect(setConversationMessages).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      paintFrame();
     });
     expect(setConversationMessages).toHaveBeenCalledTimes(2);
     expect(assistantText()).toBe("ABCDEFG");

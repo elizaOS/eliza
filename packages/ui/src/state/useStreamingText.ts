@@ -1,21 +1,22 @@
 /**
  * Streaming-text primitive for the chat reducer.
  *
- * The chat pipeline only ever does eight things to an in-flight assistant
+ * The chat pipeline only ever does nine things to an in-flight assistant
  * turn while a stream is alive:
  *
  *   - append a token (delta)        → mode: "append"
  *   - replace text from a snapshot  → mode: "replace"
  *   - apply final reconciled text   → mode: "complete"
  *   - bind a durable domain id      → mode: "rekey"
+ *   - merge a buffered paint        → mode: "buffered"
  *   - merge an inline tool-call step → mode: "tool"
  *   - stamp a server failureKind    → mode: "fail"
  *   - mark the turn as interrupted  → mode: "interrupt"
  *   - drop an empty assistant turn  → mode: "drop"
  *
- * This primitive is the single map pass for all of them, so `useChatSend.ts` and
- * `useChatCallbacks.ts` share one equality check instead of each hand-rolling
- * `setMessages(prev => prev.map(...))`. The map pass:
+ * This primitive is the single targeted update for all of them, so
+ * `useChatSend.ts` and `useChatCallbacks.ts` share one equality check instead
+ * of each hand-rolling transcript-wide map passes. The update:
  *
  *   - matches the target message by id,
  *   - returns the previous array unchanged when the modification produces
@@ -81,6 +82,14 @@ export type StreamingTextModification =
       mode: "rekey";
       /** Durable server id replacing an optimistic client id. */
       persistedMessageId: string;
+    }
+  | {
+      messageId: string;
+      mode: "buffered";
+      /** Latest cumulative snapshot, or `null` when only tools are pending. */
+      fullText: string | null;
+      /** Ordered tool lifecycle steps received since the previous paint. */
+      toolEvents: readonly ChatToolCallEvent[];
     }
   | {
       messageId: string;
@@ -164,6 +173,22 @@ function computeNextMessage(
       if (message.id === mod.persistedMessageId) return null;
       return { ...message, id: mod.persistedMessageId };
     }
+    case "buffered": {
+      const textChanged =
+        mod.fullText !== null && mod.fullText !== message.text;
+      const currentEvents = message.toolEvents ?? [];
+      let nextEvents = currentEvents;
+      for (const event of mod.toolEvents) {
+        nextEvents = mergeChatToolEvent(nextEvents, event);
+      }
+      const toolsChanged = nextEvents !== currentEvents;
+      if (!textChanged && !toolsChanged) return null;
+      return {
+        ...message,
+        ...(textChanged ? { text: mod.fullText ?? message.text } : {}),
+        ...(toolsChanged ? { toolEvents: nextEvents } : {}),
+      };
+    }
     case "tool": {
       const nextEvents = mergeChatToolEvent(
         message.toolEvents ?? [],
@@ -200,18 +225,17 @@ export function applyStreamingTextModification(
 ): void {
   setMessages((prev: ConversationMessage[]) => {
     if (mod.mode === "drop") {
-      const filtered = prev.filter((message) => message.id !== mod.messageId);
-      return filtered.length === prev.length ? prev : filtered;
+      const index = prev.findIndex((message) => message.id === mod.messageId);
+      if (index === -1) return prev;
+      return [...prev.slice(0, index), ...prev.slice(index + 1)];
     }
 
-    let changed = false;
-    let next = prev.map((message) => {
-      if (message.id !== mod.messageId) return message;
-      const patched = computeNextMessage(message, mod);
-      if (patched === null) return message;
-      changed = true;
-      return patched;
-    });
+    const index = prev.findIndex((message) => message.id === mod.messageId);
+    if (index === -1) return prev;
+    const patched = computeNextMessage(prev[index], mod);
+    if (patched === null) return prev;
+    let next = prev.slice();
+    next[index] = patched;
     // Id-swap dedupe: when terminal reconciliation rebinds a temp bubble to the
     // persisted server id, a proactive-message WS echo carrying that same
     // persisted id may have ALREADY appended its own bubble (action-callback
@@ -231,9 +255,8 @@ export function applyStreamingTextModification(
       });
       if (deduped.length !== next.length) {
         next = deduped;
-        changed = true;
       }
     }
-    return changed ? next : prev;
+    return next;
   });
 }

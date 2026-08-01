@@ -662,9 +662,9 @@ export function useChatSend(deps: UseChatSendDeps) {
   // model still delivers separate events faster than the full chat overlay can
   // render them. Park cumulative snapshots and paint the first one immediately,
   // then at a bounded cadence. Terminal/abort paths synchronously flush the
-  // latest snapshot, so throttling cannot lose text. A timeout is the delivery
-  // clock rather than rAF because hidden/resource-constrained tabs may defer
-  // animation frames for seconds.
+  // latest snapshot, so throttling cannot lose text. Trailing commits wait for
+  // the cadence window and then align to an animation frame, avoiding a state
+  // update immediately after the browser has already started a paint.
   //
   // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
   // parked", distinct from a parked `null` (an explicit clear-the-status
@@ -678,6 +678,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     flushScheduled: boolean;
     flushGeneration: number;
     flushTimer: ReturnType<typeof setTimeout> | null;
+    flushFrame: number | null;
     lastFlushAtMs: number | null;
   }>({
     conversationId: null,
@@ -688,6 +689,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     flushScheduled: false,
     flushGeneration: 0,
     flushTimer: null,
+    flushFrame: null,
     lastFlushAtMs: null,
   });
 
@@ -817,28 +819,18 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       return;
     }
-    let committed = false;
-    if (buffer.pendingText !== null) {
-      const fullText = buffer.pendingText;
-      buffer.pendingText = null;
+    const pendingText = buffer.pendingText;
+    const pendingToolEvents = buffer.pendingToolEvents;
+    buffer.pendingText = null;
+    buffer.pendingToolEvents = [];
+    let committed = pendingText !== null || pendingToolEvents.length > 0;
+    if (committed) {
       applyStreamingTextModification(setConversationMessages, {
         messageId: buffer.messageId,
-        mode: "replace",
-        fullText,
+        mode: "buffered",
+        fullText: pendingText,
+        toolEvents: pendingToolEvents,
       });
-      committed = true;
-    }
-    if (buffer.pendingToolEvents.length > 0) {
-      const toolEvents = buffer.pendingToolEvents;
-      buffer.pendingToolEvents = [];
-      for (const event of toolEvents) {
-        applyStreamingTextModification(setConversationMessages, {
-          messageId: buffer.messageId,
-          mode: "tool",
-          event,
-        });
-      }
-      committed = true;
     }
     if (buffer.pendingStatus !== NO_PENDING_STATUS) {
       const status = buffer.pendingStatus;
@@ -866,6 +858,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       clearTimeout(buffer.flushTimer);
       buffer.flushTimer = null;
     }
+    if (buffer.flushFrame !== null) {
+      cancelAnimationFrame(buffer.flushFrame);
+      buffer.flushFrame = null;
+    }
     commitStreamingBuffer();
   }, [commitStreamingBuffer]);
 
@@ -885,6 +881,10 @@ export function useChatSend(deps: UseChatSendDeps) {
         clearTimeout(buffer.flushTimer);
         buffer.flushTimer = null;
       }
+      if (buffer.flushFrame !== null) {
+        cancelAnimationFrame(buffer.flushFrame);
+        buffer.flushFrame = null;
+      }
       buffer.conversationId = conversationId;
       buffer.messageId = messageId;
       buffer.pendingText = null;
@@ -896,8 +896,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     [],
   );
 
-  // The first snapshot paints in a microtask; later snapshots within the
-  // cadence window share one trailing timer and overwrite the cumulative text.
+  // The first snapshot paints in a microtask; later snapshots share one trailing
+  // cadence timer and commit on the next animation frame.
   const ensureStreamingFlush = useCallback(() => {
     const buffer = streamingFlushRef.current;
     if (buffer.flushScheduled) return;
@@ -906,18 +906,28 @@ export function useChatSend(deps: UseChatSendDeps) {
     const commitScheduled = () => {
       if (buffer.flushGeneration !== generation) return;
       buffer.flushTimer = null;
+      buffer.flushFrame = null;
       buffer.flushScheduled = false;
       commitStreamingBuffer();
+    };
+    if (buffer.lastFlushAtMs === null) {
+      queueMicrotask(commitScheduled);
+      return;
+    }
+    const scheduleFrame = () => {
+      if (buffer.flushGeneration !== generation) return;
+      buffer.flushTimer = null;
+      buffer.flushFrame = requestAnimationFrame(commitScheduled);
     };
     const delayMs = streamingRenderDelayMs(
       buffer.lastFlushAtMs,
       performance.now(),
     );
     if (delayMs === 0) {
-      queueMicrotask(commitScheduled);
+      scheduleFrame();
       return;
     }
-    buffer.flushTimer = setTimeout(commitScheduled, delayMs);
+    buffer.flushTimer = setTimeout(scheduleFrame, delayMs);
   }, [commitStreamingBuffer]);
 
   // Park the latest cumulative text for `messageId`. Synchronous callbacks from
@@ -969,6 +979,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (buffer.flushTimer !== null) {
         clearTimeout(buffer.flushTimer);
         buffer.flushTimer = null;
+      }
+      if (buffer.flushFrame !== null) {
+        cancelAnimationFrame(buffer.flushFrame);
+        buffer.flushFrame = null;
       }
       buffer.pendingText = null;
       buffer.conversationId = null;

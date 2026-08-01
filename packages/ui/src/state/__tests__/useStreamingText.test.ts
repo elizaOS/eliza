@@ -316,6 +316,57 @@ describe("applyStreamingTextModification", () => {
     expect(harness.current).toBe(initial);
   });
 
+  it("combines buffered text and tool events in one state update", () => {
+    const initial = [assistantMsg("a1", "Searching")];
+    const harness = makeSetter(initial);
+    const setter = vi.fn(harness.setter);
+
+    applyStreamingTextModification(setter, {
+      messageId: "a1",
+      mode: "buffered",
+      fullText: "Searching docs",
+      toolEvents: [
+        { phase: "call", callId: "c1", toolName: "WEB_SEARCH" },
+        {
+          phase: "result",
+          callId: "c1",
+          toolName: "WEB_SEARCH",
+          result: { hits: 2 },
+        },
+      ],
+    });
+
+    expect(setter).toHaveBeenCalledTimes(1);
+    expect(harness.current[0].text).toBe("Searching docs");
+    expect(harness.current[0].toolEvents).toHaveLength(1);
+    expect(harness.current[0].toolEvents?.[0]).toMatchObject({
+      callId: "c1",
+      status: "completed",
+      result: { hits: 2 },
+    });
+  });
+
+  it("stops inspecting message ids once the target is found", () => {
+    const target = assistantMsg("a1", "old");
+    const trailing = assistantMsg("a2", "untouched");
+    Object.defineProperty(trailing, "id", {
+      get: () => {
+        throw new Error("inspected a message after the target");
+      },
+    });
+    const harness = makeSetter([target, trailing]);
+
+    expect(() =>
+      applyStreamingTextModification(harness.setter, {
+        messageId: "a1",
+        mode: "replace",
+        fullText: "new",
+      }),
+    ).not.toThrow();
+    expect(harness.current[0].text).toBe("new");
+    expect(harness.current[1]).toBe(trailing);
+  });
+
   it("calls the setter exactly once per modification", () => {
     const setter = vi.fn<StreamingTextSetter>();
     setter.mockImplementation(() => undefined);
