@@ -13,6 +13,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   afterEach,
   beforeAll,
@@ -2773,7 +2774,10 @@ describe("ChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("gives transcription the right control without leaving a duplicate pulsing waveform", () => {
+  it("keeps transcript-off and mic-off controls semantically distinct", async () => {
+    const toggleTranscriptionMode = vi.fn();
+    const stopTranscriptionAndMic = vi.fn();
+    const user = userEvent.setup();
     render(
       <ChatOverlay
         controller={makeController({
@@ -2782,6 +2786,8 @@ describe("ChatOverlay", () => {
           recording: true,
           responding: true,
           canSend: false,
+          toggleTranscriptionMode,
+          stopTranscriptionAndMic,
         } as unknown as Partial<ShellController>)}
       />,
     );
@@ -2794,7 +2800,6 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
     expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
-    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByTestId("chat-composer-action")).toBeNull();
     expect(
@@ -2809,6 +2814,20 @@ describe("ChatOverlay", () => {
     expect(stopTranscription.getAttribute("aria-label")).toBe(
       "stop transcription",
     );
+    const stopMic = screen.getByTestId("chat-composer-mic");
+    expect(stopMic.getAttribute("aria-label")).toBe(
+      "stop transcription and mic",
+    );
+    expect(stopMic.getAttribute("aria-pressed")).toBe("true");
+    expect(stopMic.classList.contains("animate-pulse")).toBe(false);
+
+    await user.click(stopTranscription);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(stopTranscriptionAndMic).not.toHaveBeenCalled();
+
+    await user.click(stopMic);
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
     // A stopped agent blocks delivery, not finalization back into the draft.
     expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
     expect(
@@ -2817,6 +2836,38 @@ describe("ChatOverlay", () => {
         .contains(stopTranscription),
     ).toBe(true);
     expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
+  });
+
+  it("keeps the mic privacy stop keyboard- and touch-operable", async () => {
+    const stopTranscriptionAndMic = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <ChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          recording: true,
+          stopTranscriptionAndMic,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+
+    const stopMic = screen.getByRole("button", {
+      name: "stop transcription and mic",
+    });
+    stopMic.focus();
+    await user.keyboard("{Enter}");
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
+
+    await user.pointer([
+      { keys: "[TouchA>]", target: stopMic },
+      { keys: "[/TouchA]", target: stopMic },
+    ]);
+    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(2);
+    expect(
+      screen
+        .getByTestId("chat-composer-control-slot-left")
+        .classList.contains("pointer-coarse:size-11"),
+    ).toBe(true);
   });
 
   it("an empty finalization never sends and ignores a second in-flight tap", async () => {
