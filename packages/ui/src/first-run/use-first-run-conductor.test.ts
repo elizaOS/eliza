@@ -198,7 +198,7 @@ function resetTutorialState(): void {
 
 interface AppStoreSpies {
   completeFirstRun: ReturnType<typeof vi.fn>;
-  handleCloudLogin: ReturnType<typeof vi.fn>;
+  handleInteractiveCloudLogin: ReturnType<typeof vi.fn>;
   setTab: ReturnType<typeof vi.fn>;
   setState: ReturnType<typeof vi.fn>;
 }
@@ -207,7 +207,7 @@ interface AppStoreSpies {
 function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
   const spies: AppStoreSpies = {
     completeFirstRun: vi.fn(),
-    handleCloudLogin: vi.fn(async () => undefined),
+    handleInteractiveCloudLogin: vi.fn(async () => undefined),
     setTab: vi.fn(),
     setState: vi.fn(),
   };
@@ -631,23 +631,15 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("pre-opens the Cloud auth window synchronously and reuses it for login", async () => {
-    const authWindow = { close: vi.fn() } as unknown as Window;
-    mocks.preOpenCloudLoginWindow.mockReturnValue(authWindow);
-    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
-    // No stored bearer: a usable stored token now short-circuits login
-    // entirely (the agents list is the connectivity probe), so the popup
-    // path this test pins is only reachable when login is genuinely needed.
-    localStorage.removeItem("steward_session_token");
+  it("reaches the interactive Cloud login entry point with client auth required", async () => {
     const spies = seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
 
-    expect(mocks.preOpenCloudLoginWindow).toHaveBeenCalledTimes(1);
     await waitFor(() => {
-      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow, {
+      expect(spies.handleInteractiveCloudLogin).toHaveBeenCalledWith({
         requireClientAuth: true,
       });
     });
@@ -945,19 +937,19 @@ describe("useFirstRunConductor", () => {
     mocks.client.getCloudStatus
       .mockResolvedValueOnce({ connected: false })
       .mockResolvedValue({ connected: true });
-    const handleCloudLogin = vi.fn(async () => {
+    const handleInteractiveCloudLogin = vi.fn(async () => {
       localStorage.setItem("steward_session_token", "cloud-token");
     });
     seedAppStore({
       elizaCloudConnected: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
     });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(handleCloudLogin).toHaveBeenCalledWith(popup, {
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledWith({
         requireClientAuth: true,
       });
     });
@@ -1678,7 +1670,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     localStorage.removeItem("steward_session_token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
     let finishLogin: () => void = () => {};
-    const handleCloudLogin = vi.fn(
+    const handleInteractiveCloudLogin = vi.fn(
       () =>
         new Promise<void>((resolve) => {
           finishLogin = resolve;
@@ -1686,14 +1678,14 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     );
     const spies = seedAppStore({
       elizaCloudConnected: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
     });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     await waitFor(() => {
-      expect(handleCloudLogin).toHaveBeenCalledTimes(1);
+      expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
     });
     localStorage.setItem("steward_session_token", "cloud-token");
     await new Promise((resolve) => setTimeout(resolve, 650));
@@ -1846,7 +1838,7 @@ function makeFinishPorts(): FirstRunFinishPorts {
   return {
     uiLanguage: "en",
     elizaCloudConnected: true,
-    handleCloudLogin: async () => undefined,
+    handleInteractiveCloudLogin: async () => undefined,
     setRuntimeState: () => {},
     setTab: () => {},
     completeFirstRun: () => {},

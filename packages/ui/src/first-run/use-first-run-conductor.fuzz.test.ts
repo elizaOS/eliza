@@ -128,7 +128,7 @@ function seedAppStore(): AppStoreSpies {
     elizaCloudConnected: true,
     uiLanguage: "en",
     completeFirstRun: spies.completeFirstRun,
-    handleCloudLogin: vi.fn(async () => undefined),
+    handleInteractiveCloudLogin: vi.fn(async () => undefined),
     setTab: vi.fn(),
     setState: vi.fn(),
   };

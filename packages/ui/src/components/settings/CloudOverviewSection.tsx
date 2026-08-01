@@ -19,7 +19,6 @@ import {
 import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
-import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
 import { Button } from "../ui/button";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -63,7 +62,7 @@ export function CloudOverviewSection() {
     elizaCloudDisconnecting,
     elizaCloudLoginBusy,
     elizaCloudUserId,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     handleCloudSignOut,
     setActionNotice,
     t,
@@ -72,21 +71,21 @@ export function CloudOverviewSection() {
     elizaCloudDisconnecting: s.elizaCloudDisconnecting,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
     elizaCloudUserId: s.elizaCloudUserId,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     handleCloudSignOut: s.handleCloudSignOut,
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
 
   const handleConnect = useCallback(() => {
-    void handleCloudLogin(preOpenCloudLoginWindow()).catch((error) => {
+    void handleInteractiveCloudLogin().catch((error) => {
       setActionNotice(
         error instanceof Error ? error.message : "Could not start Cloud login.",
         "error",
         5000,
       );
     });
-  }, [handleCloudLogin, setActionNotice]);
+  }, [handleInteractiveCloudLogin, setActionNotice]);
 
   const handleSignOut = useCallback(() => {
     void handleCloudSignOut().catch((error) => {

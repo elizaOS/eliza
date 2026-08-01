@@ -926,6 +926,7 @@ function AppProviderInner({
     elizaCloudLoginPollTimer,
     pollCloudCredits,
     handleCloudLogin,
+    handleInteractiveCloudLogin,
     handleCloudDisconnect,
     handleCloudSignOut,
   } = cloudHook;
@@ -2125,6 +2126,7 @@ function AppProviderInner({
       handleCharacterMessageExamplesInput,
       completeFirstRun,
       handleCloudLogin,
+      handleInteractiveCloudLogin,
       handleCloudDisconnect,
       handleCloudSignOut,
       switchAgentProfile,
@@ -2503,6 +2505,7 @@ function AppProviderInner({
       handleCharacterMessageExamplesInput,
       completeFirstRun,
       handleCloudLogin,
+      handleInteractiveCloudLogin,
       handleCloudDisconnect,
       handleCloudSignOut,
       switchAgentProfile,
