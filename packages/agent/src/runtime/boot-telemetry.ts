@@ -240,17 +240,19 @@ export interface MemorySamplerOptions {
 
 interface MemorySamplerHandle {
   timer: NodeJS.Timeout;
-  detach: () => void;
+  detach: () => Promise<void>;
 }
 
 let activeSampler: MemorySamplerHandle | null = null;
 
 /**
  * Begin periodically sampling `process.memoryUsage().rss`, tracking the peak.
- * On `beforeExit`/`SIGTERM` (or {@link stopMemorySampler}) the run is flushed to
+ * On `beforeExit` (or {@link stopMemorySampler}) the run is flushed to
  * `<stateDir>/telemetry/memory/latest.json`. The interval is `unref()`'d so it
- * never keeps the process alive. Returns immediately when telemetry is disabled
- * or a sampler is already running.
+ * never keeps the process alive. Signal ownership stays with the host: a
+ * telemetry-only SIGTERM listener would suppress the platform's default
+ * termination behavior. Returns immediately when telemetry is disabled or a
+ * sampler is already running.
  */
 export function startMemorySampler(options: MemorySamplerOptions): void {
   if (telemetryDisabled() || activeSampler) {
@@ -276,39 +278,44 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
   const timer = setInterval(sample, options.intervalMs);
   timer.unref();
 
-  const flush = (): void => {
+  let flushPromise: Promise<void> | null = null;
+  const flush = (): Promise<void> => {
+    if (flushPromise) return flushPromise;
     const record: MemoryTelemetryRecord = {
       peakRssMb: bytesToMb(peakRssBytes),
       startedAt,
       samples: [...samples],
     };
-    void writeTelemetryFile(MEMORY_DIR, LATEST_FILE, record);
+    flushPromise = writeTelemetryFile(MEMORY_DIR, LATEST_FILE, record);
+    return flushPromise;
   };
 
   const onExit = (): void => {
-    flush();
+    // Async work scheduled from `beforeExit` causes Node/Bun to emit
+    // `beforeExit` again once that work settles. Detach first so the final
+    // telemetry write cannot create an infinite exit/write loop.
+    process.off("beforeExit", onExit);
+    void flush();
   };
 
   process.on("beforeExit", onExit);
-  process.on("SIGTERM", onExit);
 
   activeSampler = {
     timer,
-    detach: () => {
+    detach: async () => {
       clearInterval(timer);
       process.off("beforeExit", onExit);
-      process.off("SIGTERM", onExit);
-      flush();
+      await flush();
     },
   };
 }
 
 /** Stop the active memory sampler and flush a final snapshot to disk. */
-export function stopMemorySampler(): void {
+export async function stopMemorySampler(): Promise<void> {
   if (!activeSampler) {
     return;
   }
   const handle = activeSampler;
   activeSampler = null;
-  handle.detach();
+  await handle.detach();
 }

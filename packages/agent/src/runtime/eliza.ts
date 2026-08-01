@@ -29,6 +29,7 @@ import {
   recordBootEvent,
   recordBootTelemetry,
   startMemorySampler,
+  stopMemorySampler,
 } from "./boot-telemetry.ts";
 import { BootTimer } from "./boot-timer.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
@@ -223,6 +224,11 @@ function isBundledMobileRuntime(): boolean {
 }
 
 import { buildCharacterFromConfig } from "./build-character-config.ts";
+import {
+  cancelAndDrainDeferredBoot,
+  pendingDeferredBootTaskCount,
+  trackDeferredBootTask,
+} from "./deferred-boot-owner.ts";
 import { markDeferredBootPhase } from "./deferred-boot-status.ts";
 import {
   resolvePreferredProviderId,
@@ -589,34 +595,18 @@ function shouldBlockDeferredPluginImports(): boolean {
 async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
 ): Promise<void> {
-  const bootTimeoutMs = Number(
-    process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
-  );
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
     (registration) => registration.phase === phase,
   );
-  logger.info(
-    `[boot] resolving ${phase} plugins (${registrations.length}, timeout=${bootTimeoutMs}ms)`,
-  );
+  logger.info(`[boot] resolving ${phase} plugins (${registrations.length})`);
 
   const trackImport = async (
     registration: CoreStaticPluginRegistration,
   ): Promise<void> => {
     const startedAt = Date.now();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        reject(
-          new Error(
-            `plugin ${registration.packageName} timed out after ${bootTimeoutMs}ms`,
-          ),
-        );
-      }, bootTimeoutMs);
-      if (typeof timer.unref === "function") timer.unref();
-    });
 
     try {
-      const mod = await Promise.race([registration.load(), timeout]);
+      const mod = await registration.load();
       if (!mod) {
         if (registration.required) {
           throw new Error(`${registration.packageName} resolved to null`);
@@ -643,8 +633,6 @@ async function registerStaticPluginPhase(
       logger.warn(
         `[boot] ${registration.packageName} skipped after ${elapsed}ms: ${formatError(err)}`,
       );
-    } finally {
-      if (timer) clearTimeout(timer);
     }
   };
 
@@ -1591,17 +1579,45 @@ export async function shutdownRuntime(
   context: string,
   options: { fast?: boolean } = {},
 ): Promise<void> {
-  if (!runtime) return;
+  let firstError: unknown = null;
+
+  try {
+    await stopMemorySampler();
+  } catch (err) {
+    firstError = err;
+    logger.warn(
+      `[eliza] ${context}: memory telemetry flush failed: ${formatError(err)}`,
+    );
+  }
+
+  if (!runtime) {
+    if (firstError) throw firstError;
+    return;
+  }
 
   const adapter = runtime.adapter as RuntimeAdapterWithClose | undefined;
-  let firstError: unknown = null;
+
+  try {
+    const pendingDeferredBoot = pendingDeferredBootTaskCount(runtime);
+    if (pendingDeferredBoot > 0) {
+      logger.info(
+        `[eliza] ${context}: cancelling and draining ${pendingDeferredBoot} deferred boot task(s)`,
+      );
+    }
+    await cancelAndDrainDeferredBoot(runtime);
+  } catch (err) {
+    firstError = err;
+    logger.warn(
+      `[eliza] ${context}: deferred boot drain failed: ${formatError(err)}`,
+    );
+  }
 
   try {
     // Interactive/signal teardown asks for the capped fast path so Ctrl-C does
     // not block on a slow deferred service start or a long embedding drain.
     await runtime.stop(options.fast ? { fast: true } : undefined);
   } catch (err) {
-    firstError = err;
+    if (!firstError) firstError = err;
     logger.warn(`[eliza] ${context}: runtime stop failed: ${formatError(err)}`);
   }
 
@@ -1676,7 +1692,6 @@ type TrajectoryLoggerRuntimeLike = {
 async function waitForTrajectoriesService(
   runtime: AgentRuntime,
   context: string,
-  timeoutMs = 3000,
 ): Promise<void> {
   if (!runtimeTrajectoriesEnabled(runtime)) {
     return;
@@ -1704,31 +1719,12 @@ async function waitForTrajectoriesService(
 
   if (typeof runtimeLike.getServiceLoadPromise !== "function") return;
 
-  let timedOut = false;
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<void>((resolve) => {
-    timeoutHandle = setTimeout(() => {
-      timedOut = true;
-      resolve();
-    }, timeoutMs);
-  });
-
   try {
-    await Promise.race([
-      runtimeLike.getServiceLoadPromise("trajectories").then(() => {}),
-      timeoutPromise,
-    ]);
-    if (timedOut) {
-      logger.debug(
-        `[eliza] trajectories still ${registrationStatus} after ${timeoutMs}ms (${context})`,
-      );
-    }
+    await runtimeLike.getServiceLoadPromise("trajectories");
   } catch (err) {
     logger.debug(
       `[eliza] trajectories registration failed while waiting (${context}): ${formatError(err)}`,
     );
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }
 
@@ -3353,6 +3349,7 @@ async function preregisterCorePluginsInDependencyWaves(args: {
   resolvedPlugins: RuntimeResolvedPlugin[];
   alreadyPreRegistered: Set<string>;
   label?: string;
+  abortSignal?: AbortSignal;
 }): Promise<void> {
   const pending = new Map<string, RuntimeResolvedPlugin>();
   for (const name of CORE_PLUGINS) {
@@ -3368,7 +3365,6 @@ async function preregisterCorePluginsInDependencyWaves(args: {
   }
 
   const registered = new Set(args.alreadyPreRegistered);
-  const timeoutMs = 30_000;
   const context = args.label ? `${args.label}: ` : "";
 
   const registerOne = async (
@@ -3376,22 +3372,16 @@ async function preregisterCorePluginsInDependencyWaves(args: {
     resolved: RuntimeResolvedPlugin,
   ): Promise<void> => {
     try {
+      args.abortSignal?.throwIfAborted();
       const regStart = Date.now();
       logger.info(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await Promise.race([
-        args.runtime.registerPlugin(resolved.plugin),
-        new Promise<never>((_resolve, reject) =>
-          setTimeout(
-            () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
-            timeoutMs,
-          ),
-        ),
-      ]);
+      await args.runtime.registerPlugin(resolved.plugin);
       registered.add(name);
       logger.info(
         `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
       );
     } catch (err) {
+      if (args.abortSignal?.aborted) throw err;
       registered.add(name);
       logger.warn(
         `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
@@ -3402,6 +3392,7 @@ async function preregisterCorePluginsInDependencyWaves(args: {
   };
 
   while (pending.size > 0) {
+    args.abortSignal?.throwIfAborted();
     const ready: Array<[string, RuntimeResolvedPlugin]> = [];
     for (const [name, resolved] of pending) {
       const declaredDependencies = resolved.plugin.dependencies ?? [];
@@ -4538,19 +4529,7 @@ export async function startEliza(
     // Let runtime startup complete first; this warm-up runs asynchronously
     // so API + agent come online immediately.
     try {
-      const skillServicePromise = runtime.getServiceLoadPromise(
-        "AGENT_SKILLS_SERVICE",
-      );
-      const timeout = new Promise<never>((_resolve, reject) => {
-        setTimeout(() => {
-          reject(
-            new Error(
-              "AgentSkillsService warm-up timed out (10s) — non-blocking, agent will function without skills",
-            ),
-          );
-        }, 10_000);
-      });
-      await Promise.race([skillServicePromise, timeout]);
+      await runtime.getServiceLoadPromise("AGENT_SKILLS_SERVICE");
 
       const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
@@ -4977,11 +4956,10 @@ export async function startEliza(
     }
   };
 
-  const startAgentSkillsWarmup = (): void => {
-    void warmAgentSkillsService().catch((err) => {
+  const startAgentSkillsWarmup = (): Promise<void> =>
+    warmAgentSkillsService().catch((err) => {
       logger.warn(`[eliza] Skills warm-up failed: ${formatError(err)}`);
     });
-  };
 
   // Prefetch the local TEXT_EMBEDDING GGUF in the background so the first
   // chat/memory request doesn't stall on a multi-second model download. The
@@ -5059,18 +5037,17 @@ export async function startEliza(
     await ensureModel(modelsDir, modelRepo, model, false);
   };
 
-  const startEmbeddingWarmup = (): void => {
-    void warmEmbeddingModel().catch((err) => {
+  const startEmbeddingWarmup = (): Promise<void> =>
+    warmEmbeddingModel().catch((err) => {
       // Non-fatal: the embedding plugin downloads on first use if this fails.
       logger.warn(
         `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
       );
     });
-  };
 
   // Per-agent EVM + Solana wallet bootstrap is DEFERRED off the boot critical
-  // path: it runs after the runtime is reachable (fired fire-and-forget from
-  // the deferred boot phase below), not synchronously during essential boot.
+  // path: it runs after the runtime is reachable as runtime-owned deferred
+  // work, not synchronously during essential boot.
   // This keeps the ~50s crypto import cost (EVM + Solana keypair generation +
   // encrypted vault writes) out of the time-to-reachable window.
   //
@@ -5161,6 +5138,7 @@ export async function startEliza(
 
   const registerDeferredRuntimePlugins = async (
     deferredResolvedPlugins: RuntimeResolvedPlugin[],
+    abortSignal: AbortSignal,
   ): Promise<void> => {
     if (blockDeferredPluginImports) {
       return;
@@ -5199,24 +5177,17 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = 30_000;
     const registerDeferredPlugin = async (plugin: Plugin): Promise<void> => {
       const startedAt = Date.now();
       try {
+        abortSignal.throwIfAborted();
         logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
-        await Promise.race([
-          runtime.registerPlugin(plugin),
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
-              timeoutMs,
-            ),
-          ),
-        ]);
+        await runtime.registerPlugin(plugin);
         logger.info(
           `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
         );
       } catch (err) {
+        if (abortSignal.aborted) throw err;
         // error-policy:#14415 — a deferred plugin that fails to register
         // silently drops every capability it provides (its actions,
         // providers, connectors). Report it so the failure is agent-visible
@@ -5235,10 +5206,9 @@ export async function startEliza(
     // every registerPlugin at once floods the event loop with CPU-bound init
     // work and starves the bound HTTP server of I/O turns for the whole wave
     // (loadperf F3). A small worker pool with a setImmediate yield between
-    // registrations lets /api/* interleave, while enough concurrency remains
-    // that one hung plugin (bounded by the 30s race above) cannot serialize
-    // the wave. Mirrors the yield-between-imports loop in the deferred static
-    // import phase.
+    // registrations lets /api/* interleave while preserving runtime ownership
+    // and completion semantics. Mirrors the yield-between-imports loop in the
+    // deferred static import phase.
     const registrationConcurrency = 4;
     let nextPluginIndex = 0;
     await Promise.all(
@@ -5251,6 +5221,7 @@ export async function startEliza(
         },
         async () => {
           while (nextPluginIndex < deferredPluginsForRuntime.length) {
+            abortSignal.throwIfAborted();
             const plugin = deferredPluginsForRuntime[nextPluginIndex];
             nextPluginIndex += 1;
             await registerDeferredPlugin(plugin);
@@ -5286,18 +5257,21 @@ export async function startEliza(
   // each plugin registers. The 3 intra-core dependency edges
   // (coding-tools/agent-skills → shell, lifeops → google) live entirely within
   // this group, so the existing wave algorithm preserves ordering.
-  const runDeferredBoot = async (): Promise<void> => {
+  const runDeferredBoot = async (abortSignal: AbortSignal): Promise<void> => {
+    abortSignal.throwIfAborted();
     // Vault boot hydration must land before the deferred plugin waves: it
     // writes wallet/steward keys into process.env that the deferred plugin
     // auto-enable and wallet/connector plugins read. Single-flight — a
     // concurrent first-secret-access caller shares this run.
     await ensureVaultBootHydration();
+    abortSignal.throwIfAborted();
     bootTimer.lap("deferred:vault-hydration");
 
     // Join the background trajectory-capture wiring started inside
     // initializeCoreRuntime so a wiring failure surfaces here instead of
     // vanishing into an unobserved promise.
     await trajectoryCaptureWiring;
+    abortSignal.throwIfAborted();
     bootTimer.lap("deferred:trajectory-wiring");
 
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
@@ -5310,11 +5284,16 @@ export async function startEliza(
       cloudGithubTokenPromise,
       subscriptionCredentialsDeferredPromise,
     ]);
+    abortSignal.throwIfAborted();
     bootTimer.lap("deferred:env-lookups");
 
     if (!blockDeferredPluginImports) {
       const deferredResolvedPlugins = await resolveDeferredPluginsForBoot();
-      await registerDeferredRuntimePlugins(deferredResolvedPlugins);
+      abortSignal.throwIfAborted();
+      await registerDeferredRuntimePlugins(
+        deferredResolvedPlugins,
+        abortSignal,
+      );
       bootTimer.lap("deferred:runtime-plugins");
 
       await preregisterCorePluginsInDependencyWaves({
@@ -5325,6 +5304,7 @@ export async function startEliza(
           "@elizaos/plugin-local-inference",
         ]),
         label: "deferred",
+        abortSignal,
       });
       bootTimer.lap("deferred:core-plugin-waves");
     }
@@ -5342,12 +5322,15 @@ export async function startEliza(
     // routes onto runtime.routes so tryHandleRuntimePluginRoute can dispatch.
     // The drain is idempotent (dedups by type:path), so in a combined app-core
     // deployment where app-core also drains the registry, neither double-mounts.
+    abortSignal.throwIfAborted();
     await drainAppRoutePluginLoaders(runtime);
     bootTimer.lap("deferred:app-route-plugins");
 
+    abortSignal.throwIfAborted();
     await runTeeBootGate();
     bootTimer.lap("deferred:tee-gate");
 
+    abortSignal.throwIfAborted();
     await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
@@ -5372,8 +5355,8 @@ export async function startEliza(
     //
     // BEFORE the probe, populate the LOCAL_EMBEDDING_* / EMBEDDING_PROVIDER env
     // for local-primary configurations (#16630 follow-up). warmEmbeddingModel()
-    // — which owns configureLocalEmbeddingPlugin() today — is fired
-    // fire-and-forget by startEmbeddingWarmup() AFTER this block, so without
+    // — which owns configureLocalEmbeddingPlugin() today — is started as
+    // runtime-owned deferred work AFTER this block, so without
     // this early call the probe (and the bundled-document seed right below it)
     // runs while EMBEDDING_PROVIDER is unset. A remote provider (e.g. Google
     // text-embedding-004) then wins the probe and 404s, permanently choosing
@@ -5381,10 +5364,12 @@ export async function startEliza(
     // idempotent (setEnvIfMissing) and gated on shouldWarmupLocalEmbeddingModel
     // so it never forces local env when local embeddings are disabled or Eliza
     // Cloud embeddings are explicitly configured.
+    abortSignal.throwIfAborted();
     await configureLocalEmbeddingEnvEarlyIfNeeded(config);
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
+      if (abortSignal.aborted) throw err;
       if (err instanceof EmbeddingDimensionProbeError) {
         // Non-fatal: core already disabled embedding generation for this
         // runtime, so memory writes skip vectors instead of being silently
@@ -5402,7 +5387,9 @@ export async function startEliza(
         );
       }
     }
+    abortSignal.throwIfAborted();
     await seedBundledDocumentsIfEnabled();
+    abortSignal.throwIfAborted();
     // First-boot onboarding notifications (tour / help / connect calendar) —
     // once per agent; dismissals are permanent (guard flag, not the rows).
     try {
@@ -5411,6 +5398,7 @@ export async function startEliza(
       );
       await seedOnboardingNotifications(runtime);
     } catch (err) {
+      if (abortSignal.aborted) throw err;
       logger.warn(
         `[eliza] Failed to seed onboarding notifications: ${formatError(err)}`,
       );
@@ -5427,6 +5415,7 @@ export async function startEliza(
         );
         await registerWalletBalanceDeltaProducer(runtime);
       } catch (err) {
+        if (abortSignal.aborted) throw err;
         // error-policy:J7 registering the balance-delta watcher must not kill
         // agent boot — the wallet surface works without it. reportError makes
         // the missing producer agent-visible (RECENT_ERRORS) and escalates on
@@ -5439,21 +5428,33 @@ export async function startEliza(
         });
       }
     }
+    abortSignal.throwIfAborted();
     await installServerSideWebSearchIfAvailable();
+    abortSignal.throwIfAborted();
     await registerWebFetchActionIfEnabled();
+    abortSignal.throwIfAborted();
     await registerWebSearchActionIfEnabled();
     bootTimer.lap("deferred:post-init");
 
     const autonomyLoopEnabled = isAutonomyEnabled();
     await startAutonomyServiceIfEnabled(true);
     await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
-    startAgentSkillsWarmup();
-    startEmbeddingWarmup();
-    // Trigger the lazy wallet singleton fire-and-forget. This is a safety net
-    // — if no wallet route or signing flow triggers it earlier, wallets are
-    // still generated here. The singleton keeps this harmless if already
-    // resolved by an earlier caller.
-    void ensureAgentWalletsLazy();
+    abortSignal.throwIfAborted();
+    for (const warmup of [
+      startAgentSkillsWarmup,
+      startEmbeddingWarmup,
+      ensureAgentWalletsLazy,
+    ]) {
+      const warmupTask = trackDeferredBootTask(runtime, async (signal) => {
+        signal.throwIfAborted();
+        await warmup();
+      });
+      void warmupTask.catch((err) => {
+        if (!abortSignal.aborted) {
+          logger.warn(`[eliza] Deferred warm-up failed: ${formatError(err)}`);
+        }
+      });
+    }
     bootTimer.lap("deferred:autonomy+warmup");
 
     // Same timing reason: validate the intent→action map only once the deferred
@@ -5540,12 +5541,22 @@ export async function startEliza(
   // probe racing the kickoff can never read a stale `settled:true` from a
   // previous boot while this boot's wave hasn't announced itself yet.
   markDeferredBootPhase("agent-deferred-boot", "pending");
+  let deferredBootStarted = false;
   const kickoffDeferredBoot = (): void => {
-    void runDeferredBoot()
-      .then(() => {
+    if (deferredBootStarted) return;
+    deferredBootStarted = true;
+    void trackDeferredBootTask(runtime, async (abortSignal) => {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      try {
+        abortSignal.throwIfAborted();
+        await runDeferredBoot(abortSignal);
         markDeferredBootPhase("agent-deferred-boot", "complete");
-      })
-      .catch((err) => {
+      } catch (err) {
+        if (abortSignal.aborted) {
+          markDeferredBootPhase("agent-deferred-boot", "complete");
+          logger.info("[eliza] Deferred boot cancelled by runtime shutdown");
+          return;
+        }
         // error-policy:#14415 — deferred boot registers connectors + feature
         // plugins after the runtime is chat-ready. A swallowed failure here left
         // capabilities silently absent (the device-review class of bug: the user
@@ -5557,7 +5568,8 @@ export async function startEliza(
         runtime.reportError("eliza.deferredBoot", err, {
           phase: "deferred-boot",
         });
-      });
+      }
+    });
   };
 
   // 9. Graceful shutdown handler
@@ -5595,9 +5607,6 @@ export async function startEliza(
 
   // ── Headless mode — return runtime for API server wiring ──────────────
   if (opts?.headless) {
-    void loadHooksSystem().catch((err) => {
-      logger.warn(`[eliza] Hooks system load failed: ${formatError(err)}`);
-    });
     // Defer the deferred-boot kickoff to a macrotask so this function's caller
     // (dev-server / desktop shell) gets to run its `await startEliza()`
     // continuation FIRST — that continuation flips agentState to "running" and
@@ -5608,7 +5617,20 @@ export async function startEliza(
     // (loadperf research/03 F2). setImmediate yields to the macrotask queue
     // after the microtask continuation, so readiness flips promptly and the
     // deferred connectors/feature plugins still register right after.
-    setImmediate(kickoffDeferredBoot);
+    kickoffDeferredBoot();
+    const hooksTask = trackDeferredBootTask(runtime, async (abortSignal) => {
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        abortSignal.throwIfAborted();
+        await loadHooksSystem();
+      } catch (err) {
+        if (abortSignal.aborted) return;
+        throw err;
+      }
+    });
+    void hooksTask.catch((err) => {
+      logger.warn(`[eliza] Hooks system load failed: ${formatError(err)}`);
+    });
     logger.info(
       "[eliza] Runtime initialised in headless mode (autonomy enabled)",
     );
@@ -5651,39 +5673,8 @@ export async function startEliza(
       onRestart: async () => {
         logger.info("[eliza] Hot-reload: Restarting runtime...");
         try {
-          // Stop the old runtime to release resources (DB connections, timers, etc.)
-          //
-          // WHY the 2s timeout: some services — notably PTYService —
-          // shut down gracefully by awaiting each active session with a
-          // per-session timeout (up to ~5s). runtime.stop() awaits every
-          // service.stop() sequentially, so a single idle PTY session
-          // turns a provider switch into a multi-second block. During
-          // that window the runtime-operations active-op slot +
-          // agentState === "restarting" guard reject further clicks,
-          // which is why flipping through providers rapidly feels stuck.
-          //
-          // Cap the shutdown window at 2s; if it doesn't finish, log and
-          // bring the new runtime up anyway. Services that miss the
-          // window get GC'd when the process unwinds. This is fine for a
-          // user-initiated restart — the user asked for a new runtime;
-          // in-flight work on the old one is already obsolete.
           try {
-            const SHUTDOWN_TIMEOUT_MS = 2000;
-            let shutdownTimedOut = false;
-            await Promise.race([
-              shutdownRuntime(runtime, "hot-reload cleanup"),
-              new Promise<void>((resolve) =>
-                setTimeout(() => {
-                  shutdownTimedOut = true;
-                  resolve();
-                }, SHUTDOWN_TIMEOUT_MS),
-              ),
-            ]);
-            if (shutdownTimedOut) {
-              logger.warn(
-                `[eliza] Hot-reload: old runtime shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms; proceeding with new runtime`,
-              );
-            }
+            await shutdownRuntime(runtime, "hot-reload cleanup");
           } catch (stopErr) {
             logger.warn(
               `[eliza] Hot-reload: old runtime stop failed: ${formatError(stopErr)}`,

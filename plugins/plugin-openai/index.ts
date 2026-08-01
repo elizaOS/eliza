@@ -27,7 +27,6 @@ import type {
   TokenizeTextParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { initializeOpenAI } from "./init";
 import {
   handleActionPlanner,
   handleImageDescription,
@@ -45,7 +44,7 @@ import {
   handleTokenizerEncode,
   handleTranscription,
 } from "./models";
-import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
+import type { ImageGenerationResult, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL, getSetting, isCerebrasMode } from "./utils/config";
 
 function getProcessEnv(): ProcessEnvLike {
@@ -181,8 +180,7 @@ export const openaiPlugin: Plugin = {
     OPENAI_RESEARCH_TIMEOUT: env.OPENAI_RESEARCH_TIMEOUT ?? null,
   },
 
-  async init(config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
-    initializeOpenAI(config as OpenAIPluginConfig | undefined, runtime);
+  async init(_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> {
     registerMediaModels(runtime);
   },
 
