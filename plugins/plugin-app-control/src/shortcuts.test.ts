@@ -29,6 +29,7 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			"return to the main screen",
 			"open the home dashboard",
 			"show me my calendar",
+			"open calender",
 			"hey can you open settings please",
 			"open app builder",
 			"check my messages",
