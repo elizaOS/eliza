@@ -269,4 +269,29 @@ describe("evaluateOcrContent", () => {
     );
     expect(f.verdict).toBe("broken");
   });
+
+  it.each([
+    ["ready", "Finances\nBalance\n$2,765.50\nTransactions (2)"],
+    ["empty", "Finances\nNone\nConnect"],
+    ["error", "Finances\nCould not load finances\nRetry"],
+  ])("verifies a healthy Finances %s render", (_state, text) => {
+    const f = evaluateOcrContent({
+      ocr: ocr(text),
+      expectation: VIEW_EXPECTATIONS["plugin-finances-gui"],
+    });
+    expect(f.verdict).toBe("verified");
+    expect(f.missingRequired).toHaveLength(0);
+  });
+
+  it("breaks a terminal Finances loading frame", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Finances\nLoading"),
+      expectation: VIEW_EXPECTATIONS["plugin-finances-gui"],
+    });
+    expect(f.forbiddenPresent).toContain("Loading");
+    expect(f.missingRequired).toContain(
+      "Balance | None | Could not load finances",
+    );
+    expect(f.verdict).toBe("broken");
+  });
 });

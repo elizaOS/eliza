@@ -10,9 +10,9 @@
  * is only checked for the universal defects (blank pixels, developer-string leak,
  * placeholder text); presence lets a matched render earn a positive `verified`.
  *
- * Keyed by the capture slug (filename without extension). Third-party `plugin-*`
- * views are intentionally absent — they own their content and are checked only for
- * the universal defects.
+ * Keyed by the capture slug (filename without extension). Plugin views without
+ * stable first-party chrome stay absent — they own their content and are checked
+ * only for the universal defects.
  */
 import type { OcrExpectation } from "./ocr-content-rules";
 
@@ -194,6 +194,14 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Electrobun desktop runtime",
       "Electrobun desktop runtim",
     ],
+  },
+  // The finance view's plain `Loading` caption does not carry the dynamic-view
+  // marker the DOM audit historically watched. Requiring one terminal-state
+  // label makes an OCR-visible loading frame broken even if the DOM probe ever
+  // regresses independently; empty and designed error states remain valid.
+  "plugin-finances-gui": {
+    requireAny: ["Balance", "None", "Could not load finances"],
+    forbid: ["Loading"],
   },
   // First-party MVP plugin view (#15781). Unlike third-party plugin surfaces it
   // ships stable, OCR-legible chrome we positively verify. The audit auto-selects

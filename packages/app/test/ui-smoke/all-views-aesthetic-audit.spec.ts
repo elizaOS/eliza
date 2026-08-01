@@ -55,6 +55,10 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // scrollWidth/innerWidth rounding can differ by ~1px on a healthy layout. A real
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
+const VIEW_READINESS_POLL_ATTEMPTS = 12;
+const VIEW_READINESS_POLL_INTERVAL_MS = 1_000;
+const VIEW_READINESS_WINDOW_MS =
+  VIEW_READINESS_POLL_ATTEMPTS * VIEW_READINESS_POLL_INTERVAL_MS;
 // Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
 // that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention). The
 // CI lane runs the gate default-on against an empty allowlist and passes, so the
@@ -370,17 +374,75 @@ interface ViewFinding {
 interface ViewPaintState {
   readableChars: number;
   overlayPresent: boolean;
-  loadingViewPresent: boolean;
+  loadingStatePresent: boolean;
+  loadingStateLabels: string[];
 }
 
 async function readViewPaint(
   viewRoot: Locator,
   overlay: Locator,
-  loadingView: Locator,
 ): Promise<ViewPaintState> {
-  const readableChars = await viewRoot.evaluate(
-    (root) =>
-      (root as HTMLElement).innerText.trim().replace(/\s+/g, " ").length,
+  const { readableChars, visibleLoadingLabels } = await viewRoot.evaluate(
+    (root) => {
+      const rootElement = root as HTMLElement;
+      const isVisibleInViewport = (element: Element): boolean => {
+        if (!element.isConnected || element.getClientRects().length === 0) {
+          return false;
+        }
+        for (
+          let current: Element | null = element;
+          current;
+          current = current.parentElement
+        ) {
+          const style = getComputedStyle(current);
+          if (
+            (current instanceof HTMLElement && current.hidden) ||
+            style.display === "none" ||
+            style.visibility === "hidden" ||
+            style.visibility === "collapse" ||
+            style.contentVisibility === "hidden" ||
+            Number(style.opacity || "1") === 0
+          ) {
+            return false;
+          }
+        }
+        const rect = element.getBoundingClientRect();
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < window.innerWidth &&
+          rect.top < window.innerHeight
+        );
+      };
+      const exactLoadingLabel = /^loading(?:\s+view)?(?:\s*(?:…|\.{1,3}))?$/i;
+      const labels = new Set<string>();
+      const elements: Element[] = [
+        rootElement,
+        ...rootElement.querySelectorAll("*"),
+      ];
+      for (const element of elements) {
+        if (!isVisibleInViewport(element)) continue;
+        const text = (
+          element instanceof HTMLElement
+            ? element.innerText
+            : (element.textContent ?? "")
+        )
+          .trim()
+          .replace(/\s+/g, " ");
+        if (
+          element.getAttribute("data-view-status") === "loading" ||
+          exactLoadingLabel.test(text)
+        ) {
+          labels.add(text || '[data-view-status="loading"]');
+        }
+      }
+      return {
+        readableChars: rootElement.innerText.trim().replace(/\s+/g, " ").length,
+        visibleLoadingLabels: [...labels],
+      };
+    },
   );
   const overlayPresent = await overlay.evaluateAll((nodes) =>
     nodes.some((node) => {
@@ -396,8 +458,50 @@ async function readViewPaint(
       );
     }),
   );
-  const loadingViewPresent = await loadingView.isVisible();
-  return { readableChars, overlayPresent, loadingViewPresent };
+  const loadingStateLabels = [...new Set(visibleLoadingLabels)];
+  return {
+    readableChars,
+    overlayPresent,
+    loadingStatePresent: loadingStateLabels.length > 0,
+    loadingStateLabels,
+  };
+}
+
+async function waitForViewPaint(
+  page: Page,
+  readPaint: () => Promise<ViewPaintState>,
+  overlayRequired: boolean,
+  options: {
+    attempts?: number;
+    intervalMs?: number;
+  } = {},
+): Promise<ViewPaintState> {
+  const attempts = options.attempts ?? VIEW_READINESS_POLL_ATTEMPTS;
+  const intervalMs = options.intervalMs ?? VIEW_READINESS_POLL_INTERVAL_MS;
+  let paint = await readPaint();
+  for (
+    let attempt = 0;
+    attempt < attempts &&
+    (paint.readableChars < 10 ||
+      (overlayRequired && !paint.overlayPresent) ||
+      paint.loadingStatePresent);
+    attempt += 1
+  ) {
+    await page.waitForTimeout(intervalMs);
+    paint = await readPaint();
+  }
+  return paint;
+}
+
+function loadingRenderStateIssues(
+  paint: ViewPaintState,
+  readinessWindowMs = VIEW_READINESS_WINDOW_MS,
+): string[] {
+  if (!paint.loadingStatePresent) return [];
+  const labels = paint.loadingStateLabels.join(", ");
+  return [
+    `visible loading state remained after ${readinessWindowMs} ms${labels ? `: ${labels}` : ""}`,
+  ];
 }
 
 /**
@@ -1302,14 +1406,14 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       <div data-test-overlay>Composer</div>
     `);
     const overlay = page.locator("[data-test-overlay]");
-    const loadingView = page.locator('[data-view-status="loading"]');
 
     await expect(
-      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
+      readViewPaint(page.locator("[data-test-root]"), overlay),
     ).resolves.toEqual({
       readableChars: "Loaded production view".length,
       overlayPresent: true,
-      loadingViewPresent: false,
+      loadingStatePresent: false,
+      loadingStateLabels: [],
     });
 
     await page.locator("main").evaluate((root) => {
@@ -1319,13 +1423,67 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       );
     });
     await expect(
-      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
-    ).resolves.toMatchObject({ loadingViewPresent: true });
+      readViewPaint(page.locator("[data-test-root]"), overlay),
+    ).resolves.toMatchObject({
+      loadingStatePresent: true,
+      loadingStateLabels: ["Loading view"],
+    });
+
+    await page.setContent(`
+      <main data-test-root>
+        <h1>Finances</h1>
+        <div data-domain-state>Loading</div>
+      </main>
+      <div data-test-overlay>Composer</div>
+    `);
+    const readDomainPaint = () =>
+      readViewPaint(page.locator("[data-test-root]"), overlay);
+    const persisted = await waitForViewPaint(page, readDomainPaint, false, {
+      attempts: 2,
+      intervalMs: 5,
+    });
+    expect(persisted).toMatchObject({
+      loadingStatePresent: true,
+      loadingStateLabels: ["Loading"],
+    });
+    expect(loadingRenderStateIssues(persisted, 10)).toEqual([
+      "visible loading state remained after 10 ms: Loading",
+    ]);
+
+    await page.locator("[data-domain-state]").evaluate((state) => {
+      setTimeout(() => {
+        state.textContent = "Balance";
+      }, 10);
+    });
+    const settled = await waitForViewPaint(page, readDomainPaint, false, {
+      attempts: 5,
+      intervalMs: 10,
+    });
+    expect(settled).toMatchObject({
+      loadingStatePresent: false,
+      loadingStateLabels: [],
+    });
+
+    await page.setContent(`
+      <main data-test-root>
+        <h1>Loaded production view</h1>
+        <div hidden data-view-status="loading">Loading view</div>
+        <div style="display: none">Loading</div>
+        <div style="position: fixed; left: -10000px">Loading…</div>
+      </main>
+      <div data-test-overlay>Composer</div>
+    `);
+    await expect(
+      readViewPaint(page.locator("[data-test-root]"), overlay),
+    ).resolves.toMatchObject({
+      loadingStatePresent: false,
+      loadingStateLabels: [],
+    });
 
     await page.setContent("<main>first</main><main>second</main>");
-    await expect(
-      readViewPaint(page.locator("main"), overlay, loadingView),
-    ).rejects.toThrow(/strict mode violation/);
+    await expect(readViewPaint(page.locator("main"), overlay)).rejects.toThrow(
+      /strict mode violation/,
+    );
   });
 
   for (const view of buildAuditCases()) {
@@ -1397,23 +1555,8 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           "[data-testid='chat-composer-textarea']",
         ].join(", ");
         const readPaint = () =>
-          readViewPaint(
-            viewRoot,
-            page.locator(overlaySelector),
-            page.locator('[data-view-status="loading"]'),
-          );
-        let paint = await readPaint();
-        for (
-          let attempt = 0;
-          attempt < 12 &&
-          (paint.readableChars < 10 ||
-            (overlayRequired && !paint.overlayPresent) ||
-            paint.loadingViewPresent);
-          attempt += 1
-        ) {
-          await page.waitForTimeout(1000);
-          paint = await readPaint();
-        }
+          readViewPaint(viewRoot, page.locator(overlaySelector));
+        let paint = await waitForViewPaint(page, readPaint, overlayRequired);
         if (view.slug === "plugin-calendar-gui") {
           const manageSources = page.getByRole("button", {
             name: "Manage calendar sources",
@@ -1426,9 +1569,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         }
         const { readableChars, overlayPresent } = paint;
         const renderStateIssues = [
-          ...(paint.loadingViewPresent
-            ? ["dynamic view remained in its loading state after 12 seconds"]
-            : []),
+          ...loadingRenderStateIssues(paint),
           ...(await collectSpatialOverlapIssues(page)),
           ...(await collectSpatialSizingIssues(page)),
           ...(await collectComposerLegibilityIssues(page)),
