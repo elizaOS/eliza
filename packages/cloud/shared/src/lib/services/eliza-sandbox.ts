@@ -13,6 +13,7 @@ import {
 } from "@elizaos/shared/agent-backup-limits";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
@@ -76,6 +77,10 @@ import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
+import {
+  holdsCountedNodeSlot,
+  isDeletionContinuation,
+} from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
@@ -1758,6 +1763,12 @@ export class ElizaSandboxService {
     // genuine hang. A real stop failure on a REACHABLE node still escalates
     // (returns failure / retry), since the container may still be running; an
     // "already gone" failure is ignorable and we proceed.
+    // Whether the container is PROVEN gone. A bounded timeout completes the
+    // delete but abandons a container that may still be running, so it is not
+    // proof — releasing its slot would let the scheduler pack new containers
+    // onto a box still running the old ones.
+    let containerProvenGone = true;
+
     if (precheck.sandboxId) {
       const sandboxId = precheck.sandboxId;
       const stop = await this.runBoundedSandboxStop(sandboxId);
@@ -1765,6 +1776,10 @@ export class ElizaSandboxService {
       if (stop) {
         const errorMessage = stop.error instanceof Error ? stop.error.message : String(stop.error);
         if ("timedOut" in stop) {
+          // The container may still be running, so this generation keeps its
+          // node slot. The orphan reconciler releases it once it proves the
+          // container is actually absent (#17185).
+          containerProvenGone = false;
           // HONEST LIMITATION: there is currently NO automatic reclaimer — no
           // orphan-sweep / node-reconcile job that lists actual containers on a
           // node and removes ones with no DB row (see docker-sandbox-provider's
@@ -1794,6 +1809,32 @@ export class ElizaSandboxService {
           return { success: false, error: "Failed to delete sandbox" };
         }
       }
+    }
+
+    // The container is proven gone, so this generation hands its node slot back
+    // — and does so BEFORE the steps that can still fail below (credential
+    // revocation, the row-delete CAS, job-status persistence). Those failures
+    // re-run this whole path; the CAS is what makes the second run a no-op
+    // instead of a second decrement that frees a live sibling's slot (#17185).
+    //
+    // Two paths deliberately skip the release and keep ownership: a reachable
+    // stop FAILURE returns above without reaching here, and a bounded timeout
+    // abandons a container that may still be running. Both leave the slot
+    // counted until something proves absence — the retry that completes the
+    // teardown, or the orphan reconciler that reaps the container.
+    if (containerProvenGone && precheck.nodeId) {
+      const released = await agentSandboxesRepository.tryReleaseDeletionAllocation(
+        agentId,
+        orgId,
+        precheck.deletionAttemptId,
+        precheck.nodeId,
+      );
+      logger.info("[agent-sandbox] Deletion node-slot release", {
+        released,
+        agentId,
+        nodeId: precheck.nodeId,
+        deletionAttemptId: precheck.deletionAttemptId,
+      });
     }
 
     // Revoke both credential owners before deleting the row. The source-pool
@@ -1849,6 +1890,7 @@ export class ElizaSandboxService {
     | {
         ok: true;
         sandboxId: string | null;
+        nodeId: string | null;
         status: AgentSandbox["status"];
         sourcePoolId: string | null;
         environmentRevision: number;
@@ -1857,6 +1899,11 @@ export class ElizaSandboxService {
       }
     | { ok: false; error: string }
   > {
+    // The deletion intent this stamps includes `deletion_allocation_counted`,
+    // which the provisioning worker can reach before its migration has run
+    // (its deploy does not gate on migrate-db). Ensure is memoized, so the DDL
+    // runs once per isolate rather than once per delete.
+    await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
 
@@ -1877,12 +1924,21 @@ export class ElizaSandboxService {
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
       // A retry preserves the original audit timestamp while taking a fresh
       // database generation for the new teardown attempt.
+      //
+      // Allocation ownership rides the same rule, for the same reason: a
+      // continuation must inherit the original generation's recorded answer, not
+      // re-derive it from a row this deletion has already moved to
+      // `deletion_pending` — which would read as "still counted" forever and free
+      // a live sibling's slot on every retry (#17185).
       const [owned] = await tx
         .update(agentSandboxes)
         .set({
           status: "deletion_pending",
           deletion_attempt_id: deletionAttemptId,
           ...(rec.deletion_started_at === null ? { deletion_started_at: new Date() } : {}),
+          ...(isDeletionContinuation(rec)
+            ? {}
+            : { deletion_allocation_counted: holdsCountedNodeSlot(rec) }),
           updated_at: new Date(),
         })
         .where(
@@ -1908,6 +1964,7 @@ export class ElizaSandboxService {
       return {
         ok: true as const,
         sandboxId: rec.sandbox_id,
+        nodeId: rec.node_id,
         status: rec.status,
         sourcePoolId: rec.warm_claim_source_pool_id,
         environmentRevision: rec.environment_revision,

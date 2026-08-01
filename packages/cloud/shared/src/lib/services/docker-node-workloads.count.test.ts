@@ -3,6 +3,11 @@
  * agent sandbox rows must not inflate allocated_count, or the autoscaler reads
  * bare-metal robots as full and bills new Hetzner-cloud nodes instead (#15378).
  */
+// These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
+// self-healing DDL guard cannot run here. Skipping it is the house pattern for
+// mocked-database suites; the guard itself is covered by the PGlite tests.
+process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";

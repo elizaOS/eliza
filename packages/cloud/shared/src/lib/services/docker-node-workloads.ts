@@ -6,11 +6,14 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "../../db/helpers";
+import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import {
   countAllocatedWorkloadsOnNodeWithDatabase,
+  TERMINAL_SANDBOX_STATUS_SET,
   TERMINAL_SANDBOX_STATUSES,
 } from "./docker-node-workload-queries";
 import { AGENT_CONTAINER_NAME_PREFIX } from "./docker-sandbox-utils";
@@ -47,7 +50,6 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
  * agent_delete job is actively in flight and owns the teardown; reaping under
  * it would race the worker.
  */
-const TERMINAL_SANDBOX_STATUS_SET = new Set<string>(TERMINAL_SANDBOX_STATUSES);
 
 /**
  * Active compute slots on a Docker node.
@@ -58,13 +60,27 @@ const TERMINAL_SANDBOX_STATUS_SET = new Set<string>(TERMINAL_SANDBOX_STATUSES);
  *
  * The agent side excludes the same {@link TERMINAL_SANDBOX_STATUSES} the orphan
  * reconciler uses to decide a container "should NOT be running" — a row in one
- * of those states holds no live slot. Including `sleeping` or
- * `deletion_failed` would inflate `allocated_count`, make bare-metal nodes
- * appear full, and trigger unnecessary Hetzner capacity (#15378).
+ * of those states holds no live slot — EXCEPT where a deletion generation still
+ * records ownership of one. A `deletion_failed` row exists precisely because
+ * teardown did not succeed, so while its container is still out there it does
+ * occupy a slot, and counting it is what stops a delete that cannot prove
+ * absence from freeing a live sibling's capacity (#17185). That does not
+ * reintroduce the inflation of #15378, because ownership is not open-ended: the
+ * orphan reaper releases it in the same sweep that removes the container, so an
+ * abandoned deletion stops counting the moment its container is proven gone.
  * `disconnected` is deliberately NOT excluded: it is non-terminal (the
  * container is up but unreachable) and still occupies the slot.
  */
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
+  // This is the placement hot path (`getAvailableNode`, the autoscaler,
+  // `syncAllocatedCounts`), and the query reads ownership columns added after
+  // the base table. The provisioning worker deploys without a `migrate-db`
+  // gate, so on a pre-migration rollout an unguarded read fails closed and NO
+  // agent can be placed. Ensure is memoized per database URL, so the DDL runs
+  // once per isolate; the residual per-call cost is the env lookup, not I/O.
+  // Deliberately on this wrapper rather than the injected-database variant,
+  // which stays hermetic for tests.
+  await ensureAgentSandboxSchema();
   return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
 }
 
@@ -197,6 +213,12 @@ const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   nodeAware: true,
   rowlessGraceMs: DEFAULT_ROWLESS_GRACE_MS,
   nodeMoveGraceMs: DEFAULT_NODE_MOVE_GRACE_MS,
+  // Reaping is the only step that PROVES an agent container is gone, so it is
+  // where a deletion generation that could not prove absence finally hands its
+  // node slot back (#17185).
+  onReaped: async (agentId, nodeId) => {
+    await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId);
+  },
 };
 
 /**

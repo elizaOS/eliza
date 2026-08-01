@@ -2271,7 +2271,11 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async stop(sandboxId: string): Promise<void> {
-    await this.stopWithPolicy(sandboxId, true);
+    // Deletion is the one teardown whose capacity is owned elsewhere: the
+    // caller's deletion generation releases the slot exactly once via
+    // `tryReleaseDeletionAllocation`, because this path is retryable and
+    // treats "already gone" as success (#17185).
+    await this.stopWithPolicy(sandboxId, true, false);
   }
 
   /**
@@ -2280,10 +2284,19 @@ export class DockerSandboxProvider implements SandboxProvider {
    * an unresolved stop must retain the database fence and block replacement.
    */
   async stopForReplacement(sandboxId: string): Promise<void> {
-    await this.stopWithPolicy(sandboxId, false);
+    // Suspend, shutdown, sleep, warm-claim retire and ghost cleanup all route
+    // here. None has a durable generation to own the slot, and each stops
+    // exactly once under a fence, so the provider still releases capacity for
+    // them — the same per-operation ownership `stopOnSpecificNodeWithPolicy`
+    // already declares.
+    await this.stopWithPolicy(sandboxId, false, true);
   }
 
-  private async stopWithPolicy(sandboxId: string, allowUnreachableAbandon: boolean): Promise<void> {
+  private async stopWithPolicy(
+    sandboxId: string,
+    allowUnreachableAbandon: boolean,
+    releaseCapacity: boolean,
+  ): Promise<void> {
     const meta = await this.resolveContainer(sandboxId);
 
     logger.info(
@@ -2354,8 +2367,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       // (and its headscale registration, if deletion was skipped) can leak until
       // such a sweeper is built or it is reclaimed by hand. We accept that leak
       // to keep the work cycle bounded; the lifecycle/capacity owner should add
-      // a node-reconcile sweep (and revisit the allocated_count decrement below)
-      // when one lands. Do NOT claim a reconciler already reclaims it.
+      // a node-reconcile sweep when one lands. Do NOT claim a reconciler already
+      // reclaims it. The abandoned container's node slot is still released once
+      // by the caller's deletion generation — an abandoned container leaks on
+      // the box, not in `allocated_count`.
       const unreachable = isNodeUnreachableMessage(stopMsg) && isNodeUnreachableMessage(rmMsg);
       if (!stopIsGone && !rmIsGone && (!unreachable || !allowUnreachableAbandon)) {
         throw new Error(
@@ -2378,12 +2393,18 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    // Decrement allocated_count on the node
-    await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
-      logger.warn(
-        `[docker-sandbox] Failed to decrement allocated_count for node ${meta.nodeId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    // Capacity release is per-operation, not unconditional. A teardown whose
+    // caller owns a durable generation passes `releaseCapacity: false` and
+    // hands the slot back itself, because this path is retryable and treats
+    // "already absent" as success — so decrementing here would run several
+    // times for one allocation and free a live sibling's slot (#17185).
+    if (releaseCapacity) {
+      await dockerNodesRepository.decrementAllocated(meta.nodeId).catch((err) => {
+        logger.warn(
+          `[docker-sandbox] Failed to decrement allocated_count for node ${meta.nodeId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }
 
     // Deletes Headscale VPN registration only for containers that were
     // actually enrolled. Fallback-mode containers can run with HEADSCALE_API_KEY

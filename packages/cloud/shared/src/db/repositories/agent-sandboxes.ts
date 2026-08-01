@@ -14,6 +14,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNotNull,
@@ -67,6 +68,7 @@ import {
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
 } from "../schemas/agent-sandboxes";
+import { dockerNodes } from "../schemas/docker-nodes";
 import { jobs } from "../schemas/jobs";
 import { imageRepo, imageRepoSql } from "../utils/docker-image-ref";
 
@@ -2166,6 +2168,99 @@ export class AgentSandboxesRepository {
       }
     }
     return state;
+  }
+
+  /**
+   * Spend recorded allocation ownership and give the node its slot back, in one
+   * transaction (#17185).
+   *
+   * The flag flip and the decrement commit together so they can never disagree:
+   * whoever wins the row lock consumes the ownership, and every later caller
+   * matches no row and decrements nothing. Callers differ only in `claimWhere`,
+   * which is the fence deciding WHO is entitled to spend it.
+   *
+   * `allocated_count > 0` is a guard rather than `GREATEST(... , 0)` clamping,
+   * so an unexpected underflow leaves the counter untouched and visible instead
+   * of being silently absorbed.
+   *
+   * @returns true if THIS call actually decremented the node. False covers both
+   * "ownership was not ours to spend" and "ownership was spent but the counter
+   * did not move" (already 0, or no `docker_nodes` row) — the latter warns.
+   */
+  private async spendDeletionAllocation(nodeId: string, claimWhere: SQL): Promise<boolean> {
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(agentSandboxes)
+        .set({ deletion_allocation_counted: false, updated_at: new Date() })
+        .where(and(claimWhere, eq(agentSandboxes.deletion_allocation_counted, true)))
+        .returning({ id: agentSandboxes.id });
+      if (!claimed) return false;
+
+      const decremented = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: new Date(),
+        })
+        .where(and(eq(dockerNodes.node_id, nodeId), gt(dockerNodes.allocated_count, 0)))
+        .returning({ nodeId: dockerNodes.node_id });
+      if (decremented.length === 0) {
+        logger.warn(
+          `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
+        );
+      }
+      return decremented.length > 0;
+    });
+  }
+
+  /**
+   * Release the slot held by ONE deletion generation, at most once.
+   *
+   * Fenced on the whole locator, not just the row id: a superseded generation,
+   * another organization, or a row that has since moved nodes must not release
+   * the current node's capacity. This is what makes a re-claimed delete job
+   * (crash-retry, or a post-stop credential/row-delete/job-status failure) a
+   * no-op instead of a second decrement freeing a live sibling's slot.
+   */
+  async tryReleaseDeletionAllocation(
+    agentId: string,
+    orgId: string,
+    deletionAttemptId: string,
+    nodeId: string,
+  ): Promise<boolean> {
+    return this.spendDeletionAllocation(
+      nodeId,
+      and(
+        eq(agentSandboxes.id, agentId),
+        eq(agentSandboxes.organization_id, orgId),
+        eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
+        eq(agentSandboxes.node_id, nodeId),
+      ) as SQL,
+    );
+  }
+
+  /**
+   * Release a held slot once the orphan reconciler has PROVEN the container is
+   * gone.
+   *
+   * The delete path deliberately keeps ownership when it cannot prove absence —
+   * a bounded timeout abandons a container that may still be running, and a
+   * `deletion_failed` row's container is by definition still out there. Without
+   * this the slot would stay counted forever once `reEnqueueFailedDeletions`
+   * hits its circuit breaker, permanently shrinking the node and inflating the
+   * autoscaler's view of demand (the #15378 regression).
+   *
+   * Unfenced by generation on purpose: the reaper observed the container's
+   * absence directly, which supersedes whichever deletion attempt was in
+   * flight. The node is still matched, so a row since re-placed elsewhere
+   * cannot have the wrong node's capacity released.
+   */
+  async releaseDeletionAllocationOnReap(agentId: string, nodeId: string): Promise<boolean> {
+    return this.spendDeletionAllocation(
+      nodeId,
+      and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
+    );
   }
 }
 

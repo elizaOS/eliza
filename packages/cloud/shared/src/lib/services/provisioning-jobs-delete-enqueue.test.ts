@@ -12,6 +12,11 @@
  * helpers module with chainable query builders that capture the generated SQL.
  */
 
+// These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
+// self-healing DDL guard cannot run here. Skipping it is the house pattern for
+// mocked-database suites; the guard itself is covered by the PGlite tests.
+process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
+
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";

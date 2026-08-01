@@ -157,6 +157,7 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "lifecycle_execution_generation" uuid,
   "deletion_attempt_id" uuid,
   "deletion_started_at" timestamptz,
+  "deletion_allocation_counted" boolean,
   "execution_tier" text NOT NULL DEFAULT 'shared'::text,
   "bridge_url" text,
   "health_url" text,

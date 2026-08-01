@@ -176,6 +176,16 @@ export interface OrphanReconcilerConfig {
    * Defaults to `DEFAULT_NODE_MOVE_GRACE_MS` when node-aware and unset.
    */
   nodeMoveGraceMs?: number;
+
+  /**
+   * Invoked after a container is successfully reaped, with the decision key and
+   * the node it was reaped from. The reap is the only place that PROVES a
+   * container is absent, so this is where a caller can hand back durable state
+   * that was deliberately held until absence was proven — e.g. an agent
+   * deletion generation's node slot (#17185). Best-effort by contract: a
+   * failure here is logged and never aborts the sweep.
+   */
+  onReaped?(key: string, nodeId: string): Promise<void>;
 }
 
 /**
@@ -558,6 +568,18 @@ export async function reconcileOrphanContainers(
         // whichever container holds it NOW, i.e. the new live one) — DO NOT.
         await node.removeContainer(orphan.id);
         result.reaped += 1;
+        if (config.onReaped) {
+          // error-policy:J7 the reap itself succeeded and is already counted;
+          // a bookkeeping failure must not abort the remaining reaps. The next
+          // sweep retries it, and the CAS behind it is idempotent.
+          await config.onReaped(orphan.key, node.node_id).catch((error: unknown) => {
+            logger.warn(`[${config.logScope}] Post-reap bookkeeping failed`, {
+              nodeId: node.node_id,
+              key: orphan.key,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        }
         logger.info(`[${config.logScope}] Reaped orphan container`, {
           nodeId: node.node_id,
           hostname: node.hostname,
