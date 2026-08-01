@@ -85,7 +85,10 @@ describe("parseRunnerWorkspacePruneArgs", () => {
     ).toThrow("Unknown flag --min-age");
 
     expect(() =>
-      parseRunnerWorkspacePruneArgs(["--root", "/var/runners", "--nope", "1"], {}),
+      parseRunnerWorkspacePruneArgs(
+        ["--root", "/var/runners", "--nope", "1"],
+        {},
+      ),
     ).toThrow("Unknown flag --nope");
   });
 
@@ -135,5 +138,44 @@ describe("buildRunnerWorkspacePrunePlan", () => {
     expect(plan.entries.map((entry) => entry.path)).toEqual([stale]);
     expect(plan.skippedFresh).toBe(1);
     expect(plan.totalBytes).toBeGreaterThan(0);
+  });
+
+  it("never includes runner-owned control directories (_temp, _actions, _tool, _update, _PipelineMapping) even when stale", () => {
+    const root = tempRoot();
+    const work = join(root, "runner-1", "_work");
+    const protectedDirs = [
+      "_temp",
+      "_actions",
+      "_tool",
+      "_update",
+      "_PipelineMapping",
+    ];
+    const staleRepo = join(work, "stale-user-repo");
+
+    mkdirSync(staleRepo, { recursive: true });
+    for (const name of protectedDirs) {
+      mkdirSync(join(work, name), { recursive: true });
+      writeFileSync(join(work, name, "data.txt"), "control-data");
+    }
+    writeFileSync(join(staleRepo, "code.ts"), "export const x = 1;");
+
+    const now = Date.now();
+    const oldDate = new Date(now - 48 * 60 * 60_000);
+    utimesSync(staleRepo, oldDate, oldDate);
+    for (const name of protectedDirs) {
+      utimesSync(join(work, name), oldDate, oldDate);
+    }
+
+    const plan = buildRunnerWorkspacePrunePlan({
+      root,
+      now,
+      minAgeHours: 6,
+    });
+
+    const plannedPaths = plan.entries.map((e) => e.path);
+    expect(plannedPaths).toEqual([staleRepo]);
+    for (const name of protectedDirs) {
+      expect(plannedPaths).not.toContain(join(work, name));
+    }
   });
 });

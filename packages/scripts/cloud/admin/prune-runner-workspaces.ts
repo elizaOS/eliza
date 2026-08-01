@@ -44,6 +44,19 @@ const MIN_AGE_HOURS_FLOOR = 1;
 /** Flags that take a value. Anything else is rejected rather than ignored. */
 const VALUE_FLAGS = new Set(["root", "min-age-hours"]);
 
+/**
+ * Direct children of `_work` owned by GitHub Actions runner execution machinery.
+ * Pruning these destroys active runner file command pipes, action steps, toolsets,
+ * and pipeline mappings.
+ */
+export const PROTECTED_RUNNER_CONTROL_DIRS = new Set([
+  "_temp",
+  "_actions",
+  "_tool",
+  "_update",
+  "_PipelineMapping",
+]);
+
 export function parseRunnerWorkspacePruneArgs(
   argv: string[],
   env: NodeJS.ProcessEnv,
@@ -194,6 +207,7 @@ export function buildRunnerWorkspacePrunePlan(input: {
     }
 
     for (const child of children) {
+      if (PROTECTED_RUNNER_CONTROL_DIRS.has(child.name)) continue;
       const childPath = path.join(workDir, child.name);
       if (!realPathInsideRoot(childPath, input.root)) continue;
       let stat: Stats;
