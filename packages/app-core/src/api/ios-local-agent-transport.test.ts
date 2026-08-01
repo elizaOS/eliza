@@ -810,6 +810,50 @@ describe("iOS local agent transport bridge", () => {
     expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
   });
 
+  it("does not replay a dispatched stream through the buffered bridge when startup fails", async () => {
+    capacitorState.pluginAvailable = true;
+    vi.stubEnv("VITE_ELIZA_IOS_FULL_BUN_AVAILABLE", "1");
+    const startupError = new Error("stream response head was lost");
+    const call = vi.fn(async ({ method }: { method: string }) => {
+      if (method === "http_request_stream") throw startupError;
+      return {
+        result: {
+          status: 200,
+          statusText: "OK",
+          headers: {},
+          body: "buffered replay",
+        },
+      };
+    });
+    const addListener = vi.fn(async () => ({ remove: vi.fn() }));
+
+    const { iosInProcessAgentTransportForUrl, primeIosFullBunRuntime } =
+      await import("./ios-local-agent-transport");
+    primeIosFullBunRuntime({
+      start: vi.fn(async () => ({ ok: true })),
+      getStatus: vi.fn(async () => ({ ready: true, engine: "bun" })),
+      call,
+      addListener,
+    });
+    const transport = await iosInProcessAgentTransportForUrl(
+      "eliza-local-agent://ipc/api/messages/stream",
+    );
+
+    await expect(
+      transport?.request("eliza-local-agent://ipc/api/messages/stream", {
+        method: "POST",
+        headers: { accept: "text/event-stream" },
+        body: JSON.stringify({ text: "hello" }),
+      }),
+    ).rejects.toBe(startupError);
+
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request_stream",
+      args: expect.objectContaining({ path: "/api/messages/stream" }),
+    });
+  });
+
   it("uses the ITTP compatibility transport in local iOS builds without a full Bun engine", async () => {
     capacitorState.pluginAvailable = true;
     vi.stubGlobal("__ELIZAOS_APP_BOOT_CONFIG__", {

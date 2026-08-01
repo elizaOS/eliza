@@ -9483,6 +9483,8 @@ ${section_end}`;
 						registration.provider,
 					);
 				} catch (error) {
+					// error-policy:J2 preserve each provider failure in the typed
+					// aggregate if no registered embedding provider can be measured.
 					if (!(error instanceof NoModelProviderConfiguredError)) {
 						allFailuresBenign = false;
 					}

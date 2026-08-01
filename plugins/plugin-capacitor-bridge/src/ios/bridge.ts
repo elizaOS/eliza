@@ -1914,6 +1914,8 @@ function callIosHost(
 				payload,
 			});
 		} catch (error) {
+			// error-policy:J1 the host-protocol boundary rejects the owning call
+			// after removing correlation state for a synchronous transport failure.
 			pendingHostCalls.delete(id);
 			signal?.removeEventListener("abort", onAbort);
 			reject(error);
@@ -2433,10 +2435,15 @@ async function unloadNativeLlamaModel(): Promise<void> {
 	nativeLlamaState.loadedAt = null;
 	nativeLlamaState.status = "idle";
 	if (contextId != null) {
-		// error-policy:J6 best-effort teardown — the local state is already reset
-		// above; a failed native free must not leave unload half-done.
 		await callIosHost("llama_free", { context_id: contextId }).catch(
-			() => undefined,
+			(error) => {
+				// error-policy:J6 best-effort teardown — local state is already
+				// reset; stderr keeps a failed native free observable.
+				console.error(
+					"[ios-bridge] failed to free native llama context",
+					error,
+				);
+			},
 		);
 	}
 	nativeLlamaState.modelId = null;

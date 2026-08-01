@@ -65,6 +65,8 @@ class ElizaBunRuntimePlugin : Plugin() {
                     try {
                         Thread.sleep(POLL_INTERVAL_MS)
                     } catch (_: InterruptedException) {
+                        // error-policy:J1 the Capacitor method boundary returns
+                        // an explicit cancelled result when its worker is interrupted.
                         Thread.currentThread().interrupt()
                         val result = JSObject().apply {
                             put("ok", false)
@@ -75,6 +77,8 @@ class ElizaBunRuntimePlugin : Plugin() {
                     }
                 }
             } catch (e: Exception) {
+                // error-policy:J1 translate startup failure at the Capacitor
+                // method boundary instead of fabricating a ready result.
                 call.reject(e.message ?: "Could not start Android Bun runtime")
             }
         }, "ElizaBunRuntime-start").apply {

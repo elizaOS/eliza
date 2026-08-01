@@ -170,6 +170,27 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     await expect(response?.json()).resolves.toEqual({ ready: true });
   });
 
+  it("does not replay a dispatched stream through the buffered bridge when startup fails", async () => {
+    const startupError = new Error("stream response head was lost");
+    const requestStream = vi.fn().mockRejectedValue(startupError);
+    const transport = createAndroidNativeAgentTransport({
+      request: agentRequestMock,
+      requestStream,
+      addListener: vi.fn(),
+    });
+
+    await expect(
+      transport.request("eliza-local-agent://ipc/api/messages/stream", {
+        method: "POST",
+        headers: { accept: "text/event-stream" },
+        body: JSON.stringify({ text: "hello" }),
+      }),
+    ).rejects.toBe(startupError);
+
+    expect(requestStream).toHaveBeenCalledTimes(1);
+    expect(agentRequestMock).not.toHaveBeenCalled();
+  });
+
   it("extracts IPC paths correctly under Chromium WebView custom-scheme URL parsing", async () => {
     stubChromiumWebViewCustomSchemeUrlParser();
     const fetchMock = vi.fn();

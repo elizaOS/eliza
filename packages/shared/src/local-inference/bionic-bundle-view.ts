@@ -44,6 +44,8 @@ function pathExistsIncludingBrokenLink(target: string): boolean {
     lstatSync(target);
     return true;
   } catch (error) {
+    // error-policy:J3 ENOENT is the explicit absent state at this filesystem
+    // boundary; permission and I/O failures remain exceptional.
     if (errorCode(error) === "ENOENT") return false;
     throw error;
   }
@@ -61,6 +63,8 @@ function pathsReferToSameEntry(source: string, target: string): boolean {
     }
     return realpathSync(source) === realpathSync(target);
   } catch (error) {
+    // error-policy:J3 a vanished alias is explicitly "not the same entry";
+    // permission and I/O failures remain exceptional.
     if (errorCode(error) === "ENOENT") return false;
     throw error;
   }
@@ -96,6 +100,8 @@ function stageModelAlias(source: string, target: string): void {
   try {
     linkSync(source, target);
   } catch (error) {
+    // error-policy:J4 filesystems without hard-link support use the explicit
+    // symlink representation; every other failure still propagates.
     const code = errorCode(error);
     if (code !== "EXDEV" && code !== "EMLINK" && code !== "EPERM") {
       throw error;

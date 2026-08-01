@@ -328,34 +328,31 @@ export function createAndroidNativeAgentTransport(
 
       // SSE requests (the chat reply token stream) go through the streaming
       // bridge so tokens reach the WebView incrementally instead of buffering
-      // the whole body. Falls through to the buffered `request` below if the
-      // native plugin has no streaming bridge or the stream fails to start.
+      // the whole body. Only an absent streaming bridge uses the buffered
+      // request: replaying after a start failure could execute a mutating
+      // request twice when native dispatch succeeded but the response head did
+      // not reach the WebView.
       if (
         isStreamingRequest(url, init.headers) &&
         supportsNativeStreaming(agent)
       ) {
-        try {
-          return await createNativeStreamingResponse(
-            {
-              ...(agent as NativeStreamingAgentPlugin),
-              cancelStream: agent.cancelRequestStream
-                ? async (streamId) => {
-                    await agent.cancelRequestStream?.({ streamId });
-                  }
-                : undefined,
-            },
-            {
-              method,
-              path: localAgentRequestPath(url),
-              headers: headersToRecord(init.headers),
-              body: methodAllowsBody(method) ? (body ?? null) : null,
-            },
-            init.signal ?? undefined,
-          );
-        } catch (error) {
-          if (init.signal?.aborted) throw error;
-          // Stream couldn't start — fall back to the buffered request path.
-        }
+        return await createNativeStreamingResponse(
+          {
+            ...(agent as NativeStreamingAgentPlugin),
+            cancelStream: agent.cancelRequestStream
+              ? async (streamId) => {
+                  await agent.cancelRequestStream?.({ streamId });
+                }
+              : undefined,
+          },
+          {
+            method,
+            path: localAgentRequestPath(url),
+            headers: headersToRecord(init.headers),
+            body: methodAllowsBody(method) ? (body ?? null) : null,
+          },
+          init.signal ?? undefined,
+        );
       }
 
       const result = await request({

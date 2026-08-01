@@ -860,11 +860,14 @@ async function releaseFusedEmbeddingHandle(
 	try {
 		handle.ffi.destroy(handle.ctx);
 	} catch (error) {
+		// error-policy:J2 retain context teardown failure so it can be rethrown
+		// alone or aggregated with the library-close failure below.
 		destroyError = error;
 	}
 	try {
 		handle.ffi.close();
 	} catch (error) {
+		// error-policy:J2 preserve both teardown causes when both native steps fail.
 		if (destroyError) {
 			throw new AggregateError(
 				[destroyError, error],

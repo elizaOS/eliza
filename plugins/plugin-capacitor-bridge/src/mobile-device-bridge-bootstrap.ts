@@ -868,9 +868,12 @@ export class MobileDeviceBridge {
 						device.socket.send(
 							JSON.stringify({ type: "cancel", correlationId }),
 						);
-					} catch {
-						// error-policy:J5 the caller observes cancellation; socket
-						// failure is independently observed by the close/error handlers.
+					} catch (error) {
+						// error-policy:J6 the caller is already cancelled; warn when the
+						// native producer could not be stopped so leaked work is visible.
+						logger.warn(
+							`[mobile-device-bridge] Failed to cancel ${correlationId}: ${error instanceof Error ? error.message : String(error)}`,
+						);
 					}
 				}
 				reject(abortError(options.signal as AbortSignal));
@@ -1001,6 +1004,8 @@ function readJsonFile<T>(filePath: string): T | null {
 	try {
 		return JSON.parse(readFileSync(filePath, "utf8")) as T;
 	} catch (error) {
+		// error-policy:J3 a missing optional registry is the explicit absent
+		// state; malformed and unreadable files remain owner-visible failures.
 		if (
 			error &&
 			typeof error === "object" &&

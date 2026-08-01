@@ -561,6 +561,8 @@ public class ElizaAgentService extends Service {
                     LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
                 return socket;
             } catch (IOException cause) {
+                // error-policy:J2 release the failed socket before the outer
+                // connector boundary rethrows with readiness context and cause.
                 closeQuietly(socket);
                 throw cause;
             }
@@ -572,6 +574,8 @@ public class ElizaAgentService extends Service {
         try {
             return connector.connect();
         } catch (IOException cause) {
+            // error-policy:J2 preserve the socket failure while naming the
+            // local-agent readiness contract for callers.
             throw new IOException(
                 "Local agent is not ready: request socket is not accepting connections",
                 cause);

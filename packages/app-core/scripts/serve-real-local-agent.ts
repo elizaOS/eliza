@@ -396,16 +396,26 @@ async function main(): Promise<void> {
   );
 
   let stopping = false;
+  const settleTeardown = async (
+    label: string,
+    operation: () => Promise<unknown> | undefined,
+  ): Promise<void> => {
+    try {
+      await operation();
+    } catch (error) {
+      // error-policy:J6 shutdown continues after each best-effort teardown,
+      // while stderr preserves the component that failed to release.
+      console.warn(`[device-e2e-host-agent] ${label} teardown failed`, error);
+    }
+  };
   const stop = async (signal: string) => {
     if (stopping) return;
     stopping = true;
     console.log(`[device-e2e-host-agent] stopping (${signal})`);
-    // error-policy:J6 best-effort teardown on shutdown signal; nothing consumes
-    // a teardown rejection once the process is stopping.
-    await server.close().catch(() => undefined);
-    await localVoiceCleanup?.().catch(() => undefined);
-    await runtimeResult.cleanup().catch(() => undefined);
-    await configEnv.restore().catch(() => undefined);
+    await settleTeardown("server", () => server.close());
+    await settleTeardown("local voice", () => localVoiceCleanup?.());
+    await settleTeardown("runtime", () => runtimeResult.cleanup());
+    await settleTeardown("isolated config", () => configEnv.restore());
     restoreRegistryFetch();
   };
 

@@ -1233,9 +1233,12 @@ export class DeviceBridge {
 							type: "cancel",
 							correlationId,
 						});
-					} catch {
-						// error-policy:J5 the caller observes cancellation; socket
-						// failure is independently observed by the close/error handlers.
+					} catch (error) {
+						// error-policy:J6 the caller is already cancelled; warn when the
+						// native producer could not be stopped so leaked work is visible.
+						logger.warn(
+							`[device-bridge] Failed to cancel generation ${correlationId}: ${error instanceof Error ? error.message : String(error)}`,
+						);
 					}
 				}
 				reject(abortError(args.signal as AbortSignal));

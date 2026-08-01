@@ -182,6 +182,8 @@ export function createStdioBridge(
 			await handler(parsed, sink);
 			sink.emitComplete();
 		} catch (err) {
+			// error-policy:J1 streaming protocol boundary translates handler
+			// rejection into the correlated terminal error frame.
 			sink.emitError(err instanceof Error ? err.message : String(err));
 		}
 	};
@@ -193,6 +195,7 @@ export function createStdioBridge(
 		try {
 			parsed = JSON.parse(line) as StdioBridgeRequestFrame;
 		} catch (err) {
+			// error-policy:J3 malformed stdin is an explicit invalid frame.
 			writeError(null, err);
 			return;
 		}
@@ -206,6 +209,8 @@ export function createStdioBridge(
 			const result = await request(parsed);
 			writeFrame({ id, ok: true, result });
 		} catch (err) {
+			// error-policy:J1 request protocol boundary translates rejection into
+			// the correlated failure frame.
 			writeError(id, err);
 		}
 	};
@@ -218,6 +223,8 @@ export function createStdioBridge(
 	const handleLine = (line: string): Promise<void> => {
 		if (interceptLine?.(line)) return Promise.resolve();
 		const current = dispatchLine(line).catch((err) => {
+			// error-policy:J1 an unexpected dispatcher rejection still receives a
+			// terminal protocol error instead of becoming unhandled.
 			writeError(null, err);
 		});
 		inFlight.add(current);
