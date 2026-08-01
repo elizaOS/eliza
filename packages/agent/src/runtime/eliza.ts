@@ -2327,8 +2327,16 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   }
 
   if (shouldLoadCloudPlugin) {
+    const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
+    const effectiveCloudApiKey =
+      configuredCloudApiKey ??
+      readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY");
+    const configuredCloudBaseUrl = trimEnvString(cloud?.baseUrl);
+    const effectiveCloudBaseUrl =
+      configuredCloudBaseUrl ??
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_BASE_URL");
     logger.info(
-      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(cloud?.apiKey || process.env.ELIZAOS_CLOUD_API_KEY)}, apiKey=${cloudApiKeyFingerprint(cloud?.apiKey ?? process.env.ELIZAOS_CLOUD_API_KEY)}, baseUrl=${cloud?.baseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
+      `[eliza] Cloud config: inference=${topology.services.inference}, runtime=${topology.runtime}, hasApiKey=${Boolean(effectiveCloudApiKey)}, apiKey=${cloudApiKeyFingerprint(effectiveCloudApiKey)}, baseUrl=${effectiveCloudBaseUrl ?? "(default)"}, isCloudContainer=${isCloudContainer}`,
     );
     // Only propagate the API key from config when it is a real credential —
     // never set the literal "[REDACTED]" placeholder (which can leak into the
@@ -2341,9 +2349,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     // (the plugin skips chat-brain registration), so deleting the key — and
     // losing image/media/TTS with it — is no longer necessary (#10819). Only a
     // leaked placeholder is still scrubbed.
-    const isRealApiKey =
-      cloud?.apiKey && cloud.apiKey.trim().toUpperCase() !== "[REDACTED]";
-    if (isRealApiKey) {
+    if (configuredCloudApiKey) {
       // #11038: a stale/placeholder vault entry resolved into config here
       // silently CLOBBERS a valid key already in the service env, and the
       // resulting 401s are indistinguishable from a server-side auth outage
@@ -2351,22 +2357,24 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       // key still wins (by design), but a mismatch against a non-empty env
       // value is loudly fingerprinted so the operator can see which credential
       // is actually on the wire.
-      const configKey = (cloud?.apiKey ?? "").trim();
+      const configKey = configuredCloudApiKey;
       const envKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
       if (envKey && configKey && envKey !== configKey) {
         logger.warn(
           `[eliza] Cloud API key from config (${cloudApiKeyFingerprint(configKey)}) differs from process.env.ELIZAOS_CLOUD_API_KEY (${cloudApiKeyFingerprint(envKey)}) — the config/vault value wins and will OVERRIDE the env key. If cloud calls start returning 401 "Invalid or expired API key", the vault likely holds a stale/placeholder entry (#11038).`,
         );
       }
-      process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
+    }
+    if (effectiveCloudApiKey) {
+      process.env.ELIZAOS_CLOUD_API_KEY = effectiveCloudApiKey;
     } else if (
       !isCloudContainer &&
       process.env.ELIZAOS_CLOUD_API_KEY?.trim().toUpperCase() === "[REDACTED]"
     ) {
       delete process.env.ELIZAOS_CLOUD_API_KEY;
     }
-    if (cloud?.baseUrl) {
-      process.env.ELIZAOS_CLOUD_BASE_URL = cloud.baseUrl;
+    if (effectiveCloudBaseUrl) {
+      process.env.ELIZAOS_CLOUD_BASE_URL = effectiveCloudBaseUrl;
     } else if (!isCloudContainer) {
       delete process.env.ELIZAOS_CLOUD_BASE_URL;
     }
