@@ -650,14 +650,25 @@ export function collectPluginNames(
       // owner supplies the text brain directly. The canonical llmText route is
       // the arbitration signal; stripping direct providers here would make the
       // persisted route impossible to execute and let Cloud inference win.
+      const directlyRoutedLocalProviders = new Set(
+        Object.values(serviceRouting ?? {}).flatMap((route) => {
+          if (route?.transport !== "direct" || !route.backend) return [];
+          const pluginName = resolvePluginPackageAlias(
+            packageNameFromPluginConfigId(route.backend),
+          );
+          return LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
+            ? [pluginName]
+            : [];
+        }),
+      );
       if (serviceRouting?.llmText?.transport !== "direct") {
         removeDirectModelProviderSurfaces(pluginsToLoad);
-      } else {
-        const localInferenceOwnsEmbeddings =
-          serviceRouting.embeddings?.transport === "direct" &&
-          serviceRouting.embeddings.backend === "local-inference";
-        if (!localInferenceOwnsEmbeddings) {
-          removeLocalModelSurfaces(pluginsToLoad);
+      }
+      for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
+        if (directlyRoutedLocalProviders.has(pluginName)) {
+          pluginsToLoad.add(pluginName);
+        } else {
+          pluginsToLoad.delete(pluginName);
         }
       }
       if (cloudEffectivelyEnabled) {
