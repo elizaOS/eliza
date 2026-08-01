@@ -29,6 +29,7 @@ import {
 	type JsonValue,
 	type Trajectory,
 } from "./features/trajectories/types";
+import { noteAcceptedLlmCallRecord } from "./runtime/llm-recording-scope";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
@@ -1067,6 +1068,7 @@ export function logActiveTrajectoryLlmCall(
 		stepId,
 		...details,
 	});
+	noteAcceptedLlmCallRecord();
 	return true;
 }
 

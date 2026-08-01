@@ -84,6 +84,10 @@ import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
+import {
+	hasRecordedLlmCallInCurrentScope,
+	runWithLlmCallRecordingScope,
+} from "./runtime/llm-recording-scope";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -5857,6 +5861,15 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		return runWithLlmCallRecordingScope(() =>
+			this.useModelWithinRecordingScope<T, R>(modelType, params, provider),
+		);
+	}
+
+	private async useModelWithinRecordingScope<
+		T extends keyof ModelParamsMap,
+		R = ModelResultMap[T],
+	>(modelType: T, params: ModelParamsMap[T], provider?: string): Promise<R> {
 		const useModelStartedAt = Date.now();
 		const lookupCaller = RUNTIME_DEBUG_LOG_ENABLED
 			? captureModelLookupCaller()
@@ -6865,7 +6878,7 @@ export class AgentRuntime implements IAgentRuntime {
 		response: string;
 		elapsedTime: number;
 	}): Promise<void> {
-		if (this.initResolver) return;
+		if (this.initResolver || hasRecordedLlmCallInCurrentScope()) return;
 
 		try {
 			const trajCtx = getTrajectoryContext();

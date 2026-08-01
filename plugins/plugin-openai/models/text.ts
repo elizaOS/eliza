@@ -1869,37 +1869,38 @@ async function generateTextByModelType(
       );
       details.response = "";
       const hasResponseTransform = preparedOutput?.transform !== undefined;
-      const buffered = await recordLlmCall(runtime, details, () =>
-        consumeStreamWithTransientRetry(
+      const buffered = await recordLlmCall(runtime, details, async () => {
+        const result = await consumeStreamWithTransientRetry(
           generateParams,
           hasResponseTransform ? undefined : params.onStreamChunk,
           5,
           () => attestLlmInputSubstring(details)
-        )
-      );
-      const restoredText = restoreResponseText(buffered.text);
-      const restoredToolCalls = restoreRecordArgToolCalls(
-        buffered.toolCalls,
-        normalizedToolResult.recordArgTransformsByTool
-      );
-      details.response = restoredText;
-      details.toolCalls = restoredToolCalls;
-      details.finishReason = buffered.finishReason;
+        );
+        const text = restoreResponseText(result.text);
+        const toolCalls = restoreRecordArgToolCalls(
+          result.toolCalls,
+          normalizedToolResult.recordArgTransformsByTool
+        );
+        details.response = text;
+        details.toolCalls = toolCalls;
+        details.finishReason = result.finishReason;
+        if (result.usage) applyUsageToDetails(details, result.usage);
+        return { ...result, text, toolCalls };
+      });
       if (buffered.usage) {
-        applyUsageToDetails(details, buffered.usage);
         emitModelUsageEvent(runtime, modelType, params.prompt ?? "", buffered.usage, modelName);
       }
       return {
         textStream: (async function* replayBufferedStream() {
-          if (restoredText) {
+          if (buffered.text) {
             if (hasResponseTransform) {
-              params.onStreamChunk?.(restoredText);
+              params.onStreamChunk?.(buffered.text);
             }
-            yield restoredText;
+            yield buffered.text;
           }
         })(),
-        text: Promise.resolve(restoredText),
-        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(restoredToolCalls) } : {}),
+        text: Promise.resolve(buffered.text),
+        ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(buffered.toolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
         providerMetadata: { modelName, provider: usageProvider },
