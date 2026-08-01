@@ -43,7 +43,7 @@ const OBJECT_SET_ID = "00000000-0000-4000-8000-000000000010";
 const OTHER_OBJECT_SET_ID = "00000000-0000-4000-8000-000000000020";
 const WRITE_LEASE_EXPIRES_AT = "2099-07-26T12:00:00.000Z";
 const WRITE_EPOCH_MIGRATION_URL = new URL(
-  "../migrations/0190_agent_backup_write_epochs.sql",
+  "../migrations/0191_agent_backup_write_epochs.sql",
   import.meta.url,
 );
 
