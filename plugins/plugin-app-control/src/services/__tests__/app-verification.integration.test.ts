@@ -3,7 +3,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -317,6 +317,87 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 			expect(result.retryablePromptForChild).toContain(
 				'APP_CREATE_DONE {"appName":"<package-name>"',
 			);
+		},
+		120_000,
+	);
+});
+
+describeIntegration("verifyProject publish step (containment + staged swap)", () => {
+	const service = new AppVerificationService(noopRuntime);
+	const publishRoot = mkdtempSync(path.join(tmpdir(), "app-verify-publish-"));
+
+	function makeApp(): string {
+		const workdir = mkdtempSync(path.join(tmpdir(), "app-verify-app-"));
+		writeFileSync(
+			path.join(workdir, "package.json"),
+			JSON.stringify({
+				name: "publish-fixture",
+				version: "0.0.0",
+				type: "module",
+				scripts: { build: "node -e \"process.exit(0)\"" },
+			}),
+		);
+		mkdirSync(path.join(workdir, "dist"), { recursive: true });
+		writeFileSync(
+			path.join(workdir, "dist", "index.html"),
+			"<!doctype html><title>fixture</title>",
+		);
+		return workdir;
+	}
+
+	afterAll(() => {
+		rmSync(publishRoot, { recursive: true, force: true });
+	});
+
+	itIf(pkgManagerAvailable)(
+		"refuses an appName that resolves outside the publish root",
+		async () => {
+			const prev = process.env.ELIZA_APP_PUBLISH_DIR;
+			process.env.ELIZA_APP_PUBLISH_DIR = publishRoot;
+			try {
+				const result = await service.verifyProject({
+					workdir: makeApp(),
+					appName: "../outside",
+					projectKind: "app",
+					checks: [{ kind: "build" }],
+					requireStructuredProof: false,
+				});
+				expect(result.verdict).toBe("fail");
+				const publish = result.checks.find((c) => c.kind === "publish");
+				expect(publish?.passed).toBe(false);
+				expect(publish?.output).toContain("outside the publish root");
+				expect(existsSync(path.join(publishRoot, "..", "outside"))).toBe(false);
+			} finally {
+				process.env.ELIZA_APP_PUBLISH_DIR = prev;
+			}
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"staged swap removes obsolete files from the previous live build",
+		async () => {
+			const prev = process.env.ELIZA_APP_PUBLISH_DIR;
+			process.env.ELIZA_APP_PUBLISH_DIR = publishRoot;
+			try {
+				const live = path.join(publishRoot, "swap-app");
+				mkdirSync(live, { recursive: true });
+				writeFileSync(path.join(live, "obsolete.js"), "stale");
+				const result = await service.verifyProject({
+					workdir: makeApp(),
+					appName: "swap-app",
+					projectKind: "app",
+					checks: [{ kind: "build" }],
+					requireStructuredProof: false,
+				});
+				expect(result.verdict).toBe("pass");
+				const publish = result.checks.find((c) => c.kind === "publish");
+				expect(publish?.passed).toBe(true);
+				expect(existsSync(path.join(live, "index.html"))).toBe(true);
+				expect(existsSync(path.join(live, "obsolete.js"))).toBe(false);
+			} finally {
+				process.env.ELIZA_APP_PUBLISH_DIR = prev;
+			}
 		},
 		120_000,
 	);
