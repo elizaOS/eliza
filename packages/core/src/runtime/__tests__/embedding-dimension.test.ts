@@ -13,7 +13,9 @@
  *    (plugins/plugin-sql/src/base.ts insert/update guards).
  * 3. A later successful re-probe (the deferred boot re-probe) clears the flag
  *    and embedding writes resume at the newly probed dimension.
- * 4. runtime.initialize() survives a total probe failure — boot stays alive in
+ * 4. A canonical embedding-provider setting selects that provider even when a
+ *    different handler has higher plugin priority.
+ * 5. runtime.initialize() survives a total probe failure — boot stays alive in
  *    the degraded mode instead of crashing (#10702's original symptom).
  */
 import { describe, expect, it, vi } from "vitest";
@@ -27,7 +29,7 @@ import { type Character, type Memory, ModelType, type UUID } from "../../types";
 
 const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 
-function makeRuntime(): AgentRuntime {
+function makeRuntime(settings: Record<string, string> = {}): AgentRuntime {
 	return new AgentRuntime({
 		character: {
 			name: "EmbeddingProbeAgent",
@@ -36,6 +38,7 @@ function makeRuntime(): AgentRuntime {
 		} as Character,
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
+		settings,
 	});
 }
 
@@ -48,6 +51,21 @@ function makeMemory(text: string): Memory {
 }
 
 describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
+	it("pins the canonically routed embedding provider instead of plugin priority", async () => {
+		const runtime = makeRuntime({ ELIZA_EMBEDDING_PROVIDER: "direct" });
+		const cloudHandler = vi.fn(async () => new Array(1536).fill(0));
+		const directHandler = vi.fn(async () => new Array(384).fill(0));
+
+		runtime.registerModel(ModelType.TEXT_EMBEDDING, cloudHandler, "cloud", 100);
+		runtime.registerModel(ModelType.TEXT_EMBEDDING, directHandler, "direct", 0);
+		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+		expect(cloudHandler).not.toHaveBeenCalled();
+		expect(directHandler).toHaveBeenCalledTimes(1);
+		expect(ensureDim).toHaveBeenCalledWith(384);
+	});
+
 	it("fails over past a broken provider on a non-rate-limit probe error and pins the working provider", async () => {
 		const runtime = makeRuntime();
 		const brokenHandler = vi.fn(async () => {
