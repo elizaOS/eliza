@@ -144,6 +144,15 @@ for (const fixture of [
     pattern: /dual-firmware ISO boot may not continue on error/,
   },
   {
+    name: "a shortened firmware boot timeout",
+    mutate: (job) => {
+      stepNamed(job, "Smoke test ISO through SeaBIOS and OVMF").env[
+        "ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS"
+      ] = 600;
+    },
+    pattern: /must retain bounded step and guest timeouts/,
+  },
+  {
     name: "success-only boot diagnostics",
     mutate: (job) => {
       stepNamed(job, "Upload ISO boot diagnostics").if = "success()";

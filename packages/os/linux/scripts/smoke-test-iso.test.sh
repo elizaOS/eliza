@@ -84,23 +84,34 @@ done
 printf 'firmware=%s\n' "${firmware}" >>"${FAKE_QEMU_ARGS_LOG}"
 
 case "${FAKE_QEMU_MODE:-ready}" in
-    ready|ignore-term)
+    ready|ready-after-retry|ignore-term)
         exec 7>"${serial_prefix}.out"
         exec 6>"${remote_shell_prefix}.out"
         printf 'Linux version fixture\namnesia login: ' >&7
         IFS= read -r signal_request <"${remote_shell_prefix}.in"
         [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 65
         printf '[1, "success"]\n' >&6
-        IFS= read -r probe <"${remote_shell_prefix}.in"
-        if [[ "${probe}" == *"ELIZAOS_ISO_SMOKE_READY"* ]]; then
-            echo "host command contained the complete readiness marker" >&2
-            exit 66
-        fi
-        [[ "${probe}" == *'"sh_call", "amnesia"'* ]] || exit 67
-        [[ "${probe}" == *"systemctl --user is-active --quiet elizaos-agent.service"* ]] ||
-            exit 68
-        [[ "${probe}" == *"http://127.0.0.1:31337/api/health"* ]] || exit 69
-        printf '[2, "success", 0, "ELIZAOS_ISO_SMOKE_READY firmware=%s service=active health=ready", ""]\n' "${firmware}" >&6
+        probe_number=0
+        while true; do
+            IFS= read -r probe <"${remote_shell_prefix}.in"
+            probe_number=$((probe_number + 1))
+            if [[ "${probe}" == *"ELIZAOS_ISO_SMOKE_READY"* ]]; then
+                echo "host command contained the complete readiness marker" >&2
+                exit 66
+            fi
+            [[ "${probe}" == *'"sh_call", "amnesia"'* ]] || exit 67
+            [[ "${probe}" == *"systemctl --user is-active elizaos-agent.service"* ]] ||
+                exit 68
+            [[ "${probe}" == *"http://127.0.0.1:31337/api/health"* ]] || exit 69
+            request_id=$((probe_number + 1))
+            if [ "${FAKE_QEMU_MODE}" = "ready-after-retry" ] &&
+                [ "${probe_number}" -eq 1 ]; then
+                printf '[%s, "success", 0, "ELIZAOS_ISO_SMOKE_WAIT bus=ready service=activating service_rc=3 health=not-attempted health_rc=125 body=", ""]\n' "${request_id}" >&6
+                continue
+            fi
+            printf '[%s, "success", 0, "ELIZAOS_ISO_SMOKE_READY firmware=%s service=active health=ready", ""]\n' "${request_id}" "${firmware}" >&6
+            break
+        done
         if [ "${FAKE_QEMU_MODE}" = "ignore-term" ]; then
             trap '' TERM
         else
@@ -110,6 +121,16 @@ case "${FAKE_QEMU_MODE:-ready}" in
         ;;
     userspace-only)
         printf 'Linux version fixture\namnesia login:\n' >"${serial_prefix}.out"
+        trap 'exit 0' TERM
+        while true; do sleep 1; done
+        ;;
+    remote-error)
+        exec 7>"${serial_prefix}.out"
+        exec 6>"${remote_shell_prefix}.out"
+        printf 'Linux version fixture\n' >&7
+        IFS= read -r signal_request <"${remote_shell_prefix}.in"
+        [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 65
+        printf '[1, "error", "fixture remote-shell failure"]\n' >&6
         trap 'exit 0' TERM
         while true; do sleep 1; done
         ;;
@@ -184,6 +205,12 @@ run_expect_failure \
     "bios firmware reached Linux userspace but did not prove the canonical live-user service and health endpoint" \
     "${SCRIPT}" "${ISO}"
 
+FAKE_QEMU_MODE=remote-error
+export FAKE_QEMU_MODE
+run_expect_failure \
+    "bios Tails remote shell rejected signal_ready" \
+    "${SCRIPT}" "${ISO}"
+
 FAKE_QEMU_MODE=ready
 export FAKE_QEMU_MODE
 export ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS=3
@@ -211,6 +238,19 @@ test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.serial.log"
 test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/uefi.serial.log"
 test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.remote-shell.log"
 test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/uefi.remote-shell.log"
+
+FAKE_QEMU_MODE=ready-after-retry
+export FAKE_QEMU_MODE
+rm -rf "${ELIZAOS_ISO_SMOKE_LOG_DIR}"
+: >"${FAKE_QEMU_ARGS_LOG}"
+if ! "${SCRIPT}" "${ISO}" >"${TMP}/retry-output" 2>&1; then
+    cat "${TMP}/retry-output" >&2
+    exit 1
+fi
+grep -Fq "ELIZAOS_ISO_SMOKE_WAIT bus=ready service=activating" \
+    "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.remote-shell.log"
+grep -Fq "ISO smoke test (uefi): canonical live-user service and health ready" \
+    "${TMP}/retry-output"
 
 FAKE_QEMU_MODE=ignore-term
 export FAKE_QEMU_MODE

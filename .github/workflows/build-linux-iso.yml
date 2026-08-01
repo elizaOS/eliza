@@ -175,9 +175,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Smoke test ISO through SeaBIOS and OVMF
-        timeout-minutes: 35
+        timeout-minutes: 40
         env:
-          ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS: 600
+          ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS: 900
           ELIZAOS_ISO_SMOKE_LOG_DIR: ${{ runner.temp }}/elizaos-iso-smoke-logs
         run: |
           set -euo pipefail

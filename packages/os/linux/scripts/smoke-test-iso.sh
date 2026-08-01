@@ -7,7 +7,7 @@ set -euo pipefail
 ISO="${1:-}"
 QEMU_BIN="${ELIZAOS_QEMU_BIN:-qemu-system-x86_64}"
 XORRISO_BIN="${ELIZAOS_XORRISO_BIN:-xorriso}"
-BOOT_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS:-600}"
+BOOT_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS:-900}"
 BOOT_MENU_WAIT_SECONDS="${ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS:-10}"
 POLL_SECONDS="${ELIZAOS_ISO_SMOKE_POLL_SECONDS:-2}"
 STOP_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS:-10}"
@@ -357,22 +357,27 @@ remote_shell_send() {
     printf '%s\n' "$1" >&"${REMOTE_SHELL_FD}"
 }
 
+queue_remote_signal_ready() {
+    # Tails intentionally gates this VM-only virtio channel behind both an
+    # explicit kernel option and a matching QEMU device. Acknowledging this
+    # request releases GDM and proves that subsequent probes reach the guest.
+    remote_shell_send '[1,"signal_ready"]'
+}
+
 queue_remote_readiness_probe() {
     local firmware="$1"
+    local request_id="$2"
     local marker_suffix="READY firmware=${firmware} service=active health=ready"
-    local guest_probe_attempts=$((BOOT_TIMEOUT_SECONDS * 2 / 5))
     local health_probe
 
-    [ "${guest_probe_attempts}" -gt 0 ] || guest_probe_attempts=1
-
-    # Tails intentionally gates this VM-only virtio channel behind both an
-    # explicit kernel option and a matching QEMU device. The readiness signal
-    # releases GDM, then the command waits for the real greeter-created user
-    # bus and probes the canonical service as the live user.
-    remote_shell_send '[1,"signal_ready"]'
-    health_probe="for i in \$(seq 1 ${guest_probe_attempts}); do if [ -S /run/user/1000/bus ] && XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user is-active --quiet elizaos-agent.service && /usr/bin/curl --noproxy '*' -fsS http://127.0.0.1:31337/api/health -o /tmp/elizaos-smoke-health.json && /bin/grep -Eq '\"ready\"[[:space:]]*:[[:space:]]*true' /tmp/elizaos-smoke-health.json; then printf '%s%s' 'ELIZAOS_ISO_SMOKE_' '${marker_suffix}'; exit 0; fi; sleep 2; done; XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user status elizaos-agent.service --no-pager >&2; exit 1"
+    # Each request is deliberately short. TCG boots can take many minutes on a
+    # hosted runner, so one guest-side retry loop would hide its intermediate
+    # state and race the outer timeout. The response reports the real bus,
+    # service, curl, and payload states before the host schedules another try.
+    health_probe="bus=missing; service=unavailable; service_rc=125; health=not-attempted; health_rc=125; health_body=''; if [ -S /run/user/1000/bus ]; then bus=ready; service=\$(XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user is-active elizaos-agent.service 2>&1); service_rc=\$?; if [ \"\${service_rc}\" -eq 0 ] && [ \"\${service}\" = active ]; then health_body=\$(/usr/bin/curl --noproxy '*' --connect-timeout 2 --max-time 5 -fsS http://127.0.0.1:31337/api/health 2>&1); health_rc=\$?; if [ \"\${health_rc}\" -eq 0 ] && printf '%s' \"\${health_body}\" | /bin/grep -Eq '\"ready\"[[:space:]]*:[[:space:]]*true'; then health=ready; else health=not-ready; fi; fi; fi; if [ \"\${bus}:\${service}:\${health}\" = ready:active:ready ]; then printf '%s%s' 'ELIZAOS_ISO_SMOKE_' '${marker_suffix}'; else printf 'ELIZAOS_ISO_SMOKE_WAIT bus=%s service=%s service_rc=%s health=%s health_rc=%s body=%s' \"\${bus}\" \"\${service}\" \"\${service_rc}\" \"\${health}\" \"\${health_rc}\" \"\${health_body}\"; fi"
     python3 -c \
-        'import json, sys; print(json.dumps([2, "sh_call", "amnesia", {}, sys.argv[1]]))' \
+        'import json, sys; print(json.dumps([int(sys.argv[1]), "sh_call", "amnesia", {}, sys.argv[2]]))' \
+        "${request_id}" \
         "${health_probe}" \
         >&"${REMOTE_SHELL_FD}"
 }
@@ -452,7 +457,7 @@ launch_firmware_vm() {
     "${QEMU_BIN}" "${qemu_args[@]}" >"${stdout_log}" 2>"${stderr_log}" &
     QEMU_PID=$!
     boot_selected_entry_with_serial "${firmware}"
-    queue_remote_readiness_probe "${firmware}"
+    queue_remote_signal_ready
 }
 
 prove_guest_readiness() {
@@ -461,6 +466,9 @@ prove_guest_readiness() {
     local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
     local marker="ELIZAOS_ISO_SMOKE_READY firmware=${firmware} service=active health=ready"
     local start_seconds="${SECONDS}"
+    local signal_acked=0
+    local probe_in_flight=0
+    local probe_id=1
     local weak_seen=0
 
     while ((SECONDS - start_seconds < BOOT_TIMEOUT_SECONDS)); do
@@ -471,6 +479,28 @@ prove_guest_readiness() {
 
         if grep -Eq 'Linux version|systemd\[1\]|[[:space:]]login:' "${serial_log}" 2>/dev/null; then
             weak_seen=1
+        fi
+
+        if [ "${signal_acked}" = "0" ]; then
+            if grep -Eq '^\[1, "error"' "${remote_shell_log}" 2>/dev/null; then
+                fail "${firmware} Tails remote shell rejected signal_ready"
+            fi
+            if grep -Eq '^\[1, "success"' "${remote_shell_log}" 2>/dev/null; then
+                signal_acked=1
+            fi
+        fi
+
+        if [ "${signal_acked}" = "1" ]; then
+            if [ "${probe_in_flight}" = "1" ] &&
+                grep -Eq "^\\[${probe_id}, \\\"error\\\"" "${remote_shell_log}" 2>/dev/null; then
+                fail "${firmware} Tails remote shell rejected readiness probe ${probe_id}"
+            fi
+            if [ "${probe_in_flight}" = "0" ] ||
+                grep -Eq "^\\[${probe_id}, \\\"success\\\"" "${remote_shell_log}" 2>/dev/null; then
+                probe_id=$((probe_id + 1))
+                queue_remote_readiness_probe "${firmware}" "${probe_id}"
+                probe_in_flight=1
+            fi
         fi
 
         qemu_is_running

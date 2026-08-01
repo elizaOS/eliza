@@ -246,8 +246,8 @@ export function validateLinuxIsoWorkflow(workflow) {
   );
   requireFailClosed(boot.step, "dual-firmware ISO boot");
   invariant(
-    boot.step["timeout-minutes"] === 35 &&
-      String(boot.step.env?.ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS) === "600",
+    boot.step["timeout-minutes"] === 40 &&
+      String(boot.step.env?.ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS) === "900",
     "dual-firmware ISO boot must retain bounded step and guest timeouts",
   );
   invariant(
