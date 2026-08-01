@@ -59,7 +59,7 @@ function resolveDirectPublishTarget(
 	const target = path.resolve(root, appName);
 	if (path.dirname(target) !== root || path.basename(target) !== appName) {
 		throw new Error(
-			"App publish name must be one direct child of the publish root",
+			"App publish name resolves outside the publish root or is not one direct child",
 		);
 	}
 	return { root, target };
