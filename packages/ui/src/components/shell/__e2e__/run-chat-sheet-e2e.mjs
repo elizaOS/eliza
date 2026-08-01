@@ -18,9 +18,9 @@
  *       short input pull springs back · pill tap → INPUT (no keyboard) ·
  *       grabber tap steps INPUT → HALF → INPUT.
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
- *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
- *       streamed growth remains pinned, reading-scrollback is not yanked, and
- *       scrollback remains stable without extra floating controls.
+ *   - AUTOSCROLL, per input type: tail follows at bottom through streamed
+ *       growth and live sheet resizing, reading-scrollback is not yanked by
+ *       either content growth or resizing, and no floating controls appear.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -1299,6 +1299,83 @@ async function scrollReaderUp(p, pointer) {
   return after;
 }
 
+async function startResizeAnchorProbe(p) {
+  await p.evaluate(() => {
+    const viewport = document.querySelector(
+      '[data-testid="chat-thread-scroll"]',
+    );
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("chat transcript viewport is missing");
+    }
+    const samples = [];
+    const sample = () => {
+      const messages = viewport.querySelectorAll("[data-message-id]");
+      const last = messages.item(messages.length - 1);
+      const viewportRect = viewport.getBoundingClientRect();
+      const lastRect = last?.getBoundingClientRect();
+      const sheet = document.querySelector('[data-testid="chat-sheet"]');
+      samples.push({
+        bottomDelta:
+          Math.max(0, viewport.scrollHeight - viewport.clientHeight) -
+          viewport.scrollTop,
+        lastGap: lastRect ? viewportRect.bottom - lastRect.bottom : null,
+        sheetHeight: sheet?.getBoundingClientRect().height ?? 0,
+      });
+    };
+    // This probe registers after the product observer. Sampling in a microtask
+    // observes the state after every observer in the delivery has run, while
+    // still preceding the dependency's deliberately deferred next-frame work.
+    const observer = new ResizeObserver(() => queueMicrotask(sample));
+    observer.observe(viewport);
+    sample();
+    window.__chatResizeAnchorProbe = { observer, samples };
+  });
+}
+
+async function stopResizeAnchorProbe(p) {
+  return p.evaluate(() => {
+    const probe = window.__chatResizeAnchorProbe;
+    probe?.observer.disconnect();
+    delete window.__chatResizeAnchorProbe;
+    return probe?.samples ?? [];
+  });
+}
+
+async function provePinnedResizeStability(p, pointer) {
+  await startResizeAnchorProbe(p);
+  await gesture(p, -120, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 24,
+    target: "chat-sheet-grabber",
+  });
+  await p.waitForTimeout(60);
+  const samples = await stopResizeAnchorProbe(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+
+  const heights = samples.map((sample) => sample.sheetHeight);
+  const bottomDeltas = samples.map((sample) => Math.abs(sample.bottomDelta));
+  const lastGaps = samples
+    .map((sample) => sample.lastGap)
+    .filter((gap) => gap !== null);
+  const heightTravel = Math.max(...heights) - Math.min(...heights);
+  const gapTravel = Math.max(...lastGaps) - Math.min(...lastGaps);
+  assert(
+    samples.length >= 8 && heightTravel >= 80,
+    `[${pointer}] AUTOSCROLL samples a meaningful slow resize (${samples.length} samples, ${heightTravel.toFixed(1)}px)`,
+  );
+  assert(
+    Math.max(...bottomDeltas) <= 1.5,
+    `[${pointer}] AUTOSCROLL stays synchronously bottom-pinned during resize (max delta ${Math.max(...bottomDeltas).toFixed(2)}px)`,
+  );
+  assert(
+    lastGaps.length >= 8 && gapTravel <= 1.5,
+    `[${pointer}] AUTOSCROLL last message has no painted jump during resize (gap travel ${gapTravel.toFixed(2)}px)`,
+  );
+}
+
 async function runAutoScrollSuite(p, pointer, tag) {
   await openSheetToFull(p, pointer);
   const beforeLargeGrowth = await threadScrollState(p);
@@ -1329,7 +1406,30 @@ async function runAutoScrollSuite(p, pointer, tag) {
     `[${pointer}] AUTOSCROLL stays pinned after a new assistant line (delta=${Math.round(afterAppend?.bottomDelta ?? -1)})`,
   );
 
+  await provePinnedResizeStability(p, pointer);
+  await waitForThreadBottom(p);
+
   const readerPosition = await scrollReaderUp(p, pointer);
+  await gesture(p, -80, {
+    pointer,
+    hold: true,
+    slow: true,
+    steps: 16,
+    target: "chat-sheet-grabber",
+  });
+  const resizedReaderPosition = await threadScrollState(p);
+  await release(p, pointer);
+  await p.waitForTimeout(SETTLE);
+  const settledReaderPosition = await threadScrollState(p);
+  assert(
+    !!readerPosition &&
+      !!resizedReaderPosition &&
+      !!settledReaderPosition &&
+      Math.abs(resizedReaderPosition.scrollTop - readerPosition.scrollTop) <=
+        2 &&
+      Math.abs(settledReaderPosition.scrollTop - readerPosition.scrollTop) <= 2,
+    `[${pointer}] AUTOSCROLL resize and settle preserve a reader in history (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(resizedReaderPosition?.scrollTop ?? 0)} → ${Math.round(settledReaderPosition?.scrollTop ?? 0)})`,
+  );
   await mutateAssistant(
     p,
     "__growLastAssistant",
