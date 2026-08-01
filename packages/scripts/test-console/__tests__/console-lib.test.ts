@@ -10,7 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { classifyResult, countStatuses } from "../lib/runner.mjs";
+import { classifyResult, countStatuses, RunManager } from "../lib/runner.mjs";
 
 const LABEL = "@elizaos/logger (packages/logger)#test";
 
@@ -51,7 +51,7 @@ describe("classifyResult", () => {
     ).toBe("skipped");
   });
 
-  test("exit 3 without status lines is the vacuous-green skip", () => {
+  test("exit 3 without status lines is the semantic no-work skip", () => {
     expect(
       classifyResult({
         label: LABEL,
@@ -92,6 +92,16 @@ describe("classifyResult", () => {
         { status: "failed" },
       ]),
     ).toEqual({ passed: 2, failed: 1 });
+  });
+});
+
+describe("RunManager command contract", () => {
+  test("a selected task requires semantic work from the workspace runner", () => {
+    const command = new RunManager().buildCommand(
+      { label: LABEL, scriptName: "test" },
+      "pr",
+    );
+    expect(command.args).toContain("--require-work");
   });
 });
 
@@ -140,16 +150,25 @@ describe("store roundtrip", () => {
 
 describe("registry (real plan discovery)", () => {
   test("plan discovers the workspace and credentials flip suite gating", async () => {
-    const { buildRegistry } = await import("../lib/registry.mjs");
+    const { buildRegistry, discoverPlan } = await import("../lib/registry.mjs");
+    const { CONNECTIONS } = await import("../lib/connections.mjs");
 
     const without = buildRegistry({
       savedCredentials: {},
       optInToggles: {},
       history: {},
     });
-    expect(without.tasks.length).toBeGreaterThan(200);
+    const plan = discoverPlan();
+    expect(without.tasks).not.toHaveLength(0);
+    expect(without.tasks.map(({ label }) => label)).toEqual(
+      plan.tasks.map(({ label }) => label),
+    );
+    expect(without.summary).toEqual(plan.summary);
     expect(without.orphanSuites).toEqual([]);
-    expect(without.connections.length).toBeGreaterThan(30);
+    expect(CONNECTIONS).not.toHaveLength(0);
+    expect(without.connections.map(({ id }) => id)).toEqual(
+      CONNECTIONS.map(({ id }) => id),
+    );
 
     const webSearchTask = without.tasks.find((t) =>
       t.liveSuites.some((s) => s.file.includes("plugin-web-search")),

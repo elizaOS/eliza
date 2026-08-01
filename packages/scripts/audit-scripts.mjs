@@ -40,6 +40,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  isScriptTestPath,
+  SCRIPT_TEST_RUNNER,
+} from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -125,8 +129,10 @@ const ALLOWED_EXACT = new Set([
 /**
  * (d) ORPHAN script files inside packages/scripts/ — a `.mjs` referenced by
  * nothing (no root alias, no CI workflow, no docs, no other reachable script).
- * This is the file-level twin of the root-script orphan check and stops the
- * report-builder slop cluster (issue #10194) from silently regrowing.
+ * Tests owned by the exact Git-discovering runner are source-reachable without
+ * duplicating their names here. This is the file-level twin of the root-script
+ * orphan check and stops the report-builder slop cluster (issue #10194) from
+ * silently regrowing.
  *
  * Allowlist: standalone diagnostic / guard utilities that are intentionally run
  * by hand and need no automated caller. Each entry carries a written reason.
@@ -172,6 +178,10 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
   [
     "run-live-test-with-artifacts.mjs",
     "standalone live-test runner (writes gitignored reports/live-test-runs); the producer that check-live-test-artifact-coverage.mjs validates",
+  ],
+  [
+    "test-env.mjs",
+    "operator-run environment export helper for selecting PR or post-merge test lanes",
   ],
 ]);
 
@@ -434,10 +444,22 @@ function auditScriptFiles(root) {
     files.map((name) => [name, readTextIfReadable(path.join(dir, name))]),
   );
   const nonScriptCorpus = buildNonScriptCorpus(root);
+  const rootScripts = readJson(path.join(root, "package.json")).scripts ?? {};
+  const hasSourceBackedTestRunner =
+    rootScripts["test:scripts"] === SCRIPT_TEST_RUNNER;
 
   const failures = [];
   for (const name of files) {
     if (ORPHAN_SCRIPT_FILE_ALLOWLIST.has(name)) continue;
+    // The exact runner discovers these files from Git; requiring each filename
+    // to be duplicated in a caller would replace that source contract with a
+    // second, stale inventory.
+    if (
+      hasSourceBackedTestRunner &&
+      isScriptTestPath(`packages/scripts/${name}`)
+    ) {
+      continue;
+    }
     if (nonScriptCorpus.includes(name)) continue;
     // Referenced by any OTHER script file (spawn/exec/import/string mention)?
     const referencedBySibling = files.some(

@@ -51,7 +51,11 @@ function resultFor(evaluation, context) {
 
 const allGreen = evaluate(successRuns());
 assert.equal(allGreen.verdict, "success");
-assert.deepEqual(allGreen.counts, { passed: 7, waiting: 0, failed: 0 });
+assert.deepEqual(allGreen.counts, {
+  passed: REQUIRED_CHECKS.length,
+  waiting: 0,
+  failed: 0,
+});
 
 const missingBeforeDeadline = evaluate(buildCanaryCheckRuns("missing", NOW_MS));
 assert.equal(missingBeforeDeadline.verdict, "waiting");

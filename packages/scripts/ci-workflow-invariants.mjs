@@ -101,6 +101,26 @@ function requireCommand(job, workflowPath, jobName, command) {
   );
 }
 
+function requireAlwaysCommand(job, workflowPath, jobName, command) {
+  const step = job.steps.find(
+    (candidate) =>
+      typeof candidate?.run === "string" && candidate.run.includes(command),
+  );
+  invariant(step, `${workflowPath}: jobs.${jobName} must execute ${command}`);
+  invariant(
+    step.if === "${{ always() }}" || step.if === "always()",
+    `${workflowPath}: ${command} must use always()`,
+  );
+  invariant(
+    step["continue-on-error"] !== true,
+    `${workflowPath}: ${command} may not continue on error`,
+  );
+  invariant(
+    !/(?:\|\|\s*true\b|;\s*true\b|set\s+\+e\b)/.test(step.run),
+    `${workflowPath}: ${command} is wrapped by a success-forcing shell construct`,
+  );
+}
+
 function normalizedNeeds(job) {
   if (typeof job.needs === "string") return [job.needs];
   return Array.isArray(job.needs) ? job.needs : [];
@@ -196,6 +216,20 @@ export function validateWorkflowSources(sources) {
     migrations?.if === "inputs.setup-db == 'true'" &&
       migrations["continue-on-error"] !== true,
     `${WORKFLOW_PATHS.cloudSetup}: database migrations must remain fail-closed for setup-db`,
+  );
+
+  const developTests = requireJob(develop, WORKFLOW_PATHS.develop, "test");
+  requireCommand(
+    developTests,
+    WORKFLOW_PATHS.develop,
+    "test",
+    "run-develop-pr-owner-tests.mjs",
+  );
+  requireAlwaysCommand(
+    developTests,
+    WORKFLOW_PATHS.develop,
+    "test",
+    "bun run test:scripts",
   );
 
   const lint = requireJob(develop, WORKFLOW_PATHS.develop, "lint");

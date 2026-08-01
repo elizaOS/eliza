@@ -154,7 +154,7 @@ jobs:
           node packages/scripts/run-live-test-with-artifacts.mjs \
             --label "develop-live-${TEST_FILTER:-all}" \
             --report-root "$LIVE_EVIDENCE_ROOT" \
-            -- node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" \
+            -- node packages/scripts/run-all-tests.mjs --all --no-cloud --require-work "${filter_args[@]}" \
             2>&1 | tee "$RUNNER_TEMP_LOG"
 
       - name: Cloud unit suite

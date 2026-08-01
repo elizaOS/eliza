@@ -11,8 +11,8 @@
  * per spawn — noise against real suite runtimes.
  *
  * Result classification: run-all-tests prints `[eliza-test] PASS/SKIP/FAIL
- * <label>` lines. A self-skipping task exits 3 (the vacuous-green floor with
- * --min-tasks=1), so classification parses the log tail first and only falls
+ * <label>` lines. A self-skipping required task exits 3, so classification
+ * parses the log tail first and only falls
  * back to the exit code — exit 0 alone is not proof a test ran.
  */
 
@@ -147,7 +147,7 @@ export class RunManager extends EventEmitter {
     const args = [
       "packages/scripts/run-all-tests.mjs",
       `--filter=^${escapeRegex(entry.label)}$`,
-      "--min-tasks=1",
+      "--require-work",
       "--no-cloud",
     ];
     // Non-`test` scripts (test:e2e, test:live, …) need --all so the extra
@@ -331,8 +331,8 @@ export function classifyResult({ label, code, signal, tail, cancelled }) {
     return "passed";
   if (new RegExp(`\\[eliza-test\\] SKIP ${labelPattern}`).test(tail))
     return "skipped";
-  // Exit 3 is run-all-tests' vacuous-green floor: the only task collected
-  // self-skipped. Anything else nonzero without a status line is a failure.
+  // Exit 3 is run-all-tests' semantic non-vacuity guard: the only task
+  // collected no work or self-skipped. Other unclassified exits are failures.
   if (code === 3) return "skipped";
   return code === 0 ? "passed" : "failed";
 }

@@ -118,7 +118,8 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(Array.isArray(inv.roots)).toBe(true);
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
-    expect(inv.scriptTests.discoveredCount).toBeGreaterThan(100);
+    expect(inv.scriptTests.files).not.toHaveLength(0);
+    expect(inv.scriptTests.discoveredCount).toBe(inv.scriptTests.files.length);
     expect(inv.scriptTests.excluded).toEqual([]);
     expect(inv.summary.totalScriptTests).toBe(inv.scriptTests.discoveredCount);
   });

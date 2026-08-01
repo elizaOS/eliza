@@ -22,7 +22,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "unit-1of4"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test$$"
@@ -46,7 +46,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "unit-2of4"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test$$"
@@ -70,7 +70,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "unit-3of4"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test$$"
@@ -94,7 +94,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "unit-4of4"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test$$"
@@ -118,7 +118,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "e2e-1of2"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test:e2e$$"
@@ -142,7 +142,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "e2e-2of2"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test:e2e$$"
@@ -166,7 +166,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "integration"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test:integration$$"
@@ -189,7 +189,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "live"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test:live$$"
@@ -212,7 +212,7 @@ services:
     environment:
       BUN_INSTALL_CACHE_DIR: "/cache/bun"
       ELIZA_CERT_QUEUE_DIR: "/queue"
-      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1"
+      LANE_COMMAND: "node packages/scripts/run-all-tests.mjs --no-cloud --require-work"
       LANE_NAME: "ui"
       TEST_LANE: "pr"
       TEST_SCRIPT_FILTER: "^test:ui$$"

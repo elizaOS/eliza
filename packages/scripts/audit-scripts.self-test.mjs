@@ -345,4 +345,37 @@ function hasFinding(report, fragment) {
   );
 }
 
+// 18. The exact source-backed script-test runner makes discovered tests reachable.
+{
+  const report = runAudit({
+    root: {
+      "test:scripts":
+        "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml",
+    },
+    files: {
+      "packages/scripts/run-script-tests.mjs": "// fixture runner\n",
+      "packages/scripts/source-contract.test.mjs": "// fixture test\n",
+    },
+  });
+  assert(
+    report.ok,
+    `source-discovered test should pass, got ${JSON.stringify(report.failures)}`,
+  );
+}
+
+// 19. A test file remains orphaned when the source-backed runner is not wired.
+{
+  const report = runAudit({
+    root: { build: "tsc -b" },
+    files: {
+      "packages/scripts/source-contract.test.mjs": "// fixture test\n",
+    },
+  });
+  assert(!report.ok, "unwired test file should fail");
+  assert(
+    hasFinding(report, "[orphan-file]"),
+    "expected an [orphan-file] finding for the unwired test",
+  );
+}
+
 console.log("audit-scripts self-test passed");

@@ -910,7 +910,8 @@ jobs:
 
   test("the real repository has one executing lane for every discovered test", () => {
     const result = buildScriptTestInventory();
-    expect(result.discoveredCount).toBeGreaterThan(100);
+    expect(result.files).not.toHaveLength(0);
+    expect(result.discoveredCount).toBe(result.files.length);
     expect(result.excluded).toEqual([]);
     expect(
       result.files.some(

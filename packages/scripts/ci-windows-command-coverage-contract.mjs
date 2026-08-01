@@ -1,169 +1,350 @@
 #!/usr/bin/env node
 /**
- * Contract for #13402's Windows command-coverage slice. The Windows CI lane is
- * a deliberately narrow subset of the Linux gates, so the
- * suites it guards are the only proof that the runtime/dashboard/shared
- * TypeScript packages still build and pass on Windows. Nothing else re-runs
- * them there. That makes silent shrinkage the failure mode: a lane trimmed
- * "to speed CI up", a plugin quietly dropped from the `plugins` lane, or a
- * whole matrix entry removed in a refactor, and Windows coverage regresses
- * with a still-green pipeline and no reviewer signal.
- *
- * This is a static YAML census — it never executes a workflow. It parses the
- * `commands` lists under `jobs.windows.strategy.matrix.include[]` in
- * `.github/workflows/windows-ci.yml`, flattens them into a set, and asserts
- * every command in the committed inventory `.github/ci-windows-command-inventory.json`
- * is still wired in some lane. If any inventoried command is missing, Windows
- * coverage shrank: the contract throws (exit 1) naming the dropped commands.
- *
- * Adding a command is always allowed — the inventory is a floor, not an exact
- * match. To intentionally retire a Windows command, delete it from the matrix
- * AND from the inventory in the same PR; the contract then passes because the
- * floor moved with it, and the diff makes the coverage reduction reviewable.
+ * Validates that every Windows CI matrix command resolves to executable repository
+ * source. The workflow remains the coverage authority while parsed YAML, live
+ * workspace manifests, and regular-file checks reject vacuous or stale wiring.
  */
+
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertContainedRegularFile,
+  assertUniqueRepositoryIdentities,
+  normalizeGitRepositoryPath,
+} from "./lib/repository-file-integrity.mjs";
+import { listPackages } from "./lib/workspaces.mjs";
 
-const DEFAULT_REPO_ROOT = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
+const require = createRequire(import.meta.url);
+const { isAlias, parseDocument, visit } = require("yaml");
+
+const DEFAULT_REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
 );
-
 const WORKFLOW_FILE = ".github/workflows/windows-ci.yml";
-const INVENTORY_FILE = ".github/ci-windows-command-inventory.json";
 const JOB_KEY = "windows";
 
-function assert(condition, message) {
+function invariant(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function indentOf(line) {
-  return line.match(/^ */)?.[0].length ?? 0;
-}
-
-// Slice the lines of a single top-level job block (`  <key>:`) out of the
-// `jobs:` section. Job keys are the only 2-space-indented map keys under
-// `jobs:`, so the block runs from that header until the next 2-space key.
-function jobBlockLines(workflowText, jobKey) {
-  const lines = workflowText.split(/\r?\n/);
-  const jobsIndex = lines.findIndex((line) => /^jobs:\s*$/.test(line));
-  assert(jobsIndex >= 0, `${WORKFLOW_FILE}: no top-level "jobs:" mapping`);
-
-  let start = -1;
-  for (let i = jobsIndex + 1; i < lines.length; i += 1) {
-    if (new RegExp(`^ {2}${jobKey}:\\s*$`).test(lines[i])) {
-      start = i;
-      break;
-    }
-  }
-  assert(start >= 0, `${WORKFLOW_FILE}: no "${jobKey}" job under "jobs:"`);
-
-  let end = lines.length;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (line.trim() !== "" && /^ {2}\S/.test(line)) {
-      end = i;
-      break;
-    }
-  }
-  return lines.slice(start, end);
-}
-
-// Collect every command string from the `commands:` block-sequences inside the
-// job's `strategy.matrix.include[]`. Each `commands:` header opens a YAML list
-// whose items (`- <command>`) sit at a deeper indent; the list ends at the
-// first line indented at or below the header (the next `- lane:` entry or the
-// sibling matrix key). Multiple `include[]` entries each contribute their list.
-export function parseWindowsCommands(repoRoot = DEFAULT_REPO_ROOT) {
-  const text = readFileSync(resolve(repoRoot, WORKFLOW_FILE), "utf8");
-  const lines = jobBlockLines(text, JOB_KEY);
-
-  const commands = [];
-  let listIndent = null;
-  for (const line of lines) {
-    if (line.trim() === "") continue;
-    if (/^\s*commands:\s*$/.test(line)) {
-      listIndent = indentOf(line);
-      continue;
-    }
-    if (listIndent === null) continue;
-
-    const itemIndent = indentOf(line);
-    if (itemIndent <= listIndent) {
-      listIndent = null;
-      continue;
-    }
-    // YAML comments are legitimate inside the list (e.g. rationale above a
-    // split-out suite) and are not command items.
-    if (line.slice(itemIndent).startsWith("#")) continue;
-    const item = line.slice(itemIndent).match(/^-\s+(.+?)\s*$/);
-    assert(
-      item !== null,
-      `${WORKFLOW_FILE}: malformed command list under "${JOB_KEY}" matrix (got: ${JSON.stringify(line)})`,
+function parseWorkflow(source) {
+  const document = parseDocument(source, {
+    merge: false,
+    prettyErrors: true,
+    schema: "core",
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new Error(
+      `${WORKFLOW_FILE}: invalid YAML: ${document.errors
+        .map((error) => error.message)
+        .join("; ")}`,
     );
-    commands.push(item[1]);
   }
-
-  assert(
-    commands.length > 0,
-    `${WORKFLOW_FILE}: parsed no commands from "${JOB_KEY}" strategy.matrix.include[].commands`,
-  );
-  return commands;
+  visit(document, {
+    Alias(_key, node) {
+      if (isAlias(node)) {
+        throw new Error(`${WORKFLOW_FILE}: YAML aliases are not allowed`);
+      }
+    },
+    Pair(_key, pair) {
+      if (pair.key?.value === "<<") {
+        throw new Error(`${WORKFLOW_FILE}: YAML merge keys are not allowed`);
+      }
+    },
+  });
+  return document.toJS({ maxAliasCount: 0 });
 }
 
-export function loadInventory(repoRoot = DEFAULT_REPO_ROOT) {
-  const manifest = JSON.parse(
-    readFileSync(resolve(repoRoot, INVENTORY_FILE), "utf8"),
-  );
-  const inventory = manifest.commands;
-  assert(
-    Array.isArray(inventory) && inventory.every((c) => typeof c === "string"),
-    `${INVENTORY_FILE}: "commands" must be a string array`,
-  );
-  assert(
-    inventory.length > 0,
-    `${INVENTORY_FILE}: "commands" must not be empty`,
-  );
-  return inventory;
+function assertUniqueTextIdentities(values, label) {
+  assertUniqueRepositoryIdentities(values, label);
 }
 
-// Inventoried commands no longer wired in any Windows lane. A non-empty result
-// means coverage shrank without the inventory being updated to match.
-export function findDroppedCommands(inventory, present) {
-  const wired = new Set(present);
-  return inventory.filter((command) => !wired.has(command));
+function resolveSourceFile(repoRoot, relativePath, label) {
+  try {
+    return assertContainedRegularFile(repoRoot, relativePath, label).relative;
+  } catch (error) {
+    // error-policy:J2 preserve the repository identity that failed resolution
+    throw new Error(`${label} does not resolve to a regular repository file`, {
+      cause: error,
+    });
+  }
 }
 
+/** Read the lane names and command lists from the parsed Windows job matrix. */
+export function parseWindowsMatrix(repoRoot = DEFAULT_REPO_ROOT) {
+  const workflowPath = assertContainedRegularFile(
+    repoRoot,
+    WORKFLOW_FILE,
+    "Windows CI workflow",
+  ).absolute;
+  const workflow = parseWorkflow(readFileSync(workflowPath, "utf8"));
+  invariant(
+    workflow && typeof workflow === "object" && !Array.isArray(workflow),
+    `${WORKFLOW_FILE}: workflow root must be a mapping`,
+  );
+  const include = workflow.jobs?.[JOB_KEY]?.strategy?.matrix?.include;
+  invariant(
+    Array.isArray(include),
+    `${WORKFLOW_FILE}: jobs.${JOB_KEY}.strategy.matrix.include must be a sequence`,
+  );
+
+  return include.map((entry, index) => {
+    invariant(
+      entry && typeof entry === "object" && !Array.isArray(entry),
+      `${WORKFLOW_FILE}: Windows matrix entry ${index} must be a mapping`,
+    );
+    invariant(
+      typeof entry.lane === "string" && entry.lane.trim().length > 0,
+      `${WORKFLOW_FILE}: Windows matrix entry ${index} must name a lane`,
+    );
+    invariant(
+      Array.isArray(entry.commands),
+      `${WORKFLOW_FILE}: lane "${entry.lane}" commands must be a sequence`,
+    );
+    invariant(
+      entry.commands.every(
+        (command) => typeof command === "string" && command.trim().length > 0,
+      ),
+      `${WORKFLOW_FILE}: lane "${entry.lane}" commands must be non-empty strings`,
+    );
+    return {
+      lane: entry.lane,
+      commands: [...entry.commands],
+    };
+  });
+}
+
+function validateMatrix(lanes) {
+  invariant(
+    lanes.length > 0,
+    `${WORKFLOW_FILE}: Windows matrix must declare at least one lane`,
+  );
+  assertUniqueTextIdentities(
+    lanes.map(({ lane }) => lane),
+    `${WORKFLOW_FILE}: duplicate or case-colliding lane identities`,
+  );
+
+  const commandOwners = new Map();
+  for (const { lane, commands } of lanes) {
+    invariant(
+      commands.length > 0,
+      `${WORKFLOW_FILE}: lane "${lane}" must execute at least one command`,
+    );
+    for (const command of commands) {
+      const identity = command.normalize("NFC").toLocaleLowerCase("en-US");
+      const previous = commandOwners.get(identity);
+      invariant(
+        previous === undefined,
+        `${WORKFLOW_FILE}: command is duplicated in lanes "${previous}" and "${lane}": ${command}`,
+      );
+      commandOwners.set(identity, lane);
+    }
+  }
+}
+
+function packageIndex(repoRoot) {
+  const workspacePackages = listPackages({ repoRoot });
+  const byDir = new Map();
+  const byName = new Map();
+  for (const workspacePackage of workspacePackages) {
+    byDir.set(workspacePackage.dir, workspacePackage);
+    if (
+      typeof workspacePackage.name === "string" &&
+      workspacePackage.name.length > 0
+    ) {
+      byName.set(workspacePackage.name, workspacePackage);
+    }
+  }
+  return { byDir, byName };
+}
+
+function tokenize(command) {
+  invariant(
+    !/[\r\n;&|<>`]/.test(command) && !command.includes("$("),
+    `compound shell syntax is unsupported in Windows matrix command: ${command}`,
+  );
+  const tokens = [];
+  let current = "";
+  let quote = null;
+  let started = false;
+  for (const character of command) {
+    if (quote !== null) {
+      if (character === quote) {
+        quote = null;
+      } else {
+        current += character;
+      }
+      started = true;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      started = true;
+    } else if (/\s/u.test(character)) {
+      if (started) {
+        tokens.push(current);
+        current = "";
+        started = false;
+      }
+    } else {
+      current += character;
+      started = true;
+    }
+  }
+  invariant(
+    quote === null,
+    `unterminated quote in Windows matrix command: ${command}`,
+  );
+  if (started) tokens.push(current);
+  return tokens;
+}
+
+function resolvePackageScript(repoRoot, index, directory, scriptName, command) {
+  const normalizedDirectory = normalizeGitRepositoryPath(
+    directory,
+    `${command}: package directory`,
+  );
+  const workspacePackage = index.byDir.get(normalizedDirectory);
+  invariant(
+    workspacePackage !== undefined,
+    `${command}: ${normalizedDirectory} does not resolve to a workspace package`,
+  );
+  invariant(
+    typeof workspacePackage.packageJson.scripts?.[scriptName] === "string" &&
+      workspacePackage.packageJson.scripts[scriptName].trim().length > 0,
+    `${command}: ${normalizedDirectory}/package.json has no executable "${scriptName}" script`,
+  );
+  return `${normalizedDirectory}/package.json`;
+}
+
+function turboFilters(tokens, command) {
+  const filters = [];
+  for (let index = 4; index < tokens.length; index += 1) {
+    if (tokens[index] === "--filter") {
+      invariant(
+        typeof tokens[index + 1] === "string",
+        `${command}: --filter requires a workspace package name`,
+      );
+      filters.push(tokens[index + 1]);
+      index += 1;
+    } else if (tokens[index].startsWith("--filter=")) {
+      const filter = tokens[index].slice("--filter=".length);
+      invariant(
+        filter.length > 0,
+        `${command}: --filter requires a workspace package name`,
+      );
+      filters.push(filter);
+    }
+  }
+  assertUniqueTextIdentities(filters, `${command}: duplicate package filters`);
+  return filters;
+}
+
+function resolveNodeCommand(repoRoot, index, tokens, command) {
+  invariant(
+    typeof tokens[1] === "string",
+    `${command}: node command must name a repository entrypoint`,
+  );
+  const entrypoint = resolveSourceFile(
+    repoRoot,
+    tokens[1],
+    `${command}: Node entrypoint`,
+  );
+  const sources = [entrypoint];
+
+  if (entrypoint === "packages/scripts/run-turbo.mjs") {
+    invariant(
+      tokens[2] === "run" &&
+        typeof tokens[3] === "string" &&
+        !tokens[3].startsWith("-"),
+      `${command}: run-turbo must select one task`,
+    );
+    const filters = turboFilters(tokens, command);
+    invariant(
+      filters.length > 0,
+      `${command}: Windows run-turbo commands must use exact package filters`,
+    );
+    for (const filter of filters) {
+      const workspacePackage = index.byName.get(filter);
+      invariant(
+        workspacePackage !== undefined,
+        `${command}: package filter "${filter}" does not resolve to a workspace package`,
+      );
+      invariant(
+        typeof workspacePackage.packageJson.scripts?.[tokens[3]] === "string" &&
+          workspacePackage.packageJson.scripts[tokens[3]].trim().length > 0,
+        `${command}: ${workspacePackage.dir}/package.json has no executable "${tokens[3]}" script`,
+      );
+      sources.push(`${workspacePackage.dir}/package.json`);
+    }
+  } else if (entrypoint === "packages/scripts/run-bash-linux-only.mjs") {
+    invariant(
+      typeof tokens[2] === "string" && !tokens[2].startsWith("-"),
+      `${command}: run-bash-linux-only must name a repository script`,
+    );
+    sources.push(
+      resolveSourceFile(repoRoot, tokens[2], `${command}: wrapped script`),
+    );
+  }
+  return sources;
+}
+
+function resolveCommand(repoRoot, index, lane, command) {
+  const tokens = tokenize(command);
+  if (tokens[0] === "node") {
+    return resolveNodeCommand(repoRoot, index, tokens, command);
+  }
+  if (
+    tokens[0] === "bun" &&
+    tokens[1] === "run" &&
+    tokens[2] === "--cwd" &&
+    typeof tokens[3] === "string" &&
+    typeof tokens[4] === "string" &&
+    !tokens[4].startsWith("-")
+  ) {
+    return [
+      resolvePackageScript(repoRoot, index, tokens[3], tokens[4], command),
+    ];
+  }
+  throw new Error(
+    `${WORKFLOW_FILE}: lane "${lane}" uses unsupported command shape: ${command}`,
+  );
+}
+
+/** Resolve every Windows lane command to the live files that make it executable. */
 export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
-  const present = parseWindowsCommands(repoRoot);
-  const inventory = loadInventory(repoRoot);
-  const dropped = findDroppedCommands(inventory, present);
-
-  assert(
-    dropped.length === 0,
-    `Windows CI command coverage shrank. These inventoried commands are no longer wired in any ` +
-      `${WORKFLOW_FILE} lane:\n` +
-      dropped.map((command) => `  - ${command}`).join("\n") +
-      `\n\nRestore them, or — if the reduction is intentional — remove them from ${INVENTORY_FILE} ` +
-      `in the same PR so the coverage floor moves with the matrix.`,
+  const lanes = parseWindowsMatrix(repoRoot);
+  validateMatrix(lanes);
+  const index = packageIndex(repoRoot);
+  const resolved = lanes.flatMap(({ lane, commands }) =>
+    commands.map((command) => ({
+      lane,
+      command,
+      sources: resolveCommand(repoRoot, index, lane, command),
+    })),
   );
-
-  return { commandCount: present.length, inventoryCount: inventory.length };
+  return {
+    laneCount: lanes.length,
+    commandCount: resolved.length,
+    resolved,
+  };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const { commandCount, inventoryCount } = runContract();
+    const { commandCount, laneCount } = runContract();
     console.log(
-      `ci windows command coverage contract passed ` +
-        `(${commandCount} lane command(s); ${inventoryCount} inventoried command(s) all present)`,
+      `ci windows command source contract passed (${laneCount} lane(s); ${commandCount} command(s) resolved)`,
     );
   } catch (error) {
+    // error-policy:J1 CLI boundary translates validation failure to a nonzero exit
     console.error(
-      `[ci-windows-command-coverage-contract] FAIL ${error.message}`,
+      `[ci-windows-command-coverage-contract] FAIL ${error instanceof Error ? error.message : String(error)}`,
     );
-    process.exit(1);
+    process.exitCode = 1;
   }
 }

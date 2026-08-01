@@ -85,6 +85,29 @@ for (const fixture of [
     pattern: /database migrations must remain fail-closed/,
   },
   {
+    name: "skipped develop test context",
+    key: "develop",
+    mutate: (source) => source.replace("  test:\n", "  test:\n    if: false\n"),
+    pattern: /jobs\.test may not declare if/,
+  },
+  {
+    name: "conditional owning-package tests",
+    key: "develop",
+    mutate: (source) =>
+      source.replace(
+        "      - name: Run changed owning-package tests\n",
+        "      - name: Run changed owning-package tests\n        if: false\n",
+      ),
+    pattern: /run-develop-pr-owner-tests\.mjs may not be conditional/,
+  },
+  {
+    name: "conditionally skipped develop script tests",
+    key: "develop",
+    mutate: (source) =>
+      source.replace("        if: ${{ always() }}\n", "        if: false\n"),
+    pattern: /bun run test:scripts must use always\(\)/,
+  },
+  {
     name: "conditional lint",
     key: "develop",
     mutate: (source) =>

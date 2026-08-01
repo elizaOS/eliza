@@ -1,37 +1,9 @@
 #!/usr/bin/env node
 /**
- * Proof job for the exhaustive develop lane (#12342). Fails loudly when the
- * committed lane manifest and the real workflow/test-plan drift apart, so the
- * scheduled full-matrix run cannot silently drop coverage or report vacuous
- * green.
- *
- * It cross-checks four independent sources of truth:
- *   1. `packages/scripts/ci-lane-manifest.json` — the committed expectation.
- *   2. `.github/workflows/test.yml` — every manifest lane must exist as a job
- *      and must not be gated so it can never run on the exhaustive (non-PR)
- *      event, which would turn a "required" lane into a permanent skip.
- *   3. `.github/workflows/develop-exhaustive.yml` — the scheduled orchestrator
- *      must still invoke every manifest `reusableWorkflows` lane via
- *      `workflow_call`, pass its dedicated concurrency scope, and queue
- *      consecutive exhaustive runs. Every reusable workflow must consume that
- *      scope and keep schedule/dispatch/workflow-call events non-cancelling. A
- *      dropped `uses:`, shared standalone group, or cancelling reusable lane
- *      silently strips platform coverage from the exhaustive matrix and fails.
- *   4. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
- *      manifest floors (total tasks/packages, per-script-lane presence, and the
- *      set of required core packages). A pointed-at-a-nonexistent-glob lane or a
- *      deleted core package collapses one of these and fails the job.
- *
- * Usage:
- *   node packages/scripts/ci-full-matrix-proof.mjs [--plan-file <path>]
- *                                                   [--manifest <path>]
- *                                                   [--summary <path>]
- *
- * `--plan-file` short-circuits the plan discovery (used by tests and by CI when
- * the plan was captured in an earlier step). Without it the script spawns the
- * runner in `--plan=json` mode itself. Exit code 0 = every lane accounted for;
- * non-zero = at least one drift, with every violation printed (not just the
- * first) and mirrored into the GitHub step summary when `--summary` is given.
+ * Proves that exhaustive develop workflows remain connected and non-cancelling.
+ * The captured test plan is checked against its live package manifests, unique
+ * task identities, and exact derived summaries, so repository growth or shrink
+ * never requires a hand-maintained numeric baseline.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -45,6 +17,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertContainedRegularFile,
+  assertUniqueRepositoryIdentities,
+  normalizeGitRepositoryPath,
+} from "./lib/repository-file-integrity.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
@@ -86,8 +63,13 @@ function loadManifest(manifestPath) {
   if (!Array.isArray(manifest.workflowLanes)) {
     throw new Error(`${manifestPath}: workflowLanes must be an array`);
   }
-  if (!manifest.planFloors || typeof manifest.planFloors !== "object") {
-    throw new Error(`${manifestPath}: planFloors must be an object`);
+  if (manifest.planContract !== "workspace-package-scripts-v1") {
+    throw new Error(
+      `${manifestPath}: planContract must be workspace-package-scripts-v1`,
+    );
+  }
+  if (Object.hasOwn(manifest, "planFloors")) {
+    throw new Error(`${manifestPath}: planFloors is obsolete`);
   }
   return manifest;
 }
@@ -107,17 +89,21 @@ function loadPlan({ planFile }) {
   const fd = openSync(planPath, "w");
   let result;
   try {
-    result = spawnSync(process.execPath, [runner, "--plan=json"], {
-      cwd: repoRoot,
-      stdio: ["ignore", fd, "pipe"],
-    });
+    result = spawnSync(
+      process.execPath,
+      [runner, "--plan=json", "--require-work"],
+      {
+        cwd: repoRoot,
+        stdio: ["ignore", fd, "pipe"],
+      },
+    );
   } finally {
     closeSync(fd);
   }
   try {
     if (result.status !== 0) {
       throw new Error(
-        `run-all-tests.mjs --plan=json exited ${result.status}: ${
+        `run-all-tests.mjs --plan=json --require-work exited ${result.status}: ${
           result.stderr ? result.stderr.toString() : ""
         }`,
       );
@@ -385,6 +371,7 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
   try {
     orchestratorText = readFileSync(orchestratorPath, "utf8");
   } catch {
+    // error-policy:J3 a missing manifest-selected workflow is an explicit violation.
     violations.push(
       `missing exhaustive orchestrator: ${manifest.exhaustiveOrchestrator} not found`,
     );
@@ -450,6 +437,7 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
       reusableText = readFileSync(resolve(repoRoot, reusable.workflow), "utf8");
       workflowCallBlock = extractWorkflowCallBlock(reusableText);
     } catch {
+      // error-policy:J3 a missing manifest-selected workflow is an explicit violation.
       violations.push(
         `missing reusable workflow: ${reusable.workflow} (${reusable.name}) not found`,
       );
@@ -577,85 +565,232 @@ function checkPostMergeSignal(manifest, violations, laneReport) {
   });
 }
 
-function checkPlanFloors(manifest, plan, violations, floorReport) {
-  const floors = manifest.planFloors;
-  const summary = plan.summary || {};
-  const tasks = Array.isArray(plan.tasks) ? plan.tasks : [];
+function incrementCount(counts, key) {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
 
-  const taskCount = summary.taskCount ?? tasks.length;
-  const packageCount =
-    summary.packageCount ?? new Set(tasks.map((t) => t.packageName)).size;
+function sortedCountRecord(counts) {
+  return Object.fromEntries(
+    [...counts.entries()].sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
 
-  floorReport.push({
-    metric: "taskCount",
-    value: taskCount,
-    floor: floors.minTaskCount,
-  });
+function canonicalCountRecord(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const entries = Object.entries(value);
   if (
-    typeof floors.minTaskCount === "number" &&
-    taskCount < floors.minTaskCount
+    entries.some(
+      ([key, count]) =>
+        key.length === 0 || !Number.isSafeInteger(count) || count < 0,
+    )
   ) {
-    violations.push(
-      `plan floor: taskCount ${taskCount} < minTaskCount ${floors.minTaskCount} (a lane matched no tests?)`,
-    );
+    return null;
   }
+  return JSON.stringify(
+    entries.sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
 
-  floorReport.push({
-    metric: "packageCount",
-    value: packageCount,
-    floor: floors.minPackageCount,
-  });
-  if (
-    typeof floors.minPackageCount === "number" &&
-    packageCount < floors.minPackageCount
-  ) {
-    violations.push(
-      `plan floor: packageCount ${packageCount} < minPackageCount ${floors.minPackageCount}`,
-    );
-  }
-
-  if (typeof floors.minPluginTaskCount === "number") {
-    const pluginTasks = tasks.filter((t) =>
-      String(t.relativeDir || "").startsWith("plugins/"),
-    ).length;
-    floorReport.push({
-      metric: "pluginTaskCount",
-      value: pluginTasks,
-      floor: floors.minPluginTaskCount,
+function readTaskManifest(sourceRoot, relativeDir, cache) {
+  if (cache.has(relativeDir)) return cache.get(relativeDir);
+  const manifestPath = `${relativeDir}/package.json`;
+  const { absolute } = assertContainedRegularFile(
+    sourceRoot,
+    manifestPath,
+    `plan task manifest ${manifestPath}`,
+  );
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(absolute, "utf8"));
+  } catch (error) {
+    // error-policy:J2 bind invalid JSON to the source manifest named by the task.
+    throw new Error(`invalid plan task manifest ${manifestPath}`, {
+      cause: error,
     });
-    if (pluginTasks < floors.minPluginTaskCount) {
-      violations.push(
-        `plan floor: pluginTaskCount ${pluginTasks} < minPluginTaskCount ${floors.minPluginTaskCount}`,
-      );
-    }
   }
+  cache.set(relativeDir, manifest);
+  return manifest;
+}
 
-  const presentPackages = new Set(tasks.map((t) => t.packageName));
-  for (const required of floors.requiredPackages || []) {
-    if (!presentPackages.has(required)) {
-      violations.push(
-        `plan floor: required package "${required}" has no discovered test task (deleted, renamed, or its test script vanished)`,
-      );
-    }
-  }
-
-  const byScript = summary.byScript || {};
-  for (const laneScript of floors.nonEmptyScriptLanes || []) {
-    const count = byScript[laneScript] ?? 0;
-    floorReport.push({
-      metric: `script:${laneScript}`,
-      value: count,
-      floor: 1,
-    });
-    if (count < 1) {
-      violations.push(
-        `plan floor: script lane "${laneScript}" collected zero tasks (whole ${laneScript} lane vanished)`,
-      );
-    }
+function checkExactSummaryValue(summary, field, expected, violations) {
+  if (summary[field] !== expected) {
+    violations.push(
+      `plan summary contract: ${field}=${JSON.stringify(summary[field])} does not equal derived ${JSON.stringify(expected)}`,
+    );
   }
 }
 
-export function writeSummary(summaryPath, laneReport, floorReport, violations) {
+function checkPlanContract(plan, violations, planReport, sourceRoot) {
+  if (plan === null || typeof plan !== "object" || Array.isArray(plan)) {
+    violations.push("plan source contract: plan root must be an object");
+    return;
+  }
+  const sourceViolationStart = violations.length;
+  const tasks = Array.isArray(plan.tasks) ? plan.tasks : [];
+  if (!Array.isArray(plan.tasks)) {
+    violations.push("plan source contract: tasks must be an array");
+  }
+  if (tasks.length === 0) {
+    violations.push("plan source contract: selected zero runnable tasks");
+  }
+
+  const manifestCache = new Map();
+  const taskIdentities = [];
+  const labels = [];
+  let sourceBackedTasks = 0;
+  for (const [index, task] of tasks.entries()) {
+    try {
+      if (task === null || typeof task !== "object" || Array.isArray(task)) {
+        throw new Error("task must be an object");
+      }
+      const { packageName, relativeDir, scriptName, label, parallelSafe } =
+        task;
+      if (
+        typeof packageName !== "string" ||
+        packageName.length === 0 ||
+        typeof scriptName !== "string" ||
+        scriptName.length === 0 ||
+        typeof label !== "string" ||
+        label.length === 0 ||
+        typeof parallelSafe !== "boolean"
+      ) {
+        throw new Error(
+          "packageName, scriptName, label, and parallelSafe must be typed",
+        );
+      }
+      const canonicalDir = normalizeGitRepositoryPath(
+        relativeDir,
+        `plan task[${index}] relativeDir`,
+      );
+      const manifest = readTaskManifest(
+        sourceRoot,
+        canonicalDir,
+        manifestCache,
+      );
+      const manifestName =
+        typeof manifest.name === "string" && manifest.name.length > 0
+          ? manifest.name
+          : canonicalDir;
+      if (packageName !== manifestName) {
+        throw new Error(
+          `packageName ${packageName} does not match manifest name ${manifestName}`,
+        );
+      }
+      const command = manifest.scripts?.[scriptName];
+      if (typeof command !== "string" || command.trim().length === 0) {
+        throw new Error(
+          `${canonicalDir}/package.json has no runnable ${scriptName} script`,
+        );
+      }
+      const expectedLabel = `${packageName} (${canonicalDir})#${scriptName}`;
+      if (label !== expectedLabel) {
+        throw new Error(`label ${label} does not equal ${expectedLabel}`);
+      }
+      taskIdentities.push(`${canonicalDir}#${scriptName}`);
+      labels.push(label);
+      sourceBackedTasks += 1;
+    } catch (error) {
+      // error-policy:J3 captured plans are untrusted structured input.
+      violations.push(
+        `plan source contract: task[${index}] ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  try {
+    assertUniqueRepositoryIdentities(
+      taskIdentities,
+      "duplicate plan task identity",
+    );
+    assertUniqueRepositoryIdentities(labels, "duplicate plan task label");
+  } catch (error) {
+    // error-policy:J3 identity collisions invalidate the captured plan.
+    violations.push(
+      `plan source contract: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const sourceContractValid = violations.length === sourceViolationStart;
+
+  const summary = plan.summary;
+  const summaryViolationStart = violations.length;
+  if (
+    summary === null ||
+    typeof summary !== "object" ||
+    Array.isArray(summary)
+  ) {
+    violations.push("plan summary contract: summary must be an object");
+  } else {
+    const packageNames = new Set();
+    const byScript = new Map();
+    const byPackage = new Map();
+    let parallelSafeTaskCount = 0;
+    for (const task of tasks) {
+      if (typeof task?.packageName === "string") {
+        packageNames.add(task.packageName);
+        incrementCount(byPackage, task.packageName);
+      }
+      if (typeof task?.scriptName === "string") {
+        incrementCount(byScript, task.scriptName);
+      }
+      if (task?.parallelSafe === true) parallelSafeTaskCount += 1;
+    }
+    const cloudStep = plan.cloudStep !== null && plan.cloudStep !== undefined;
+    checkExactSummaryValue(summary, "taskCount", tasks.length, violations);
+    checkExactSummaryValue(
+      summary,
+      "packageCount",
+      packageNames.size,
+      violations,
+    );
+    checkExactSummaryValue(
+      summary,
+      "parallelSafeTaskCount",
+      parallelSafeTaskCount,
+      violations,
+    );
+    checkExactSummaryValue(
+      summary,
+      "serialTaskCount",
+      tasks.length - parallelSafeTaskCount,
+      violations,
+    );
+    checkExactSummaryValue(summary, "cloudStep", cloudStep, violations);
+    checkExactSummaryValue(summary, "noCloud", !cloudStep, violations);
+    checkExactSummaryValue(summary, "requireWork", true, violations);
+
+    const expectedByScript = canonicalCountRecord(sortedCountRecord(byScript));
+    if (canonicalCountRecord(summary.byScript) !== expectedByScript) {
+      violations.push(
+        "plan summary contract: byScript does not exactly match task records",
+      );
+    }
+    const expectedByPackage = canonicalCountRecord(
+      sortedCountRecord(byPackage),
+    );
+    if (canonicalCountRecord(summary.byPackage) !== expectedByPackage) {
+      violations.push(
+        "plan summary contract: byPackage does not exactly match task records",
+      );
+    }
+  }
+
+  planReport.push({
+    check: "workspace package scripts",
+    observed: `${sourceBackedTasks}/${tasks.length} source-backed`,
+    expected: "every task",
+    status: sourceContractValid ? "OK" : "INVALID",
+  });
+  planReport.push({
+    check: "exact plan summary",
+    observed: `${tasks.length} task(s)`,
+    expected: "derived task records",
+    status: violations.length === summaryViolationStart ? "OK" : "INVALID",
+  });
+}
+
+export function writeSummary(summaryPath, laneReport, planReport, violations) {
   if (!summaryPath) return;
   const lines = [];
   lines.push("## Exhaustive lane matrix proof");
@@ -668,12 +803,14 @@ export function writeSummary(summaryPath, laneReport, floorReport, violations) {
     lines.push(`| \`${row.lane}\` | ${row.name} | ${row.status} |`);
   }
   lines.push("");
-  lines.push("### Plan floors");
+  lines.push("### Plan source contract");
   lines.push("");
-  lines.push("| Metric | Value | Floor |");
-  lines.push("| --- | --- | --- |");
-  for (const row of floorReport) {
-    lines.push(`| ${row.metric} | ${row.value} | ${row.floor} |`);
+  lines.push("| Check | Observed | Expected | Status |");
+  lines.push("| --- | --- | --- | --- |");
+  for (const row of planReport) {
+    lines.push(
+      `| ${row.check} | ${row.observed} | ${row.expected} | ${row.status} |`,
+    );
   }
   lines.push("");
   if (violations.length === 0) {
@@ -696,14 +833,19 @@ export function runProof(options) {
   const plan = loadPlan(options);
   const violations = [];
   const laneReport = [];
-  const floorReport = [];
+  const planReport = [];
 
   checkWorkflowLanes(manifest, violations, laneReport);
   checkReusableWorkflows(manifest, violations, laneReport);
   checkPostMergeSignal(manifest, violations, laneReport);
-  checkPlanFloors(manifest, plan, violations, floorReport);
+  checkPlanContract(
+    plan,
+    violations,
+    planReport,
+    options.sourceRoot ?? repoRoot,
+  );
 
-  return { manifest, plan, violations, laneReport, floorReport };
+  return { manifest, plan, violations, laneReport, planReport };
 }
 
 function main() {
@@ -711,22 +853,23 @@ function main() {
   try {
     options = parseArgs(process.argv.slice(2));
   } catch (error) {
+    // error-policy:J1 CLI boundary translates invalid arguments to usage failure.
     console.error(`[ci-full-matrix-proof] ERROR ${error.message}`);
     process.exit(2);
   }
 
-  const { violations, laneReport, floorReport } = runProof(options);
+  const { violations, laneReport, planReport } = runProof(options);
 
   for (const row of laneReport) {
     console.log(`[ci-full-matrix-proof] lane ${row.lane} — ${row.status}`);
   }
-  for (const row of floorReport) {
+  for (const row of planReport) {
     console.log(
-      `[ci-full-matrix-proof] floor ${row.metric}=${row.value} (min ${row.floor})`,
+      `[ci-full-matrix-proof] plan ${row.check} — ${row.status} (${row.observed})`,
     );
   }
 
-  writeSummary(options.summary, laneReport, floorReport, violations);
+  writeSummary(options.summary, laneReport, planReport, violations);
 
   if (violations.length > 0) {
     console.error(

@@ -5,7 +5,13 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,12 +83,7 @@ const HEALTHY_MANIFEST = {
     { job: "server-tests", name: "Server Tests" },
     { job: "client-tests", name: "Client Tests" },
   ],
-  planFloors: {
-    minTaskCount: 3,
-    minPackageCount: 2,
-    requiredPackages: ["@elizaos/core"],
-    nonEmptyScriptLanes: ["test", "test:e2e"],
-  },
+  planContract: "workspace-package-scripts-v1",
 };
 
 const POST_MERGE_MANIFEST = {
@@ -95,37 +96,82 @@ const HEALTHY_PLAN = {
     taskCount: 4,
     packageCount: 3,
     byScript: { test: 3, "test:e2e": 1 },
+    byPackage: {
+      "@elizaos/core": 2,
+      "@elizaos/agent": 1,
+      "@elizaos/plugin-x": 1,
+    },
+    parallelSafeTaskCount: 3,
+    serialTaskCount: 1,
+    cloudStep: true,
+    noCloud: false,
+    requireWork: true,
   },
   tasks: [
     {
       packageName: "@elizaos/core",
       relativeDir: "packages/core",
       scriptName: "test",
+      label: "@elizaos/core (packages/core)#test",
+      parallelSafe: true,
     },
     {
       packageName: "@elizaos/agent",
       relativeDir: "packages/agent",
       scriptName: "test",
+      label: "@elizaos/agent (packages/agent)#test",
+      parallelSafe: true,
     },
     {
-      packageName: "plugin-x",
+      packageName: "@elizaos/plugin-x",
       relativeDir: "plugins/plugin-x",
       scriptName: "test",
+      label: "@elizaos/plugin-x (plugins/plugin-x)#test",
+      parallelSafe: true,
     },
     {
-      packageName: "plugin-x",
-      relativeDir: "plugins/plugin-x",
+      packageName: "@elizaos/core",
+      relativeDir: "packages/core",
       scriptName: "test:e2e",
+      label: "@elizaos/core (packages/core)#test:e2e",
+      parallelSafe: false,
     },
   ],
+  skipped: [],
+  cloudStep: { label: "cloud#test", command: "bun run test:cloud" },
 };
 
-function runProof({ workflow, manifest, plan, orchestrator, reusables }) {
+function writePlanSourceManifests(root, tasks = HEALTHY_PLAN.tasks) {
+  const packages = new Map();
+  for (const task of tasks) {
+    const entry = packages.get(task.relativeDir) ?? {
+      name: task.packageName,
+      scripts: {},
+    };
+    entry.scripts[task.scriptName] = "node test-runner.mjs";
+    packages.set(task.relativeDir, entry);
+  }
+  for (const [relativeDir, manifest] of packages) {
+    const directory = join(root, relativeDir);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "package.json"), JSON.stringify(manifest));
+  }
+}
+
+function runProof({
+  workflow,
+  manifest,
+  plan,
+  orchestrator,
+  reusables,
+  sourceTasks = HEALTHY_PLAN.tasks,
+}) {
   const dir = mkdtempSync(join(tmpdir(), "ci-matrix-proof-"));
   try {
     const workflowPath = join(dir, "test.yml");
     const manifestPath = join(dir, "manifest.json");
     const planPath = join(dir, "plan.json");
+    writePlanSourceManifests(dir, sourceTasks);
     writeFileSync(workflowPath, workflow);
     // The manifest's path fields are resolved relative to the repo root, so
     // point them at the fixtures via absolute paths for the test.
@@ -152,6 +198,7 @@ function runProof({ workflow, manifest, plan, orchestrator, reusables }) {
       manifest: manifestPath,
       planFile: planPath,
       summary: null,
+      sourceRoot: dir,
     });
     return {
       status: proof.violations.length === 0 ? 0 : 1,
@@ -199,11 +246,19 @@ describe("ci-full-matrix-proof", () => {
       writeProofSummary(
         passPath,
         [{ lane: "scenario", name: "Scenario", status: "OK" }],
-        [{ metric: "taskCount", value: 4, floor: 3 }],
+        [
+          {
+            check: "workspace package scripts",
+            observed: "4/4 source-backed",
+            expected: "every task",
+            status: "OK",
+          },
+        ],
         [],
       );
       const pass = readFileSync(passPath, "utf8");
       expect(pass).toContain("| `scenario` | Scenario | OK |");
+      expect(pass).toContain("| workspace package scripts |");
       expect(pass).toContain("**Result: PASS**");
 
       const failPath = join(dir, "fail.md");
@@ -260,7 +315,7 @@ describe("ci-full-matrix-proof", () => {
     }
   });
 
-  test("passes when every lane is present and the plan clears its floors", () => {
+  test("passes when every lane and source-derived plan contract is valid", () => {
     const result = runProof({
       workflow: HEALTHY_WORKFLOW,
       manifest: HEALTHY_MANIFEST,
@@ -315,7 +370,7 @@ describe("ci-full-matrix-proof", () => {
     expect(result.stderr).toContain("client-tests");
   });
 
-  test("fails when the plan collected fewer tasks than the floor", () => {
+  test("fails when a plan summary count differs from its task records", () => {
     const plan = {
       ...HEALTHY_PLAN,
       summary: { ...HEALTHY_PLAN.summary, taskCount: 1 },
@@ -326,16 +381,20 @@ describe("ci-full-matrix-proof", () => {
       plan,
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("taskCount 1 < minTaskCount");
+    expect(result.stderr).toContain("taskCount=1 does not equal derived 4");
   });
 
-  test("fails when a required package has no discovered test task", () => {
+  test("fails when a task names no script in its live package manifest", () => {
     const plan = {
       ...HEALTHY_PLAN,
-      tasks: HEALTHY_PLAN.tasks.filter(
-        (t) => t.packageName !== "@elizaos/core",
-      ),
-      summary: { ...HEALTHY_PLAN.summary, taskCount: 3 },
+      tasks: [
+        {
+          ...HEALTHY_PLAN.tasks[0],
+          scriptName: "test:ghost",
+          label: "@elizaos/core (packages/core)#test:ghost",
+        },
+        ...HEALTHY_PLAN.tasks.slice(1),
+      ],
     };
     const result = runProof({
       workflow: HEALTHY_WORKFLOW,
@@ -343,10 +402,12 @@ describe("ci-full-matrix-proof", () => {
       plan,
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('required package "@elizaos/core"');
+    expect(result.stderr).toContain(
+      "packages/core/package.json has no runnable test:ghost script",
+    );
   });
 
-  test("fails when a whole script lane collected zero tasks", () => {
+  test("fails when byScript does not exactly describe task records", () => {
     const plan = {
       ...HEALTHY_PLAN,
       summary: {
@@ -360,9 +421,44 @@ describe("ci-full-matrix-proof", () => {
       plan,
     });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      'script lane "test:e2e" collected zero tasks',
-    );
+    expect(result.stderr).toContain("byScript does not exactly match");
+  });
+
+  test("fails when two plan rows share a task identity", () => {
+    const plan = {
+      ...HEALTHY_PLAN,
+      tasks: [...HEALTHY_PLAN.tasks, HEALTHY_PLAN.tasks[0]],
+      summary: { ...HEALTHY_PLAN.summary, taskCount: 5 },
+    };
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("duplicate plan task identity");
+  });
+
+  test("fails when a required plan contains zero tasks", () => {
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan: {
+        ...HEALTHY_PLAN,
+        tasks: [],
+        summary: {
+          ...HEALTHY_PLAN.summary,
+          taskCount: 0,
+          packageCount: 0,
+          byScript: {},
+          byPackage: {},
+          parallelSafeTaskCount: 0,
+          serialTaskCount: 0,
+        },
+      },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("selected zero runnable tasks");
   });
 
   test("models obsolete develop pushes as superseded while preserving a quiescent aggregate", () => {

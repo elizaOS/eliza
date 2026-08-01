@@ -1,81 +1,16 @@
 /**
- * run-all-tests.mjs
- *
- * Cross-package test runner for the elizaOS monorepo. Discovers every
- * workspace package via root package.json `workspaces`, then runs each
- * package's `test` / `test:integration` / `test:e2e` / `test:playwright`
- * / `test:ui` / `test:live` script in turn. After the workspace sweep
- * finishes, also shells out to `bun run test:cloud` (unless
- * `--no-cloud` is passed) so the cloud packages run locally too.
- *
- * Lane / shard / filter knobs are honoured via a mix of CLI flags and
- * env vars so CI matrices can drive sharding deterministically:
- *
- *   TEST_LANE=pr (default)
- *     Secret-free deterministic lane. Sets VITEST_EXCLUDE_REAL_E2E=1,
- *     VITEST_EXCLUDE_REAL=1, and ELIZA_LIVE_TEST=0 by default so package
- *     vitest configs can drop *.real.e2e.test.ts and *.real.test.ts files
- *     and live-gated suites stay disabled. Provider API keys are not required.
- *
- *   TEST_LANE=post-merge
- *     Real APIs everywhere. No exclusions. Warns when
- *     scripts/post-merge-secrets.txt entries are missing.
- *
- *   TEST_SHARD=N/M
- *     Deterministic shard membership. Each task's relative package dir
- *     is SHA-1 hashed; tasks where (hash % M) === (N - 1) run on this
- *     shard (1-indexed N).
- *
- *   --no-cloud
- *     Skip cloud package tasks and the cloud test step at the end.
- *
- *   --filter=<regex>
- *     Match against `<packageName> (<relativeDir>)#<scriptName>`.
- *     Combines (intersects) with --pattern and TEST_PACKAGE_FILTER env.
- *
- *   --pattern=<regex>
- *     Same surface as --filter; both must match when both are passed.
- *
- *   --only=e2e | test
- *     Sets VITEST_E2E_ONLY=1 / VITEST_UNIT_ONLY=1 so vitest configs
- *     that consume those env vars can flip include/exclude patterns.
- *     For packages whose `test` script is a single `vitest run` we
- *     also append a path filter via VITEST_TEST_PATH_PATTERN.
- *
- *   --all
- *     Explicitly run unit + integration + E2E package scripts. This is the
- *     default when --only is not set; the flag exists so package.json scripts
- *     can state the lane intent without leaving an ignored argument behind.
- *
- *   --exclude=<path>
- *     Mark a repo-relative test path as excluded from this lane. Exclusions
- *     are forwarded to single-vitest package scripts and exported via
- *     VITEST_TEST_EXCLUDE_PATHS for package configs/wrappers.
- *
- *   --concurrency=<n>   (env: TEST_CONCURRENCY)
- *     Run the parallel-safe `test` tasks through an n-worker pool instead of
- *     strictly serially. Only the secret-free pr lane is parallelised (minus
- *     the shared-database packages in test-task-pool.mjs); the e2e/integration
- *     lanes and any post-merge lane always serialize. Default 1 preserves the
- *     historical fully-serial behaviour, so existing callers are unaffected.
- *
- *   --plan[=text|json]
- *     Discover and print the test plan without spawning package tests or
- *     preparing local services. This is the audit/inventory path for #10200.
- *
- * Companion env knobs (legacy, still honoured):
- *   TEST_PACKAGE_FILTER  — same surface as --filter
- *   TEST_SCRIPT_FILTER   — regex over script name (test, test:e2e, ...)
- *   TEST_START_AT        — resume a suite from the first matching label
- *
- * See `.env.test.example` and `packages/scripts/test-env.mjs` for live env setup.
+ * Discovers and executes test scripts across every elizaOS workspace package.
+ * Filters, named lanes, and deterministic shards operate on the same live plan;
+ * `--require-work` binds a green run to executed Bun/Vitest testcases through
+ * temporary JUnit evidence.
  */
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
+import { parseJunitSummary } from "./lib/junit-summary.mjs";
 import {
   computeRealLiveAccounting,
   diffRealLiveManifest,
@@ -165,6 +100,7 @@ function failUsage(message) {
 }
 
 const noCloud = parseFlag("--no-cloud");
+const requireWork = parseFlag("--require-work");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
 const barePlanFlag = parseFlag("--plan");
 let filterFlag;
@@ -174,7 +110,6 @@ let laneFilterFlag;
 let excludeFlags;
 let concurrencyFlag;
 let planFlag;
-let minTasksFlag;
 try {
   filterFlag = parseFlagValue("--filter");
   patternFlag = parseFlagValue("--pattern");
@@ -183,8 +118,8 @@ try {
   excludeFlags = parseRepeatedFlagValue("--exclude");
   concurrencyFlag = parseFlagValue("--concurrency");
   planFlag = parseFlagValue("--plan");
-  minTasksFlag = parseFlagValue("--min-tasks");
 } catch (error) {
+  // error-policy:J1 CLI boundary translates invalid arguments to usage failure.
   failUsage(error.message);
 }
 
@@ -223,9 +158,8 @@ if (helpFlag) {
       "  --concurrency=<n>    Run parallel-safe `test` tasks through an n-worker",
       "                       pool (pr lane only; default 1 = fully serial).",
       "  --plan[=text|json]   Print the discovered test plan without running it.",
-      "  --min-tasks=<n>      Fail loudly (exit 3) if fewer than n tasks are",
-      "                       collected, or if every collected task skips. Guards",
-      "                       against a filter/glob collapse reporting vacuous green.",
+      "  --require-work       Fail (exit 3) when no runnable task is selected,",
+      "                       a shard owns no task, or every observed test skips.",
       "",
       "Env vars:",
       "  TEST_LANE=pr|post-merge        Lane select (default: pr).",
@@ -234,7 +168,6 @@ if (helpFlag) {
       "  TEST_PACKAGE_FILTER=<regex>     Equivalent to --filter (legacy).",
       "  TEST_SCRIPT_FILTER=<regex>      Filter by script name.",
       "  TEST_START_AT=<substring>       Skip until first matching label.",
-      "  MIN_TEST_TASKS=<n>              Same as --min-tasks (default 0 = off).",
       "",
       "See `.env.test.example` for deterministic PR and live lane env setup.",
       "",
@@ -251,21 +184,6 @@ if (onlyFlag && !["e2e", "test"].includes(onlyFlag)) {
 }
 if (!["text", "json"].includes(planFormat)) {
   failUsage(`--plan must be "text" or "json", got "${planFormat}"`);
-}
-
-// Vacuous-green floor: a lane that collects zero tasks (a filter/shard/glob that
-// silently matched nothing) or whose every task skips (no test files) otherwise
-// exits green and reads as coverage. `--min-tasks`/`MIN_TEST_TASKS` turns both
-// into a loud non-zero exit (3) so the exhaustive lane's proof job can rely on it.
-const minTasksRaw = minTasksFlag ?? process.env.MIN_TEST_TASKS ?? "0";
-const minTasks =
-  typeof minTasksRaw === "string" && /^\d+$/.test(minTasksRaw)
-    ? Number(minTasksRaw)
-    : Number.NaN;
-if (!Number.isSafeInteger(minTasks)) {
-  failUsage(
-    `--min-tasks/MIN_TEST_TASKS must be a non-negative integer, got "${minTasksRaw}"`,
-  );
 }
 
 if (argv.length > 0) {
@@ -577,32 +495,25 @@ function ensurePluginSqlPostgresEnv() {
     return;
   }
 
-  try {
-    resetPostgresDatabase();
-    const initResult = runCommand("psql", [
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-d",
-      "eliza_test",
-      "-f",
-      POSTGRES_INIT_SQL_PATH,
-    ]);
-    if (initResult.status !== 0) {
-      throw new Error(
-        initResult.combinedOutput ||
-          "failed to initialize local PostgreSQL test database",
-      );
-    }
-    process.env.POSTGRES_URL = DEFAULT_POSTGRES_URL;
-    console.log(
-      `[eliza-test] INFO using PostgreSQL test database at ${DEFAULT_POSTGRES_URL}`,
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(
-      `[eliza-test] WARN failed to prepare local PostgreSQL test database; plugin-sql Postgres-only suites may be skipped (${message})`,
+  resetPostgresDatabase();
+  const initResult = runCommand("psql", [
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-d",
+    "eliza_test",
+    "-f",
+    POSTGRES_INIT_SQL_PATH,
+  ]);
+  if (initResult.status !== 0) {
+    throw new Error(
+      initResult.combinedOutput ||
+        "failed to initialize local PostgreSQL test database",
     );
   }
+  process.env.POSTGRES_URL = DEFAULT_POSTGRES_URL;
+  console.log(
+    `[eliza-test] INFO using PostgreSQL test database at ${DEFAULT_POSTGRES_URL}`,
+  );
 }
 
 function escapeForRegex(value) {
@@ -747,8 +658,11 @@ function hasLocalTestFiles(dir) {
   let entries;
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return false;
+  } catch (error) {
+    // error-policy:J2 unreadable source must not masquerade as an empty test tree.
+    throw new Error(`failed to inspect test sources under ${dir}`, {
+      cause: error,
+    });
   }
 
   for (const entry of entries) {
@@ -776,8 +690,19 @@ function isSingleVitestRunCommand(command) {
     return false;
   }
   return (
-    /^(?:(?:bunx|npx)\s+)?vitest\s+run\b/.test(commandWithoutEnv) ||
-    /^bun\s+x\s+vitest\s+run\b/.test(commandWithoutEnv)
+    /^(?:(?:bunx|npx)(?:\s+-y)?\s+)?vitest(?:@\S+)?\s+run\b/.test(
+      commandWithoutEnv,
+    ) || /^bun\s+x\s+vitest(?:@\S+)?\s+run\b/.test(commandWithoutEnv)
+  );
+}
+
+function isSingleVitestWrapperCommand(command) {
+  const commandWithoutEnv = stripLeadingEnvAssignments(command);
+  if (/[;&|]/.test(commandWithoutEnv)) {
+    return false;
+  }
+  return /^node\s+(?:\.\.\/)+scripts\/run-vitest\.mjs\s+run\b/.test(
+    commandWithoutEnv,
   );
 }
 
@@ -794,6 +719,27 @@ function isSingleBunTestCommand(command) {
     return false;
   }
   return /^bun\s+test\b/.test(commandWithoutEnv);
+}
+
+function structuredEvidenceKind(scriptName, scripts) {
+  const command =
+    resolveScriptCommand(scriptName, scripts) ||
+    normalizeWhitespace(scripts?.[scriptName] ?? "");
+  if (
+    /(?:^|\s)--reporter(?:=|\s)|(?:^|\s)--reporter-outfile(?:=|\s)|(?:^|\s)--outputFile(?:\.junit)?(?:=|\s)/.test(
+      command,
+    )
+  ) {
+    return null;
+  }
+  if (isSingleBunTestCommand(command)) return "bun";
+  if (
+    isSingleVitestRunCommand(command) ||
+    isSingleVitestWrapperCommand(command)
+  ) {
+    return "vitest";
+  }
+  return null;
 }
 
 function isSingleNoTestSkippableCommand(command) {
@@ -881,6 +827,7 @@ function buildPlanSummary(tasks) {
     lane: TEST_LANE,
     only: onlyFlag || "all",
     noCloud,
+    requireWork,
     shard: shardConfig,
     filters: packageFilters.map((rx) => rx.source),
     scriptFilter: scriptFilter?.source ?? null,
@@ -948,22 +895,53 @@ function printPlan(tasks) {
   );
 }
 
-function buildForwardedScriptArgs(scriptName, scripts) {
-  if (excludeFlags.length === 0) {
-    return [];
-  }
-
+function buildForwardedScriptArgs(scriptName, scripts, evidence) {
   const command =
     resolveScriptCommand(scriptName, scripts) ||
     normalizeWhitespace(scripts?.[scriptName] ?? "");
-  if (!isSingleVitestRunCommand(command)) {
-    return [];
+  const args = [];
+  if (excludeFlags.length > 0 && isSingleVitestRunCommand(command)) {
+    args.push(
+      ...excludeFlags.flatMap((value) => [
+        "--exclude",
+        normalizeRepoPath(value),
+      ]),
+    );
   }
+  if (evidence?.kind === "bun") {
+    args.push("--reporter=junit", `--reporter-outfile=${evidence.path}`);
+  } else if (evidence?.kind === "vitest") {
+    // Keep the console reporter visible while adding a machine-readable proof.
+    args.push(
+      "--reporter=default",
+      "--reporter=junit",
+      `--outputFile.junit=${evidence.path}`,
+    );
+  }
+  return args;
+}
 
-  return excludeFlags.flatMap((value) => [
-    "--exclude",
-    normalizeRepoPath(value),
-  ]);
+let evidenceDirectory;
+let evidenceSequence = 0;
+
+function nextEvidencePath() {
+  if (!evidenceDirectory) {
+    evidenceDirectory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-test-evidence-"),
+    );
+    process.once("exit", () => {
+      try {
+        fs.rmSync(evidenceDirectory, { recursive: true, force: true });
+      } catch (error) {
+        // error-policy:J6 temporary evidence teardown must not replace the run result.
+        console.warn(
+          `[eliza-test] WARN could not remove temporary evidence: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
+  }
+  evidenceSequence += 1;
+  return path.join(evidenceDirectory, `${evidenceSequence}.xml`);
 }
 
 // ---------------------------------------------------------------------------
@@ -984,7 +962,17 @@ function runScript(
   // line) so the logs remain readable.
   const stream = options.stream !== false;
   return new Promise((resolve, reject) => {
-    const forwardedArgs = buildForwardedScriptArgs(scriptName, scripts);
+    const evidenceKind = requireWork
+      ? structuredEvidenceKind(scriptName, scripts)
+      : null;
+    const evidence = evidenceKind
+      ? { kind: evidenceKind, path: nextEvidencePath() }
+      : null;
+    const forwardedArgs = buildForwardedScriptArgs(
+      scriptName,
+      scripts,
+      evidence,
+    );
     const liveTestDefault = TEST_LANE === "post-merge" ? "1" : "0";
     const child = spawn(
       bunCmd,
@@ -1044,11 +1032,41 @@ function runScript(
     child.on("error", reject);
     child.on("exit", (code, signal) => {
       if (code === 0) {
-        resolve({ skipped: false });
+        if (!evidence) {
+          resolve({ skipped: false });
+          return;
+        }
+        try {
+          const summary = parseJunitSummary(
+            fs.readFileSync(evidence.path, "utf8"),
+          );
+          if (summary.failures > 0 || summary.errors > 0) {
+            throw new Error(
+              `report contains ${summary.failures} failure(s) and ${summary.errors} error(s) despite a successful child exit`,
+            );
+          }
+          resolve({
+            skipped: summary.executedTests === 0,
+            skipReason: `${summary.tests} reported test(s), all skipped`,
+            evidence: summary,
+          });
+        } catch (error) {
+          // error-policy:J2 add the package identity before rejecting invalid evidence.
+          if (!stream && capturedOutput) {
+            process.stdout.write(
+              `\n[eliza-test] ----- captured output: ${label} -----\n${capturedOutput}\n[eliza-test] ----- end output: ${label} -----\n`,
+            );
+          }
+          reject(
+            new Error(`${label} did not produce valid JUnit evidence`, {
+              cause: error,
+            }),
+          );
+        }
         return;
       }
       if (canSkipNoTests && shouldSkipAsNoTests(capturedOutput)) {
-        resolve({ skipped: true });
+        resolve({ skipped: true, skipReason: "no test files found" });
         return;
       }
       if (!stream && capturedOutput) {
@@ -1130,11 +1148,8 @@ let started = startAt.length === 0;
 // subset through a worker pool instead of the historical strictly-serial loop.
 const tasks = [];
 const skippedPlanEntries = [];
-// Count of real, runnable tasks the lane's filters matched across the WHOLE
-// lane — before TEST_SHARD carves out this shard's slice. The vacuous-green
-// floor is a lane-level property ("did a filter/glob collapse the lane?"), so
-// it must be measured here and not against `tasks.length`, which only holds
-// this shard's ~1/M share once sharding is active.
+// Count before sharding distinguishes a collapsed lane from a healthy plan
+// whose deterministic shard assignment is itself unexpectedly empty.
 let laneMatchedTaskCount = 0;
 
 for (const packageJsonPath of packageJsonPaths) {
@@ -1218,25 +1233,19 @@ for (const packageJsonPath of packageJsonPaths) {
 
 const laneEnv = buildLaneEnv();
 
-// Collection-time vacuous-green floor. Evaluated before any task runs so a lane
-// that matched nothing fails immediately instead of "passing" with no work.
-// The floor is measured against the lane-wide matched total, not this shard's
-// slice: TEST_SHARD intentionally splits a healthy lane into M parts, so a
-// shard legitimately owning 1/M of the work is not a collapsed glob. When
-// sharded we still fail an empty shard, which signals broken shard math rather
-// than an intentional split.
-if (minTasks > 0 && laneMatchedTaskCount < minTasks) {
+// A required lane is defined by live source discovery, never by a historical
+// package count. Any nonempty selection satisfies the collection contract.
+if (requireWork && laneMatchedTaskCount === 0) {
   console.error(
-    `[eliza-test] VACUOUS-GREEN GUARD lane matched ${laneMatchedTaskCount} task(s) < required ${minTasks}` +
-      (shardConfig ? ` (this shard: ${tasks.length})` : "") +
-      ". A filter/shard/glob collapsed this lane to (near-)zero work. Failing loudly instead of reporting green.",
+    "[eliza-test] VACUOUS-GREEN GUARD selected 0 runnable task(s). " +
+      "A filter, manifest, or script change collapsed the lane; refusing a green result.",
   );
   process.exit(3);
 }
-if (minTasks > 0 && shardConfig && tasks.length === 0) {
+if (requireWork && shardConfig && tasks.length === 0) {
   console.error(
-    `[eliza-test] VACUOUS-GREEN GUARD shard ${TEST_SHARD} collected 0 of ${laneMatchedTaskCount} lane task(s). ` +
-      "The shard split assigned this shard no work. Failing loudly instead of reporting green.",
+    `[eliza-test] VACUOUS-GREEN GUARD shard ${TEST_SHARD} owns 0 of ${laneMatchedTaskCount} runnable lane task(s). ` +
+      "The required shard is empty; refusing a green result.",
   );
   process.exit(3);
 }
@@ -1248,10 +1257,14 @@ if (planEnabled) {
 
 ensurePluginSqlPostgresEnv();
 
-// Runtime outcome tally, consumed by the all-skipped vacuous-green guard below.
-// A task that skips resolved (no local test files) counts toward `skipped`; a
-// task that actually ran vitest/bun counts toward `ran`.
-const outcomeTally = { ran: 0, skipped: 0 };
+const outcomeTally = {
+  ran: 0,
+  skipped: 0,
+  reportedTasks: 0,
+  tests: 0,
+  executedTests: 0,
+  skippedTests: 0,
+};
 
 // Run one task, logging START/PASS/SKIP/FAIL. `stream` echoes child output live
 // (serial path); when false the output is buffered and flushed only on failure
@@ -1269,10 +1282,16 @@ async function runTask(task, { stream }) {
       { stream },
     );
     const durationMs = Date.now() - startedAt;
+    if (result.evidence) {
+      outcomeTally.reportedTasks += 1;
+      outcomeTally.tests += result.evidence.tests;
+      outcomeTally.executedTests += result.evidence.executedTests;
+      outcomeTally.skippedTests += result.evidence.skipped;
+    }
     if (result.skipped) {
       outcomeTally.skipped += 1;
       console.log(
-        `[eliza-test] SKIP ${task.label} (${durationMs}ms, no test files found)`,
+        `[eliza-test] SKIP ${task.label} (${durationMs}ms, ${result.skipReason})`,
       );
     } else {
       outcomeTally.ran += 1;
@@ -1280,22 +1299,25 @@ async function runTask(task, { stream }) {
     }
     return result;
   } catch (error) {
+    // error-policy:J2 attach the task identity at the orchestration boundary.
     const durationMs = Date.now() - startedAt;
     console.error(`[eliza-test] FAIL ${task.label} (${durationMs}ms)`);
-    throw error;
+    throw new Error(`${task.label} could not complete`, { cause: error });
   }
 }
 
-// Enforced after the workspace sweep but before the cloud step: when a lane
-// collected work yet every task skipped (each package's glob matched no test
-// files on this runner), the run would otherwise exit green having asserted
-// nothing. `--min-tasks` upgrades that to a loud failure.
-function enforceRanFloor() {
-  if (minTasks <= 0) return;
+function enforceRequiredWork() {
+  if (outcomeTally.reportedTasks > 0) {
+    console.log(
+      `[eliza-test] EVIDENCE reports=${outcomeTally.reportedTasks} tests=${outcomeTally.tests} ` +
+        `executed=${outcomeTally.executedTests} skipped=${outcomeTally.skippedTests}`,
+    );
+  }
+  if (!requireWork) return;
   if (outcomeTally.ran === 0 && tasks.length > 0) {
     console.error(
-      `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} task(s) collected but all skipped ` +
-        "(no test files found on this runner). Failing loudly instead of reporting green.",
+      `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} runnable task(s) selected but every observed test skipped. ` +
+        "No assertion-bearing work executed; refusing a green result.",
     );
     process.exit(3);
   }
@@ -1340,6 +1362,7 @@ if (concurrency <= 1) {
     try {
       await runTask(task, { stream: true });
     } catch {
+      // error-policy:J1 the pooled-run boundary aggregates task failures.
       failures.push(task.label);
     }
   }
@@ -1352,7 +1375,7 @@ if (concurrency <= 1) {
   }
 }
 
-enforceRanFloor();
+enforceRequiredWork();
 
 // Final stage: cloud tests (unless --no-cloud was passed)
 if (!noCloud) {
