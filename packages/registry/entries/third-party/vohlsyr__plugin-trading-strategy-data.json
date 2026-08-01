@@ -4,6 +4,6 @@
   "kind": "plugin",
   "description": "Backtestable crypto trend signals and on-demand backtesting for BTC/ETH/SOL/XRP/ADA via Trading Strategy Data, paid per call in USDC on Base through x402.",
   "homepage": "https://strategysignals.duckdns.org",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "tags": ["x402", "trading", "crypto", "backtest", "payments"]
 }

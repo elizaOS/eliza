@@ -4,6 +4,6 @@
   "kind": "plugin",
   "description": "Cross-source search and claim corroboration across 18 real-time data sources via Concordance, paid per call in USDC on Base through x402 -- no API keys.",
   "homepage": "https://concordancehq.duckdns.org",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "tags": ["x402", "search", "data", "corroboration", "payments"]
 }
