@@ -55,7 +55,8 @@ runs:
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
       env:
-        HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}
+        HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}
+        USERPROFILE: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}
       with:
         bun-version: 1.3.14
 `;
@@ -198,13 +199,13 @@ describe("ci-turbo-cache-contract", () => {
 
   test("fails when setup-bun shares a host HOME across concurrent jobs", () => {
     const sharedHomeSetup = WORKSPACE_SETUP_YAML.replace(
-      / {6}env:\n {8}HOME:.*\n/,
+      / {8}USERPROFILE:.*\n/,
       "",
     );
     const root = buildRepo({ workspaceSetup: sharedHomeSetup });
     try {
       expect(() => runContract(root)).toThrow(
-        /setup-bun HOME must be isolated by run, attempt, and job/,
+        /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -213,13 +214,28 @@ describe("ci-turbo-cache-contract", () => {
 
   test("fails when setup-bun HOME includes human-readable runner metadata", () => {
     const unsafeHomeSetup = WORKSPACE_SETUP_YAML.replace(
-      `HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}\n`,
-      `HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ runner.name }}\n`,
+      `\${{ strategy.job-index || 0 }}`,
+      `\${{ runner.name }}`,
     );
     const root = buildRepo({ workspaceSetup: unsafeHomeSetup });
     try {
       expect(() => runContract(root)).toThrow(
         /without space-bearing runner metadata/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when setup-bun shares a home across matrix entries", () => {
+    const sharedMatrixHomeSetup = WORKSPACE_SETUP_YAML.replaceAll(
+      `-\${{ strategy.job-index || 0 }}`,
+      "",
+    );
+    const root = buildRepo({ workspaceSetup: sharedMatrixHomeSetup });
+    try {
+      expect(() => runContract(root)).toThrow(
+        /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -247,7 +263,7 @@ describe("ci-turbo-cache-contract", () => {
     expect(lintJob).not.toMatch(/continue-on-error/);
     expect(workflow).toContain(`BUN_VERSION: "${CI_BUN_VERSION}"`);
     expect(workflow).toMatch(
-      /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}\s*[\r\n]+/,
+      /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}-\$\{\{\s*strategy\.job-index\s*\|\|\s*0\s*\}\}\s*[\r\n]+[\s\S]*?USERPROFILE:/,
     );
   });
 

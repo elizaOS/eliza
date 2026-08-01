@@ -299,11 +299,12 @@ runs:
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
       env:
-        # setup-bun installs via os.homedir(), so a per-job HOME prevents
-        # concurrent executable replacement on the shared ~/.bun/bin/bun.
+        # setup-bun installs via os.homedir(), so per-matrix homes prevent
+        # concurrent executable replacement on a shared runner.
         # runner.name is human-readable and may contain spaces, which setup-bun's
-        # executable probe cannot safely consume as part of HOME.
-        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+        # executable probe cannot safely consume as part of the home path.
+        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
+        USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
       with:
         bun-version: ${{ inputs.bun-version }}
 
