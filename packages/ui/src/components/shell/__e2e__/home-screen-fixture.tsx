@@ -11,9 +11,11 @@ import { createRoot } from "react-dom/client";
 
 import {
   installHomeWidgetFetchMock,
+  HOME_WIDGET_MOCK_NOTIFICATION,
   seedHomeWidgetAppStore,
   seedHomeWidgetNotifications,
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
+import { __ingestNotificationForTests } from "../../../state/notifications/notification-store";
 import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
 import { LauncherSurface } from "../../pages/LauncherSurface";
 import { HomeLauncherSurface } from "../HomeLauncherSurface";
@@ -29,6 +31,27 @@ const params =
   typeof location !== "undefined"
     ? new URLSearchParams(location.search)
     : new URLSearchParams();
+if (params.has("dense-notifications")) {
+  for (const [index, source] of [
+    "github",
+    "mail",
+    "calendar",
+    "files",
+    "workflow",
+    "orchestrator",
+  ].entries()) {
+    __ingestNotificationForTests(
+      {
+        ...HOME_WIDGET_MOCK_NOTIFICATION,
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+        title: `Priority notification ${index + 2}`,
+        source,
+        createdAt: HOME_WIDGET_MOCK_NOTIFICATION.createdAt - index - 1,
+      },
+      index + 2,
+    );
+  }
+}
 const showNativeOsTiles = params.has("native");
 
 function Harness(): React.JSX.Element {

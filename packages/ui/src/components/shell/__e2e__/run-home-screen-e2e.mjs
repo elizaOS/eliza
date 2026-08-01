@@ -1263,6 +1263,45 @@ try {
   await snap(desktop, "desktop-launcher");
   await desktop.close();
 
+  // Exercise the 1080×1240 layout viewport reported by the LP3 regression.
+  // Populate independent producers so the rested inbox reaches its allocation
+  // ceiling; a single row cannot distinguish the previous 40% clamp from the
+  // content-first policy.
+  const lp3 = await browser.newPage({ viewport: { width: 1080, height: 1240 } });
+  lp3.on("pageerror", (e) => sink.errors.push(String(e)));
+  await lp3.goto(`${url}?dense-notifications`);
+  await lp3.waitForSelector('[data-testid="home-notification-center"]');
+  await lp3.waitForTimeout(500);
+  const lp3Layout = await lp3.evaluate(() => {
+    const column = document.querySelector('[data-testid="home-content-column"]');
+    const notifications = document.querySelector(
+      "[data-home-notification-region]",
+    );
+    const secondary = document.querySelector(
+      "[data-home-below-notifications]",
+    );
+    if (!column || !notifications || !secondary) return null;
+    const columnBox = column.getBoundingClientRect();
+    const notificationBox = notifications.getBoundingClientRect();
+    const secondaryBox = secondary.getBoundingClientRect();
+    return {
+      columnHeight: columnBox.height,
+      notificationHeight: notificationBox.height,
+      notificationRatio: notificationBox.height / columnBox.height,
+      secondaryHeight: secondaryBox.height,
+    };
+  });
+  assert(
+    lp3Layout && lp3Layout.notificationRatio > 0.4,
+    `LP3 rested inbox grows past the former 40% clamp (${JSON.stringify(lp3Layout)})`,
+  );
+  assert(
+    lp3Layout && lp3Layout.secondaryHeight >= 136,
+    `LP3 keeps the 8.5rem secondary band (${JSON.stringify(lp3Layout)})`,
+  );
+  await snap(lp3, "lp3-home-dense-notifications");
+  await lp3.close();
+
   // #10717: the web/desktop `< >` edge buttons render ONLY on fine-pointer /
   // hover-capable devices. The mobile path above explicitly emulates touch /
   // coarse-pointer and asserts the buttons are absent; this page forces the
