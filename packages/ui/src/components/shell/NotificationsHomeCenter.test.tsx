@@ -2027,10 +2027,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     ]
       .map((match) => match[1])
       .find((rule) => rule.includes("opacity:"));
-    expect(settledSurfaceRule).toBeUndefined();
-    expect(
-      list.parentElement?.querySelector("style")?.textContent,
-    ).not.toContain(
+    expect(settledSurfaceRule).toContain("opacity:");
+    expect(settledSurfaceRule).toContain("!important");
+    expect(settledSurfaceRule).toContain("transition:");
+    expect(list.parentElement?.querySelector("style")?.textContent).toContain(
       ".eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface",
     );
     finishShadeCollapse();
