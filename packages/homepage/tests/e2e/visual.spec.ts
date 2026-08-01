@@ -31,7 +31,7 @@ async function prepare(page: Page, routePath?: string) {
   // once the camera holds its final pose AND the chat canvas has committed its
   // last intro message. No sleeps — the marker is the whole contract.
   if (routePath === "/" || routePath === "/leaderboard") {
-    await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
+    await page.waitForSelector("header", { timeout: 20_000 });
     const tryButton = page.getByRole("button", { name: "Try Now" }).first();
     await tryButton.waitFor({ timeout: 15_000 });
     await expect
