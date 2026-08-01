@@ -102,17 +102,33 @@ describe("execution-lease heartbeat", () => {
     const job = claimedJob();
     stubLaneClaim(job);
     const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("renewed");
+    const executionStarted = Promise.withResolvers<void>();
+    const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
-      executeJob: async () => wait(90),
+      executeJob: async () => {
+        executionStarted.resolve();
+        await releaseExecution.promise;
+      },
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
     });
 
-    const result = await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    await executionStarted.promise;
+    const renewalDeadline = Date.now() + 2_000;
+    try {
+      while (renew.mock.calls.length < 2 && Date.now() < renewalDeadline) {
+        await wait(10);
+      }
+      expect(renew.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      releaseExecution.resolve();
+    }
+
+    const result = await processing;
     const renewalsBeforeReturn = renew.mock.calls.length;
 
     expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
-    expect(renewalsBeforeReturn).toBeGreaterThanOrEqual(2);
     await wait(60);
     expect(renew.mock.calls).toHaveLength(renewalsBeforeReturn);
   });
