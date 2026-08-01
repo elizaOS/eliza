@@ -445,6 +445,66 @@ async function release(p, pointer, up = 0) {
   }
 }
 
+/** Real touch swipe from a chosen point inside a rendered element. Attachment
+ * tiles intentionally reserve their lower-right 44px hit region for Remove, so
+ * their draggable pixels must be exercised from a non-control point instead of
+ * the element center. */
+async function touchSwipeFromFraction(
+  p,
+  selector,
+  dx,
+  dy,
+  { xFraction = 0.18, yFraction = 0.18, steps = 8, stepDelayMs = 4 } = {},
+) {
+  await p.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const box = await p.locator(selector).boundingBox();
+  assert(Boolean(box), `real-touch: ${selector} has a rendered box`);
+  const startX = box.x + box.width * xFraction;
+  const startY = box.y + box.height * yFraction;
+  const client = await p.context().newCDPSession(p);
+  const touchPoint = (x, y) => ({
+    x,
+    y,
+    id: 1,
+    radiusX: 4,
+    radiusY: 4,
+    force: 1,
+  });
+  let ended = false;
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint(startX, startY)],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          touchPoint(startX + (dx * i) / steps, startY + (dy * i) / steps),
+        ],
+      });
+      if (stepDelayMs > 0) await p.waitForTimeout(stepDelayMs);
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    ended = true;
+  } finally {
+    if (!ended) {
+      await Promise.allSettled([
+        client.send("Input.dispatchTouchEvent", {
+          type: "touchCancel",
+          touchPoints: [],
+        }),
+      ]);
+    }
+    await client.detach();
+  }
+}
+
 async function maximizeByPull(p, pointer = "mouse") {
   await gesture(p, 760, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
@@ -2378,7 +2438,8 @@ try {
     await p.close();
   }
 
-  // attach image → thumbnail + remove button (real file through the hidden input)
+  // Attachments keep their remove controls above the grabber while their tile
+  // and gap pixels remain part of the continuous sheet-drag surface.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2388,19 +2449,53 @@ try {
     // 1x1 transparent PNG
     const pngB64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-    await p.setInputFiles('input[type="file"]', {
-      name: "shot.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(pngB64, "base64"),
-    });
+    await p.setInputFiles('input[type="file"]', [
+      {
+        name: "shot.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+      {
+        name: "shot-two.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(pngB64, "base64"),
+      },
+    ]);
     await p.waitForTimeout(350);
     assert((await p.locator('img[alt="shot.png"]').count()) === 1, "ATTACH: pending image thumbnail rendered");
+    assert((await p.locator('img[alt="shot-two.png"]').count()) === 1, "ATTACH: second thumbnail renders a real inter-tile gap");
     assert(await p.getByTestId("chat-composer-action").isVisible(), "ATTACH: send button shown for image-only turn");
     assert(await p.getByLabel("remove shot.png").isVisible(), "ATTACH: per-image remove button shown");
     await snap(p, "state-image-attached");
     await p.getByLabel("remove shot.png").click();
     await p.waitForTimeout(250);
     assert((await p.locator('img[alt="shot.png"]').count()) === 0, "REMOVE: thumbnail cleared after remove");
+
+    // Re-add the first tile, then start a real touch pull on its image pixels.
+    // The list owns the same pull binding as the grabber, while each remove
+    // button stops pointerdown before it can seed a sheet gesture.
+    await p.setInputFiles('input[type="file"]', {
+      name: "shot.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(pngB64, "base64"),
+    });
+    await p.waitForTimeout(250);
+    await touchSwipeFromFraction(p, 'img[alt="shot.png"]', 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through tile pixels opens the sheet");
+
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "collapsed", "ATTACH DRAG: Escape restores input before gap proof");
+    await touchSwipe(p, testIdSelector("chat-pending-attachment-list"), 0, -160, {
+      steps: 8,
+      stepDelayMs: 4,
+    });
+    await p.waitForTimeout(SETTLE);
+    assert((await detent(p)) === "half", "ATTACH DRAG: pull through attachment-list gap opens the sheet");
     await p.close();
   }
 
