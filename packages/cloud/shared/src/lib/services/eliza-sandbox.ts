@@ -7165,6 +7165,23 @@ export class ElizaSandboxService {
         } as const;
       }
 
+      const hasPlacementWithoutSandbox =
+        rec.status === "running" &&
+        rec.sandbox_id === null &&
+        (rec.node_id !== null ||
+          rec.container_name !== null ||
+          rec.bridge_url !== null ||
+          rec.health_url !== null ||
+          rec.headscale_ip !== null ||
+          rec.bridge_port !== null ||
+          rec.web_ui_port !== null);
+      if (hasPlacementWithoutSandbox) {
+        return {
+          success: false,
+          error: "Sandbox locator is incomplete; compute was left unchanged",
+        } as const;
+      }
+
       let lifecycleRevision = rec.lifecycle_revision;
       if (rec.status === "running" && rec.sandbox_id) {
         if (!rec.bridge_url) {

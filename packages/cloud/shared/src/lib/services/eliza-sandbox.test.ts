@@ -1838,6 +1838,41 @@ describe("ElizaSandboxService shutdown capture fence", () => {
       activeProvision.mockRestore();
     }
   });
+
+  test("leaves a running placement intact when its sandbox id is missing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = { ...customSandbox(), sandbox_id: null };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as ShutdownFenceService;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const execute = mock(async () => ({ rows: [] }));
+    upgradeTransactionImpl = async (fn) => fn({ execute });
+    try {
+      const result = await svc.shutdown(rec.id, rec.organization_id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Sandbox locator is incomplete");
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService sleep fallback integrity", () => {
