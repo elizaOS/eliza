@@ -227,6 +227,68 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.finalMessage).toContain("APP_CREATE_DONE");
 	});
 
+	it("keeps description operative for tools whose description is the mutation payload", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("task-a", "TASKS_CREATE", {
+						description: "Repair project A",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("task-b", "TASKS_CREATE", {
+						description: "Repair project B",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: "Both repair tasks were created." },
+						},
+					],
+				}),
+		};
+		const taskFailure = "Project A task creation failed.";
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "task-a-failure",
+					text: taskFailure,
+					userFacingText: taskFailure,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Project B task created.",
+					userFacingText: "Project B task created.",
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Create the other task.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Invalid evaluator envelope.",
+					protocolFailure: true,
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(taskFailure);
+		expect(result.finalMessage).not.toContain("Both repair tasks");
+	});
+
 	it("keeps a failed SHELL command authoritative when an unrelated command succeeds before REPLY", async () => {
 		const runtime = {
 			useModel: vi
