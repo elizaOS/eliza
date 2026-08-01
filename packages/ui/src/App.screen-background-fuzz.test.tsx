@@ -482,7 +482,7 @@ const BUILTIN_TABS: { tab: BuiltinTab; path: string }[] = [
   { tab: "transcripts", path: "/transcripts" },
   { tab: "relationships", path: "/relationships" },
   { tab: "memories", path: "/memories" },
-  { tab: "rolodex", path: "/rolodex" },
+  { tab: "rolodex", path: "/apps/relationships" },
   { tab: "runtime", path: "/runtime" },
   { tab: "database", path: "/database" },
   { tab: "desktop", path: "/desktop" },

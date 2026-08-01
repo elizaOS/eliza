@@ -57,6 +57,7 @@ vi.mock("../../navigation", () => {
   return {
     isAospShellEnabled: () => aospEnabled,
     LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
+    pathForTab: (tab: string) => `/${tab}`,
   };
 });
 
@@ -141,8 +142,10 @@ describe("LauncherSurface", () => {
     const surface = screen.getByTestId("launcher-surface");
     expect(surface.getAttribute("data-layout")).toBe("page");
     expect(surface.className).toContain("absolute");
-    expect(surface.className).not.toContain("--eliza-chat-clearance");
-    expect(screen.getByTestId("launcher-page-window").className).toContain(
+    expect(screen.getByTestId("launcher").className).toContain(
+      "--eliza-chat-clearance",
+    );
+    expect(screen.getByTestId("launcher-page-window").className).not.toContain(
       "--eliza-chat-clearance",
     );
     expect(screen.getByTestId("launcher-page-window").className).toContain(
@@ -152,7 +155,9 @@ describe("LauncherSurface", () => {
     rerender(<LauncherSurface layout="embedded" />);
     expect(surface.getAttribute("data-layout")).toBe("embedded");
     expect(surface.className).toContain("relative");
-    expect(surface.className).not.toContain("--eliza-chat-clearance");
+    expect(screen.getByTestId("launcher").className).not.toContain(
+      "--eliza-chat-clearance",
+    );
     expect(screen.getByTestId("launcher-page-window").className).toContain(
       "overflow-visible",
     );

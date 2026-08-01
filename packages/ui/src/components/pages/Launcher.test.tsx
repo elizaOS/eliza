@@ -84,7 +84,13 @@ describe("Launcher", () => {
 
   it("scrolls vertically without visible scrollbar chrome and adapts narrow grids", () => {
     render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    const launcher = screen.getByTestId("launcher");
     const page = screen.getByTestId("launcher-page-window");
+    expect(launcher.className).toContain("--eliza-chat-clearance");
+    expect(launcher.className).toContain("--eliza-mobile-nav-offset");
+    expect(launcher.className).toContain("--safe-area-bottom");
+    expect(page.className).not.toContain("--eliza-chat-clearance");
+    expect(page.className).toContain("scroll-pb-8");
     expect(page.className).toContain("overflow-y-auto");
     expect(page.className).toContain("overscroll-y-contain");
     expect(page.className).toContain("scrollbar-hide");
@@ -98,6 +104,7 @@ describe("Launcher", () => {
     expect(grid?.className).toContain("grid-cols-3");
     expect(grid?.className).toContain("min-[360px]:grid-cols-4");
     expect(grid?.className).toContain("sm:grid-cols-5");
+    expect(grid?.className).not.toContain("portrait:gap-y-8");
   });
 
   it("scales icons and labels from the launcher container while keeping short landscape compact", () => {
@@ -149,6 +156,9 @@ describe("Launcher", () => {
     expect(page.className).not.toContain("overflow-y-auto");
     expect(page.className).not.toContain("scroll-fade");
     expect(screen.getByTestId("launcher").className).not.toContain("flex-1");
+    expect(screen.getByTestId("launcher").className).not.toContain(
+      "--eliza-chat-clearance",
+    );
   });
 
   it("marks preview and developer tiles without changing release tiles", () => {

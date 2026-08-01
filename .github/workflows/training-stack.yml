@@ -88,7 +88,16 @@ jobs:
         # Annotations surface — no need to shell into the container.
         # Ruff 0.16 expands its implicit default from 59 to 413 rules, so keep
         # this existing gate stable until that rule migration is reviewed.
-        run: pipx install --force ruff==0.15.22 || pip install --user ruff==0.15.22
+        run: |
+          set -euo pipefail
+          if command -v pipx >/dev/null 2>&1; then
+            pipx install --force ruff==0.15.22
+          else
+            python -m pip install --user --force-reinstall ruff==0.15.22
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
+          test "$(ruff --version)" = "ruff 0.15.22"
 
       - name: Lint packages/training/scripts/
         run: ruff check packages/training/scripts/

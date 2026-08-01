@@ -8,8 +8,8 @@ name: App Aesthetic Audit
 # This is the agent app's equivalent of cloud-frontend's `audit:cloud`. Until
 # this workflow existed the audit ran in NO CI lane (honor-system per the PR
 # template, #9304). It runs the strict verifier and uploads all artifacts, but
-# remains advisory for PR throughput (#14051): the required `ci-ok` gate owns
-# merge blocking, while this lane supplies visual evidence for reviewers.
+# is a required visual contract: strict failures must block regressions rather
+# than presenting a healthy check beside broken screenshots.
 
 on:
   pull_request:
@@ -36,9 +36,8 @@ env:
 
 jobs:
   aesthetic-audit:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
-    continue-on-error: true
     env:
       # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
       ELIZA_UI_SMOKE_FORCE_STUB: "1"
@@ -65,9 +64,6 @@ jobs:
         run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Run all-views aesthetic audit
-        # Strict verifier, advisory check (#14051): failures stay visible in
-        # logs/artifacts without blocking the required ci-ok merge gate.
-        continue-on-error: true
         env:
           ELIZA_AUDIT_APP_STRICT: "1"
           ELIZA_AUDIT_APP_STRICT_NEEDS_WORK: "1"

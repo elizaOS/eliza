@@ -392,6 +392,8 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   // `/views`). Defined after `apps` so it wins the `PATH_TO_TAB` reverse lookup
   // for the bare `/apps` path; `/apps/<slug>` still resolves to the app runtime.
   "my-apps": "/apps",
+  // Legacy audit/deep-link identity. Runtime navigation canonicalizes this tab
+  // to Relationships because Rolodex has no independent renderer.
   rolodex: "/rolodex",
   runtime: "/apps/runtime",
   database: "/apps/database",
@@ -423,7 +425,10 @@ function normalizePathForLookup(pathname: string, basePath = ""): string {
 
 export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
-  const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
+  const p =
+    tab === "rolodex"
+      ? TAB_PATHS.relationships
+      : (TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`);
   return base ? `${base}${p}` : p;
 }
 
@@ -513,6 +518,13 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // chat-native flow launched from the home card, not a routable page.
   if (normalized === "/tutorial") {
     return "chat";
+  }
+
+  // Rolodex has no renderer of its own. Keep the historical deep link alive,
+  // but resolve it to the canonical Relationships surface instead of the
+  // unavailable-view launcher fallback.
+  if (normalized === "/rolodex") {
+    return APPS_ENABLED ? "relationships" : "chat";
   }
 
   // /views — legacy launcher alias; renders the combined Home/Launcher.

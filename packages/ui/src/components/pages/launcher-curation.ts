@@ -28,6 +28,7 @@ import {
   isViewKindEnabled,
   resolveViewKind,
 } from "@elizaos/core";
+import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { LAUNCHER_AOSP_ONLY_VIEW_IDS, pathForTab } from "../../navigation";
 import { getInternalToolAppTargetTab } from "../apps/internal-tool-apps";
@@ -305,7 +306,12 @@ export function curateLauncherPages(
   const scoreByCanonical = new Map<string, number>();
   for (const entry of entries) {
     const canonicalId = canonicalLauncherId(entry.id);
-    if (LAUNCHER_HIDDEN_IDS.has(canonicalId)) continue;
+    const packageRouteSlug = packageNameToAppRouteSlug(entry.id);
+    if (
+      LAUNCHER_HIDDEN_IDS.has(canonicalId) ||
+      (packageRouteSlug !== null && LAUNCHER_HIDDEN_IDS.has(packageRouteSlug))
+    )
+      continue;
     if (isGroupedLauncherSubPage(canonicalId, entry)) continue;
     // Cloud-only tiles (e.g. the Cloud Applications dashboard) never surface
     // unless the user is signed into Eliza Cloud.

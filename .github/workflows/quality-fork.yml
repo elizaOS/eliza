@@ -25,7 +25,7 @@ jobs:
   lint:
     name: Lint
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     # Fresh Turbo-cold attempt 5 was still linting successfully when the old
     # 10m ceiling canceled it at 10m26s. Allow a finite 15m cold window; attempt
     # 4 completed the same lane in 8m30s.
@@ -91,7 +91,7 @@ jobs:
   typecheck:
     name: Type Check
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     # Fresh attempt #16657 measured 4m15s of setup (including a wasteful 2m50s
     # stale 1.6 GiB Bun-cache fallback restore) plus 13m28s of still-running
     # full-graph typecheck. Skip that stale restore below and retain a finite
@@ -133,7 +133,7 @@ jobs:
   build:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     # A cold workspace build alone has taken 13m and the two-worker homepage
     # suite 25m38s total; the old 32m ceiling cancelled real runs mid-suite
     # whenever both were cold (observed on #17157 and #17256). 45m covers the
@@ -232,7 +232,7 @@ jobs:
   elizaos-cli-global-smoke:
     name: elizaos CLI global-install smoke (#8000)
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

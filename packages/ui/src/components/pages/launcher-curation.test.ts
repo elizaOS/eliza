@@ -638,6 +638,21 @@ describe("canonicalLauncherId", () => {
     expect(canonicalLauncherId("trajectory-logger")).toBe("trajectories");
     expect(canonicalLauncherId("browser")).toBe("browser");
   });
+
+  it("applies hidden policy to package-name catalog entries", () => {
+    const page = curateLauncherPages(
+      [
+        entry("shopify"),
+        entry("@elizaos/plugin-shopify", {
+          kind: "app",
+          state: "available",
+        }),
+      ],
+      { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
+    );
+
+    expect(page).toEqual([]);
+  });
 });
 
 describe("canonicalLauncherId derives package-name mapping from owner declarations", () => {
