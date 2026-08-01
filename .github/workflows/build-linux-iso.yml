@@ -178,6 +178,9 @@ jobs:
         timeout-minutes: 40
         env:
           ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS: 900
+          # The bundled standard x64 Bun runtime requires AVX2; QEMU's implicit
+          # qemu64 model predates that contract and exits with SIGILL under TCG.
+          ELIZAOS_ISO_SMOKE_CPU_MODEL: Haswell-v4
           ELIZAOS_ISO_SMOKE_LOG_DIR: ${{ runner.temp }}/elizaos-iso-smoke-logs
         run: |
           set -euo pipefail

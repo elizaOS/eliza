@@ -153,6 +153,15 @@ for (const fixture of [
     pattern: /must retain bounded step and guest timeouts/,
   },
   {
+    name: "a firmware CPU below the bundled Bun ABI",
+    mutate: (job) => {
+      stepNamed(job, "Smoke test ISO through SeaBIOS and OVMF").env[
+        "ELIZAOS_ISO_SMOKE_CPU_MODEL"
+      ] = "qemu64";
+    },
+    pattern: /must expose the x86-64-v3 CPU required by bundled Bun/,
+  },
+  {
     name: "success-only boot diagnostics",
     mutate: (job) => {
       stepNamed(job, "Upload ISO boot diagnostics").if = "success()";

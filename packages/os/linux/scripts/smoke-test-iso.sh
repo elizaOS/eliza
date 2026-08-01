@@ -7,6 +7,7 @@ set -euo pipefail
 ISO="${1:-}"
 QEMU_BIN="${ELIZAOS_QEMU_BIN:-qemu-system-x86_64}"
 XORRISO_BIN="${ELIZAOS_XORRISO_BIN:-xorriso}"
+CPU_MODEL="${ELIZAOS_ISO_SMOKE_CPU_MODEL:-Haswell-v4}"
 BOOT_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS:-900}"
 BOOT_MENU_WAIT_SECONDS="${ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS:-10}"
 POLL_SECONDS="${ELIZAOS_ISO_SMOKE_POLL_SECONDS:-2}"
@@ -397,6 +398,10 @@ launch_firmware_vm() {
     local -a qemu_args=(
         -name "elizaos-iso-smoke-${firmware}"
         -machine q35
+        # Electrobun bundles Bun's standard x64 build, whose AVX2 contract is
+        # represented by QEMU's stable x86-64-v3 Haswell model. QEMU's implicit
+        # qemu64 model predates that ABI and terminates the runtime with SIGILL.
+        -cpu "${CPU_MODEL}"
         -accel kvm
         -accel "tcg,thread=multi"
         -m 4096

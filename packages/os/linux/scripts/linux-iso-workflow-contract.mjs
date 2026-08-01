@@ -251,6 +251,10 @@ export function validateLinuxIsoWorkflow(workflow) {
     "dual-firmware ISO boot must retain bounded step and guest timeouts",
   );
   invariant(
+    boot.step.env?.ELIZAOS_ISO_SMOKE_CPU_MODEL === "Haswell-v4",
+    "dual-firmware ISO boot must expose the x86-64-v3 CPU required by bundled Bun",
+  );
+  invariant(
     boot.step.run.includes(ISO_PATH_EXPRESSION) &&
       !/(?:^|\s)-(?:kernel|initrd)(?:\s|$)/m.test(boot.step.run),
     "dual-firmware ISO boot must consume the shipped ISO through its bootloaders",
