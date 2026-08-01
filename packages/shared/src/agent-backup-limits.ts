@@ -77,7 +77,7 @@ export function resolveRetainableAgentBackupBytes(
  * lost and must never prune the chain.
  */
 export class SnapshotPayloadTooLargeError extends Error {
-  readonly name = "SnapshotPayloadTooLargeError";
+  override readonly name: string = "SnapshotPayloadTooLargeError";
   constructor(
     readonly payloadBytes: number,
     readonly limitBytes: number,

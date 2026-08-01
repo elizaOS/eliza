@@ -5,6 +5,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  SnapshotPayloadTooLargeError,
+} from "../agent-backup-limits.js";
+import {
   AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
   AgentSnapshotV1WireLimitError,
   assertAgentSnapshotV1WireByteLength,
@@ -13,7 +17,9 @@ import {
 
 describe("agent snapshot v1 wire contract", () => {
   it("accepts exactly the maximum restorable wire size", () => {
-    expect(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES).toBe(128 * 1024 * 1024);
+    expect(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES).toBe(
+      MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+    );
     expect(() =>
       assertAgentSnapshotV1WireByteLength(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES),
     ).not.toThrow();
@@ -33,6 +39,7 @@ describe("agent snapshot v1 wire contract", () => {
         receivedBytes,
         maxBytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
       });
+      expect(error).toBeInstanceOf(SnapshotPayloadTooLargeError);
       expect((error as Error).message).not.toContain("payload contents");
     }
   });

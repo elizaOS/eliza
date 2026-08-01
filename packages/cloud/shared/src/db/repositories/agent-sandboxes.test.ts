@@ -1,6 +1,9 @@
 /** Exercises sandbox repository behavior with deterministic database fixtures. */
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES, AgentSnapshotV1WireLimitError } from "@elizaos/shared";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
 import type { SQL, SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realHelpers from "../helpers";
@@ -720,7 +723,7 @@ describe("AgentSandboxesRepository", () => {
           storage_commit_state: "complete",
           storage_commit_error: null,
           storage_commit_updated_at: new Date("2026-07-25T00:00:00.000Z"),
-          size_bytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+          size_bytes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
           backup_kind: "full",
           parent_backup_id: null,
           content_hash: null,
@@ -758,7 +761,7 @@ describe("AgentSandboxesRepository", () => {
           storage_commit_state: "complete",
           storage_commit_error: null,
           storage_commit_updated_at: new Date("2026-07-25T00:00:00.000Z"),
-          size_bytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1,
+          size_bytes: MAX_RESTORABLE_AGENT_BACKUP_BYTES + 1,
           backup_kind: "full",
           parent_backup_id: null,
           content_hash: null,
@@ -772,7 +775,7 @@ describe("AgentSandboxesRepository", () => {
 
     await expect(
       new AgentSandboxesRepository().getReconstructedBackupState(backupId),
-    ).rejects.toThrow(AgentSnapshotV1WireLimitError);
+    ).rejects.toThrow(SnapshotPayloadTooLargeError);
   });
 
   // C1c attribution guard (audit §C1c): claimWarmContainer must NEVER mint a

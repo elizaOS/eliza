@@ -1,26 +1,33 @@
 /**
- * Version-one agent snapshot wire limits shared by every producer, transport,
- * verifier, and restore boundary. A deployment may lower the limit for a
- * constrained environment, but it may never raise it above the largest body
- * every v1 restore endpoint is guaranteed to accept.
+ * Compatibility names for the canonical v1 backup limits. Cloud-agent bundles
+ * consume this contract directly, while the rest of the repository imports
+ * `agent-backup-limits`; both surfaces delegate to one source of truth so wire
+ * acceptance, retention, and restore can never drift.
  */
 
-export const AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES = 128 * 1024 * 1024;
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  resolveRetainableAgentBackupBytes,
+  SnapshotPayloadTooLargeError,
+} from "../agent-backup-limits.js";
+
+export const AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES =
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
 /**
  * Observable size-only failure for a v1 snapshot that cannot be restored.
  * Payload contents and tenant identifiers are deliberately excluded.
  */
-export class AgentSnapshotV1WireLimitError extends Error {
+export class AgentSnapshotV1WireLimitError extends SnapshotPayloadTooLargeError {
+  override readonly name = "AgentSnapshotV1WireLimitError";
   readonly receivedBytes: number;
   readonly maxBytes: number;
 
   constructor(receivedBytes: number, maxBytes: number) {
-    super(
+    super(receivedBytes, maxBytes);
+    this.message =
       `Agent snapshot v1 payload exceeds the maximum restorable wire size ` +
-        `(${receivedBytes} > ${maxBytes} bytes)`,
-    );
-    this.name = "AgentSnapshotV1WireLimitError";
+      `(${receivedBytes} > ${maxBytes} bytes)`;
     this.receivedBytes = receivedBytes;
     this.maxBytes = maxBytes;
   }
@@ -35,24 +42,7 @@ export class AgentSnapshotV1WireLimitError extends Error {
 export function resolveAgentSnapshotV1MaxWireBytes(
   configuredBytes: string | undefined,
 ): number {
-  if (configuredBytes === undefined || configuredBytes.trim() === "") {
-    return AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES;
-  }
-  const trimmed = configuredBytes.trim();
-  if (!/^\d+$/.test(trimmed)) {
-    throw new Error(
-      `Invalid snapshot retain budget ${JSON.stringify(configuredBytes)}: ` +
-        "expected a positive integer count of bytes",
-    );
-  }
-  const parsed = Number(trimmed);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new Error(
-      `Invalid snapshot retain budget ${JSON.stringify(configuredBytes)}: ` +
-        "expected a positive integer count of bytes",
-    );
-  }
-  return Math.min(parsed, AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
+  return resolveRetainableAgentBackupBytes(configuredBytes);
 }
 
 /**
