@@ -2322,6 +2322,10 @@ describe("ChatOverlay", () => {
         clientHeight: { configurable: true, get: () => clientHeight },
         scrollHeight: { configurable: true, value: 500 },
         scrollTop: { configurable: true, value: 400, writable: true },
+        // The primitive reconciles its own observer on a queued frame. Keep the
+        // real viewport API on this detached jsdom node so that late frame can
+        // finish without leaking into the next test.
+        scrollTo: { configurable: true, value: vi.fn() },
       });
       const resizeViewport = () => {
         for (const callback of callbacks.get(viewport) ?? []) {
