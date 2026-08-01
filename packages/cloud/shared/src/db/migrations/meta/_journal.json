@@ -1310,6 +1310,13 @@
       "when": 1785614400000,
       "tag": "0187_agent_sandbox_lifecycle_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1785614400001,
+      "tag": "0188_job_execution_interruptions_catalog_guard",
+      "breakpoints": true
     }
   ]
 }

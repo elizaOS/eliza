@@ -436,6 +436,30 @@ jobs:
             done
             sudo chmod 600 "$ENV_FILE"
 
+            # This workflow can reach the restart independently of the cloud
+            # deploy workflow's migrate-db job. Bind activation to the exact
+            # catalog and migration hash instead of assuming another workflow
+            # won the race. The bounded preflight leaves the currently healthy
+            # daemons running when migration has not completed or drifted.
+            EFFECTIVE_DATABASE_URL="$DATABASE_URL"
+            if [ -z "$EFFECTIVE_DATABASE_URL" ]; then
+              EFFECTIVE_DATABASE_URL=$(sudo awk -F= '
+                $1=="DATABASE_URL" {
+                  sub(/^[^=]*=/, "")
+                  value=$0
+                }
+                END { print value }
+              ' "$ENV_FILE")
+            fi
+            if [ -z "$EFFECTIVE_DATABASE_URL" ]; then
+              echo "::error::DATABASE_URL is required for the job-interruption schema preflight."
+              exit 1
+            fi
+            DATABASE_URL="$EFFECTIVE_DATABASE_URL" \
+              bun --conditions=eliza-source \
+              packages/scripts/cloud/admin/preflight-job-execution-interruptions.ts
+            unset EFFECTIVE_DATABASE_URL
+
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service
             echo "=== Restart issued for both daemons ==="

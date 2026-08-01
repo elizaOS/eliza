@@ -149,11 +149,18 @@ jobs:
         with:
           setup-db: "true"
           db-backend: "postgres"
+      - name: Run PostgreSQL migration fencing and contention tests
+        env:
+          RUN_REAL_POSTGRES_MIGRATION_TESTS: "1"
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          bun test --config=/dev/null --isolate
+          packages/scripts/cloud/admin/migrate-with-diagnostics.postgres.test.ts
       - name: Run PostgreSQL lifecycle barrier tests
         env:
           APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
         run: >-
-          bun --config=/dev/null test --isolate
+          bun test --config=/dev/null --isolate
           packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e
