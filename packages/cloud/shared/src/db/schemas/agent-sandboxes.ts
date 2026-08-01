@@ -141,6 +141,13 @@ export const agentSandboxes = pgTable(
      * replacement container on stale credentials.
      */
     environment_revision: integer("environment_revision").notNull().default(0),
+    /**
+     * Database-owned generation for the complete sandbox row. A trigger
+     * advances it on every update, including raw SQL writers, so lifecycle
+     * operations can fence asynchronous work without timestamp precision or
+     * same-millisecond ABA assumptions.
+     */
+    lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull().default(0),
     // Docker infrastructure columns (added by 0047_docker_nodes migration)
     node_id: text("node_id"),
     container_name: text("container_name"),

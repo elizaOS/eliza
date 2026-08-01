@@ -571,6 +571,7 @@ function customSandbox(): AgentSandbox {
     error_count: 0,
     environment_vars: { ELIZA_API_TOKEN: "agent-token" },
     environment_revision: 0,
+    lifecycle_revision: 0,
     node_id: "node-1",
     container_name: "agent-e06bb509",
     bridge_port: 18923,
@@ -1982,7 +1983,7 @@ describe("ElizaSandboxService heartbeat", () => {
         sandboxId: sandbox.sandbox_id,
         nodeId: sandbox.node_id,
         containerName: sandbox.container_name,
-        updatedAt: sandbox.updated_at,
+        lifecycleRevision: sandbox.lifecycle_revision,
       });
     } finally {
       findSpy.mockRestore();
@@ -8140,7 +8141,8 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       const sql = new PgDialect().sqlToQuery(whereClause).sql.toLowerCase();
       expect(sql).toContain("deletion_attempt_id");
       expect(sql).toContain("environment_revision");
-      expect(sql).toContain("updated_at");
+      expect(sql).toContain("lifecycle_revision");
+      expect(sql).not.toContain("updated_at");
       expect(sql).toContain("claimed_at");
     } finally {
       upgradeTransactionImpl = null;
