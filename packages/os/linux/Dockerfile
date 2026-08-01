@@ -166,7 +166,11 @@ RUN printf 'Types: deb\nURIs: http://deb.debian.org/debian\nSuites: forky\nCompo
 # mounted at runtime so edits are live and we don't bake 77 MB of
 # config into an image layer.
 COPY tails-live-build/ /opt/tails-live-build/
-RUN cd /opt/tails-live-build \
+COPY patches/live-build-uefi-el-torito.patch /tmp/live-build-uefi-el-torito.patch
+RUN patch --batch --forward -d /opt/tails-live-build -p1 \
+        < /tmp/live-build-uefi-el-torito.patch \
+    && rm /tmp/live-build-uefi-el-torito.patch \
+    && cd /opt/tails-live-build \
     && make install DESTDIR=/ \
     && rm -rf /opt/tails-live-build \
     && lb --version

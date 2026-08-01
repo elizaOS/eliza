@@ -1,0 +1,18 @@
+diff --git a/scripts/build/lb_binary_iso b/scripts/build/lb_binary_iso
+index c89e2bf..4ab7dd0 100755
+--- a/scripts/build/lb_binary_iso
++++ b/scripts/build/lb_binary_iso
+@@ -148,4 +148,13 @@
+ esac
+ 
++# Tails supplies its EFI loaders through a local binary hook. Register the
++# resulting FAT image as a second El Torito entry so optical-media firmware can
++# reach those loaders without changing the legacy BIOS entry.
++if [ -e binary/boot/grub/efi.img ]
++then
++	XORRISO_OPTIONS="${XORRISO_OPTIONS} -eltorito-alt-boot"
++	XORRISO_OPTIONS="${XORRISO_OPTIONS} -e boot/grub/efi.img -no-emul-boot"
++fi
++
+ #if [ "${LB_DEBIAN_INSTALLER}" != "live" ]
+ #then

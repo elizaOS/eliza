@@ -89,7 +89,9 @@ bash -n build.sh build-iso.sh tails/auto/build \
     scripts/submodule-checkout-pin.test.sh \
     scripts/submodule-checkout.test.sh \
     scripts/submodule-checkout.sh \
+    scripts/uefi-el-torito-contract.test.sh \
     scripts/security-smoke.sh
+sh -n tails/config/binary_local-hooks/60-efi-el-torito
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
 grep -Fq "sort -nr" build-iso.sh
@@ -97,6 +99,7 @@ bash scripts/build-cache-contract.test.sh
 bash scripts/smoke-test-iso.test.sh
 bash scripts/submodule-checkout-pin.test.sh
 bash scripts/submodule-checkout.test.sh
+bash scripts/uefi-el-torito-contract.test.sh
 node --test scripts/linux-iso-workflow-contract.test.mjs
 node --test scripts/package-list-contract.test.mjs
 node --test scripts/resolve-apt-snapshots.test.mjs

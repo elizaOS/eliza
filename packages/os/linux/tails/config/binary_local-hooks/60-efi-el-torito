@@ -1,0 +1,76 @@
+#!/bin/sh
+# Packages Tails' signed removable-media loaders into the FAT image that UEFI
+# optical boot requires. The embedded GRUB config redirects from that image to
+# the canonical configuration and runtime files in the surrounding ISO9660 tree.
+
+set -e
+
+. config/bootstrap
+. config/variables
+
+if [ "${LB_ARCHITECTURE}" != "amd64" ]; then
+    exit 0
+fi
+
+EFI_SOURCE="binary/EFI/BOOT"
+EFI_IMAGE="binary/boot/grub/efi.img"
+WORK_DIR="$(mktemp -d tmp/elizaos-efi-el-torito.XXXXXX)"
+
+cleanup() {
+    rm -rf "${WORK_DIR}"
+}
+trap cleanup EXIT HUP INT TERM
+
+for required_loader in BOOTX64.EFI GRUBX64.EFI; do
+    if [ ! -s "${EFI_SOURCE}/${required_loader}" ]; then
+        echo "E: required UEFI loader is missing: ${EFI_SOURCE}/${required_loader}" >&2
+        exit 1
+    fi
+done
+
+cat >"${WORK_DIR}/grub.cfg" <<'EOF'
+search --file --set=root /live/vmlinuz
+configfile ($root)/EFI/debian/grub.cfg
+EOF
+touch -d "@${SOURCE_DATE_EPOCH}" "${WORK_DIR}/grub.cfg"
+
+payload_size=0
+loader_count=0
+for loader in "${EFI_SOURCE}"/*.EFI; do
+    payload_size=$((payload_size + $(stat -c %s "${loader}")))
+    loader_count=$((loader_count + 1))
+done
+payload_size=$((payload_size + $(stat -c %s "${WORK_DIR}/grub.cfg")))
+
+# Four FAT directories plus 24 KiB of allocator headroom match Debian
+# live-build's EFI image sizing contract; rounding to 32 KiB keeps FAT layout
+# deterministic while avoiding a fixed oversized boot image.
+payload_size=$((payload_size + 4096 * 4))
+blocks=$(((payload_size / 1024 + 55) / 32 * 32))
+if [ "${blocks}" -ge 32768 ]; then
+    echo "E: UEFI El Torito image would exceed the 32 MiB firmware limit" >&2
+    exit 1
+fi
+
+mkdir -p "$(dirname "${EFI_IMAGE}")"
+rm -f "${EFI_IMAGE}"
+volume_id="$(printf '%08x' $((SOURCE_DATE_EPOCH % 4294967296)))"
+mkfs.msdos -C "${EFI_IMAGE}" "${blocks}" -i "${volume_id}" >/dev/null
+mmd -i "${EFI_IMAGE}" ::EFI
+mmd -i "${EFI_IMAGE}" ::EFI/BOOT
+mmd -i "${EFI_IMAGE}" ::EFI/debian
+mcopy -m -o -i "${EFI_IMAGE}" "${EFI_SOURCE}"/*.EFI ::EFI/BOOT
+mcopy -m -o -i "${EFI_IMAGE}" "${WORK_DIR}/grub.cfg" ::EFI/debian/grub.cfg
+
+for required_path in \
+    ::EFI/BOOT/BOOTX64.EFI \
+    ::EFI/BOOT/GRUBX64.EFI \
+    ::EFI/debian/grub.cfg
+do
+    if ! mdir -i "${EFI_IMAGE}" "${required_path}" >/dev/null; then
+        echo "E: UEFI El Torito image is missing ${required_path}" >&2
+        exit 1
+    fi
+done
+
+echo "I: created ${EFI_IMAGE} with ${loader_count} EFI loaders (${blocks} KiB)"

@@ -38,6 +38,8 @@ build.sh ──┬── docker build ──> elizaos-builder image
                  ├── lb clean --purge
                  ├── lb config                (runs Tails' auto/config)
                  └── lb build                 (runs Tails' auto/build)
+                       ├── package signed EFI loaders into a FAT boot image
+                       ├── register BIOS + UEFI El Torito entries
                        └── ISO ──> /out/
 ```
 
@@ -50,7 +52,9 @@ build.sh ──┬── docker build ──> elizaos-builder image
   newer ikiwiki than Trixie ships), and `apt-cacher-ng`. It bakes in
   **Tails' own live-build fork** (`submodules/live-build`) — modern
   Debian live-build rejects Tails' `lb config` arguments, so the fork
-  is mandatory.
+  is mandatory. A fail-closed compatibility patch teaches that pinned
+  fork to register the overlay's EFI boot image as a second El Torito
+  entry; the patch must apply exactly or the builder image fails.
 - **`build.sh`** — the one-command wrapper. Builds the image, ensures
   the apt-cacher-ng cache volume exists, runs the container with the
   Tails source bind-mounted at `/build` and `out/` at `/out`.
@@ -58,6 +62,13 @@ build.sh ──┬── docker build ──> elizaos-builder image
   `auto/config && auto/build` (via `lb config` / `lb build`) inside the
   mounted source. See "Why each step" below.
 - **`acng.conf`** — apt-cacher-ng config inherited from the upstream live-build workflow.
+
+The Tails overlay already stages signed removable-media GRUB and shim loaders.
+`60-efi-el-torito` packages those loaders into a deterministic FAT image with a
+minimal configuration that redirects GRUB to the canonical ISO filesystem.
+The live-build compatibility patch then advertises that image alongside the
+unchanged ISOLINUX entry, so the same ISO boots through both legacy BIOS and
+UEFI optical-media paths.
 
 ### Why apt-cacher-ng is *required*, not just an optimization
 

@@ -72,7 +72,7 @@ jobs:
         with:
           path: |
             ${{ env.LINUX_DIR }}/cache
-          key: elizaos-iso-${{ env.ELIZAOS_ARCH }}-${{ hashFiles('packages/os/linux/tails/auto/config', 'packages/os/linux/tails/config/chroot_local-packageslists/**', 'packages/os/linux/Dockerfile') }}
+          key: elizaos-iso-${{ env.ELIZAOS_ARCH }}-${{ hashFiles('packages/os/linux/tails/auto/config', 'packages/os/linux/tails/config/chroot_local-packageslists/**', 'packages/os/linux/tails/config/binary_local-hooks/**', 'packages/os/linux/patches/**', 'packages/os/linux/Dockerfile') }}
           restore-keys: elizaos-iso-${{ env.ELIZAOS_ARCH }}-
 
       - name: Set up Docker Buildx
