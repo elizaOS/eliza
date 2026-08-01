@@ -28,6 +28,8 @@ export const contextSummaryProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 10_000,
+	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	get: async (
