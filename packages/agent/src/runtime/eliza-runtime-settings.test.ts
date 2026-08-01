@@ -103,6 +103,8 @@ describe("buildRuntimeSettingsProjection", () => {
 
     const settings = buildRuntimeSettingsProjection(config, {
       preferredProviderId: "openai",
+      brainProviderName: "openai",
+      embeddingProviderName: "openai",
       visionModeSetting: "OFF",
       managedSkillsDir: "/state/skills",
       bundledSkillsDir: "/bundled/skills",
@@ -128,6 +130,8 @@ describe("buildRuntimeSettingsProjection", () => {
       WHATSAPP_ALLOW_FROM: "+15551234567",
       WHATSAPP_GROUP_ALLOW_FROM: "family",
       MODEL_PROVIDER: "openai",
+      ELIZA_BRAIN_PROVIDER: "openai",
+      ELIZA_EMBEDDING_PROVIDER: "openai",
       VISION_MODE: "OFF",
       SOLANA_RPC_URL: "https://solana.example/rpc",
       SOLANA_NO_ACTIONS: "true",
