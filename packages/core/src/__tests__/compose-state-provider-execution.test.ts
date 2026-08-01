@@ -1,12 +1,13 @@
 /**
  * Provider execution invariants for state composition: sibling providers start
  * concurrently, duplicate in-flight work coalesces, failures stay observable,
- * and turn cancellation reaches provider-owned boundaries.
+ * and each caller retains ownership of cancellation at provider boundaries.
  */
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";
 import { AgentRuntime } from "../runtime";
 import { TurnAbortedError } from "../runtime/turn-controller";
+import { runWithStreamingContext } from "../streaming-context";
 import type {
 	Character,
 	Memory,
@@ -137,6 +138,61 @@ describe("composeState provider execution", () => {
 		expect(secondState.text).toBe("coalesced");
 	});
 
+	it("does not coalesce provider work across distinct parent signals", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-cancellation-ownership" } as Character,
+		});
+		const controllers = [new AbortController(), new AbortController()];
+		const releases = [deferred(), deferred()];
+		const allStarted = deferred();
+		const receivedSignals: AbortSignal[] = [];
+		let calls = 0;
+		runtime.registerProvider({
+			name: "AAA",
+			get: async (_runtime, _message, _state, context) => {
+				const signal = context?.signal;
+				if (!signal) throw new Error("missing provider signal");
+				const callIndex = calls;
+				calls += 1;
+				receivedSignals.push(signal);
+				if (calls === 2) allStarted.resolve();
+				await new Promise<void>((resolve, reject) => {
+					const onAbort = () => reject(signal.reason);
+					signal.addEventListener("abort", onAbort, { once: true });
+					void releases[callIndex].promise.then(() => {
+						signal.removeEventListener("abort", onAbort);
+						resolve();
+					});
+				});
+				return { text: `call-${callIndex + 1}` };
+			},
+		});
+		const message = makeMessage("ffffffff-ffff-ffff-ffff-ffffffffffff");
+		const composeWithSignal = (signal: AbortSignal) =>
+			runWithStreamingContext(
+				{
+					onStreamChunk: async () => undefined,
+					abortSignal: signal,
+				},
+				() => runtime.composeState(message, ["AAA"], true),
+			);
+
+		const first = composeWithSignal(controllers[0].signal);
+		const second = composeWithSignal(controllers[1].signal);
+		await allStarted.promise;
+		expect(calls).toBe(2);
+
+		controllers[0].abort(new Error("first caller disconnected"));
+		const firstError = await first.catch((cause: unknown) => cause);
+		expect(firstError).toBeInstanceOf(TurnAbortedError);
+		expect(receivedSignals[0]?.aborted).toBe(true);
+		expect(receivedSignals[1]?.aborted).toBe(false);
+
+		releases[1].resolve();
+		const secondState = await second;
+		expect(secondState.text).toBe("call-2");
+	});
+
 	it("throws and reports provider failures instead of caching empty context", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-failure" } as Character,
@@ -230,5 +286,56 @@ describe("composeState provider execution", () => {
 				}),
 			]),
 		);
+	});
+
+	it("preserves the streaming caller signal while a turn is active", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-caller-abort" } as Character,
+		});
+		const caller = new AbortController();
+		const started = deferred();
+		let receivedSignal: AbortSignal | undefined;
+		let turnSignal: AbortSignal | undefined;
+		runtime.registerProvider({
+			name: "CALLER_ABORTABLE",
+			get: async (_runtime, _message, _state, context) => {
+				receivedSignal = context?.signal;
+				started.resolve();
+				return new Promise((_, reject) => {
+					const signal = context?.signal;
+					if (!signal) {
+						reject(new Error("missing provider signal"));
+						return;
+					}
+					signal.addEventListener("abort", () => reject(signal.reason), {
+						once: true,
+					});
+				});
+			},
+		});
+		const message = makeMessage("99999999-9999-9999-9999-999999999999");
+
+		const compose = runtime.turnControllers.runWith(
+			ROOM_ID,
+			(activeTurnSignal) => {
+				turnSignal = activeTurnSignal;
+				const mergedSignal = AbortSignal.any([caller.signal, activeTurnSignal]);
+				return runWithStreamingContext(
+					{
+						onStreamChunk: async () => undefined,
+						abortSignal: mergedSignal,
+					},
+					() => runtime.composeState(message, ["CALLER_ABORTABLE"], true),
+				);
+			},
+		);
+		await started.promise;
+		caller.abort(new Error("caller disconnected"));
+
+		const error = await compose.catch((cause: unknown) => cause);
+		expect(error).toBeInstanceOf(TurnAbortedError);
+		expect((error as TurnAbortedError).reason).toBe("caller disconnected");
+		expect(receivedSignal?.aborted).toBe(true);
+		expect(turnSignal?.aborted).toBe(false);
 	});
 });

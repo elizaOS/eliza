@@ -378,6 +378,7 @@ interface CachedProviderResult extends ProviderResult {
 
 interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
+	parentSignal?: AbortSignal;
 	startedAt: number;
 	startedAtMonotonic: number;
 	timeoutMs?: number;
@@ -4573,8 +4574,9 @@ export class AgentRuntime implements IAgentRuntime {
 			| null;
 		const composeStartedAt = Date.now();
 		const providerSignal =
+			getStreamingContext()?.abortSignal ??
 			this.turnControllers.signalFor(message.roomId) ??
-			getStreamingContext()?.abortSignal;
+			undefined;
 		const providerData: ProviderExecutionRecord[] = await Promise.all(
 			providersToRun.map(async (provider) => {
 				const providerRuntime: IAgentRuntime = this;
@@ -4586,9 +4588,15 @@ export class AgentRuntime implements IAgentRuntime {
 									: "public"
 							}`
 						: null;
-				let execution =
+				const inFlightExecution =
 					inFlightKey !== null
 						? this.providerExecutionsInFlight.get(inFlightKey)
+						: undefined;
+				// Coalesced awaiters must share cancellation ownership; otherwise one
+				// caller can abort provider work that another caller still needs.
+				let execution =
+					inFlightExecution?.parentSignal === providerSignal
+						? inFlightExecution
 						: undefined;
 				const providerCoalesced = execution !== undefined;
 				if (!execution) {
@@ -4612,6 +4620,7 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					execution = {
 						promise,
+						parentSignal: providerSignal ?? undefined,
 						startedAt,
 						startedAtMonotonic,
 						timeoutMs: providerBudgetMs,
