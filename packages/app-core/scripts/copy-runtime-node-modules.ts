@@ -22,6 +22,7 @@ import semver from "semver";
 import {
   BASELINE_BUNDLED_RUNTIME_PACKAGES,
   discoverAlwaysBundledPackages,
+  discoverRequiredRuntimePackages,
   discoverRuntimePackages,
   shouldBundleDiscoveredPackage,
 } from "./runtime-package-manifest";
@@ -2861,12 +2862,14 @@ function main(): void {
       }
     }
     const filteredOptionalPlugins = new Set<string>();
+    const requiredByBuiltOutput = new Set(
+      discoverRequiredRuntimePackages(scanDir),
+    );
     const discovered = new Set(
       discoverRuntimePackages(scanDir).filter((packageName) => {
-        const shouldBundle = shouldBundleDiscoveredPackage(
-          packageName,
-          alwaysBundled,
-        );
+        const shouldBundle =
+          requiredByBuiltOutput.has(packageName) ||
+          shouldBundleDiscoveredPackage(packageName, alwaysBundled);
         if (!shouldBundle) {
           filteredOptionalPlugins.add(packageName);
         }

@@ -16,6 +16,8 @@ import {
 const JS_FILE_RE = /\.(?:[cm]?js)$/i;
 const IMPORT_SPECIFIER_RE =
   /\b(?:import|export)\s+(?:[^"'`;]+?\s+from\s+)?["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)|\brequire\(\s*["']([^"']+)["']\s*\)/g;
+const REQUIRED_IMPORT_SPECIFIER_RE =
+  /\b(?:import|export)\s+(?:[^"'`;]+?\s+from\s+)?["']([^"']+)["']|\brequire\(\s*["']([^"']+)["']\s*\)/g;
 
 export function normalizePackageName(specifier: string): string | null {
   if (
@@ -38,8 +40,16 @@ export function normalizePackageName(specifier: string): string | null {
 }
 
 export function extractBarePackageSpecifiers(source: string): string[] {
+  return extractPackageSpecifiers(source, IMPORT_SPECIFIER_RE);
+}
+
+export function extractRequiredBarePackageSpecifiers(source: string): string[] {
+  return extractPackageSpecifiers(source, REQUIRED_IMPORT_SPECIFIER_RE);
+}
+
+function extractPackageSpecifiers(source: string, pattern: RegExp): string[] {
   const found = new Set<string>();
-  const matches = source.matchAll(IMPORT_SPECIFIER_RE);
+  const matches = source.matchAll(pattern);
 
   for (const match of matches) {
     const raw = match[1] || match[2] || match[3];
@@ -74,7 +84,10 @@ export function shouldBundleDiscoveredPackage(
   return alwaysBundled.has(packageName);
 }
 
-export function discoverRuntimePackages(scanDir: string): string[] {
+function discoverPackages(
+  scanDir: string,
+  extract: (source: string) => string[],
+): string[] {
   const found = new Set<string>();
 
   function walk(dir: string): void {
@@ -104,7 +117,7 @@ export function discoverRuntimePackages(scanDir: string): string[] {
       }
       if (!entry.isFile() || !JS_FILE_RE.test(entry.name)) continue;
       const source = fs.readFileSync(entryPath, "utf8");
-      for (const pkg of extractBarePackageSpecifiers(source)) {
+      for (const pkg of extract(source)) {
         found.add(pkg);
       }
     }
@@ -112,6 +125,14 @@ export function discoverRuntimePackages(scanDir: string): string[] {
 
   walk(scanDir);
   return [...found].sort();
+}
+
+export function discoverRuntimePackages(scanDir: string): string[] {
+  return discoverPackages(scanDir, extractBarePackageSpecifiers);
+}
+
+export function discoverRequiredRuntimePackages(scanDir: string): string[] {
+  return discoverPackages(scanDir, extractRequiredBarePackageSpecifiers);
 }
 
 export function discoverAlwaysBundledPackages(

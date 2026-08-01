@@ -46,6 +46,7 @@ import {
   shouldSkipPackagedDependency,
   visitFiles,
 } from "./copy-runtime-node-modules";
+import { discoverRequiredRuntimePackages } from "./runtime-package-manifest";
 
 let tmpDir: string;
 const workspaceFixtureDirs: string[] = [];
@@ -866,6 +867,28 @@ describe("buildInitialRuntimeQueue", () => {
         requesterDir: repositoryRoot,
         requesterDestDir: targetDist,
       },
+    ]);
+  });
+});
+
+describe("discoverRequiredRuntimePackages", () => {
+  it("distinguishes mandatory static plugins from optional dynamic imports", () => {
+    const scanDir = path.join(tmpDir, "dist");
+    mkdirSync(scanDir, { recursive: true });
+    writeFileSync(
+      path.join(scanDir, "entry.js"),
+      [
+        'import "@elizaos/plugin-app-control";',
+        'export { value } from "@elizaos/core";',
+        'const sql = require("@elizaos/plugin-sql");',
+        'const optional = import("@elizaos/plugin-anthropic");',
+      ].join("\n"),
+    );
+
+    expect(discoverRequiredRuntimePackages(scanDir)).toEqual([
+      "@elizaos/core",
+      "@elizaos/plugin-app-control",
+      "@elizaos/plugin-sql",
     ]);
   });
 });
