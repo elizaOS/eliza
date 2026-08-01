@@ -203,6 +203,12 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 				`import { mkdirSync, writeFileSync } from "node:fs"; mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.html", "fresh-build"); process.stdout.write("build ok\\n");\n`,
 				"utf8",
 			);
+			mkdirSync(path.join(publishRoot, "fresh-app"));
+			writeFileSync(
+				path.join(publishRoot, "fresh-app", "obsolete.js"),
+				"old-build",
+				"utf8",
+			);
 			const publishService = new AppVerificationService({
 				getSetting: (key: string) =>
 					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
@@ -231,6 +237,63 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 			expect(
 				readFileSync(path.join(publishRoot, "fresh-app", "index.html"), "utf8"),
 			).toBe("fresh-build");
+			expect(() =>
+				readFileSync(path.join(publishRoot, "fresh-app", "obsolete.js")),
+			).toThrow();
+			await publishService.cleanup();
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"rejects an app name that would escape the configured publish root",
+		async () => {
+			const workdir = mkdtempSync(
+				path.join(tmpdir(), "verify-app-containment-"),
+			);
+			const publishRoot = mkdtempSync(
+				path.join(tmpdir(), "verify-app-containment-root-"),
+			);
+			const outsideName = `${path.basename(publishRoot)}-outside`;
+			const maliciousAppName = `../${outsideName}`;
+			writeMinimalTsProject(workdir, PASS_TS);
+			writeFileSync(
+				path.join(workdir, "build-shim.mjs"),
+				`import { mkdirSync, writeFileSync } from "node:fs"; mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.html", "fresh-build"); process.stdout.write("build ok\\n");\n`,
+				"utf8",
+			);
+			const publishService = new AppVerificationService({
+				getSetting: (key: string) =>
+					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
+			} as unknown as IAgentRuntime);
+
+			const result = await publishService.verifyApp({
+				workdir,
+				appName: maliciousAppName,
+				profile: "build",
+				runId: "int-app-publish-containment",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "APP_CREATE_DONE",
+					appName: maliciousAppName,
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("fail");
+			expect(result.checks.at(-1)).toEqual(
+				expect.objectContaining({
+					kind: "publish",
+					passed: false,
+					output: expect.stringContaining("one direct child"),
+				}),
+			);
+			expect(() =>
+				readFileSync(path.join(publishRoot, "..", outsideName, "index.html")),
+			).toThrow();
 			await publishService.cleanup();
 		},
 		120_000,
