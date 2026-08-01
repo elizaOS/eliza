@@ -90,7 +90,9 @@ describe("app-control client deadlines", () => {
 		await client.stopAppRun("run-1");
 		await client.launchApp("chess");
 
-		expect(deadlines).toEqual([2_000, 2_000, 10_000, 10_000, 120_000]);
+		// Read deadline must cover a cold registry discovery scan on slow hosts
+		// (a 2s read deadline made every cold `APP list` a TimeoutError).
+		expect(deadlines).toEqual([10_000, 10_000, 10_000, 10_000, 120_000]);
 	});
 
 	it("preserves a typed nothing-stopped result from the name-based UI route", async () => {

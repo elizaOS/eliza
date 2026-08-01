@@ -26,6 +26,9 @@ function makeRuntime(service: AwarenessServiceLike | null): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-0000000000aa",
     actions: [],
+    providers: [],
+    character: { name: "test-agent", settings: {} },
+    getServicesByType: () => [],
     getService: (t: string) => (t === "AWARENESS_REGISTRY" ? service : null),
   } as unknown as IAgentRuntime;
 }
@@ -58,22 +61,29 @@ describe("RUNTIME self_status registry seam", () => {
     expect(seen).toEqual({ module: "runtime", level: "brief" });
   });
 
-  it("fails closed when no AWARENESS_REGISTRY service is registered", async () => {
+  it("degrades to the live status snapshot when no AWARENESS_REGISTRY service is registered", async () => {
+    // The registry is optional enrichment; without it the runtime still owns a
+    // real answer (live incident: a self-description question got the generic
+    // failed-tool apology because this path hard-failed).
     const result = await runSelfStatus(makeRuntime(null));
 
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("Self-awareness registry is not available");
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("Self-awareness registry is not loaded");
+    expect(result.text?.length ?? 0).toBeGreaterThan(60);
   });
 
-  it("fails closed when the service is not a valid registry (no getDetail)", async () => {
+  it("degrades to the snapshot when the service is not a valid registry (no getDetail)", async () => {
     const runtime = {
       agentId: "00000000-0000-0000-0000-0000000000aa",
       actions: [],
+      providers: [],
+      character: { name: "test-agent", settings: {} },
+      getServicesByType: () => [],
       getService: (t: string) => (t === "AWARENESS_REGISTRY" ? {} : null),
     } as unknown as IAgentRuntime;
     const result = await runSelfStatus(runtime);
 
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("Self-awareness registry is not available");
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("Self-awareness registry is not loaded");
   });
 });
