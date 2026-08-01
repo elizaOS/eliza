@@ -267,8 +267,18 @@ export function applyNotificationPullPresentation(
     const content = group.querySelector<HTMLElement>(
       ":scope > [data-notification-group-content]",
     );
-    const contentVisibility = pullRevealed || !rested ? groupVisibility : 1;
-    const preservesCardMaterial = shadeExpanded && pullPx < 0 && !shadeClosing;
+    const preservesCardMaterialDuringDrag =
+      shadeExpanded && pullPx < 0 && !shadeClosing;
+    // A committed close must keep every visible card's shell in place while
+    // its information fades on the shared settle clock. The DOM does not
+    // reliably mark every currently visible group as rested (notably after a
+    // direct Collapse click), so basing this on `rested` leaves those cards to
+    // disappear as whole ancestors instead of fading their contents.
+    const preservesCommittedCloseMaterial = shadeExpanded && shadeClosing;
+    const preservesCardMaterial =
+      preservesCardMaterialDuringDrag || preservesCommittedCloseMaterial;
+    const contentVisibility =
+      pullRevealed || !rested || preservesCardMaterial ? groupVisibility : 1;
     if (content) {
       const contentPullOffset = pullRevealed
         ? (1 - groupVisibility) * -8
@@ -322,9 +332,11 @@ export function applyNotificationPullPresentation(
       "[data-notification-disposable-row]",
     )) {
       row.style.opacity = String(
-        preservesCardMaterial ? 1 : presentation.disposableContentVisibility,
+        preservesCardMaterialDuringDrag
+          ? 1
+          : presentation.disposableContentVisibility,
       );
-      if (preservesCardMaterial) {
+      if (preservesCardMaterialDuringDrag) {
         row.style.setProperty(
           "--eliza-notif-row-content-visibility",
           String(contentVisibility * presentation.disposableContentVisibility),
@@ -345,11 +357,11 @@ export function applyNotificationPullPresentation(
           : mode === "disposable"
             ? presentation.pullContentVisibility
             : 1;
-      peek.style.opacity = String(
-        preservesCardMaterial && mode === "disposable"
-          ? baseOpacity
-          : baseOpacity * visibility,
-      );
+      const collapseVisibility =
+        preservesCardMaterial && (mode === "static" || mode === "close")
+          ? presentation.pullContentVisibility
+          : visibility;
+      peek.style.opacity = String(baseOpacity * collapseVisibility);
     }
   }
 }
