@@ -20,6 +20,7 @@ class CapturingTrajectoryService extends Service {
 
 	override capabilityDescription = "Captures trajectory calls for tests";
 	readonly calls: TrajectoryRuntimeLlmCallParams[] = [];
+	failWrites = false;
 
 	static async start(
 		runtime: AgentRuntime,
@@ -44,6 +45,7 @@ class CapturingTrajectoryService extends Service {
 	async flushWriteQueue(): Promise<void> {}
 
 	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
+		if (this.failWrites) throw new Error("trajectory write failed");
 		this.calls.push(params);
 	}
 
@@ -139,6 +141,28 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 			actionType: "runtime.useModel",
 			response: "generic-result",
 		});
+	});
+
+	it("reports a failed generic trajectory write without losing the model result", async () => {
+		const { runtime, trajectory } = await makeRuntime();
+		trajectory.failWrites = true;
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async () => "result-survives-telemetry-failure",
+			"generic-provider",
+		);
+
+		await expect(
+			withStep("step-write-failure", () =>
+				runtime.useModel(ModelType.TEXT_SMALL, { prompt: "write failure" }),
+			),
+		).resolves.toBe("result-survives-telemetry-failure");
+		expect(runtime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "AgentRuntime.recordUseModelTrajectory",
+				message: "trajectory write failed",
+			}),
+		);
 	});
 
 	it("does not suppress fallback for a rejected recording attempt", async () => {
