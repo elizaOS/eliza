@@ -654,11 +654,11 @@ export function collectPluginNames(
             : [];
         }),
       );
-      if (serviceRouting?.llmText?.transport !== "direct") {
-        removeDirectModelProviderSurfaces(pluginsToLoad);
-        for (const pluginName of directlyRoutedProviderPlugins) {
-          pluginsToLoad.add(pluginName);
-        }
+      // Ambient credentials may belong to other tools or stale configuration;
+      // the canonical route matrix is the sole ownership signal in Cloud mode.
+      removeDirectModelProviderSurfaces(pluginsToLoad);
+      for (const pluginName of directlyRoutedProviderPlugins) {
+        pluginsToLoad.add(pluginName);
       }
       for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
         if (directlyRoutedProviderPlugins.has(pluginName)) {
