@@ -14,6 +14,7 @@ import {
   sendJson,
   sendJsonError,
 } from "@elizaos/core";
+import { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentSnapshotUpgradeBinding,
@@ -37,7 +38,7 @@ import {
 } from "./candidate-snapshot-restore.ts";
 
 const MAX_SNAPSHOT_REQUEST_BODY_BYTES = 4 * 1024;
-export const AGENT_BACKUP_V1_MAX_BODY_BYTES = 128 * 1024 * 1024;
+export const AGENT_BACKUP_V1_MAX_BODY_BYTES = AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES;
 
 function invalidRequest(message: string, cause?: unknown): ElizaError {
   return new ElizaError(message, {

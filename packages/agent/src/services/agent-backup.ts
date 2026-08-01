@@ -17,6 +17,7 @@ import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/security/kms";
+import { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 
@@ -338,7 +339,8 @@ const PGLITE_VOLATILE_ROOT_FILES = new Set([
 ]);
 const PGLITE_DUMP_PATH = "pglite-data-dir.tar.gz";
 /** Canonical legacy JSON producer ceiling, charged in wire bytes. */
-export const AGENT_BACKUP_V1_MAX_SOURCE_BYTES = 128 * 1024 * 1024;
+export const AGENT_BACKUP_V1_MAX_SOURCE_BYTES =
+  AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES;
 /** Mirrors the legacy snapshot hydration ceiling at the retain boundary. */
 export const AGENT_BACKUP_V1_MAX_FILES = 5_000;
 
