@@ -103,6 +103,20 @@ const SHARED_SUB_AGENT_ENTITY_NAME = "sub-agents";
 // the successor's sessionId (for traceability); presence is what matters. Kept
 // as a matching local literal in swarm-coordinator-service.ts (no cross-import).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+// Metadata marker stamped on a session at the MOMENT the router decides to
+// hand its work to a successor (verify-retry or state-lost/failover respawn),
+// BEFORE the successor spawn is awaited. The successor stamp above only lands
+// after spawnSession resolves — seconds later when the subprocess is slow to
+// boot — and the original session's teardown `stopped` can be processed inside
+// that window, where every swarm-coordinator guard reads pre-stamp state and
+// synthesizes a false "stopped before completion" into the origin room. This
+// marker makes the in-flight decision observable. It exists ONLY between the
+// handoff decision and spawn settlement: markSessionHandedOff replaces it with
+// the successor stamp on success, and the spawn-failure catch clears it so the
+// surfaced failure and any later genuine stop still synthesize. Value is an
+// ISO timestamp (traceability); presence is what matters. Matching local
+// literal in swarm-coordinator-service.ts (no cross-import).
+const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 // Metadata marker the router stamps on a successor session (verify-retry,
 // state-lost respawn, account failover) when it re-points the forwarded
 // `roomId` away from the origin session's raw value. Presence tells downstream
@@ -163,7 +177,12 @@ function collectVerifiableUrlCandidates(
     // the template stem as if the sub-agent claimed that directory is live.
     if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
 
-    const url = raw.replace(/[.,;:]+$/, "");
+    // Trailing sentence punctuation is prose delimiting, not part of the URL
+    // ("live at https://host/app/!" probed the literal `/!` path, got a 404,
+    // and declared a live app dead — triggering a pointless verify-retry).
+    // Trimmed only at end-of-token; interior `!`/`?` (query strings, bang
+    // routes) are untouched.
+    const url = raw.replace(/[.,;:!?]+$/, "");
     // Raw `curl -i` output includes CDN reporting endpoints in `report-to`
     // headers. They are not part of the built app, and letting them into the
     // bounded verifier list crowds out real page/assets.
@@ -2013,6 +2032,10 @@ export class SubAgentRouter extends Service {
     const resumeMeta = resumeContext
       ? { [RESUME_CONTEXT_METADATA_KEY]: resumeContext }
       : {};
+    // Pre-stamp the respawn decision BEFORE awaiting the spawn — same race as
+    // the verify-retry path: the dead session's teardown `stopped` can be
+    // processed while the replacement spawn is still in flight.
+    await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2074,6 +2097,9 @@ export class SubAgentRouter extends Service {
       await this.markSessionHandedOff(session.id, result.sessionId);
       return true;
     } catch (err) {
+      // Clear the pending marker: no successor exists, so the honest failure
+      // path (and any later genuine stop) must synthesize normally.
+      await this.clearHandoffPending(session.id);
       this.log(
         "warn",
         `${reason} respawn spawn failed; surfacing the failure instead`,
@@ -2175,14 +2201,49 @@ export class SubAgentRouter extends Service {
     oldSessionId: string,
     successorSessionId: string,
   ): Promise<void> {
+    await this.patchHandoffMetadata(oldSessionId, {
+      [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
+      // Same update: the pending decision marker is superseded by the real
+      // successor stamp, so no window exists where both are absent.
+      [HANDOFF_PENDING_META_KEY]: null,
+    });
+  }
+
+  /**
+   * Stamp the pending-handoff marker on a session whose successor spawn is
+   * about to be awaited, so its teardown `stopped` — which can be processed
+   * while the spawn is still in flight — is recognized by swarm-synthesis as
+   * handoff plumbing rather than a genuine terminal. Must be called BEFORE
+   * `spawnSession` is awaited; pair with {@link clearHandoffPending} in the
+   * spawn-failure path. Best-effort, same contract as markSessionHandedOff.
+   */
+  private async markHandoffPending(sessionId: string): Promise<void> {
+    await this.patchHandoffMetadata(sessionId, {
+      [HANDOFF_PENDING_META_KEY]: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Remove the pending-handoff marker after a FAILED successor spawn, so the
+   * caller's surfaced-failure post and any later genuine stop synthesize
+   * exactly as before the decision was made.
+   */
+  private async clearHandoffPending(sessionId: string): Promise<void> {
+    await this.patchHandoffMetadata(sessionId, {
+      [HANDOFF_PENDING_META_KEY]: null,
+    });
+  }
+
+  private async patchHandoffMetadata(
+    sessionId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
     const service =
       this.acp ??
       (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
     if (typeof service?.updateSessionMetadata !== "function") return;
     try {
-      await service.updateSessionMetadata(oldSessionId, {
-        [HANDED_OFF_SUCCESSOR_META_KEY]: successorSessionId,
-      });
+      await service.updateSessionMetadata(sessionId, patch);
     } catch {
       // error-policy:J6 best-effort handoff marker; a missed stamp only risks the
       // prior duplicate-post, never a dropped terminal.
@@ -2270,6 +2331,12 @@ ${originalTask}
 
 Do not report done until every referenced URL in the final page resolves without verification errors.`;
 
+    // Pre-stamp the retry decision BEFORE awaiting the spawn: the retry
+    // subprocess can take seconds to become ready, and the original session's
+    // teardown `stopped` fires inside that window — a post-spawn-only stamp
+    // (the prior shape) let synthesis post a false "stopped before
+    // completion" for a build whose retry was already in flight.
+    await this.markHandoffPending(session.id);
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
@@ -2299,13 +2366,17 @@ Do not report done until every referenced URL in the final page resolves without
         maxRetries,
         deadCount: dead.length,
       });
-      // Mark the old session as handed off BEFORE its teardown `stopped` fires
-      // so synthesis treats that stop as plumbing, not a second completion
-      // (#11711). Best-effort: a missed stamp only risks the prior duplicate
-      // post, never a dropped genuine terminal.
+      // Record the real successor id (#11711) — lineage-continuation readers
+      // consume it. The teardown-`stopped` race itself is closed by the
+      // pending marker stamped before the spawn, not by this call: the stop
+      // can land while spawnSession is still in flight.
       await this.markSessionHandedOff(session.id, result.sessionId);
       return true;
     } catch (err) {
+      // The decision did not survive: clear the pending marker BEFORE
+      // returning so the caller's surfaced verification failure and any later
+      // genuine stop synthesize normally.
+      await this.clearHandoffPending(session.id);
       this.log(
         "warn",
         "verify-retry spawn failed; surfacing the failure instead",

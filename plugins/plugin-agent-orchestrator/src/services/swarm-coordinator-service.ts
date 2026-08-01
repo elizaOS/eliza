@@ -83,6 +83,16 @@ const ROUTER_OWNED_TERMINAL_EVENTS = new Set(["task_complete", "error"]);
 // synthesis must not post the old one (#11711). Matching local literal (no
 // import from sub-agent-router — see the ROUTER_ORIGIN_UUID_RE note).
 const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
+// Pending-handoff marker (matching local literal — see sub-agent-router.ts):
+// the router stamps it on the ORIGINAL session at the moment it decides on a
+// verify-retry / respawn, BEFORE the successor spawn resolves. The successor
+// stamp above only lands after the spawn settles — seconds later on a slow
+// subprocess boot — and a teardown `stopped` processed inside that window
+// reads pre-stamp state on every guard, synthesizing a false "stopped before
+// completion". Presence ⇒ the stop is handoff plumbing. The router clears the
+// marker when the spawn settles (successor stamp on success, removal on
+// failure), so a stop with no handoff in flight synthesizes exactly as before.
+const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
 
@@ -950,31 +960,33 @@ export class SwarmCoordinatorService
       return;
     }
 
-    if (
-      event === "stopped" &&
-      readString(
-        await this.getFreshSessionMetadata(sessionId),
-        HANDED_OFF_SUCCESSOR_META_KEY,
-      )
-    ) {
-      return;
-    }
-
-    // A verify-retry session reports its outcome under the ORIGINAL session's
-    // validated completion (dispatchCustomValidatorResult runs on the lineage
-    // root, which claims the synthesis slot). The retry session's own teardown
-    // `stopped` is plumbing — synthesizing it posts a false
-    // "<label> — stopped before completion." into a room that already received
-    // the pass verdict. A retry that genuinely dies without ANY lineage
-    // completion still synthesizes: the root never claimed the slot.
     if (event === "stopped") {
       if (this.validatorPassSessions.has(sessionId)) {
         return;
       }
-      const retryOf = readString(
-        await this.getFreshSessionMetadata(sessionId),
-        "retryOfSessionId",
-      );
+      // One store re-read serves every stopped-guard below (the fresh read
+      // also refreshes the enrichment cache for downstream reads this turn).
+      const fresh = await this.getFreshSessionMetadata(sessionId);
+      if (readString(fresh, HANDED_OFF_SUCCESSOR_META_KEY)) {
+        return;
+      }
+      // Handoff decided but successor spawn not yet settled (the pending
+      // marker exists only inside that window): the stop is teardown
+      // plumbing racing ahead of the successor stamp. Same semantics as the
+      // stamped skip above — do NOT claim the dedupe slot, so the successor's
+      // (or the validator's) completion for this lineage still posts.
+      if (readString(fresh, HANDOFF_PENDING_META_KEY)) {
+        return;
+      }
+      // A verify-retry session reports its outcome under the ORIGINAL
+      // session's validated completion (dispatchCustomValidatorResult runs on
+      // the lineage root, which claims the synthesis slot). The retry
+      // session's own teardown `stopped` is plumbing — synthesizing it posts
+      // a false "<label> — stopped before completion." into a room that
+      // already received the pass verdict. A retry that genuinely dies
+      // without ANY lineage completion still synthesizes: the root never
+      // claimed the slot.
+      const retryOf = readString(fresh, "retryOfSessionId");
       if (
         retryOf &&
         (this.synthesizedCompletionSessions.has(retryOf) ||
