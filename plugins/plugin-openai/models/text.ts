@@ -1581,11 +1581,12 @@ function applyUsageToDetails(
   details: RecordLlmCallDetails,
   usage: LanguageModelUsage | undefined
 ): void {
-  if (!usage) {
-    return;
-  }
-  details.promptTokens = usage.inputTokens ?? 0;
-  details.completionTokens = usage.outputTokens ?? 0;
+  const normalized = convertUsage(usage);
+  if (!normalized) return;
+  details.promptTokens = normalized.promptTokens;
+  details.completionTokens = normalized.completionTokens;
+  details.cacheReadInputTokens = normalized.cacheReadInputTokens;
+  details.cacheCreationInputTokens = normalized.cacheCreationInputTokens;
 }
 
 // ============================================================================

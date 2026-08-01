@@ -105,6 +105,8 @@ interface CapturedLlmCall {
   response?: string;
   promptTokens?: number;
   completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
   finishReason?: string;
   toolCalls?: unknown;
 }
@@ -912,6 +914,7 @@ describe("OpenAI native text plumbing", () => {
       response: "hello",
       promptTokens: 2,
       completionTokens: 1,
+      cacheReadInputTokens: 1,
       finishReason: "stop",
       toolCalls,
     });
@@ -953,6 +956,7 @@ describe("OpenAI native text plumbing", () => {
       response: '{"answer":"ok"}',
       promptTokens: 8,
       completionTokens: 4,
+      cacheReadInputTokens: 6,
       finishReason: "tool-calls",
       toolCalls,
     });
