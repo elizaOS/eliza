@@ -246,6 +246,12 @@ type PrimaryComputePlacement = Pick<
   | "web_ui_port"
 >;
 
+export interface AgentBillingShutdownFence {
+  lifecycleRevision: number;
+  billingStatus: "shutdown_pending";
+  scheduledShutdownAt: Date;
+}
+
 function hasIncompletePrimaryComputeLocator(row: PrimaryComputePlacement): boolean {
   if (row.sandbox_id?.trim()) return false;
 
@@ -7123,6 +7129,7 @@ export class ElizaSandboxService {
   async shutdown(
     agentId: string,
     orgId: string,
+    billingFence?: AgentBillingShutdownFence,
   ): Promise<{ success: true; lifecycleRevision: number } | { success: false; error: string }> {
     let snapshotAgentId: string | null = null;
     let captureUnsupported = false;
@@ -7175,6 +7182,17 @@ export class ElizaSandboxService {
       if (!rec) return { success: false, error: "Agent not found" } as const;
       if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
         return { success: false, error: "Agent not found" } as const;
+      }
+      if (
+        billingFence &&
+        (rec.lifecycle_revision !== billingFence.lifecycleRevision ||
+          rec.billing_status !== billingFence.billingStatus ||
+          rec.scheduled_shutdown_at?.getTime() !== billingFence.scheduledShutdownAt.getTime())
+      ) {
+        return {
+          success: false,
+          error: "Agent billing shutdown lifecycle changed; compute was left unchanged",
+        } as const;
       }
       if (this.getReplacementCleanupLocator(rec)) {
         return { success: false, error: "Agent replacement cleanup is still pending" } as const;

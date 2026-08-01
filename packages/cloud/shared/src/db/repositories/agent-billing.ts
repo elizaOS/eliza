@@ -23,6 +23,7 @@ export interface AgentBillingSandbox {
   total_billed: string;
   shutdown_warning_sent_at: Date | null;
   scheduled_shutdown_at: Date | null;
+  lifecycle_revision: number;
 }
 
 export interface AgentBillingOrganization {
@@ -103,6 +104,7 @@ export class AgentBillingRepository {
       total_billed: agentSandboxes.total_billed,
       shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
       scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+      lifecycle_revision: agentSandboxes.lifecycle_revision,
     };
 
     const [runningSandboxes, stoppedWithBackups] = await Promise.all([

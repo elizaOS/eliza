@@ -27,6 +27,7 @@ const runningSandbox = {
   total_billed: "0",
   shutdown_warning_sent_at: null as Date | null,
   scheduled_shutdown_at: null as Date | null,
+  lifecycle_revision: 11,
 };
 
 const listBillableSandboxes = mock(async () => ({
@@ -229,6 +230,11 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     expect(shutdownSandbox).toHaveBeenCalledWith(
       runningSandbox.id,
       "agent-org",
+      {
+        lifecycleRevision: runningSandbox.lifecycle_revision,
+        billingStatus: "shutdown_pending",
+        scheduledShutdownAt,
+      },
     );
     expect(suspendSandboxForInsufficientCredits).toHaveBeenCalledWith({
       sandboxId: runningSandbox.id,

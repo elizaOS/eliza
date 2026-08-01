@@ -207,6 +207,11 @@ async function processSandboxBilling(
     const shutdown = await elizaSandboxService.shutdown(
       sandboxId,
       organizationId,
+      {
+        lifecycleRevision: sandbox.lifecycle_revision,
+        billingStatus: "shutdown_pending",
+        scheduledShutdownAt: sandbox.scheduled_shutdown_at,
+      },
     );
     if (!shutdown.success) {
       throw new Error(

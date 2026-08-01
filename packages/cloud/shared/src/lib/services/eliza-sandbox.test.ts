@@ -1583,7 +1583,15 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
 
 describe("ElizaSandboxService shutdown capture fence", () => {
   type ShutdownFenceService = {
-    shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+    shutdown(
+      agentId: string,
+      orgId: string,
+      billingFence?: {
+        lifecycleRevision: number;
+        billingStatus: "shutdown_pending";
+        scheduledShutdownAt: Date;
+      },
+    ): Promise<{ success: boolean; error?: string }>;
     getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
     fetchSnapshotState(): Promise<{
       stateData: AgentBackupStateData;
@@ -1723,6 +1731,72 @@ describe("ElizaSandboxService shutdown capture fence", () => {
       expect(persistSnapshot).not.toHaveBeenCalled();
       expect(provider.stop).not.toHaveBeenCalled();
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      fetchSnapshot.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      persistSnapshot.mockRestore();
+    }
+  });
+
+  test("rejects a stale billing shutdown before persistence or provider teardown", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const scheduledShutdownAt = new Date("2026-08-01T12:00:00.000Z");
+    const snapshotSource: AgentSandbox = {
+      ...customSandbox(),
+      billing_status: "shutdown_pending",
+      scheduled_shutdown_at: scheduledShutdownAt,
+      lifecycle_revision: 41,
+    };
+    const reactivated: AgentSandbox = {
+      ...snapshotSource,
+      billing_status: "active",
+      scheduled_shutdown_at: null,
+      lifecycle_revision: 42,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as ShutdownFenceService;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(snapshotSource);
+    const fetchSnapshot = spyOn(svc, "fetchSnapshotState").mockResolvedValue({
+      stateData: { memories: [], config: {}, workspaceFiles: {} },
+      sizeBytes: 2,
+      bridgeUrl: snapshotSource.bridge_url!,
+    });
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(
+      reactivated,
+    );
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const persistSnapshot = spyOn(svc, "persistSnapshotWithinTransaction");
+    const execute = mock(async () => ({ rows: [] }));
+    upgradeTransactionImpl = async (fn) => fn({ execute });
+
+    try {
+      expect(
+        await svc.shutdown(snapshotSource.id, snapshotSource.organization_id, {
+          lifecycleRevision: snapshotSource.lifecycle_revision,
+          billingStatus: "shutdown_pending",
+          scheduledShutdownAt,
+        }),
+      ).toEqual({
+        success: false,
+        error: "Agent billing shutdown lifecycle changed; compute was left unchanged",
+      });
+      expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+      expect(persistSnapshot).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
     } finally {
       upgradeTransactionImpl = null;
       getForWrite.mockRestore();
