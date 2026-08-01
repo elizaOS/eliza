@@ -2,10 +2,13 @@
  * Playwright UI-smoke spec for the Plugin Views Interaction app flow using the
  * real renderer fixture.
  */
+import { writeFile } from "node:fs/promises";
 import { expect, type Locator, test } from "@playwright/test";
 import {
+  expectNoPageDiagnostics,
   hideChatOverlay,
   installDefaultAppRoutes,
+  installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
@@ -122,6 +125,162 @@ async function fillOrToggleInput(input: Locator, index: number): Promise<void> {
 }
 
 test.describe("plugin view interaction coverage", () => {
+  test("notes mobile landscape — composer color and save stay reachable", async ({
+    page,
+  }, testInfo) => {
+    const consoleEntries: string[] = [];
+    const networkEntries: string[] = [];
+    page.on("console", (message) => {
+      consoleEntries.push(`[${message.type()}] ${message.text()}`);
+    });
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.startsWith("/api/")) {
+        networkEntries.push(`--> ${request.method()} ${url.pathname}`);
+      }
+    });
+    page.on("response", (response) => {
+      const url = new URL(response.url());
+      if (url.pathname.startsWith("/api/")) {
+        networkEntries.push(
+          `<-- ${response.status()} ${response.request().method()} ${url.pathname}`,
+        );
+      }
+    });
+    page.on("requestfailed", (request) => {
+      const failureText = request.failure()?.errorText ?? "unknown";
+      if (failureText.includes("net::ERR_ABORTED")) return;
+      networkEntries.push(
+        `xx> ${request.method()} ${request.url()} ${failureText}`,
+      );
+    });
+
+    installPageDiagnosticsGuard(page);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await seedAppStorage(page);
+    await installDefaultAppRoutes(page);
+    await openAppPath(page, "/notes");
+
+    const notesView = page.getByTestId("simple-notes-view");
+    const composer = notesView.locator("form").first();
+    await expect(notesView).toBeVisible();
+    await expect(composer).toBeVisible();
+    await expect(page.getByTestId("chat-overlay")).toBeVisible();
+    const composerPosition = await composer.evaluate(
+      (element) => getComputedStyle(element).position,
+    );
+
+    const title = "Mobile landscape note";
+    await notesView.locator('[data-agent-id="notes-title"]').fill(title);
+    await notesView
+      .locator('[data-agent-id="notes-body"]')
+      .fill("Created through the real Notes bundle at 844×390.");
+
+    const green = notesView.locator(
+      '[data-agent-id="notes-compose-color-green"]',
+    );
+    await green.scrollIntoViewIfNeeded();
+    await expect(green).toBeVisible();
+    expect(await isPointerReachable(green)).toBe(true);
+    await green.click();
+    await expect(green).toHaveAttribute("data-state", "selected");
+    const selectedColorState = await green.getAttribute("data-state");
+
+    const save = notesView.locator('[data-agent-id="notes-save"]');
+    await save.scrollIntoViewIfNeeded();
+    await expect(save).toBeEnabled();
+    expect(await isPointerReachable(save)).toBe(true);
+    const rootScrollTop = await notesView.evaluate(
+      (element) => element.scrollTop,
+    );
+    expect(rootScrollTop).toBeGreaterThan(0);
+    expect(composerPosition).toBe("static");
+
+    const controlsScreenshotPath = testInfo.outputPath(
+      "notes-mobile-landscape-controls.png",
+    );
+    await page.screenshot({ path: controlsScreenshotPath, fullPage: false });
+    await testInfo.attach("notes-mobile-landscape-controls.png", {
+      path: controlsScreenshotPath,
+      contentType: "image/png",
+    });
+
+    const interactionRequest = page.waitForRequest(
+      (request) =>
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/api/views/notes/interact",
+    );
+    const interactionResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/views/notes/interact",
+    );
+    await save.click();
+    const request = await interactionRequest;
+    const response = await interactionResponse;
+    const payload = request.postDataJSON();
+
+    expect(payload).toMatchObject({
+      capability: "create-note",
+      params: {
+        title,
+        body: "Created through the real Notes bundle at 844×390.",
+        color: "green",
+      },
+    });
+    expect(response.status()).toBe(200);
+    const createdNote = notesView.getByRole("heading", { name: title });
+    await expect(createdNote).toBeVisible();
+    await createdNote.scrollIntoViewIfNeeded();
+    await expectNoPageDiagnostics(page, "notes mobile landscape interaction");
+
+    const screenshotPath = testInfo.outputPath(
+      "notes-mobile-landscape-after.png",
+    );
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+    await testInfo.attach("notes-mobile-landscape-after.png", {
+      path: screenshotPath,
+      contentType: "image/png",
+    });
+
+    const consolePath = testInfo.outputPath("frontend-console.log");
+    await writeFile(consolePath, consoleEntries.join("\n"));
+    await testInfo.attach("frontend-console.log", {
+      path: consolePath,
+      contentType: "text/plain",
+    });
+
+    const networkPath = testInfo.outputPath("frontend-network.log");
+    await writeFile(networkPath, networkEntries.join("\n"));
+    await testInfo.attach("frontend-network.log", {
+      path: networkPath,
+      contentType: "text/plain",
+    });
+
+    const observationsPath = testInfo.outputPath(
+      "notes-mobile-landscape-observations.json",
+    );
+    await writeFile(
+      observationsPath,
+      JSON.stringify(
+        {
+          viewport: page.viewportSize(),
+          composerPosition,
+          rootScrollTop,
+          selectedColorState,
+          request: payload,
+          responseStatus: response.status(),
+        },
+        null,
+        2,
+      ),
+    );
+    await testInfo.attach("notes-mobile-landscape-observations.json", {
+      path: observationsPath,
+      contentType: "application/json",
+    });
+  });
+
   for (const view of GUI_CASES) {
     test(`${view.id} — exercise every control, no crash`, async ({ page }) => {
       const pageErrors: string[] = [];
