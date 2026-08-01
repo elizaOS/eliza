@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   assertRequiredBundledPackagesLanded,
   assertTarSafeRuntimePaths,
+  buildInitialRuntimeQueue,
   copyPackageDir,
   expandWorkspacePattern,
   getRuntimeDependencies,
@@ -814,6 +815,58 @@ describe("selectResolvedCandidate", () => {
       kind: "selected",
       candidate: good,
     });
+  });
+});
+
+describe("buildInitialRuntimeQueue", () => {
+  it("preserves the built package's exact dependency edge", () => {
+    const repositoryRoot = path.join(tmpDir, "repo");
+    const packageDir = path.join(repositoryRoot, "packages", "agent");
+    const scanDir = path.join(packageDir, "dist");
+    const targetDist = path.join(tmpDir, "artifact");
+    mkdirSync(scanDir, { recursive: true });
+    writeFileSync(
+      path.join(repositoryRoot, "package.json"),
+      JSON.stringify({
+        name: "workspace-root",
+        dependencies: { "@noble/curves": "^1.9.0", baseline: "1.0.0" },
+      }),
+    );
+    writeFileSync(
+      path.join(packageDir, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/agent",
+        dependencies: { "@noble/curves": "2.2.0" },
+      }),
+    );
+
+    const queue = buildInitialRuntimeQueue(
+      new Set(["baseline"]),
+      new Set(["@noble/curves"]),
+      scanDir,
+      targetDist,
+      path.join(repositoryRoot, "package.json"),
+      repositoryRoot,
+    );
+
+    expect(queue).toEqual([
+      {
+        name: "@noble/curves",
+        spec: "2.2.0",
+        kind: "dependency",
+        requesterName: "@elizaos/agent",
+        requesterDir: packageDir,
+        requesterDestDir: targetDist,
+      },
+      {
+        name: "baseline",
+        spec: "1.0.0",
+        kind: "dependency",
+        requesterName: "<workspace root package.json>",
+        requesterDir: repositoryRoot,
+        requesterDestDir: targetDist,
+      },
+    ]);
   });
 });
 

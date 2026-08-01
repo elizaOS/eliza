@@ -37,13 +37,13 @@ type Options = {
 // "optional" edges carry an enforceable version constraint.
 export type DependencyEdgeKind = "dependency" | "optional" | "peer";
 
-type DependencyEntry = {
+export type DependencyEntry = {
   name: string;
   spec: string | null;
   kind: DependencyEdgeKind;
 };
 
-type QueueEntry = DependencyEntry & {
+export type QueueEntry = DependencyEntry & {
   requesterName: string;
   requesterDir: string;
   requesterDestDir: string;
@@ -2312,6 +2312,81 @@ export function getRuntimeDependencies(pkgPath: string): string[] {
   return getRuntimeDependencyEntries(pkgPath).map((entry) => entry.name);
 }
 
+export function findOwningPackageJson(
+  startDir: string,
+  repositoryRoot: string = ROOT,
+): string {
+  const boundary = path.resolve(repositoryRoot);
+  let current = path.resolve(startDir);
+  const relativeToBoundary = path.relative(boundary, current);
+  if (
+    relativeToBoundary.startsWith(`..${path.sep}`) ||
+    relativeToBoundary === ".." ||
+    path.isAbsolute(relativeToBoundary)
+  ) {
+    throw new Error(`scan dir is outside the repository root: ${startDir}`);
+  }
+
+  while (true) {
+    const manifestPath = path.join(current, "package.json");
+    if (fs.existsSync(manifestPath)) {
+      return manifestPath;
+    }
+    if (current === boundary) {
+      throw new Error(`no owning package.json found for scan dir: ${startDir}`);
+    }
+    current = path.dirname(current);
+  }
+}
+
+export function buildInitialRuntimeQueue(
+  alwaysBundled: ReadonlySet<string>,
+  discovered: ReadonlySet<string>,
+  scanDir: string,
+  targetDist: string,
+  rootPackageJsonPath: string = PACKAGE_JSON_PATH,
+  repositoryRoot: string = ROOT,
+): QueueEntry[] {
+  const rootDependencyEntries = new Map(
+    getRuntimeDependencyEntries(rootPackageJsonPath).map((entry) => [
+      entry.name,
+      entry,
+    ]),
+  );
+  const ownerPackageJsonPath = findOwningPackageJson(scanDir, repositoryRoot);
+  const ownerManifest = readJson<{ name?: string }>(ownerPackageJsonPath);
+  const ownerName = ownerManifest.name ?? `<${ownerPackageJsonPath}>`;
+  const ownerDependencyEntries = new Map(
+    getRuntimeDependencyEntries(ownerPackageJsonPath).map((entry) => [
+      entry.name,
+      entry,
+    ]),
+  );
+  const ownerDir = path.dirname(ownerPackageJsonPath);
+
+  return [...new Set([...alwaysBundled, ...discovered])].sort().map((name) => {
+    // Baseline packages are rooted in the release manifest. Packages found
+    // by scanning built output instead inherit the owning workspace
+    // package's exact edge so platform-specific Bun hoisting cannot change
+    // which version enters the artifact.
+    const dependencyEntry = alwaysBundled.has(name)
+      ? rootDependencyEntries.get(name)
+      : (ownerDependencyEntries.get(name) ?? rootDependencyEntries.get(name));
+    const requestedByOwner =
+      !alwaysBundled.has(name) && ownerDependencyEntries.has(name);
+    return {
+      name,
+      spec: dependencyEntry?.spec ?? null,
+      kind: dependencyEntry?.kind ?? "dependency",
+      requesterName: requestedByOwner
+        ? ownerName
+        : "<workspace root package.json>",
+      requesterDir: requestedByOwner ? ownerDir : repositoryRoot,
+      requesterDestDir: targetDist,
+    };
+  });
+}
+
 function shouldHoistRuntimePackage(name: string): boolean {
   return ALWAYS_HOISTED_PACKAGES.has(name) || name.startsWith("@solana/");
 }
@@ -2785,12 +2860,6 @@ function main(): void {
         alwaysBundled.add(packageName);
       }
     }
-    const rootDependencyEntries = new Map(
-      getRuntimeDependencyEntries(PACKAGE_JSON_PATH).map((entry) => [
-        entry.name,
-        entry,
-      ]),
-    );
     const filteredOptionalPlugins = new Set<string>();
     const discovered = new Set(
       discoverRuntimePackages(scanDir).filter((packageName) => {
@@ -2805,19 +2874,12 @@ function main(): void {
       }),
     );
     ensureWorkspaceRuntimeEntriesBuilt([...alwaysBundled, ...discovered]);
-    const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
-      .sort()
-      .map((name) => {
-        const rootEntry = rootDependencyEntries.get(name);
-        return {
-          name,
-          spec: rootEntry?.spec ?? null,
-          kind: rootEntry?.kind ?? "dependency",
-          requesterName: "<workspace root package.json>",
-          requesterDir: ROOT,
-          requesterDestDir: targetDist,
-        };
-      });
+    const queue = buildInitialRuntimeQueue(
+      alwaysBundled,
+      discovered,
+      scanDir,
+      targetDist,
+    );
 
     const copiedDestinations = new Set<string>();
     const copiedNames = new Set<string>();
