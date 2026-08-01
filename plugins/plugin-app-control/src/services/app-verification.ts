@@ -5,6 +5,7 @@
  */
 
 import { type ExecFileOptions, execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -46,6 +47,23 @@ const TIMEOUTS = {
 } as const;
 
 const HEALTHY_STATUSES = new Set(["running", "connected", "active", "ready"]);
+
+function resolveDirectPublishTarget(
+	publishRoot: string,
+	appName: string,
+): {
+	root: string;
+	target: string;
+} {
+	const root = path.resolve(publishRoot);
+	const target = path.resolve(root, appName);
+	if (path.dirname(target) !== root || path.basename(target) !== appName) {
+		throw new Error(
+			"App publish name must be one direct child of the publish root",
+		);
+	}
+	return { root, target };
+}
 
 export type VerificationCheckKind =
 	| "typecheck"
@@ -1299,10 +1317,7 @@ export class AppVerificationService extends Service {
 		// Settings-first with env fallback, mirroring resolvePublishTarget on
 		// the prompt side — a settings-only install must get the authoritative
 		// re-publish, not just the deploy prompt (review finding on #17479).
-		const publishSetting =
-			typeof this.runtime.getSetting === "function"
-				? this.runtime.getSetting("APP_PUBLISH_DIR")
-				: undefined;
+		const publishSetting = this.runtime.getSetting("APP_PUBLISH_DIR");
 		const publishRoot =
 			(typeof publishSetting === "string" ? publishSetting.trim() : "") ||
 			process.env.ELIZA_APP_PUBLISH_DIR?.trim();
@@ -1319,52 +1334,62 @@ export class AppVerificationService extends Service {
 			const publishStart = nowMs();
 			const fs = await import("node:fs/promises");
 			const distDir = path.join(opts.workdir, "dist");
-			// Containment: appName is caller input — resolve and require the
-			// target to stay inside the publish root so a traversal-shaped name
-			// ("../outside") can never write beside it.
-			const publishRootReal = path.resolve(publishRoot);
-			const target = path.resolve(publishRootReal, opts.appName);
-			let publishLog = `Publishing ${distDir} -> ${target}\n`;
+			let staging: string | undefined;
+			let publishLog = `Publishing ${distDir} for ${opts.appName}\n`;
 			let published = false;
 			try {
-				if (
-					target === publishRootReal ||
-					!target.startsWith(publishRootReal + path.sep)
-				) {
-					throw new Error(
-						`app name ${JSON.stringify(opts.appName)} resolves outside the publish root`,
-					);
-				}
-				await fs.access(path.join(distDir, "index.html"));
-				// Staged replacement: copy into a sibling staging dir, then swap.
-				// Overlaying the live dir in place preserved obsolete files from
-				// earlier builds and exposed a partially copied mixed build while
-				// the copy ran; the swap keeps the live dir whole-old or whole-new.
-				const staging = `${target}.staging-${runId}`;
-				const retired = `${target}.retired-${runId}`;
-				await fs.rm(staging, { recursive: true, force: true });
-				await fs.cp(distDir, staging, { recursive: true });
-				const hadPrevious = await fs.access(target).then(
-					() => true,
-					() => false,
+				const { root, target } = resolveDirectPublishTarget(
+					publishRoot,
+					opts.appName,
 				);
-				if (hadPrevious) await fs.rename(target, retired);
+				await fs.access(path.join(distDir, "index.html"));
+				await fs.mkdir(root, { recursive: true });
+				staging = await fs.mkdtemp(path.join(root, ".publish-stage-"));
+				await fs.cp(distDir, staging, { recursive: true });
+				await fs.access(path.join(staging, "index.html"));
+
+				// Keep copy work outside the live directory. The two same-filesystem
+				// renames prevent clients from observing a mixed old/new file tree;
+				// the backup also makes the swap recoverable if activation fails.
+				await fs.mkdir(target, { recursive: true });
+				const backup = path.join(root, `.publish-backup-${randomUUID()}`);
+				await fs.rename(target, backup);
 				try {
 					await fs.rename(staging, target);
-				} catch (swapErr) {
-					// Restore the previous live build before failing the check so
-					// a botched swap never leaves the app missing entirely.
-					if (hadPrevious) await fs.rename(retired, target);
-					throw swapErr;
+					staging = undefined;
+				} catch (error) {
+					// error-policy:J2 restore the previously live tree before adding
+					// publish-swap context to the activation failure.
+					await fs.rename(backup, target);
+					throw new Error("Failed to activate staged app publish", {
+						cause: error,
+					});
 				}
-				// error-policy:J6 best-effort teardown — the retired copy is dead
-				// weight once the swap landed.
-				await fs.rm(retired, { recursive: true, force: true }).catch(() => {});
+				try {
+					await fs.rm(backup, { recursive: true, force: true });
+				} catch (error) {
+					// error-policy:J6 the new tree is already live; abandoned backup
+					// cleanup is observable but must not roll back a valid publish.
+					logger.warn(
+						`[AppVerificationService] Failed to remove publish backup ${backup}: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
 				published = true;
-				publishLog += "Publish complete (staged swap).\n";
+				publishLog += `Publish complete: ${target}.\n`;
 			} catch (err) {
 				// error-policy:J1 boundary — a publish failure becomes a failed
 				// check on the result, never a silent pass with a stale page.
+				if (staging) {
+					try {
+						await fs.rm(staging, { recursive: true, force: true });
+					} catch (cleanupError) {
+						// error-policy:J6 staging cleanup is best-effort after the
+						// publish failure has already been made observable below.
+						logger.warn(
+							`[AppVerificationService] Failed to remove publish staging ${staging}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+						);
+					}
+				}
 				publishLog += `Publish error: ${err instanceof Error ? err.message : String(err)}\n`;
 				verdict = "fail";
 			}
