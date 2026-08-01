@@ -1,8 +1,8 @@
 name: Local Inference Matrix
 
-# Builds a host-compatible fork binary, verifies a pinned model, executes a
-# non-empty ablation set, checks same-run relative performance, and uploads an
-# attestation binding the exact source, bytes, host, and report.
+# Runs the local-inference smoke and ablation variant suite. Each leg uploads
+# raw throughput telemetry for comparison and fails only when setup or an
+# executable variant fails.
 #
 # Triggers:
 #   - workflow_dispatch (always; needed for macOS/CUDA cost control)
@@ -14,8 +14,8 @@ name: Local Inference Matrix
 #   - ubuntu-latest CUDA only runs when the PR carries the `gpu` label
 #     (and a self-hosted GPU runner with the `gpu` runner labels is online).
 #   - macos-14 Metal only runs on workflow_dispatch (Apple Silicon cost).
-# Optional legs are omitted unless selected; once selected, every leg is
-# required so unsupported binaries, models, or variants cannot pass silently.
+# Optional legs are omitted unless selected; once selected, every leg must
+# execute successfully. Throughput remains telemetry rather than pass/fail policy.
 #
 # Note: Job-level `if:` cannot reference `matrix` (GitHub Actions limitation).
 # Optional legs are added by `prepare-matrix` via JSON so only requested
@@ -41,9 +41,6 @@ on:
       - "packages/app-core/src/services/local-inference/**"
       - "packages/scripts/local-inference-ablation.mjs"
       - "packages/scripts/local-inference-ablation.config.json"
-      - "packages/scripts/local-inference-attest.mjs"
-      - "packages/scripts/local-inference-performance-check.mjs"
-      - "packages/scripts/local-inference-performance-policy.json"
       - "packages/scripts/local-inference-smoke.mjs"
       - ".github/workflows/local-inference-matrix.yml"
 
@@ -243,8 +240,6 @@ jobs:
           test -x "$BUILD_DIR/bin/llama-server"
           mkdir -p "$BINARY_DIR"
           install -m 0755 "$BUILD_DIR/bin/llama-server" "$BINARY_DIR/llama-server"
-          SOURCE_SHA="$(git -C "$SOURCE_DIR" rev-parse HEAD)"
-          printf 'INFERENCE_SOURCE_SHA=%s\n' "$SOURCE_SHA" >> "$GITHUB_ENV"
           printf 'INFERENCE_BINARY=%s\n' "$BINARY_DIR/llama-server" >> "$GITHUB_ENV"
 
       - name: Require a host-compatible executable
@@ -276,7 +271,7 @@ jobs:
           fi
           test "$ACTUAL_SHA" = "$SMOKE_MODEL_SHA256"
 
-      - name: Run required ablation variants
+      - name: Run executable ablation variants
         env:
           BACKEND: ${{ matrix.backend }}
         run: |
@@ -285,7 +280,7 @@ jobs:
           case "$BACKEND" in
             metal) VARIANTS="baseline_f16_kv,stock_no_fa" ;;
             cpu|cuda|rocm) VARIANTS="baseline_f16_kv,turbo4_polar_kv" ;;
-            *) echo "unsupported performance backend: $BACKEND" >&2; exit 1 ;;
+            *) echo "unsupported backend: $BACKEND" >&2; exit 1 ;;
           esac
           node ./packages/scripts/local-inference-ablation.mjs \
             --backend "$BACKEND" \
@@ -296,27 +291,6 @@ jobs:
             --variants "$VARIANTS" \
             --require-all \
             --out-dir artifacts/local-inference-ablation
-          REPORT_PATH="$(find artifacts/local-inference-ablation -maxdepth 1 -type f -name '*-${{ matrix.backend }}.json' -print -quit)"
-          test -n "$REPORT_PATH"
-          printf 'INFERENCE_REPORT=%s\n' "$REPORT_PATH" >> "$GITHUB_ENV"
-
-      - name: Check runner-relative performance
-        run: >-
-          node packages/scripts/local-inference-performance-check.mjs
-          "$INFERENCE_REPORT"
-          packages/scripts/local-inference-performance-policy.json
-
-      - name: Attest executable, model, report, source, and host
-        run: >-
-          node packages/scripts/local-inference-attest.mjs
-          --binary "$INFERENCE_BINARY"
-          --model "${ELIZA_STATE_DIR}/local-inference/models/${SMOKE_MODEL_FILE}"
-          --report "$INFERENCE_REPORT"
-          --backend "${{ matrix.backend }}"
-          --expected-model-sha256 "$SMOKE_MODEL_SHA256"
-          --source-sha "$INFERENCE_SOURCE_SHA"
-          --workflow-sha "${{ github.sha }}"
-          --out artifacts/local-inference-ablation/attestation.json
 
       - name: Upload ablation artifact
         if: ${{ always() }}

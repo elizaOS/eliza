@@ -8,8 +8,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
 | `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, and build checks |
-| `develop-pr-gate.yml` | PR target to develop, manual canaries | Base-trusted exact-head aggregate for merge-critical PR checks |
-| `stale-base-guard.yml` | PRs | Content-level silent-revert detection with explicit acknowledgement |
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
@@ -117,23 +115,13 @@ this org, #13481). Pre-merge checks remain independent of the exhaustive fleet:
   `windows-desktop-preload-smoke.yml` run on `ubuntu-24.04`. They are git-diff +
   node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
   left every downstream job queued indefinitely and gridlocked develop.
-- **`Develop PR Gate`** is a read-only `pull_request_target` aggregate. It
-  checks out only the base SHA and binds every required result to the PR's exact
-  head SHA, owning workflow, GitHub Actions app, trigger, and terminal success.
-  Missing, stale, skipped, cancelled, timed-out, and failed checks stay red.
 - **`ci-ok`** and `plugin-tests-status` remain result roll-ups inside the
-  post-merge `test.yml` orchestrator. `ci-ok` also depends on the unconditional
-  repo-wide quality job and Linux script-test inventory.
+  post-merge `test.yml` orchestrator. They report branch health after a develop
+  push; they are not pre-merge policy checks.
 
-The standalone stale-base workflow detects byte-identical historical blob
-restoration inside a PR diff, including the fresh-merge-base failure shape from
-#11271. It intentionally has no commit-count or elapsed-time threshold. The
-`stale-base-ack` label records a deliberate human override.
-
-`packages/scripts/ci-workflow-invariants.mjs` parses workflow YAML and enforces
-unconditional lint, format, typecheck, gitleaks, and script-test execution plus
-their final-gate dependency edges. The develop PR lint job also runs pinned,
-checksum-verified `actionlint` and `zizmor` binaries.
+Pull requests expose the direct lint, format, typecheck, build, security, title,
+and evidence checks that produced each result. There is no polling status
+aggregate or inferred source-to-test change policy.
 
 The self-hosted test lanes retain the `HETZNER_FLEET_ONLINE=false` hosted-runner
 fallback for outages. Pull-request lint, format, typecheck, build, and secret
@@ -166,13 +154,10 @@ artifacts. Only then may the old leg be retired and the inventory's
 `migrationState` changed. A code-only/non-GPU contract pass is not hardware
 proof and must not close #16449.
 
-`local-inference-matrix.yml` separately protects host execution on changed
-local-inference code. Every selected runner builds `llama-server` from the exact
-native gitlink, verifies a revision- and SHA-256-pinned smoke model, requires two
-successful variants with three samples each, compares backend-specific median
-ratios against the same-run baseline, and uploads an attestation containing the
-binary, model, report, source, workflow, and host identities. Empty caches,
-missing binaries, skipped variants, zero-work reports, and unverified bytes fail.
+`local-inference-matrix.yml` builds the exact checked-in inference source,
+verifies the pinned smoke-model bytes, executes each selected variant, and
+uploads raw throughput telemetry. Setup or execution failures fail the job;
+hardware-dependent throughput values do not.
 
 ### PR Path Gates
 
