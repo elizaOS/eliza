@@ -39,8 +39,7 @@ export interface ResolvedOrchestratorShell {
 export type OrchestratorUnsupportedReason =
   | "store_build"
   | "vanilla_mobile"
-  | "not_local_yolo"
-  | "missing_shell";
+  | "missing_acp_runtime";
 
 export interface OrchestratorTerminalSupport {
   supported: boolean;
@@ -54,7 +53,6 @@ const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
 export interface TerminalSupportEnv {
   platform?: string; // ELIZA_PLATFORM
   buildVariant?: string; // ELIZA_BUILD_VARIANT
-  runtimeMode?: string; // ELIZA_RUNTIME_MODE | RUNTIME_MODE | LOCAL_RUNTIME_MODE
   androidRoot?: string; // ANDROID_ROOT
   androidData?: string; // ANDROID_DATA
   aospBuild?: string; // ELIZA_AOSP_BUILD
@@ -79,19 +77,11 @@ function envIsStoreBuild(env: TerminalSupportEnv): boolean {
   return (env.buildVariant ?? "").trim().toLowerCase() === "store";
 }
 
-function envRuntimeMode(env: TerminalSupportEnv): string {
-  return (env.runtimeMode ?? "").trim().toLowerCase();
-}
-
 /** Snapshot the live process env into a {@link TerminalSupportEnv}. */
 function readTerminalSupportEnv(): TerminalSupportEnv {
   return {
     platform: resolvePlatform(),
     buildVariant: process.env.ELIZA_BUILD_VARIANT,
-    runtimeMode:
-      process.env.ELIZA_RUNTIME_MODE ??
-      process.env.RUNTIME_MODE ??
-      process.env.LOCAL_RUNTIME_MODE,
     androidRoot: process.env.ANDROID_ROOT,
     androidData: process.env.ANDROID_DATA,
     aospBuild: process.env.ELIZA_AOSP_BUILD,
@@ -109,14 +99,12 @@ function isTruthyEnv(value: string | undefined): boolean {
 
 /**
  * Pure device-support classifier. Same precedence as
- * detectOrchestratorTerminalSupport (store > ios > android-mode > android-shell)
- * but with no process.env / fs reads — callers inject the env snapshot and, for
- * Android, whether an executable shell is present. Used by the static device
- * support matrix (#9146) and by detectOrchestratorTerminalSupport itself.
+ * detectOrchestratorTerminalSupport, but with no process.env / fs reads. AOSP
+ * has a shell but the shipped image has no ACP executable, so shell presence
+ * alone must never advertise working coding agents.
  */
 export function classifyTerminalSupport(
   env: TerminalSupportEnv,
-  opts: { androidShellAvailable?: boolean } = {},
 ): OrchestratorTerminalSupport {
   if (envIsStoreBuild(env)) {
     return {
@@ -135,22 +123,12 @@ export function classifyTerminalSupport(
     };
   }
   if (envIsAndroid(env)) {
-    if (envRuntimeMode(env) !== "local-yolo") {
-      return {
-        supported: false,
-        reason: "not_local_yolo",
-        message:
-          "Android direct/AOSP coding agents require ELIZA_RUNTIME_MODE=local-yolo so subprocesses run in the local agent environment.",
-      };
-    }
-    if (opts.androidShellAvailable === false) {
-      return {
-        supported: false,
-        reason: "missing_shell",
-        message:
-          "Android direct/AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
-      };
-    }
+    return {
+      supported: false,
+      reason: "missing_acp_runtime",
+      message:
+        "Coding-agent orchestration is unavailable on Android because the shipped image does not include an ACP agent executable. Use the Android shell/coding tools locally or control a desktop/cloud orchestrator.",
+    };
   }
   return { supported: true };
 }
@@ -289,22 +267,5 @@ export function missingToolMessage(tool: OrchestratorToolName): string {
 
 export function detectOrchestratorTerminalSupport(): OrchestratorTerminalSupport {
   const env = readTerminalSupportEnv();
-  // The pure classifier covers store / ios / not-local-yolo identically; pass
-  // androidShellAvailable:true so it does not pre-judge the shell — the live
-  // fs check below owns that, preserving the dynamic warning message.
-  const pre = classifyTerminalSupport(env, { androidShellAvailable: true });
-  if (!pre.supported) return pre;
-  if (envIsAndroid(env)) {
-    const shell = resolveOrchestratorShell();
-    if (!shell.available) {
-      return {
-        supported: false,
-        reason: "missing_shell",
-        message:
-          shell.warning ??
-          "Android direct/AOSP coding agents require an executable shell. Set CODING_TOOLS_SHELL or SHELL to a staged shell binary.",
-      };
-    }
-  }
-  return { supported: true };
+  return classifyTerminalSupport(env);
 }

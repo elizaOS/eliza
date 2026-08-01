@@ -1,9 +1,15 @@
+/**
+ * In-process Bun transport for iOS. The shim owns bounded NDJSON framing and
+ * engine lifecycle; calls remain open until their owner cancels, the engine
+ * responds, exits, or closes the pipe. Elapsed wall time is never a failure.
+ */
 #include "eliza_bun_engine.h"
 #include "bun_ios.h"
 
 #include <ctype.h>
 #include <errno.h>
 #include <pthread.h>
+#include <spawn.h>
 #include <stdint.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -49,6 +55,11 @@ __attribute__((visibility("hidden"))) int sqlite3_load_extension(
 #endif
 
 #if defined(ELIZA_IOS_DISABLE_PROCESS_SPAWN)
+static int process_spawn_unavailable(void) {
+  errno = ENOTSUP;
+  return ENOTSUP;
+}
+
 __attribute__((visibility("hidden"))) pid_t fork(void) {
   errno = ENOTSUP;
   return -1;
@@ -65,6 +76,139 @@ __attribute__((visibility("hidden"))) int execve(
   return -1;
 }
 
+__attribute__((visibility("hidden"))) int posix_spawn(
+    pid_t *pid,
+    const char *path,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *attr,
+    char *const argv[],
+    char *const envp[]) {
+  (void)pid;
+  (void)path;
+  (void)file_actions;
+  (void)attr;
+  (void)argv;
+  (void)envp;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawnp(
+    pid_t *pid,
+    const char *file,
+    const posix_spawn_file_actions_t *file_actions,
+    const posix_spawnattr_t *attr,
+    char *const argv[],
+    char *const envp[]) {
+  (void)pid;
+  (void)file;
+  (void)file_actions;
+  (void)attr;
+  (void)argv;
+  (void)envp;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_init(
+    posix_spawn_file_actions_t *file_actions) {
+  if (file_actions) *file_actions = NULL;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_destroy(
+    posix_spawn_file_actions_t *file_actions) {
+  (void)file_actions;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_addclose(
+    posix_spawn_file_actions_t *file_actions,
+    int fd) {
+  (void)file_actions;
+  (void)fd;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_adddup2(
+    posix_spawn_file_actions_t *file_actions,
+    int fd,
+    int new_fd) {
+  (void)file_actions;
+  (void)fd;
+  (void)new_fd;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_addopen(
+    posix_spawn_file_actions_t *file_actions,
+    int fd,
+    const char *path,
+    int flags,
+    mode_t mode) {
+  (void)file_actions;
+  (void)fd;
+  (void)path;
+  (void)flags;
+  (void)mode;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_addinherit_np(
+    posix_spawn_file_actions_t *file_actions,
+    int fd) {
+  (void)file_actions;
+  (void)fd;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawn_file_actions_addchdir_np(
+    posix_spawn_file_actions_t *file_actions,
+    const char *path) {
+  (void)file_actions;
+  (void)path;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawnattr_init(
+    posix_spawnattr_t *attr) {
+  if (attr) *attr = NULL;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawnattr_destroy(
+    posix_spawnattr_t *attr) {
+  (void)attr;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawnattr_setflags(
+    posix_spawnattr_t *attr,
+    short flags) {
+  (void)attr;
+  (void)flags;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawnattr_setsigdefault(
+    posix_spawnattr_t *attr,
+    const sigset_t *signals) {
+  (void)attr;
+  (void)signals;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int posix_spawnattr_setsigmask(
+    posix_spawnattr_t *attr,
+    const sigset_t *signals) {
+  (void)attr;
+  (void)signals;
+  return process_spawn_unavailable();
+}
+
+__attribute__((visibility("hidden"))) int system(const char *command) {
+  (void)command;
+  return process_spawn_unavailable();
+}
+
 __attribute__((visibility("hidden"))) int pthread_atfork(
     void (*prepare)(void),
     void (*parent)(void),
@@ -72,7 +216,7 @@ __attribute__((visibility("hidden"))) int pthread_atfork(
   (void)prepare;
   (void)parent;
   (void)child;
-  return 0;
+  return process_spawn_unavailable();
 }
 #endif
 
@@ -90,9 +234,6 @@ __attribute__((visibility("hidden"))) int mprotect(
 #endif
 
 enum {
-  ELIZA_DEFAULT_CALL_TIMEOUT_MS = 120000,
-  ELIZA_MAX_CALL_TIMEOUT_MS = 30 * 60 * 1000,
-  ELIZA_MAX_STARTUP_TIMEOUT_MS = 10 * 60 * 1000,
   ELIZA_MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024,
   ELIZA_LAST_ERROR_BYTES = 4096,
 };
@@ -304,28 +445,6 @@ static char *json_escape(const char *value) {
   }
   *w++ = '"';
   *w = '\0';
-  return out;
-}
-
-static char *timeout_json(int timeout_ms) {
-  char message[128];
-  snprintf(message, sizeof(message), "Bun bridge call timed out after %dms", timeout_ms);
-  set_last_error("%s", message);
-  char *escaped = json_escape(message);
-  if (!escaped) return xstrdup("{\"ok\":false,\"error\":\"timeout\",\"code\":\"timeout\"}");
-  size_t needed = strlen(escaped) + 80;
-  char *out = (char *)malloc(needed);
-  if (!out) {
-    free(escaped);
-    return NULL;
-  }
-  snprintf(
-      out,
-      needed,
-      "{\"ok\":false,\"error\":%s,\"code\":\"timeout\",\"timeoutMs\":%d}",
-      escaped,
-      timeout_ms);
-  free(escaped);
   return out;
 }
 
@@ -579,28 +698,32 @@ static int write_all(int fd, const char *data, size_t len) {
   return 0;
 }
 
-static char *read_line_timeout(int fd, int timeout_ms, int *timed_out) {
+static char *read_line(int fd, int timeout_ms, int *timed_out) {
   if (timed_out) *timed_out = 0;
   size_t cap = 4096;
   size_t len = 0;
   char *out = (char *)malloc(cap);
   if (!out) return NULL;
-  int64_t deadline = monotonic_ms() + timeout_ms;
+  const int has_deadline = timeout_ms > 0;
+  int64_t deadline = has_deadline ? monotonic_ms() + timeout_ms : 0;
   for (;;) {
-    int64_t remaining = deadline - monotonic_ms();
-    if (remaining <= 0) {
-      if (timed_out) *timed_out = 1;
-      free(out);
-      return NULL;
-    }
-
     fd_set readfds;
     FD_ZERO(&readfds);
     FD_SET(fd, &readfds);
     struct timeval tv;
-    tv.tv_sec = (time_t)(remaining / 1000);
-    tv.tv_usec = (suseconds_t)((remaining % 1000) * 1000);
-    int ready = select(fd + 1, &readfds, NULL, NULL, &tv);
+    struct timeval *tv_ptr = NULL;
+    if (has_deadline) {
+      int64_t remaining = deadline - monotonic_ms();
+      if (remaining <= 0) {
+        if (timed_out) *timed_out = 1;
+        free(out);
+        return NULL;
+      }
+      tv.tv_sec = (time_t)(remaining / 1000);
+      tv.tv_usec = (suseconds_t)((remaining % 1000) * 1000);
+      tv_ptr = &tv;
+    }
+    int ready = select(fd + 1, &readfds, NULL, NULL, tv_ptr);
     if (ready < 0) {
       if (errno == EINTR) continue;
       free(out);
@@ -739,38 +862,6 @@ static char *extract_json_value_field(const char *json, const char *field) {
   return out;
 }
 
-static int extract_timeout_ms(const char *json) {
-  int timeout_ms = ELIZA_DEFAULT_CALL_TIMEOUT_MS;
-  const char *p = json ? strstr(json, "\"timeoutMs\"") : NULL;
-  if (!p) return timeout_ms;
-  p = strchr(p, ':');
-  if (!p) return timeout_ms;
-  p++;
-  p = skip_ws(p);
-  if (!isdigit((unsigned char)*p)) return timeout_ms;
-  long value = 0;
-  while (isdigit((unsigned char)*p)) {
-    value = (value * 10) + (*p - '0');
-    if (value > ELIZA_MAX_CALL_TIMEOUT_MS) {
-      value = ELIZA_MAX_CALL_TIMEOUT_MS;
-      break;
-    }
-    p++;
-  }
-  if (value <= 0) return timeout_ms;
-  return (int)value;
-}
-
-static int env_timeout_ms(const char *name, int fallback_ms, int max_ms) {
-  const char *raw = getenv(name);
-  if (!raw || raw[0] == '\0') return fallback_ms;
-  char *end = NULL;
-  long value = strtol(raw, &end, 10);
-  if (end == raw || value <= 0) return fallback_ms;
-  if (value > max_ms) return max_ms;
-  return (int)value;
-}
-
 static int is_ready_line(const char *line, char **error_out) {
   if (!line || !strstr(line, "\"type\"") || !strstr(line, "\"ready\"")) return 0;
   if (strstr(line, "\"ok\":false")) {
@@ -811,9 +902,8 @@ static int service_host_call_line(const char *line) {
   eliza_bun_engine_host_call_callback callback = g_host_callback;
   pthread_mutex_unlock(&g_host_callback_mutex);
 
-  int timeout_ms = extract_timeout_ms(line);
   char *envelope = callback
-      ? callback(method, payload, timeout_ms)
+      ? callback(method, payload, 0)
       : host_callback_missing_json(method);
   if (!envelope) envelope = error_json("Native host callback returned null");
 
@@ -1122,25 +1212,14 @@ static int append_ios_env_args(
   return 0;
 }
 
-static int wait_for_ready(int stdout_fd, int timeout_ms) {
-  int64_t deadline = monotonic_ms() + timeout_ms;
+static int wait_for_ready(int stdout_fd) {
   for (;;) {
-    int64_t remaining = deadline - monotonic_ms();
     if (g_bun_exited) {
       set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
       return -1;
     }
-    if (remaining <= 0) {
-      if (g_bun_exited) {
-        set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
-      } else {
-        set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
-      }
-      return -2;
-    }
     int timed_out = 0;
-    int read_timeout = remaining > 250 ? 250 : (int)remaining;
-    char *line = read_line_timeout(stdout_fd, read_timeout, &timed_out);
+    char *line = read_line(stdout_fd, 250, &timed_out);
     if (!line) {
       if (timed_out) {
         if (g_bun_exited) {
@@ -1315,11 +1394,7 @@ int32_t eliza_bun_engine_start(
   pthread_detach(bun_thread);
   debug_log("waiting for ios-bridge ready");
 
-  int startup_timeout_ms = env_timeout_ms(
-      "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS",
-      180000,
-      ELIZA_MAX_STARTUP_TIMEOUT_MS);
-  int ready = wait_for_ready(g_stdout_read_fd, startup_timeout_ms);
+  int ready = wait_for_ready(g_stdout_read_fd);
   if (ready != 0) {
     debug_log("ios-bridge ready wait failed code=%d error=%s", ready, g_last_error);
     eliza_bun_engine_stop();
@@ -1359,7 +1434,6 @@ char *eliza_bun_engine_call(const char *method, const char *payload_json) {
 
   pthread_mutex_lock(&g_call_mutex);
   uint64_t id = g_next_id++;
-  int timeout_ms = extract_timeout_ms(payload_json);
   char *escaped_method = json_escape(method);
   if (!escaped_method) {
     pthread_mutex_unlock(&g_call_mutex);
@@ -1396,20 +1470,10 @@ char *eliza_bun_engine_call(const char *method, const char *payload_json) {
   }
   free(request);
 
-  int64_t deadline = monotonic_ms() + timeout_ms;
   for (;;) {
-    int64_t remaining = deadline - monotonic_ms();
-    if (remaining <= 0) {
-      pthread_mutex_unlock(&g_call_mutex);
-      return timeout_json(timeout_ms);
-    }
-    int timed_out = 0;
-    char *line = read_line_timeout(g_stdout_read_fd, (int)remaining, &timed_out);
+    char *line = read_line(g_stdout_read_fd, 0, NULL);
     if (!line) {
       pthread_mutex_unlock(&g_call_mutex);
-      if (timed_out) {
-        return timeout_json(timeout_ms);
-      }
       return error_json("Bun bridge closed before returning a response");
     }
     if (is_host_call_line(line)) {

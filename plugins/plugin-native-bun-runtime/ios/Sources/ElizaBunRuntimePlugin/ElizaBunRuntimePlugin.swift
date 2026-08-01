@@ -728,21 +728,11 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         startedAt: Date,
         attempt: Int
     ) {
-        dispatchSmokeCall(runtime: runtime, method: "status", args: ["timeoutMs": 5_000]) { [weak self, weak runtime] statusResult in
+        dispatchSmokeCall(runtime: runtime, method: "status", args: nil) { [weak self, weak runtime] statusResult in
             guard let self = self, let runtime = runtime else { return }
             let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             switch statusResult {
             case .failure(let error):
-                if elapsedMs >= 300_000 {
-                    self.writeWebFullBunSmokeProgress([
-                        "ok": false,
-                        "phase": "failed",
-                        "nativePrewarm": true,
-                        "error": error.localizedDescription,
-                        "finishedAt": self.isoTimestamp(),
-                    ])
-                    return
-                }
                 self.writeWebFullBunSmokeProgress([
                     "phase": "native-prewarm-waiting-backend",
                     "nativePrewarm": true,
@@ -770,16 +760,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                         "phase": "failed",
                         "nativePrewarm": true,
                         "error": "iOS full Bun backend failed to boot: \(bridgeStatus ?? NSNull())",
-                        "finishedAt": self.isoTimestamp(),
-                    ])
-                    return
-                }
-                if elapsedMs >= 300_000 {
-                    self.writeWebFullBunSmokeProgress([
-                        "ok": false,
-                        "phase": "failed",
-                        "nativePrewarm": true,
-                        "error": "iOS full Bun backend did not become ready within 60000ms; last status: \(bridgeStatus ?? NSNull())",
                         "finishedAt": self.isoTimestamp(),
                     ])
                     return
@@ -834,15 +814,11 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         startedAt: Date,
         attempt: Int
     ) {
-        dispatchSmokeCall(runtime: runtime, method: "status", args: ["timeoutMs": 5_000]) { [weak self, weak runtime] statusResult in
+        dispatchSmokeCall(runtime: runtime, method: "status", args: nil) { [weak self, weak runtime] statusResult in
             guard let self = self, let runtime = runtime else { return }
             let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             switch statusResult {
             case .failure(let error):
-                if elapsedMs >= 300_000 {
-                    self.writeFullBunSmokeFailure(error)
-                    return
-                }
                 self.writeFullBunSmokeProgress([
                     "phase": "native-waiting-backend",
                     "nativeOnly": true,
@@ -859,12 +835,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                 if self.isBridgeStatusError(bridgeStatus) {
                     self.writeFullBunSmokeFailure(
                         self.makeSmokeError("native full Bun backend failed to boot: \(bridgeStatus ?? NSNull())")
-                    )
-                    return
-                }
-                if elapsedMs >= 300_000 {
-                    self.writeFullBunSmokeFailure(
-                        self.makeSmokeError("native full Bun backend did not become ready within 60000ms; last status: \(bridgeStatus ?? NSNull())")
                     )
                     return
                 }
@@ -896,7 +866,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             "method": "GET",
             "path": "/api/health",
             "headers": ["accept": "application/json"],
-            "timeoutMs": 120_000,
         ]
         dispatchSmokeCall(runtime: runtime, method: "http_request", args: healthArgs) { [weak self, weak runtime] healthResult in
             guard let self = self, let runtime = runtime else { return }
@@ -952,7 +921,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                 "content-type": "application/json",
             ],
             "body": "{\"title\":\"iOS Full Bun Native Smoke\"}",
-            "timeoutMs": 120_000,
         ]
         dispatchSmokeCall(runtime: runtime, method: "http_request", args: createArgs) { [weak self, weak runtime] createResult in
             guard let self = self, let runtime = runtime else { return }
@@ -993,7 +961,6 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             "message": "iOS full Bun native smoke",
             "conversationId": conversationId,
             "metadata": ["smoke": "ios-full-bun-native"],
-            "timeoutMs": 600_000,
         ]
         dispatchSmokeCall(runtime: runtime, method: "send_message", args: messageArgs) { [weak self] messageResult in
             guard let self = self else { return }

@@ -11,7 +11,6 @@ import {
   ORCHESTRATOR_BACKENDS,
   ORCHESTRATOR_DEVICE_SUPPORT_MATRIX,
 } from "../../../src/services/orchestrator-device-support-matrix.js";
-import { classifyTerminalSupport } from "../../../src/services/terminal-capabilities.js";
 
 type StubCheck = {
   profileId: string;
@@ -108,13 +107,13 @@ export async function buildDeviceSupportScenarioEvidence(): Promise<DeviceSuppor
   if (desktop.backends.length !== ORCHESTRATOR_BACKENDS.length) {
     throw new Error("desktop profile must expose every orchestrator backend");
   }
-  if (!androidLocalYolo.support.supported) {
-    throw new Error("Android local-yolo profile must support local spawn");
-  }
-  if (androidLocalYolo.backends.length !== ORCHESTRATOR_BACKENDS.length) {
+  if (androidLocalYolo.support.reason !== "missing_acp_runtime") {
     throw new Error(
-      "Android local-yolo profile must expose every orchestrator backend",
+      `Android local-yolo reason expected missing_acp_runtime, saw ${androidLocalYolo.support.reason}`,
     );
+  }
+  if (androidLocalYolo.backends.length !== 0) {
+    throw new Error("Android must not expose unstaged orchestrator backends");
   }
   if (ios.support.reason !== "vanilla_mobile") {
     throw new Error(
@@ -126,19 +125,9 @@ export async function buildDeviceSupportScenarioEvidence(): Promise<DeviceSuppor
       `store reason expected store_build, saw ${store.support.reason}`,
     );
   }
-  if (androidStore.support.reason !== "not_local_yolo") {
+  if (androidStore.support.reason !== "missing_acp_runtime") {
     throw new Error(
-      `Android store reason expected not_local_yolo, saw ${androidStore.support.reason}`,
-    );
-  }
-
-  const missingShell = classifyTerminalSupport(
-    { platform: "android", runtimeMode: "local-yolo" },
-    { androidShellAvailable: false },
-  );
-  if (missingShell.reason !== "missing_shell") {
-    throw new Error(
-      `Android local-yolo without shell expected missing_shell, saw ${missingShell.reason}`,
+      `Android reason expected missing_acp_runtime, saw ${androidStore.support.reason}`,
     );
   }
 
@@ -151,13 +140,8 @@ export async function buildDeviceSupportScenarioEvidence(): Promise<DeviceSuppor
     await runStoreStub(),
     await runUnsupportedStub(
       "android-store",
-      "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO",
+      "ANDROID_ACP_RUNTIME_UNAVAILABLE",
       createTerminalUnsupportedTasksAction(androidStore.support),
-    ),
-    await runUnsupportedStub(
-      "android-local-yolo-missing-shell",
-      "AOSP_TERMINAL_MISSING_SHELL",
-      createTerminalUnsupportedTasksAction(missingShell),
     ),
   ];
 

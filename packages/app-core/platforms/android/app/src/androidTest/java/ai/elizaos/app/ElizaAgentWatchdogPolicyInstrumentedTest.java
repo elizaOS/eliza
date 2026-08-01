@@ -1,3 +1,4 @@
+/** Exercises watchdog state transitions and Android foreground-service errors. */
 package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
@@ -14,27 +15,6 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class ElizaAgentWatchdogPolicyInstrumentedTest {
-
-    @Test
-    public void readyHealthBodyAcceptsOnlyRunningRuntime() {
-        assertTrue(ElizaAgentWatchdogPolicy.isReadyHealthBody(
-            "{\"ready\":true,\"runtime\":\"ok\",\"agentState\":\"running\"}"
-        ));
-        assertTrue(ElizaAgentWatchdogPolicy.isReadyHealthBody(
-            "{\"ready\":true}"
-        ));
-
-        assertFalse(ElizaAgentWatchdogPolicy.isReadyHealthBody(
-            "{\"ready\":false,\"runtime\":\"ok\",\"agentState\":\"running\"}"
-        ));
-        assertFalse(ElizaAgentWatchdogPolicy.isReadyHealthBody(
-            "{\"ready\":true,\"runtime\":\"degraded\",\"agentState\":\"running\"}"
-        ));
-        assertFalse(ElizaAgentWatchdogPolicy.isReadyHealthBody(
-            "{\"ready\":true,\"runtime\":\"ok\",\"agentState\":\"starting\"}"
-        ));
-        assertFalse(ElizaAgentWatchdogPolicy.isReadyHealthBody("not-json"));
-    }
 
     @Test
     public void busyProbePreservesExistingStrikeCounter() {

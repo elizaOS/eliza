@@ -8,7 +8,7 @@ This is a **Capacitor 8 native plugin**, not an elizaOS runtime plugin. It expos
 
 On **iOS** the plugin either starts a full `ElizaBunEngine.xcframework` (production store path, `engine: "bun"`) or falls back to a `JavaScriptCore` JSContext compatibility bridge for development/sideload builds (`engine: "compat"`). `engine: "auto"` selects whichever is available.
 
-On **Android** the plugin delegates to the host app's `ElizaAgentService` foreground service over a loopback API; there is no JSContext fallback — `engine` is always `"bun"` on Android.
+On **Android** the plugin delegates to the host app's `ElizaAgentService` foreground service through its authenticated in-process request boundary, backed by an abstract Unix-domain socket owned by the service. There is no JSContext fallback — `engine` is always `"bun"` on Android.
 
 ## Plugin surface (TypeScript API)
 
@@ -20,7 +20,7 @@ All methods live on the `ElizaBunRuntime` singleton exported from `src/index.ts`
 | `sendMessage({ message, conversationId? })` | Send a chat message; returns `{ reply }`. |
 | `getStatus()` | Returns readiness, active engine, loaded model, token throughput, bridge version. |
 | `stop()` | Tear down the runtime and release native resources. |
-| `call({ method, args? })` | Dispatch an arbitrary RPC call to a handler the agent registered via `bridge.ui_register_handler`. Returns `{ result }`. |
+| `call({ method, args? })` | On iOS, dispatch an RPC to an agent-registered handler. Android implements `status`, `http_request`/`http_fetch`, and `send_message` through `ElizaAgentService` and rejects iOS-only methods. Returns `{ result }`. |
 | `getLocalTtsStatus()` | Query whether the on-device Kokoro TTS engine is ready. |
 | `getLocalTtsDiagnostics(options?)` | Probe TTS bundle directory and model availability. |
 | `synthesizeLocalTts(options)` | Run on-device TTS; returns base64 WAV audio. |

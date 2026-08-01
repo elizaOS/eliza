@@ -138,14 +138,14 @@ export const tasksSandboxStubAction: Action & {
 export function createTerminalUnsupportedTasksAction(
   support: OrchestratorTerminalSupport,
 ): Action & { suppressPostActionContinuation: true } {
-  const reason =
-    support.reason === "vanilla_mobile"
-      ? "MOBILE_TERMINAL_UNSUPPORTED"
-      : support.reason === "not_local_yolo"
-        ? "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO"
-        : support.reason === "missing_shell"
-          ? "AOSP_TERMINAL_MISSING_SHELL"
-          : "TERMINAL_UNSUPPORTED";
+  const reasons = {
+    vanilla_mobile: "MOBILE_TERMINAL_UNSUPPORTED",
+    missing_acp_runtime: "ANDROID_ACP_RUNTIME_UNAVAILABLE",
+    store_build: "TERMINAL_UNSUPPORTED",
+  } as const;
+  const reason = support.reason
+    ? reasons[support.reason]
+    : "TERMINAL_UNSUPPORTED";
   return buildTasksUnsupportedAction({
     message:
       support.message ??

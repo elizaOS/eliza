@@ -69,7 +69,7 @@ const forbiddenRuntimeImportGroups = [
       /^_system$/,
     ],
     remediation:
-      "compile out Bun.spawn, node:child_process, shell helpers, package postinstall runners, and subprocess fallbacks",
+      "compile out Bun.spawn, node:child_process, shell helpers, package postinstall runners, and subprocess fallbacks, or bind every residual process API to a hidden fail-closed ENOTSUP implementation",
   },
   {
     label: "writable executable memory / JIT permissions",
@@ -166,7 +166,7 @@ export function formatForbiddenRuntimeFindings({
 
   lines.push(appStoreRuntimeBuildSettingsText());
   lines.push(
-    "The device slice must be rebuilt from the Bun fork with these code paths compiled out; hiding symbols at link time is not sufficient because undefined imports remain in the Mach-O load commands.",
+    "The device slice must be rebuilt with these code paths compiled out or bound to hidden fail-closed implementations. An exported-symbol list alone is not sufficient: nm -u must prove that no forbidden dynamic import remains in the Mach-O.",
   );
   return lines.join("\n");
 }

@@ -1,6 +1,13 @@
+/**
+ * Android Capacitor bridge to the app-owned ElizaAgentService. Lifecycle state
+ * comes from the service directly, while route calls use its authenticated
+ * in-process request boundary; neither path opens a second loopback client or
+ * imposes a model-call wall-clock deadline.
+ */
 package ai.elizaos.plugins.bunruntime
 
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import com.getcapacitor.JSObject
@@ -11,98 +18,65 @@ import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONObject
 import java.util.Locale
 
-/**
- * Android implementation of `@elizaos/capacitor-bun-runtime`.
- *
- * On iOS, the plugin hosts an embedded Bun engine (full xcframework) or
- * a JSContext compatibility bridge. On Android, Bun runs as a child process
- * managed by `ElizaAgentService` — a foreground service that handles asset
- * extraction, process lifecycle, watchdog health-checks, and crash restarts.
- *
- * This plugin therefore delegates lifecycle operations and all local-agent
- * route dispatch to the host app's `ElizaAgentService` through reflection
- * (no compile-time dependency on the host package). `ElizaAgentService`
- * currently owns the loopback implementation detail, while this plugin stays
- * on the service request bridge so callers do not depend on a port.
- *
- * Wire protocol parity with the iOS side:
- *   - `start(opts)`      → start the `ElizaAgentService`; poll readiness
- *   - `sendMessage(opts)` → POST /api/conversations/:id/messages
- *   - `getStatus()`      → GET /api/health + service state probe
- *   - `stop()`           → stop the `ElizaAgentService`
- *   - `call({ method, args })` → dispatch to the registered bridge handler
- *                          via POST /api/bridge/call through the service
- *                          request bridge
- *
- * The `engine` field in `GetStatusResult` is always `"bun"` on Android
- * because the Bun process is the only runtime the service supports — there
- * is no JSContext compatibility fallback on Android.
- *
- * Error handling mirrors the iOS side: transient service/process failures
- * resolve with `ok: false` + an `error` string rather than hard-rejecting,
- * so the JS caller can surface a graceful message instead of an uncaught
- * exception.
- */
 @CapacitorPlugin(name = "ElizaBunRuntime")
 class ElizaBunRuntimePlugin : Plugin() {
 
     companion object {
         private const val TAG = "ElizaBunRuntime"
         private const val LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc"
-        private const val DEFAULT_START_TIMEOUT_MS = 120_000L
         private const val POLL_INTERVAL_MS = 2_000L
-        private const val DEFAULT_TIMEOUT_MS = 30_000
     }
 
     // ── start ───────────────────────────────────────────────────────────────
 
     @PluginMethod
     fun start(call: PluginCall) {
-        val startTimeoutMs = DEFAULT_START_TIMEOUT_MS
-
-        // Spawn a background thread to:
-        //   1. Start the ElizaAgentService through the host app package.
-        //   2. Poll /api/health until the agent is ready or the timeout elapses.
-        // We must not block the Capacitor executor thread — agent boot takes
-        // 30-120 s on first launch (PGlite WASM extraction + plugin resolution).
         Thread({
-            // Kick the service on this background thread — safe because
-            // Context.startForegroundService is thread-safe.
             try {
                 startServiceReflective()
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "start: could not start ElizaAgentService: ${e.message}")
-            }
-
-            val deadline = System.currentTimeMillis() + startTimeoutMs
-            var lastError: String? = null
-            while (System.currentTimeMillis() < deadline) {
-                try {
-                    val health = loopbackGet("/api/health", 5_000)
-                    if (health.optBoolean("ready", false)) {
+                var serviceOwnedStartup = false
+                while (true) {
+                    val bootState = readLocalAgentBootState()
+                    serviceOwnedStartup = serviceOwnedStartup ||
+                        bootState.optBoolean("serviceActive", false) ||
+                        bootState.getString("state") == "booting" ||
+                        bootState.getString("state") == "restarting"
+                    when (bootState.getString("state")) {
+                        "listening" -> {
+                            call.resolve(JSObject().apply {
+                                put("ok", true)
+                                put("bridgeVersion", "bun-android:1")
+                            })
+                            return@Thread
+                        }
+                        "dead" -> {
+                            if (!serviceOwnedStartup) {
+                                Thread.sleep(POLL_INTERVAL_MS)
+                                continue
+                            }
+                            val reason = bootState.optString("reason", "local agent service stopped")
+                            call.resolve(JSObject().apply {
+                                put("ok", false)
+                                put("error", reason)
+                            })
+                            return@Thread
+                        }
+                    }
+                    try {
+                        Thread.sleep(POLL_INTERVAL_MS)
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
                         val result = JSObject().apply {
-                            put("ok", true)
-                            put("bridgeVersion", "bun-android:1")
+                            put("ok", false)
+                            put("error", "Android Bun runtime startup was cancelled")
                         }
                         call.resolve(result)
                         return@Thread
                     }
-                    lastError = "health not ready: ${health.opt("state")}"
-                } catch (e: Exception) {
-                    lastError = e.message ?: "health probe failed"
                 }
-                try {
-                    Thread.sleep(POLL_INTERVAL_MS)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    break
-                }
+            } catch (e: Exception) {
+                call.reject(e.message ?: "Could not start Android Bun runtime")
             }
-            val result = JSObject().apply {
-                put("ok", false)
-                put("error", "Android Bun runtime did not become ready within ${startTimeoutMs}ms: $lastError")
-            }
-            call.resolve(result)
         }, "ElizaBunRuntime-start").apply {
             isDaemon = true
             start()
@@ -132,12 +106,12 @@ class ElizaBunRuntimePlugin : Plugin() {
                 }.toString()
 
                 val path = "/api/conversations/${encodeSegment(convId)}/messages"
-                val response = loopbackPost(path, body, DEFAULT_TIMEOUT_MS)
+                val response = servicePost(path, body)
                 val text = response.optString("text")
                     .takeIf { it.isNotBlank() }
                     ?: response.optString("reply")
                         .takeIf { it.isNotBlank() }
-                    ?: ""
+                    ?: throw IllegalStateException("Local agent returned no message reply")
 
                 val result = JSObject().apply {
                     put("reply", text)
@@ -158,31 +132,15 @@ class ElizaBunRuntimePlugin : Plugin() {
     fun getStatus(call: PluginCall) {
         Thread({
             try {
-                val token = readLocalAgentToken()
-                if (token == null) {
-                    val result = JSObject().apply {
-                        put("ready", false)
-                        put("engine", "bun")
-                    }
-                    call.resolve(result)
-                    return@Thread
-                }
-                val health = loopbackGet("/api/health", 5_000, token)
-                val ready = health.optBoolean("ready", false)
+                val bootState = readLocalAgentBootState()
                 val result = JSObject().apply {
-                    put("ready", ready)
+                    put("ready", bootState.getString("state") == "listening")
                     put("engine", "bun")
                     put("bridgeVersion", "bun-android:1")
-                    val agentName = health.optString("agentName", "")
-                    if (agentName.isNotBlank()) put("model", agentName)
                 }
                 call.resolve(result)
             } catch (e: Exception) {
-                val result = JSObject().apply {
-                    put("ready", false)
-                    put("engine", "bun")
-                }
-                call.resolve(result)
+                call.reject(e.message ?: "Could not read Android Bun runtime status")
             }
         }, "ElizaBunRuntime-getStatus").apply {
             isDaemon = true
@@ -197,6 +155,8 @@ class ElizaBunRuntimePlugin : Plugin() {
         try {
             stopServiceReflective()
         } catch (e: Exception) {
+            // error-policy:J6 stopping an already-removed service is teardown;
+            // the warning preserves the failure without making stop non-idempotent.
             android.util.Log.w(TAG, "stop: could not stop ElizaAgentService: ${e.message}")
         }
         call.resolve()
@@ -207,11 +167,10 @@ class ElizaBunRuntimePlugin : Plugin() {
     /**
      * Dispatch a named bridge-handler call into the running agent.
      *
-     * The Android agent exposes a dedicated RPC endpoint at
-     * `POST /api/bridge/call` that maps to the same handler registry the
-     * iOS bridge populates via `bridge.ui_register_handler`. If that
-     * endpoint is absent (older bundle), built-in method shortcuts cover
-     * the three most critical ones: `status`, `http_request`, `send_message`.
+     * Android exposes the lifecycle and local-agent request operations that it
+     * can implement through `ElizaAgentService`. iOS-only host handlers are
+     * rejected explicitly instead of being sent to a route the agent does not
+     * expose.
      */
     @PluginMethod
     fun call(call: PluginCall) {
@@ -241,26 +200,15 @@ class ElizaBunRuntimePlugin : Plugin() {
     // ── Bridge dispatch ──────────────────────────────────────────────────────
 
     private fun dispatchBridgeCall(method: String, args: JSObject?): Any? {
-        val timeoutMs = args?.getInteger("timeoutMs") ?: DEFAULT_TIMEOUT_MS
-
         return when (method) {
             "status" -> {
-                try {
-                    val health = loopbackGet("/api/health", minOf(timeoutMs, 30_000))
-                    mapOf(
-                        "ready" to health.optBoolean("ready", false),
-                        "apiBase" to LOCAL_AGENT_IPC_BASE,
-                        "apiPort" to 31337,
-                        "transport" to "agent-service",
-                    )
-                } catch (_: Exception) {
-                    mapOf(
-                        "ready" to false,
-                        "apiBase" to LOCAL_AGENT_IPC_BASE,
-                        "apiPort" to 0,
-                        "transport" to "agent-service",
-                    )
-                }
+                val bootState = readLocalAgentBootState()
+                mapOf(
+                    "ready" to (bootState.getString("state") == "listening"),
+                    "apiBase" to LOCAL_AGENT_IPC_BASE,
+                    "transport" to "agent-service",
+                    "state" to bootState.getString("state"),
+                )
             }
 
             "http_request", "http_fetch" -> {
@@ -272,7 +220,7 @@ class ElizaBunRuntimePlugin : Plugin() {
                 // args is non-null here: path was just extracted successfully
                 val reqHeaders = args.getJSObject("headers")
                 val reqBody = args.getString("body")
-                val response = loopbackRequest(reqMethod, path, reqHeaders, reqBody, timeoutMs)
+                val response = serviceRequest(reqMethod, path, reqHeaders, reqBody)
                 response
             }
 
@@ -285,27 +233,20 @@ class ElizaBunRuntimePlugin : Plugin() {
                     put("channelType", "DM")
                 }.toString()
                 val path = "/api/conversations/${encodeSegment(convId)}/messages"
-                val response = loopbackPost(path, body, timeoutMs)
+                val response = servicePost(path, body)
+                val text = response.optString("text").takeIf { it.isNotBlank() }
+                    ?: response.optString("reply").takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException("Local agent returned no message reply")
                 mapOf(
-                    "text" to (response.optString("text").takeIf { it.isNotBlank() }
-                        ?: response.optString("reply", "")),
-                    "reply" to (response.optString("reply").takeIf { it.isNotBlank() }
-                        ?: response.optString("text", "")),
+                    "text" to text,
+                    "reply" to text,
                     "conversationId" to convId,
                 )
             }
 
-            else -> {
-                // Generic forward: POST /api/bridge/call with {method, args}.
-                // This endpoint must be registered by the agent bundle; falls
-                // back to a descriptive error if absent (HTTP 404).
-                val body = JSONObject().apply {
-                    put("method", method)
-                    put("args", args?.toString() ?: "null")
-                }.toString()
-                val responseBody = loopbackPostRaw("/api/bridge/call", body, timeoutMs)
-                runCatching { JSONObject(responseBody) }.getOrElse { JSONObject() }
-            }
+            else -> throw UnsupportedOperationException(
+                "Android Bun runtime does not expose bridge method: $method",
+            )
         }
     }
 
@@ -321,53 +262,53 @@ class ElizaBunRuntimePlugin : Plugin() {
      * the process owner. This plugin simply asks it to (re)start.
      */
     private fun startServiceReflective() {
-        val ctx = context ?: return
-        try {
-            val serviceClassName = resolveAgentServiceClassName() ?: run {
-                android.util.Log.d(TAG, "ElizaAgentService not registered in ${ctx.packageName}")
-                return
-            }
-            val intent = Intent().apply {
-                component = ComponentName(ctx.packageName, serviceClassName)
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else {
-                ctx.startService(intent)
-            }
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "Could not start ElizaAgentService: ${e.message}")
+        val ctx = context ?: throw IllegalStateException("Android plugin context is unavailable")
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered in ${ctx.packageName}")
+        val intent = Intent().apply {
+            component = ComponentName(ctx.packageName, serviceClassName)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            ctx.startForegroundService(intent)
+        } else {
+            ctx.startService(intent)
         }
     }
 
     private fun stopServiceReflective() {
-        val ctx = context ?: return
-        try {
-            val serviceClassName = resolveAgentServiceClassName() ?: return
-            val intent = Intent().apply {
-                component = ComponentName(ctx.packageName, serviceClassName)
-            }
-            ctx.stopService(intent)
-        } catch (e: Exception) {
-            android.util.Log.w(TAG, "Could not stop ElizaAgentService: ${e.message}")
+        val ctx = context ?: throw IllegalStateException("Android plugin context is unavailable")
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
+        val intent = Intent().apply {
+            component = ComponentName(ctx.packageName, serviceClassName)
         }
+        ctx.stopService(intent)
     }
 
     /**
-     * Read the per-boot bearer token written by `ElizaAgentService`. The
-     * token is stored in a volatile static field (`localAgentToken()`) so we
-     * access it reflectively rather than reading the auth file on disk.
+     * Read the per-boot bearer token through `ElizaAgentService`, which owns
+     * both the in-process value and recovery from its private auth file. The
+     * reflective boundary keeps this reusable plugin independent of the host
+     * application's package name.
      */
     private fun readLocalAgentToken(): String? {
-        return try {
-            val serviceClassName = resolveAgentServiceClassName() ?: return null
-            val cls = Class.forName(serviceClassName)
-            val m = cls.getMethod("localAgentToken")
-            val token = m.invoke(null) as? String
-            token?.trim()?.takeIf { it.isNotEmpty() }
-        } catch (_: Exception) {
-            null
-        }
+        val ctx = context ?: throw IllegalStateException("Android plugin context is unavailable")
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
+        val cls = Class.forName(serviceClassName)
+        val method = cls.getMethod("localAgentToken", Context::class.java)
+        val token = method.invoke(null, ctx) as? String
+        return token?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun readLocalAgentBootState(): JSONObject {
+        val ctx = context ?: throw IllegalStateException("Android plugin context is unavailable")
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
+        val cls = Class.forName(serviceClassName)
+        val method = cls.getMethod("getLocalAgentBootState", Context::class.java)
+        return method.invoke(null, ctx) as? JSONObject
+            ?: throw IllegalStateException("ElizaAgentService returned no boot state")
     }
 
     private fun resolveAgentServiceClassName(): String? {
@@ -390,46 +331,29 @@ class ElizaBunRuntimePlugin : Plugin() {
 
     // ── Local-agent request helpers ──────────────────────────────────────────
 
-    private fun loopbackGet(path: String, timeoutMs: Int, token: String? = readLocalAgentToken()): JSONObject {
-        val raw = loopbackRequestRaw("GET", path, null, null, timeoutMs, token)
-        return runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
+    private fun servicePost(path: String, body: String): JSONObject {
+        return JSONObject(servicePostRaw(path, body))
     }
 
-    private fun loopbackGet(path: String, timeoutMs: Long, token: String? = readLocalAgentToken()): JSONObject =
-        loopbackGet(path, minOf(timeoutMs, Int.MAX_VALUE.toLong()).toInt(), token)
-
-    private fun loopbackPost(path: String, body: String, timeoutMs: Int): JSONObject {
-        val raw = loopbackPostRaw(path, body, timeoutMs)
-        return runCatching { JSONObject(raw) }.getOrElse { JSONObject() }
+    private fun servicePostRaw(path: String, body: String): String {
+        val response = agentServiceRequest("POST", path, null, body, readLocalAgentToken())
+        val status = response.getInt("status")
+        val responseBody = response.getString("body")
+        if (status !in 200..299) {
+            throw IllegalStateException("Local agent POST $path failed with HTTP $status: $responseBody")
+        }
+        return responseBody
     }
 
-    private fun loopbackPostRaw(path: String, body: String, timeoutMs: Int): String {
-        return loopbackRequestRaw("POST", path, null, body, timeoutMs, readLocalAgentToken())
-    }
-
-    /** Returns (httpStatusCode, responseBodyString). */
-    private fun loopbackRequestWithStatus(
+    private fun serviceRequest(
         method: String,
         path: String,
         headers: JSObject?,
         body: String?,
-        timeoutMs: Int,
-        token: String?,
-    ): Pair<Int, String> {
-        val response = agentServiceRequest(method, path, headers, body, timeoutMs, token)
-        return Pair(response.optInt("status", 0), response.optString("body", ""))
-    }
-
-    private fun loopbackRequest(
-        method: String,
-        path: String,
-        headers: JSObject?,
-        body: String?,
-        timeoutMs: Int,
     ): Map<String, Any?> {
-        val response = agentServiceRequest(method, path, headers, body, timeoutMs, readLocalAgentToken())
-        val statusCode = response.optInt("status", 0)
-        val raw = response.optString("body", "")
+        val response = agentServiceRequest(method, path, headers, body, readLocalAgentToken())
+        val statusCode = response.getInt("status")
+        val raw = response.getString("body")
         // Return a structure that mirrors the iOS bridge http_request response shape.
         return mapOf(
             "status" to statusCode,
@@ -451,23 +375,11 @@ class ElizaBunRuntimePlugin : Plugin() {
         else -> ""
     }
 
-    private fun loopbackRequestRaw(
-        method: String,
-        path: String,
-        headers: JSObject?,
-        body: String?,
-        timeoutMs: Int,
-        token: String?,
-    ): String {
-        return agentServiceRequest(method, path, headers, body, timeoutMs, token).optString("body", "")
-    }
-
     private fun agentServiceRequest(
         method: String,
         path: String,
         headers: JSObject?,
         body: String?,
-        timeoutMs: Int,
         token: String?,
     ): JSONObject {
         val requestHeaders = JSONObject(headers?.toString() ?: "{}")
@@ -479,7 +391,6 @@ class ElizaBunRuntimePlugin : Plugin() {
             put("path", path)
             put("headers", requestHeaders)
             put("body", body ?: JSONObject.NULL)
-            put("timeoutMs", timeoutMs)
         }
         val serviceClassName = resolveAgentServiceClassName()
             ?: throw IllegalStateException("ElizaAgentService is not registered")
@@ -504,7 +415,7 @@ class ElizaBunRuntimePlugin : Plugin() {
         val body = JSONObject().apply {
             put("title", "Android Chat")
         }.toString()
-        val response = loopbackPost("/api/conversations", body, DEFAULT_TIMEOUT_MS)
+        val response = servicePost("/api/conversations", body)
         return response.optJSONObject("conversation")?.optString("id")
             ?.takeIf { it.isNotBlank() }
             ?: throw RuntimeException("Failed to create conversation: $response")

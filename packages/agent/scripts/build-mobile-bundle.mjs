@@ -425,6 +425,12 @@ const nativeStubs = {
   // `ELIZA_VAULT_PASSPHRASE` / in-memory keys; ElizaAgentService can mint
   // a per-boot passphrase if needed. Stub keeps the bundle building.
   "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
+  // AOSP exposes a real process API and system shell but does not ship host
+  // native modules from the macOS build machine. Shell falls back to plain
+  // Bun.spawn and coding-tools resolves `rg` from the device PATH, surfacing a
+  // clear missing-tool error when an image has not staged it.
+  "@lydell/node-pty": path.join(stubsDir, "empty.cjs"),
+  "@vscode/ripgrep": path.join(stubsDir, "empty.cjs"),
   // `puppeteer-core` is the local-Chromium driver behind
   // plugin-app-control's AppVerificationService pixel-verification path
   // (lazy `import("puppeteer-core")`). The plugin now bundles on mobile for
@@ -489,13 +495,10 @@ if (TARGET === "ios-jsc") {
   nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
 }
 
-// Optional @elizaos plugins that the agent runtime statically references but
-// transitively pull in old/incompatible `@elizaos/core` versions. Stubbing
-// them keeps the bundle from carrying multiple AgentRuntime classes (the
-// failure mode is: plugin-sql's adapter exposes methods one runtime expects
-// but the OTHER runtime doesn't, then `getAgentsByIds is not a function` at
-// boot). The narrow list below is exactly the packages whose dependency
-// closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
+// Optional @elizaos plugins whose desktop-only dependency closures cannot run
+// in a mobile process. The runtime allow-list is still authoritative, but
+// stubbing these packages keeps unreachable native/browser automation code out
+// of the payload and prevents host-machine binaries leaking into the APK.
 //
 // Other packages — including `@elizaos/plugin-task-coordinator`,
 // `@elizaos/plugin-personal-assistant`, `@elizaos/plugin-training`
@@ -507,8 +510,6 @@ if (TARGET === "ios-jsc") {
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
   // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
   // dependency is `@elizaos/core` (workspace:*), so it does not drag an
   // incompatible core into the bundle, and `api/commands-routes.ts` imports the
@@ -578,6 +579,21 @@ const optionalPluginStubs = {
   // routes instead, so stub the whole package like whatsapp/signal above.
   "@elizaos/plugin-meetings": path.join(stubsDir, "null-plugin.cjs"),
 };
+
+// iOS cannot spawn child processes. Android's direct/AOSP runtime can, and the
+// collector loads these plugins only when ELIZA_LOCAL_LLAMA=1 identifies the
+// privileged image. Keep their real implementations in the shared Android
+// bundle so the AOSP allow-list names executable code instead of null proxies.
+if (TARGET !== "android") {
+  optionalPluginStubs["@elizaos/plugin-shell"] = path.join(
+    stubsDir,
+    "null-plugin.cjs",
+  );
+  optionalPluginStubs["@elizaos/plugin-coding-tools"] = path.join(
+    stubsDir,
+    "null-plugin.cjs",
+  );
+}
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
 
@@ -2043,7 +2059,6 @@ const manifest = {
   externalsAsStubs: Object.keys(stubAliases),
   unsupportedAndroidRuntimeStubs: [
     "@elizaos/plugin-agent-orchestrator",
-    "@elizaos/plugin-shell",
     "@node-llama-cpp/linux-arm64",
     "@node-llama-cpp/linux-x64",
     "@node-llama-cpp/mac-arm64",

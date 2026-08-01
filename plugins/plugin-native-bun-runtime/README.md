@@ -16,7 +16,8 @@ The full Bun engine artifact is produced outside this package by the
 `packages/native/bun-runtime` build harness and an `elizaos/bun` fork.
 
 The Android implementation delegates lifecycle and RPC calls to the host app's
-`ElizaAgentService` over its loopback API.
+`ElizaAgentService` through its authenticated in-process request boundary,
+backed by an abstract Unix-domain socket owned by the service.
 
 ## Install
 
@@ -112,7 +113,7 @@ The plugin emits two Capacitor events:
 
 ## Limitations (v1)
 
-- Android requires the host app's `ElizaAgentService` loopback API.
+- Android requires the host app's `ElizaAgentService` request boundary.
 - Full Bun is only used when `ElizaBunEngine.framework` is embedded. Outside
   iOS store local mode, `engine: "auto"` can fall back to the compatibility
   JSContext host for development/sideload builds.

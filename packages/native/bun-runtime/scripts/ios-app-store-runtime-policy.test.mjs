@@ -59,5 +59,7 @@ test("formats remediation with build settings", () => {
 
   assert.match(text, /ELIZA_IOS_DISABLE_PROCESS_SPAWN=1/);
   assert.match(text, /-DENABLE_BUN_SUBPROCESS=OFF/);
+  assert.match(text, /fail-closed implementations/);
+  assert.match(text, /nm -u must prove/);
   assert.match(appStoreRuntimeBuildSettingsText(), /ELIZA_IOS_NO_JIT=1/);
 });

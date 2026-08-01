@@ -49,8 +49,6 @@ export interface DeviceSupportProfile {
   label: string;
   /** The env snapshot that characterizes this profile. */
   env: TerminalSupportEnv;
-  /** For Android profiles, whether a staged shell is present. */
-  androidShellAvailable?: boolean;
 }
 
 /** Documented device/runtime profiles, mirroring terminal-capabilities.ts. */
@@ -72,14 +70,13 @@ export const ORCHESTRATOR_DEVICE_PROFILES: readonly DeviceSupportProfile[] = [
   },
   {
     id: "android-store",
-    label: "Android Play/store build (not local-yolo)",
+    label: "Android mobile runtime",
     env: { platform: "android" },
   },
   {
     id: "android-local-yolo",
-    label: "Android direct/AOSP local-yolo with staged shell",
-    env: { platform: "android", runtimeMode: "local-yolo" },
-    androidShellAvailable: true,
+    label: "Android direct/AOSP local-yolo (ACP executable not shipped)",
+    env: { platform: "android" },
   },
 ];
 
@@ -94,9 +91,7 @@ export interface DeviceSupportMatrixRow {
 /** Compute the full matrix through the same pure gate the runtime uses. */
 export function buildOrchestratorDeviceSupportMatrix(): DeviceSupportMatrixRow[] {
   return ORCHESTRATOR_DEVICE_PROFILES.map((profile) => {
-    const support = classifyTerminalSupport(profile.env, {
-      androidShellAvailable: profile.androidShellAvailable,
-    });
+    const support = classifyTerminalSupport(profile.env);
     return {
       id: profile.id,
       label: profile.label,

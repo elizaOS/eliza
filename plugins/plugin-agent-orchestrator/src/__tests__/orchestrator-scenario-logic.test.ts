@@ -116,7 +116,7 @@ describe("orchestrator scenario logic (#8932)", () => {
     const byId = new Map(evidence.matrix.map((row) => [row.id, row]));
 
     expect(byId.get("desktop")?.supported).toBe(true);
-    expect(byId.get("android-local-yolo")?.supported).toBe(true);
+    expect(byId.get("android-local-yolo")?.reason).toBe("missing_acp_runtime");
     expect(byId.get("ios")?.reason).toBe("vanilla_mobile");
     expect(byId.get("store")?.reason).toBe("store_build");
 
@@ -124,8 +124,7 @@ describe("orchestrator scenario logic (#8932)", () => {
       expect.arrayContaining([
         "MOBILE_TERMINAL_UNSUPPORTED",
         "STORE_BUILD_BLOCKED",
-        "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO",
-        "AOSP_TERMINAL_MISSING_SHELL",
+        "ANDROID_ACP_RUNTIME_UNAVAILABLE",
       ]),
     );
   });

@@ -163,12 +163,14 @@ JSC_useJIT=0
 BUN_JSC_useJIT=0
 ```
 
-Fork builds should consume those as compile-time guards and compile out
-`Bun.ffi`, native extension loading, `Bun.spawn`, `node:child_process`, shell
-helpers, package install runners, and executable-memory/JIT permission paths for
-the `ios-arm64` slice. The verifier groups failures by imported symbol family so
-device builds fail on the source feature that remains, not just on a raw `nm`
-line.
+Fork builds should consume those as compile-time guards. The upstream CMake
+build currently accepts several of the fork-specific settings as unconsumed
+cache entries, so the harness does not treat their presence as proof. Its shim
+also binds dynamic-loading, process-spawn, and executable-memory APIs to hidden
+fail-closed implementations, and the final device binary must pass an `nm -u`
+scan proving no forbidden dynamic import remains. The verifier groups failures
+by imported-symbol family so device builds identify the capability that remains
+reachable, not just a raw `nm` line.
 
 When the Bun fork emits `libbun-profile.a` or `CMakeFiles/bun-profile.dir/*.o`
 plus `bun-zig.o`, this package links those objects with
@@ -219,13 +221,10 @@ Implemented in this repo:
 - Strict probes that prove current upstream Bun has no `bun-ios-*` compile
   target.
 
-Still required in the Bun fork:
+Still required for a release-ready full engine:
 
 - Add or maintain iOS and iOS Simulator targets in Bun's Zig/WebKit/JSC build.
-- Produce `ElizaBunEngine.xcframework`.
 - Export `bun_start(...)` compatible with `src/ios/bun_ios.h`, or export the
   Eliza ABI directly.
-- Keep Bun FFI/native-plugin loading disabled or compiled out for iOS App Store
-  slices so the engine does not import arbitrary dynamic-loader symbols.
-- Run simulator smoke against `public/agent/agent-bundle.js`, then repeat on a
-  developer-signed sideload/device build.
+- Run the full runtime and app smoke sequence against the generated device and
+  simulator slices, including a developer-signed sideload/device build.

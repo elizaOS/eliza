@@ -537,7 +537,7 @@ function validateXcframework(root, targetInfo = info) {
   );
 }
 
-if (fs.existsSync(artifact) && !rebuild) {
+if (fs.existsSync(artifact) && !rebuild && !packageOnly) {
   const hasRequestedLibrary = allIosXcframeworkLibraries(artifact).some(
     (entry) => libraryMatchesTarget(entry, info),
   );
@@ -699,7 +699,7 @@ function stageWebKitIfRequested(info) {
         `Expected ${path.join(staged, "lib", "libJavaScriptCore.a")}, or set:`,
         "  ELIZA_BUN_IOS_WEBKIT_BUILD_DIR=/path/to/WebKit/build-ios-{device,simulator}",
         "  ELIZA_BUN_IOS_WEBKIT_PATH=/path/with/include-and-lib",
-        "Build WebKit/JSC with ENABLE_JIT=OFF, ENABLE_WEBASSEMBLY=ON, and ENABLE_C_LOOP=OFF first.",
+        "Build WebKit/JSC with EVENT_LOOP_TYPE=Bun, ENABLE_JIT=OFF, ENABLE_WEBASSEMBLY=ON, and ENABLE_C_LOOP=OFF first.",
       ].join("\n"),
     );
   }
@@ -781,7 +781,7 @@ function validateStagedWebKit(webkitPath) {
     {
       name: "WTF",
       path: path.join(webkitPath, "lib", "libWTF.a"),
-      symbols: ["__ZN3WTF10initializeEv"],
+      symbols: ["__ZN3WTF10initializeEv", "_WTFTimer__fire"],
     },
     {
       name: "bmalloc",
@@ -833,6 +833,7 @@ function validateStagedWebKit(webkitPath) {
       "ENABLE_JIT",
       "ENABLE_STATIC_JSC",
       "ENABLE_WEBASSEMBLY",
+      "USE_BUN_EVENT_LOOP",
       "USE_BUN_JSC_ADDITIONS",
     ]) {
       const define = contents.match(
@@ -851,6 +852,7 @@ function validateStagedWebKit(webkitPath) {
     ["ENABLE_JIT", false],
     ["ENABLE_STATIC_JSC", true],
     ["ENABLE_WEBASSEMBLY", true],
+    ["USE_BUN_EVENT_LOOP", true],
     ["USE_BUN_JSC_ADDITIONS", true],
   ];
   for (const [flag, expected] of requiredFlags) {
@@ -894,7 +896,6 @@ function collectStaticInputs(buildDir, webkitPath) {
   const inputs = [];
   const objectDir = path.join(buildDir, "CMakeFiles", "bun-profile.dir");
   const bunZigObject = path.join(buildDir, "bun-zig.o");
-  const bundledArchive = path.join(buildDir, "libeliza-bun-profile.a");
   const cmakeArchive = path.join(buildDir, "libbun-profile.a");
 
   if (fs.existsSync(cmakeArchive)) {
@@ -915,11 +916,17 @@ function collectStaticInputs(buildDir, webkitPath) {
     if (objectPaths.length === 0) {
       fail(`no Bun object files found under ${objectDir}`);
     }
-    run("ar", ["rcs", bundledArchive, ...objectPaths, bunZigObject]);
-    inputs.push({
-      kind: info.target === "device" ? "normal" : "force",
-      path: bundledArchive,
-    });
+    // CMake's object-library fallback is already a complete link input. Feeding
+    // those objects to clang directly avoids materializing a second ~5 GB
+    // archive beside them, which can otherwise exhaust a clean mobile-builder
+    // volume after an otherwise successful compile.
+    inputs.push(
+      ...objectPaths.map((objectPath) => ({
+        kind: "normal",
+        path: objectPath,
+      })),
+      { kind: "normal", path: bunZigObject },
+    );
   } else {
     fail(
       `CMake build did not produce ${cmakeArchive} or ${objectDir} + bun-zig.o`,
@@ -1150,6 +1157,7 @@ function buildWithCmake() {
 
   prepareBunSourceForCmake();
   patchBunSetupZigForWrapper();
+  patchBunIosZigSdkSelection();
   const zigWrapper = ensureZigBuildWrapper(buildDir);
   const buildEnv = {
     ...env,
@@ -1240,6 +1248,48 @@ function patchBunSetupZigForWrapper() {
   }
   contents = contents.replace(original, replacement);
   fs.writeFileSync(setupZig, contents);
+}
+
+function patchBunIosZigSdkSelection() {
+  const buildBun = path.join(sourceDir, "cmake", "targets", "BuildBun.cmake");
+  if (!fs.existsSync(buildBun)) return;
+  const marker = "ELIZA_BUN_IOS_SDK";
+  let contents = fs.readFileSync(buildBun, "utf8");
+  if (contents.includes(marker)) return;
+  // biome-ignore-start lint/suspicious/noTemplateCurlyInString: literal CMake ${VAR} syntax written into BuildBun.cmake, not JS interpolation.
+  const original = [
+    'if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_OSX_SYSROOT MATCHES "iphone")',
+    "  execute_process(",
+    "    COMMAND xcrun --sdk iphonesimulator --show-sdk-path",
+    "    OUTPUT_VARIABLE IOS_SDK_PATH",
+    "    OUTPUT_STRIP_TRAILING_WHITESPACE",
+    "  )",
+    "  set(ZIG_ENVIRONMENT IOS_SYSROOT=${IOS_SDK_PATH})",
+    "endif()",
+  ].join("\n");
+  const replacement = [
+    'if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_OSX_SYSROOT MATCHES "iphone")',
+    '  if(CMAKE_OSX_SYSROOT MATCHES "[Ss]imulator")',
+    "    set(ELIZA_BUN_IOS_SDK iphonesimulator)",
+    "  else()",
+    "    set(ELIZA_BUN_IOS_SDK iphoneos)",
+    "  endif()",
+    "  execute_process(",
+    "    COMMAND xcrun --sdk ${ELIZA_BUN_IOS_SDK} --show-sdk-path",
+    "    OUTPUT_VARIABLE IOS_SDK_PATH",
+    "    OUTPUT_STRIP_TRAILING_WHITESPACE",
+    "  )",
+    "  set(ZIG_ENVIRONMENT IOS_SYSROOT=${IOS_SDK_PATH})",
+    "endif()",
+  ].join("\n");
+  // biome-ignore-end lint/suspicious/noTemplateCurlyInString: end of literal CMake block.
+  if (!contents.includes(original)) {
+    fail(
+      `cannot patch ${buildBun}; expected iOS Zig SDK selection block was not found`,
+    );
+  }
+  contents = contents.replace(original, replacement);
+  fs.writeFileSync(buildBun, contents);
 }
 
 function ensureZigBuildWrapper(buildDir) {

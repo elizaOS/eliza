@@ -8,13 +8,13 @@ private let fullBunHostCallCallback: @convention(c) (
     UnsafePointer<CChar>?,
     UnsafePointer<CChar>?,
     Int32
-) -> UnsafeMutablePointer<CChar>? = { methodPtr, payloadPtr, timeoutMs in
+) -> UnsafeMutablePointer<CChar>? = { methodPtr, payloadPtr, reserved in
+    _ = reserved
     let method = methodPtr.map { String(cString: $0) } ?? ""
     let payloadJson = payloadPtr.map { String(cString: $0) } ?? "null"
     let response = FullBunEngineHost.shared.handleHostCall(
         method: method,
-        payloadJson: payloadJson,
-        timeoutMs: timeoutMs
+        payloadJson: payloadJson
     )
     return strdup(response)
 }
@@ -423,11 +423,9 @@ final class FullBunEngineHost {
 
     fileprivate func handleHostCall(
         method: String,
-        payloadJson: String,
-        timeoutMs: Int32
+        payloadJson: String
     ) -> String {
-        _ = timeoutMs
-        NSLog("[FullBunEngineHost] host call method=\(method) payloadBytes=\(payloadJson.lengthOfBytes(using: .utf8)) timeoutMs=\(timeoutMs)")
+        NSLog("[FullBunEngineHost] host call method=\(method) payloadBytes=\(payloadJson.lengthOfBytes(using: .utf8))")
         do {
             let payload = try decodeHostPayload(payloadJson)
             switch method {

@@ -82,8 +82,8 @@ export default scenario({
       text: "Exercise coding-agent device and voice reach.",
       actionName: ORCHESTRATOR_DEVICE_MODALITY_REACH,
       responseIncludesAny: [
-        "desktop + Android local-yolo support",
-        "iOS/store clean stubs",
+        "desktop local support",
+        "mobile/store clean stubs",
         "voice-origin iOS remote-controller task",
       ],
       assertTurn: (turn) => {
@@ -96,10 +96,11 @@ export default scenario({
             : {};
         const matrix = asRecords(deviceSupport.matrix);
         const ids = new Map(matrix.map((row) => [String(row.id), row]));
-        for (const id of ["desktop", "android-local-yolo"]) {
-          if (ids.get(id)?.supported !== true) {
-            return `expected ${id} to be supported`;
-          }
+        if (ids.get("desktop")?.supported !== true) {
+          return "expected desktop to be supported";
+        }
+        if (ids.get("android-local-yolo")?.reason !== "missing_acp_runtime") {
+          return `expected Android missing_acp_runtime, saw ${String(ids.get("android-local-yolo")?.reason)}`;
         }
         if (ids.get("ios")?.reason !== "vanilla_mobile") {
           return `expected ios reason vanilla_mobile, saw ${String(ids.get("ios")?.reason)}`;
@@ -112,7 +113,7 @@ export default scenario({
         for (const reason of [
           "MOBILE_TERMINAL_UNSUPPORTED",
           "STORE_BUILD_BLOCKED",
-          "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO",
+          "ANDROID_ACP_RUNTIME_UNAVAILABLE",
         ]) {
           if (!stubReasons.has(reason)) {
             return `expected stub reason ${reason}`;

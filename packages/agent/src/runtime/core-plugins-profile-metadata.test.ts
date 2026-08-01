@@ -81,13 +81,10 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
   });
 
   it("derives ELIZAOS_ANDROID_TERMINAL_PLUGINS in the historical load ORDER", () => {
-    // Order matters conceptually for AOSP terminal-surface load; agent-
-    // orchestrator leads the desktop list but must load LAST here, driven by
-    // aospTerminalOrder rather than the metadata row order. Assert exact order.
+    // Shell must register before the coding actions that consume it.
     expect([...ELIZAOS_ANDROID_TERMINAL_PLUGINS]).toEqual([
       "@elizaos/plugin-shell",
       "@elizaos/plugin-coding-tools",
-      "agent-orchestrator",
     ]);
   });
 

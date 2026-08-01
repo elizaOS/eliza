@@ -1,15 +1,10 @@
+/**
+ * Pure watchdog and restart-state transitions for the Android agent service.
+ * Keeping process and socket inspection outside this class makes the state
+ * transitions independently testable.
+ */
 package ai.elizaos.app;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
-/**
- * Pure watchdog/restart decisions for {@link ElizaAgentService}.
- *
- * Keep this class free of Android framework calls so the service's crash-loop
- * limits and health interpretation can be exercised on real devices without
- * launching the heavyweight local agent process.
- */
 final class ElizaAgentWatchdogPolicy {
     private ElizaAgentWatchdogPolicy() {}
 
@@ -44,20 +39,6 @@ final class ElizaAgentWatchdogPolicy {
             this.allowed = allowed;
             this.nextRestartAttempts = nextRestartAttempts;
             this.delayMs = delayMs;
-        }
-    }
-
-    static boolean isReadyHealthBody(String body) {
-        if (body == null || body.trim().isEmpty()) return false;
-        try {
-            JSONObject json = new JSONObject(body);
-            if (!json.optBoolean("ready", false)) return false;
-            String runtime = json.optString("runtime", "");
-            if (!runtime.isEmpty() && !"ok".equals(runtime)) return false;
-            String agentState = json.optString("agentState", "");
-            return agentState.isEmpty() || "running".equals(agentState);
-        } catch (JSONException error) {
-            return false;
         }
     }
 

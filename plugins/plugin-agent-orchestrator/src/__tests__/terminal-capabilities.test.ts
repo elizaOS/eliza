@@ -72,7 +72,7 @@ describe("orchestrator terminal capability detection", () => {
     expect(resolveExecutable("acpx")).toBe(acpx);
   });
 
-  it("accepts direct Android local-yolo when a shell is executable", () => {
+  it("rejects Android local-yolo when no ACP runtime is staged", () => {
     const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
@@ -81,7 +81,8 @@ describe("orchestrator terminal capability detection", () => {
 
     const support = detectOrchestratorTerminalSupport();
 
-    expect(support.supported).toBe(true);
+    expect(support.supported).toBe(false);
+    expect(support.reason).toBe("missing_acp_runtime");
   });
 
   it("rejects Play/store Android even when local-yolo has a staged shell", () => {
@@ -109,7 +110,7 @@ describe("orchestrator terminal capability detection", () => {
     expect(support.message).toContain("iOS");
   });
 
-  it("accepts branded AOSP local-yolo when a shell is executable", () => {
+  it("does not treat an AOSP shell as an ACP runtime", () => {
     const shell = executable("sh");
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_AOSP_BUILD = "1";
@@ -119,6 +120,7 @@ describe("orchestrator terminal capability detection", () => {
 
     const support = detectOrchestratorTerminalSupport();
 
-    expect(support.supported).toBe(true);
+    expect(support.supported).toBe(false);
+    expect(support.reason).toBe("missing_acp_runtime");
   });
 });

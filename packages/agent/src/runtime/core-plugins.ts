@@ -97,14 +97,11 @@ export interface CorePluginProfile {
  */
 export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   // Desktop-only (PTY/native workspace tooling; absent from cloud images).
-  // agent-orchestrator is also an AOSP terminal surface, but loads LAST there
-  // (aospTerminalOrder: 2) while leading the desktop list.
-  {
-    plugin: "agent-orchestrator",
-    desktopOnly: true,
-    aospTerminal: true,
-    aospTerminalOrder: 2,
-  },
+  // Coding-agent backends are desktop-only because the Android image does not
+  // stage any ACP executable. A shell alone is not enough to make orchestration
+  // usable; exposing it on AOSP produced actions whose first spawn always
+  // failed while the manifest claimed the plugin was supported.
+  { plugin: "agent-orchestrator", desktopOnly: true },
   { plugin: "coding-tools", desktopOnly: true },
   // Mobile-safe core boot. `plugin-sql` is the required bootstrap dependency.
   { plugin: "@elizaos/plugin-sql", mobileCore: true, requiredBootstrap: true },

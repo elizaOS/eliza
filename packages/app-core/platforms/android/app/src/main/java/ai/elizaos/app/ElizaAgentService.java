@@ -1,3 +1,8 @@
+/**
+ * Owns the Android Eliza agent process, its private Unix-socket request
+ * boundary, and crash recovery. Socket state and child-process state provide
+ * liveness without injecting health requests into the agent event loop.
+ */
 package ai.elizaos.app;
 
 import android.app.ActivityManager;
@@ -43,21 +48,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Foreground service that owns the local Eliza agent process on Android.
- *
- * On startup the service unpacks the bun runtime + musl loader + matching
- * shared libraries + agent bundle from the APK assets into the app's
- * writable data dir, marks them executable, and {@link Runtime#exec}'s
- * the agent. A foreground notification keeps the OS from killing the
- * hosting process; a watchdog thread polls process liveness and the
- * agent's HTTP health endpoint and restarts the process on crash with
- * exponential backoff.
- *
- * Mirrors {@link GatewayConnectionService}'s lifecycle and static API
- * shape — start/stop/restart helpers match what other call sites already
- * use.
- */
 public class ElizaAgentService extends Service {
 
     private static final String TAG = "ElizaAgent";
@@ -129,10 +119,9 @@ public class ElizaAgentService extends Service {
     static final String BIONIC_INFERENCE_SOCKET_NAME = "eliza_bionic_infer_v1";
 
     /**
-     * Abstract-namespace AF_UNIX socket the on-device agent binds to serve the
-     * WebView's local-agent requests (the port-free replacement for the
-     * 127.0.0.1:31337 loopback HTTP path). The bun agent listens (see
-     * android/bridge.ts) and this service connects per request/stream, speaking
+     * Abstract-namespace AF_UNIX socket the on-device agent binds to serve
+     * local-agent requests. The bun agent listens (see android/bridge.ts) and
+     * this service connects per request/stream, speaking
      * the same NDJSON frame protocol the iOS bridge uses. Abstract namespace
      * (no filesystem path) is the sanctioned priv_app IPC — same reason the
      * bionic host above uses it. Exported to the agent as
@@ -147,38 +136,11 @@ public class ElizaAgentService extends Service {
     private static final ConcurrentHashMap<String, LocalSocket> ACTIVE_LOCAL_AGENT_STREAMS =
         new ConcurrentHashMap<>();
 
-    // The on-device boot path is heavy: PGlite extension extraction +
-    // plugin resolution + libllama dlopen + first-time model load can
-    // exceed several minutes on a cold cuttlefish x86_64 image. The chat path is
-    // even heavier: a single planner-produced prompt at ~12k tokens,
-    // chunked through llama_decode on emulated CPU, can run 15–30 min
-    // wall-clock for a single chat turn (multiple model invocations:
-    // planner, action evaluator, response generator).
-    //
-    // Strategy: combine a generous interval with a smart probe that
-    // distinguishes "process dead" from "process alive but busy in a
-    // native FFI call". When the HTTP probe times out but the process
-    // is alive (i.e. bun is mid-llama_decode and hasn't returned to its
-    // event loop yet), we DO NOT count a strike — the process is doing
-    // exactly what it should be doing, just synchronously inside a
-    // native call. We only count strikes when the process is actually
-    // dead OR returns non-2xx / non-ready health (a real crash signal).
-    // Strikes accumulate when the process is dead, which forces a
-    // restart via the existing scheduleRestart() path.
-    //
-    // 600 s × 3 = 1800 s = 30 min worst-case grace window. Real phone
-    // hardware (Tensor / Adreno) finishes a chat turn in seconds, so
-    // this only matters for AOSP smoke runs on cvd. HEALTH_TIMEOUT_MS
-    // = 30 s is a conservative bound on a single HTTP listener wakeup
-    // — bun's setImmediate yield should hit within a few seconds even
-    // mid-decode, and 30 s catches genuine TCP-level hangs without
-    // racing against real long-running calls.
+    // A bound socket remains observable while synchronous local inference owns
+    // Bun's event loop, so the watchdog does not infer failure from response
+    // time or inject a competing HTTP-shaped request.
     private static final long WATCHDOG_INTERVAL_MS = 600_000L;
     private static final int HEALTH_FAIL_STRIKES = 3;
-    private static final long HEALTH_TIMEOUT_MS = 30_000L;
-    // Keep this aligned with packages/app/scripts/mobile-local-chat-smoke.mjs:
-    // ANDROID_HEALTH_ATTEMPTS (240) × 2000 ms = 480 s.
-    private static final long STARTUP_HEALTH_GRACE_MS = 480_000L;
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
@@ -198,7 +160,7 @@ public class ElizaAgentService extends Service {
     private int restartAttempts;
     private String currentStatus = "starting";
 
-    // Per-boot bearer token for the WebView↔agent loopback. Generated when
+    // Per-boot bearer token for the WebView↔agent IPC boundary. Generated when
     // the service first starts the agent process and cleared on stop.
     // The Capacitor agent plugin reads it from `localAgentToken()` to
     // hydrate `window.__ELIZA_API_TOKEN__` so the WebView's fetches
@@ -214,12 +176,9 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Cross-process token recovery. The token is a per-process static, but the
-     * bun agent is a DETACHED process that outlives the app process that started
-     * it — so a freshly-launched WebView process (e.g. after a boot autostart)
-     * sees a null static even though a healthy agent is running, which dead-ends
-     * the dashboard at the pairing screen. Fall back to the recovery file that
-     * {@link #writeLocalAgentTokenFile} persists, and cache it for this process.
+     * Report lifecycle state without issuing an HTTP request. The request
+     * socket is the readiness signal; process ownership and launcher
+     * diagnostics distinguish an active boot from a terminal failure.
      */
     public static JSONObject getLocalAgentBootState(Context context) throws JSONException {
         ElizaAgentService instance = activeInstance;
@@ -327,10 +286,10 @@ public class ElizaAgentService extends Service {
     /**
      * Shared in-process request surface for Android native plugins and workers.
      *
-     * The current Android agent still serves routes from the Bun child process
-     * over loopback, but callers should route through this method instead of
-     * opening their own sockets. That keeps auth, header filtering, body caps,
-     * and future Binder/stdio replacement behind one app-owned boundary.
+     * The Android agent serves routes from the Bun child process over an
+     * app-private Unix domain socket. Callers route through this method so
+     * authentication, header filtering, body caps, and transport ownership
+     * remain behind one app-owned boundary.
      */
     public static String requestLocalAgent(String requestJson) throws IOException, JSONException {
         LocalAgentRequest req = parseLocalAgentRequest(requestJson);
@@ -562,16 +521,6 @@ public class ElizaAgentService extends Service {
      */
     private static JSONObject dispatchBufferedOverSocket(JSONObject payload)
         throws IOException, JSONException {
-        return dispatchBufferedOverSocket(payload, 0);
-    }
-
-    /**
-     * The watchdog uses a bounded read solely to classify a liveness probe as
-     * BUSY; user/model requests call the unbounded overload and remain
-     * owner-cancellable instead of being failed by elapsed wall time.
-     */
-    private static JSONObject dispatchBufferedOverSocket(JSONObject payload, int readTimeoutMs)
-        throws IOException, JSONException {
         JSONObject frame = new JSONObject()
             .put("id", nextFrameId())
             .put("method", "http_request")
@@ -579,10 +528,6 @@ public class ElizaAgentService extends Service {
 
         LocalSocket socket = connectLocalAgentSocket();
         try {
-            // Buffered requests may include a complete model turn. Their
-            // lifecycle is owned by the caller closing the transport, not by a
-            // duration that cannot distinguish slow inference from a dead run.
-            socket.setSoTimeout(readTimeoutMs);
             writeFrameLine(socket.getOutputStream(), frame);
             String line = readFrameLine(socket.getInputStream());
             if (line == null || line.isEmpty()) {
@@ -1790,10 +1735,10 @@ public class ElizaAgentService extends Service {
             }
 
             // Detached agents outlive the service/app process that launched
-            // them. If a prior instance's agent is still bound to the loopback
-            // port, ADOPT it instead of relaunching: launch.sh pkills any
-            // running bun before forking a fresh one, so a needless relaunch
-            // tears the live HTTP listener down for tens of seconds and the
+            // them. If a prior instance still owns the request socket, ADOPT
+            // it instead of relaunching: launch.sh pkills any running bun
+            // before forking a fresh one, so a needless relaunch tears the
+            // live request boundary down for tens of seconds and the
             // WebView's /api/auth/me startup probe fails with "Backend
             // Unreachable". That is the emulator e2e churn — the Activity/FGS
             // gets recreated mid-run and onStartCommand → startAgentProcess
@@ -1916,13 +1861,10 @@ public class ElizaAgentService extends Service {
             // visible error (stdio is on /dev/null).
             ensureRuntimeLibraryLinks(abiDir);
 
-            // Generate a fresh per-boot token for the WebView↔agent loopback.
-            // Without this the loopback API would accept any local request
-            // — including from other apps on the device — because the
-            // agent's default isTrustedLocalRequest() heuristic treats
-            // loopback as authoritative, which is wrong on multi-app
-            // Android. ELIZA_REQUIRE_LOCAL_AUTH on the server side flips
-            // that heuristic off so every request needs the bearer token.
+            // Mint per-boot credentials for authenticated clients and terminal
+            // dispatch. The production request transport is the app-private
+            // socket; an explicitly enabled dev/LAN listener can still require
+            // the API token at its own external boundary.
             String token = generateLocalAgentToken();
             String terminalToken = generateLocalAgentToken();
             currentLocalAgentToken = token;
@@ -3201,9 +3143,13 @@ public class ElizaAgentService extends Service {
 
     private void startDetachedStartupProbe(final long launchStartedAtMs, final String startupTraceId) {
         Thread probe = new Thread(() -> {
-            long deadline = launchStartedAtMs + STARTUP_HEALTH_GRACE_MS;
-            while (!shuttingDown && System.currentTimeMillis() < deadline) {
-                ElizaAgentWatchdogPolicy.ProbeResult result = probeHealth();
+            while (!shuttingDown) {
+                synchronized (processLock) {
+                    if (!detachedAgentMode || detachedLaunchStartedAtMs != launchStartedAtMs) {
+                        return;
+                    }
+                }
+                ElizaAgentWatchdogPolicy.ProbeResult result = probeAgentLiveness();
                 if (result == ElizaAgentWatchdogPolicy.ProbeResult.OK) {
                     restartAttempts = 0;
                     synchronized (processLock) {
@@ -3254,32 +3200,16 @@ public class ElizaAgentService extends Service {
                     return;
                 }
             }
-            boolean stillCurrent;
-            synchronized (processLock) {
-                stillCurrent = detachedAgentMode && detachedLaunchStartedAtMs == launchStartedAtMs;
-            }
-            if (stillCurrent && !shuttingDown) {
-                Log.w(TAG, "Detached agent did not become healthy within "
-                    + STARTUP_HEALTH_GRACE_MS + "ms. Scheduling restart.");
-                Map<String, String> details = new LinkedHashMap<>();
-                details.put("startupHealthGraceMs", String.valueOf(STARTUP_HEALTH_GRACE_MS));
-                appendDiagnosticEvent("detached-agent-startup-timeout", details);
-                scheduleRestart();
-            }
         }, "ElizaAgent-detached-startup-probe");
         probe.setDaemon(true);
         probe.start();
     }
 
     /**
-     * Quick liveness probe for an already-running detached agent: can a
-     * connection be opened to its request socket? Unlike {@link #probeHealth()}
-     * this only completes the socket handshake, so it returns true even while bun
-     * is busy inside a synchronous native call (mid-llama_decode) and the accept
-     * loop is briefly unresponsive to a full request — precisely the state we
-     * must NOT mistake for a dead agent and relaunch over. Used by {@link
-     * #startAgentProcess()} to adopt a surviving detached agent instead of
-     * killing + restarting it when the service/Activity is recreated.
+     * A socket handshake proves the agent still owns its request boundary even
+     * while synchronous inference prevents it from servicing an HTTP-shaped
+     * frame. Adoption and watchdog checks use this instead of adding work to the
+     * agent event loop.
      */
     private static boolean isLocalAgentSocketListening() {
         LocalSocket socket = new LocalSocket();
@@ -3294,52 +3224,16 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private ElizaAgentWatchdogPolicy.ProbeResult probeHealth() {
-        try {
-            JSONObject payload = new JSONObject()
-                .put("method", "GET")
-                .put("path", "/api/health");
-            JSONObject result = dispatchBufferedOverSocket(payload, (int) HEALTH_TIMEOUT_MS);
-            int status = result.optInt("status", 0);
-            if (status >= 200 && status < 300) {
-                String body = result.optString("body", "");
-                if (!isReadyHealthBody(body)) {
-                    Log.w(TAG, "Agent health endpoint responded before ready: " + compactForLog(body));
-                    return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
-                }
-                return ElizaAgentWatchdogPolicy.ProbeResult.OK;
-            }
-            // Non-2xx: agent process is up but not healthy/authenticated.
-            // Treat as DEAD so strikes accumulate — a crash/readiness signal.
-            return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
-        } catch (IOException | JSONException error) {
-            // The request failed (socket connect refused / read interrupt / no
-            // response). If the direct child process is still alive the most
-            // likely cause is bun synchronously inside a native FFI call. Detached
-            // mode has no live Java child to inspect, so use a cheap connect
-            // probe: an accepting socket means the detached bun is alive but too
-            // busy to answer a full request; a closed socket is DEAD and the
-            // startup probe/watchdog owns retry timing.
-            Process current;
-            boolean detached;
-            synchronized (processLock) {
-                current = agentProcess;
-                detached = detachedAgentMode;
-            }
-            if (current != null && current.isAlive()) {
-                return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
-            }
-            if (detached && isLocalAgentSocketListening()) {
-                appendDiagnosticEvent("detached-agent-probe-busy-socket-open", null);
-                Log.i(TAG, "Detached agent request probe failed but socket is accepting — likely mid-decode. No strike.");
-                return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
-            }
-            return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
+    private ElizaAgentWatchdogPolicy.ProbeResult probeAgentLiveness() {
+        if (isLocalAgentSocketListening()) {
+            return ElizaAgentWatchdogPolicy.ProbeResult.OK;
         }
-    }
-
-    private static boolean isReadyHealthBody(String body) {
-        return ElizaAgentWatchdogPolicy.isReadyHealthBody(body);
+        synchronized (processLock) {
+            if (agentProcess != null && agentProcess.isAlive()) {
+                return ElizaAgentWatchdogPolicy.ProbeResult.BUSY;
+            }
+        }
+        return ElizaAgentWatchdogPolicy.ProbeResult.DEAD;
     }
 
     private static String compactForLog(String value) {
@@ -3526,11 +3420,9 @@ public class ElizaAgentService extends Service {
     // ── Watchdog ─────────────────────────────────────────────────────────
 
     /**
-     * Polls the agent process and the local health endpoint every
-     * {@link #WATCHDOG_INTERVAL_MS}. If the process died, schedule a
-     * restart with exponential backoff. If the process is alive but the
-     * health endpoint has been unreachable for two consecutive ticks,
-     * also force a restart — the runtime is wedged.
+     * Polls child and request-socket liveness. A live child that has not bound
+     * the socket is still booting; a bound socket is healthy without requiring
+     * an event-loop response.
      */
     private final class WatchdogThread extends Thread {
         private int unhealthyTicks;
@@ -3556,7 +3448,7 @@ public class ElizaAgentService extends Service {
                 }
                 if (current == null) {
                     if (detachedAgentMode) {
-                        ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+                        ElizaAgentWatchdogPolicy.ProbeResult probe = probeAgentLiveness();
                         ElizaAgentWatchdogPolicy.HealthDecision decision =
                             ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                                 probe,
@@ -3603,7 +3495,7 @@ public class ElizaAgentService extends Service {
                     continue;
                 }
 
-                ElizaAgentWatchdogPolicy.ProbeResult probe = probeHealth();
+                ElizaAgentWatchdogPolicy.ProbeResult probe = probeAgentLiveness();
                 ElizaAgentWatchdogPolicy.HealthDecision decision =
                     ElizaAgentWatchdogPolicy.evaluateHealthProbe(
                         probe,
@@ -3624,19 +3516,8 @@ public class ElizaAgentService extends Service {
                         updateNotification();
                     }
                 } else if (probe == ElizaAgentWatchdogPolicy.ProbeResult.BUSY) {
-                    // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
-                    // bun process is still alive. The most likely cause is
-                    // synchronous work inside the JS event loop — typically
-                    // a long llama_decode FFI call with a 12k-token prompt
-                    // on emulated CPU. We do NOT count a strike; the
-                    // process is doing exactly what it should be doing.
-                    // Logging is at info-level so operators can correlate
-                    // decode-busy periods with apparent unresponsiveness.
-                    Log.i(TAG, "Agent HTTP probe timed out but process is alive — likely mid-decode. No strike.");
+                    Log.i(TAG, "Agent child is alive and has not bound its request socket. No strike.");
                 } else {
-                    // ProbeResult.DEAD: process is dead, OR /api/health
-                    // did not return 2xx with ready=true. Only here do we
-                    // accumulate strikes toward a force-restart.
                     unhealthyTicks = decision.unhealthyTicks;
                     Log.w(TAG, "Agent health probe failed ("
                         + (decision.restartRequired ? HEALTH_FAIL_STRIKES : unhealthyTicks)

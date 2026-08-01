@@ -115,7 +115,7 @@ describe("agent-orchestrator sandbox gating", () => {
     ]);
   });
 
-  it("registers only a TASKS unsupported stub on Android without a staged shell", {
+  it("registers only a TASKS unsupported stub on Android without an ACP runtime", {
     timeout: SLOW,
   }, async () => {
     process.env.ELIZA_BUILD_VARIANT = "direct";
@@ -141,8 +141,8 @@ describe("agent-orchestrator sandbox gating", () => {
       undefined,
     );
     const data = result?.data as { reason?: string } | undefined;
-    expect(data?.reason).toBe("AOSP_TERMINAL_MISSING_SHELL");
-    expect(result?.text).toContain("executable shell");
+    expect(data?.reason).toBe("ANDROID_ACP_RUNTIME_UNAVAILABLE");
+    expect(result?.text).toContain("ACP agent executable");
   });
 
   it("returns a structured STORE_BUILD_BLOCKED result from the stub handler", {
@@ -181,14 +181,9 @@ describe("createTerminalUnsupportedTasksAction reason mapping", () => {
       expectedReason: "MOBILE_TERMINAL_UNSUPPORTED",
     },
     {
-      label: "Android not in local-yolo mode",
-      reason: "not_local_yolo",
-      expectedReason: "AOSP_TERMINAL_REQUIRES_LOCAL_YOLO",
-    },
-    {
-      label: "Android missing shell",
-      reason: "missing_shell",
-      expectedReason: "AOSP_TERMINAL_MISSING_SHELL",
+      label: "Android without a staged ACP runtime",
+      reason: "missing_acp_runtime",
+      expectedReason: "ANDROID_ACP_RUNTIME_UNAVAILABLE",
     },
     {
       label: "unknown / no reason",

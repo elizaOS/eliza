@@ -40,35 +40,33 @@ describe("orchestrator device support matrix (#9146)", () => {
     expect(r.backends).toEqual([]);
   });
 
-  it("Android store/non-local-yolo is unsupported with reason not_local_yolo", () => {
+  it("Android is unsupported when the image has no ACP runtime", () => {
     const r = row("android-store");
     expect(r.support.supported).toBe(false);
-    expect(r.support.reason).toBe("not_local_yolo");
+    expect(r.support.reason).toBe("missing_acp_runtime");
     expect(r.backends).toEqual([]);
   });
 
-  it("Android local-yolo with a staged shell is supported", () => {
+  it("Android local-yolo does not mistake a staged shell for an ACP runtime", () => {
     const r = row("android-local-yolo");
-    expect(r.support.supported).toBe(true);
-    expect(r.backends).toEqual(ORCHESTRATOR_BACKENDS);
+    expect(r.support.supported).toBe(false);
+    expect(r.support.reason).toBe("missing_acp_runtime");
+    expect(r.backends).toEqual([]);
   });
 
   it("store build takes precedence over android local-yolo (mirrors gate ordering)", () => {
-    const support = classifyTerminalSupport(
-      { platform: "android", runtimeMode: "local-yolo", buildVariant: "store" },
-      { androidShellAvailable: true },
-    );
+    const support = classifyTerminalSupport({
+      platform: "android",
+      buildVariant: "store",
+    });
     expect(support.supported).toBe(false);
     expect(support.reason).toBe("store_build");
   });
 
-  it("Android local-yolo without a shell is missing_shell", () => {
-    const support = classifyTerminalSupport(
-      { platform: "android", runtimeMode: "local-yolo" },
-      { androidShellAvailable: false },
-    );
+  it("Android without a shell still reports the deeper missing ACP runtime", () => {
+    const support = classifyTerminalSupport({ platform: "android" });
     expect(support.supported).toBe(false);
-    expect(support.reason).toBe("missing_shell");
+    expect(support.reason).toBe("missing_acp_runtime");
   });
 
   it("classifier is pure — does not read or mutate process.env", () => {

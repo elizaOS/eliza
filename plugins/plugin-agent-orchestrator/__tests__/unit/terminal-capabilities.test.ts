@@ -54,8 +54,7 @@ describe("detectOrchestratorTerminalSupport", () => {
       expect([
         "store_build",
         "vanilla_mobile",
-        "not_local_yolo",
-        "missing_shell",
+        "missing_acp_runtime",
       ]).toContain(support.reason);
       expect(typeof support.message).toBe("string");
     }

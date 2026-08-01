@@ -28,8 +28,10 @@ use an optional loader path, but App Store builds must not import `dlopen` or
 `dlsym` from either the runtime plugin or the engine binary.
 
 The engine binary itself must not import arbitrary dynamic loader,
-process-spawn, JIT, or executable-memory permission APIs. App Store-compatible
-builds must declare:
+process-spawn, JIT, or executable-memory permission APIs. Those paths must be
+compiled out or bound inside the engine to hidden functions that fail with
+`ENOTSUP`; build flags alone are not evidence. App Store-compatible builds must
+declare:
 
 ```text
 ElizaBunEngineNoJIT = true
@@ -49,7 +51,7 @@ const char *eliza_bun_engine_last_error(void);
 typedef char *(*eliza_bun_engine_host_call_callback)(
   const char *method,
   const char *payload_json,
-  int32_t timeout_ms
+  int32_t reserved
 );
 
 int32_t eliza_bun_engine_set_host_callback(
@@ -108,9 +110,14 @@ request is in flight. This is how full-Bun local inference reaches the linked
 llama.cpp bridge without opening a WebSocket or TCP port:
 
 ```json
-{ "type": "host_call", "id": "host-1", "method": "llama_generate", "payload": {}, "timeoutMs": 120000 }
+{ "type": "host_call", "id": "host-1", "method": "llama_generate", "payload": {} }
 { "type": "host_result", "id": "host-1", "envelope": { "ok": true, "result": {} } }
 ```
+
+Foreground bridge calls have no transport-owned wall-clock deadline. They end
+when the engine returns a result, the pipe closes, or the owning request
+cancels. The callback's final integer is reserved and is zero in ABI 3 so the
+deadline removal remains binary-compatible with already compiled hosts.
 
 Required native host-call methods today:
 
@@ -129,10 +136,10 @@ Required native host-call methods today:
 Required methods today:
 
 - `status` -> `{ "ready": true, "engine": "bun", "transport": "bun-host-ipc", "bridgeVersion": "bun-ios:3" }`
-- `http_request` / `http_fetch` with `{ method, path, headers, body,
-  timeoutMs }` -> `{ status, statusText, headers, body }`
-- `http_request_stream` with `{ method, path, headers, body, streamId,
-  timeoutMs }` -> `{ streamId, done: true }`. Streams the response body as
+- `http_request` / `http_fetch` with `{ method, path, headers, body }` ->
+  `{ status, statusText, headers, body }`
+- `http_request_stream` with `{ method, path, headers, body, streamId }` ->
+  `{ streamId, done: true }`. Streams the response body as
   ordered `stream_emit` host-calls (response head → token chunks → complete)
   rather than buffering; the caller pre-allocates `streamId` and attaches its
   `agentStream*` listeners before invoking, because the call blocks until the

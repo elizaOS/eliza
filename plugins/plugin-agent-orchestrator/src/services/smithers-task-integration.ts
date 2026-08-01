@@ -253,12 +253,15 @@ export async function runDurableTask(
       severity: "ephemeral",
     });
   }
-  const recoveredResponse = collectDurableTaskTurns(result.execution)
-    .map((turn) => turn.output?.finalText)
-    .findLast(
-      (value): value is string =>
-        typeof value === "string" && value.trim().length > 0,
-    );
+  const durableTurns = collectDurableTaskTurns(result.execution);
+  let recoveredResponse: string | undefined;
+  for (let index = durableTurns.length - 1; index >= 0; index -= 1) {
+    const value = durableTurns[index]?.output?.finalText;
+    if (nonEmptyString(value)) {
+      recoveredResponse = value;
+      break;
+    }
+  }
   const lastResponse = executor.lastResponse ?? recoveredResponse;
   if (typeof lastResponse !== "string" || lastResponse.trim().length === 0) {
     throw new ElizaError("Durable task completed without a response", {
