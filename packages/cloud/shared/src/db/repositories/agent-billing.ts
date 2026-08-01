@@ -45,6 +45,13 @@ export interface AgentHourlyBillingInput {
   now: Date;
 }
 
+export interface AgentBillingSuspensionInput {
+  sandboxId: string;
+  expectedLifecycleRevision: number;
+  expectedScheduledShutdownAt: Date;
+  now: Date;
+}
+
 export type AgentHourlyBillingOutcome =
   | { status: "billed"; newBalance: number; transactionId: string }
   | { status: "already_billed_recently" }
@@ -172,29 +179,38 @@ export class AgentBillingRepository {
       );
   }
 
-  async suspendSandboxForInsufficientCredits(sandboxId: string, now: Date): Promise<void> {
-    await dbWrite
+  async suspendSandboxForInsufficientCredits(input: AgentBillingSuspensionInput): Promise<boolean> {
+    const updated = await dbWrite
       .update(agentSandboxes)
       .set({
-        status: "stopped",
         billing_status: "suspended" as AgentBillingStatus,
-        sandbox_id: null,
-        bridge_url: null,
-        health_url: null,
-        node_id: null,
-        container_name: null,
-        headscale_ip: null,
-        bridge_port: null,
-        web_ui_port: null,
-        updated_at: now,
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
+        updated_at: input.now,
       })
       .where(
         and(
-          eq(agentSandboxes.id, sandboxId),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          eq(agentSandboxes.id, input.sandboxId),
+          eq(agentSandboxes.lifecycle_revision, input.expectedLifecycleRevision),
+          eq(agentSandboxes.status, "stopped"),
+          eq(agentSandboxes.billing_status, "shutdown_pending"),
+          eq(agentSandboxes.scheduled_shutdown_at, input.expectedScheduledShutdownAt),
+          isNull(agentSandboxes.sandbox_id),
+          isNull(agentSandboxes.bridge_url),
+          isNull(agentSandboxes.health_url),
+          isNull(agentSandboxes.node_id),
+          isNull(agentSandboxes.container_name),
+          isNull(agentSandboxes.headscale_ip),
+          isNull(agentSandboxes.bridge_port),
+          isNull(agentSandboxes.web_ui_port),
+          isNull(agentSandboxes.deletion_attempt_id),
           isNull(agentSandboxes.rollback_standby_state),
+          isNull(agentSandboxes.replacement_cleanup_sandbox_id),
         ),
-      );
+      )
+      .returning({ id: agentSandboxes.id });
+
+    return updated.length === 1;
   }
 
   async reactivateSandboxBillingAfterFunding(sandboxId: string, now: Date): Promise<void> {

@@ -129,52 +129,108 @@ afterAll(async () => {
 });
 
 describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
-  test("credit suspension clears the complete primary compute placement", async () => {
+  test("credit suspension commits only against the exact stopped lifecycle", async () => {
     expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const sandboxId = await seedSandbox(organizationId, userId, "active");
+    const scheduledShutdownAt = new Date("2026-07-23T15:00:00.000Z");
     await dbWrite
       .update(agentSandboxes)
       .set({
-        sandbox_id: "agent-billing-fixture",
-        bridge_url: "https://agent-billing-fixture.example",
-        health_url: "https://agent-billing-fixture.example/health",
-        node_id: "node-billing-fixture",
-        container_name: "agent-billing-fixture",
-        headscale_ip: "100.64.0.2",
-        bridge_port: 2138,
-        web_ui_port: 31337,
+        status: "stopped",
+        billing_status: "shutdown_pending",
+        scheduled_shutdown_at: scheduledShutdownAt,
       })
       .where(eq(agentSandboxes.id, sandboxId));
+    const [stopped] = await dbWrite
+      .select({ lifecycle_revision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
 
-    await agentBillingRepository.suspendSandboxForInsufficientCredits(sandboxId, new Date());
+    expect(
+      await agentBillingRepository.suspendSandboxForInsufficientCredits({
+        sandboxId,
+        expectedLifecycleRevision: stopped.lifecycle_revision,
+        expectedScheduledShutdownAt: scheduledShutdownAt,
+        now: new Date("2026-07-23T15:01:00.000Z"),
+      }),
+    ).toBe(true);
 
     const [row] = await dbWrite
       .select({
         status: agentSandboxes.status,
         billing_status: agentSandboxes.billing_status,
-        sandbox_id: agentSandboxes.sandbox_id,
-        bridge_url: agentSandboxes.bridge_url,
-        health_url: agentSandboxes.health_url,
-        node_id: agentSandboxes.node_id,
-        container_name: agentSandboxes.container_name,
-        headscale_ip: agentSandboxes.headscale_ip,
-        bridge_port: agentSandboxes.bridge_port,
-        web_ui_port: agentSandboxes.web_ui_port,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
       })
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, sandboxId));
     expect(row).toEqual({
       status: "stopped",
       billing_status: "suspended",
-      sandbox_id: null,
-      bridge_url: null,
-      health_url: null,
-      node_id: null,
-      container_name: null,
-      headscale_ip: null,
-      bridge_port: null,
-      web_ui_port: null,
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    });
+  });
+
+  test("credit suspension preserves a placement published after shutdown", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const sandboxId = await seedSandbox(organizationId, userId, "active");
+    const scheduledShutdownAt = new Date("2026-07-23T15:00:00.000Z");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "stopped",
+        billing_status: "shutdown_pending",
+        scheduled_shutdown_at: scheduledShutdownAt,
+      })
+      .where(eq(agentSandboxes.id, sandboxId));
+    const [stopped] = await dbWrite
+      .select({ lifecycle_revision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        status: "running",
+        sandbox_id: "concurrent-resume",
+        bridge_url: "https://concurrent-resume.example",
+        health_url: "https://concurrent-resume.example/health",
+        node_id: "node-concurrent-resume",
+        container_name: "concurrent-resume",
+        headscale_ip: "100.64.0.3",
+        bridge_port: 2138,
+        web_ui_port: 31337,
+      })
+      .where(eq(agentSandboxes.id, sandboxId));
+
+    expect(
+      await agentBillingRepository.suspendSandboxForInsufficientCredits({
+        sandboxId,
+        expectedLifecycleRevision: stopped.lifecycle_revision,
+        expectedScheduledShutdownAt: scheduledShutdownAt,
+        now: new Date("2026-07-23T15:01:00.000Z"),
+      }),
+    ).toBe(false);
+
+    const [row] = await dbWrite
+      .select({
+        status: agentSandboxes.status,
+        billing_status: agentSandboxes.billing_status,
+        sandbox_id: agentSandboxes.sandbox_id,
+        node_id: agentSandboxes.node_id,
+        container_name: agentSandboxes.container_name,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(row).toEqual({
+      status: "running",
+      billing_status: "shutdown_pending",
+      sandbox_id: "concurrent-resume",
+      node_id: "node-concurrent-resume",
+      container_name: "concurrent-resume",
     });
   });
 
@@ -243,10 +299,18 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
       sandboxId,
       new Date("2026-07-23T14:02:00.000Z"),
     );
-    await agentBillingRepository.suspendSandboxForInsufficientCredits(
-      sandboxId,
-      new Date("2026-07-23T14:03:00.000Z"),
-    );
+    const [deletionOwned] = await dbWrite
+      .select({ lifecycle_revision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(
+      await agentBillingRepository.suspendSandboxForInsufficientCredits({
+        sandboxId,
+        expectedLifecycleRevision: deletionOwned.lifecycle_revision,
+        expectedScheduledShutdownAt: new Date("2026-06-02T00:00:00.000Z"),
+        now: new Date("2026-07-23T14:03:00.000Z"),
+      }),
+    ).toBe(false);
 
     const [row] = await dbWrite
       .select()

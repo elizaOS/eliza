@@ -4160,6 +4160,12 @@ export class ElizaSandboxService {
           error: "Warm-claim retry ownership changed before teardown",
         };
       }
+      if (current.rollback_standby_state) {
+        return {
+          success: false as const,
+          error: `Agent ${agentId} has unresolved rollback standby generation ${current.rollback_standby_generation}`,
+        };
+      }
       if (hasIncompletePrimaryComputeLocator(current)) {
         return {
           success: false as const,
@@ -4205,6 +4211,7 @@ export class ElizaSandboxService {
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
           AND lifecycle_revision = ${current.lifecycle_revision}
+          AND rollback_standby_state IS NULL
         RETURNING id
       `);
       if (reset.rows.length !== 1) {
@@ -7113,7 +7120,10 @@ export class ElizaSandboxService {
 
   // Shutdown
 
-  async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
+  async shutdown(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: true; lifecycleRevision: number } | { success: false; error: string }> {
     let snapshotAgentId: string | null = null;
     let captureUnsupported = false;
     let preShutdownSnapshot: {
@@ -7289,7 +7299,9 @@ export class ElizaSandboxService {
       }
 
       snapshotAgentId = rec.id;
-      return { success: true } as const;
+      // Migration 0192 advances the row revision on every update, so the
+      // billing boundary can bind its follow-up transition to this exact stop.
+      return { success: true, lifecycleRevision: lifecycleRevision + 1 } as const;
     });
 
     if (result.success && snapshotAgentId) {

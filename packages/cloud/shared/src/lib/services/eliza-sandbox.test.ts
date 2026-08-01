@@ -1768,7 +1768,10 @@ describe("ElizaSandboxService shutdown capture fence", () => {
         },
       });
     try {
-      expect(await svc.shutdown(rec.id, rec.organization_id)).toEqual({ success: true });
+      expect(await svc.shutdown(rec.id, rec.organization_id)).toEqual({
+        success: true,
+        lifecycleRevision: 43,
+      });
       expect(persistSnapshot).toHaveBeenCalledWith(
         expect.anything(),
         rec.id,
@@ -4650,6 +4653,53 @@ describe("failed warm-claim replacement teardown", () => {
     }
   });
 
+  test("an active rollback standby blocks failed warm-claim retirement", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const failed = failedWarmClaim();
+    const standby: AgentSandbox = {
+      ...failed,
+      rollback_standby_state: "paused",
+      rollback_standby_generation: "77777777-7777-4777-8777-777777777777",
+    };
+    const create = mock(async () => {
+      throw new Error("replacement must not be created");
+    });
+    const stopForReplacement = mock(async () => {});
+    const provider: SandboxProvider = {
+      create,
+      stop: mock(async () => {}),
+      stopForReplacement,
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as RetrySvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(failed);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(standby);
+    const execute = mock(async () => ({ rows: [] }));
+    upgradeTransactionImpl = async (fn) => fn({ execute });
+
+    try {
+      const result = (await svc.provision(failed.id, failed.organization_id)) as {
+        success: boolean;
+        error?: string;
+      };
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: false,
+          error: `Agent ${failed.id} has unresolved rollback standby generation ${standby.rollback_standby_generation}`,
+        }),
+      );
+      expect(stopForReplacement).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      find.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+    }
+  });
+
   test("a proven stop resets the exact handle and creates one cold replacement", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const failed = failedWarmClaim();
@@ -4754,6 +4804,7 @@ describe("failed warm-claim replacement teardown", () => {
       const resetText = new PgDialect().sqlToQuery(resetSql as SQL).sql.toLowerCase();
       expect(resetText).toContain("bridge_port = null");
       expect(resetText).toContain("web_ui_port = null");
+      expect(resetText).toContain("rollback_standby_state is null");
     } finally {
       upgradeTransactionImpl = null;
       find.mockRestore();

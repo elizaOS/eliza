@@ -46,8 +46,16 @@ const recordHourlyBilling = mock(async () => ({
 }));
 const getOrganizationCreditBalance = mock(async () => 0);
 const scheduleShutdownWarning = mock(async () => undefined);
-const suspendSandboxForInsufficientCredits = mock(async () => undefined);
-const shutdownSandbox = mock(async () => ({ success: true }));
+const suspendSandboxForInsufficientCredits = mock(async () => true);
+type ShutdownResult =
+  | { success: true; lifecycleRevision: number }
+  | { success: false; error: string };
+const shutdownSandbox = mock(
+  async (): Promise<ShutdownResult> => ({
+    success: true,
+    lifecycleRevision: 17,
+  }),
+);
 const sendContainerShutdownWarningEmail = mock(async () => undefined);
 const webhookFetch = mock(
   async (_url: string | URL | Request, _init?: RequestInit) =>
@@ -124,7 +132,11 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       status: "insufficient_credits",
     }));
     getOrganizationCreditBalance.mockImplementation(async () => 0);
-    shutdownSandbox.mockImplementation(async () => ({ success: true }));
+    suspendSandboxForInsufficientCredits.mockImplementation(async () => true);
+    shutdownSandbox.mockImplementation(async () => ({
+      success: true,
+      lifecycleRevision: 17,
+    }));
   });
 
   test("sends a signed credits.low webhook when an agent runs out of billable balance", async () => {
@@ -218,10 +230,12 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       runningSandbox.id,
       "agent-org",
     );
-    expect(suspendSandboxForInsufficientCredits).toHaveBeenCalledWith(
-      runningSandbox.id,
-      expect.any(Date),
-    );
+    expect(suspendSandboxForInsufficientCredits).toHaveBeenCalledWith({
+      sandboxId: runningSandbox.id,
+      expectedLifecycleRevision: 17,
+      expectedScheduledShutdownAt: scheduledShutdownAt,
+      now: expect.any(Date),
+    });
     expect(webhookFetch).toHaveBeenCalledTimes(1);
 
     const [url, init] = webhookFetch.mock.calls[0] ?? [];
@@ -299,6 +313,55 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
       },
     });
     expect(suspendSandboxForInsufficientCredits).not.toHaveBeenCalled();
+    expect(webhookFetch).not.toHaveBeenCalled();
+  });
+
+  test("does not mark credits depleted when the post-shutdown lifecycle CAS loses", async () => {
+    const scheduledShutdownAt = new Date(Date.now() - 60_000);
+    listBillableSandboxes.mockImplementationOnce(async () => ({
+      runningSandboxes: [
+        {
+          ...runningSandbox,
+          billing_status: "shutdown_pending",
+          shutdown_warning_sent_at: new Date(Date.now() - 49 * 60 * 60_000),
+          scheduled_shutdown_at: scheduledShutdownAt,
+        },
+      ],
+      stoppedWithBackups: [],
+    }));
+    suspendSandboxForInsufficientCredits.mockImplementationOnce(
+      async () => false,
+    );
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "x-cron-secret": "cron-secret" },
+      }),
+      {
+        CRON_SECRET: "cron-secret",
+        NEXT_PUBLIC_APP_URL: "https://www.elizacloud.ai",
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        sandboxesProcessed: 1,
+        sandboxesShutdown: 0,
+        errors: 1,
+        results: [
+          {
+            action: "error",
+            error:
+              "Credit suspension lost its shutdown lifecycle fence; the agent was left unchanged",
+          },
+        ],
+      },
+    });
+    expect(shutdownSandbox).toHaveBeenCalledTimes(1);
+    expect(suspendSandboxForInsufficientCredits).toHaveBeenCalledTimes(1);
     expect(webhookFetch).not.toHaveBeenCalled();
   });
 });

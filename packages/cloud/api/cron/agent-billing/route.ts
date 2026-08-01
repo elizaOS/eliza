@@ -216,10 +216,18 @@ async function processSandboxBilling(
       );
     }
 
-    await agentBillingRepository.suspendSandboxForInsufficientCredits(
-      sandboxId,
-      now,
-    );
+    const suspended =
+      await agentBillingRepository.suspendSandboxForInsufficientCredits({
+        sandboxId,
+        expectedLifecycleRevision: shutdown.lifecycleRevision,
+        expectedScheduledShutdownAt: sandbox.scheduled_shutdown_at,
+        now,
+      });
+    if (!suspended) {
+      throw new Error(
+        "Credit suspension lost its shutdown lifecycle fence; the agent was left unchanged",
+      );
+    }
 
     await notifyWaifuCreditWebhook(sandbox, "credits.depleted", {
       eventId: `agent-billing:${sandboxId}:credits.depleted:${sandbox.scheduled_shutdown_at.toISOString()}`,
