@@ -135,7 +135,8 @@ export async function backfillTranscriptKnowledgeTags(
 /**
  * Register the one-time backfill worker. Task-row creation is deliberately
  * separate because plugin initialization runs before SQL migrations, while the
- * runtime maintenance service schedules the row after the database is ready.
+ * awaited startup-maintenance boundary schedules the row after the database is
+ * ready.
  */
 export function registerAttachmentKnowledgeBackfillWorker(
   runtime: IAgentRuntime,
@@ -151,14 +152,10 @@ export function registerAttachmentKnowledgeBackfillWorker(
           );
         }
       } catch (err) {
-        // error-policy:J7 the one-time metadata sweep must not kill runtime
-        // startup, but the failure needs to reach RECENT_ERRORS/escalation.
+        // error-policy:J7 TaskService records the rejected run and applies its
+        // retry policy; reportError also makes the failure agent-visible.
         rt.reportError("knowledge-backfill", err);
-        rt.logger.warn(
-          `[knowledge-backfill] sweep failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+        throw err;
       }
       return undefined;
     },

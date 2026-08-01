@@ -86,7 +86,6 @@ import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
-import { RuntimeMaintenanceService } from "./runtime-maintenance-service.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
@@ -141,7 +140,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       PendingPromptsService as ServiceClass,
       GlobalPauseService as ServiceClass,
       HandoffService as ServiceClass,
-      RuntimeMaintenanceService as ServiceClass,
       // Bounded retention for the memories/embeddings partitions. Registers
       // always but stays a no-op unless ELIZA_MEMORY_RETENTION_DAYS or
       // ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM is set — the mechanism that
@@ -176,8 +174,8 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // source-trust-derived scope (owner/DM → owner-private; public room →
       // user-private) so owner-only knowledge cannot spill into public rooms.
       registerAttachmentKnowledgeIngestHook(runtime);
-      // The worker must exist before TaskService starts. RuntimeMaintenanceService
-      // creates its idempotent queue row only after SQL migrations finish.
+      // The worker must exist before TaskService starts. The host's awaited
+      // post-migration maintenance phase creates its idempotent queue row.
       registerAttachmentKnowledgeBackfillWorker(runtime);
     },
 

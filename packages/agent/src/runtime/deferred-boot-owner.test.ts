@@ -7,21 +7,25 @@ import {
 } from "./deferred-boot-owner";
 
 describe("deferred boot ownership", () => {
-  it("aborts and drains every task before shutdown continues", async () => {
+  it("aborts cooperative work before shutdown continues", async () => {
     const runtime = {};
-    let releaseTask: (() => void) | undefined;
     let observedAbort = false;
     const task = trackDeferredBootTask(runtime, async (signal) => {
       await new Promise<void>((resolve) => {
-        releaseTask = resolve;
+        signal.addEventListener(
+          "abort",
+          () => {
+            observedAbort = true;
+            resolve();
+          },
+          { once: true },
+        );
       });
-      observedAbort = signal.aborted;
     });
     await Promise.resolve();
 
     const drain = cancelAndDrainDeferredBoot(runtime);
     expect(pendingDeferredBootTaskCount(runtime)).toBe(1);
-    releaseTask?.();
 
     await expect(drain).resolves.toBe(1);
     await expect(task).resolves.toBeUndefined();
@@ -57,5 +61,31 @@ describe("deferred boot ownership", () => {
     const drain = cancelAndDrainDeferredBoot(runtime);
     releaseNested?.();
     await expect(drain).resolves.toBe(1);
+  });
+
+  it("releases shutdown when a task ignores cancellation", async () => {
+    const runtime = {};
+    const task = trackDeferredBootTask(
+      runtime,
+      () => new Promise<void>(() => undefined),
+    );
+    await Promise.resolve();
+
+    await expect(cancelAndDrainDeferredBoot(runtime)).resolves.toBe(1);
+    await expect(task).resolves.toBeUndefined();
+    expect(pendingDeferredBootTaskCount(runtime)).toBe(0);
+  });
+
+  it("keeps an aborted tombstone so post-drain work never starts", async () => {
+    const runtime = {};
+    await cancelAndDrainDeferredBoot(runtime);
+    let ran = false;
+
+    await trackDeferredBootTask(runtime, async () => {
+      ran = true;
+    });
+
+    expect(ran).toBe(false);
+    expect(pendingDeferredBootTaskCount(runtime)).toBe(0);
   });
 });

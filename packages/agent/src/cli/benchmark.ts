@@ -90,6 +90,12 @@ export async function runBenchmarkTask(
         channelType: ChannelType.DM,
       },
     });
+    if (task.context) {
+      if (message.metadata?.type !== "message") {
+        throw new Error("Benchmark message is missing message metadata");
+      }
+      message.metadata.benchmarkContext = JSON.stringify(task.context);
+    }
 
     if (!runtime.messageService) {
       return {
@@ -127,14 +133,11 @@ export async function runBenchmarkTask(
       .filter(Boolean)
       .join("\n");
 
-    const candidates = [
-      resultText,
-      messagesText,
-      streamText,
-      callbackText,
-    ].filter(Boolean);
+    // The message service's final response is authoritative. Stream and callback
+    // channels are delivery transports, so choosing the longest text can replace
+    // the final answer with duplicated chunks or verbose action output.
     const responseText =
-      candidates.sort((a, b) => b.length - a.length)[0] ?? "";
+      resultText || messagesText || streamText || callbackText || "";
     const success = result.didRespond && responseText.trim().length > 0;
 
     return {
@@ -162,51 +165,59 @@ export async function runBenchmarkTask(
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Parse a JSON string into a BenchmarkTask, throwing on invalid input. */
 export function parseBenchmarkTask(raw: string): BenchmarkTask {
   const parsed: unknown = JSON.parse(raw);
+  if (!isRecord(parsed)) {
+    throw new Error("Invalid task JSON: expected an object");
+  }
+  const candidate = parsed;
   if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("id" in parsed) ||
-    typeof parsed.id !== "string" ||
-    parsed.id.trim() === "" ||
-    !("prompt" in parsed) ||
-    typeof parsed.prompt !== "string" ||
-    parsed.prompt.trim() === ""
+    typeof candidate.id !== "string" ||
+    candidate.id.trim() === "" ||
+    typeof candidate.prompt !== "string" ||
+    candidate.prompt.trim() === ""
   ) {
     throw new Error(
       'Invalid task JSON: "id" and "prompt" must be non-empty strings',
     );
   }
-  if (
-    "type" in parsed &&
-    parsed.type !== undefined &&
-    typeof parsed.type !== "string"
-  ) {
+  if (candidate.type !== undefined && typeof candidate.type !== "string") {
     throw new Error('Invalid task JSON: "type" must be a string when provided');
   }
   if (
-    "expected" in parsed &&
-    parsed.expected !== undefined &&
-    typeof parsed.expected !== "string"
+    candidate.expected !== undefined &&
+    typeof candidate.expected !== "string"
   ) {
     throw new Error(
       'Invalid task JSON: "expected" must be a string when provided',
     );
   }
   if (
-    "context" in parsed &&
-    parsed.context !== undefined &&
-    (typeof parsed.context !== "object" ||
-      parsed.context === null ||
-      Array.isArray(parsed.context))
+    candidate.context !== undefined &&
+    (typeof candidate.context !== "object" ||
+      candidate.context === null ||
+      Array.isArray(candidate.context))
   ) {
     throw new Error(
       'Invalid task JSON: "context" must be an object when provided',
     );
   }
-  return parsed as BenchmarkTask;
+  return {
+    id: candidate.id,
+    prompt: candidate.prompt,
+    ...(typeof candidate.type === "string" ? { type: candidate.type } : {}),
+    ...(typeof candidate.expected === "string"
+      ? { expected: candidate.expected }
+      : {}),
+    ...(typeof candidate.context === "object" && candidate.context !== null
+      ? { context: candidate.context as Record<string, unknown> }
+      : {}),
+  };
 }
 
 /** Write a result as a single JSON line to stdout. */
@@ -214,16 +225,15 @@ function writeResult(result: BenchmarkResult): void {
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
-/**
- * Server mode: read line-delimited JSON tasks from stdin, process each
- * against the running runtime, and write results to stdout.
- */
-async function runServerMode(
+/** Runs line-delimited tasks until input closes or the process owner cancels. */
+export async function runBenchmarkServer(
   runtime: AgentRuntime,
   abortSignal: AbortSignal,
+  input: NodeJS.ReadableStream = process.stdin,
+  output: (result: BenchmarkResult) => void = writeResult,
 ): Promise<void> {
   const rl = readline.createInterface({
-    input: process.stdin,
+    input,
     terminal: false,
   });
   const closeOnAbort = () => rl.close();
@@ -234,13 +244,12 @@ async function runServerMode(
       const trimmed = line.trim();
       if (!trimmed) continue;
 
+      let task: BenchmarkTask;
       try {
-        const task = parseBenchmarkTask(trimmed);
-        const result = await runBenchmarkTask(runtime, task, abortSignal);
-        writeResult(result);
+        task = parseBenchmarkTask(trimmed);
       } catch (err) {
-        // error-policy:J1 each line is an independent command boundary in server mode.
-        const errorResult: BenchmarkResult = {
+        // error-policy:J1 each line is an independent input boundary.
+        output({
           id: "unknown",
           response: "",
           task_type: "",
@@ -248,9 +257,13 @@ async function runServerMode(
           duration_ms: 0,
           success: false,
           error: `Failed to parse task: ${err instanceof Error ? err.message : String(err)}`,
-        };
-        writeResult(errorResult);
+        });
+        continue;
       }
+
+      const result = await runBenchmarkTask(runtime, task, abortSignal);
+      // A broken stdout/transport is process-fatal; it is not malformed input.
+      output(result);
     }
   } finally {
     abortSignal.removeEventListener("abort", closeOnAbort);
@@ -263,12 +276,41 @@ export interface BenchmarkCommandOptions {
   server?: boolean;
 }
 
+/** Parses the autonomous CLI benchmark flags with the same strictness as Commander. */
+export function parseBenchmarkCommandOptions(
+  argv: readonly string[],
+  startIndex = 3,
+): BenchmarkCommandOptions {
+  const options: BenchmarkCommandOptions = {};
+  for (let index = startIndex; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--server") {
+      options.server = true;
+      continue;
+    }
+    if (argument === "--task") {
+      const path = argv[index + 1];
+      if (!path || path.startsWith("--")) {
+        throw new Error("benchmark --task requires a path");
+      }
+      options.task = path;
+      index += 1;
+      continue;
+    }
+    throw new Error(`Unknown benchmark option: ${argument}`);
+  }
+  return options;
+}
+
 type RuntimeShutdown = (
   runtime: AgentRuntime | null | undefined,
   context: string,
 ) => Promise<void>;
 
-function installOwnerSignalHandlers(controller: AbortController): () => void {
+/** @internal Installs the benchmark process boundary's SIGINT/SIGTERM owner. */
+export function installOwnerSignalHandlers(
+  controller: AbortController,
+): () => void {
   const handleSignal = (signal: NodeJS.Signals) => {
     if (controller.signal.aborted) return;
     process.exitCode = signal === "SIGINT" ? 130 : 143;
@@ -284,13 +326,17 @@ function installOwnerSignalHandlers(controller: AbortController): () => void {
   };
 }
 
-async function readStdin(abortSignal: AbortSignal): Promise<string> {
+/** Reads one task from a stream until EOF or owner cancellation. */
+export async function readBenchmarkInput(
+  abortSignal: AbortSignal,
+  input: NodeJS.ReadableStream = process.stdin,
+): Promise<string> {
   const chunks: Buffer[] = [];
   return new Promise<string>((resolve, reject) => {
     const cleanup = () => {
-      process.stdin.off("data", handleData);
-      process.stdin.off("end", handleEnd);
-      process.stdin.off("error", handleError);
+      input.off("data", handleData);
+      input.off("end", handleEnd);
+      input.off("error", handleError);
       abortSignal.removeEventListener("abort", handleAbort);
     };
     const handleData = (chunk: Buffer | string) => {
@@ -309,9 +355,9 @@ async function readStdin(abortSignal: AbortSignal): Promise<string> {
       reject(abortSignal.reason);
     };
 
-    process.stdin.on("data", handleData);
-    process.stdin.once("end", handleEnd);
-    process.stdin.once("error", handleError);
+    input.on("data", handleData);
+    input.once("end", handleEnd);
+    input.once("error", handleError);
     abortSignal.addEventListener("abort", handleAbort, { once: true });
     if (abortSignal.aborted) handleAbort();
   });
@@ -335,7 +381,7 @@ async function readOneShotTask(
     }
   } else {
     try {
-      taskJson = await readStdin(abortSignal);
+      taskJson = await readBenchmarkInput(abortSignal);
     } catch (err) {
       // error-policy:J1 stdin and owner cancellation terminate the one-shot command.
       if (!abortSignal.aborted) {
@@ -391,11 +437,14 @@ export async function runBenchmark(
     try {
       const runtimeModule = await import("../runtime/eliza.ts");
       shutdownRuntime = runtimeModule.shutdownRuntime;
-      runtime = await runtimeModule.bootElizaRuntime();
+      runtime = await runtimeModule.bootElizaRuntime({
+        abortSignal: ownerController.signal,
+      });
     } catch (err) {
+      if (ownerController.signal.aborted) return;
       // error-policy:J1 the CLI renders boot failure as its machine-readable result.
       writeResult({
-        id: opts.task ? "file" : "stdin",
+        id: oneShotTask?.id ?? (opts.task ? "file" : "stdin"),
         response: "",
         task_type: "",
         actions_taken: [],
@@ -410,8 +459,12 @@ export async function runBenchmark(
     if (ownerController.signal.aborted) return;
 
     if (opts.server) {
-      await runServerMode(runtime, ownerController.signal);
-      logger.info("[benchmark] EOF on stdin, shutting down");
+      await runBenchmarkServer(runtime, ownerController.signal);
+      logger.info(
+        ownerController.signal.aborted
+          ? "[benchmark] Owner cancelled server input, shutting down"
+          : "[benchmark] EOF on stdin, shutting down",
+      );
       if (!ownerController.signal.aborted) process.exitCode = 0;
       return;
     }
@@ -428,7 +481,9 @@ export async function runBenchmark(
     }
   } finally {
     try {
-      await shutdownRuntime?.(runtime, "benchmark shutdown");
+      if (runtime && shutdownRuntime) {
+        await shutdownRuntime(runtime, "benchmark shutdown");
+      }
     } catch (err) {
       // error-policy:J1 shutdown failure is visible through stderr and exit status.
       process.stderr.write(

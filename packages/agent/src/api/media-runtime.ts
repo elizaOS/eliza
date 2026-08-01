@@ -270,8 +270,8 @@ export function collectReferencedMedia(
 
 /**
  * Register the orphan-media GC worker. Queue-row creation happens after SQL
- * migrations in RuntimeMaintenanceService so plugin initialization never
- * launches an unowned database operation.
+ * migrations at the awaited startup-maintenance boundary so plugin
+ * initialization never launches an unowned database operation.
  */
 export function registerMediaGcWorker(runtime: IAgentRuntime): void {
   runtime.registerTaskWorker({
@@ -281,14 +281,10 @@ export function registerMediaGcWorker(runtime: IAgentRuntime): void {
         const memories = await rt.getAllMemories();
         gcUnreferencedMedia(collectReferencedMedia(memories, rt));
       } catch (err) {
-        // error-policy:J7 a failed GC sweep must not kill the task runner, but
-        // it must be visible because hidden failures leak media indefinitely.
+        // error-policy:J7 TaskService records the rejected run and backs off the
+        // repeat task; reportError also makes the retained-media leak visible.
         rt.reportError("media-gc.sweep", err);
-        rt.logger.warn(
-          `[media-gc] sweep failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
+        throw err;
       }
       return undefined;
     },

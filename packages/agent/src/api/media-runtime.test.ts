@@ -440,6 +440,27 @@ describe("MEDIA_GC task end-to-end (real runtime sweep)", () => {
     await worker?.execute(runtime, {}, undefined as unknown as Task);
     expect(fs.existsSync(mediaPath(audio.fileName))).toBe(false);
   });
+
+  it("propagates sweep failure so TaskService records repeat-task backoff", async () => {
+    const { AgentRuntime } = await import("@elizaos/core");
+    const { registerMediaGcWorker } = await import("./media-runtime.ts");
+    type Character = import("@elizaos/core").Character;
+    type Task = import("@elizaos/core").Task;
+    const failure = new Error("memory sweep failed");
+    const runtime = new AgentRuntime({
+      character: { name: "media-gc-failure-test" } as Character,
+    });
+    vi.spyOn(runtime, "getAllMemories").mockRejectedValue(failure);
+    const reportError = vi.spyOn(runtime, "reportError");
+    registerMediaGcWorker(runtime);
+
+    await expect(
+      runtime
+        .getTaskWorker("MEDIA_GC")
+        ?.execute(runtime, {}, undefined as unknown as Task),
+    ).rejects.toBe(failure);
+    expect(reportError).toHaveBeenCalledWith("media-gc.sweep", failure);
+  });
 });
 
 describe("transcript audio GC protection (data-loss regression)", () => {

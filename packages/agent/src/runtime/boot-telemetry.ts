@@ -8,8 +8,6 @@
  * Telemetry is best-effort and must never affect boot: only the filesystem
  * writes are guarded, and a failed write logs a single warning. It is disabled
  * entirely under tests and when `ELIZA_DISABLE_TELEMETRY=1`.
- *
- * @module boot-telemetry
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -105,6 +103,14 @@ function readStartupTraceId(): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as Error & { code?: unknown }).code === "ENOENT"
+  );
+}
+
 /**
  * Write `data` as pretty JSON to `<stateDir>/telemetry/<dir>/<file>`, creating
  * the directory tree first. Only the filesystem work is guarded; a failure logs
@@ -121,6 +127,7 @@ async function writeTelemetryFile(
     await fs.mkdir(targetDir, { recursive: true });
     await fs.writeFile(targetPath, `${JSON.stringify(data, null, 2)}\n`);
   } catch (err) {
+    // error-policy:J7 telemetry failure is warned but cannot kill runtime boot.
     logger.warn(
       `[boot-telemetry] Failed to write ${targetPath}: ${
         err instanceof Error ? err.message : String(err)
@@ -206,15 +213,29 @@ export async function recordBootEvent(label: string): Promise<void> {
   try {
     await fs.mkdir(targetDir, { recursive: true });
     let events: BootEvent[] = [];
-    const existing = await fs.readFile(targetPath, "utf8").catch(() => null);
+    let existing: string | null;
+    try {
+      existing = await fs.readFile(targetPath, "utf8");
+    } catch (error) {
+      if (!isMissingFileError(error)) throw error;
+      // error-policy:J3 absence is the only valid empty-history signal.
+      existing = null;
+    }
     if (existing !== null) {
       try {
         const parsed: unknown = JSON.parse(existing);
         if (Array.isArray(parsed)) {
           events = parsed as BootEvent[];
+        } else {
+          logger.warn(
+            `[boot-telemetry] Ignoring invalid restart history in ${targetPath}: expected an array`,
+          );
         }
-      } catch {
-        // Corrupt events file — start fresh; it gets overwritten below.
+      } catch (error) {
+        // error-policy:J3 corrupt local telemetry is explicit before replacement.
+        logger.warn(
+          `[boot-telemetry] Replacing invalid restart history in ${targetPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
         events = [];
       }
     }
@@ -224,6 +245,7 @@ export async function recordBootEvent(label: string): Promise<void> {
     }
     await fs.writeFile(targetPath, `${JSON.stringify(events, null, 2)}\n`);
   } catch (err) {
+    // error-policy:J7 telemetry failure is warned but cannot kill runtime boot.
     logger.warn(
       `[boot-telemetry] Failed to record boot event: ${
         err instanceof Error ? err.message : String(err)
@@ -286,7 +308,12 @@ export function startMemorySampler(options: MemorySamplerOptions): void {
       startedAt,
       samples: [...samples],
     };
-    flushPromise = writeTelemetryFile(MEMORY_DIR, LATEST_FILE, record);
+    const pending = writeTelemetryFile(MEMORY_DIR, LATEST_FILE, record).finally(
+      () => {
+        if (flushPromise === pending) flushPromise = null;
+      },
+    );
+    flushPromise = pending;
     return flushPromise;
   };
 

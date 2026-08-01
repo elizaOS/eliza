@@ -115,19 +115,10 @@ export async function runAutonomousCli(
   }
 
   if (command === "benchmark") {
-    const { runBenchmark } = await import("./benchmark.ts");
-    // Parse benchmark-specific flags from argv
-    const opts = {
-      task: undefined as string | undefined,
-      server: false,
-    };
-    for (let i = 3; i < argv.length; i++) {
-      if (argv[i] === "--task" && argv[i + 1]) {
-        opts.task = argv[++i];
-      } else if (argv[i] === "--server") {
-        opts.server = true;
-      }
-    }
+    const { parseBenchmarkCommandOptions, runBenchmark } = await import(
+      "./benchmark.ts"
+    );
+    const opts = parseBenchmarkCommandOptions(argv);
     await runBenchmark(opts);
     return;
   }

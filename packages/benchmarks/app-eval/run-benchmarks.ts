@@ -1,11 +1,9 @@
 #!/usr/bin/env bun
-// Runs app-eval deterministic scoring for research and coding agent tasks.
-import { spawn } from "node:child_process";
 /**
- * elizaOS App Benchmark Orchestrator
- *
- * Loads task definitions, invokes the benchmark CLI for each task,
- * collects results, and produces a summary report.
+ * Runs deterministic app-eval scoring for research and coding tasks through
+ * the production benchmark CLI. One-shot and server modes preserve the CLI's
+ * owner-controlled lifecycle and treat child failure as failure rather than
+ * imposing a synthetic response deadline.
  *
  * Usage:
  *   bun run benchmarks/app-eval/run-benchmarks.ts                    # run all
@@ -15,8 +13,8 @@ import { spawn } from "node:child_process";
  *   bun run benchmarks/app-eval/run-benchmarks.ts --dry-run          # show tasks without running
  *   bun run benchmarks/app-eval/run-benchmarks.ts --expand-scenarios # add 10 edge variants per task
  *   bun run benchmarks/app-eval/run-benchmarks.ts --server           # use server mode (boot once)
- *   bun run benchmarks/app-eval/run-benchmarks.ts --timeout 60000    # custom timeout per task
  */
+import { spawn } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -56,6 +54,7 @@ interface TaskDefinition {
   id: string;
   type: string;
   prompt: string;
+  context?: Record<string, unknown>;
   expected_keywords?: string[];
   category?: string;
   difficulty?: string;
@@ -71,13 +70,71 @@ interface TaskDefinition {
   edge_source_id?: string;
 }
 
-interface BenchmarkResult {
+export interface BenchmarkResult {
   id: string;
   response: string;
+  task_type: string;
   actions_taken: string[];
   duration_ms: number;
   success: boolean;
   error?: string;
+}
+
+export function parseBenchmarkResultLine(line: string): BenchmarkResult | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    // error-policy:J3 mixed child stdout may contain non-JSON diagnostic lines.
+    return null;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("id" in parsed) ||
+    typeof parsed.id !== "string" ||
+    !("response" in parsed) ||
+    typeof parsed.response !== "string" ||
+    !("task_type" in parsed) ||
+    typeof parsed.task_type !== "string" ||
+    !("actions_taken" in parsed) ||
+    !Array.isArray(parsed.actions_taken) ||
+    !parsed.actions_taken.every((action) => typeof action === "string") ||
+    !("duration_ms" in parsed) ||
+    typeof parsed.duration_ms !== "number" ||
+    !Number.isFinite(parsed.duration_ms) ||
+    !("success" in parsed) ||
+    typeof parsed.success !== "boolean" ||
+    ("error" in parsed &&
+      parsed.error !== undefined &&
+      typeof parsed.error !== "string")
+  ) {
+    return null;
+  }
+  return {
+    id: parsed.id,
+    response: parsed.response,
+    task_type: parsed.task_type,
+    actions_taken: parsed.actions_taken,
+    duration_ms: parsed.duration_ms,
+    success: parsed.success,
+    ...(typeof parsed.error === "string" ? { error: parsed.error } : {}),
+  };
+}
+
+/** Keep task context while excluding hidden evaluator criteria from the model. */
+export function benchmarkTaskPayload(task: TaskDefinition): {
+  id: string;
+  type: string;
+  prompt: string;
+  context?: Record<string, unknown>;
+} {
+  return {
+    id: task.id,
+    type: task.type,
+    prompt: task.prompt,
+    ...(task.context ? { context: task.context } : {}),
+  };
 }
 
 interface TaskResultWithMeta extends BenchmarkResult {
@@ -93,7 +150,6 @@ interface RunSummary {
   total_tasks: number;
   completed: number;
   failed: number;
-  timed_out: number;
   scores: {
     research?: CategoryScore;
     coding?: CategoryScore;
@@ -127,7 +183,6 @@ interface CliArgs {
   taskId?: string;
   dryRun: boolean;
   server: boolean;
-  timeout: number;
   verbose: boolean;
   root?: string;
   expandScenarios: boolean;
@@ -182,7 +237,6 @@ function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = {
     dryRun: false,
     server: false,
-    timeout: 120_000,
     verbose: false,
     expandScenarios: false,
     countScenarios: false,
@@ -207,13 +261,13 @@ function parseArgs(argv: string[]): CliArgs {
       args.validateScenarios = true;
     } else if (arg === "--server") {
       args.server = true;
-    } else if (arg === "--timeout" && argv[i + 1]) {
-      args.timeout = Number.parseInt(argv[++i], 10);
     } else if (arg === "--verbose" || arg === "-v") {
       args.verbose = true;
     } else if (arg === "--help" || arg === "-h") {
       printUsage();
       process.exit(0);
+    } else {
+      throw new Error(`Unknown app-eval option: ${arg}`);
     }
   }
 
@@ -236,7 +290,6 @@ Options:
   --count-scenarios         Print base/edge/total task counts and exit
   --validate-scenarios      Validate loaded task definitions and exit
   --server                  Use server mode (boot runtime once, stream tasks)
-  --timeout <ms>            Timeout per task in milliseconds (default: 120000)
   --verbose, -v             Show detailed output
   --help, -h                Show this help
 `);
@@ -269,7 +322,10 @@ function loadTasks(args: CliArgs): TaskDefinition[] {
         tasks.push(task);
       }
     } catch (err) {
-      console.error(`[orchestrator] Failed to load ${file.path}: ${err}`);
+      // error-policy:J2 a partial task corpus would produce a misleading score.
+      throw new Error(`Failed to load benchmark tasks from ${file.path}`, {
+        cause: err,
+      });
     }
   }
 
@@ -307,17 +363,17 @@ function expandTasks(tasks: TaskDefinition[]): TaskDefinition[] {
 function validateTasks(tasks: TaskDefinition[]): void {
   const seen = new Set<string>();
   for (const task of tasks) {
-    if (!task.id || !task.id.trim()) {
+    if (!task.id?.trim()) {
       throw new Error("Task is missing id");
     }
     if (seen.has(task.id)) {
       throw new Error(`Duplicate task id: ${task.id}`);
     }
     seen.add(task.id);
-    if (!task.type || !task.type.trim()) {
+    if (!task.type?.trim()) {
       throw new Error(`${task.id}: missing type`);
     }
-    if (!task.prompt || !task.prompt.trim()) {
+    if (!task.prompt?.trim()) {
       throw new Error(`${task.id}: missing prompt`);
     }
   }
@@ -344,8 +400,11 @@ function createResultsDir(): string {
       }
     }
     symlinkSync(timestamp, latestLink);
-  } catch {
-    // Symlink creation may fail on some systems; non-critical
+  } catch (error) {
+    // error-policy:J4 results remain usable without the convenience symlink.
+    console.warn(
+      `[orchestrator] Could not update latest result link: ${error}`,
+    );
   }
 
   return runDir;
@@ -355,31 +414,20 @@ function createResultsDir(): string {
 // Task execution — single process mode
 // ---------------------------------------------------------------------------
 
-function runSingleTask(
-  task: TaskDefinition,
-  timeoutMs: number,
-): Promise<BenchmarkResult> {
+function runSingleTask(task: TaskDefinition): Promise<BenchmarkResult> {
   return new Promise((resolvePromise) => {
-    const taskJson = JSON.stringify({
-      id: task.id,
-      type: task.type,
-      prompt: task.prompt,
-    });
+    const taskJson = JSON.stringify(benchmarkTaskPayload(task));
     const binPath = join(REPO_ROOT, "packages", "agent", "src", "bin.ts");
 
-    const child = spawn(
-      "bun",
-      ["run", binPath, "benchmark", "--timeout", String(timeoutMs)],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          ELIZA_HEADLESS: "1",
-          LOG_LEVEL: "error",
-        },
-        stdio: ["pipe", "pipe", "pipe"],
+    const child = spawn("bun", ["run", binPath, "benchmark"], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        ELIZA_HEADLESS: "1",
+        LOG_LEVEL: "error",
       },
-    );
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     let stdout = "";
     let stderr = "";
@@ -395,30 +443,24 @@ function runSingleTask(
     child.stdin.write(taskJson);
     child.stdin.end();
 
-    // Outer timeout (startup + task timeout + buffer)
-    const outerTimeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5_000);
-    }, timeoutMs + 60_000);
-
     child.on("close", (code) => {
-      clearTimeout(outerTimeout);
-
       // Parse the last JSON line from stdout
       const lines = stdout.trim().split("\n");
       for (let i = lines.length - 1; i >= 0; i--) {
         const line = lines[i].trim();
         if (line.startsWith("{")) {
-          try {
-            resolvePromise(JSON.parse(line));
+          const parsed = parseBenchmarkResultLine(line);
+          if (parsed?.id === task.id) {
+            resolvePromise(parsed);
             return;
-          } catch {}
+          }
         }
       }
 
       resolvePromise({
         id: task.id,
         response: "",
+        task_type: task.type,
         actions_taken: [],
         duration_ms: 0,
         success: false,
@@ -430,10 +472,10 @@ function runSingleTask(
     });
 
     child.on("error", (err) => {
-      clearTimeout(outerTimeout);
       resolvePromise({
         id: task.id,
         response: "",
+        task_type: task.type,
         actions_taken: [],
         duration_ms: 0,
         success: false,
@@ -449,29 +491,54 @@ function runSingleTask(
 
 async function runTasksServerMode(
   tasks: TaskDefinition[],
-  timeoutMs: number,
   verbose: boolean,
 ): Promise<BenchmarkResult[]> {
   const binPath = join(REPO_ROOT, "packages", "agent", "src", "bin.ts");
 
   return new Promise((resolvePromise) => {
-    const child = spawn(
-      "bun",
-      ["run", binPath, "benchmark", "--server", "--timeout", String(timeoutMs)],
-      {
-        cwd: REPO_ROOT,
-        env: {
-          ...process.env,
-          ELIZA_HEADLESS: "1",
-          LOG_LEVEL: "error",
-        },
-        stdio: ["pipe", "pipe", "pipe"],
+    const child = spawn("bun", ["run", binPath, "benchmark", "--server"], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        ELIZA_HEADLESS: "1",
+        LOG_LEVEL: "error",
       },
-    );
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
     const results: BenchmarkResult[] = [];
+    const expectedIds = new Set(tasks.map((task) => task.id));
     let stdoutBuffer = "";
     let taskIndex = 0;
+    let protocolError: string | undefined;
+
+    const sendTask = (task: TaskDefinition): void => {
+      child.stdin.write(`${JSON.stringify(benchmarkTaskPayload(task))}\n`);
+    };
+
+    const acceptResult = (result: BenchmarkResult): void => {
+      const expected = tasks[taskIndex];
+      if (
+        !expected ||
+        result.id !== expected.id ||
+        !expectedIds.has(result.id)
+      ) {
+        protocolError = `Expected result for ${expected?.id ?? "no task"}, received ${result.id}`;
+        child.stdin.end();
+        return;
+      }
+      results.push(result);
+      if (verbose) {
+        const status = result.success ? "PASS" : "FAIL";
+        console.log(`  [${status}] ${result.id} (${result.duration_ms}ms)`);
+      }
+      taskIndex += 1;
+      if (taskIndex < tasks.length) {
+        sendTask(tasks[taskIndex]);
+      } else {
+        child.stdin.end();
+      }
+    };
 
     child.stdout.on("data", (data: Buffer) => {
       stdoutBuffer += data.toString();
@@ -483,31 +550,9 @@ async function runTasksServerMode(
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed.startsWith("{")) continue;
-        try {
-          const result: BenchmarkResult = JSON.parse(trimmed);
-          results.push(result);
-          if (verbose) {
-            const status = result.success ? "PASS" : "FAIL";
-            console.log(`  [${status}] ${result.id} (${result.duration_ms}ms)`);
-          }
-
-          // Send next task
-          taskIndex++;
-          if (taskIndex < tasks.length) {
-            const nextTask = tasks[taskIndex];
-            child.stdin.write(
-              `${JSON.stringify({
-                id: nextTask.id,
-                type: nextTask.type,
-                prompt: nextTask.prompt,
-              })}\n`,
-            );
-          } else {
-            // All tasks sent and results received
-            child.stdin.end();
-          }
-        } catch {
-          // Not valid JSON, skip
+        const result = parseBenchmarkResultLine(trimmed);
+        if (result) {
+          acceptResult(result);
         }
       }
     });
@@ -518,51 +563,39 @@ async function runTasksServerMode(
       });
     }
 
-    // Total timeout: startup + all tasks
-    const totalTimeout = setTimeout(
-      () => {
-        child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 5_000);
-      },
-      90_000 + timeoutMs * tasks.length,
-    );
-
     child.on("close", () => {
-      clearTimeout(totalTimeout);
-
       // Process remaining buffered output
       if (stdoutBuffer.trim().startsWith("{")) {
-        try {
-          results.push(JSON.parse(stdoutBuffer.trim()));
-        } catch {
-          // ignore
-        }
+        const result = parseBenchmarkResultLine(stdoutBuffer.trim());
+        if (result && taskIndex < tasks.length) acceptResult(result);
       }
 
-      // Fill in missing results for tasks that didn't get responses
-      const resultIds = new Set(results.map((r) => r.id));
-      for (const task of tasks) {
-        if (!resultIds.has(task.id)) {
-          results.push({
+      const resultById = new Map(results.map((result) => [result.id, result]));
+      resolvePromise(
+        tasks.map((task) => {
+          const result = resultById.get(task.id);
+          if (result) return result;
+          return {
             id: task.id,
             response: "",
+            task_type: task.type,
             actions_taken: [],
             duration_ms: 0,
             success: false,
-            error: "No result received (server may have exited early)",
-          });
-        }
-      }
-
-      resolvePromise(results);
+            error:
+              protocolError ??
+              "No result received (server may have exited early)",
+          };
+        }),
+      );
     });
 
     child.on("error", (err) => {
-      clearTimeout(totalTimeout);
       resolvePromise(
         tasks.map((t) => ({
           id: t.id,
           response: "",
+          task_type: t.type,
           actions_taken: [],
           duration_ms: 0,
           success: false,
@@ -573,14 +606,7 @@ async function runTasksServerMode(
 
     // Send first task
     if (tasks.length > 0) {
-      const firstTask = tasks[0];
-      child.stdin.write(
-        `${JSON.stringify({
-          id: firstTask.id,
-          type: firstTask.type,
-          prompt: firstTask.prompt,
-        })}\n`,
-      );
+      sendTask(tasks[0]);
     } else {
       child.stdin.end();
     }
@@ -645,10 +671,7 @@ function generateSummary(
 ): RunSummary {
   const completedAt = new Date();
   const completed = results.filter((r) => r.success);
-  const failed = results.filter(
-    (r) => !r.success && !r.error?.includes("Timeout"),
-  );
-  const timedOut = results.filter((r) => r.error?.includes("Timeout"));
+  const failed = results.filter((r) => !r.success);
 
   const buildCategoryScore = (type: string): CategoryScore | undefined => {
     const categoryResults = results.filter((r) => r.type === type);
@@ -713,7 +736,6 @@ function generateSummary(
     total_tasks: results.length,
     completed: completed.length,
     failed: failed.length,
-    timed_out: timedOut.length,
     scores: {
       ...(researchScores ? { research: researchScores } : {}),
       ...(codingScores ? { coding: codingScores } : {}),
@@ -736,7 +758,7 @@ function printReport(summary: RunSummary): void {
     `  Duration:   ${((new Date(summary.completed_at).getTime() - new Date(summary.started_at).getTime()) / 1000).toFixed(1)}s`,
   );
   console.log(
-    `  Tasks:      ${summary.total_tasks} total, ${summary.completed} passed, ${summary.failed} failed, ${summary.timed_out} timed out`,
+    `  Tasks:      ${summary.total_tasks} total, ${summary.completed} passed, ${summary.failed} failed`,
   );
   console.log(
     `  Avg time:   ${(summary.avg_duration_ms / 1000).toFixed(1)}s per task`,
@@ -826,7 +848,7 @@ async function main(): Promise<void> {
 
   if (args.server) {
     console.log("[orchestrator] Using server mode (single runtime boot)");
-    allResults = await runTasksServerMode(tasks, args.timeout, args.verbose);
+    allResults = await runTasksServerMode(tasks, args.verbose);
   } else {
     console.log(
       "[orchestrator] Using single-task mode (separate process per task)",
@@ -837,7 +859,7 @@ async function main(): Promise<void> {
       console.log(
         `[orchestrator] Running ${task.id} (${i + 1}/${tasks.length})...`,
       );
-      const result = await runSingleTask(task, args.timeout);
+      const result = await runSingleTask(task);
       allResults.push(result);
 
       const status = result.success ? "PASS" : "FAIL";
@@ -884,11 +906,12 @@ async function main(): Promise<void> {
     `[orchestrator] Run evaluator: python3 app-eval/evaluate.py ${runDir}`,
   );
 
-  // Exit non-zero when tasks failed or timed out
-  process.exit(summary.failed > 0 || summary.timed_out > 0 ? 1 : 0);
+  process.exit(summary.failed > 0 ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error("[orchestrator] Fatal error:", err);
-  process.exit(2);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("[orchestrator] Fatal error:", err);
+    process.exit(2);
+  });
+}

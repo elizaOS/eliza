@@ -6,12 +6,16 @@ import type {
 } from "@elizaos/core";
 import type { AgentSkillsService } from "./services/skills";
 
+type LoadedSkillsReader = Pick<AgentSkillsService, "getLoadedSkills">;
+type CommandsWriter = Pick<CommandRegistryService, "register">;
+
 /** Register every loaded skill after skills and commands services are ready. */
 export function registerLoadedSkillCommands(
 	runtime: IAgentRuntime,
-	service: AgentSkillsService,
+	service: LoadedSkillsReader,
+	commands: CommandsWriter | null =
+		runtime.getService<CommandRegistryService>("commands"),
 ): number {
-	const commands = runtime.getService<CommandRegistryService>("commands");
 	if (!commands) return 0;
 
 	let registered = 0;

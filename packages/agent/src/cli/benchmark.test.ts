@@ -5,11 +5,16 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PassThrough } from "node:stream";
 import { AgentRuntime, DefaultMessageService } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  installOwnerSignalHandlers,
+  parseBenchmarkCommandOptions,
   parseBenchmarkTask,
+  readBenchmarkInput,
   runBenchmark,
+  runBenchmarkServer,
   runBenchmarkTask,
 } from "./benchmark.ts";
 
@@ -44,15 +49,23 @@ describe("runBenchmarkTask", () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | undefined;
     let receivedText: string | undefined;
+    let receivedBenchmarkContext: string | undefined;
     vi.spyOn(getMessageService(runtime), "handleMessage").mockImplementation(
       async (_runtime, message, callback, options) => {
         receivedSignal = options?.abortSignal;
         receivedText = message.content.text;
+        receivedBenchmarkContext =
+          message.metadata?.type === "message"
+            ? message.metadata.benchmarkContext
+            : undefined;
         await options?.onStreamChunk?.("stream response");
-        await callback?.({ text: "callback" }, "SEARCH");
+        await callback?.(
+          { text: "callback output that is longer than the final response" },
+          "SEARCH",
+        );
         return {
           didRespond: true,
-          responseContent: { text: "the final and longest response" },
+          responseContent: { text: "the final response" },
           responseMessages: [],
         };
       },
@@ -60,15 +73,20 @@ describe("runBenchmarkTask", () => {
 
     const result = await runBenchmarkTask(
       runtime,
-      { id: "complete", prompt: "Explain the result" },
+      {
+        id: "complete",
+        prompt: "Explain the result",
+        context: { fixture: "ground truth" },
+      },
       controller.signal,
     );
 
     expect(receivedSignal).toBe(controller.signal);
     expect(receivedText).toBe("Explain the result");
+    expect(receivedBenchmarkContext).toBe('{"fixture":"ground truth"}');
     expect(result).toMatchObject({
       id: "complete",
-      response: "the final and longest response",
+      response: "the final response",
       actions_taken: ["SEARCH"],
       success: true,
     });
@@ -161,6 +179,141 @@ describe("parseBenchmarkTask", () => {
   });
 });
 
+describe("parseBenchmarkCommandOptions", () => {
+  it("parses the supported one-shot and server flags", () => {
+    expect(
+      parseBenchmarkCommandOptions([
+        "bun",
+        "agent",
+        "benchmark",
+        "--task",
+        "task.json",
+        "--server",
+      ]),
+    ).toEqual({ task: "task.json", server: true });
+  });
+
+  it("rejects removed or unknown timeout flags", () => {
+    expect(() =>
+      parseBenchmarkCommandOptions([
+        "bun",
+        "agent",
+        "benchmark",
+        "--timeout",
+        "30000",
+      ]),
+    ).toThrow("Unknown benchmark option: --timeout");
+  });
+
+  it("rejects a task flag without a path", () => {
+    expect(() =>
+      parseBenchmarkCommandOptions(["bun", "agent", "benchmark", "--task"]),
+    ).toThrow("benchmark --task requires a path");
+  });
+});
+
+describe("benchmark process ownership", () => {
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it.each([
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ] as const)(
+    "maps %s to cancellation and the conventional exit code",
+    (signal, code) => {
+      const controller = new AbortController();
+      const existing = new Set(process.listeners(signal));
+      const remove = installOwnerSignalHandlers(controller);
+      const listener = process
+        .listeners(signal)
+        .find((candidate) => !existing.has(candidate));
+      if (!listener) throw new Error(`missing ${signal} benchmark listener`);
+
+      (listener as () => void)();
+
+      expect(controller.signal.aborted).toBe(true);
+      expect(process.exitCode).toBe(code);
+      remove();
+      expect(process.listeners(signal)).toEqual([...existing]);
+    },
+  );
+
+  it("aborts an in-progress stdin read without waiting for EOF", async () => {
+    const input = new PassThrough();
+    const controller = new AbortController();
+    const read = readBenchmarkInput(controller.signal, input);
+
+    controller.abort(new Error("owner stopped input"));
+
+    await expect(read).rejects.toThrow("owner stopped input");
+    input.destroy();
+  });
+
+  it("isolates malformed server lines and continues with the next real task", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      didRespond: true,
+      responseContent: { text: "done" },
+      responseMessages: [],
+    });
+    const input = new PassThrough();
+    const results: Array<{ id: string; success: boolean }> = [];
+    const server = runBenchmarkServer(
+      runtime,
+      new AbortController().signal,
+      input,
+      (result) => results.push(result),
+    );
+    input.end('{"id":"bad"}\n{"id":"ok","prompt":"Run it"}\n');
+
+    await server;
+
+    expect(results).toMatchObject([
+      { id: "unknown", success: false },
+      { id: "ok", success: true },
+    ]);
+  });
+
+  it("does not misreport an output transport failure as invalid task JSON", async () => {
+    const runtime = createRuntime();
+    vi.spyOn(getMessageService(runtime), "handleMessage").mockResolvedValue({
+      didRespond: true,
+      responseContent: { text: "done" },
+      responseMessages: [],
+    });
+    const input = new PassThrough();
+    const transportFailure = new Error("stdout closed");
+    const server = runBenchmarkServer(
+      runtime,
+      new AbortController().signal,
+      input,
+      () => {
+        throw transportFailure;
+      },
+    );
+    input.end('{"id":"ok","prompt":"Run it"}\n');
+
+    await expect(server).rejects.toBe(transportFailure);
+  });
+
+  it("closes server mode when the owner cancels an open input", async () => {
+    const input = new PassThrough();
+    const controller = new AbortController();
+    const server = runBenchmarkServer(
+      createRuntime(),
+      controller.signal,
+      input,
+    );
+
+    controller.abort(new Error("owner stopped server"));
+
+    await expect(server).resolves.toBeUndefined();
+    input.destroy();
+  });
+});
+
 describe("runBenchmark lifecycle", () => {
   let fixtureDir: string;
   let runtime: AgentRuntime;
@@ -227,5 +380,35 @@ describe("runBenchmark lifecycle", () => {
     expect(process.stderr.write).toHaveBeenCalledWith(
       expect.stringContaining("Runtime shutdown failed: close failed"),
     );
+  });
+
+  it("cancels boot on SIGINT without fabricating a result", async () => {
+    const taskPath = join(fixtureDir, "task.json");
+    await writeFile(taskPath, JSON.stringify({ id: "boot", prompt: "Run it" }));
+    lifecycle.boot.mockImplementation(
+      (options: { abortSignal: AbortSignal }) =>
+        new Promise<AgentRuntime>((_resolve, reject) => {
+          options.abortSignal.addEventListener(
+            "abort",
+            () => reject(options.abortSignal.reason),
+            { once: true },
+          );
+        }),
+    );
+    const existingListeners = new Set(process.listeners("SIGINT"));
+
+    const command = runBenchmark({ task: taskPath });
+    await vi.waitFor(() => expect(lifecycle.boot).toHaveBeenCalledOnce());
+    const benchmarkListener = process
+      .listeners("SIGINT")
+      .find((listener) => !existingListeners.has(listener));
+    if (!benchmarkListener)
+      throw new Error("missing benchmark SIGINT listener");
+    (benchmarkListener as () => void)();
+    await command;
+
+    expect(process.exitCode).toBe(130);
+    expect(lifecycle.shutdown).not.toHaveBeenCalled();
+    expect(process.stdout.write).not.toHaveBeenCalled();
   });
 });
