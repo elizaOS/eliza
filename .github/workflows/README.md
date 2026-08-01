@@ -135,8 +135,10 @@ unconditional lint, format, typecheck, gitleaks, and script-test execution plus
 their final-gate dependency edges. The develop PR lint job also runs pinned,
 checksum-verified `actionlint` and `zizmor` binaries.
 
-The self-hosted test lanes retain the `HETZNER_FLEET_ONLINE=false` hosted-runner
-fallback for outages. Pull-request lint, format, typecheck, build, and secret
+The self-hosted test lanes require `HETZNER_FLEET_ONLINE=true` to opt into the
+Hetzner fleet. Missing, empty, and false values route to GitHub-hosted runners;
+this fail-safe default is required because repository variables are unavailable
+to fork pull requests. Pull-request lint, format, typecheck, build, and secret
 checks are the only quality checks for the proposed change; the post-merge
 workflow concentrates on running the broader test surface.
 
