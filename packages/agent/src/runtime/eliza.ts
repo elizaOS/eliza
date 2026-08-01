@@ -142,9 +142,11 @@ import {
 import {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   formatError,
+  getFirstRunProviderOption,
   isElizaSettingsDebugEnabled,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   readAliasedEnv,
   resolveApiExposePort,
   resolveDeploymentTargetInConfig,
@@ -1156,7 +1158,13 @@ function trimEnvString(value: unknown): string | undefined {
 
 function trimCloudCredential(value: unknown): string | undefined {
   const trimmed = trimEnvString(value);
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return undefined;
+  if (
+    !trimmed ||
+    trimmed.toUpperCase() === "[REDACTED]" ||
+    isVaultRef(trimmed)
+  ) {
+    return undefined;
+  }
   return trimmed;
 }
 
@@ -2102,6 +2110,52 @@ export async function resolveConnectorSecretsOverlayForBoot(
   return resolved;
 }
 
+/** @internal Exported for vault-backed cloud/provider boot coverage. */
+export async function resolveConfigEnvVaultRefsForBoot(
+  config: ElizaConfig,
+): Promise<void> {
+  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+    return;
+  }
+  if (
+    !config.env ||
+    typeof config.env !== "object" ||
+    Array.isArray(config.env)
+  ) {
+    return;
+  }
+
+  const vault = importAppCoreRuntime().sharedVault();
+  const configEnv = config.env as Record<string, unknown>;
+  const { resolved, missing } = await resolveConfigEnvForProcess(
+    configEnv,
+    vault,
+  );
+  for (const [key, value] of Object.entries(resolved)) {
+    configEnv[key] = value;
+  }
+
+  const varsBag = configEnv.vars;
+  let varsMissing: string[] = [];
+  if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
+    const varsResult = await resolveConfigEnvForProcess(
+      varsBag as Record<string, unknown>,
+      vault,
+    );
+    varsMissing = varsResult.missing;
+    for (const [key, value] of Object.entries(varsResult.resolved)) {
+      (varsBag as Record<string, unknown>)[key] = value;
+    }
+  }
+
+  const unresolved = [...new Set([...missing, ...varsMissing])];
+  if (unresolved.length > 0) {
+    logger.warn(
+      `[vault-bootstrap] sentinel(s) without vault entry: ${unresolved.join(", ")}`,
+    );
+  }
+}
+
 /**
  * Auto-resolve Discord Application ID from the bot token via Discord API.
  * Called during async runtime init so that users only need a bot token.
@@ -2295,25 +2349,28 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // because plugin-elizacloud registers cloud embedding handlers when the flag
   // is unset.
   const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
-  const hasExplicitNonCloudEmbeddingRoute =
-    serviceRouting?.embeddings !== undefined &&
-    serviceRouting.embeddings.transport !== "cloud-proxy";
+  const hasCanonicalRouting = Object.hasOwn(config, "serviceRouting");
+  const embeddingRoute = serviceRouting?.embeddings;
+  const hasExplicitCloudEmbeddingRoute = Boolean(
+    embeddingRoute?.transport === "cloud-proxy" &&
+      normalizeFirstRunProviderId(embeddingRoute.backend) === "elizacloud",
+  );
   const cloudEmbeddingsPolicy = readEffectiveEnvValue(
     config,
     "ELIZAOS_CLOUD_USE_EMBEDDINGS",
   )
     ?.trim()
     .toLowerCase();
-  if (isTruthyEnvFlag(cloudEmbeddingsPolicy)) {
+  if (embeddingRoute || hasCanonicalRouting) {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = hasExplicitCloudEmbeddingRoute
+      ? "true"
+      : "false";
+  } else if (isTruthyEnvFlag(cloudEmbeddingsPolicy)) {
     // Match the truthy set the router (`readBooleanEnv`) and warmup policy
     // (`isTruthyEnv`) use for this same flag, so `=1`/`=yes`/`=true` all opt into
     // Cloud embeddings identically at the boot, router, and warmup call sites.
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
-  } else if (
-    cloudEmbeddingsPolicy === "false" ||
-    hasByoEmbeddingProvider ||
-    hasExplicitNonCloudEmbeddingRoute
-  ) {
+  } else if (cloudEmbeddingsPolicy === "false" || hasByoEmbeddingProvider) {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   } else {
     delete process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS;
@@ -3598,6 +3655,29 @@ export function buildRuntimeSettings(
   });
 }
 
+/** @internal Exported for routing regression coverage. */
+export function resolveRuntimeProviderName(
+  resolvedPlugins: readonly RuntimeResolvedPlugin[],
+  pluginPackageName: string | undefined,
+): string | undefined {
+  if (!pluginPackageName) return undefined;
+  const name = resolvedPlugins
+    .find((entry) => entry.name === pluginPackageName)
+    ?.plugin.name?.trim();
+  return name || undefined;
+}
+
+/** @internal Exported for routing regression coverage. */
+export function resolveEmbeddingProviderPluginName(
+  config: ElizaConfig,
+): string | undefined {
+  const route = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  )?.embeddings;
+  const backend = normalizeFirstRunProviderId(route?.backend);
+  return backend ? getFirstRunProviderOption(backend)?.pluginName : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -3902,37 +3982,14 @@ export async function startEliza(
   vaultBootHydration = null;
   if (!isMobilePlatform() && !isCloudProvisioned) {
     importAppCoreRuntime().captureWalletEnvBootBaseline();
-    const { sharedVault } = await importAppCoreRuntime();
-
-    const { resolved, missing } = await resolveConfigEnvForProcess(
-      config.env as Record<string, unknown> | undefined,
-      sharedVault(),
-    );
-    if (missing.length > 0) {
-      logger.warn(
-        `[vault-bootstrap] sentinel(s) without vault entry: ${missing.join(", ")}`,
-      );
-    }
-    if (
-      config.env &&
-      typeof config.env === "object" &&
-      !Array.isArray(config.env)
-    ) {
-      for (const [key, value] of Object.entries(resolved)) {
-        (config.env as Record<string, unknown>)[key] = value;
-      }
-    }
-    const varsBag = (config.env as Record<string, unknown> | undefined)?.vars;
-    if (varsBag && typeof varsBag === "object" && !Array.isArray(varsBag)) {
-      const varsResult = await resolveConfigEnvForProcess(
-        varsBag as Record<string, unknown>,
-        sharedVault(),
-      );
-      for (const [key, value] of Object.entries(varsResult.resolved)) {
-        (varsBag as Record<string, unknown>)[key] = value;
-      }
-    }
+    await resolveConfigEnvVaultRefsForBoot(config);
   }
+
+  // Cloud config is applied once before vault access so plain credentials can
+  // start prefetches, then again after sentinel resolution so a vault-backed
+  // key replaces the reference before plugin discovery. The credential filter
+  // rejects unresolved refs on the first pass.
+  applyCloudConfigToEnv(config);
 
   // 2f. Propagate arbitrary env vars from config.env into process.env.
   // Eliza stores user-defined env vars (plugin settings, API URLs, etc.)
@@ -4383,6 +4440,14 @@ export async function startEliza(
   const otherPlugins = resolvedPlugins.filter(
     (p) => !PREREGISTER_PLUGINS.has(p.name),
   );
+  const preferredTextRuntimeProviderName = resolveRuntimeProviderName(
+    resolvedPlugins,
+    preferredProviderPluginName,
+  );
+  const preferredEmbeddingRuntimeProviderName = resolveRuntimeProviderName(
+    resolvedPlugins,
+    resolveEmbeddingProviderPluginName(config),
+  );
 
   // Resolve the runtime log level from config (AgentRuntime doesn't support
   // "silent", so we map it to "fatal" as the quietest supported level).
@@ -4487,25 +4552,8 @@ export async function startEliza(
   }
   // ── End sandbox setup ───────────────────────────────────────────────────
 
-  // ── Boost preferred provider plugin priority ──────────────────────────
-  // elizaOS selects the model handler with the highest `priority` for each
-  // ModelType.  All provider plugins default to priority 0, so whichever
-  // registers first wins — essentially random when using Promise.all.
-  // When the user has explicitly selected a provider or model, prefer that
-  // provider's plugin so its handlers are selected over registration order.
   const pluginsForRuntime = otherPlugins.map((p) => p.plugin);
   const visionModeSetting = resolveVisionModeSetting(config);
-  if (preferredProviderPluginName) {
-    for (const plugin of pluginsForRuntime) {
-      if (plugin.name === preferredProviderPluginName) {
-        plugin.priority = (plugin.priority ?? 0) + 10;
-        logger.info(
-          `[eliza] Boosted plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
-        );
-        break;
-      }
-    }
-  }
 
   // Deduplicate actions across all plugins to avoid "Action already registered"
   // warnings from elizaOS core. basic-capabilities is registered first by the
@@ -4566,6 +4614,8 @@ export async function startEliza(
       : {}),
     settings: buildRuntimeSettings(config, {
       preferredProviderId,
+      brainProviderName: preferredTextRuntimeProviderName,
+      embeddingProviderName: preferredEmbeddingRuntimeProviderName,
       visionModeSetting,
       managedSkillsDir,
       bundledSkillsDir,
@@ -5227,18 +5277,6 @@ export async function startEliza(
       return;
     }
 
-    if (preferredProviderPluginName) {
-      for (const plugin of deferredPluginsForRuntime) {
-        if (plugin.name === preferredProviderPluginName) {
-          plugin.priority = (plugin.priority ?? 0) + 10;
-          logger.info(
-            `[eliza] Boosted deferred plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
-          );
-          break;
-        }
-      }
-    }
-
     deduplicatePluginActions([
       basicCapabilitiesPlugin,
       ...subAgentCredentialPlugins,
@@ -5780,6 +5818,7 @@ export async function startEliza(
           await autoResolveDiscordAppId(
             freshConnectorSecretsOverlay.DISCORD_API_TOKEN,
           );
+          await resolveConfigEnvVaultRefsForBoot(freshConfig);
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
@@ -5858,17 +5897,16 @@ export async function startEliza(
           const freshOtherPlugins = resolvedPlugins.filter(
             (p) => !PREREGISTER_PLUGINS.has(p.name),
           );
-          // Boost the preferred provider plugin priority (same as initial startup)
           const freshPluginsForRuntime = freshOtherPlugins.map((p) => p.plugin);
+          const freshTextRuntimeProviderName = resolveRuntimeProviderName(
+            resolvedPlugins,
+            freshPreferredProviderPluginName,
+          );
+          const freshEmbeddingRuntimeProviderName = resolveRuntimeProviderName(
+            resolvedPlugins,
+            resolveEmbeddingProviderPluginName(freshConfig),
+          );
           const freshVisionModeSetting = resolveVisionModeSetting(freshConfig);
-          if (freshPreferredProviderPluginName) {
-            for (const plugin of freshPluginsForRuntime) {
-              if (plugin.name === freshPreferredProviderPluginName) {
-                plugin.priority = (plugin.priority ?? 0) + 10;
-                break;
-              }
-            }
-          }
           deduplicatePluginActions([
             ...subAgentCredentialPlugins,
             freshElizaPlugin,
@@ -5885,6 +5923,8 @@ export async function startEliza(
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             settings: buildRuntimeSettings(freshConfig, {
               preferredProviderId: freshPreferredProviderId,
+              brainProviderName: freshTextRuntimeProviderName,
+              embeddingProviderName: freshEmbeddingRuntimeProviderName,
               visionModeSetting: freshVisionModeSetting,
               managedSkillsDir,
               bundledSkillsDir,
