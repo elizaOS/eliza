@@ -76,10 +76,18 @@ const HOME_SCREEN_CSS = `
 
 /* The shade and secondary home content share one settle clock. Pull previews
    allocate space before the shade commits, while committed closes release that
-   space on the same velocity-aware duration as the notification cards. */
+   space on the same velocity-aware duration as the notification cards.
+
+   Rested notifications are content-first: they may fill the free column minus a
+   guaranteed secondary band for widgets. A hard max-height: 40% starved short
+   portrait panels (LP3 1080x1240) so only ~two cards were visible (#17502).
+   Expanded shade still claims the full remainder via the :has() rules below. */
+[data-testid="home-content-column"] {
+  --eliza-home-secondary-min: 8.5rem;
+}
 [data-home-notification-region] {
   flex-grow: 0;
-  max-height: 40%;
+  max-height: calc(100% - var(--eliza-home-secondary-min, 8.5rem));
   transition:
     flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
     max-height var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1);
@@ -88,7 +96,7 @@ const HOME_SCREEN_CSS = `
   display: grid;
   flex-grow: 1;
   grid-template-rows: 1fr;
-  min-height: 0;
+  min-height: var(--eliza-home-secondary-min, 8.5rem);
   opacity: 1;
   overflow: hidden;
   transition:
@@ -116,6 +124,7 @@ const HOME_SCREEN_CSS = `
 ) [data-home-below-notifications] {
   flex-grow: 0;
   grid-template-rows: 0fr;
+  min-height: 0;
   opacity: 0;
   pointer-events: none;
   visibility: hidden;

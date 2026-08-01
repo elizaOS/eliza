@@ -242,6 +242,19 @@ describe("HomeScreen", () => {
     );
     expect(css).toContain("grid-template-rows: 0fr");
     expect(css).toContain("--eliza-home-notification-settle-duration");
+    // #17502: rested shade is content-first with a secondary min band, not a
+    // hard 40% clamp that starves short portrait panels (LP3 1080x1240).
+    expect(css).toContain("--eliza-home-secondary-min");
+    expect(css).toContain(
+      "max-height: calc(100% - var(--eliza-home-secondary-min, 8.5rem))",
+    );
+    expect(css).not.toMatch(
+      /\[data-home-notification-region\]\s*\{[^}]*max-height:\s*40%;/,
+    );
+    expect(css).toContain("max-height: 100%");
+    expect(css).toMatch(
+      /\[data-home-below-notifications\]\s*\{[^}]*min-height:\s*var\(--eliza-home-secondary-min/,
+    );
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
@@ -289,6 +302,61 @@ describe("HomeScreen", () => {
         "--eliza-home-notification-settle-duration",
       ),
     ).toBe("460ms");
+  });
+
+  it("reserves a secondary min band so short panels can grow rested notifications past 40%", () => {
+    // Contract test for #17502 — jsdom does not fully honor %/calc layout, so
+    // we assert the stylesheet policy that recovers LP3 1080x1240 height.
+    Object.defineProperties(window, {
+      innerHeight: { configurable: true, value: 1240 },
+      innerWidth: { configurable: true, value: 1080 },
+    });
+    __ingestNotificationForTests(
+      makeNotification({ title: "Priority alert", priority: "urgent" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        id: "33333333-3333-4333-8333-333333333333" as AgentNotification["id"],
+        title: "Second alert",
+        priority: "high",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        id: "44444444-4444-4444-8444-444444444444" as AgentNotification["id"],
+        title: "Third alert",
+        priority: "high",
+      }),
+    );
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+
+    const home = screen.getByTestId("home-screen");
+    const column = screen.getByTestId("home-content-column");
+    const css = home.querySelector("style")?.textContent ?? "";
+    const notificationRegion = column.querySelector<HTMLElement>(
+      "[data-home-notification-region]",
+    );
+    const secondaryRegion = column.querySelector<HTMLElement>(
+      "[data-home-below-notifications]",
+    );
+
+    expect(window.innerHeight).toBe(1240);
+    expect(window.innerWidth).toBe(1080);
+    expect(notificationRegion).toBeTruthy();
+    expect(secondaryRegion).toBeTruthy();
+    expect(css).toContain("--eliza-home-secondary-min: 8.5rem");
+    expect(css).toContain(
+      "max-height: calc(100% - var(--eliza-home-secondary-min, 8.5rem))",
+    );
+    // Rested rule must not use a bare 40% clamp (comment text may still mention it).
+    expect(css).not.toMatch(
+      /\[data-home-notification-region\]\s*\{[^}]*max-height:\s*40%;/,
+    );
+    // Launcher stays on the adjacent swipe page — do not re-embed on home.
+    expect(screen.queryByTestId("home-launcher-grid")).toBeNull();
+    expect(
+      screen.queryByRole("navigation", { name: "Launcher apps" }),
+    ).toBeNull();
   });
 
   it("keeps the hydrated empty gesture band quiet without growing the notification region", () => {
