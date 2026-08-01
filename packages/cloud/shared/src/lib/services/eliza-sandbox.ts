@@ -6,6 +6,11 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  resolveRetainableAgentBackupBytes,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { type Database, dbWrite } from "../../db/helpers";
@@ -55,6 +60,7 @@ import {
   estimateDeltaBytes,
   incrementalChainDepth,
   planIncrementalBackup,
+  resolveBackupChainBytes,
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import {
@@ -505,11 +511,15 @@ const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
  * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
  * never retained — and the expanded file budgets are validated before the
  * payload is persisted. Env-overridable for staging soak.
+ *
+ * The raw budget is the RETAIN side of the v1 wire contract, so it is bounded
+ * by what restore accepts: the override may lower it, never raise it past
+ * `MAX_RESTORABLE_AGENT_BACKUP_BYTES` (#17172). Retaining more than that
+ * yields a snapshot that authorizes a cutover and can never be restored.
  */
-const SNAPSHOT_MAX_RAW_BYTES = (() => {
-  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
-})();
+const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(
+  process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES,
+);
 const SNAPSHOT_MAX_FILES = (() => {
   const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
@@ -870,6 +880,7 @@ const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
 // so they must degrade-but-PRESERVE the chain: never prune a snapshot a
 // token-corrected resume could still restore (#15274).
 const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
+
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -915,6 +926,12 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  // A size refusal is deliberately NOT unrecoverable-for-this-provision. It is
+  // deterministic, so retrying is pointless — but the chain is intact and
+  // restorable in principle, and the only reason it cannot be applied is a
+  // limit WE chose. Degrading it to a fresh boot would discard recoverable
+  // state; it gets its own terminal branch at each restore site instead, and
+  // the one way past it is wake's explicit `forceFreshBoot` consent.
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
   return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
@@ -2548,6 +2565,19 @@ export class ElizaSandboxService {
             // fresh boot — the caller opted into THAT restore point, so a
             // failure here fails the provision (retryable by the wake job)
             // instead of booting empty (#15603 B6).
+            // Ordered before the from-backup rethrow: the gated wake ALWAYS
+            // passes `from-backup`, so checking that first would swallow the
+            // consent sentence on the one path where the consent mechanism
+            // exists.
+            if (error instanceof SnapshotPayloadTooLargeError) {
+              // Size refusal fails CLOSED even on an ordinary provision: the
+              // chain is intact, only too large — booting empty would silently
+              // drop every byte of it. The one consent path is wake's
+              // forceFreshBoot.
+              throw new Error(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+              );
+            }
             if (restoreOverride?.kind === "from-backup") throw error;
             if (!isUnrecoverableSnapshotError(error)) throw error;
             await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
@@ -2576,6 +2606,13 @@ export class ElizaSandboxService {
                   agentId: rec.id,
                   backupId: backup?.id,
                 },
+              );
+            } else if (error instanceof SnapshotPayloadTooLargeError) {
+              // Ordered before the from-backup rethrow for the same reason as
+              // the fetch branch: a gated wake would otherwise never see the
+              // consent sentence.
+              throw new Error(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
               );
             } else if (restoreOverride?.kind === "from-backup") {
               // Same no-silent-fresh-boot rule as the fetch above: an explicit
@@ -5977,20 +6014,46 @@ export class ElizaSandboxService {
             backupKind: b.backup_kind,
             parentBackupId: b.parent_backup_id,
             createdAtMs: b.created_at.getTime(),
+            // Kept so the projected chain sum below needs no extra query.
+            sizeBytes: b.size_bytes ?? null,
           }));
           const chainDepth = incrementalChainDepth(nodes, latest.id);
           const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
           if (plan.kind === "incremental") {
-            return {
-              sandbox_record_id: sandboxRecordId,
-              snapshot_type: type,
-              // The state_data jsonb holds a BackupDelta for incremental rows.
-              state_data: plan.delta,
-              size_bytes: estimateDeltaBytes(plan.delta),
-              backup_kind: "incremental",
-              parent_backup_id: latest.id,
-              content_hash: contentHash,
-            };
+            // retained-implies-restorable (#17172): reconstruction budgets the
+            // SUM of the chain's stored inputs, so appending a delta that
+            // pushes that sum past the ceiling would make this row canonical
+            // AND unreconstructable in the same write — the invariant this PR
+            // exists to hold. A full backup is always reconstructable, so it is
+            // the correct fail-closed outcome, both when the projection
+            // breaches and when it cannot be computed (an ancestor with an
+            // unrecorded size_bytes).
+            const deltaBytes = estimateDeltaBytes(plan.delta);
+            const existingChainBytes = resolveBackupChainBytes(nodes, latest.id);
+            if (
+              existingChainBytes !== null &&
+              existingChainBytes + deltaBytes <= MAX_RESTORABLE_AGENT_BACKUP_BYTES
+            ) {
+              return {
+                sandbox_record_id: sandboxRecordId,
+                snapshot_type: type,
+                // The state_data jsonb holds a BackupDelta for incremental rows.
+                state_data: plan.delta,
+                size_bytes: deltaBytes,
+                backup_kind: "incremental",
+                parent_backup_id: latest.id,
+                content_hash: contentHash,
+              };
+            }
+            logger.info(
+              "[agent-sandbox] Storing a full backup: an incremental would exceed the restorable chain budget",
+              {
+                sandboxRecordId,
+                existingChainBytes,
+                deltaBytes,
+                limitBytes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+              },
+            );
           }
         }
       } catch (error) {
@@ -6789,6 +6852,7 @@ export class ElizaSandboxService {
 
   async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
     let snapshotAgentId: string | null = null;
+    let captureUnsupported = false;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
       sizeBytes: number;
@@ -6797,13 +6861,32 @@ export class ElizaSandboxService {
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
-      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch((error) => {
-        logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
+      try {
+        preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+          // The deployed image cannot snapshot by construction; requiring a
+          // capture it can never produce would make this agent unstoppable.
+          captureUnsupported = true;
+          logger.warn(
+            "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
+            { agentId },
+          );
+        } else {
+          // Fail CLOSED: stopping the container without a current capture
+          // silently discards everything since the last backup. A shutdown
+          // that cannot prove a capture leaves the agent running and says so.
+          logger.error("[agent-sandbox] Shutdown refused: pre-stop capture failed", {
+            agentId,
+            error: message,
+          });
+          return {
+            success: false,
+            error: `Refusing to stop without a current backup: ${message}`,
+          };
+        }
+      }
     }
 
     const result = await dbWrite.transaction(async (tx) => {
@@ -6848,11 +6931,19 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      if (
-        preShutdownSnapshot &&
-        rec.status === "running" &&
-        rec.bridge_url === preShutdownSnapshot.bridgeUrl
-      ) {
+      if (rec.status === "running" && rec.bridge_url && !captureUnsupported) {
+        // The capture must be OF THIS generation. A capture taken against a
+        // different bridge_url (the row moved between the unlocked fetch and
+        // this locked read) is some other container's state; persisting it
+        // would masquerade as current, and stopping without persisting would
+        // silently discard the delta. Both refuse.
+        if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+          return {
+            success: false,
+            error:
+              "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+          } as const;
+        }
         await this.persistSnapshotWithinTransaction(
           tx,
           rec.id,
@@ -7097,10 +7188,36 @@ export class ElizaSandboxService {
       }
     }
     if (!backupId) {
-      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
-      if (existing) {
-        backupId = existing.id;
-      } else {
+      // The fallback destroys newer compute state in favor of whatever this
+      // resolves to, so "a backup row exists" is not enough: it must be PROVEN
+      // restorable (fresh verified stamp, or a live decrypt+chain+hash
+      // verification right now) before the container is stopped. The wake gate
+      // already implements exactly that proof, alternative scan included.
+      const gate = await runWakeRestoreIntegrityGate({
+        sandboxRecordId: rec.id,
+        agentName: rec.agent_name,
+      });
+      if (!gate.ok) {
+        logger.error("[agent-sandbox] Sleep aborted: no restorable backup proven", {
+          agentId,
+          sandboxRecordId: rec.id,
+          failure: gate.failure.kind,
+        });
+        return {
+          success: false,
+          containerRemoved: false,
+          error: `Refusing to deactivate on an unproven backup; agent was left running. ${formatWakeRestoreIntegrityError(gate.failure)}`,
+        };
+      }
+      if (gate.backupId) {
+        backupId = gate.backupId;
+      } else if (gate.verification === "disabled") {
+        // Kill switch: with the gate off, keep the pre-gate behavior of
+        // accepting the latest backup rather than inventing a third mode.
+        const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
+        if (existing) backupId = existing.id;
+      }
+      if (!backupId) {
         logger.error("[agent-sandbox] Sleep aborted: no durable backup available", {
           agentId,
           sandboxRecordId: rec.id,
@@ -9684,9 +9801,20 @@ export class ElizaSandboxService {
       authRec?: Pick<AgentSandbox, "id" | "environment_vars">;
     },
   ) {
+    // Measure the assembled payload ONCE, before it leaves the worker (#17172).
+    // `/api/restore` caps its request body at the same canonical limit, so an
+    // oversized push is a guaranteed far-end rejection — and this runs on the
+    // blue/green ROLLBACK path, where discovering that after the request is a
+    // failed rollback rather than a clean refusal. Stringifying into a local
+    // also avoids building the payload twice.
+    const body = JSON.stringify(state);
+    const bodyBytes = Buffer.byteLength(body, "utf8");
+    if (bodyBytes > MAX_RESTORABLE_AGENT_BACKUP_BYTES) {
+      throw new SnapshotPayloadTooLargeError(bodyBytes, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
+    }
     const requestInit: RequestInit = {
       method: "POST",
-      body: JSON.stringify(state),
+      body,
       signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
     };
     const res =

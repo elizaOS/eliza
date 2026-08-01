@@ -1930,7 +1930,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByText("Urgent mail").closest("li")).toBe(
       priorityRow.closest("li"),
     );
-    expect(quietGroup?.style.opacity).toBe("0");
+    // The shell stays mounted at full opacity so its rounded rim does not
+    // darken; the card information fades through the shared settle variable.
+    expect(quietGroup?.style.opacity).toBe("1");
+    expect(
+      Number.parseFloat(
+        quietGroup?.style.getPropertyValue(
+          "--eliza-notif-group-content-visibility",
+        ) ?? "1",
+      ),
+    ).toBeLessThan(1);
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
@@ -1970,13 +1979,20 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(prioritySurface?.className).toContain("eliza-notif-glass");
     expect(prioritySurface?.style.opacity).toBe("1");
     expect(priorityGroupContent?.style.opacity).toBe("1");
+    expect(
+      Number.parseFloat(
+        priorityGroupContent?.style.getPropertyValue(
+          "--eliza-notif-group-content-visibility",
+        ) ?? "1",
+      ),
+    ).toBeLessThan(1);
     const overpullCountOpacity = Number.parseFloat(
       screen.getByTestId("notifications-count").style.opacity,
     );
     expect(overpullCountOpacity).toBe(0);
     const peeks = screen.getAllByTestId("notification-stack-peek");
-    expect(peeks[0].style.opacity).toBe("1");
-    expect(peeks[1].style.opacity).toBe("1");
+    expect(Number.parseFloat(peeks[0].style.opacity)).toBeLessThan(1);
+    expect(Number.parseFloat(peeks[1].style.opacity)).toBeLessThan(1);
 
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -1986,6 +2002,37 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     expect(list.getAttribute("data-shade-dragging")).toBeNull();
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    expect(priorityGroupContent?.style.opacity).toBe("1");
+    expect(
+      priorityGroupContent?.style.getPropertyValue(
+        "--eliza-notif-group-content-visibility",
+      ),
+    ).toBe("0");
+    const settledContentRule = list.parentElement
+      ?.querySelector("style")
+      ?.textContent?.match(
+        /\.eliza-notif-scroll\[data-shade-settling\][^{}]*\.eliza-notif-row-content\s*\{([^}]*)\}/,
+      )?.[1];
+    expect(settledContentRule).toContain("transition:");
+    expect(settledContentRule).toContain("opacity");
+    expect(settledContentRule).not.toContain(
+      "--eliza-notif-group-content-visibility",
+    );
+    const settledSurfaceRule = [
+      ...(list.parentElement
+        ?.querySelector("style")
+        ?.textContent?.matchAll(
+          /\.eliza-notif-scroll:is\(\[data-shade-dragging\], \[data-shade-settling\]\)[^{}]*\.eliza-notif-row-surface\s*\{([^}]*)\}/g,
+        ) ?? []),
+    ]
+      .map((match) => match[1])
+      .find((rule) => rule.includes("opacity:"));
+    expect(settledSurfaceRule).toContain("opacity:");
+    expect(settledSurfaceRule).toContain("!important");
+    expect(settledSurfaceRule).toContain("transition:");
+    expect(list.parentElement?.querySelector("style")?.textContent).toContain(
+      ".eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface",
+    );
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
@@ -2261,7 +2308,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
-    expect(agentGroup?.style.opacity).toBe("0");
+    expect(agentGroup?.style.opacity).toBe("1");
     expect(
       agentGroup?.style.getPropertyValue(
         "--eliza-notif-group-content-visibility",
@@ -2379,8 +2426,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
     const peeks = screen.getAllByTestId("notification-stack-peek");
     expect(peeks).toHaveLength(2);
-    expect(peeks[0]?.style.opacity).toBe("1");
-    expect(peeks[1]?.style.opacity).toBe("1");
+    expect(peeks[0]?.style.opacity).toBe("0");
+    expect(peeks[1]?.style.opacity).toBe("0");
     for (const row of screen.getAllByTestId("notification-row").slice(1)) {
       const container = row.closest("[data-notif-row]") as HTMLElement;
       expect(container.style.opacity).toBe("0");
