@@ -3,7 +3,12 @@
  * role normalization and the env-vs-config account resolution/role wiring.
  * Uses a hand-built fake runtime; no live Slack API.
  */
-import type { Character, IAgentRuntime } from "@elizaos/core";
+import {
+  type Character,
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   listSlackAccountIds,
@@ -17,13 +22,27 @@ function createRuntime(
   envOverrides?: Record<string, string | undefined>,
   privateCredentials?: Record<string, unknown>,
 ): IAgentRuntime {
+  const credentialSecrets: Record<string, string> = {};
+  for (const [field, value] of Object.entries(privateCredentials ?? {})) {
+    if (field === "accounts" || typeof value !== "string") continue;
+    credentialSecrets[connectorBaseCredentialSettingKey("slack", field)] =
+      value;
+  }
+  const accounts = privateCredentials?.accounts;
+  if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
+    for (const [accountId, rawAccount] of Object.entries(accounts)) {
+      if (!rawAccount || typeof rawAccount !== "object") continue;
+      for (const [field, value] of Object.entries(rawAccount)) {
+        if (typeof value !== "string") continue;
+        credentialSecrets[
+          connectorAccountCredentialSettingKey("slack", accountId, field)
+        ] = value;
+      }
+    }
+  }
   const character: Partial<Character> = {
     settings: slackConfig ? { slack: slackConfig } : {},
-    secrets: privateCredentials
-      ? {
-          SLACK_CONNECTOR_CREDENTIALS_JSON: JSON.stringify(privateCredentials),
-        }
-      : {},
+    secrets: credentialSecrets,
   };
   const env = envOverrides ?? {};
   const runtime = {
@@ -96,13 +115,13 @@ describe("resolveSlackAccount role wiring", () => {
     });
   });
 
-  it("rejects policy fields smuggled through the private credential blob", () => {
-    const runtime = createRuntime(undefined, undefined, {
-      groupPolicy: "open",
+  it("does not consume the retired packed credential setting", () => {
+    const runtime = createRuntime(undefined, {
+      SLACK_CONNECTOR_CREDENTIALS_JSON: JSON.stringify({
+        groupPolicy: "open",
+      }),
     });
-    expect(() => resolveSlackAccount(runtime)).toThrow(
-      /not a Slack credential string/,
-    );
+    expect(resolveSlackAccount(runtime).config.groupPolicy).toBeUndefined();
   });
 
   it("normalizes and deduplicates configured account IDs", () => {

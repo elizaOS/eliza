@@ -191,6 +191,14 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
   });
   const service = await SlackService.start(runtime);
   const processAgentMessage = vi.fn().mockResolvedValue(undefined);
+  const buildRawMessageMemory = (
+    service as unknown as {
+      buildMemoryFromMessage(
+        event: ReturnType<typeof message>,
+        accountId: string,
+      ): Promise<Memory | null>;
+    }
+  ).buildMemoryFromMessage.bind(service);
   Object.assign(service, {
     processAgentMessage,
     buildMemoryFromMessage: vi.fn().mockResolvedValue({
@@ -206,7 +214,13 @@ async function startHarness(overrides: SlackConnectorInput = {}) {
   const app = bolt.apps.at(-1);
   if (!app?.messageHandler)
     throw new Error("Bolt message handler was not registered");
-  return { app, processAgentMessage, runtime, service };
+  return {
+    app,
+    buildRawMessageMemory,
+    processAgentMessage,
+    runtime,
+    service,
+  };
 }
 
 function message(overrides: Record<string, unknown> = {}) {
@@ -452,7 +466,7 @@ describe("persisted Slack policy through Bolt handlers", () => {
     vi.mocked(harness.runtime.getMemoryById).mockResolvedValue({
       id: "target-memory",
       roomId: "room-1",
-      entityId: harness.runtime.agentId,
+      entityId: "external-entity",
       content: { text: "target" },
     });
     const handler = harness.app.eventHandlers.get("reaction_added");
@@ -485,6 +499,51 @@ describe("persisted Slack policy through Bolt handlers", () => {
       client: harness.app.client,
     });
     expect(harness.runtime.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it("accepts an authorized bot event as a bot-authored memory", async () => {
+    const harness = await startHarness({ allowBots: true });
+    Object.assign(harness.service, {
+      getRoomId: vi.fn().mockResolvedValue("room-bot"),
+    });
+
+    const memory = await harness.buildRawMessageMemory(
+      message({ user: undefined, bot_id: "B0123BOT", text: "bot update" }),
+      "default",
+    );
+
+    expect(memory).toMatchObject({
+      entityId: expect.any(String),
+      content: { text: "bot update", name: "B0123BOT" },
+      metadata: {
+        fromBot: true,
+        fromId: "B0123BOT",
+        sender: { id: "B0123BOT" },
+      },
+    });
+  });
+
+  it("treats an OWNER user-token post as agent-owned", async () => {
+    const harness = await startHarness({
+      role: "OWNER",
+      userToken: "xoxp-owner-token",
+    });
+    vi.mocked(harness.runtime.getMemoryById).mockResolvedValue({
+      id: "owner-target",
+      roomId: "room-1",
+      entityId: harness.runtime.agentId,
+      content: { text: "owner-authored reply" },
+    });
+
+    await harness.app.eventHandlers.get("reaction_added")?.({
+      event: reaction({ item_user: BOB }),
+      client: harness.app.client,
+    });
+
+    expect(harness.runtime.emitEvent).toHaveBeenCalledWith(
+      expect.arrayContaining(["REACTION_RECEIVED"]),
+      expect.objectContaining({ messageTs: "1700000000.000100" }),
+    );
   });
 
   it("keeps removals plugin-local until core defines a removal contract", async () => {

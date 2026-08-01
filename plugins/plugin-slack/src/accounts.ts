@@ -10,7 +10,8 @@
  */
 import {
   type ConnectorAccountRole,
-  ElizaError,
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
   type IAgentRuntime,
 } from "@elizaos/core";
 import type {
@@ -32,13 +33,12 @@ export type {
  */
 export const DEFAULT_ACCOUNT_ID = "default";
 
-const SLACK_CONNECTOR_CREDENTIALS_SECRET = "SLACK_CONNECTOR_CREDENTIALS_JSON";
-const SLACK_CREDENTIAL_KEYS = new Set([
+const SLACK_CREDENTIAL_KEYS = [
   "appToken",
   "botToken",
   "signingSecret",
   "userToken",
-]);
+] as const;
 
 /**
  * Source of the Slack token
@@ -175,103 +175,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseCredentialAccount(
-  value: unknown,
-  path: string,
-): SlackAccountConfig {
-  if (!isRecord(value)) {
-    throw new ElizaError(`${path} must be an object`, {
-      code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
-      context: { path },
-    });
-  }
-  const result: SlackAccountConfig = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (!SLACK_CREDENTIAL_KEYS.has(key) || typeof raw !== "string") {
-      throw new ElizaError(`${path}.${key} is not a Slack credential string`, {
-        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
-        context: { path, key },
-      });
-    }
-    switch (key) {
-      case "appToken":
-        result.appToken = raw;
-        break;
-      case "botToken":
-        result.botToken = raw;
-        break;
-      case "signingSecret":
-        result.signingSecret = raw;
-        break;
-      case "userToken":
-        result.userToken = raw;
-        break;
-    }
-  }
-  return result;
-}
-
-function parsePrivateCredentials(
+function readPrivateCredentials(
   runtime: IAgentRuntime,
+  accountId?: string,
 ): SlackMultiAccountConfig {
-  const raw = runtime.getSetting(SLACK_CONNECTOR_CREDENTIALS_SECRET);
-  if (raw === null || raw === undefined) return {};
-  if (typeof raw !== "string") {
-    throw new ElizaError(
-      `${SLACK_CONNECTOR_CREDENTIALS_SECRET} must be a JSON string`,
-      {
-        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
-        context: { setting: SLACK_CONNECTOR_CREDENTIALS_SECRET },
-      },
-    );
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (cause) {
-    // error-policy:J2 Preserve parse context without exposing credential data.
-    throw new ElizaError(
-      `${SLACK_CONNECTOR_CREDENTIALS_SECRET} is not valid JSON`,
-      {
-        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
-        context: { setting: SLACK_CONNECTOR_CREDENTIALS_SECRET },
-        cause,
-      },
-    );
-  }
-  if (!isRecord(parsed)) {
-    throw new ElizaError(
-      `${SLACK_CONNECTOR_CREDENTIALS_SECRET} must contain an object`,
-      {
-        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
-        context: { setting: SLACK_CONNECTOR_CREDENTIALS_SECRET },
-      },
-    );
-  }
-
-  const result = parseCredentialAccount(
-    Object.fromEntries(
-      Object.entries(parsed).filter(([key]) => key !== "accounts"),
-    ),
-    "slack credentials",
-  ) as SlackMultiAccountConfig;
-  if (parsed.accounts !== undefined) {
-    if (!isRecord(parsed.accounts)) {
-      throw new ElizaError("slack credentials.accounts must be an object", {
-        code: "SLACK_CONNECTOR_CREDENTIALS_INVALID",
-        context: { path: "slack credentials.accounts" },
-      });
-    }
-    result.accounts = Object.fromEntries(
-      Object.entries(parsed.accounts).map(([accountId, account]) => [
-        accountId,
-        parseCredentialAccount(
-          account,
-          `slack credentials.accounts.${accountId}`,
-        ),
-      ]),
-    );
+  const result: SlackAccountConfig = {};
+  for (const field of SLACK_CREDENTIAL_KEYS) {
+    const key = accountId
+      ? connectorAccountCredentialSettingKey("slack", accountId, field)
+      : connectorBaseCredentialSettingKey("slack", field);
+    const value = runtime.getSetting(key);
+    if (typeof value === "string" && value.trim()) result[field] = value;
   }
   return result;
 }
@@ -283,15 +197,10 @@ function getMultiAccountConfig(
     | SlackMultiAccountConfig
     | undefined;
   const publicConfig = isRecord(characterSlack) ? characterSlack : {};
-  const privateConfig = parsePrivateCredentials(runtime);
   const publicAccounts = isRecord(publicConfig.accounts)
     ? publicConfig.accounts
     : {};
-  const privateAccounts = privateConfig.accounts ?? {};
-  const accountIds = new Set([
-    ...Object.keys(publicAccounts),
-    ...Object.keys(privateAccounts),
-  ]);
+  const accountIds = new Set(Object.keys(publicAccounts));
   const accounts = Object.fromEntries(
     Array.from(accountIds).map((accountId) => [
       accountId,
@@ -299,16 +208,14 @@ function getMultiAccountConfig(
         ...(isRecord(publicAccounts[accountId])
           ? publicAccounts[accountId]
           : {}),
-        ...(privateAccounts[accountId] ?? {}),
+        ...readPrivateCredentials(runtime, accountId),
       },
     ]),
   );
 
   return {
     ...publicConfig,
-    ...Object.fromEntries(
-      Object.entries(privateConfig).filter(([key]) => key !== "accounts"),
-    ),
+    ...readPrivateCredentials(runtime),
     ...(accountIds.size > 0 ? { accounts } : {}),
   } as SlackMultiAccountConfig;
 }

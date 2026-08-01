@@ -431,7 +431,6 @@ export class SlackAccountPolicyResolver {
   async authorizeReaction(
     event: SlackInboundEventContext,
     reaction: string,
-    itemUserId?: string,
   ): Promise<SlackInboundPolicyDecision> {
     if (event.userId === this.workspace.botUserId) {
       return this.denied(event, "bot_not_allowed");
@@ -442,17 +441,6 @@ export class SlackAccountPolicyResolver {
       return this.denied(
         event,
         "reaction_disabled",
-        decision.conversationKind,
-        decision.channelPolicyKey,
-      );
-    }
-    if (
-      this.reactionMode === "own" &&
-      itemUserId !== this.workspace.botUserId
-    ) {
-      return this.denied(
-        event,
-        "reaction_not_owned",
         decision.conversationKind,
         decision.channelPolicyKey,
       );
@@ -469,6 +457,10 @@ export class SlackAccountPolicyResolver {
       );
     }
     return decision;
+  }
+
+  isReactionTargetAllowed(isOwnedByAgent: boolean): boolean {
+    return this.reactionMode !== "own" || isOwnedByAgent;
   }
 
   workspaceDenial(input: {

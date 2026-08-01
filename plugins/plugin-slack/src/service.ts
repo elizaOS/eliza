@@ -1513,7 +1513,6 @@ export class SlackService extends Service implements ISlackService {
               ...workspace,
             },
             event.reaction,
-            event.item_user,
           )
         : {
             allowed: false,
@@ -1564,6 +1563,26 @@ export class SlackService extends Service implements ISlackService {
             messageTs: event.item.ts,
           },
           "Rejected Slack reaction because its message lane is unknown",
+        );
+        return;
+      }
+      if (
+        !policy?.isReactionTargetAllowed(
+          target.entityId === this.runtime.agentId,
+        )
+      ) {
+        this.runtime.logger.debug(
+          {
+            src: "plugin:slack",
+            agentId: this.runtime.agentId,
+            accountId,
+            action,
+            channelId: event.item.channel,
+            userId: event.user,
+            reaction: event.reaction,
+            reason: "reaction_not_owned",
+          },
+          "Inbound Slack reaction denied by account policy",
         );
         return;
       }
@@ -1938,18 +1957,21 @@ export class SlackService extends Service implements ISlackService {
     message: SlackMessageEventType,
     accountId = this.defaultAccountId,
   ): Promise<Memory | null> {
-    if (!message.user) return null;
+    const senderId = message.user ?? message.bot_id;
+    if (!senderId) return null;
 
     const roomId = await this.getRoomId(
       message.channel,
       message.thread_ts,
       accountId,
     );
-    const entityId = this.getEntityId(message.user, accountId);
+    const entityId = this.getEntityId(senderId, accountId);
 
     // Get user info for display name
-    const user = await this.getUser(message.user, accountId);
-    const displayName = user ? getSlackUserDisplayName(user) : message.user;
+    const user = message.user
+      ? await this.getUser(message.user, accountId)
+      : null;
+    const displayName = user ? getSlackUserDisplayName(user) : senderId;
 
     // Extract media from files
     const media: Media[] = [];
@@ -1987,22 +2009,22 @@ export class SlackService extends Service implements ISlackService {
         accountId,
         timestamp: this.parseSlackTimestamp(message.ts),
         entityName: displayName,
-        entityUserName: user?.name ?? message.user,
-        fromBot: false,
-        fromId: message.user,
+        entityUserName: user?.name ?? senderId,
+        fromBot: Boolean(message.bot_id),
+        fromId: senderId,
         sourceId: entityId,
         chatType: message.channel_type,
         messageIdFull: message.ts,
         sender: {
-          id: message.user,
+          id: senderId,
           name: displayName,
-          username: user?.name ?? message.user,
+          username: user?.name ?? senderId,
         },
         slack: {
           accountId,
           teamId: this.getTeamIdForAccount(accountId) ?? undefined,
           channelId: message.channel,
-          userId: message.user,
+          userId: senderId,
           messageId: message.ts,
           threadTs: message.thread_ts,
         },
