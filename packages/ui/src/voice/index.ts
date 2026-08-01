@@ -92,6 +92,7 @@ export {
 } from "./voice-capture-factory";
 export {
   type DefaultVoiceProviderResult,
+  isCloudVoiceRunnable,
   type PickDefaultVoiceProviderInput,
   type PresetPlatform,
   type PresetRuntimeMode,
