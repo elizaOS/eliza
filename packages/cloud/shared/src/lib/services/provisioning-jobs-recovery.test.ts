@@ -27,6 +27,7 @@ function recoverable(
     user_id: `user-${id}`,
     agent_name: `Agent ${id}`,
     bridge_url: bridge,
+    lifecycle_revision: 11,
     updated_at: new Date("2026-06-19T00:00:00Z"),
     status,
   };
@@ -67,6 +68,7 @@ describe("processDisconnectedRecovery", () => {
       const enqueuedIds = enqueueSpy.mock.calls.map((c) => c[0].agentId);
       expect(enqueuedIds).toEqual(["a2"]);
       expect(enqueueSpy.mock.calls[0]?.[0].userId).toBe("user-a2");
+      expect(enqueueSpy.mock.calls[0]?.[0].expectedLifecycleRevision).toBe(11);
     } finally {
       listSpy.mockRestore();
       recoverSpy.mockRestore();

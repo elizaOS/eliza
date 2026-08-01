@@ -1303,6 +1303,13 @@
       "when": 1785528000000,
       "tag": "0186_agent_sandbox_physical_name_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1785614400000,
+      "tag": "0187_agent_sandbox_lifecycle_revision",
+      "breakpoints": true
     }
   ]
 }
