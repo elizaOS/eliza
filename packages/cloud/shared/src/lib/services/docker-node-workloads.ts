@@ -7,10 +7,7 @@
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/helpers";
-import {
-  agentSandboxes,
-  agentSnapshotRestoreValidations,
-} from "../../db/schemas/agent-sandboxes";
+import { agentSandboxes, agentSnapshotRestoreValidations } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import {
   countAllocatedWorkloadsOnNodeWithDatabase,

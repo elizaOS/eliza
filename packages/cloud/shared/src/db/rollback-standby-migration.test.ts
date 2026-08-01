@@ -21,7 +21,7 @@ const BACKUP_ID = "00000000-0000-4000-8000-000000517183";
 const RESTORE_VALIDATION_ID = "00000000-0000-4000-8000-000000617183";
 const RESTORE_CANDIDATE_ATTEMPT_ID = "00000000-0000-4000-8000-000000717183";
 const RESTORE_AGGREGATE_SHA256 = "c".repeat(64);
-const migrationUrl = new URL("./migrations/0187_rollback_standby_state.sql", import.meta.url);
+const migrationUrl = new URL("./migrations/0188_rollback_standby_state.sql", import.meta.url);
 
 let dbWrite: typeof import("./client").dbWrite;
 let closeDb: typeof import("./client").closeDatabaseConnectionsForTests | undefined;
@@ -123,7 +123,7 @@ async function expectStandbyConstraintViolation(query: PromiseLike<unknown>): Pr
   }
 }
 
-describe("0187 rollback standby state", () => {
+describe("0188 rollback standby state", () => {
   test("is registered once in the migration journal", () => {
     const journal = JSON.parse(
       readFileSync(
@@ -135,14 +135,14 @@ describe("0187 rollback standby state", () => {
       (entry) => entry.tag === "0182_warm_claim_credential_fence",
     );
     const rollbackStandbyEntries = journal.entries.filter(
-      (entry) => entry.tag === "0187_rollback_standby_state",
+      (entry) => entry.tag === "0188_rollback_standby_state",
     );
     expect(warmClaimEntries).toHaveLength(1);
     expect(rollbackStandbyEntries).toHaveLength(1);
     expect(rollbackStandbyEntries[0].idx).toBeGreaterThan(warmClaimEntries[0].idx);
     expect(rollbackStandbyEntries[0].when).toBeGreaterThan(warmClaimEntries[0].when);
     expect(
-      journal.entries.findIndex((entry) => entry.tag === "0187_rollback_standby_state"),
+      journal.entries.findIndex((entry) => entry.tag === "0188_rollback_standby_state"),
     ).toBeGreaterThan(
       journal.entries.findIndex((entry) => entry.tag === "0182_warm_claim_credential_fence"),
     );
