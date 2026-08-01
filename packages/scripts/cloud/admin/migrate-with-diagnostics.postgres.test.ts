@@ -86,6 +86,7 @@ async function journalEntries(): Promise<JournalEntry[]> {
 async function seedAppliedPrefix(
   client: pg.Client,
   length: number,
+  order: "timestamp" | "journal" = "journal",
 ): Promise<void> {
   await client.query(`
     CREATE TABLE jobs (
@@ -103,9 +104,15 @@ async function seedAppliedPrefix(
     );
   `);
 
+  // Deployed historical runners used both orders. Timestamp mode preserves
+  // production inversions where a later journal entry ran first; journal mode
+  // preserves older installations that recorded backward timestamps in place.
   const entries = (await journalEntries())
     .slice(0, length)
     .filter((entry) => !PRODUCTION_LEGACY_SKIPPED_CREATED_AT.has(entry.when));
+  if (order === "timestamp") {
+    entries.sort((left, right) => left.when - right.when);
+  }
   for (const entry of entries) {
     const sql = await readFile(
       path.join(MIGRATIONS_DIR, `${entry.tag}.sql`),
@@ -246,6 +253,77 @@ describe.skipIf(!ENABLED)(
       await database.client.end();
     }, 30_000);
 
+    test("accepts production timestamp order when legacy journal indexes invert", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184, "timestamp");
+      const entries = await journalEntries();
+      const earlierTimestamp = entries[44];
+      const laterTimestamp = entries[43];
+      if (!earlierTimestamp || !laterTimestamp) {
+        throw new Error("Missing production inversion fixture entries");
+      }
+      expect(earlierTimestamp.tag).toBe("0044_seed_chain_data_pricing");
+      expect(laterTimestamp.tag).toBe(
+        "0043_add_missing_referral_context_columns",
+      );
+      expect(earlierTimestamp.when).toBeLessThan(laterTimestamp.when);
+
+      const inversion = await database.client.query<{
+        id: number;
+        created_at: string;
+      }>(
+        `SELECT id, created_at::text
+         FROM drizzle.__drizzle_migrations
+         WHERE created_at = ANY($1::bigint[])
+         ORDER BY id ASC`,
+        [[earlierTimestamp.when, laterTimestamp.when]],
+      );
+      expect(inversion.rows.map((row) => Number(row.created_at))).toEqual([
+        earlierTimestamp.when,
+        laterTimestamp.when,
+      ]);
+
+      const migrated = await runScript(MIGRATOR, database.url);
+      expect(migrated.exitCode, migrated.output).toBe(0);
+      expect(migrated.output).toContain("pending migrations: 3");
+      await database.client.end();
+    }, 120_000);
+
+    test("accepts historical journal order when legacy timestamps invert", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184, "journal");
+
+      const migrated = await runScript(MIGRATOR, database.url);
+      expect(migrated.exitCode, migrated.output).toBe(0);
+      expect(migrated.output).toContain("pending migrations: 3");
+      await database.client.end();
+    }, 120_000);
+
+    test("rejects historical rows appended after the immutable checkpoint", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184);
+      const entries = await journalEntries();
+      for (const journalIndex of [186, 184, 185]) {
+        const entry = entries[journalIndex];
+        if (!entry) throw new Error(`Missing journal entry ${journalIndex}`);
+        const sql = await readFile(
+          path.join(MIGRATIONS_DIR, `${entry.tag}.sql`),
+          "utf8",
+        );
+        await database.client.query(
+          "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+          [createHash("sha256").update(sql).digest("hex"), entry.when],
+        );
+      }
+
+      const result = await runScript(MIGRATOR, database.url);
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain(
+        "appears after hash enforcement checkpoint",
+      );
+      await database.client.end();
+    }, 120_000);
+
     test("rejects incompatible catalog drift and malformed ledger prefixes", async () => {
       const drift = await createDatabase();
       await seedAppliedPrefix(drift.client, 184);
@@ -329,26 +407,7 @@ describe.skipIf(!ENABLED)(
       expect(unknownRowResult.exitCode).toBe(1);
       expect(unknownRowResult.output).toContain("no matching journal entry");
       await unknownRow.client.end();
-
-      const outOfOrder = await createDatabase();
-      await seedAppliedPrefix(outOfOrder.client, 183);
-      for (const journalIndex of [184, 183]) {
-        const entry = entries[journalIndex];
-        if (!entry) throw new Error(`Missing journal entry ${journalIndex}`);
-        const sql = await readFile(
-          path.join(MIGRATIONS_DIR, `${entry.tag}.sql`),
-          "utf8",
-        );
-        await outOfOrder.client.query(
-          "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
-          [createHash("sha256").update(sql).digest("hex"), entry.when],
-        );
-      }
-      const outOfOrderResult = await runScript(MIGRATOR, outOfOrder.url);
-      expect(outOfOrderResult.exitCode).toBe(1);
-      expect(outOfOrderResult.output).toContain("out of journal order");
-      await outOfOrder.client.end();
-    }, 30_000);
+    }, 300_000);
 
     test("serializes concurrent migrators and recovers from table-lock contention", async () => {
       const database = await createDatabase();

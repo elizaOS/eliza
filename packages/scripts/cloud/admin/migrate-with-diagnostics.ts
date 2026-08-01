@@ -272,6 +272,8 @@ function validateAppliedMigrationLedger(
     );
   }
   let lastAppliedJournalIndex = -1;
+  let lastEnforcedJournalIndex = hashIdentityEnforcementIndex - 1;
+  let hashEnforcementStarted = false;
   for (const row of applied) {
     const createdAt = createdAtValue(row);
     if (createdAt === null) {
@@ -300,13 +302,27 @@ function validateAppliedMigrationLedger(
         `Migration ledger hash mismatch for ${matched.migration.entry.tag}: expected ${matched.migration.hash}, found ${row.hash}`,
       );
     }
-    if (matched.journalIndex <= lastAppliedJournalIndex) {
+    // Historical deployments used both journal-order and timestamp-order
+    // runners, so row id cannot authenticate ordering before the checkpoint.
+    // From the checkpoint forward this runner owns a single append-only order.
+    if (matched.journalIndex >= hashIdentityEnforcementIndex) {
+      if (matched.journalIndex <= lastEnforcedJournalIndex) {
+        throw new Error(
+          `Migration ledger is out of immutable journal order at row id=${row.id}: ${matched.migration.entry.tag} follows journal index ${lastEnforcedJournalIndex}`,
+        );
+      }
+      hashEnforcementStarted = true;
+      lastEnforcedJournalIndex = matched.journalIndex;
+    } else if (hashEnforcementStarted) {
       throw new Error(
-        `Migration ledger is out of journal order at row id=${row.id}: ${matched.migration.entry.tag} follows journal index ${lastAppliedJournalIndex}`,
+        `Historical migration ${matched.migration.entry.tag} appears after hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
       );
     }
     appliedJournalIndexes.add(matched.journalIndex);
-    lastAppliedJournalIndex = matched.journalIndex;
+    lastAppliedJournalIndex = Math.max(
+      lastAppliedJournalIndex,
+      matched.journalIndex,
+    );
   }
 
   let runningTimestampMaximum = Number.NEGATIVE_INFINITY;
