@@ -552,6 +552,17 @@ describe("isExactVersionSpecifier", () => {
     expect(isExactVersionSpecifier("1.2.3+build.5")).toBe(true);
   });
 
+  it("normalizes npm's legacy numeric-whitespace range without widening it", () => {
+    expect(parseRegistryVersionConstraint(">=0.5 0")).toEqual({
+      kind: "range",
+      range: ">=0.5.0",
+    });
+    expect(parseRegistryVersionConstraint(">=1 <2")).toEqual({
+      kind: "range",
+      range: ">=1 <2",
+    });
+  });
+
   it("rejects ranges, tags, and empty specs", () => {
     expect(isExactVersionSpecifier("^1.2.3")).toBe(false);
     expect(isExactVersionSpecifier("latest")).toBe(false);
@@ -764,6 +775,18 @@ describe("selectResolvedCandidate", () => {
     expect(selectResolvedCandidate([v2], "^1.9.0")).toEqual({
       kind: "mismatch",
       availableVersions: ["2.0.1"],
+    });
+  });
+
+  it("selects the installed answer for an npm legacy numeric-whitespace range", () => {
+    const incompatible = candidate("mkdirp", "0.4.2");
+    const compatible = candidate("mkdirp", "1.0.4");
+    expect(
+      selectResolvedCandidate([incompatible, compatible], ">=0.5 0"),
+    ).toEqual({ kind: "selected", candidate: compatible });
+    expect(selectResolvedCandidate([incompatible], ">=0.5 0")).toEqual({
+      kind: "mismatch",
+      availableVersions: ["0.4.2"],
     });
   });
 

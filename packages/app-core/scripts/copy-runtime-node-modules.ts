@@ -2109,10 +2109,25 @@ export function parseRegistryVersionConstraint(
     return { kind: "exact", version: spec };
   }
 
+  // npm accepted numeric whitespace as a missing dot in some early manifests
+  // (notably fstream's `mkdirp: ">=0.5 0"`). Modern node-semver instead
+  // parses that spelling as the impossible intersection `>=0.5.0 0.x`, while
+  // Bun still installs the historical package-manager answer. Normalize only
+  // a trailing numeric component after a partial comparator so ordinary
+  // comparator sets such as `>=1 <2` retain their standard meaning.
+  const legacyNumericWhitespaceRange = spec.replace(
+    /^([<>=~^]*\s*\d+\.\d+)\s+(\d+)$/,
+    "$1.$2",
+  );
+
   // Dist-tags ("latest"), git URLs, and catalog: specs are not version
   // constraints the on-disk tree can be checked against.
-  if (semver.validRange(spec, { includePrerelease: true }) !== null) {
-    return { kind: "range", range: spec };
+  if (
+    semver.validRange(legacyNumericWhitespaceRange, {
+      includePrerelease: true,
+    }) !== null
+  ) {
+    return { kind: "range", range: legacyNumericWhitespaceRange };
   }
 
   return { kind: "unconstrained" };
