@@ -1414,6 +1414,7 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
     }));
     const getBackupByIdMock = mock(async () => backup);
     agentSandboxesRepository.getBackupById = getBackupByIdMock;
+    agentSandboxesRepository.getLatestBackup = mock(async () => backup);
     const reconstructMock = mock(async () => {
       if (opts.reconstructError) throw opts.reconstructError;
       return { memories: [], config: {}, workspaceFiles: {} };
@@ -1574,8 +1575,8 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
   });
 });
 
-describe("ElizaSandboxService shutdown fails closed without a current capture (#17180 §2)", () => {
-  test("a failing pre-stop capture refuses the shutdown and leaves the agent running", async () => {
+describe("ElizaSandboxService shutdown capture fence", () => {
+  test("leaves the running placement intact when its current capture fails", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const rec = customSandbox();
     const provider: SandboxProvider = {
@@ -1588,10 +1589,10 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
     };
     const svc = new ElizaSandboxService(provider);
     const getForWrite = spyOn(
-      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      svc as unknown as { getAgentForWrite: () => Promise<AgentSandbox | undefined> },
       "getAgentForWrite",
     ).mockResolvedValue(rec);
-    const fetchSnap = spyOn(
+    const fetchSnapshot = spyOn(
       svc as unknown as { fetchSnapshotState: () => Promise<never> },
       "fetchSnapshotState",
     ).mockRejectedValue(new Error("snapshot endpoint timed out"));
@@ -1605,13 +1606,124 @@ describe("ElizaSandboxService shutdown fails closed without a current capture (#
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
     } finally {
       getForWrite.mockRestore();
-      fetchSnap.mockRestore();
+      fetchSnapshot.mockRestore();
+    }
+  });
+
+  test("rejects a capture when the locked API placement moved", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const current = { ...rec, web_ui_port: (rec.web_ui_port ?? 3000) + 1 };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type ShutdownFenceService = {
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      fetchSnapshotState(): Promise<{
+        stateData: AgentBackupStateData;
+        sizeBytes: number;
+        bridgeUrl: string;
+      }>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+      persistSnapshotWithinTransaction(): Promise<void>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as ShutdownFenceService & {
+      shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+    };
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnapshot = spyOn(svc, "fetchSnapshotState").mockResolvedValue({
+      stateData: { memories: [], config: {}, workspaceFiles: {} },
+      sizeBytes: 2,
+      bridgeUrl: rec.bridge_url!,
+    });
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(current);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const persistSnapshot = spyOn(svc, "persistSnapshotWithinTransaction");
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+      });
+    try {
+      const result = await svc.shutdown(rec.id, rec.organization_id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("lifecycle generation moved");
+      expect(persistSnapshot).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      fetchSnapshot.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      persistSnapshot.mockRestore();
+    }
+  });
+
+  test("leaves malformed running compute intact when no snapshot endpoint is reachable", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = { ...customSandbox(), bridge_url: null };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type ShutdownNoBridgeService = {
+      shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as ShutdownNoBridgeService;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async () => ({ rows: [] }),
+      });
+    try {
+      const result = await svc.shutdown(rec.id, rec.organization_id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("running sandbox has no reachable snapshot endpoint");
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
     }
   });
 });
 
-describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 §3)", () => {
-  test("capture failed and the latest stored backup cannot be verified — sleep aborts", async () => {
+describe("ElizaSandboxService sleep fallback integrity", () => {
+  test("leaves compute running when the fallback backup fails real decrypt verification", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const rec = customSandbox();
     const provider: SandboxProvider = {
@@ -1637,6 +1749,7 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
       '{"memories":[],"config":{},"workspaceFiles":{}}',
       KMS_TEST_COORDS,
     );
+    const backupCreatedAt = new Date("2026-01-01T00:00:00.000Z");
     const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
       {
         id: "stale-unproven",
@@ -1647,8 +1760,13 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
           algorithm: "kms-aes-256-gcm",
           ...foreignEnvelope,
         },
+        snapshot_schema_version: 1,
         state_data_storage: "inline",
         state_data_key: null,
+        state_data_descriptor: null,
+        storage_commit_state: "complete",
+        storage_commit_error: null,
+        storage_commit_updated_at: backupCreatedAt,
         backup_kind: "full",
         parent_backup_id: null,
         content_hash: null,
@@ -1656,16 +1774,16 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
         verification_status: null,
         verified_at: null,
         verification_error: null,
-        created_at: new Date("2026-01-01T00:00:00.000Z"),
+        created_at: backupCreatedAt,
       } as never,
     );
     const stamp = spyOn(agentSandboxesRepository, "stampBackupVerification").mockResolvedValue(
       undefined as never,
     );
-    const listMeta = spyOn(agentSandboxesRepository, "listBackupMetadata").mockResolvedValue(
+    const listMetadata = spyOn(agentSandboxesRepository, "listBackupMetadata").mockResolvedValue(
       [] as never,
     );
-    const updateSpy = spyOn(agentSandboxesRepository, "update");
+    const update = spyOn(agentSandboxesRepository, "update");
     try {
       const result = await new ElizaSandboxService(provider).executeSleep(
         rec.id,
@@ -1675,15 +1793,22 @@ describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 
       expect(result.success).toBe(false);
       expect(result.containerRemoved).toBe(false);
       expect(result.error).toContain("Refusing to deactivate on an unproven backup");
+      expect(stamp).toHaveBeenCalledWith(
+        "stale-unproven",
+        expect.objectContaining({
+          status: "failed",
+          error: expect.stringContaining("decrypt-failed: AEAD decrypt failed"),
+        }),
+      );
       expect(provider.stop).not.toHaveBeenCalled();
       expect(provider.stopForReplacement).not.toHaveBeenCalled();
-      expect(updateSpy).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
     } finally {
       find.mockRestore();
       storedBackup.mockRestore();
       stamp.mockRestore();
-      listMeta.mockRestore();
-      updateSpy.mockRestore();
+      listMetadata.mockRestore();
+      update.mockRestore();
     }
   });
 });
@@ -3187,7 +3312,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     };
   }
 
-  test("restart on an unreachable old node preserves the handle and never provisions", async () => {
+  test("restart without a snapshot endpoint preserves the handle and never provisions", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const rec = claimedPendingRow();
     const provider: SandboxProvider = {
@@ -3239,9 +3364,10 @@ describe("replacement lifecycle teardown is absence-proof", () => {
         success: false,
         containerStopped: false,
         containerStarted: false,
-        error: "Failed to prove the previous sandbox stopped",
+        error:
+          "Refusing to stop without a current backup: the running sandbox has no reachable snapshot endpoint.",
       });
-      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
       expect(provider.stop).not.toHaveBeenCalled();
       expect(writes).toHaveLength(0);
       expect(provision).not.toHaveBeenCalled();
@@ -3514,6 +3640,17 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     return { lockLifecycle, getForMutation, activeReplacement, writes };
   }
 
+  function armVerifiedSleepFallback(rec: AgentSandbox): ReturnType<typeof spyOn> {
+    return spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue({
+      id: "durable-backup",
+      sandbox_record_id: rec.id,
+      snapshot_type: "pre-shutdown",
+      verification_status: "verified",
+      verified_at: new Date(),
+      created_at: new Date(),
+    } as never);
+  }
+
   test("sleep on an unreachable old node retains compute locators for retry", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const rec = { ...claimedPendingRow(), status: "stopped" as const };
@@ -3529,21 +3666,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     };
     const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
     const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
-    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
-      id: "durable-backup",
-    } as never);
-    // Fresh verified stamp: the sleep fallback gate accepts this row without
-    // a live decrypt, keeping these tests focused on the later stages.
-    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
-      {
-        id: "durable-backup",
-        sandbox_record_id: rec.id,
-        snapshot_type: "pre-shutdown",
-        verification_status: "verified",
-        verified_at: new Date(),
-        created_at: new Date(),
-      } as never,
-    );
+    const backup = armVerifiedSleepFallback(rec);
     const tx = armSleepTransaction(svc, rec);
     try {
       const result = await svc.executeSleep(AGENT, ORG);
@@ -3559,7 +3682,6 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       upgradeTransactionImpl = null;
       find.mockRestore();
       backup.mockRestore();
-      storedBackup.mockRestore();
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();
       tx.activeReplacement.mockRestore();
@@ -3586,21 +3708,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     };
     const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
     const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
-    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
-      id: "durable-backup",
-    } as never);
-    // Fresh verified stamp: the sleep fallback gate accepts this row without
-    // a live decrypt, keeping these tests focused on the later stages.
-    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
-      {
-        id: "durable-backup",
-        sandbox_record_id: rec.id,
-        snapshot_type: "pre-shutdown",
-        verification_status: "verified",
-        verified_at: new Date(),
-        created_at: new Date(),
-      } as never,
-    );
+    const backup = armVerifiedSleepFallback(rec);
     const tx = armSleepTransaction(svc, replacement);
 
     try {
@@ -3616,7 +3724,6 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       upgradeTransactionImpl = null;
       find.mockRestore();
       backup.mockRestore();
-      storedBackup.mockRestore();
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();
       tx.activeReplacement.mockRestore();
@@ -3636,21 +3743,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     };
     const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
     const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
-    const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
-      id: "durable-backup",
-    } as never);
-    // Fresh verified stamp: the sleep fallback gate accepts this row without
-    // a live decrypt, keeping these tests focused on the later stages.
-    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
-      {
-        id: "durable-backup",
-        sandbox_record_id: rec.id,
-        snapshot_type: "pre-shutdown",
-        verification_status: "verified",
-        verified_at: new Date(),
-        created_at: new Date(),
-      } as never,
-    );
+    const backup = armVerifiedSleepFallback(rec);
     const prune = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(undefined);
     const tx = armSleepTransaction(svc, rec);
 
@@ -3669,7 +3762,6 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       upgradeTransactionImpl = null;
       find.mockRestore();
       backup.mockRestore();
-      storedBackup.mockRestore();
       prune.mockRestore();
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();

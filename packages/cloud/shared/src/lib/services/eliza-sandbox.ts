@@ -971,6 +971,62 @@ const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
 // token-corrected resume could still restore (#15274).
 const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
 
+function isSnapshotRestoreWireLimitError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error.name === "SnapshotPayloadTooLargeError" ||
+      error.name === "AgentSnapshotV1WireLimitError")
+  );
+}
+
+function refuseOversizedSnapshotFreshBoot(error: Error): never {
+  throw new ElizaError(
+    `Restore refused: ${error.message}. Booting empty would discard this agent's state; ` +
+      "wake with forceFreshBoot to explicitly accept the data loss.",
+    {
+      cause: error,
+      code: "SNAPSHOT_RESTORE_REQUIRES_FRESH_BOOT_CONSENT",
+      context: { sourceError: error.name },
+      severity: "fatal",
+    },
+  );
+}
+
+function sandboxRevisionMillis(value: Date | string): number {
+  return value instanceof Date ? value.getTime() : new Date(value).getTime();
+}
+
+/**
+ * Snapshot requests may route through Docker placement fields instead of the
+ * public bridge URL, so the entire placement and execution tuple identifies
+ * which running generation produced a pre-stop capture.
+ */
+function isSameSnapshotCaptureGeneration(
+  observed: AgentSandbox | undefined,
+  current: AgentSandbox,
+): boolean {
+  return (
+    observed?.status === "running" &&
+    current.status === "running" &&
+    observed.sandbox_id === current.sandbox_id &&
+    observed.bridge_url === current.bridge_url &&
+    observed.health_url === current.health_url &&
+    observed.node_id === current.node_id &&
+    observed.container_name === current.container_name &&
+    observed.bridge_port === current.bridge_port &&
+    observed.web_ui_port === current.web_ui_port &&
+    observed.headscale_ip === current.headscale_ip &&
+    observed.docker_image === current.docker_image &&
+    observed.image_digest === current.image_digest &&
+    observed.environment_revision === current.environment_revision &&
+    observed.lifecycle_job_id === current.lifecycle_job_id &&
+    observed.lifecycle_execution_generation === current.lifecycle_execution_generation &&
+    // Raw lifecycle reads may surface timestamptz values as strings. The
+    // millisecond-normalized row revision closes deterministic-locator ABA.
+    sandboxRevisionMillis(observed.updated_at) === sandboxRevisionMillis(current.updated_at)
+  );
+}
+
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -2702,14 +2758,8 @@ export class ElizaSandboxService {
             // passes `from-backup`, so checking that first would swallow the
             // consent sentence on the one path where the consent mechanism
             // exists.
-            if (error instanceof SnapshotPayloadTooLargeError) {
-              // Size refusal fails CLOSED even on an ordinary provision: the
-              // chain is intact, only too large — booting empty would silently
-              // drop every byte of it. The one consent path is wake's
-              // forceFreshBoot.
-              throw new Error(
-                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
-              );
+            if (isSnapshotRestoreWireLimitError(error)) {
+              refuseOversizedSnapshotFreshBoot(error);
             }
             if (restoreOverride?.kind === "from-backup") throw error;
             if (!isUnrecoverableSnapshotError(error)) throw error;
@@ -2740,13 +2790,8 @@ export class ElizaSandboxService {
                   backupId: backup?.id,
                 },
               );
-            } else if (error instanceof SnapshotPayloadTooLargeError) {
-              // Ordered before the from-backup rethrow for the same reason as
-              // the fetch branch: a gated wake would otherwise never see the
-              // consent sentence.
-              throw new Error(
-                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
-              );
+            } else if (isSnapshotRestoreWireLimitError(error)) {
+              refuseOversizedSnapshotFreshBoot(error);
             } else if (restoreOverride?.kind === "from-backup") {
               // Same no-silent-fresh-boot rule as the fetch above: an explicit
               // restore point that cannot be pushed fails the provision rather
@@ -6993,14 +7038,20 @@ export class ElizaSandboxService {
     } | null = null;
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
-    if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
+    if (
+      snapshotSource?.status === "running" &&
+      snapshotSource.sandbox_id &&
+      snapshotSource.bridge_url
+    ) {
       try {
         preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource);
       } catch (error) {
+        // error-policy:J1 shutdown boundary translation — a capture failure is
+        // returned explicitly while the running placement remains untouched.
         const message = error instanceof Error ? error.message : String(error);
         if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
-          // The deployed image cannot snapshot by construction; requiring a
-          // capture it can never produce would make this agent unstoppable.
+          // error-policy:J4 images without the endpoint cannot produce a
+          // capture; the locked generation check below contains this degrade.
           captureUnsupported = true;
           logger.warn(
             "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
@@ -7064,27 +7115,38 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      if (rec.status === "running" && rec.bridge_url && !captureUnsupported) {
-        // The capture must be OF THIS generation. A capture taken against a
-        // different bridge_url (the row moved between the unlocked fetch and
-        // this locked read) is some other container's state; persisting it
-        // would masquerade as current, and stopping without persisting would
-        // silently discard the delta. Both refuse.
-        if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+      if (rec.status === "running" && rec.sandbox_id) {
+        if (!rec.bridge_url) {
+          return {
+            success: false,
+            error:
+              "Refusing to stop without a current backup: the running sandbox has no reachable snapshot endpoint.",
+          } as const;
+        }
+        if (!isSameSnapshotCaptureGeneration(snapshotSource, rec)) {
           return {
             success: false,
             error:
               "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
           } as const;
         }
-        await this.persistSnapshotWithinTransaction(
-          tx,
-          rec.id,
-          rec.organization_id,
-          "pre-shutdown",
-          preShutdownSnapshot.stateData,
-          preShutdownSnapshot.sizeBytes,
-        );
+        if (!captureUnsupported) {
+          if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+            return {
+              success: false,
+              error:
+                "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+            } as const;
+          }
+          await this.persistSnapshotWithinTransaction(
+            tx,
+            rec.id,
+            rec.organization_id,
+            "pre-shutdown",
+            preShutdownSnapshot.stateData,
+            preShutdownSnapshot.sizeBytes,
+          );
+        }
       }
 
       if (rec.sandbox_id) {
@@ -7314,6 +7376,8 @@ export class ElizaSandboxService {
         });
         backupId = backup.id;
       } catch (error) {
+        // error-policy:J4 a failed live capture may degrade only to a backup
+        // that passes the same restore-integrity proof required for wake.
         logger.warn("[agent-sandbox] Sleep snapshot fetch failed; checking latest durable backup", {
           agentId,
           error: error instanceof Error ? error.message : String(error),
