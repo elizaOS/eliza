@@ -9576,11 +9576,24 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
+		const canonicalProviderSetting = this.getSetting(
+			"ELIZA_EMBEDDING_PROVIDER",
+		);
+		const embeddingProvider =
+			typeof canonicalProviderSetting === "string" &&
+			canonicalProviderSetting.trim()
+				? canonicalProviderSetting.trim()
+				: undefined;
 		const allRegistrations = this.resolveModelRegistrations(
 			ModelType.TEXT_EMBEDDING,
+			embeddingProvider,
 		);
 		if (allRegistrations.length === 0) {
-			throw new Error("No TEXT_EMBEDDING model registered");
+			throw new Error(
+				embeddingProvider
+					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
+					: "No TEXT_EMBEDDING model registered",
+			);
 		}
 
 		// EMBEDDING_PROVIDER=local is an ownership boundary, not a preference.
@@ -9589,12 +9602,12 @@ ${section_end}`;
 		// to send embedding batches to Eliza Cloud when the GGUF was still staging.
 		// Prefer the router when present because it owns local device selection;
 		// otherwise fail over only among concrete on-device handlers.
-		const configuredProvider = String(
+		const configuredOwnershipProvider = String(
 			this.getSetting("EMBEDDING_PROVIDER") ?? "",
 		)
 			.trim()
 			.toLowerCase();
-		const localOnly = configuredProvider === "local";
+		const localOnly = configuredOwnershipProvider === "local";
 		const localRegistrations = localOnly
 			? allRegistrations.filter((registration) =>
 					LOCAL_EMBEDDING_PROVIDERS.has(registration.provider),
