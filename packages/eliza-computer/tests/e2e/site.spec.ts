@@ -187,6 +187,11 @@ test("installs safely, copies the selected command, and serves verified artifact
   const installerGuide = await installerGuideResponse.text();
   expect(installerGuide).toContain("https://api.github.com");
   expect(installerGuide).toContain("ELIZA_ARMY_SKILL_OPERATION=rollback");
+  expect(installerGuide).toContain(
+    "rollback still requires current authorization",
+  );
+  expect(installerGuide).toContain("current GitHub authorization rules");
+  expect(installerGuide).toContain("cannot authorize rollback");
 
   const archiveResponse = await request.get(
     "/downloads/contribute-to-eliza.skill",

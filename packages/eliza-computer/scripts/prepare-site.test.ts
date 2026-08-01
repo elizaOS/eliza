@@ -537,6 +537,11 @@ describe("contribution skill package", () => {
     expect(codexGuide).toContain("https://raw.githubusercontent.com");
     expect(codexGuide).toContain("ELIZA_ARMY_SKILL_OPERATION=rollback");
     expect(codexGuide).toContain("ELIZA_ARMY_SKILL_REVISION=");
+    expect(codexGuide).toContain(
+      "rollback still requires current authorization",
+    );
+    expect(codexGuide).toContain("current GitHub authorization rules");
+    expect(codexGuide).toContain("cannot authorize rollback");
   });
 
   it("installs the verified archive and refuses mismatched or ambiguous checksums", () => {

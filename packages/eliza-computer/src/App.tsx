@@ -68,7 +68,7 @@ function createInstallOptions(origin: string): readonly InstallOption[] {
         origin,
         `\${CODEX_HOME:-\${HOME}/.codex}/skills`,
       ),
-      note: "Verifies the GitHub revision, installs atomically, and keeps a rollback version.",
+      note: "Verifies GitHub, installs atomically, and retains the prior version for rollback when authorized.",
     },
     {
       id: "claude",

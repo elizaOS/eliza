@@ -292,12 +292,15 @@ review one open elizaOS pull request.
 Versions live beside one atomic \`contribute-to-eliza\` symlink. Re-running the
 command is a no-op at the same revision and updates only when GitHub proves the
 installed revision is an ancestor of the newly authorized revision. The prior
-verified version is retained. To roll back explicitly, export
+verified version is retained, but rollback still requires current authorization.
+To roll back, export
 \`ELIZA_ARMY_SKILL_OPERATION=rollback\` and
 \`ELIZA_ARMY_SKILL_REVISION=<retained-40-character-revision>\`, then run the
-same command. The rollback revalidates both the active and retained versions
-against GitHub before switching the symlink. Unset both variables afterward so
-the next invocation returns to install/update mode.
+same command. The rollback byte-verifies both the active and retained versions,
+then applies the current GitHub authorization rules to the requested target
+immediately before switching the symlink. The stored receipt records how a
+version entered the local store; it cannot authorize rollback. Unset both
+variables afterward so the next invocation returns to install/update mode.
 
 Inspect the installed source before running it:
 

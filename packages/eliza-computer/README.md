@@ -148,19 +148,24 @@ maintainer reviews the new exact head and the branch is fully synchronized.
 Installs are immutable directories under the selected skills root. The visible
 `contribute-to-eliza` path is an atomically replaced relative symlink, guarded
 by a process-bound kernel concurrency lock that is automatically released on
-normal or interrupted process exit. Each version carries a canonical local authorization
-receipt recording whether it entered as `develop` or a labeled PR head.
-Re-running at the same verified revision is a no-op. An update proceeds only
-when GitHub's compare API proves the old revision is an ancestor of the new
-authorized revision; a recorded candidate may also advance to the exact merged
-`develop` result after GitHub verifies the original PR identity, even when the
-maintainer label has since been removed or the PR used a squash merge. The
-prior version remains available. A rollback requires setting
+normal or interrupted process exit. Each version carries a canonical local
+authorization receipt recording whether it entered as `develop` or a labeled
+PR head. The receipt preserves candidate identity for a later squash-merge
+transition; it records history rather than current authority and cannot
+authorize a rollback. Re-running at the same verified revision is a no-op. An
+update proceeds only when GitHub's compare API proves the old revision is an
+ancestor of the new authorized revision; a recorded candidate may also advance
+to the exact merged `develop` result after GitHub verifies the original PR
+identity, even when the maintainer label has since been removed or the PR used
+a squash merge. The prior version remains retained, but rollback still
+requires current authorization. A rollback requires setting
 `ELIZA_ARMY_SKILL_OPERATION=rollback` and
 `ELIZA_ARMY_SKILL_REVISION=<retained-40-character-revision>` before running the
-same generated command; both active and retained trees are reverified against
-GitHub before the atomic switch. Unset both variables after the rollback.
-Modified, broken, divergent, downgraded, or unmanaged installs fail closed.
+same generated command. Before the atomic switch, both active and retained
+trees are byte-verified against GitHub and the requested target must pass the
+current GitHub authorization rules. Unset both variables after the rollback.
+Modified, broken, unauthorized, divergent, downgraded, or unmanaged installs
+fail closed.
 
 `eliza.army` is registered through Cloudflare Registrar in the same account as
 the Pages project. Production launch requires all of these independent checks:
