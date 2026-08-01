@@ -141,7 +141,19 @@ for (const fixture of [
         "    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)\n",
         "    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true\n",
       ),
-    pattern: /jobs.lint must remain executable by workflow_dispatch/,
+    pattern:
+      /jobs.lint must run only for workflow_dispatch or fork pull requests/,
+  },
+  {
+    name: "same-repository pull request admitted to fork validation",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        "github.event.pull_request.head.repo.fork == true",
+        "github.event_name == 'pull_request'",
+      ),
+    pattern:
+      /jobs.lint must run only for workflow_dispatch or fork pull requests/,
   },
   {
     name: "shared CLI Bun executable installation",
