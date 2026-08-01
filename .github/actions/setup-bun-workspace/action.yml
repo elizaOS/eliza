@@ -307,6 +307,7 @@ runs:
         USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
       with:
         bun-version: ${{ inputs.bun-version }}
+        no-cache: true
 
     - name: Cache Bun install
       # Cache the Bun install store on every OS, Linux included (#12338). Long

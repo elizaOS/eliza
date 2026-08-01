@@ -243,6 +243,7 @@ jobs:
           USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          no-cache: true
 
       - name: Install dependencies
         run: bun install --ignore-scripts --no-frozen-lockfile
