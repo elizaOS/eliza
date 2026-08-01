@@ -214,7 +214,7 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
       skipPR: true,
     });
     expect(result.success).toBe(true);
-    expect(result.text).toBe("No changes to commit");
+    expect(result.text).toBe("No changes to commit in this workspace.");
     expect(replies.join("\n")).toContain("No changes to commit");
     const [receipt] = result.effectReceipts as Array<Record<string, unknown>>;
     expect(receipt.outcome).toBe("noop");
@@ -244,8 +244,10 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
     });
 
     expect(result.success, JSON.stringify({ result, replies })).toBe(true);
-    expect(result.text).toBe("Changes committed and pushed");
     const data = result.data as { commitHash: string; workspaceId: string };
+    expect(result.text).toBe(
+      `Workspace changes committed and pushed.\nCommit: ${data.commitHash.slice(0, 8)}`,
+    );
     expect(data.workspaceId).toBe("ws-submit-1");
     const [receipt] = result.effectReceipts as Array<{
       receiptId: string;
@@ -299,7 +301,11 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
-    expect(replies.join("\n")).toContain("Failed to finalize workspace");
+    expect(replies).toEqual([]);
+    expect(result.text).toEqual(
+      expect.stringContaining("Failed to finalize workspace"),
+    );
+    expect(result.userFacingText).toBe(String(result.text).trim());
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
@@ -347,7 +353,11 @@ describe("TASKS submit_workspace (real service, real git, bare remote)", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("FINALIZE_FAILED");
-    expect(replies.join("\n")).toContain("Failed to finalize workspace");
+    expect(replies).toEqual([]);
+    expect(result.text).toEqual(
+      expect.stringContaining("Failed to finalize workspace"),
+    );
+    expect(result.userFacingText).toBe(String(result.text).trim());
     expect(result.effectReceipts).toEqual([
       expect.objectContaining({
         outcome: "failed",
