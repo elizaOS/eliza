@@ -58,6 +58,41 @@ describe("APP action role policy", () => {
 });
 
 describe("APP stop mode", () => {
+	it("leaves ambiguous mode clarification to the planner", async () => {
+		const client: AppControlClient = {
+			listInstalledApps: vi.fn(),
+			listAppRuns: vi.fn(),
+			launchApp: vi.fn(),
+			stopApp: vi.fn(),
+			stopAppRun: vi.fn(),
+		};
+		const action = createAppAction({
+			client,
+			hasOwnerAccess: async () => true,
+		});
+		const callback: HandlerCallback = vi.fn(async () => undefined);
+
+		const result = await action.handler(
+			{ agentId: "agent-1" } as IAgentRuntime,
+			{
+				entityId: "owner-1",
+				content: { text: "manage an app" },
+			} as Memory,
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(result).toEqual(
+			expect.objectContaining({
+				success: false,
+				text: expect.stringContaining("ask the user"),
+			}),
+		);
+		expect(callback).not.toHaveBeenCalled();
+		expect(client.listInstalledApps).not.toHaveBeenCalled();
+	});
+
 	it("advertises stop as a typed planner operation", () => {
 		const actionParameter = createAppAction().parameters?.find(
 			(parameter) => parameter.name === "action",
