@@ -176,13 +176,23 @@ describe("job interruption catalog preflight", () => {
 
   test("rejects invalid or unbounded timeout configuration", () => {
     for (const name of [
+      "JOB_INTERRUPTION_PREFLIGHT_MAX_ATTEMPTS",
+      "JOB_INTERRUPTION_PREFLIGHT_DELAY_MS",
       "JOB_INTERRUPTION_PREFLIGHT_CONNECT_TIMEOUT_MS",
       "JOB_INTERRUPTION_PREFLIGHT_QUERY_TIMEOUT_MS",
       "JOB_INTERRUPTION_PREFLIGHT_ATTEMPT_TIMEOUT_MS",
     ]) {
-      expect(() => readPreflightOptions({ [name]: "0" })).toThrow(
-        `${name} must be a positive integer`,
-      );
+      for (const value of [
+        "0",
+        "-1",
+        "1.5",
+        "not-a-number",
+        "9007199254740992",
+      ]) {
+        expect(() => readPreflightOptions({ [name]: value })).toThrow(
+          `${name} must be a positive integer`,
+        );
+      }
     }
 
     expect(() =>
@@ -198,7 +208,7 @@ describe("job interruption catalog preflight", () => {
     ).toThrow("worst-case budget");
   });
 
-  test("configures socket and query timeouts and aborts a hung verification", async () => {
+  test("configures timeouts and never retries a hung query on the same client", async () => {
     const options = readPreflightOptions({
       JOB_INTERRUPTION_PREFLIGHT_MAX_ATTEMPTS: "1",
       JOB_INTERRUPTION_PREFLIGHT_DELAY_MS: "1",
@@ -217,17 +227,21 @@ describe("job interruption catalog preflight", () => {
     expect(config.connectionString).not.toContain("query_timeout");
 
     let ended = false;
+    let queries = 0;
     const errorLog = spyOn(console, "error").mockImplementation(() => {});
     try {
       await expect(
         runJobExecutionInterruptionsPreflight(
           {
-            query: () => new Promise(() => {}),
+            query: () => {
+              queries++;
+              return new Promise(() => {});
+            },
             end: async () => {
               ended = true;
             },
           },
-          { maxAttempts: 1, delayMs: 1, attemptTimeoutMs: 5 },
+          { maxAttempts: 3, delayMs: 1, attemptTimeoutMs: 5 },
         ),
       ).rejects.toMatchObject({
         code: "JOB_INTERRUPTION_PREFLIGHT_ATTEMPT_TIMEOUT",
@@ -235,6 +249,7 @@ describe("job interruption catalog preflight", () => {
     } finally {
       errorLog.mockRestore();
     }
+    expect(queries).toBe(1);
     expect(ended).toBe(true);
   });
 
@@ -259,6 +274,12 @@ describe("job interruption catalog preflight", () => {
     expect(workflow).toContain(
       "timeout --foreground --signal=TERM --kill-after=5s 8m",
     );
+    expect(workflow).toContain("timeout-minutes: 35");
+    const deployStep = workflow.slice(
+      workflow.indexOf("- name: Deploy and restart worker"),
+      workflow.indexOf("- name: Health check"),
+    );
+    expect(deployStep).toContain("command_timeout: 20m");
     expect(workflow).toContain(
       "- 'packages/scripts/cloud/admin/preflight-job-execution-interruptions.ts'",
     );

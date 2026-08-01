@@ -240,6 +240,13 @@ async function runAttemptWithTimeout<T>(
   }
 }
 
+function isAttemptWatchdogTimeout(error: unknown): error is ElizaError {
+  return (
+    error instanceof ElizaError &&
+    error.code === "JOB_INTERRUPTION_PREFLIGHT_ATTEMPT_TIMEOUT"
+  );
+}
+
 function safeError(error: unknown): string {
   if (!(error instanceof Error)) return redactSensitiveText(String(error));
   const code = (error as Error & { code?: unknown }).code;
@@ -357,6 +364,16 @@ export async function runJobExecutionInterruptionsPreflight(
           );
           return;
         } catch (error) {
+          // A watchdog firing means the pg query/server timeout fences failed
+          // to settle the operation. Retrying on that same connection would
+          // queue work behind an unresolved query; outer cleanup destroys the
+          // active socket before the failure escapes.
+          if (isAttemptWatchdogTimeout(error)) {
+            console.error(
+              `[job-interruption-preflight] attempt ${attempt}/${options.maxAttempts} did not settle before its watchdog: ${safeError(error)}`,
+            );
+            throw error;
+          }
           if (attempt === options.maxAttempts) {
             console.error(
               `[job-interruption-preflight] exhausted ${options.maxAttempts} attempts: ${safeError(error)}`,

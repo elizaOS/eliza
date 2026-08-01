@@ -116,7 +116,10 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     environment: ${{ needs.determine-env.outputs.environment }}
-    timeout-minutes: 15
+    # The three bounded remote phases (5m prerequisites, 20m deploy, 5m health)
+    # can each use their ceiling without the enclosing job becoming the first
+    # timeout; the remaining five minutes cover action startup and teardown.
+    timeout-minutes: 35
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
@@ -250,7 +253,9 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
-          command_timeout: 10m
+          # Preserve setup/build headroom without weakening the preflight's own
+          # eight-minute fail-closed fence near the end of this remote script.
+          command_timeout: 20m
           envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN
           script: |
             set -euo pipefail
