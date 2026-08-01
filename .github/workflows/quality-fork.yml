@@ -10,7 +10,10 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: quality-fork-${{ github.ref }}
+  # PR metadata changes may enqueue a skipped pull_request run while a manual
+  # exact-head proof is waiting. Event-scoped groups keep that skipped run from
+  # cancelling the manual proof before a hosted runner is assigned.
+  group: quality-fork-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -236,7 +239,8 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         env:
-          HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+          HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
+          USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
         with:
           bun-version: ${{ env.BUN_VERSION }}
 

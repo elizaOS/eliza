@@ -29,9 +29,11 @@ const WORKFLOW_PATHS = Object.freeze({
   setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
   tests: ".github/workflows/test.yml",
 });
-const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}`;
+const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}`;
 const FORK_JOB_GUARD =
   "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
+const FORK_CONCURRENCY_GROUP =
+  "quality-fork-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -196,8 +198,9 @@ export function validateWorkflowSources(sources) {
     step?.uses?.startsWith("oven-sh/setup-bun@"),
   );
   invariant(
-    cloudSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
-    `${WORKFLOW_PATHS.cloudSetup}: setup-bun HOME must be isolated by run, attempt, and job without space-bearing runner metadata`,
+    cloudSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
+      cloudSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.cloudSetup}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS`,
   );
   const postgresStart = cloudSetupSteps.find(
     (step) =>
@@ -235,6 +238,10 @@ export function validateWorkflowSources(sources) {
       Object.hasOwn(qualityFork.on, "workflow_dispatch"),
     `${WORKFLOW_PATHS.qualityFork}: workflow_dispatch must remain available for exact-head proof`,
   );
+  invariant(
+    qualityFork.concurrency?.group === FORK_CONCURRENCY_GROUP,
+    `${WORKFLOW_PATHS.qualityFork}: manual exact-head proof must not share a concurrency group with pull request events`,
+  );
   for (const [jobName, job] of Object.entries(qualityFork.jobs)) {
     invariant(
       job && typeof job === "object",
@@ -253,8 +260,9 @@ export function validateWorkflowSources(sources) {
     "elizaos-cli-global-smoke"
   ].steps.find((step) => step?.uses?.startsWith("oven-sh/setup-bun@"));
   invariant(
-    forkCliSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
-    `${WORKFLOW_PATHS.qualityFork}: CLI setup-bun HOME must be isolated by run, attempt, and job`,
+    forkCliSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
+      forkCliSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.qualityFork}: CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS`,
   );
   invariant(
     setupWorkspace.runs?.using === "composite" &&
@@ -265,8 +273,9 @@ export function validateWorkflowSources(sources) {
     step?.uses?.startsWith("oven-sh/setup-bun@"),
   );
   invariant(
-    workspaceSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
-    `${WORKFLOW_PATHS.setupWorkspace}: setup-bun HOME must be isolated on the setup-bun step`,
+    workspaceSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
+      workspaceSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.setupWorkspace}: setup-bun home must be isolated on the setup-bun step for every matrix entry and OS`,
   );
 
   const lint = requireJob(develop, WORKFLOW_PATHS.develop, "lint");

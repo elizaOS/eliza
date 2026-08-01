@@ -41,7 +41,8 @@ runs:
 
     - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       env:
-        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
+        USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
       with:
         bun-version: ${{ inputs.bun-version }}
 

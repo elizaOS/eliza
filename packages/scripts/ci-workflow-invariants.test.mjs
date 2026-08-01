@@ -79,18 +79,25 @@ for (const fixture of [
   {
     name: "shared Bun executable installation",
     key: "cloudSetup",
-    mutate: (source) => source.replace(/ {6}env:\n {8}HOME:.*\n/, ""),
-    pattern: /setup-bun HOME must be isolated by run, attempt, and job/,
+    mutate: (source) => source.replace(/ {8}USERPROFILE:.*\n/, ""),
+    pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "space-bearing runner name in Bun HOME",
     key: "cloudSetup",
     mutate: (source) =>
       source.replace(
-        `-\${{ github.job }}\n`,
-        `-\${{ github.job }}-\${{ runner.name }}\n`,
+        `\${{ strategy.job-index || 0 }}`,
+        `\${{ runner.name }}`,
       ),
-    pattern: /without space-bearing runner metadata/,
+    pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
+  },
+  {
+    name: "matrix jobs share a Bun home",
+    key: "cloudSetup",
+    mutate: (source) =>
+      source.replaceAll(`-\${{ strategy.job-index || 0 }}`, ""),
+    pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "degraded Cloud e2e database backend",
@@ -134,6 +141,17 @@ for (const fixture of [
     pattern: /workflow_dispatch must remain available for exact-head proof/,
   },
   {
+    name: "manual proof shares pull request concurrency",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        "quality-fork-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
+        "quality-fork-${{ github.ref }}",
+      ),
+    pattern:
+      /manual exact-head proof must not share a concurrency group with pull request events/,
+  },
+  {
     name: "fork job excluded from manual exact-head proof",
     key: "qualityFork",
     mutate: (source) =>
@@ -159,21 +177,15 @@ for (const fixture of [
     name: "shared CLI Bun executable installation",
     key: "qualityFork",
     mutate: (source) =>
-      source.replace(
-        /      - name: Setup Bun\n([\s\S]*?) {8}env:\n {10}HOME:.*\n/,
-        "      - name: Setup Bun\n$1",
-      ),
-    pattern: /CLI setup-bun HOME must be isolated by run, attempt, and job/,
+      source.replace(/ {10}USERPROFILE:.*\n/, ""),
+    pattern: /CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "misplaced workspace setup-bun HOME",
     key: "setupWorkspace",
-    mutate: (source) =>
-      source.replace(
-        / {6}env:\n {8}# setup-bun installs[\s\S]*? {8}HOME:.*\n/,
-        "",
-      ),
-    pattern: /setup-bun HOME must be isolated on the setup-bun step/,
+    mutate: (source) => source.replace(/ {8}USERPROFILE:.*\n/, ""),
+    pattern:
+      /setup-bun home must be isolated on the setup-bun step for every matrix entry and OS/,
   },
   {
     name: "conditional lint",
