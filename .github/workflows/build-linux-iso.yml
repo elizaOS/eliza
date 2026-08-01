@@ -60,6 +60,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve available Tails APT snapshots
+        run: |
+          set -euo pipefail
+          SNAPSHOTS=$(node "${LINUX_DIR}/scripts/resolve-apt-snapshots.mjs")
+          echo "APT_SNAPSHOTS_SERIALS=${SNAPSHOTS}" >> "$GITHUB_ENV"
+          echo "::notice::Using verified Tails APT snapshots ${SNAPSHOTS}"
+
       - name: Restore live-build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -105,13 +112,6 @@ jobs:
           set -euo pipefail
           bun install --frozen-lockfile --ignore-scripts
           git diff --exit-code -- package.json bun.lock
-
-      - name: Resolve available Tails APT snapshots
-        run: |
-          set -euo pipefail
-          SNAPSHOTS=$(node "${LINUX_DIR}/scripts/resolve-apt-snapshots.mjs")
-          echo "APT_SNAPSHOTS_SERIALS=${SNAPSHOTS}" >> "$GITHUB_ENV"
-          echo "::notice::Using verified Tails APT snapshots ${SNAPSHOTS}"
 
       - name: Verify non-amd64 static contracts
         run: |

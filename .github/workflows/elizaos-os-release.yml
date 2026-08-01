@@ -3,8 +3,9 @@ name: ElizaOS OS release validation
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
+      - ".github/workflows/build-linux-iso.yml"
       - ".github/workflows/elizaos-os-release.yml"
       - "packages/os/**"
       - "packages/os/homepage/**"
