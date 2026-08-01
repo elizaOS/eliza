@@ -85,7 +85,7 @@ async function seedFreshVerifiedBackup(sandboxRecordId: string): Promise<void> {
 
 async function applyLifecycleRevisionMigration(): Promise<void> {
   const migration = await readFile(
-    join(import.meta.dir, "../../../db/migrations/0186_agent_sandbox_lifecycle_revision.sql"),
+    join(import.meta.dir, "../../../db/migrations/0187_agent_sandbox_lifecycle_revision.sql"),
     "utf8",
   );
   const statements = migration
