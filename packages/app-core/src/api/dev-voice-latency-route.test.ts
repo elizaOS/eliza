@@ -7,6 +7,7 @@
 import { Socket } from "node:net";
 import { AgentRuntime, type Log, type UUID } from "@elizaos/core";
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -68,6 +69,12 @@ let voiceLatencyTracer!: EndToEndLatencyTracer;
 beforeAll(async () => {
   const mod = await import("@elizaos/plugin-local-inference/services");
   voiceLatencyTracer = mod.voiceLatencyTracer;
+});
+
+// app-core intentionally shares Vitest's module registry across files, so this
+// suite must release its routing resolver mocks before a real-module suite runs.
+afterAll(() => {
+  vi.resetModules();
 });
 
 /** Minimal fake req/res that captures the JSON body and status. */
