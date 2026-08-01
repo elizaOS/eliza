@@ -109,6 +109,42 @@ describe("findRunnerWorkDirs", () => {
 });
 
 describe("buildRunnerWorkspacePrunePlan", () => {
+  it("never selects runner-owned control directories", () => {
+    const root = tempRoot();
+    const work = join(root, "runner-1", "_work");
+    const staleWorkspace = join(work, "repo-old");
+    const runnerManaged = [
+      "_actions",
+      "_PipelineMapping",
+      "_temp",
+      "_tool",
+      "_update",
+    ];
+    mkdirSync(staleWorkspace, { recursive: true });
+    for (const name of runnerManaged) {
+      const controlDir = join(work, name);
+      mkdirSync(controlDir, { recursive: true });
+      writeFileSync(join(controlDir, "runner-state"), name);
+    }
+
+    const now = Date.now();
+    const oldDate = new Date(now - 8 * 60 * 60_000);
+    utimesSync(staleWorkspace, oldDate, oldDate);
+    for (const name of runnerManaged) {
+      const controlDir = join(work, name);
+      utimesSync(controlDir, oldDate, oldDate);
+    }
+
+    const plan = buildRunnerWorkspacePrunePlan({
+      root,
+      now,
+      minAgeHours: 6,
+    });
+
+    expect(plan.entries.map((entry) => entry.path)).toEqual([staleWorkspace]);
+    expect(plan.skippedFresh).toBe(0);
+  });
+
   it("selects only stale children of _work directories", () => {
     const root = tempRoot();
     const work = join(root, "runner-1", "_work");

@@ -43,6 +43,16 @@ const DEFAULT_MIN_AGE_HOURS = 6;
 const MIN_AGE_HOURS_FLOOR = 1;
 /** Flags that take a value. Anything else is rejected rather than ignored. */
 const VALUE_FLAGS = new Set(["root", "min-age-hours"]);
+// These directories belong to the runner process, not to a completed job.
+// Deleting them can remove command files while an action is still publishing
+// state, even when this script's process guard observes no Runner.Worker.
+const RUNNER_MANAGED_WORK_ENTRIES = new Set([
+  "_actions",
+  "_PipelineMapping",
+  "_temp",
+  "_tool",
+  "_update",
+]);
 
 export function parseRunnerWorkspacePruneArgs(
   argv: string[],
@@ -194,6 +204,12 @@ export function buildRunnerWorkspacePrunePlan(input: {
     }
 
     for (const child of children) {
+      if (
+        !child.isDirectory() ||
+        RUNNER_MANAGED_WORK_ENTRIES.has(child.name)
+      ) {
+        continue;
+      }
       const childPath = path.join(workDir, child.name);
       if (!realPathInsideRoot(childPath, input.root)) continue;
       let stat: Stats;
