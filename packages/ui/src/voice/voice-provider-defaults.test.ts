@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BROWSER_TTS_PROVIDER,
+  isCloudVoiceRunnable,
   type PresetPlatform,
   type PresetRuntimeMode,
   pickDefaultVoiceProvider,
@@ -19,6 +20,22 @@ const NO_CAPABILITIES: VoiceCapabilitySnapshot = {
   cloudVoiceAvailable: false,
   elevenLabsKeyConfigured: false,
 };
+
+describe("isCloudVoiceRunnable", () => {
+  it.each([
+    [false, false, false],
+    [false, true, false],
+    [true, false, false],
+    [true, true, true],
+  ])(
+    "connected=%s and proxyAvailable=%s resolves to %s",
+    (connected, proxyAvailable, expected) => {
+      expect(isCloudVoiceRunnable({ connected, proxyAvailable })).toBe(
+        expected,
+      );
+    },
+  );
+});
 
 describe("pickDefaultVoiceProvider", () => {
   it("desktop + local-only agent uses on-device OmniVoice + Gemma ASR", () => {
