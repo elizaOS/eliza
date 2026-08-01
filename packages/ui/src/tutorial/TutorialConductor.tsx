@@ -30,6 +30,7 @@ import { useVoiceChat } from "../hooks/useVoiceChat";
 import { useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import { useVoiceConfig } from "../voice/useVoiceConfig";
+import { isCloudVoiceRunnable } from "../voice/voice-provider-defaults";
 import {
   buildTutorialActionValue,
   setTutorialActionHandler,
@@ -216,11 +217,13 @@ function TutorialActiveEffects({
     tab,
     activeConversationId,
     uiLanguage,
+    elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
   } = useAppSelectorShallow((s) => ({
     tab: s.tab,
     activeConversationId: s.activeConversationId,
     uiLanguage: s.uiLanguage,
+    elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
   }));
 
@@ -297,7 +300,10 @@ function TutorialActiveEffects({
   const { voiceConfig, voiceBootstrapTick } = useVoiceConfig(uiLanguage);
   const { queueAssistantSpeech, stopSpeaking, unlockAudio } = useVoiceChat({
     voiceConfig,
-    cloudConnected: elizaCloudVoiceProxyAvailable,
+    cloudConnected: isCloudVoiceRunnable({
+      connected: elizaCloudConnected,
+      proxyAvailable: elizaCloudVoiceProxyAvailable,
+    }),
     interruptOnSpeech: false,
     onTranscript: () => {},
   });

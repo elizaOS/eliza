@@ -15,6 +15,7 @@ import {
   resolveCharacterVoiceConfigFromAppConfig,
 } from "./character-voice-config";
 import { hasConfiguredApiKey } from "./types";
+import { isCloudVoiceRunnable } from "./voice-provider-defaults";
 
 export interface UseVoiceConfigResult {
   /** Saved voice config with platform/runtime provider defaults applied. Never null. */
@@ -38,8 +39,11 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const [voiceConfig, setVoiceConfig] = React.useState<VoiceConfig | null>(
     null,
   );
-  const cloudVoiceAvailable = useAppSelector(
-    (s) => s.elizaCloudVoiceProxyAvailable,
+  const cloudVoiceAvailable = useAppSelector((s) =>
+    isCloudVoiceRunnable({
+      connected: s.elizaCloudConnected,
+      proxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    }),
   );
   // ElevenLabs is a default only when the user has actually configured a key —
   // it is never selected silently (slow + key-gated).
