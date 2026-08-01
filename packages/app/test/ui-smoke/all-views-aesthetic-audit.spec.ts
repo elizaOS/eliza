@@ -407,14 +407,45 @@ async function readViewPaint(
           }
         }
         const rect = element.getBoundingClientRect();
-        return (
-          rect.width > 0 &&
-          rect.height > 0 &&
-          rect.right > 0 &&
-          rect.bottom > 0 &&
-          rect.left < window.innerWidth &&
-          rect.top < window.innerHeight
-        );
+        let visibleLeft = Math.max(rect.left, 0);
+        let visibleTop = Math.max(rect.top, 0);
+        let visibleRight = Math.min(rect.right, window.innerWidth);
+        let visibleBottom = Math.min(rect.bottom, window.innerHeight);
+        if (
+          rect.width <= 0 ||
+          rect.height <= 0 ||
+          visibleRight <= visibleLeft ||
+          visibleBottom <= visibleTop
+        ) {
+          return false;
+        }
+
+        // A loading label can retain a nonzero viewport rect while a collapsed
+        // grid/rail ancestor clips it completely. Treat it as visible only when
+        // some painted area survives every scroll or clipping container.
+        for (
+          let current = element.parentElement;
+          current;
+          current = current.parentElement
+        ) {
+          const style = getComputedStyle(current);
+          const clipsX = /^(auto|clip|hidden|scroll)$/.test(style.overflowX);
+          const clipsY = /^(auto|clip|hidden|scroll)$/.test(style.overflowY);
+          if (!clipsX && !clipsY) continue;
+          const clip = current.getBoundingClientRect();
+          if (clipsX) {
+            visibleLeft = Math.max(visibleLeft, clip.left);
+            visibleRight = Math.min(visibleRight, clip.right);
+          }
+          if (clipsY) {
+            visibleTop = Math.max(visibleTop, clip.top);
+            visibleBottom = Math.min(visibleBottom, clip.bottom);
+          }
+          if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
+            return false;
+          }
+        }
+        return true;
       };
       const exactLoadingLabel = /^loading(?:\s+view)?(?:\s*(?:…|\.{1,3}))?$/i;
       const labels = new Set<string>();
@@ -424,18 +455,28 @@ async function readViewPaint(
       ];
       for (const element of elements) {
         if (!isVisibleInViewport(element)) continue;
-        const text = (
+        const renderedText = (
           element instanceof HTMLElement
             ? element.innerText
             : (element.textContent ?? "")
         )
           .trim()
           .replace(/\s+/g, " ");
+        const directText = [...element.childNodes]
+          .filter((child) => child.nodeType === Node.TEXT_NODE)
+          .map((child) => child.textContent ?? "")
+          .join(" ")
+          .trim()
+          .replace(/\s+/g, " ");
+        const loadingLabel =
+          directText || (element.childElementCount === 0 ? renderedText : "");
         if (
           element.getAttribute("data-view-status") === "loading" ||
-          exactLoadingLabel.test(text)
+          exactLoadingLabel.test(loadingLabel)
         ) {
-          labels.add(text || '[data-view-status="loading"]');
+          labels.add(
+            loadingLabel || renderedText || '[data-view-status="loading"]',
+          );
         }
       }
       return {
@@ -1470,6 +1511,9 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         <div hidden data-view-status="loading">Loading view</div>
         <div style="display: none">Loading</div>
         <div style="position: fixed; left: -10000px">Loading…</div>
+        <div style="position: relative; overflow: hidden; width: 100px; height: 1px">
+          <div style="position: absolute; top: 20px">Loading</div>
+        </div>
       </main>
       <div data-test-overlay>Composer</div>
     `);
