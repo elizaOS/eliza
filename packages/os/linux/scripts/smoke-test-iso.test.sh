@@ -63,11 +63,15 @@ set -euo pipefail
 
 firmware=bios
 serial_prefix=""
+remote_shell_prefix=""
 printf '%s\n' "--- invocation ---" >>"${FAKE_QEMU_ARGS_LOG}"
 for argument in "$@"; do
     printf '%s\n' "${argument}" >>"${FAKE_QEMU_ARGS_LOG}"
     case "${argument}" in
         if=pflash,*) firmware=uefi ;;
+        pipe,id=remote-shell,path=*)
+            remote_shell_prefix="${argument##*path=}"
+            ;;
         pipe:*)
             if [ -z "${serial_prefix}" ]; then
                 serial_prefix="${argument#pipe:}"
@@ -76,27 +80,27 @@ for argument in "$@"; do
     esac
 done
 [ -n "${serial_prefix}" ] || exit 64
+[ -n "${remote_shell_prefix}" ] || exit 64
 printf 'firmware=%s\n' "${firmware}" >>"${FAKE_QEMU_ARGS_LOG}"
 
 case "${FAKE_QEMU_MODE:-ready}" in
     ready|ignore-term)
         exec 7>"${serial_prefix}.out"
+        exec 6>"${remote_shell_prefix}.out"
         printf 'Linux version fixture\namnesia login: ' >&7
-        IFS= read -r -d $'\r' username <"${serial_prefix}.in"
-        [ "${username}" = "amnesia" ] || exit 65
-        printf 'Password: ' >&7
-        IFS= read -r -d $'\r' password <"${serial_prefix}.in"
-        [ -z "${password}" ] || exit 66
-        printf 'amnesia@elizaos:~$ ' >&7
-        IFS= read -r -d $'\r' probe <"${serial_prefix}.in"
+        IFS= read -r signal_request <"${remote_shell_prefix}.in"
+        [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 65
+        printf '[1, "success"]\n' >&6
+        IFS= read -r probe <"${remote_shell_prefix}.in"
         if [[ "${probe}" == *"ELIZAOS_ISO_SMOKE_READY"* ]]; then
             echo "host command contained the complete readiness marker" >&2
-            exit 67
+            exit 66
         fi
+        [[ "${probe}" == *'"sh_call", "amnesia"'* ]] || exit 67
         [[ "${probe}" == *"systemctl --user is-active --quiet elizaos-agent.service"* ]] ||
             exit 68
         [[ "${probe}" == *"http://127.0.0.1:31337/api/health"* ]] || exit 69
-        printf 'ELIZAOS_ISO_SMOKE_READY firmware=%s service=active health=ready\n' "${firmware}" >&7
+        printf '[2, "success", 0, "ELIZAOS_ISO_SMOKE_READY firmware=%s service=active health=ready", ""]\n' "${firmware}" >&6
         if [ "${FAKE_QEMU_MODE}" = "ignore-term" ]; then
             trap '' TERM
         else
@@ -126,7 +130,6 @@ export ELIZAOS_OVMF_CODE="${OVMF_CODE}"
 export ELIZAOS_OVMF_VARS="${OVMF_VARS}"
 export ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS=1
 export ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS=0
-export ELIZAOS_ISO_SMOKE_LOGIN_SETTLE_SECONDS=0
 export ELIZAOS_ISO_SMOKE_POLL_SECONDS=0.05
 export ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS=1
 export ELIZAOS_ISO_SMOKE_LOG_DIR="${TMP}/logs"
@@ -199,12 +202,15 @@ grep -Fxq -- "-drive" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fxq -- "-bios" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fq "media=cdrom" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fq "if=pflash" "${FAKE_QEMU_ARGS_LOG}"
+grep -Fq "org.tails.remote_shell.0" "${FAKE_QEMU_ARGS_LOG}"
 if grep -Eq '^-kernel$|^-initrd$' "${FAKE_QEMU_ARGS_LOG}"; then
     echo "smoke orchestration must not bypass ISO firmware bootloaders" >&2
     exit 1
 fi
 test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.serial.log"
 test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/uefi.serial.log"
+test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.remote-shell.log"
+test -s "${ELIZAOS_ISO_SMOKE_LOG_DIR}/uefi.remote-shell.log"
 
 FAKE_QEMU_MODE=ignore-term
 export FAKE_QEMU_MODE

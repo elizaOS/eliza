@@ -9,7 +9,6 @@ QEMU_BIN="${ELIZAOS_QEMU_BIN:-qemu-system-x86_64}"
 XORRISO_BIN="${ELIZAOS_XORRISO_BIN:-xorriso}"
 BOOT_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS:-600}"
 BOOT_MENU_WAIT_SECONDS="${ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS:-10}"
-LOGIN_SETTLE_SECONDS="${ELIZAOS_ISO_SMOKE_LOGIN_SETTLE_SECONDS:-10}"
 POLL_SECONDS="${ELIZAOS_ISO_SMOKE_POLL_SECONDS:-2}"
 STOP_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS:-10}"
 LOG_DIR="${ELIZAOS_ISO_SMOKE_LOG_DIR:-${PWD}/iso-smoke-logs}"
@@ -47,9 +46,6 @@ require_positive_integer \
 require_nonnegative_integer \
     "ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS" \
     "${BOOT_MENU_WAIT_SECONDS}"
-require_nonnegative_integer \
-    "ELIZAOS_ISO_SMOKE_LOGIN_SETTLE_SECONDS" \
-    "${LOGIN_SETTLE_SECONDS}"
 require_positive_integer \
     "ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS" \
     "${STOP_TIMEOUT_SECONDS}"
@@ -58,6 +54,7 @@ require_positive_integer \
 [ -f "${ISO}" ] || fail "ISO not found: ${ISO}"
 command -v "${QEMU_BIN}" >/dev/null 2>&1 || fail "QEMU not found: ${QEMU_BIN}"
 command -v "${XORRISO_BIN}" >/dev/null 2>&1 || fail "xorriso not found: ${XORRISO_BIN}"
+command -v python3 >/dev/null 2>&1 || fail "python3 is required for the Tails remote-shell protocol"
 
 find_firmware_file() {
     local description="$1"
@@ -110,8 +107,10 @@ EL_TORITO_REPORT="${LOG_DIR}/el-torito.txt"
 QEMU_PID=""
 SERIAL_READER_PID=""
 MONITOR_READER_PID=""
+REMOTE_SHELL_READER_PID=""
 SERIAL_FD=""
 MONITOR_FD=""
+REMOTE_SHELL_FD=""
 CURRENT_FIRMWARE=""
 
 dump_one_log() {
@@ -132,6 +131,7 @@ dump_diagnostics() {
         dump_one_log "${LOG_DIR}/${firmware}.qemu.stderr"
         dump_one_log "${LOG_DIR}/${firmware}.monitor.log"
         dump_one_log "${LOG_DIR}/${firmware}.serial.log"
+        dump_one_log "${LOG_DIR}/${firmware}.remote-shell.log"
     done
 }
 
@@ -179,6 +179,10 @@ close_pipe_fds() {
         exec 9>&-
         MONITOR_FD=""
     fi
+    if [ -n "${REMOTE_SHELL_FD}" ]; then
+        exec 7>&-
+        REMOTE_SHELL_FD=""
+    fi
 }
 
 stop_qemu() {
@@ -186,9 +190,13 @@ stop_qemu() {
     stop_process_bounded "${QEMU_PID}" "${CURRENT_FIRMWARE:-QEMU} VM"
     stop_process_bounded "${SERIAL_READER_PID}" "${CURRENT_FIRMWARE:-QEMU} serial reader"
     stop_process_bounded "${MONITOR_READER_PID}" "${CURRENT_FIRMWARE:-QEMU} monitor reader"
+    stop_process_bounded \
+        "${REMOTE_SHELL_READER_PID}" \
+        "${CURRENT_FIRMWARE:-QEMU} remote-shell reader"
     QEMU_PID=""
     SERIAL_READER_PID=""
     MONITOR_READER_PID=""
+    REMOTE_SHELL_READER_PID=""
 }
 
 finish() {
@@ -280,6 +288,7 @@ monitor_type_text() {
             "=") key=equal ;;
             ",") key=comma ;;
             "-") key=minus ;;
+            "_") key=shift-minus ;;
             [A-Z])
                 lower="$(printf '%s' "${character}" | tr '[:upper:]' '[:lower:]')"
                 key="shift-${lower}"
@@ -322,7 +331,7 @@ hold_boot_menu() {
 
 boot_selected_entry_with_serial() {
     local firmware="$1"
-    local boot_parameters=" login console=ttyS0,115200n8"
+    local boot_parameters=" login autotest_never_use_this_option console=ttyS0,115200n8"
 
     hold_boot_menu
     if [ "${firmware}" = "bios" ]; then
@@ -343,17 +352,39 @@ boot_selected_entry_with_serial() {
     monitor_send_key ctrl-x
 }
 
-serial_write() {
-    [ -n "${SERIAL_FD}" ] || fail "guest serial console is not connected"
-    printf '%s\r' "$1" >&"${SERIAL_FD}"
+remote_shell_send() {
+    [ -n "${REMOTE_SHELL_FD}" ] || fail "Tails remote shell is not connected"
+    printf '%s\n' "$1" >&"${REMOTE_SHELL_FD}"
+}
+
+queue_remote_readiness_probe() {
+    local firmware="$1"
+    local marker_suffix="READY firmware=${firmware} service=active health=ready"
+    local guest_probe_attempts=$((BOOT_TIMEOUT_SECONDS * 2 / 5))
+    local health_probe
+
+    [ "${guest_probe_attempts}" -gt 0 ] || guest_probe_attempts=1
+
+    # Tails intentionally gates this VM-only virtio channel behind both an
+    # explicit kernel option and a matching QEMU device. The readiness signal
+    # releases GDM, then the command waits for the real greeter-created user
+    # bus and probes the canonical service as the live user.
+    remote_shell_send '[1,"signal_ready"]'
+    health_probe="for i in \$(seq 1 ${guest_probe_attempts}); do if [ -S /run/user/1000/bus ] && XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user is-active --quiet elizaos-agent.service && /usr/bin/curl --noproxy '*' -fsS http://127.0.0.1:31337/api/health -o /tmp/elizaos-smoke-health.json && /bin/grep -Eq '\"ready\"[[:space:]]*:[[:space:]]*true' /tmp/elizaos-smoke-health.json; then printf '%s%s' 'ELIZAOS_ISO_SMOKE_' '${marker_suffix}'; exit 0; fi; sleep 2; done; XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user status elizaos-agent.service --no-pager >&2; exit 1"
+    python3 -c \
+        'import json, sys; print(json.dumps([2, "sh_call", "amnesia", {}, sys.argv[1]]))' \
+        "${health_probe}" \
+        >&"${REMOTE_SHELL_FD}"
 }
 
 launch_firmware_vm() {
     local firmware="$1"
     local serial_prefix="${TMP}/${firmware}-serial"
     local monitor_prefix="${TMP}/${firmware}-monitor"
+    local remote_shell_prefix="${TMP}/${firmware}-remote-shell"
     local serial_log="${LOG_DIR}/${firmware}.serial.log"
     local monitor_log="${LOG_DIR}/${firmware}.monitor.log"
+    local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
     local stdout_log="${LOG_DIR}/${firmware}.qemu.stdout"
     local stderr_log="${LOG_DIR}/${firmware}.qemu.stderr"
     local args_log="${LOG_DIR}/${firmware}.qemu.args"
@@ -373,6 +404,9 @@ launch_firmware_vm() {
         -vga std
         -serial "pipe:${serial_prefix}"
         -monitor "pipe:${monitor_prefix}"
+        -device virtio-serial-pci
+        -chardev "pipe,id=remote-shell,path=${remote_shell_prefix}"
+        -device "virtserialport,chardev=remote-shell,name=org.tails.remote_shell.0"
         -no-reboot
         -snapshot
     )
@@ -380,21 +414,28 @@ launch_firmware_vm() {
     CURRENT_FIRMWARE="${firmware}"
     : >"${serial_log}"
     : >"${monitor_log}"
+    : >"${remote_shell_log}"
     : >"${stdout_log}"
     : >"${stderr_log}"
     mkfifo \
         "${serial_prefix}.in" \
         "${serial_prefix}.out" \
         "${monitor_prefix}.in" \
-        "${monitor_prefix}.out"
+        "${monitor_prefix}.out" \
+        "${remote_shell_prefix}.in" \
+        "${remote_shell_prefix}.out"
     exec 8<>"${serial_prefix}.in"
     SERIAL_FD=8
     exec 9<>"${monitor_prefix}.in"
     MONITOR_FD=9
+    exec 7<>"${remote_shell_prefix}.in"
+    REMOTE_SHELL_FD=7
     cat "${serial_prefix}.out" >>"${serial_log}" &
     SERIAL_READER_PID=$!
     cat "${monitor_prefix}.out" >>"${monitor_log}" &
     MONITOR_READER_PID=$!
+    cat "${remote_shell_prefix}.out" >>"${remote_shell_log}" &
+    REMOTE_SHELL_READER_PID=$!
 
     if [ "${firmware}" = "uefi" ]; then
         cp "${OVMF_VARS}" "${ovmf_vars_copy}"
@@ -411,62 +452,25 @@ launch_firmware_vm() {
     "${QEMU_BIN}" "${qemu_args[@]}" >"${stdout_log}" 2>"${stderr_log}" &
     QEMU_PID=$!
     boot_selected_entry_with_serial "${firmware}"
+    queue_remote_readiness_probe "${firmware}"
 }
 
 prove_guest_readiness() {
     local firmware="$1"
     local serial_log="${LOG_DIR}/${firmware}.serial.log"
+    local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
     local marker="ELIZAOS_ISO_SMOKE_READY firmware=${firmware} service=active health=ready"
     local start_seconds="${SECONDS}"
-    local login_prompt_seconds=-1
-    local login_sent=0
-    local password_sent=0
-    local probe_sent=0
     local weak_seen=0
-    local health_probe
-
-    # The complete marker must not occur in serial input because the TTY echoes
-    # commands before executing them. Joining two guest-side strings makes the
-    # marker evidence possible only after both readiness checks pass.
-    health_probe="for i in \$(seq 1 300); do if systemctl --user is-active --quiet elizaos-agent.service && /usr/bin/curl --noproxy '*' -fsS http://127.0.0.1:31337/api/health -o /tmp/elizaos-smoke-health.json && /bin/grep -Eq '\"ready\"[[:space:]]*:[[:space:]]*true' /tmp/elizaos-smoke-health.json; then printf '\\n%s%s\\n' 'ELIZAOS_ISO_SMOKE_' 'READY firmware=${firmware} service=active health=ready'; break; fi; sleep 2; done"
 
     while ((SECONDS - start_seconds < BOOT_TIMEOUT_SECONDS)); do
-        if grep -Fq "${marker}" "${serial_log}" 2>/dev/null; then
+        if grep -Fq "${marker}" "${remote_shell_log}" 2>/dev/null; then
             echo "ISO smoke test (${firmware}): canonical live-user service and health ready"
             return
         fi
 
         if grep -Eq 'Linux version|systemd\[1\]|[[:space:]]login:' "${serial_log}" 2>/dev/null; then
             weak_seen=1
-        fi
-
-        if [ "${login_prompt_seconds}" = "-1" ] &&
-            grep -Eq '[[:space:]]login:' "${serial_log}" 2>/dev/null; then
-            login_prompt_seconds="${SECONDS}"
-        fi
-
-        # Kernel `login` drives the real Tails greeter path. Its PostLogin hook
-        # starts the live-user session and removes the password when no admin
-        # password was configured; let that path settle before using the getty.
-        if [ "${login_sent}" = "0" ] &&
-            [ "${login_prompt_seconds}" != "-1" ] &&
-            ((SECONDS - login_prompt_seconds >= LOGIN_SETTLE_SECONDS)); then
-            serial_write amnesia
-            login_sent=1
-        fi
-
-        if [ "${login_sent}" = "1" ] &&
-            [ "${password_sent}" = "0" ] &&
-            grep -Eq 'Password:' "${serial_log}" 2>/dev/null; then
-            password_sent=1
-            serial_write ""
-        fi
-
-        if [ "${login_sent}" = "1" ] &&
-            [ "${probe_sent}" = "0" ] &&
-            grep -Eq 'amnesia@|[$][[:space:]]*$' "${serial_log}" 2>/dev/null; then
-            serial_write "${health_probe}"
-            probe_sent=1
         fi
 
         qemu_is_running
