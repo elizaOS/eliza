@@ -1023,6 +1023,11 @@ describe("ChatOverlay", () => {
     fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("half");
 
+    // A real touch gesture also emits touchend after pointerup. The handle has
+    // moved by then, so suppress the browser's compatibility click before it
+    // can re-hit-test onto and focus the composer underneath the old point.
+    expect(fireEvent.touchEnd(grabber)).toBe(false);
+
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
@@ -1989,17 +1994,26 @@ describe("ChatOverlay", () => {
 
     // Once the read resolves, a thumbnail + send control appear.
     await screen.findByLabelText("send");
-    expect(screen.getByLabelText(/remove pic\.png/)).toBeTruthy();
+    const removeButton = screen.getByLabelText(/remove pic\.png/);
+    expect(removeButton).toBeTruthy();
+    expect(removeButton.className).toContain("pointer-events-auto");
+
+    const attachments = screen.getByTestId("chat-pending-attachments");
+    expect(attachments.className).toContain("pointer-events-none");
+    const attachmentList = screen.getByTestId("chat-pending-attachment-list");
+    expect(attachmentList.className).toContain("pointer-events-auto");
+    expect(attachmentList.className).toContain("touch-none");
+    expect(removeButton.className).toContain("-bottom-1.5");
 
     // Pending attachments must not disable the sheet's own drag handle. The
     // attachment tiles have their own controls; the handle remains the path to
     // reveal history without requiring the user to send or remove the image.
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(grabber.style.pointerEvents).toBe("auto");
-    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 21 });
-    fireEvent.pointerMove(grabber, { clientY: 340, pointerId: 21 });
+    fireEvent.pointerDown(attachmentList, { clientY: 420, pointerId: 21 });
+    fireEvent.pointerMove(attachmentList, { clientY: 340, pointerId: 21 });
     await waitFor(() => expect(screen.getByTestId("chat-thread")).toBeTruthy());
-    fireEvent.pointerUp(grabber, { clientY: 340, pointerId: 21 });
+    fireEvent.pointerUp(attachmentList, { clientY: 340, pointerId: 21 });
 
     fireEvent.click(screen.getByLabelText("send"));
     expect(controller.send).toHaveBeenCalledWith(
