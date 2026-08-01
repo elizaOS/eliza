@@ -837,6 +837,10 @@ export class AcpService extends Service {
   // static ELIZA_MODEL_GATEWAY_TOKEN) is injected into the child env, and the
   // lease is revoked when the session reaches a terminal event.
   private readonly modelLeases = new Map<string, ModelGatewayLease>();
+  // Terminal signals can converge from the transport, cancellation, and close
+  // paths. Coalesce them onto one observable promise so public lifecycle calls
+  // do not return while credential revocation is still in flight.
+  private readonly modelLeaseRevokes = new Map<string, Promise<void>>();
   // Per-session files the orchestrator wrote into the workdir, fingerprinted at
   // write time so only unchanged orchestrator-produced bytes are exempted.
   private readonly orchestratorOwnedArtifactsBySession = new Map<
@@ -1043,6 +1047,7 @@ export class AcpService extends Service {
       this.revokeModelLease(sessionId, "service_stop"),
     );
     await Promise.allSettled([...stops, ...nativeStops, ...leaseRevokes]);
+    await Promise.allSettled(this.modelLeaseRevokes.values());
     this.started = false;
   }
 
@@ -2173,7 +2178,7 @@ export class AcpService extends Service {
       // removeOwnedScratchWorkdir (a cancelled session may be reopened/inspected
       // before teardown). Accounting-only — the registry never rm's ACP dirs.
       this.workspaceRegistry.markTerminal(session.workdir);
-      void this.revokeModelLease(sessionId, "cancelSession:native");
+      await this.revokeModelLease(sessionId, "cancelSession:native");
       await this.removeOwnedGitIndex(session);
       return;
     }
@@ -2196,7 +2201,7 @@ export class AcpService extends Service {
     }
     await this.store.updateStatus(sessionId, "cancelled");
     this.workspaceRegistry.markTerminal(session.workdir);
-    void this.revokeModelLease(sessionId, "cancelSession");
+    await this.revokeModelLease(sessionId, "cancelSession");
     await this.removeOwnedGitIndex(session);
   }
 
@@ -2208,7 +2213,7 @@ export class AcpService extends Service {
       try {
         await this.stopNativeClient(sessionId);
         await this.store.updateStatus(sessionId, "stopped");
-        this.emitSessionEvent(sessionId, "stopped", {
+        await this.emitSessionEvent(sessionId, "stopped", {
           sessionId,
           response: this.lastOutput(sessionId),
         });
@@ -2259,7 +2264,7 @@ export class AcpService extends Service {
       );
     }
     await this.store.updateStatus(sessionId, "stopped");
-    this.emitSessionEvent(sessionId, "stopped", {
+    await this.emitSessionEvent(sessionId, "stopped", {
       sessionId,
       response: this.lastOutput(sessionId),
     });
@@ -2977,10 +2982,10 @@ export class AcpService extends Service {
       };
       if (stopped) {
         await this.store.updateStatus(session.id, "stopped");
-        void this.revokeModelLease(session.id, "native_prompt:stopped");
+        await this.revokeModelLease(session.id, "native_prompt:stopped");
       } else if (cancelled) {
         await this.store.updateStatus(session.id, "cancelled");
-        void this.revokeModelLease(session.id, "native_prompt:cancelled");
+        await this.revokeModelLease(session.id, "native_prompt:cancelled");
       } else if (finalStopReason === "error" && !finalText?.trim()) {
         // Mirror the handleAcpEvent guard: a stopReason-error session that still
         // captured a real deliverable is relayed as a completion, so don't mark
@@ -2991,7 +2996,7 @@ export class AcpService extends Service {
           "errored",
           "ACP prompt ended with stopReason error",
         );
-        void this.revokeModelLease(session.id, "native_prompt:error");
+        await this.revokeModelLease(session.id, "native_prompt:error");
       } else {
         await this.store.update(session.id, {
           status: "ready",
@@ -3006,7 +3011,7 @@ export class AcpService extends Service {
       const message = errorMessage(err);
       if (this.nativeStoppingSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "stopped");
-        void this.revokeModelLease(session.id, "native_prompt:stopped");
+        await this.revokeModelLease(session.id, "native_prompt:stopped");
         return {
           sessionId: session.id,
           response: finalText,
@@ -3019,7 +3024,7 @@ export class AcpService extends Service {
       }
       if (this.nativeCancelledPromptSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "cancelled");
-        void this.revokeModelLease(session.id, "native_prompt:cancelled");
+        await this.revokeModelLease(session.id, "native_prompt:cancelled");
         return {
           sessionId: session.id,
           response: finalText,
@@ -3809,7 +3814,7 @@ export class AcpService extends Service {
     sessionId: string,
     event: SessionEventName,
     data: unknown,
-  ): void {
+  ): Promise<void> {
     for (const callback of [...this.sessionCallbacks]) {
       try {
         callback(sessionId, event, data);
@@ -3825,14 +3830,17 @@ export class AcpService extends Service {
     }
     // A terminal event means the task ended (completion via a stop/close,
     // failure, or timeout/cancel). Revoke the session's model lease so a leaked
-    // child env is dead the moment its task ends. Fire-and-forget: this sync
-    // emitter is called from deep transport paths; revocation is idempotent.
+    // child env is dead the moment its task ends. Callers that own a lifecycle
+    // boundary await this promise; transport callbacks may ignore it safely
+    // because the revocation is tracked and drained by service shutdown.
     if (LEASE_REVOKE_EVENTS.has(event)) {
-      void this.revokeModelLease(sessionId, `event:${event}`);
+      const revoke = this.revokeModelLease(sessionId, `event:${event}`);
       void this.store.get(sessionId).then((session) => {
         if (session) void this.removeOwnedGitIndex(session);
       });
+      return revoke;
     }
+    return Promise.resolve();
   }
 
   private async requireSession(sessionId: string): Promise<SessionInfo> {
@@ -4329,33 +4337,41 @@ export class AcpService extends Service {
    * Broker/gateway errors are logged, never thrown (revocation is best-effort
    * cleanup on an already-terminal session).
    */
-  private async revokeModelLease(
-    sessionId: string,
-    reason: string,
-  ): Promise<void> {
+  private revokeModelLease(sessionId: string, reason: string): Promise<void> {
+    const pending = this.modelLeaseRevokes.get(sessionId);
+    if (pending) return pending;
     const lease = this.modelLeases.get(sessionId);
-    if (!lease) return;
+    if (!lease) return Promise.resolve();
     this.modelLeases.delete(sessionId);
-    const gateway = resolveModelGatewayConfig();
-    const broker = gateway ? resolveLeaseBroker(gateway) : null;
-    if (!broker) return;
-    try {
-      await broker.revoke(lease.leaseId);
-      this.log("info", "model-gateway lease revoked", {
-        sessionId,
-        leaseId: lease.leaseId,
-        reason,
-      });
-    } catch (err) {
-      // error-policy:J6 best-effort lease release on an already-terminal session;
-      // a broker error is warn-logged, never thrown.
-      this.log("warn", "model-gateway lease revoke failed", {
-        sessionId,
-        leaseId: lease.leaseId,
-        reason,
-        error: errorMessage(err),
-      });
-    }
+    const run = (async () => {
+      const gateway = resolveModelGatewayConfig();
+      const broker = gateway ? resolveLeaseBroker(gateway) : null;
+      if (!broker) return;
+      try {
+        await broker.revoke(lease.leaseId);
+        this.log("info", "model-gateway lease revoked", {
+          sessionId,
+          leaseId: lease.leaseId,
+          reason,
+        });
+      } catch (err) {
+        // error-policy:J6 best-effort lease release on an already-terminal session;
+        // a broker error is warn-logged, never thrown.
+        this.log("warn", "model-gateway lease revoke failed", {
+          sessionId,
+          leaseId: lease.leaseId,
+          reason,
+          error: errorMessage(err),
+        });
+      }
+    })();
+    const tracked = run.finally(() => {
+      if (this.modelLeaseRevokes.get(sessionId) === tracked) {
+        this.modelLeaseRevokes.delete(sessionId);
+      }
+    });
+    this.modelLeaseRevokes.set(sessionId, tracked);
+    return tracked;
   }
 
   /**

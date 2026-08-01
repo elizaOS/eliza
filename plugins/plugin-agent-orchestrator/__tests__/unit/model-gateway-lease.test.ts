@@ -200,8 +200,6 @@ function enableGateway(): void {
   process.env.ELIZA_MODEL_GATEWAY_TOKEN = GATEWAY_TOKEN;
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-
 /**
  * A fake gateway that mints/tracks/revokes leases and can answer whether a
  * given token would be accepted on a model call right now (honors revocation +
@@ -348,16 +346,14 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
       const token = env.OPENAI_API_KEY ?? "";
       expect(gateway.callModel(token)).toBe(200);
 
-      service.emitSessionEvent(sessionId, event, {});
-      await settle();
+      await service.emitSessionEvent(sessionId, event, {});
 
       expect(gateway.revoked).toEqual(["lease-1"]);
       // Revocation killed access mid-task.
       expect(gateway.callModel(token)).toBe(401);
 
       // Idempotent: a second terminal event does not double-revoke.
-      service.emitSessionEvent(sessionId, "stopped", {});
-      await settle();
+      await service.emitSessionEvent(sessionId, "stopped", {});
       expect(gateway.revoked).toEqual(["lease-1"]);
       await service.stop();
     });
@@ -372,7 +368,6 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     expect(gateway.callModel(token)).toBe(200);
 
     await service.closeSession(sessionId);
-    await settle();
 
     expect(gateway.revoked).toEqual(["lease-1"]);
     expect(gateway.callModel(token)).toBe(401);
@@ -388,7 +383,6 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     expect(gateway.callModel(token)).toBe(200);
 
     await service.cancelSession(sessionId);
-    await settle();
 
     expect(gateway.revoked).toEqual(["lease-1"]);
     expect(gateway.callModel(token)).toBe(401);
@@ -407,7 +401,6 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     expect(gateway.callModel(token)).toBe(200);
 
     const result = await service.sendToSession(sessionId, "cancel me");
-    await settle();
 
     expect(result.stopReason).toBe("cancelled");
     expect(gateway.revoked).toEqual(["lease-1"]);
@@ -425,7 +418,6 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     expect(gateway.callModel(token)).toBe(200);
 
     const result = await service.sendToSession(sessionId, "fail");
-    await settle();
 
     expect(result.stopReason).toBe("error");
     expect(gateway.revoked).toEqual(["lease-1"]);
@@ -442,7 +434,6 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     expect(gateway.callModel(token)).toBe(200);
 
     await service.stop();
-    await settle();
 
     expect(gateway.revoked).toEqual(["lease-1"]);
     expect(gateway.callModel(token)).toBe(401);
@@ -715,7 +706,6 @@ describe("HTTP reference broker — real loopback mint + revoke over the wire", 
     });
 
     await service.closeSession(sessionId);
-    await settle();
 
     const revoke = requests.find((r) => /\/revoke$/.test(r.url));
     expect(revoke).toBeDefined();

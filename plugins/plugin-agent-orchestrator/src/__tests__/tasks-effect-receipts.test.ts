@@ -100,9 +100,8 @@ describe("TASKS effect receipts", () => {
     expect(
       result?.effectReceipts?.some((receipt) => receipt.outcome === "applied"),
     ).toBe(false);
-    expect(replies).toHaveLength(1);
-    expect(replies[0]).toContain("no authoritative commit receipt");
-    expect(result?.userFacingText).toBe(replies[0]);
+    expect(replies).toEqual([]);
+    expect(result?.userFacingText).toContain("no authoritative commit receipt");
     expect(result?.userFacingEffectReceiptIds).toEqual([
       result?.effectReceipts?.[0]?.receiptId,
     ]);

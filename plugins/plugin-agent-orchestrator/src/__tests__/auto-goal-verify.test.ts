@@ -73,7 +73,11 @@ describe("buildAutoVerifyCorrection", () => {
  * Drive the service through a fake ACP so the private auto-verify hook fires
  * off a real `task_complete` session event.
  */
-type EventHandler = (sessionId: string, event: string, data: unknown) => void;
+type EventHandler = (
+  sessionId: string,
+  event: string,
+  data: unknown,
+) => void | Promise<void>;
 
 function makeFakeAcp() {
   let handler: EventHandler | undefined;
@@ -98,8 +102,9 @@ function makeFakeAcp() {
   return {
     service,
     sent,
-    emit: (sessionId: string, event: string, data: unknown) =>
-      handler?.(sessionId, event, data),
+    emit: async (sessionId: string, event: string, data: unknown) => {
+      await handler?.(sessionId, event, data);
+    },
   };
 }
 
@@ -138,6 +143,7 @@ afterAll(() => {
 // proves the residuals gate actually ran and passed — not that it was skipped.
 
 const gitRoots: string[] = [];
+let cleanFixtureOrigin: string | undefined;
 afterAll(() => {
   for (const root of gitRoots) rmSync(root, { recursive: true, force: true });
 });
@@ -158,18 +164,25 @@ function git(cwd: string, ...args: string[]): void {
   );
 }
 
-function makeCleanWorkdir(): string {
+function getCleanFixtureOrigin(): string {
+  if (cleanFixtureOrigin) return cleanFixtureOrigin;
   const root = mkdtempSync(join(tmpdir(), "orch-auto-verify-"));
   gitRoots.push(root);
+  const seed = join(root, "seed");
+  git(root, "init", "-q", "-b", "main", seed);
+  writeFileSync(join(seed, "README.md"), "seed\n");
+  git(seed, "add", ".");
+  git(seed, "commit", "-q", "-m", "seed");
+  cleanFixtureOrigin = join(root, "origin.git");
+  git(root, "clone", "-q", "--bare", seed, cleanFixtureOrigin);
+  return cleanFixtureOrigin;
+}
+
+function makeCleanWorkdir(): string {
+  const root = mkdtempSync(join(tmpdir(), "orch-auto-verify-work-"));
+  gitRoots.push(root);
   const workdir = join(root, "work");
-  git(root, "init", "-q", "-b", "main", workdir);
-  writeFileSync(join(workdir, "README.md"), "seed\n");
-  git(workdir, "add", ".");
-  git(workdir, "commit", "-q", "-m", "seed");
-  const bare = join(root, "origin.git");
-  git(root, "init", "-q", "--bare", bare);
-  git(workdir, "remote", "add", "origin", bare);
-  git(workdir, "push", "-q", "-u", "origin", "main");
+  git(root, "clone", "-q", getCleanFixtureOrigin(), workdir);
   return workdir;
 }
 
@@ -224,6 +237,50 @@ async function seedTaskWithSession(
   await store.updateTask(taskId, { status: "active" });
   return { taskId, sessionId, workdir };
 }
+
+describe("ACP session event ordering", () => {
+  it("does not let a later event overtake an in-flight event from the same session", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, []);
+    const runtime = makeRuntime(fake.service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    let releaseFirst: (() => void) | undefined;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let announceFirst: (() => void) | undefined;
+    const firstEntered = new Promise<void>((resolve) => {
+      announceFirst = resolve;
+    });
+    const realAddEvent = store.addEvent.bind(store);
+    const addEvent = vi
+      .spyOn(store, "addEvent")
+      .mockImplementation(async (event) => {
+        if (event.eventType === "message" && event.data.text === "first") {
+          announceFirst?.();
+          await firstBlocked;
+        }
+        await realAddEvent(event);
+      });
+
+    const first = fake.emit(sessionId, "message", { text: "first" });
+    await firstEntered;
+    const second = fake.emit(sessionId, "message", { text: "second" });
+
+    expect(addEvent).toHaveBeenCalledTimes(1);
+    releaseFirst?.();
+    await Promise.all([first, second]);
+
+    const messages = (await store.getTask(taskId))?.events
+      .filter((event) => event.eventType === "message")
+      .map((event) => event.data.text);
+    expect(messages).toEqual(["first", "second"]);
+    await service.stop();
+  });
+});
 
 describe("auto goal verification on task_complete", () => {
   let savedFlag: string | undefined;
@@ -368,9 +425,7 @@ describe("auto goal verification on task_complete", () => {
     const service = new OrchestratorTaskService(runtime as never, { store });
     await service.start();
 
-    fake.emit(sessionId, "task_complete", { response: "done" });
-    // Give the fire-and-forget hook a tick to run.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fake.emit(sessionId, "task_complete", { response: "done" });
     const doc = await store.getTask(taskId);
     expect(doc?.task.status).toBe("validating");
     expect(useModel).not.toHaveBeenCalled();
@@ -397,8 +452,7 @@ describe("auto goal verification on task_complete", () => {
     const service = new OrchestratorTaskService(runtime as never, { store });
     await service.start();
 
-    fake.emit(sessionId, "task_complete", { response: "done" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await fake.emit(sessionId, "task_complete", { response: "done" });
     const doc = await store.getTask(taskId);
     expect(doc?.task.status).toBe("validating");
     expect(useModel).not.toHaveBeenCalled();
@@ -1398,8 +1452,7 @@ describe("deterministic completion-residuals gate", () => {
     const service = new OrchestratorTaskService(runtime as never, { store });
     await service.start();
 
-    fake.emit(sessionId, "task_complete", { response: fence(envelope) });
-    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+    await fake.emit(sessionId, "task_complete", { response: fence(envelope) });
 
     expect(useModel).not.toHaveBeenCalled();
     expect(fake.sent.at(-1)?.text).toContain("bun test (exit 1)");
@@ -1421,11 +1474,10 @@ describe("deterministic completion-residuals gate", () => {
     const service = new OrchestratorTaskService(runtime as never, { store });
     await service.start();
 
-    fake.emit(sessionId, "task_complete", { response: "still done, promise" });
-    await until(
-      async () =>
-        (await store.getTask(taskId))?.task.status === "waiting_on_user",
-    );
+    await fake.emit(sessionId, "task_complete", {
+      response: "still done, promise",
+    });
+    expect((await store.getTask(taskId))?.task.status).toBe("waiting_on_user");
     expect(fake.service.sendToSession).not.toHaveBeenCalled();
   });
 

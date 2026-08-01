@@ -1015,6 +1015,11 @@ export class OrchestratorTaskService extends Service {
     return run;
   }
   private unsubscribe: (() => void) | undefined;
+  // ACP emits synchronously but persistence is asynchronous. Preserve event
+  // order within each session while allowing unrelated sessions to progress in
+  // parallel; the returned work promise also gives deterministic harnesses an
+  // honest completion boundary.
+  private readonly sessionEventQueues = new Map<string, Promise<void>>();
   private started = false;
   // Admission queue (#13772): taskIds parked because the worker cap was full.
   // The durable truth is each task's `metadata.admission` record; this array is
@@ -1113,9 +1118,32 @@ export class OrchestratorTaskService extends Service {
   }
 
   private subscribeToAcp(acp: AcpService): void {
-    this.unsubscribe = acp.onSessionEvent((sessionId, event, data) => {
-      void this.onSessionEvent(sessionId, event, data);
+    this.unsubscribe = acp.onSessionEvent((sessionId, event, data) =>
+      this.enqueueSessionEvent(sessionId, event, data),
+    );
+  }
+
+  private enqueueSessionEvent(
+    sessionId: string,
+    event: string,
+    data: unknown,
+  ): Promise<void> {
+    const previous =
+      this.sessionEventQueues.get(sessionId) ?? Promise.resolve();
+    const run = previous.then(() =>
+      this.onSessionEvent(sessionId, event, data),
+    );
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.sessionEventQueues.set(sessionId, tail);
+    void tail.then(() => {
+      if (this.sessionEventQueues.get(sessionId) === tail) {
+        this.sessionEventQueues.delete(sessionId);
+      }
     });
+    return tail;
   }
 
   private async bindToAcpWhenReady(): Promise<void> {
@@ -1152,6 +1180,7 @@ export class OrchestratorTaskService extends Service {
   async stop(): Promise<void> {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
+    await Promise.all(this.sessionEventQueues.values());
     if (this.admissionReconcileTimer) {
       clearInterval(this.admissionReconcileTimer);
       this.admissionReconcileTimer = undefined;
@@ -1667,9 +1696,9 @@ export class OrchestratorTaskService extends Service {
         // the task done. Feed the verifier REAL completion evidence (git
         // changeset + deliverable + final reply + verified URLs + test/build
         // markers + artifact refs) assembled from data we already have, not the
-        // bare event summary. Fire-and-forget so the event-bridge write path
-        // stays fast; the verifier gates itself on the flag + criteria presence,
-        // and evidence assembly never throws into this path.
+        // bare event summary. Await verification as part of this session's
+        // ordered event chain: a later event must not overtake completion state,
+        // and service shutdown must not discard an in-flight verdict.
         const completionEvidence = await this.buildCompletionEvidence(
           taskId,
           sessionId,
@@ -1679,7 +1708,7 @@ export class OrchestratorTaskService extends Service {
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
         // parser must see the original text.
-        void this.autoVerifyCompletion(
+        await this.autoVerifyCompletion(
           taskId,
           sessionId,
           completionEvidence,
@@ -3545,8 +3574,9 @@ export class OrchestratorTaskService extends Service {
    * malformed/failing worker is re-prompted a bounded number of times and then
    * parked on `waiting_on_user`.
    *
-   * Fire-and-forget from the event bridge: failures here must never break the
-   * session-event write path, so everything is wrapped and logged.
+   * This is awaited by the per-session event queue so its state transition is
+   * ordered and drainable. Failures remain contained and reported at this
+   * diagnostic boundary rather than rejecting ACP delivery.
    */
   private async autoVerifyCompletion(
     taskId: string,
@@ -3570,8 +3600,8 @@ export class OrchestratorTaskService extends Service {
         ),
       );
     } catch (err) {
-      // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
-      // failure warns and must not break the session-event write path.
+      // error-policy:J7 completion verification is a diagnostic boundary; a
+      // failure warns and must not reject ACP event delivery.
       this.log("warn", "auto goal verification failed", {
         taskId,
         sessionId,

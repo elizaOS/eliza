@@ -5,6 +5,11 @@ export {
 	VoiceBundleDoesNotFitError,
 } from "./active-model";
 export {
+	bundleHasAsrModelFiles,
+	collectQwenAsrProvenanceBlockers,
+	readBundleAsrProvenanceBlockers,
+} from "./asr-provenance";
+export {
 	type BackendDecision,
 	BackendDispatcher,
 	type BackendId,
@@ -75,11 +80,6 @@ export {
 	resolveIdleUnloadMs,
 	resolveMaxConcurrentSpeculativeResponses,
 } from "./engine";
-export {
-	bundleHasAsrModelFiles,
-	collectQwenAsrProvenanceBlockers,
-	readBundleAsrProvenanceBlockers,
-} from "./asr-provenance";
 export {
 	type HandlerRegistration,
 	handlerRegistry,
