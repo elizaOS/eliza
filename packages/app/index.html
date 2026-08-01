@@ -272,6 +272,7 @@
        bleed-through invisible. */
     :root {
       --launch-bg: #000000;
+      --launch-foreground: #fdfaf7;
     }
 
     html,
@@ -283,7 +284,7 @@
     html, body {
       margin: 0;
       padding: 0;
-      color: #ffffff;
+      color: var(--launch-foreground, #fdfaf7);
       font-family: var(--font-sans, "Poppins", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -312,7 +313,7 @@
       place-items: center;
       overflow: hidden;
       background: var(--launch-bg, #000000);
-      color: #ffffff;
+      color: var(--launch-foreground, #fdfaf7);
     }
 
     .eliza-preboot-shell__content {
