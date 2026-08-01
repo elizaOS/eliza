@@ -603,7 +603,7 @@ jobs:
                   END
                 )
             ) THEN
-              RAISE EXCEPTION 'rollback standby columns differ from migration 0187';
+              RAISE EXCEPTION 'rollback standby columns differ from migration 0188';
             END IF;
 
             IF EXISTS (
@@ -734,7 +734,7 @@ jobs:
                   END
                 )
             ) THEN
-              RAISE EXCEPTION 'restore validation columns differ from migration 0188';
+              RAISE EXCEPTION 'restore validation columns differ from migration 0189';
             END IF;
 
             IF EXISTS (

@@ -24,14 +24,14 @@ const warmFenceMigration = readFileSync(
 );
 const rollbackStandbyMigration = readFileSync(
   new URL(
-    "../../cloud/shared/src/db/migrations/0187_rollback_standby_state.sql",
+    "../../cloud/shared/src/db/migrations/0188_rollback_standby_state.sql",
     import.meta.url,
   ),
   "utf8",
 );
 const restoreValidationMigration = readFileSync(
   new URL(
-    "../../cloud/shared/src/db/migrations/0188_agent_snapshot_restore_validations.sql",
+    "../../cloud/shared/src/db/migrations/0189_agent_snapshot_restore_validations.sql",
     import.meta.url,
   ),
   "utf8",
@@ -1190,14 +1190,14 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
 
   test.each([
     [
-      "a missing 0188 column",
+      "a missing 0189 column",
       "ALTER TABLE agent_snapshot_restore_validations DROP COLUMN receipt_schema_version CASCADE",
       "schema is incomplete",
     ],
     [
-      "a changed 0187 column contract",
+      "a changed 0188 column contract",
       "ALTER TABLE agent_sandboxes ALTER COLUMN rollback_standby_state SET DEFAULT 'paused'",
-      "columns differ from migration 0187",
+      "columns differ from migration 0188",
     ],
     [
       "a timezone-bearing pointed-job clock",
