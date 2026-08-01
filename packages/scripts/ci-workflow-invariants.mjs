@@ -30,6 +30,8 @@ const WORKFLOW_PATHS = Object.freeze({
   tests: ".github/workflows/test.yml",
 });
 const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}`;
+const FORK_JOB_GUARD =
+  "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -243,9 +245,8 @@ export function validateWorkflowSources(sources) {
       `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must use the isolated ubuntu-24.04 hosted runner`,
     );
     invariant(
-      typeof job.if === "string" &&
-        job.if.includes("github.event_name == 'workflow_dispatch'"),
-      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must remain executable by workflow_dispatch`,
+      job.if === FORK_JOB_GUARD,
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must run only for workflow_dispatch or fork pull requests`,
     );
   }
   const forkCliSetupBun = qualityFork.jobs[
