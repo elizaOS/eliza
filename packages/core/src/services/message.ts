@@ -849,12 +849,9 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
 );
 
 /**
- * Stage 1 (messageHandler / shouldRespond) does NOT need wall-clock,
- * room entities, or document store context. It just decides
- * processMessage + which contexts apply. Excluding these from the
- * Stage 1 prompt keeps the user message byte-stable across responses
- * (no per-call CURRENT_TIME drift) so the provider's prefix cache
- * grows with the conversation rather than resetting every turn.
+ * Stage 1 (messageHandler / shouldRespond) does NOT need room entities
+ * or document store context. It just decides processMessage + which
+ * contexts apply.
  *
  * These exclusions apply to COMPOSITION as well as rendering:
  * `composeResponseState` subtracts them from the include list it hands
@@ -866,32 +863,23 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
  * planner recompose runs any provider missing from the turn's cached
  * state (see composeState's refreshProviders contract in runtime.ts).
  *
+ * CURRENT_TIME is deliberately NOT excluded: the system prompt promises
+ * a CURRENT_TIME signal in every runtime context (see the date/time
+ * exception in packages/prompts), and simple-path turns run exactly one
+ * compose pass — excluding it here turns a missing provider into a
+ * confidently hallucinated timestamp. A prose gate that re-included it
+ * only for messages that "looked like" time questions silently dropped
+ * the signal on near-miss phrasings ("whats todays date and time?").
+ * The provider is pure synchronous formatting, and the prefix-cache cost
+ * is nil in practice: FACTS is BM25-ranked per message and renders
+ * adjacent to CURRENT_TIME, so the user-message bytes already churn at
+ * that position every turn.
+ *
  * Note: we still keep FACTS composed and rendered — Stage 1 may need a
  * grounded fact to discriminate ambiguous routing, and stored facts must
  * be recallable on the simple path (see CORE_RESPONSE_STATE_PROVIDERS).
  */
-const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = [
-	"CURRENT_TIME",
-	"ENTITIES",
-	"DOCUMENTS",
-] as const;
-
-function isCurrentTimeQuestion(message: Memory): boolean {
-	const text = message.content.text?.toLowerCase() ?? "";
-	if (!text) return false;
-	return /\b(?:what(?:'s| is)?|tell me|give me|do you know|current)\b[\s\S]{0,80}\b(?:date|time|year|day|today)\b/.test(
-		text,
-	);
-}
-
-function stage1ProviderExclusionsForMessage(message: Memory): string[] {
-	const exclusions = [...STAGE1_EXTRA_PROVIDER_EXCLUSIONS];
-	if (isCurrentTimeQuestion(message)) {
-		const index = exclusions.indexOf("CURRENT_TIME");
-		if (index >= 0) exclusions.splice(index, 1);
-	}
-	return exclusions;
-}
+const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = ["ENTITIES", "DOCUMENTS"] as const;
 function hasInboundBenchmarkContext(message: Memory): boolean {
 	const metadata = message.metadata as Record<string, unknown> | undefined;
 	const benchmarkContext = metadata?.benchmarkContext;
@@ -1111,7 +1099,7 @@ export function stage1ResponseStateProviderNames(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): string[] {
-	const exclusions = new Set(stage1ProviderExclusionsForMessage(message));
+	const exclusions = new Set<string>(STAGE1_EXTRA_PROVIDER_EXCLUSIONS);
 	return [
 		...CORE_RESPONSE_STATE_PROVIDERS,
 		...alwaysOnResponseStateProviderNames(runtime),
@@ -4103,8 +4091,7 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions:
-			stage1ProviderExclusionsForMessage(syntheticMessage),
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(
@@ -7023,7 +7010,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: stage1ProviderExclusionsForMessage(args.message),
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
 	});
 	const stage1PreprocessStartedAt = performance.now();
 

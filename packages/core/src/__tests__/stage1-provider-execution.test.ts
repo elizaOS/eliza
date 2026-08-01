@@ -1,10 +1,13 @@
 /**
  * Proves the Stage-1 provider exclusions are EXECUTION exclusions, not just
  * render exclusions: `stage1ResponseStateProviderNames` subtracts the
- * stage-1-excluded providers from the compose include list (so ENTITIES /
- * CURRENT_TIME never run for a turn that dies at Stage 1), while the planner
- * pass still composes them via composeState's cached-state merge. Uses a real
- * in-memory AgentRuntime with call-counting providers; no database or model.
+ * stage-1-excluded providers from the compose include list (so ENTITIES
+ * never runs for a turn that dies at Stage 1), while the planner pass still
+ * composes them via composeState's cached-state merge. Also pins that
+ * CURRENT_TIME is unconditionally composed — the system prompt promises a
+ * time signal in every runtime context, so no message phrasing may drop it.
+ * Uses a real in-memory AgentRuntime with call-counting providers; no
+ * database or model.
  */
 import { describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
@@ -56,7 +59,6 @@ describe("stage1ResponseStateProviderNames", () => {
 		);
 
 		expect(names).not.toContain("ENTITIES");
-		expect(names).not.toContain("CURRENT_TIME");
 		expect(names).not.toContain("DOCUMENTS");
 		// Stage 1 still composes what it renders and routes on.
 		expect(names).toContain("RECENT_MESSAGES");
@@ -64,15 +66,25 @@ describe("stage1ResponseStateProviderNames", () => {
 		expect(names).toContain("ATTACHMENTS");
 	});
 
-	it("keeps CURRENT_TIME when the user is asking about the time", () => {
+	it("always includes CURRENT_TIME regardless of message phrasing", () => {
+		// Live incident: a regex gate re-included CURRENT_TIME only for
+		// messages that "looked like" time questions, so the apostrophe-free
+		// "whats todays date and time?" lost the time block and the model
+		// hallucinated a stale date. The signal must not depend on prose.
 		const runtime = { providers: [] } as unknown as IAgentRuntime;
-		const names = stage1ResponseStateProviderNames(
-			runtime,
-			makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", "what time is it?"),
-		);
-
-		expect(names).toContain("CURRENT_TIME");
-		expect(names).not.toContain("ENTITIES");
+		for (const text of [
+			"gm",
+			"whats todays date and time?",
+			"what time is it?",
+			"tell me a short joke",
+		]) {
+			const names = stage1ResponseStateProviderNames(
+				runtime,
+				makeMessage("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", text),
+			);
+			expect(names).toContain("CURRENT_TIME");
+			expect(names).not.toContain("ENTITIES");
+		}
 	});
 
 	it("includes always-on plugin providers unless they are stage-1-excluded", () => {
@@ -116,7 +128,9 @@ describe("stage1ResponseStateProviderNames", () => {
 
 		// Stage-1 compose: excluded providers never execute, so a turn that
 		// ends at Stage 1 (group noise → IGNORE) does none of their work and
-		// its prompt footprint drops accordingly.
+		// its prompt footprint drops accordingly. CURRENT_TIME is NOT excluded
+		// — it composes on every turn so the simple path can honor the system
+		// prompt's promise of a live time signal.
 		const stage1State = await runtime.composeState(
 			message,
 			stage1Names,
@@ -124,17 +138,18 @@ describe("stage1ResponseStateProviderNames", () => {
 			false,
 		);
 		expect(entities.calls()).toBe(0);
-		expect(currentTime.calls()).toBe(0);
+		expect(currentTime.calls()).toBe(1);
 		expect(facts.calls()).toBe(1);
 		expect(recent.calls()).toBe(1);
 		expect(stage1State.text).not.toContain("ENTITIES#");
-		expect(stage1State.text).not.toContain("CURRENT_TIME#");
+		expect(stage1State.text).toContain("CURRENT_TIME#1");
 		expect(stage1State.text).toContain("FACTS#1");
 
 		// Planner recompose (mirrors selectV5PlannerStateProviderNames re-adding
 		// the core response providers, with RECENT_MESSAGES refreshed): the
 		// excluded providers are not in the turn cache, so they run now — once —
-		// and reach the planner prompt; the already-composed FACTS is reused.
+		// and reach the planner prompt; the already-composed FACTS and
+		// CURRENT_TIME are reused from the turn cache.
 		const plannerState = await runtime.composeState(
 			message,
 			[...stage1Names, "ENTITIES", "CURRENT_TIME"],
