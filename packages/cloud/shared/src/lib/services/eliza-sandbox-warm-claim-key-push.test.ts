@@ -27,7 +27,7 @@
  *     stable failure event; the claim itself survives (caller contract).
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -205,6 +205,15 @@ mock.module("../../db/helpers", () => ({
 }));
 
 const { ElizaSandboxService } = await import("./eliza-sandbox.ts?warmkeypush");
+
+// Keep the mutable row as this state-machine suite's single database model;
+// stubbing the locked read makes every in-flow re-read observe prior writes.
+spyOn(
+  ElizaSandboxService.prototype as unknown as {
+    getAgentForLifecycleMutation: () => Promise<unknown>;
+  },
+  "getAgentForLifecycleMutation",
+).mockImplementation(async () => databaseRow);
 const { warmClaimKeyFingerprint } = await import("./warm-claim-key-push");
 
 // The fingerprint an up-to-date container echoes after applying MINTED_KEY.

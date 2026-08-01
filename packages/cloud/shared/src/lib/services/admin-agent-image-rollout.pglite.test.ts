@@ -6,6 +6,8 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
@@ -78,6 +80,19 @@ let pgliteReady = true;
 let seq = 0;
 let requestSeq = 0;
 
+async function applyLifecycleRevisionMigration(): Promise<void> {
+  const migration = await readFile(
+    join(import.meta.dir, "../../db/migrations/0192_agent_sandbox_lifecycle_revision.sql"),
+    "utf8",
+  );
+  for (const statement of migration
+    .split("--> statement-breakpoint")
+    .map((candidate) => candidate.trim())
+    .filter(Boolean)) {
+    await dbWrite.execute(sql.raw(statement));
+  }
+}
+
 type ReplacementStageService = {
   persistReplacementCleanupStage(
     agentId: string,
@@ -90,8 +105,9 @@ type ReplacementStageService = {
       nodeId: string | null;
       containerName: string | null;
     },
+    expectedLifecycleRevision: number,
     stage: "intent" | "created" | "vpn",
-  ): Promise<void>;
+  ): Promise<number>;
 };
 
 type ReplacementCleanupService = {
@@ -655,6 +671,7 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await applyLifecycleRevisionMigration();
   } catch {
     pgliteReady = false;
   }
@@ -758,7 +775,14 @@ describe("admin agent image rollout on primary PGlite", () => {
         new Date("2026-07-23T00:00:00.000Z"),
       ),
     ).toEqual([]);
-    expect(await agentSandboxesRepository.markRunningFromProvisioning(agentId)).toBeUndefined();
+    const observed = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
+    if (!observed) throw new Error("seeded provisioning agent disappeared");
+    expect(
+      await agentSandboxesRepository.markRunningFromProvisioning(
+        agentId,
+        observed.lifecycle_revision,
+      ),
+    ).toBeUndefined();
     expect(await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId)).toEqual(
       expect.objectContaining({ status: "provisioning" }),
     );
@@ -954,6 +978,9 @@ describe("admin agent image rollout on primary PGlite", () => {
       allocated_count: 2,
     });
     const service = new ElizaSandboxService() as unknown as ReplacementStageService;
+    const initial = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
+    if (!initial) throw new Error("seeded replacement agent disappeared");
+    let lifecycleRevision = initial.lifecycle_revision;
     const expected = {
       status: "running" as const,
       environmentRevision: 0,
@@ -968,11 +995,12 @@ describe("admin agent image rollout on primary PGlite", () => {
       previousVpnNodeId: "vpn-old",
     });
 
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       intent,
       expected,
+      lifecycleRevision,
       "intent",
     );
     const afterFirst = await agentSandboxesRepository.findByIdAndOrg(
@@ -982,11 +1010,12 @@ describe("admin agent image rollout on primary PGlite", () => {
     const firstCreatedAt = afterFirst?.replacement_cleanup_created_at;
     expect(firstCreatedAt).toBeInstanceOf(Date);
 
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       intent,
       expected,
+      lifecycleRevision,
       "intent",
     );
     const afterRetry = await agentSandboxesRepository.findByIdAndOrg(
@@ -1035,6 +1064,7 @@ describe("admin agent image rollout on primary PGlite", () => {
           nodeId: "node-1",
           containerName: "agent-unaccounted",
         },
+        0,
         "intent",
       ),
     ).rejects.toThrow("durable node capacity ownership");
@@ -1044,6 +1074,60 @@ describe("admin agent image rollout on primary PGlite", () => {
       replacement_cleanup_sandbox_id: null,
       replacement_cleanup_attempt_id: null,
     });
+  });
+
+  test("replacement ownership rejects a same-timestamp profile ABA before remote adoption", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-stale-blue",
+      hostname: "node-stale-blue.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 2,
+    });
+    const service = new ElizaSandboxService() as unknown as ReplacementStageService;
+    const observed = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
+    if (!observed) throw new Error("seeded replacement agent disappeared");
+    const fixedTimestamp = new Date("2026-07-30T12:00:00.123Z");
+    await dbWrite.execute(sql`
+      UPDATE ${agentSandboxes}
+      SET agent_name = agent_name, updated_at = ${fixedTimestamp}
+      WHERE id = ${agentId}
+    `);
+
+    await expect(
+      service.persistReplacementCleanupStage(
+        agentId,
+        seeded.organizationId,
+        replacementHandle({
+          agentId,
+          nodeId: "node-stale-blue",
+          containerName: "agent-stale-blue",
+          previousVpnNodeId: "vpn-old",
+        }),
+        {
+          status: "running",
+          environmentRevision: observed.environment_revision,
+          sandboxId: observed.sandbox_id,
+          nodeId: observed.node_id,
+          containerName: observed.container_name,
+        },
+        observed.lifecycle_revision,
+        "intent",
+      ),
+    ).rejects.toThrow("Agent lifecycle changed before replacement ownership");
+
+    const current = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
+    expect(current?.lifecycle_revision).toBe(observed.lifecycle_revision + 1);
+    expect(current?.updated_at.getTime()).toBe(fixedTimestamp.getTime());
+    expect(current?.replacement_cleanup_sandbox_id).toBeNull();
+    expect(
+      (
+        await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, "node-stale-blue"))
+      )[0]?.allocated_count,
+    ).toBe(2);
   });
 
   test("replacement enrichment and cleanup preserve a PostgreSQL microsecond fence", async () => {
@@ -1064,6 +1148,9 @@ describe("admin agent image rollout on primary PGlite", () => {
     const service = new ElizaSandboxService(
       provider as unknown as SandboxProvider,
     ) as unknown as ElizaSandboxService & ReplacementStageService;
+    const initial = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
+    if (!initial) throw new Error("seeded replacement agent disappeared");
+    let lifecycleRevision = initial.lifecycle_revision;
     const expected = {
       status: "running" as const,
       environmentRevision: 0,
@@ -1093,11 +1180,12 @@ describe("admin agent image rollout on primary PGlite", () => {
       previousVpnNodeId: "vpn-old",
     });
 
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       intent,
       expected,
+      lifecycleRevision,
       "intent",
     );
     await dbWrite.execute(sql`
@@ -1106,6 +1194,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         TIMESTAMPTZ '2026-07-23 12:01:00.123456+00'
       WHERE id = ${agentId}
     `);
+    lifecycleRevision += 1;
     const precision = await dbWrite.execute<{ fractional: string }>(sql`
       SELECT to_char(replacement_cleanup_created_at, 'US') AS fractional
       FROM ${agentSandboxes}
@@ -1113,11 +1202,12 @@ describe("admin agent image rollout on primary PGlite", () => {
     `);
     expect(precision.rows[0]?.fractional).toBe("123456");
 
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       created,
       expected,
+      lifecycleRevision,
       "created",
     );
     const afterCreated = await agentSandboxesRepository.findByIdAndOrg(
@@ -1142,11 +1232,12 @@ describe("admin agent image rollout on primary PGlite", () => {
         ?.allocated_count,
     ).toBe(3);
 
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       created,
       expected,
+      lifecycleRevision,
       "created",
     );
     expect(
@@ -1156,18 +1247,20 @@ describe("admin agent image rollout on primary PGlite", () => {
       replacement_cleanup_vpn_node_id: null,
       replacement_cleanup_created_at: createdAt,
     });
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       registered,
       expected,
+      lifecycleRevision,
       "vpn",
     );
-    await service.persistReplacementCleanupStage(
+    lifecycleRevision = await service.persistReplacementCleanupStage(
       agentId,
       seeded.organizationId,
       registered,
       expected,
+      lifecycleRevision,
       "vpn",
     );
     expect(
@@ -5304,12 +5397,17 @@ describe("admin agent image rollout on primary PGlite", () => {
       status: "failed",
       attempts: 1,
     });
-    expect(
-      await agentSandboxesRepository.findByIdAndOrgForWrite(
-        seeded.data.agentId,
-        seeded.data.organizationId,
-      ),
-    ).toEqual(before);
+    const after = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      seeded.data.agentId,
+      seeded.data.organizationId,
+    );
+    if (!before || !after) throw new Error("standby row disappeared during stale delete execution");
+    expect(after).toEqual({
+      ...before,
+      // The delete worker's local execution lease is acquired and released on
+      // the sandbox row even though standby blocks provider and lifecycle work.
+      lifecycle_revision: before.lifecycle_revision + 2,
+    });
   });
 
   test("standby state blocks config, environment, and ordinary image mutation before writes", async () => {
@@ -5444,6 +5542,84 @@ describe("admin agent image rollout on primary PGlite", () => {
       environment_revision: 7,
       rollback_standby_environment_revision: 6,
     });
+  });
+
+  test("same-timestamp ABA during standby retirement preserves the delete fence", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    let revisionBeforeIntervention: number | undefined;
+    let timestampBeforeIntervention: Date | undefined;
+    const service = new ElizaSandboxService({
+      async create() {
+        throw new Error("create is not part of standby rejection");
+      },
+      async stop() {},
+      async checkHealth() {
+        return true;
+      },
+      async pauseForRollbackStandby() {
+        return {
+          nodeId: "node-blue",
+          containerName: "agent-blue",
+          containerId: "container-blue",
+        };
+      },
+      async resumeRollbackStandby() {},
+      async stopOnSpecificNodeForReplacement() {
+        const [observed] = await dbWrite
+          .select({
+            lifecycleRevision: agentSandboxes.lifecycle_revision,
+            updatedAt: agentSandboxes.updated_at,
+          })
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, seeded.data.agentId));
+        if (!observed) throw new Error("standby row disappeared before ABA write");
+        revisionBeforeIntervention = observed.lifecycleRevision;
+        timestampBeforeIntervention = observed.updatedAt;
+        await dbWrite.execute(sql`
+          UPDATE ${agentSandboxes}
+          SET error_count = error_count + 1, updated_at = ${observed.updatedAt}
+          WHERE id = ${seeded.data.agentId}
+        `);
+      },
+    });
+
+    await expect(
+      service.executeAdminCanaryStandbyDecision({
+        data: { ...seeded.data, decision: "reject" },
+        decisionJobId: seeded.decisionJobId,
+        onConvergedInTx: async () => {},
+      }),
+    ).rejects.toThrow("Rollback cleanup lifecycle changed after remote retirement");
+
+    const fenced = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      seeded.data.agentId,
+      seeded.data.organizationId,
+    );
+    expect(revisionBeforeIntervention).toBeDefined();
+    expect(timestampBeforeIntervention).toBeInstanceOf(Date);
+    expect(fenced).toMatchObject({
+      rollback_standby_state: "rollback_cleanup_pending",
+      rollback_standby_generation: seeded.data.standbyGeneration,
+      lifecycle_revision: revisionBeforeIntervention! + 1,
+      updated_at: timestampBeforeIntervention,
+    });
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        userId: seeded.data.targetOwnerUserId,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      await dbWrite.select().from(jobs).where(eq(jobs.type, JOB_TYPES.AGENT_DELETE)),
+    ).toHaveLength(0);
+    expect(
+      await agentSandboxesRepository.findByIdAndOrgForWrite(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toEqual(fenced);
   });
 
   test("rejecting a canary resumes the exact standby before swapping and retiring blue", async () => {

@@ -181,7 +181,7 @@ async function __hono_POST(
             (existing.agent_config as Record<string, unknown> | undefined) ??
             undefined,
           characterId: existing.character_id,
-          expectedUpdatedAt: existing.updated_at,
+          expectedLifecycleRevision: existing.lifecycle_revision,
         });
         if (claimed) {
           committedWarmClaim = true;
@@ -442,7 +442,7 @@ async function __hono_POST(
         userId: user.id,
         agentName: existing.agent_name ?? agentId,
         webhookUrl,
-        expectedUpdatedAt: existing.updated_at,
+        expectedLifecycleRevision: existing.lifecycle_revision,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

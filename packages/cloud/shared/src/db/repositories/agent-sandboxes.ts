@@ -458,6 +458,7 @@ export class AgentSandboxesRepository {
       user_id: string;
       agent_name: string | null;
       bridge_url: string | null;
+      lifecycle_revision: number;
       updated_at: Date;
       status: AgentSandboxStatus;
     }>
@@ -469,6 +470,7 @@ export class AgentSandboxesRepository {
         user_id: agentSandboxes.user_id,
         agent_name: agentSandboxes.agent_name,
         bridge_url: agentSandboxes.bridge_url,
+        lifecycle_revision: agentSandboxes.lifecycle_revision,
         updated_at: agentSandboxes.updated_at,
         status: agentSandboxes.status,
       })
@@ -1078,7 +1080,7 @@ export class AgentSandboxesRepository {
       sandboxId: string | null;
       nodeId: string | null;
       containerName: string | null;
-      updatedAt: Date;
+      lifecycleRevision: number;
     },
   ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
@@ -1139,14 +1141,10 @@ export class AgentSandboxesRepository {
         sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
         sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
         sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expectedRunningGeneration.containerName}`,
-        // ms-window fence: the stored value may carry microseconds (raw
-        // `updated_at = NOW()` writers) while the expected value came through
-        // a typed read, which truncates to milliseconds — JS Date parsing
-        // truncates sub-ms lexically (never rounds), so ms==ms is exact. A
-        // plain eq() silently missed for every µs-stored row, so the observed
-        // running generation was never persisted after such a write (#17249
-        // fence class; same remedy as the sleep and managed-launch CASes).
-        sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) = ${expectedRunningGeneration.updatedAt}`,
+        // The database-owned generation advances on every write, including
+        // raw SQL writers, so this fence has neither timestamp precision nor
+        // same-millisecond ABA windows.
+        eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
       );
     }
     const [r] = await dbWrite
@@ -1231,7 +1229,9 @@ export class AgentSandboxesRepository {
    */
   async markReconnectedFromDisconnected(
     id: string,
-    expectedStatus: "disconnected" | "error" = "disconnected",
+    expectedStatus: "disconnected" | "error",
+    expectedLifecycleRevision: number,
+    repairedIngress?: { headscaleIp: string; bridgeUrl: string },
   ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite
@@ -1241,11 +1241,19 @@ export class AgentSandboxesRepository {
         error_message: null,
         last_heartbeat_at: new Date(),
         updated_at: new Date(),
+        ...(repairedIngress
+          ? {
+              headscale_ip: repairedIngress.headscaleIp,
+              bridge_url: repairedIngress.bridgeUrl,
+              error_count: 0,
+            }
+          : {}),
       })
       .where(
         and(
           eq(agentSandboxes.id, id),
           eq(agentSandboxes.status, expectedStatus),
+          eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
           sql`${agentSandboxes.bridge_url} IS NOT NULL`,
           sql`${expectedStatus} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
@@ -1264,7 +1272,10 @@ export class AgentSandboxesRepository {
    * multi-second re-probe is never clobbered. Returns undefined when the CAS
    * matched nothing.
    */
-  async markRunningFromProvisioning(id: string): Promise<AgentSandbox | undefined> {
+  async markRunningFromProvisioning(
+    id: string,
+    expectedLifecycleRevision: number,
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [candidate] = await dbWrite
       .select({ organizationId: agentSandboxes.organization_id })
@@ -1272,6 +1283,7 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.id, id),
+          eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
           eq(agentSandboxes.status, "provisioning"),
           sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
           sql`${agentSandboxes.node_id} IS NOT NULL`,
@@ -1302,6 +1314,7 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, id),
             eq(agentSandboxes.organization_id, candidate.organizationId),
+            eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
             eq(agentSandboxes.status, "provisioning"),
             sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
             sql`${agentSandboxes.node_id} IS NOT NULL`,
@@ -1607,7 +1620,7 @@ export class AgentSandboxesRepository {
     agentName: string;
     agentConfig?: Record<string, unknown>;
     characterId?: string | null;
-    expectedUpdatedAt?: Date | string | null;
+    expectedLifecycleRevision?: number;
   }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
@@ -1719,12 +1732,11 @@ export class AgentSandboxesRepository {
       }
       if (userRow.rollback_standby_state) return null;
 
-      if (params.expectedUpdatedAt) {
-        const expectedMs = new Date(params.expectedUpdatedAt).getTime();
-        const currentMs = userRow.updated_at?.getTime() ?? Number.NaN;
-        if (Number.isFinite(expectedMs) && Number.isFinite(currentMs) && expectedMs !== currentMs) {
-          return null;
-        }
+      if (
+        params.expectedLifecycleRevision !== undefined &&
+        userRow.lifecycle_revision !== params.expectedLifecycleRevision
+      ) {
+        return null;
       }
 
       const claimedAt = new Date();
@@ -1778,6 +1790,9 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            ...(params.expectedLifecycleRevision === undefined
+              ? []
+              : [eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision)]),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             sql`${agentSandboxes.rollback_standby_state} IS NULL`,
             sql`${agentSandboxes.status} NOT IN ('deletion_pending', 'deletion_failed')`,

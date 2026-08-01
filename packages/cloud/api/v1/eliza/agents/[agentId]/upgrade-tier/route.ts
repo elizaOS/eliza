@@ -162,6 +162,7 @@ async function respondToLiveTarget(
     organizationId: user.organization_id,
     userId: user.id,
     agentName: target.agent_name ?? target.id,
+    expectedLifecycleRevision: target.lifecycle_revision,
   });
   if (reattach.created) {
     void provisioningJobService.triggerImmediate(env).catch(() => {

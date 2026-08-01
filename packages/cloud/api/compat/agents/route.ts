@@ -223,7 +223,7 @@ app.post("/", async (c) => {
           organizationId: user.organization_id,
           userId: user.id,
           agentName: agent.agent_name ?? agent.id,
-          expectedUpdatedAt: agent.updated_at,
+          expectedLifecycleRevision: agent.lifecycle_revision,
         });
         provisioningJobId = job.id;
       } catch (provErr) {

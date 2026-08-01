@@ -430,14 +430,22 @@ describe("stuck-provisioning owner predicates", () => {
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),
     ).not.toContain(agentId);
-    expect(await repo.markRunningFromProvisioning(agentId)).toBeUndefined();
+    const observed = await repo.findById(agentId);
+    if (!observed) throw new Error("seeded provisioning agent disappeared");
+    expect(
+      await repo.markRunningFromProvisioning(agentId, observed.lifecycle_revision),
+    ).toBeUndefined();
 
     await jobsRepository.settleExecution(job, "completed", undefined, EXECUTION_OWNER_ID);
+    const settled = await repo.findById(agentId);
+    if (!settled) throw new Error("settled provisioning agent disappeared");
 
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),
     ).toContain(agentId);
-    expect((await repo.markRunningFromProvisioning(agentId))?.id).toBe(agentId);
+    expect((await repo.markRunningFromProvisioning(agentId, settled.lifecycle_revision))?.id).toBe(
+      agentId,
+    );
     expect(await sandboxStatus(agentId)).toBe("running");
   });
 });
