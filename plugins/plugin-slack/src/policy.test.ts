@@ -294,30 +294,21 @@ describe("SlackAccountPolicyResolver event policy", () => {
     });
     const reactionEvent = event({ eventType: "reaction", isMentioned: false });
     await expect(
-      own.authorizeReaction(reactionEvent, "thumbsup", "bot-user"),
+      own.authorizeReaction(reactionEvent, "thumbsup"),
     ).resolves.toMatchObject({ allowed: true });
-    await expect(
-      own.authorizeReaction(reactionEvent, "thumbsup", BOB),
-    ).resolves.toMatchObject({
-      allowed: false,
-      reason: "reaction_not_owned",
-    });
+    expect(own.isReactionTargetAllowed(true)).toBe(true);
+    expect(own.isReactionTargetAllowed(false)).toBe(false);
     await expect(
       own.authorizeReaction(
         { ...reactionEvent, userId: "bot-user", isBotMessage: true },
         "thumbsup",
-        "bot-user",
       ),
     ).resolves.toMatchObject({
       allowed: false,
       reason: "bot_not_allowed",
     });
     await expect(
-      own.authorizeReaction(
-        { ...reactionEvent, userId: BOB },
-        "thumbsup",
-        "bot-user",
-      ),
+      own.authorizeReaction({ ...reactionEvent, userId: BOB }, "thumbsup"),
     ).resolves.toMatchObject({
       allowed: false,
       reason: "user_not_allowed",
@@ -329,10 +320,10 @@ describe("SlackAccountPolicyResolver event policy", () => {
       reactionAllowlist: ["thumbsup"],
     });
     await expect(
-      allowlist.authorizeReaction(reactionEvent, "thumbsup", BOB),
+      allowlist.authorizeReaction(reactionEvent, "thumbsup"),
     ).resolves.toMatchObject({ allowed: true });
     await expect(
-      allowlist.authorizeReaction(reactionEvent, "eyes", BOB),
+      allowlist.authorizeReaction(reactionEvent, "eyes"),
     ).resolves.toMatchObject({
       allowed: false,
       reason: "reaction_not_allowed",

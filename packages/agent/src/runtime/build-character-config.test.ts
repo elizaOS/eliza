@@ -4,6 +4,10 @@
  * stay plain settings, credentials become redacted secrets) and passthrough of
  * per-agent settings, canonical Slack connector policy, and knowledge directories.
  */
+import {
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
@@ -105,6 +109,16 @@ describe("last-resort character system prompt", () => {
   });
 });
 
+describe("connector credential setting keys", () => {
+  it("keeps distinct account identifiers in separate secret slots", () => {
+    expect(
+      connectorAccountCredentialSettingKey("slack", "support-east", "botToken"),
+    ).not.toBe(
+      connectorAccountCredentialSettingKey("slack", "support_east", "botToken"),
+    );
+  });
+});
+
 describe("agent entry character passthrough", () => {
   it("keeps runtime capability hints idempotent across config rebuilds", () => {
     const workflowHint =
@@ -201,6 +215,55 @@ describe("agent entry character passthrough", () => {
 });
 
 describe("connector policy projection", () => {
+  it("merges partial account overrides without dropping base credentials", () => {
+    const character = buildCharacterFromConfig({
+      connectors: {
+        slack: {
+          accounts: {
+            support: {
+              botToken: "xoxb-base",
+              appToken: "xapp-base",
+              channels: { support: { enabled: true } },
+            },
+          },
+        },
+      },
+      agents: {
+        list: [
+          {
+            name: "Tester",
+            system: "x",
+            settings: {
+              slack: {
+                accounts: {
+                  support: {
+                    userToken: "xoxp-override",
+                    channels: { support: { requireMention: true } },
+                  },
+                },
+              },
+            },
+          },
+        ],
+      },
+    } as ElizaConfig);
+
+    expect(character.secrets).toMatchObject({
+      [connectorAccountCredentialSettingKey("slack", "support", "botToken")]:
+        "xoxb-base",
+      [connectorAccountCredentialSettingKey("slack", "support", "appToken")]:
+        "xapp-base",
+      [connectorAccountCredentialSettingKey("slack", "support", "userToken")]:
+        "xoxp-override",
+    });
+    const slackSettings = character.settings?.slack as
+      | { accounts?: Record<string, unknown> }
+      | undefined;
+    expect(slackSettings?.accounts?.support).toMatchObject({
+      channels: { support: { requireMention: true } },
+    });
+  });
+
   it("projects Slack policy while keeping every account credential secret", () => {
     const persisted = ElizaSchema.parse({
       connectors: {
@@ -261,25 +324,30 @@ describe("connector policy projection", () => {
       "signingSecret",
     );
 
-    const credentialJson = character.secrets?.SLACK_CONNECTOR_CREDENTIALS_JSON;
-    expect(typeof credentialJson).toBe("string");
-    if (typeof credentialJson !== "string") {
-      throw new TypeError("Slack credential projection was not serialized");
-    }
-    expect(JSON.parse(credentialJson)).toEqual({
+    const secrets = character.secrets ?? {};
+    expect(secrets).not.toHaveProperty("SLACK_CONNECTOR_CREDENTIALS_JSON");
+    for (const [field, value] of Object.entries({
       botToken: "xoxb-top-secret",
       appToken: "xapp-top-secret",
       userToken: "xoxp-top-secret",
       signingSecret: "top-signing-secret",
-      accounts: {
-        support: {
-          botToken: "xoxb-account-secret",
-          appToken: "xapp-account-secret",
-          userToken: "xoxp-account-secret",
-          signingSecret: "account-signing-secret",
-        },
-      },
-    });
+    })) {
+      expect(secrets[connectorBaseCredentialSettingKey("slack", field)]).toBe(
+        value,
+      );
+    }
+    for (const [field, value] of Object.entries({
+      botToken: "xoxb-account-secret",
+      appToken: "xapp-account-secret",
+      userToken: "xoxp-account-secret",
+      signingSecret: "account-signing-secret",
+    })) {
+      expect(
+        secrets[
+          connectorAccountCredentialSettingKey("slack", "support", field)
+        ],
+      ).toBe(value);
+    }
   });
 
   it("keeps canonical schema defaults strict without affecting env-only boot", () => {

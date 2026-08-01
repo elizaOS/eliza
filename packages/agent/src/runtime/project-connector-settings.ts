@@ -4,10 +4,11 @@
  * Account overrides are split recursively because their tokens are just as
  * sensitive as the top-level account credentials.
  */
-import type { JsonValue } from "@elizaos/core";
-
-export const SLACK_CONNECTOR_CREDENTIALS_SECRET =
-  "SLACK_CONNECTOR_CREDENTIALS_JSON";
+import {
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+  type JsonValue,
+} from "@elizaos/core";
 
 const SLACK_CREDENTIAL_KEYS = new Set([
   "appToken",
@@ -91,12 +92,52 @@ function mergeSlackProjection(
     : undefined;
   const merged = { ...base, ...override };
   if (baseAccounts || overrideAccounts) {
-    merged.accounts = {
-      ...(baseAccounts ?? {}),
-      ...(overrideAccounts ?? {}),
-    };
+    const accountIds = new Set([
+      ...Object.keys(baseAccounts ?? {}),
+      ...Object.keys(overrideAccounts ?? {}),
+    ]);
+    merged.accounts = Object.fromEntries(
+      [...accountIds].map((accountId) => {
+        const baseAccount = baseAccounts?.[accountId];
+        const overrideAccount = overrideAccounts?.[accountId];
+        return [
+          accountId,
+          {
+            ...(isJsonObject(baseAccount) ? baseAccount : {}),
+            ...(isJsonObject(overrideAccount) ? overrideAccount : {}),
+          },
+        ];
+      }),
+    );
   }
   return merged;
+}
+
+function projectSlackCredentialSecrets(
+  credentials: Record<string, JsonValue>,
+): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  for (const field of SLACK_CREDENTIAL_KEYS) {
+    const value = credentials[field];
+    if (typeof value === "string" && value.trim()) {
+      secrets[connectorBaseCredentialSettingKey("slack", field)] = value;
+    }
+  }
+  const accounts = isJsonObject(credentials.accounts)
+    ? credentials.accounts
+    : {};
+  for (const [accountId, rawAccount] of Object.entries(accounts)) {
+    if (!isJsonObject(rawAccount)) continue;
+    for (const field of SLACK_CREDENTIAL_KEYS) {
+      const value = rawAccount[field];
+      if (typeof value === "string" && value.trim()) {
+        secrets[
+          connectorAccountCredentialSettingKey("slack", accountId, field)
+        ] = value;
+      }
+    }
+  }
+  return secrets;
 }
 
 export function projectConnectorSettings(
@@ -125,11 +166,6 @@ export function projectConnectorSettings(
       ...settings,
       ...(hasSlack ? { slack: policy } : {}),
     },
-    secrets:
-      Object.keys(credentials).length > 0
-        ? {
-            [SLACK_CONNECTOR_CREDENTIALS_SECRET]: JSON.stringify(credentials),
-          }
-        : {},
+    secrets: projectSlackCredentialSecrets(credentials),
   };
 }
