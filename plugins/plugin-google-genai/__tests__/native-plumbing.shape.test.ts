@@ -126,6 +126,16 @@ describe("Google GenAI text native plumbing", () => {
     ).resolves.toBe('{"ok":true}');
   });
 
+  it("forwards the caller AbortSignal through Google request config", async () => {
+    const signal = new AbortController().signal;
+
+    await handleTextSmall(runtime() as never, { prompt: "hello", signal });
+
+    expect(mocks.generateContent.mock.calls[0]?.[0]?.config?.abortSignal).toBe(
+      signal,
+    );
+  });
+
   it("maps generic tools, toolChoice, response schema, and attachments into generateContent", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
 

@@ -29,6 +29,31 @@ afterEach(() => {
 });
 
 describe("Groq native text plumbing", () => {
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: undefined,
+    }));
+    vi.doMock("ai", async () => ({
+      ...(await vi.importActual<typeof import("ai")>("ai")),
+      generateText,
+    }));
+    vi.doMock("@ai-sdk/groq", () => ({
+      createGroq: () => ({ languageModel: (modelName: string) => ({ modelName }) }),
+    }));
+    const signal = new AbortController().signal;
+    const { groqPlugin } = await import("../index");
+    const handler = groqPlugin.models?.TEXT_SMALL as (
+      runtime: IAgentRuntime,
+      params: unknown
+    ) => Promise<unknown>;
+
+    await handler(createRuntime(), { prompt: "hello", signal });
+
+    expect(generateText.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("forwards tools and returns native shape with toolCalls when caller passes tools", async () => {
     const generateText = vi.fn(async (_options: Record<string, unknown>) => ({
       text: "ok",

@@ -84,6 +84,16 @@ describe("Ollama embeddings", () => {
     });
   });
 
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    embedMock.mockResolvedValue({ embedding: [0.1], usage: undefined });
+    const { runtime } = createRuntime({ OLLAMA_EMBEDDING_MODEL: "embed-model" });
+    const signal = new AbortController().signal;
+
+    await handleTextEmbedding(runtime, { text: "hello", signal });
+
+    expect(embedMock.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("truncates oversized embedding input before calling the provider", async () => {
     embedMock.mockResolvedValue({
       embedding: [1],

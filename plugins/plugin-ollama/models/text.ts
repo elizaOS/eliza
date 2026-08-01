@@ -611,6 +611,7 @@ async function handleTextWithModelType(
     const baseGenerateArgs = {
       model: ollama(model) as LanguageModel,
       ...promptOrMessages,
+      abortSignal: params.signal,
       system,
       temperature,
       frequencyPenalty,

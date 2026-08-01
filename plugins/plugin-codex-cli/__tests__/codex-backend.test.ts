@@ -130,6 +130,17 @@ describe("tool translation", () => {
 });
 
 describe("CodexBackend", () => {
+  it("maps the caller signal to Codex abortSignal without replacing it", () => {
+    const signal = new AbortController().signal;
+
+    expect(
+      __INTERNAL_buildCodexGenerateParams({ getSetting: () => undefined } as never, {
+        prompt: "hello",
+        signal,
+      }).abortSignal
+    ).toBe(signal);
+  });
+
   it("honors a per-call model override before Codex slot defaults", () => {
     const runtime = {
       getSetting(key: string) {

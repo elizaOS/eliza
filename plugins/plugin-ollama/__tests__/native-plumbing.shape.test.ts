@@ -85,6 +85,20 @@ describe("Ollama native text plumbing", () => {
     }));
   });
 
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: undefined,
+    });
+    const signal = new AbortController().signal;
+
+    await handleTextSmall(createRuntime(), { prompt: "hello", signal });
+
+    expect(generateTextMock.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("forwards native ToolSet tools to generateText and returns a GenerateTextResult-shaped payload", async () => {
     generateTextMock.mockResolvedValue({
       text: "ack",

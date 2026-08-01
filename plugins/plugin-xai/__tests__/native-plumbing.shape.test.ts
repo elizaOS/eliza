@@ -33,6 +33,42 @@ afterEach(() => {
 });
 
 describe("xAI native text plumbing", () => {
+  it("forwards exact AbortSignals to text and embedding fetches", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            model: "grok-test-small",
+            choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            model: "grok-embed-test",
+            data: [{ embedding: [0.1, 0.2] }],
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+    const textSignal = new AbortController().signal;
+    const embeddingSignal = new AbortController().signal;
+    const runtime = createRuntime();
+
+    await handleTextSmall(runtime, { prompt: "hello", signal: textSignal });
+    await handleTextEmbedding(runtime, {
+      text: "hello",
+      signal: embeddingSignal,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(textSignal);
+    expect(fetchMock.mock.calls[1]?.[1]?.signal).toBe(embeddingSignal);
+  });
+
   it("accepts GROK_API_KEY as the documented auto-enable alias", async () => {
     const runtime = createRuntime({
       XAI_API_KEY: "",

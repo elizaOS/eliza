@@ -128,6 +128,7 @@ function buildCodexGenerateParams(
     model: getRequestedCodexModel(runtime, params),
     temperature: params.temperature,
     maxTokens: params.maxTokens,
+    abortSignal: params.signal,
     responseFormat,
   };
 }

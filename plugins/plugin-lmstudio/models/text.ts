@@ -621,6 +621,7 @@ async function handleTextWithModelType(
     const baseArgs = {
       model: client(model) as LanguageModel,
       ...promptOrMessages,
+      ...(params.signal ? { abortSignal: params.signal } : {}),
       ...(system ? { system } : {}),
       temperature,
       maxOutputTokens: maxTokens,

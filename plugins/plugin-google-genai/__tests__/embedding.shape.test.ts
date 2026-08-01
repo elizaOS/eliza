@@ -93,6 +93,16 @@ describe("Google GenAI embeddings", () => {
     );
   });
 
+  it("forwards the caller AbortSignal to embedContent", async () => {
+    const signal = new AbortController().signal;
+
+    await handleTextEmbedding(createRuntime(), { text: "hello", signal });
+
+    expect(mocks.embedContent.mock.calls[0]?.[0]?.config?.abortSignal).toBe(
+      signal,
+    );
+  });
+
   it("throws for empty embedding input before creating a client", async () => {
     await expect(
       handleTextEmbedding(createRuntime(), { text: " \n\t " }),

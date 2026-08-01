@@ -929,6 +929,7 @@ function buildGenerateParams(
   const generateParams: NativeTextParams = {
     model: openrouter.chat(modelName) as LanguageModel,
     ...finalPromptOrMessages,
+    abortSignal: params.signal,
     // Omit system parameter when we injected message-level cache to prevent duplication
     ...(shouldInjectMessageLevelCache ? {} : { system: systemPrompt }),
     ...(supportsSampling

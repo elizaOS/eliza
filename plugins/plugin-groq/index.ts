@@ -572,6 +572,7 @@ async function generateWithRetry(
     toolChoice?: ToolChoice<ToolSet>;
     responseSchema?: unknown;
     returnNative?: boolean;
+    signal?: AbortSignal;
   }
 ): Promise<string | GroqNativeTextResult> {
   const generate = () => {
@@ -595,6 +596,7 @@ async function generateWithRetry(
       // shape — this keeps caching/cost flow untouched for the common path.
       const sharedSettings = {
         model: groq.languageModel(model),
+        abortSignal: params.signal,
         system: params.system,
         temperature: params.temperature,
         // Omit the cap on opt-out (direct-channel Stage-1) so the model's own
@@ -740,6 +742,7 @@ function buildGroqGenerateParams(
     ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
     ...(paramsWithNative.responseSchema ? { responseSchema: paramsWithNative.responseSchema } : {}),
     ...(returnNative ? { returnNative } : {}),
+    ...(params.signal ? { signal: params.signal } : {}),
   };
 }
 

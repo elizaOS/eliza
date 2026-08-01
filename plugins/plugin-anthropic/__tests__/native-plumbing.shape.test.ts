@@ -29,6 +29,25 @@ afterEach(() => {
 });
 
 describe("Anthropic native text plumbing", () => {
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: undefined,
+    }));
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
+    }));
+
+    const signal = new AbortController().signal;
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), { prompt: "hello", signal });
+
+    expect(generateText.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("uses generateText for streaming tool requests so tool-only responses are preserved", async () => {
     const generateText = vi.fn(async () => ({
       text: "",

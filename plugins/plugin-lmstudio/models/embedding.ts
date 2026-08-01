@@ -72,6 +72,7 @@ export async function handleTextEmbedding(
     const { embedding, usage } = await embed({
       model: client.textEmbeddingModel(modelName) as EmbeddingModel,
       value: embeddingText,
+      ...(typeof params === "object" && params?.signal ? { abortSignal: params.signal } : {}),
     });
 
     emitModelUsed(

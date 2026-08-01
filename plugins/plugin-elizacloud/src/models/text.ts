@@ -1185,6 +1185,7 @@ async function generateTextWithModel(
         headers: responsesHeaders,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
+        ...(params.signal ? { signal: params.signal } : {}),
       }),
     "responses"
   );
@@ -1292,6 +1293,7 @@ export async function generateNativeChatCompletion(
         headers,
         json: requestBody,
         timeoutMs: resolveTextTimeoutMs(),
+        ...(params.signal ? { signal: params.signal } : {}),
       }),
     "chat/completions"
   );

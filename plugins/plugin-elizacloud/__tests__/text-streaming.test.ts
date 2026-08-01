@@ -1146,6 +1146,13 @@ describe("cloud streaming gate decision (wantsStream)", () => {
     return call[2].json ?? {};
   }
 
+  function lastRequestOptions(): {
+    signal?: AbortSignal;
+  } {
+    const call = requestRaw.mock.calls.at(-1) as [string, string, { signal?: AbortSignal }];
+    return call[2];
+  }
+
   beforeEach(() => {
     transport.reset();
     nextResponse = null;
@@ -1208,6 +1215,27 @@ describe("cloud streaming gate decision (wantsStream)", () => {
       streamStructured: true,
     } as never);
     expect(lastJson().stream).not.toBe(true);
+  });
+
+  it("forwards the caller AbortSignal through both buffered cloud routes", async () => {
+    const responsesSignal = new AbortController().signal;
+    nextResponse = bufferedChatResponse("responses reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      signal: responsesSignal,
+    } as never);
+    expect(requestRaw.mock.calls.at(-1)?.[1]).toBe("/responses");
+    expect(lastRequestOptions().signal).toBe(responsesSignal);
+
+    const chatSignal = new AbortController().signal;
+    nextResponse = bufferedChatResponse("chat reply");
+    await handleResponseHandler(fakeRuntime(), {
+      prompt: "hi",
+      providerOptions: { eliza: {} },
+      signal: chatSignal,
+    } as never);
+    expect(requestRaw.mock.calls.at(-1)?.[1]).toBe("/chat/completions");
+    expect(lastRequestOptions().signal).toBe(chatSignal);
   });
 
   it("omits native max_tokens only when omitMaxTokens is set", async () => {

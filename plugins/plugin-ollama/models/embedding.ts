@@ -65,6 +65,7 @@ export async function handleTextEmbedding(
     const embedParams = {
       model: ollama.embedding(modelName) as EmbeddingModel,
       value: embeddingText,
+      ...(typeof params === "object" && params?.signal ? { abortSignal: params.signal } : {}),
     };
 
     const { embedding, usage } = await embed(embedParams);

@@ -84,6 +84,7 @@ export async function handleTextEmbedding(
         model: embeddingModelName,
         input: text,
       }),
+      ...(typeof params === "object" && params?.signal ? { signal: params.signal } : {}),
     });
 
     if (!response.ok) {

@@ -80,6 +80,18 @@ describe("LM Studio embeddings", () => {
     expect(callArg.value).toHaveLength(32_000);
   });
 
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    embedMock.mockResolvedValue({ embedding: [0.1], usage: undefined });
+    const signal = new AbortController().signal;
+
+    await handleTextEmbedding(createRuntime({ LMSTUDIO_EMBEDDING_MODEL: "nomic-embed" }), {
+      text: "hello",
+      signal,
+    });
+
+    expect(embedMock.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("throws when the embedding provider fails (no fabricated zero vector)", async () => {
     embedMock.mockRejectedValue(new Error("LM Studio embeddings unavailable"));
 

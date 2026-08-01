@@ -1322,6 +1322,7 @@ async function generateTextWithModel(
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
     ...promptOrMessages,
+    abortSignal: params.signal,
     system,
     temperature: resolved.temperature,
     stopSequences: resolved.stopSequences as string[],

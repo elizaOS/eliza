@@ -584,6 +584,7 @@ async function generateText(
           method: "POST",
           headers: getAuthHeader(config),
           body: JSON.stringify(body),
+          ...(params.signal ? { signal: params.signal } : {}),
         },
       );
 
@@ -685,6 +686,7 @@ function createStreamTextResult(
         method: "POST",
         headers: getAuthHeader(config),
         body: JSON.stringify(body),
+        ...(params.signal ? { signal: params.signal } : {}),
       });
 
       if (!response.ok) {
@@ -819,6 +821,7 @@ async function createEmbedding(
   runtime: IAgentRuntime,
   config: GrokConfig,
   text: string,
+  signal?: AbortSignal,
 ): Promise<number[]> {
   const response = await getFetch(runtime)(`${config.baseUrl}/embeddings`, {
     method: "POST",
@@ -827,6 +830,7 @@ async function createEmbedding(
       model: config.embeddingModel,
       input: text,
     }),
+    ...(signal ? { signal } : {}),
   });
 
   if (!response.ok) {
@@ -894,7 +898,12 @@ export async function handleTextEmbedding(
   logger.debug(
     `[Grok] Creating embedding with model: ${config.embeddingModel}`,
   );
-  return createEmbedding(runtime, config, text);
+  return createEmbedding(
+    runtime,
+    config,
+    text,
+    typeof params === "object" && params ? params.signal : undefined,
+  );
 }
 
 export async function listModels(

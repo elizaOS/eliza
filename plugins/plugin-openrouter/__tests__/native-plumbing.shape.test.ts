@@ -37,6 +37,22 @@ afterEach(() => {
 });
 
 describe("OpenRouter native text plumbing", () => {
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    const generateText = vi.fn(async () => ({ text: "ok", usage: undefined }));
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
+    const signal = new AbortController().signal;
+    const { handleTextSmall } = await import("../models/text");
+
+    await handleTextSmall(createRuntime(), { prompt: "hello", signal });
+
+    expect(generateText.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("passes native messages and tools through and returns text result shape", async () => {
     const generateText = vi.fn(async () => ({
       text: "ok",

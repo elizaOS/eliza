@@ -120,4 +120,18 @@ describe("OpenRouter embedding edge cases", () => {
     const body = JSON.parse(fetch.mock.calls[0][1].body);
     expect(body.input).toHaveLength(32_000);
   });
+
+  it("forwards the caller AbortSignal to fetch", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ data: [{ embedding: Array(384).fill(0.01) }] }),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    const { handleTextEmbedding } = await import("../models/embedding");
+    const signal = new AbortController().signal;
+
+    await handleTextEmbedding(createRuntime(), { text: "hello", signal });
+
+    expect(fetch.mock.calls[0]?.[1]?.signal).toBe(signal);
+  });
 });

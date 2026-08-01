@@ -149,6 +149,20 @@ describe("LM Studio text plumbing shape", () => {
     expect(args.model.modelId).toBe("manual-small");
   });
 
+  it("forwards the caller AbortSignal to the AI SDK", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "ok",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: undefined,
+    });
+    const signal = new AbortController().signal;
+
+    await handleTextSmall(createRuntime(), { prompt: "hello", signal });
+
+    expect(generateTextMock.mock.calls[0]?.[0]?.abortSignal).toBe(signal);
+  });
+
   it("falls back to the first /v1/models entry when no override is set", async () => {
     generateTextMock.mockResolvedValue({
       text: "ok",

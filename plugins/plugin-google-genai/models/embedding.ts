@@ -86,6 +86,9 @@ export async function handleTextEmbedding(
     const response = await genAI.models.embedContent({
       model: embeddingModelName,
       contents: text,
+      ...(typeof params === "object" && params?.signal
+        ? { config: { abortSignal: params.signal } }
+        : {}),
     });
 
     const embedding = response.embeddings?.[0]?.values || [];

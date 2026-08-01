@@ -540,6 +540,7 @@ function buildGoogleGenerationConfig(
   const responseJsonSchema = resolveResponseJsonSchema(params.responseSchema);
 
   const baseConfig: Record<string, unknown> = {
+    ...(params.signal ? { abortSignal: params.signal } : {}),
     temperature,
     topK: 40,
     topP: 0.95,
