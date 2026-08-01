@@ -400,6 +400,8 @@ export default function GetStartedPage() {
   const [suppressRedirect, setSuppressRedirect] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showContent, setShowContent] = useState(false);
+  const [contentSettled, setContentSettled] = useState(false);
+  const [shaderSettled, setShaderSettled] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
@@ -968,9 +970,14 @@ export default function GetStartedPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col relative">
+    <main
+      className="min-h-screen flex flex-col relative"
+      data-get-started-visual={
+        contentSettled && shaderSettled ? "settled" : "loading"
+      }
+    >
       <Suspense fallback={null}>
-        <ShaderBackground />
+        <ShaderBackground onReady={() => setShaderSettled(true)} />
       </Suspense>
       <div
         className="fixed inset-0 pointer-events-none mix-blend-overlay z-0"
@@ -1113,6 +1120,11 @@ export default function GetStartedPage() {
                   data-testid="solana-signin"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}
+                  onTransitionEnd={(event) => {
+                    if (event.propertyName === "transform") {
+                      setContentSettled(true);
+                    }
+                  }}
                   className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
                   style={cardStyle(4)}
                 >

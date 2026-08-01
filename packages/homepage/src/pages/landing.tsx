@@ -176,6 +176,7 @@ export default function Leaderboard() {
   const modelRef = useRef<ModelBHandle>(null);
   const [phoneSettled, setPhoneSettled] = useState(false);
   const [chatSettled, setChatSettled] = useState(false);
+  const [shaderSettled, setShaderSettled] = useState(false);
   const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
   const [showUI, setShowUI] = useState(false);
@@ -747,7 +748,7 @@ export default function Leaderboard() {
       }}
     >
       <Suspense fallback={null}>
-        <ShaderBackground />
+        <ShaderBackground onReady={() => setShaderSettled(true)} />
       </Suspense>
       <div
         aria-hidden="true"
@@ -756,7 +757,9 @@ export default function Leaderboard() {
       <div
         aria-hidden="true"
         className="fixed inset-0 pointer-events-none"
-        data-phone-model={phoneSettled && chatSettled ? "settled" : "loading"}
+        data-homepage-visual={
+          phoneSettled && chatSettled && shaderSettled ? "settled" : "loading"
+        }
       />
       <Suspense fallback={null}>
         <ModelB

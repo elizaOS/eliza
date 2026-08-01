@@ -26,10 +26,9 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The phone camera and chat run outside CSS animation controls, so the model
-  // exposes its own capture boundary: data-phone-model flips to "settled" only
-  // once the camera holds its final pose AND the chat canvas has committed its
-  // last intro message. No sleeps — the marker is the whole contract.
+  // The phone camera, chat canvas, and shader run outside CSS animation
+  // controls. The page exposes a capture boundary only after all three commit
+  // their final deferred state. No sleeps: the marker is the whole contract.
   if (routePath === "/" || routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
     const tryButton = page.getByRole("button", { name: "Try Now" }).first();
@@ -46,7 +45,13 @@ async function prepare(page: Page, routePath?: string) {
       )
       .toBeGreaterThan(0.98);
     await page
-      .locator('[data-phone-model="settled"]')
+      .locator('[data-homepage-visual="settled"]')
+      .waitFor({ timeout: 20_000 });
+    return;
+  }
+  if (routePath === "/get-started") {
+    await page
+      .locator('[data-get-started-visual="settled"]')
       .waitFor({ timeout: 20_000 });
     return;
   }

@@ -7,11 +7,10 @@ name: Quality (Extended)
 # typecheck/biome format gate.
 
 on:
-  # PRs to `develop` use the lightweight lint/typecheck/build gate
-  # (develop-pr.yml); these extended quality gates run on `main` PRs and
-  # post-merge on push to both branches.
+  # Homepage changes need their visual gate before merge; the remaining jobs
+  # complement the lightweight develop-pr lint/typecheck/build workflow.
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths-ignore:
       - "docs/**"
       - "packages/docs/**"
@@ -55,8 +54,6 @@ jobs:
     name: Homepage Build (PR smoke)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -121,9 +118,8 @@ jobs:
         working-directory: packages/homepage
         run: ./node_modules/.bin/playwright install --with-deps chromium
 
-      - name: Generate missing snapshot baselines
+      - name: Verify snapshot baseline inventory
         if: steps.homepage-scope.outputs.run == 'true'
-        id: gen-baselines
         working-directory: packages/homepage
         run: |
           SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
@@ -131,36 +127,27 @@ jobs:
           EXPECTED=12
           ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
           if [ "$ACTUAL" -ne "$EXPECTED" ]; then
-            echo "Found $ACTUAL snapshot baselines; expected exactly $EXPECTED — regenerating all."
-            rm -f "$SNAP_DIR"/*.png 2>/dev/null
-            bun run test:e2e -- --update-snapshots
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Commit new snapshot baselines
-        if: steps.homepage-scope.outputs.run == 'true' && steps.gen-baselines.outputs.generated == 'true'
-        continue-on-error: true
-        run: |
-          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
-          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add $SNAP_DIR
-            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
-            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
-            echo "Pushed new snapshot baselines."
+            echo "::error::Found $ACTUAL snapshot baselines; expected exactly $EXPECTED. Regenerate and review all baselines locally."
+            exit 1
           fi
 
       - name: Test homepage downloads
-        if: steps.homepage-scope.outputs.run == 'true' && steps.gen-baselines.outputs.generated == 'false'
+        if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
         run: bun run test:e2e
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload homepage Playwright failures
+        if: always() && steps.homepage-scope.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: homepage-playwright-${{ github.run_id }}
+          path: |
+            packages/homepage/test-results
+            packages/homepage/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
 
   comment-only-diff:
     name: Comment-only diff guard
@@ -196,6 +183,7 @@ jobs:
 
   format-check:
     name: Format
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
@@ -251,6 +239,7 @@ jobs:
   # mirroring the lean install used by `format-check`.
   develop-static-gate:
     name: Develop Gate (secret scan + UI determinism)
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 8
     steps:
@@ -322,6 +311,7 @@ jobs:
   # build-enabled workspace setup rather than the lean no-postinstall path.
   develop-lint-gate:
     name: Develop Gate (lint)
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:

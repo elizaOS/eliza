@@ -6,8 +6,15 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import "./gradientWaveMaterial";
 
-function ShaderPlane({ interactive }: { interactive: boolean }) {
+function ShaderPlane({
+  interactive,
+  onReady,
+}: {
+  interactive: boolean;
+  onReady?: () => void;
+}) {
   const matRef = useRef<THREE.ShaderMaterial>(null);
+  const readyReported = useRef(false);
   const mouseRaw = useRef(new THREE.Vector2(0.5, 0.5));
   const mouseSmooth = useRef(new THREE.Vector2(0.5, 0.5));
   const mouseVel = useRef(new THREE.Vector2(0, 0));
@@ -68,6 +75,14 @@ function ShaderPlane({ interactive }: { interactive: boolean }) {
 
     clickTime.current += delta;
     mat.uniforms.uClickTime.value = clickTime.current;
+
+    if (!readyReported.current) {
+      readyReported.current = true;
+      // React Three Fiber renders after useFrame subscribers. The next browser
+      // frame is therefore the first point where consumers can rely on pixels,
+      // rather than merely a created WebGL context.
+      requestAnimationFrame(() => onReady?.());
+    }
   });
 
   return (
@@ -104,7 +119,11 @@ function ShaderFrameDriver({ reducedMotion }: { reducedMotion: boolean }) {
   return null;
 }
 
-export default function ShaderBackground() {
+export default function ShaderBackground({
+  onReady,
+}: {
+  onReady?: () => void;
+}) {
   const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
@@ -132,7 +151,7 @@ export default function ShaderBackground() {
         }}
         style={{ pointerEvents: reducedMotion ? "none" : "auto" }}
       >
-        <ShaderPlane interactive={!reducedMotion} />
+        <ShaderPlane interactive={!reducedMotion} onReady={onReady} />
         <ShaderFrameDriver reducedMotion={reducedMotion} />
       </Canvas>
     </div>
