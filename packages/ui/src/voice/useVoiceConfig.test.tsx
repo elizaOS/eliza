@@ -14,6 +14,11 @@ const JIN_VOICE_ID = "6IwYbsNENZgAB1dtBZDp";
 const hoisted = vi.hoisted(() => ({
   getConfig: vi.fn(),
   updateConfig: vi.fn(),
+  resolvedTtsDefault: vi.fn(),
+  appState: {
+    elizaCloudConnected: false,
+    elizaCloudVoiceProxyAvailable: false,
+  },
 }));
 
 vi.mock("../api/client", () => ({
@@ -30,22 +35,73 @@ vi.mock("../hooks/useDefaultProviderPresets", () => ({
 }));
 
 vi.mock("../hooks/useResolvedTtsDefault", () => ({
-  useResolvedTtsDefault: () => ({ provider: "robot-voice" }),
+  useResolvedTtsDefault: (input: { cloudVoiceAvailable: boolean }) => {
+    hoisted.resolvedTtsDefault(input);
+    return {
+      provider: input.cloudVoiceAvailable ? "eliza-cloud" : "robot-voice",
+    };
+  },
 }));
 
 vi.mock("../state", () => ({
-  useAppSelector: () => false,
+  useAppSelector: (selector: (state: typeof hoisted.appState) => unknown) =>
+    selector(hoisted.appState),
 }));
 
 beforeEach(() => {
   hoisted.getConfig.mockReset();
   hoisted.updateConfig.mockReset();
   hoisted.updateConfig.mockResolvedValue({});
+  hoisted.resolvedTtsDefault.mockReset();
+  hoisted.appState.elizaCloudConnected = false;
+  hoisted.appState.elizaCloudVoiceProxyAvailable = false;
 });
 
 afterEach(cleanup);
 
 describe("useVoiceConfig character preset resolution", () => {
+  it("does not select Cloud voice when the route is configured but unauthenticated", async () => {
+    hoisted.appState.elizaCloudVoiceProxyAvailable = true;
+    hoisted.getConfig.mockResolvedValue({});
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+    expect(hoisted.resolvedTtsDefault).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cloudVoiceAvailable: false }),
+    );
+    expect(result.current.voiceConfig.provider).toBe("robot-voice");
+  });
+
+  it("selects Cloud voice when the configured route is authenticated", async () => {
+    hoisted.appState.elizaCloudConnected = true;
+    hoisted.appState.elizaCloudVoiceProxyAvailable = true;
+    hoisted.getConfig.mockResolvedValue({});
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+    expect(hoisted.resolvedTtsDefault).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cloudVoiceAvailable: true }),
+    );
+    expect(result.current.voiceConfig.provider).toBe("eliza-cloud");
+  });
+
+  it("preserves an explicit Cloud provider so its failure remains visible", async () => {
+    hoisted.appState.elizaCloudVoiceProxyAvailable = true;
+    hoisted.getConfig.mockResolvedValue({
+      messages: { tts: { provider: "eliza-cloud" } },
+    });
+
+    const { result } = renderHook(() => useVoiceConfig("en"));
+
+    await waitFor(() => expect(result.current.voiceBootstrapTick).toBe(1));
+    expect(hoisted.resolvedTtsDefault).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cloudVoiceAvailable: false }),
+    );
+    expect(result.current.voiceConfig.provider).toBe("eliza-cloud");
+  });
+
   it("releases a legacy implicit provider without mutating settings", async () => {
     hoisted.getConfig.mockResolvedValue({
       ui: { presetId: "jin" },
