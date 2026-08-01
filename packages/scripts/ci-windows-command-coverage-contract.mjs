@@ -23,7 +23,7 @@
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEFAULT_REPO_ROOT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -153,13 +153,17 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   return { commandCount: present.length, inventoryCount: inventory.length };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+) {
   try {
     const { commandCount, inventoryCount } = runContract();
     console.log(
       `ci windows command coverage contract passed ` +
         `(${commandCount} lane command(s); ${inventoryCount} inventoried command(s) all present)`,
     );
+    process.exitCode = 0;
   } catch (error) {
     console.error(
       `[ci-windows-command-coverage-contract] FAIL ${error.message}`,
@@ -167,3 +171,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
 }
+
+
