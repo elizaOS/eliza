@@ -531,12 +531,10 @@ for (const [name, width, height] of [
     };
   });
   check(
-    "direct collapse fades every visible glass surface while keeping one rim material",
+    "direct collapse fades every visible card fill while keeping its glass shell and rim opaque",
     directCollapseFrame.groupOpacities.length > 0 &&
       directCollapseFrame.groupOpacities.every((opacity) => opacity === 1) &&
-      directCollapseFrame.surfaceOpacities.some(
-        (opacity) => opacity > 0 && opacity < 1,
-      ) &&
+      directCollapseFrame.surfaceOpacities.every((opacity) => opacity === 1) &&
       directCollapseFrame.rimOpacities.every((opacity) => opacity === 1),
     JSON.stringify(directCollapseFrame),
   );

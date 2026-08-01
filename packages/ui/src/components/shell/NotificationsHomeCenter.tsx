@@ -436,12 +436,15 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   background-color: rgb(28 28 30);
   background-image: none;
 }
-/* The card surface owns the group fade so its fill, copy, and rim move as one
-   physical object. A row-specific variable is reserved for disposable stack
-   rows; falling back to the group variable here would multiply the surface
-   fade and make direct manipulation feel nonlinear. */
+/* The content layer owns the group fade because it now carries both fill and
+   copy. The enclosing surface stays opaque so its specular rim does not dim
+   through inherited compositing. Disposable rows override the group value
+   with their already-combined row visibility. */
 .eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-content {
-  opacity: var(--eliza-notif-row-content-visibility, 1);
+  opacity: var(
+    --eliza-notif-row-content-visibility,
+    var(--eliza-notif-group-content-visibility, 1)
+  );
 }
 .eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-content {
   transition: none;
@@ -452,26 +455,10 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   transition:
     opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
 }
-/* The row button owns the copy, but the glass surface is the visible card.
-   Fade that surface with the content during a close gesture; otherwise the
-   copy disappears into an opaque rounded shell and the card reads as solid.
-   The important override is deliberate because NotificationRow keeps its
-   gesture surface at inline opacity 1 while it owns horizontal dismissing. */
-.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-surface {
-  opacity: var(--eliza-notif-group-content-visibility, 1) !important;
-  transition: opacity var(--eliza-notif-opacity-duration, var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms)) ${SHADE_EASING};
-}
-.eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-surface {
-  transition: none;
-}
 /* A cancelled pull reverses the information fade on the same presentation
    clock while the unchanged glass shell stays in place. */
 [data-notification-shade-cancelling] .eliza-notif-row-content {
   opacity: 1;
-  transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
-}
-[data-notification-shade-cancelling] .eliza-notif-row-surface {
-  opacity: 1 !important;
   transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
 }
 /* Bulk clear keeps its right edge aligned with each producer's X. Touch-first
