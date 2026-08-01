@@ -9,6 +9,7 @@ test("onboarding wordmark preserves its intrinsic aspect ratio", async ({
   await page.goto("/get-started", { waitUntil: "domcontentloaded" });
   const logo = page.getByRole("img", { name: "Eliza" });
   await expect(logo).toBeVisible();
+  await expect(logo).toHaveCSS("height", "32px");
 
   const dimensions = await logo.evaluate((element) => {
     const image = element as HTMLImageElement;
