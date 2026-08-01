@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/security/kms";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import type { ElizaConfig } from "../config/config.ts";
@@ -129,16 +129,18 @@ export interface LocalAgentBackupMetadata {
  * apart from a transport or disk failure: the former is deterministic and
  * retrying identical state cannot help, while the latter is worth another try.
  */
-export class AgentSnapshotBudgetExceededError extends Error {
-  readonly name = "AgentSnapshotBudgetExceededError";
+export class AgentSnapshotBudgetExceededError extends ElizaError {
+  override readonly name = "AgentSnapshotBudgetExceededError";
   constructor(
     readonly stage: string,
     readonly observedBytes: number,
     readonly limitBytes: number,
   ) {
-    super(
-      `Snapshot refused during ${stage}: ${observedBytes} bytes exceeds the source budget of ${limitBytes} bytes`,
-    );
+    super(`Snapshot refused during ${stage}: source budget exceeded`, {
+      code: "AGENT_SNAPSHOT_BUDGET_EXCEEDED",
+      context: { stage, observedBytes, limitBytes },
+      severity: "fatal",
+    });
   }
 }
 
@@ -217,6 +219,18 @@ export class SnapshotBudget {
   chargeRaw(bytes: number, stage: string): void {
     this.check();
     this.charge(bytes, stage);
+  }
+
+  assertWireSize(value: unknown): void {
+    this.check();
+    const wireBytes = Buffer.byteLength(JSON.stringify(value), "utf8");
+    if (wireBytes > this.maxRawBytes) {
+      throw new AgentSnapshotBudgetExceededError(
+        "final wire serialization",
+        wireBytes,
+        this.maxRawBytes,
+      );
+    }
   }
 
   private chargeFileEntry(base64Bytes: number): void {
@@ -440,25 +454,23 @@ async function readFileEntry(
   // charging after the damage. The hold stays claimed until the actual encoded
   // size is committed, so concurrent siblings see it.
   const hold = budget?.reserve(stat.size);
-  let bytes: Buffer;
-  let bytesBase64: string;
+  let committed = false;
   try {
-    bytes = await fs.readFile(absolutePath);
-    bytesBase64 = bytes.toString("base64");
-  } catch (error) {
-    hold?.release();
-    throw error;
+    const bytes = await fs.readFile(absolutePath);
+    const entry = {
+      path: normalizeRelativePath(path.relative(root, absolutePath)),
+      sha256: sha256Bytes(bytes),
+      size: bytes.length,
+      mode: stat.mode,
+      mtimeMs: stat.mtimeMs,
+      bytesBase64: bytes.toString("base64"),
+    };
+    hold?.commit(Buffer.byteLength(JSON.stringify(entry), "utf8"));
+    committed = true;
+    return entry;
+  } finally {
+    if (!committed) hold?.release();
   }
-  const relative = normalizeRelativePath(path.relative(root, absolutePath));
-  hold?.commit(bytesBase64.length);
-  return {
-    path: relative,
-    sha256: sha256Bytes(bytes),
-    size: bytes.length,
-    mode: stat.mode,
-    mtimeMs: stat.mtimeMs,
-    bytesBase64,
-  };
 }
 
 function fileEntryFromBytes(
@@ -722,10 +734,15 @@ export async function fetchAgentScopedRowsBatched(
     );
     rows.push(...batch);
     if (batch.length < POSTGRES_CAPTURE_BATCH_ROWS) break;
-    lastId = batch[batch.length - 1]?.id ?? null;
-    // A table whose last row carries no usable id cannot be walked further;
-    // stopping is the honest outcome rather than looping on the same page.
-    if (lastId === null) break;
+    const nextLastId = batch[batch.length - 1]?.id;
+    if (nextLastId === null || nextLastId === undefined) {
+      throw new ElizaError("Snapshot keyset pagination cannot advance", {
+        code: "AGENT_SNAPSHOT_KEYSET_ID_MISSING",
+        context: { tableName, idExpression },
+        severity: "fatal",
+      });
+    }
+    lastId = nextLastId;
   }
   return rows;
 }
@@ -923,21 +940,21 @@ async function capturePgliteDump(
   // resident three times over (ArrayBuffer + Buffer + base64) with the budget
   // none the wiser.
   const hold = budget?.reserve(dump.size);
-  let file: AgentBackupFileEntry;
+  let committed = false;
   try {
     const bytes = Buffer.from(await dump.arrayBuffer());
-    file = fileEntryFromBytes(PGLITE_DUMP_PATH, bytes);
-  } catch (error) {
-    hold?.release();
-    throw error;
+    const file = fileEntryFromBytes(PGLITE_DUMP_PATH, bytes);
+    hold?.commit(Buffer.byteLength(JSON.stringify(file), "utf8"));
+    committed = true;
+    return withPgliteDumpHash({
+      kind: "pglite-dump",
+      compression: "gzip",
+      file,
+      sha256: "",
+    });
+  } finally {
+    if (!committed) hold?.release();
   }
-  hold?.commit(file.bytesBase64.length);
-  return withPgliteDumpHash({
-    kind: "pglite-dump",
-    compression: "gzip",
-    file,
-    sha256: "",
-  });
 }
 
 async function captureDatabaseComponent(
@@ -998,6 +1015,10 @@ async function captureCharacterComponent(
     runtimeCharacter: runtime.character ?? null,
     configFile,
   };
+  budget?.chargeRaw(
+    Buffer.byteLength(JSON.stringify(component.runtimeCharacter), "utf8"),
+    "runtime character",
+  );
   return { ...component, sha256: sha256Json(component) };
 }
 
@@ -1049,6 +1070,8 @@ export async function createAgentSnapshot(
     try {
       return await work;
     } catch (error) {
+      // error-policy:J5 every rejection is rethrown and observed by the
+      // Promise.allSettled drain below; the first one also cancels siblings.
       if (!failed) {
         failed = true;
         firstFailure = error;
@@ -1124,12 +1147,18 @@ export async function createAgentSnapshot(
     "[agent-backup] Snapshot manifest created",
   );
 
-  return {
+  const snapshot = {
     memories: [],
     config: legacyConfigProjection(config),
     workspaceFiles: {},
     manifest,
   };
+  budget.chargeRaw(
+    Buffer.byteLength(JSON.stringify(snapshot.config), "utf8"),
+    "legacy config",
+  );
+  budget.assertWireSize(snapshot);
+  return snapshot;
 }
 
 async function encryptLocalBackupEnvelope(

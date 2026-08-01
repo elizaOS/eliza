@@ -1,12 +1,6 @@
 /**
- * Pins the v1 agent-backup size contract: the retain budget can never exceed
- * what restore accepts.
- *
- * The production canary in #17172 retained a snapshot Cloud allowed (256 MiB)
- * but restore could not consume (128 MiB cap), producing a backup that
- * authorized a cutover and was impossible to restore. These tests hold the
- * clamp that makes that state unreachable — including through the operator env
- * override, which previously could re-open the gap by configuration alone.
+ * Verifies that the v1 snapshot retain budget never exceeds the restore boundary,
+ * including when an operator supplies an override.
  */
 
 import { describe, expect, it } from "vitest";

@@ -428,6 +428,47 @@ describe("source-side snapshot budget (#17172 §1)", () => {
     expect(snapshot.manifest.components.media.files.length).toBeGreaterThan(0);
   });
 
+  test("charges the in-memory character and legacy config projections", async () => {
+    await fixtureRoot();
+    const oversizedCharacter = {
+      ...runtime(),
+      character: {
+        name: "Backup Test Agent",
+        bio: "x".repeat(32 * 1024),
+      },
+    } as unknown as AgentRuntime;
+    await expect(
+      createAgentSnapshot(oversizedCharacter, config, {
+        maxRawBytes: 16 * 1024,
+      }),
+    ).rejects.toMatchObject({ stage: "runtime character" });
+
+    const oversizedConfig = {
+      agents: { defaults: { system: "x".repeat(32 * 1024) } },
+    } as never;
+    await expect(
+      createAgentSnapshot(runtime(), oversizedConfig, {
+        maxRawBytes: 16 * 1024,
+      }),
+    ).rejects.toMatchObject({ stage: "legacy config" });
+  });
+
+  test("refuses when JSON metadata pushes the final wire body over budget", async () => {
+    await fixtureRoot();
+    const baseline = await createAgentSnapshot(runtime(), config);
+    const exactWireBytes = Buffer.byteLength(JSON.stringify(baseline), "utf8");
+
+    await expect(
+      createAgentSnapshot(runtime(), config, {
+        maxRawBytes: exactWireBytes - 1,
+      }),
+    ).rejects.toMatchObject({
+      stage: "final wire serialization",
+      observedBytes: exactWireBytes,
+      limitBytes: exactWireBytes - 1,
+    });
+  });
+
   test("refuses an oversized PGlite dump from Blob.size, before arrayBuffer()", async () => {
     await fixtureRoot();
     let materialized = false;
@@ -639,6 +680,28 @@ describe("keyset-batched Postgres capture (#17172 §1)", () => {
     expect(pool.statements.slice(1).every((s) => /"id" > \$2/.test(s))).toBe(
       true,
     );
+  });
+
+  test("fails instead of returning a partial dump when a page cannot advance", async () => {
+    const pool = {
+      query: () =>
+        Promise.resolve({
+          rows: Array.from({ length: 500 }, () => ({ payload: "missing-id" })),
+        }),
+    };
+
+    await expect(
+      fetchAgentScopedRowsBatched(
+        pool,
+        (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+        ["agent-1"],
+        undefined,
+        "t",
+        '"id"',
+      ),
+    ).rejects.toMatchObject({
+      code: "AGENT_SNAPSHOT_KEYSET_ID_MISSING",
+    });
   });
 
   test("an over-budget table is refused mid-walk, before the rest is read", async () => {
