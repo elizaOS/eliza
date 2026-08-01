@@ -24,10 +24,12 @@ import shortIdPluginMap from "@elizaos/registry/first-party/short-id-plugin-map.
   type: "json",
 };
 import {
+  getFirstRunProviderSignalEnvKeys,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
   readAliasedEnv,
   resolveDeploymentTargetInConfig,
@@ -179,6 +181,26 @@ function packageNameFromPluginConfigId(pluginId: string): string {
     return `@elizaos/${pluginId}`;
   }
   return `@elizaos/plugin-${pluginId}`;
+}
+
+function providerPluginNameFromBackend(backend: string): string {
+  const explicitPluginName = resolvePluginPackageAlias(
+    packageNameFromPluginConfigId(backend),
+  );
+  if (
+    DIRECT_MODEL_PROVIDER_PLUGINS.has(explicitPluginName) ||
+    LOCAL_MODEL_PROVIDER_PLUGINS.has(explicitPluginName)
+  ) {
+    return explicitPluginName;
+  }
+  const providerId = normalizeFirstRunProviderId(backend);
+  if (providerId && providerId !== "elizacloud") {
+    for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
+      const pluginName = PROVIDER_PLUGIN_MAP[envKey];
+      if (pluginName) return resolvePluginPackageAlias(pluginName);
+    }
+  }
+  return explicitPluginName;
 }
 
 function isTruthyCloudEnvValue(raw: string | undefined): boolean {
@@ -622,22 +644,24 @@ export function collectPluginNames(
       // owner supplies the text brain directly. The canonical llmText route is
       // the arbitration signal; stripping direct providers here would make the
       // persisted route impossible to execute and let Cloud inference win.
-      const directlyRoutedLocalProviders = new Set(
+      const directlyRoutedProviderPlugins = new Set(
         Object.values(serviceRouting ?? {}).flatMap((route) => {
           if (route?.transport !== "direct" || !route.backend) return [];
-          const pluginName = resolvePluginPackageAlias(
-            packageNameFromPluginConfigId(route.backend),
-          );
-          return LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
+          const pluginName = providerPluginNameFromBackend(route.backend);
+          return DIRECT_MODEL_PROVIDER_PLUGINS.has(pluginName) ||
+            LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName)
             ? [pluginName]
             : [];
         }),
       );
       if (serviceRouting?.llmText?.transport !== "direct") {
         removeDirectModelProviderSurfaces(pluginsToLoad);
+        for (const pluginName of directlyRoutedProviderPlugins) {
+          pluginsToLoad.add(pluginName);
+        }
       }
       for (const pluginName of LOCAL_MODEL_PROVIDER_PLUGINS) {
-        if (directlyRoutedLocalProviders.has(pluginName)) {
+        if (directlyRoutedProviderPlugins.has(pluginName)) {
           pluginsToLoad.add(pluginName);
         } else {
           pluginsToLoad.delete(pluginName);
