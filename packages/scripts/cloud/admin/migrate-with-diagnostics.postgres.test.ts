@@ -220,7 +220,7 @@ describe.skipIf(!ENABLED)(
         );
       }
       await admin.end();
-    });
+    }, 120_000);
 
     test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
       const database = await createDatabase();
