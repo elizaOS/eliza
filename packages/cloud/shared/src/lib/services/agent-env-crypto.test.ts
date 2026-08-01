@@ -79,15 +79,19 @@ const orgKeyDb = {
         if (normalized.includes("set_config") || normalized.includes("pg_advisory_xact_lock")) {
           return { rows: [] };
         }
-        if (
-          normalized.includes("select *") &&
-          normalized.includes('from "agent_sandboxes"') &&
-          normalized.includes("for update")
-        ) {
-          return { rows: [storedRow] };
-        }
         throw new Error(`Unexpected lifecycle SQL in test transaction: ${text}`);
       },
+      // Model the typed builder chain so encrypted environment tests exercise
+      // the same locked-row boundary as production lifecycle operations.
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            for: () => ({
+              limit: async () => [storedRow],
+            }),
+          }),
+        }),
+      }),
       update: () => ({
         set: (data) => ({
           where: () => ({

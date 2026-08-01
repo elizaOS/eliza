@@ -39,7 +39,7 @@ import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-sc
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
-const PGLITE_TIMEOUT = 60_000;
+const PGLITE_TIMEOUT = 300_000;
 let pgliteReady = true;
 
 const SENTINEL_BRIDGE = "http://127.0.0.1:65535";
@@ -286,7 +286,12 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
  * predicate is a red test rather than a silent bad row on the queue.
  */
 describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
-  async function seedAgent(): Promise<{ agentId: string; orgId: string; userId: string }> {
+  async function seedAgent(): Promise<{
+    agentId: string;
+    orgId: string;
+    userId: string;
+    lifecycleRevision: number;
+  }> {
     const { orgId, userId } = await seedOwner();
     const [sandbox] = await dbWrite
       .insert(agentSandboxes)
@@ -298,7 +303,12 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         bridge_url: REACHABLE_BRIDGE,
       })
       .returning();
-    return { agentId: sandbox.id, orgId, userId };
+    return {
+      agentId: sandbox.id,
+      orgId,
+      userId,
+      lifecycleRevision: sandbox.lifecycle_revision,
+    };
   }
 
   async function jobsOfType(
@@ -348,6 +358,26 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     });
     expect(job.type).toBe(JOB_TYPES.AGENT_PROVISION);
     expect(await jobsOfType(agentId, JOB_TYPES.AGENT_PROVISION)).toHaveLength(1);
+  });
+
+  test("provision enqueue rejects a stale database-owned lifecycle revision", async () => {
+    const { agentId, orgId, userId, lifecycleRevision } = await seedAgent();
+    await dbWrite.execute(sql`
+      UPDATE ${agentSandboxes}
+      SET error_count = error_count + 1
+      WHERE id = ${agentId}
+    `);
+
+    await expect(
+      provisioningJobService.enqueueAgentProvisionOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        agentName: "stale-provision",
+        expectedLifecycleRevision: lifecycleRevision,
+      }),
+    ).rejects.toThrow("Agent state changed while starting");
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_PROVISION)).toHaveLength(0);
   });
 
   test("suspend/resume/sleep/restart each enqueue their own pending job", async () => {

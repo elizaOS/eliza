@@ -247,7 +247,7 @@ realPostgres("stuck provisioning lifecycle lock", () => {
         organizationId: organization.id,
         userId: user.id,
         agentName: sandbox.agent_name ?? sandbox.id,
-        expectedUpdatedAt: sandbox.updated_at,
+        expectedLifecycleRevision: sandbox.lifecycle_revision,
       });
       await waitForAdvisoryWaiters(control, 1);
 
@@ -397,7 +397,12 @@ realPostgres("stuck provisioning lifecycle lock", () => {
       const orphanBatch =
         await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(SWEEP_CUTOFF);
       expect(orphanBatch.deferred).toBe(1);
-      expect(await agentSandboxesRepository.markRunningFromProvisioning(wedged.id)).toMatchObject({
+      expect(
+        await agentSandboxesRepository.markRunningFromProvisioning(
+          wedged.id,
+          wedged.lifecycle_revision,
+        ),
+      ).toMatchObject({
         id: wedged.id,
         status: "running",
       });
@@ -407,18 +412,29 @@ realPostgres("stuck provisioning lifecycle lock", () => {
         await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(SWEEP_CUTOFF);
       expect(orphanRetry.updated.map((row) => row.agentId)).toContain(orphan.id);
 
-      await dbWrite
+      const [resetWedged] = await dbWrite
         .update(agentSandboxes)
         .set({ status: "provisioning", updated_at: STALE_UPDATED_AT })
-        .where(eq(agentSandboxes.id, wedged.id));
+        .where(eq(agentSandboxes.id, wedged.id))
+        .returning();
       await lock.query("BEGIN");
       await lock.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
         organization.id,
         wedged.id,
       ]);
-      expect(await agentSandboxesRepository.markRunningFromProvisioning(wedged.id)).toBeUndefined();
+      expect(
+        await agentSandboxesRepository.markRunningFromProvisioning(
+          wedged.id,
+          resetWedged.lifecycle_revision,
+        ),
+      ).toBeUndefined();
       await lock.query("COMMIT");
-      expect(await agentSandboxesRepository.markRunningFromProvisioning(wedged.id)).toMatchObject({
+      expect(
+        await agentSandboxesRepository.markRunningFromProvisioning(
+          wedged.id,
+          resetWedged.lifecycle_revision,
+        ),
+      ).toMatchObject({
         id: wedged.id,
         status: "running",
       });

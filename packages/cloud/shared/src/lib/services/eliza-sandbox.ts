@@ -710,6 +710,10 @@ type ReplacementCleanupExpectation = {
   containerName: string | null;
 };
 
+type ReplacementLifecycleFence = {
+  lifecycleRevision: number;
+};
+
 export interface AdminCanaryCleanupExpectation {
   targetOwnerUserId: string;
   targetImage: string;
@@ -1008,10 +1012,6 @@ function refuseOversizedSnapshotFreshBoot(error: Error): never {
   );
 }
 
-function sandboxRevisionMillis(value: Date | string): number {
-  return value instanceof Date ? value.getTime() : new Date(value).getTime();
-}
-
 /**
  * Snapshot requests may route through Docker placement fields instead of the
  * public bridge URL, so the entire placement and execution tuple identifies
@@ -1037,9 +1037,7 @@ function isSameSnapshotCaptureGeneration(
     observed.environment_revision === current.environment_revision &&
     observed.lifecycle_job_id === current.lifecycle_job_id &&
     observed.lifecycle_execution_generation === current.lifecycle_execution_generation &&
-    // Raw lifecycle reads may surface timestamptz values as strings. The
-    // millisecond-normalized row revision closes deterministic-locator ABA.
-    sandboxRevisionMillis(observed.updated_at) === sandboxRevisionMillis(current.updated_at)
+    observed.lifecycle_revision === current.lifecycle_revision
   );
 }
 
@@ -1744,6 +1742,7 @@ export class ElizaSandboxService {
           and(
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             sql`${agentSandboxes.rollback_standby_state} IS NULL`,
             sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '') NOT IN ('pending', 'attested')`,
@@ -1817,7 +1816,7 @@ export class ElizaSandboxService {
               eq(agentSandboxes.id, rec.id),
               eq(agentSandboxes.organization_id, rec.organization_id),
               eq(agentSandboxes.environment_revision, rec.environment_revision),
-              eq(agentSandboxes.updated_at, rec.updated_at),
+              eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
               sql`${agentSandboxes.rollback_standby_state} IS NULL`,
               sql`${agentSandboxes.claimed_at} IS NULL`,
@@ -1900,6 +1899,7 @@ export class ElizaSandboxService {
           and(
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             sql`${agentSandboxes.rollback_standby_state} IS NULL`,
           ),
@@ -2041,8 +2041,8 @@ export class ElizaSandboxService {
         status: AgentSandbox["status"];
         sourcePoolId: string | null;
         environmentRevision: number;
+        lifecycleRevision: number;
         deletionAttemptId: string;
-        deletionStartedAt: Date;
       }
     | { ok: false; error: string }
   > {
@@ -2070,13 +2070,8 @@ export class ElizaSandboxService {
         return { ok: false as const, error: "Agent provisioning is in progress" };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
-      // `rec` comes from a RAW `SELECT * FOR UPDATE` (getAgentForLifecycleMutation),
-      // and raw drizzle rows carry timestamptz as STRINGS, not Dates. Writing
-      // `rec.deletion_started_at` back through the typed builder therefore threw
-      // `value.toISOString is not a function` on EVERY retry of a failed
-      // deletion — the #17249 production incident (160/160 delete jobs failing,
-      // 37 agents trapped). A continuation keeps the original start time by
-      // leaving the column alone; only a fresh deletion stamps it.
+      // A retry preserves the original audit timestamp while taking a fresh
+      // database generation for the new teardown attempt.
       const [owned] = await tx
         .update(agentSandboxes)
         .set({
@@ -2089,6 +2084,7 @@ export class ElizaSandboxService {
           and(
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
             sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
             sql`${agentSandboxes.rollback_standby_state} IS NULL`,
           ),
@@ -2097,6 +2093,7 @@ export class ElizaSandboxService {
           id: agentSandboxes.id,
           deletionAttemptId: agentSandboxes.deletion_attempt_id,
           deletionStartedAt: agentSandboxes.deletion_started_at,
+          lifecycleRevision: agentSandboxes.lifecycle_revision,
         });
       if (!owned) {
         return { ok: false as const, error: "Agent deletion ownership changed" };
@@ -2111,8 +2108,8 @@ export class ElizaSandboxService {
         status: rec.status,
         sourcePoolId: rec.warm_claim_source_pool_id,
         environmentRevision: rec.environment_revision,
+        lifecycleRevision: owned.lifecycleRevision,
         deletionAttemptId: owned.deletionAttemptId,
-        deletionStartedAt: owned.deletionStartedAt,
       };
     });
   }
@@ -2128,8 +2125,8 @@ export class ElizaSandboxService {
     ownership: {
       sandboxId: string | null;
       environmentRevision: number;
+      lifecycleRevision: number;
       deletionAttemptId: string;
-      deletionStartedAt: Date;
     },
   ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
@@ -2151,18 +2148,12 @@ export class ElizaSandboxService {
       }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      // `rec` is a RAW row: its timestamptz fields are strings at runtime
-      // despite the Date type, so `.getTime()` on them throws. Normalize both
-      // sides to epoch through the Date constructor (which accepts either)
-      // before comparing — a mismatch must fail the fence, not crash it.
-      const recDeletionStartedAtMs =
-        rec.deletion_started_at === null ? null : new Date(rec.deletion_started_at).getTime();
       if (
         rec.status !== "deletion_pending" ||
         rec.deletion_attempt_id !== ownership.deletionAttemptId ||
-        recDeletionStartedAtMs !== ownership.deletionStartedAt.getTime() ||
         rec.sandbox_id !== ownership.sandboxId ||
         rec.environment_revision !== ownership.environmentRevision ||
+        rec.lifecycle_revision !== ownership.lifecycleRevision ||
         hasActiveProvisionJob
       ) {
         return {
@@ -2171,19 +2162,22 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      const deleted = await tx.execute<AgentSandbox>(sql`
-        DELETE FROM ${agentSandboxes}
-        WHERE id = ${agentId}
-          AND organization_id = ${orgId}
-          AND status = 'deletion_pending'
-          AND deletion_attempt_id = ${ownership.deletionAttemptId}
-          AND deletion_started_at = ${ownership.deletionStartedAt}
-          AND rollback_standby_state IS NULL
-          AND sandbox_id IS NOT DISTINCT FROM ${ownership.sandboxId}
-          AND environment_revision = ${ownership.environmentRevision}
-        RETURNING *
-      `);
-      const deletedSandbox = deleted.rows[0];
+      const [deletedSandbox] = await tx
+        .delete(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.status, "deletion_pending"),
+            eq(agentSandboxes.deletion_attempt_id, ownership.deletionAttemptId),
+            sql`${agentSandboxes.rollback_standby_state} IS NULL`,
+            sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${ownership.sandboxId}`,
+            eq(agentSandboxes.environment_revision, ownership.environmentRevision),
+            eq(agentSandboxes.lifecycle_revision, ownership.lifecycleRevision),
+          ),
+        )
+        .returning();
 
       return deletedSandbox
         ? ({ success: true, deletedSandbox } as const)
@@ -2476,6 +2470,9 @@ export class ElizaSandboxService {
     }
 
     for (let attempt = 1; attempt <= MAX_PROVISION_ATTEMPTS; attempt++) {
+      const replacementLifecycleFence: ReplacementLifecycleFence = {
+        lifecycleRevision: rec.lifecycle_revision,
+      };
       let handle;
 
       try {
@@ -2525,13 +2522,18 @@ export class ElizaSandboxService {
             snapshotId: rec.snapshot_id ?? undefined,
             dockerImage: provisionDockerImage,
             container: containerLaunch,
-            ...this.replacementCleanupCallbacks(rec.id, rec.organization_id, {
-              status: "provisioning",
-              environmentRevision: rec.environment_revision,
-              sandboxId: rec.sandbox_id,
-              nodeId: rec.node_id,
-              containerName: rec.container_name,
-            }),
+            ...this.replacementCleanupCallbacks(
+              rec.id,
+              rec.organization_id,
+              {
+                status: "provisioning",
+                environmentRevision: rec.environment_revision,
+                sandboxId: rec.sandbox_id,
+                nodeId: rec.node_id,
+                containerName: rec.container_name,
+              },
+              replacementLifecycleFence,
+            ),
           });
         }
       } catch (err) {
@@ -2590,6 +2592,7 @@ export class ElizaSandboxService {
               rec.id,
               rec.organization_id,
               rec.environment_revision,
+              replacementLifecycleFence.lifecycleRevision,
               handle,
               dockerMeta,
             );
@@ -2702,6 +2705,7 @@ export class ElizaSandboxService {
           rec.organization_id,
           handle,
           rec.environment_revision,
+          replacementLifecycleFence.lifecycleRevision,
           updateData,
         );
 
@@ -2925,6 +2929,14 @@ export class ElizaSandboxService {
             attempt,
             nextAttempt: attempt + 1,
           });
+          const refreshed = await agentSandboxesRepository.findByIdAndOrg(
+            rec.id,
+            rec.organization_id,
+          );
+          if (!refreshed) {
+            throw new Error("Agent disappeared before provision retry");
+          }
+          rec = refreshed;
           continue; // Retry
         }
 
@@ -4093,6 +4105,7 @@ export class ElizaSandboxService {
           AND status IN ('running', 'provisioning', 'stopped', 'error')
           AND claimed_at IS NOT NULL
           AND warm_claim_credential_state IS NULL
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (prepared.rows.length !== 1) {
@@ -4166,6 +4179,7 @@ export class ElizaSandboxService {
           AND sandbox_id IS NOT DISTINCT FROM ${current.sandbox_id}
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (reset.rows.length !== 1) {
@@ -4196,6 +4210,7 @@ export class ElizaSandboxService {
       return {
         alreadyComplete: false,
         sourcePoolId: current.warm_claim_source_pool_id,
+        lifecycleRevision: current.lifecycle_revision,
       };
     });
     if (!prepared) return false;
@@ -4221,6 +4236,7 @@ export class ElizaSandboxService {
           AND warm_claim_credential_state = 'failed'
           AND warm_claim_cleanup_completed_at IS NULL
           AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${prepared.sourcePoolId}
+          AND lifecycle_revision = ${prepared.lifecycleRevision}
         RETURNING id
       `);
       if (result.rows.length === 1) return true;
@@ -4284,6 +4300,7 @@ export class ElizaSandboxService {
                 current.warm_claim_source_pool_id
               }
               AND environment_revision = ${current.environment_revision}
+              AND lifecycle_revision = ${current.lifecycle_revision}
             RETURNING *
           `);
           const rearmed = rows.rows[0];
@@ -4316,6 +4333,7 @@ export class ElizaSandboxService {
                 rearmed.warm_claim_source_pool_id
               }
               AND environment_revision = ${rearmed.environment_revision}
+              AND lifecycle_revision = ${rearmed.lifecycle_revision}
             RETURNING *
           `);
           const reminted = remintedRows.rows[0];
@@ -4357,6 +4375,7 @@ export class ElizaSandboxService {
                 current.warm_claim_source_pool_id
               }
               AND environment_revision = ${current.environment_revision}
+              AND lifecycle_revision = ${current.lifecycle_revision}
             RETURNING *
           `);
           const rearmed = rows.rows[0];
@@ -4389,6 +4408,7 @@ export class ElizaSandboxService {
                 rearmed.warm_claim_source_pool_id
               }
               AND environment_revision = ${rearmed.environment_revision}
+              AND lifecycle_revision = ${rearmed.lifecycle_revision}
             RETURNING *
           `);
           const reminted = remintedRows.rows[0];
@@ -4429,6 +4449,7 @@ export class ElizaSandboxService {
             warm_claim_credential_state = 'pending'
             OR warm_claim_credential_state IS NULL
           )
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING *
       `);
       const updated = rows.rows[0];
@@ -4538,6 +4559,7 @@ export class ElizaSandboxService {
             prepared.current.warm_claim_source_pool_id
           }
           AND environment_revision = ${current.environment_revision}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING environment_revision
       `);
       return result.rows[0]?.environment_revision ?? null;
@@ -4566,20 +4588,23 @@ export class ElizaSandboxService {
     if (!expectedFingerprint || expectedEnvironmentRevision === null) {
       throw new Error("Warm-claim attestation metadata is incomplete");
     }
-    const readyToRevoke = await dbWrite.transaction(async (tx) => {
+    const revocationRevision = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
-      return Boolean(
-        current &&
-          current.status === "provisioning" &&
-          current.warm_claim_credential_state === "attested" &&
-          current.warm_claim_source_pool_id === expectedSourcePoolId &&
-          current.warm_claim_key_fingerprint === expectedFingerprint &&
-          current.environment_revision === expectedEnvironmentRevision &&
-          current.warm_claim_attested_environment_revision === expectedEnvironmentRevision,
-      );
+      if (
+        !current ||
+        current.status !== "provisioning" ||
+        current.warm_claim_credential_state !== "attested" ||
+        current.warm_claim_source_pool_id !== expectedSourcePoolId ||
+        current.warm_claim_key_fingerprint !== expectedFingerprint ||
+        current.environment_revision !== expectedEnvironmentRevision ||
+        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision
+      ) {
+        return null;
+      }
+      return current.lifecycle_revision;
     });
-    if (!readyToRevoke) {
+    if (revocationRevision === null) {
       throw new Error("Warm-claim source revocation lost its state CAS");
     }
 
@@ -4604,9 +4629,10 @@ export class ElizaSandboxService {
         current.warm_claim_source_pool_id !== expectedSourcePoolId ||
         current.warm_claim_key_fingerprint !== expectedFingerprint ||
         current.environment_revision !== expectedEnvironmentRevision ||
-        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision
+        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision ||
+        current.lifecycle_revision !== revocationRevision
       ) {
-        return false;
+        return undefined;
       }
       const result = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
@@ -4624,6 +4650,7 @@ export class ElizaSandboxService {
           AND warm_claim_key_fingerprint = ${expectedFingerprint}
           AND environment_revision = ${expectedEnvironmentRevision}
           AND warm_claim_attested_environment_revision = ${expectedEnvironmentRevision}
+          AND lifecycle_revision = ${revocationRevision}
         RETURNING id
       `);
       return result.rows.length === 1;
@@ -6132,9 +6159,13 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     type: AgentBackupSnapshotType = "manual",
+    lifecycleFence?: ReplacementLifecycleFence,
   ): Promise<SnapshotResult> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return { success: false, error: "Sandbox is not running" };
+    if (lifecycleFence && rec.lifecycle_revision !== lifecycleFence.lifecycleRevision) {
+      return { success: false, error: "Agent lifecycle changed before snapshot capture" };
+    }
 
     let stateData: AgentBackupStateData;
     let sizeBytes: number;
@@ -6163,9 +6194,24 @@ export class ElizaSandboxService {
       await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
     );
 
-    await agentSandboxesRepository.update(rec.id, {
-      last_backup_at: new Date(),
-    });
+    const updated = await agentSandboxesRepository.update(
+      rec.id,
+      { last_backup_at: new Date() },
+      lifecycleFence
+        ? {
+            organizationId: rec.organization_id,
+            environmentRevision: rec.environment_revision,
+            sandboxId: rec.sandbox_id,
+            nodeId: rec.node_id,
+            containerName: rec.container_name,
+            lifecycleRevision: lifecycleFence.lifecycleRevision,
+          }
+        : undefined,
+    );
+    if (!updated) {
+      return { success: false, error: "Agent lifecycle changed while snapshot was prepared" };
+    }
+    if (lifecycleFence) lifecycleFence.lifecycleRevision = updated.lifecycle_revision;
     await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS);
     logger.info("[agent-sandbox] Backup created", {
       agentId,
@@ -6318,7 +6364,7 @@ export class ElizaSandboxService {
       sandboxId: rec.sandbox_id,
       nodeId: rec.node_id,
       containerName: rec.container_name,
-      updatedAt: rec.updated_at,
+      lifecycleRevision: rec.lifecycle_revision,
     });
   }
 
@@ -6935,13 +6981,13 @@ export class ElizaSandboxService {
       const revived = await agentSandboxesRepository.markReconnectedFromDisconnected(
         rec.id,
         recoverableStatus,
+        rec.lifecycle_revision,
+        {
+          headscaleIp: reconcile.headscaleIp,
+          bridgeUrl: reconcile.bridgeUrl,
+        },
       );
       if (!revived) return "gone";
-      await agentSandboxesRepository.update(rec.id, {
-        headscale_ip: reconcile.headscaleIp,
-        bridge_url: reconcile.bridgeUrl,
-        error_count: 0,
-      });
       logger.info(
         `[agent-sandbox] Reconciled stale tailnet IP ${rec.headscale_ip}→${reconcile.headscaleIp} for agent ${agentId}`,
       );
@@ -6954,6 +7000,7 @@ export class ElizaSandboxService {
     const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(
       rec.id,
       recoverableStatus,
+      rec.lifecycle_revision,
     );
     if (!restored) return "gone";
     logger.info("[agent-sandbox] Recovered agent back to running", {
@@ -7018,7 +7065,10 @@ export class ElizaSandboxService {
 
     // Guarded CAS: only flip if still `provisioning` with a live container and
     // no active provision job racing it (see markRunningFromProvisioning).
-    const flipped = await agentSandboxesRepository.markRunningFromProvisioning(rec.id);
+    const flipped = await agentSandboxesRepository.markRunningFromProvisioning(
+      rec.id,
+      rec.lifecycle_revision,
+    );
     if (!flipped) return "gone";
     logger.info(
       "[agent-sandbox] Reconciled wedged provisioning row to running (container re-probed healthy)",
@@ -7113,6 +7163,7 @@ export class ElizaSandboxService {
         } as const;
       }
 
+      let lifecycleRevision = rec.lifecycle_revision;
       if (rec.status === "running" && rec.sandbox_id) {
         if (!rec.bridge_url) {
           return {
@@ -7136,13 +7187,14 @@ export class ElizaSandboxService {
                 "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
             } as const;
           }
-          await this.persistSnapshotWithinTransaction(
+          lifecycleRevision = await this.persistSnapshotWithinTransaction(
             tx,
             rec.id,
             rec.organization_id,
             "pre-shutdown",
             preShutdownSnapshot.stateData,
             preShutdownSnapshot.sizeBytes,
+            lifecycleRevision,
           );
         }
       }
@@ -7163,7 +7215,7 @@ export class ElizaSandboxService {
         }
       }
 
-      await tx.execute(sql`
+      const stopped = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
           status = 'stopped',
@@ -7172,7 +7224,13 @@ export class ElizaSandboxService {
           health_url = NULL,
           updated_at = NOW()
         WHERE id = ${rec.id}
+          AND organization_id = ${orgId}
+          AND lifecycle_revision = ${lifecycleRevision}
+        RETURNING id
       `);
+      if (stopped.rows.length !== 1) {
+        throw new Error("Shutdown lost its lifecycle revision CAS");
+      }
 
       snapshotAgentId = rec.id;
       return { success: true } as const;
@@ -7244,11 +7302,17 @@ export class ElizaSandboxService {
         containerStopped = true;
       }
 
-      await tx.execute(sql`
+      const stopped = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET status = 'stopped', bridge_url = NULL, health_url = NULL, updated_at = NOW()
         WHERE id = ${rec.id}
+          AND organization_id = ${orgId}
+          AND lifecycle_revision = ${rec.lifecycle_revision}
+        RETURNING id
       `);
+      if (stopped.rows.length !== 1) {
+        throw new Error("Suspend lost its lifecycle revision CAS");
+      }
       return { success: true, containerStopped } as const;
     });
   }
@@ -7420,10 +7484,8 @@ export class ElizaSandboxService {
     }
 
     // The backup is intentionally captured without holding a database lock.
-    // Revalidate its exact lifecycle generation under the advisory/row locks,
-    // then keep those locks through absence proof and the locator clear. A
-    // restart can reuse deterministic container ids, so the updated_at fence
-    // is part of the identity check rather than comparing locators alone.
+    // Revalidate the database-owned generation under the advisory/row locks,
+    // then keep those locks through absence proof and the locator clear.
     const sleepCommit = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -7460,7 +7522,7 @@ export class ElizaSandboxService {
         current.bridge_url === rec.bridge_url &&
         current.health_url === rec.health_url &&
         current.environment_revision === rec.environment_revision &&
-        current.updated_at?.getTime() === rec.updated_at?.getTime();
+        current.lifecycle_revision === rec.lifecycle_revision;
       if (!unchangedLifecycleGeneration) {
         return {
           success: false as const,
@@ -7508,7 +7570,7 @@ export class ElizaSandboxService {
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
           AND environment_revision = ${current.environment_revision}
-          AND updated_at IS NOT DISTINCT FROM ${current.updated_at}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
@@ -7817,20 +7879,45 @@ export class ElizaSandboxService {
     // A crash while this bridge is pre-cutover therefore cannot create two
     // concurrently writable runtimes.
     await this.retirePersistedReplacementCleanup(agent.id, agent.organization_id);
+    const recoveryAgent = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agent.id, agent.organization_id);
+      const current = await this.getAgentForLifecycleMutation(tx, agent.id, agent.organization_id);
+      if (
+        !current ||
+        (current.rollback_standby_state !== "pausing" &&
+          current.rollback_standby_state !== "paused_pre_cutover") ||
+        current.rollback_standby_source_job_id !== policy.sourceJobId ||
+        current.rollback_standby_rollout_id !== policy.rolloutId ||
+        current.rollback_standby_generation !== policy.sourceJobId ||
+        current.user_id !== policy.targetOwnerUserId ||
+        current.sandbox_id !== current.rollback_standby_sandbox_id ||
+        current.node_id !== current.rollback_standby_node_id ||
+        current.container_name !== current.rollback_standby_container_name ||
+        current.docker_image !== policy.sourceImage ||
+        current.image_digest !== policy.sourceDigest ||
+        current.rollback_standby_environment_revision === null ||
+        current.environment_revision !== current.rollback_standby_environment_revision
+      ) {
+        throw new Error("Rollback standby changed before pre-cutover recovery");
+      }
+      return current;
+    });
     const locator: SandboxRollbackStandbyLocator =
-      agent.rollback_standby_container_id &&
-      agent.rollback_standby_node_id &&
-      agent.rollback_standby_container_name
+      recoveryAgent.rollback_standby_container_id &&
+      recoveryAgent.rollback_standby_node_id &&
+      recoveryAgent.rollback_standby_container_name
         ? {
-            nodeId: agent.rollback_standby_node_id,
-            containerName: agent.rollback_standby_container_name,
-            containerId: agent.rollback_standby_container_id,
+            nodeId: recoveryAgent.rollback_standby_node_id,
+            containerName: recoveryAgent.rollback_standby_container_name,
+            containerId: recoveryAgent.rollback_standby_container_id,
           }
-        : await provider.pauseForRollbackStandby(agent.rollback_standby_sandbox_id!);
+        : await provider.pauseForRollbackStandby(recoveryAgent.rollback_standby_sandbox_id!);
     await provider.resumeRollbackStandby(locator);
 
     const cleared = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agent.id, agent.organization_id);
+      const current = await this.getAgentForLifecycleMutation(tx, agent.id, agent.organization_id);
+      if (!current || current.lifecycle_revision !== recoveryAgent.lifecycle_revision) return false;
       const [updated] = await tx
         .update(agentSandboxes)
         .set({
@@ -7846,12 +7933,16 @@ export class ElizaSandboxService {
             eq(agentSandboxes.rollback_standby_rollout_id, policy.rolloutId),
             inArray(agentSandboxes.rollback_standby_state, ["pausing", "paused_pre_cutover"]),
             eq(agentSandboxes.user_id, policy.targetOwnerUserId),
-            eq(agentSandboxes.sandbox_id, agent.rollback_standby_sandbox_id!),
-            eq(agentSandboxes.node_id, agent.rollback_standby_node_id!),
-            eq(agentSandboxes.container_name, agent.rollback_standby_container_name!),
+            eq(agentSandboxes.sandbox_id, recoveryAgent.rollback_standby_sandbox_id!),
+            eq(agentSandboxes.node_id, recoveryAgent.rollback_standby_node_id!),
+            eq(agentSandboxes.container_name, recoveryAgent.rollback_standby_container_name!),
             eq(agentSandboxes.docker_image, policy.sourceImage),
             eq(agentSandboxes.image_digest, policy.sourceDigest),
-            eq(agentSandboxes.environment_revision, agent.rollback_standby_environment_revision!),
+            eq(
+              agentSandboxes.environment_revision,
+              recoveryAgent.rollback_standby_environment_revision!,
+            ),
+            eq(agentSandboxes.lifecycle_revision, recoveryAgent.lifecycle_revision),
             sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
           ),
         )
@@ -7874,6 +7965,7 @@ export class ElizaSandboxService {
     oldContainerName: string;
     oldSandboxId: string;
     sourceEnvironmentRevision: number;
+    expectedLifecycleRevision: number;
   }): Promise<ImageSwapResult> {
     const {
       agent,
@@ -7886,6 +7978,7 @@ export class ElizaSandboxService {
       oldContainerName,
       oldSandboxId,
       sourceEnvironmentRevision,
+      expectedLifecycleRevision,
     } = params;
     const failBeforeStandbyIntent = async (error: string): Promise<ImageSwapResult> => {
       try {
@@ -7953,7 +8046,7 @@ export class ElizaSandboxService {
         !cleanupLocator ||
         !this.replacementCleanupMatchesHandle(cleanupLocator, blueHandle)
       ) {
-        return false;
+        return undefined;
       }
       const [updated] = await tx
         .update(agentSandboxes)
@@ -8001,43 +8094,57 @@ export class ElizaSandboxService {
             eq(agentSandboxes.docker_image, policy.sourceImage),
             eq(agentSandboxes.image_digest, policy.sourceDigest),
             eq(agentSandboxes.environment_revision, sourceEnvironmentRevision),
+            eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
           ),
         )
-        .returning({ id: agentSandboxes.id });
-      return Boolean(updated);
+        .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+      return updated?.lifecycleRevision;
     });
-    if (!intentPersisted) {
+    if (intentPersisted === undefined) {
       return await failBeforeStandbyIntent(
         "Agent changed before rollback standby intent was persisted",
       );
     }
 
     let standby: SandboxRollbackStandbyLocator;
+    let pausedLifecycleRevision: number;
     try {
       standby = await provider.pauseForRollbackStandby(oldSandboxId);
       if (standby.nodeId !== oldNodeId || standby.containerName !== oldContainerName) {
         throw new Error("Paused rollback standby does not match the routed old placement");
       }
-      const [enriched] = await dbWrite
-        .update(agentSandboxes)
-        .set({
-          rollback_standby_state: "paused_pre_cutover",
-          rollback_standby_container_id: standby.containerId,
-          updated_at: new Date(),
-        })
-        .where(
-          and(
-            eq(agentSandboxes.id, agent.id),
-            eq(agentSandboxes.organization_id, agent.organization_id),
-            eq(agentSandboxes.rollback_standby_state, "pausing"),
-            eq(agentSandboxes.rollback_standby_generation, generation),
-            eq(agentSandboxes.rollback_standby_source_job_id, policy.sourceJobId),
-          ),
-        )
-        .returning({ id: agentSandboxes.id });
-      if (!enriched) {
+      const enriched = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, agent.id, agent.organization_id);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          agent.id,
+          agent.organization_id,
+        );
+        if (!current || current.lifecycle_revision !== intentPersisted) return undefined;
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set({
+            rollback_standby_state: "paused_pre_cutover",
+            rollback_standby_container_id: standby.containerId,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, agent.id),
+              eq(agentSandboxes.organization_id, agent.organization_id),
+              eq(agentSandboxes.rollback_standby_state, "pausing"),
+              eq(agentSandboxes.rollback_standby_generation, generation),
+              eq(agentSandboxes.rollback_standby_source_job_id, policy.sourceJobId),
+              eq(agentSandboxes.lifecycle_revision, current.lifecycle_revision),
+            ),
+          )
+          .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+        return updated?.lifecycleRevision;
+      });
+      if (enriched === undefined) {
         throw new Error("Rollback standby changed before exact Docker identity was persisted");
       }
+      pausedLifecycleRevision = enriched;
     } catch (error) {
       // error-policy:J1 the standby-pause boundary restores the prior runtime
       // and returns an explicit rolled-back failure instead of partial success.
@@ -8128,6 +8235,7 @@ export class ElizaSandboxService {
               eq(agentSandboxes.docker_image, policy.sourceImage),
               eq(agentSandboxes.image_digest, policy.sourceDigest),
               eq(agentSandboxes.environment_revision, sourceEnvironmentRevision),
+              eq(agentSandboxes.lifecycle_revision, pausedLifecycleRevision),
             ),
           )
           .returning({ id: agentSandboxes.id });
@@ -9617,7 +9725,8 @@ export class ElizaSandboxService {
         current.rollback_standby_restore_candidate_provider_sandbox_id !==
           acceptedAuthority.restoreValidatedCandidateProviderSandboxId ||
         current.rollback_standby_restore_candidate_replacement_attempt_id !==
-          acceptedAuthority.restoreValidatedCandidateReplacementAttemptId
+          acceptedAuthority.restoreValidatedCandidateReplacementAttemptId ||
+        current.lifecycle_revision !== agent.lifecycle_revision
       ) {
         throw new Error("Rollback standby acceptance fence changed after remote retirement");
       }
@@ -9663,6 +9772,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.docker_image, data.targetImage),
             eq(agentSandboxes.image_digest, data.targetDigest),
             eq(agentSandboxes.environment_revision, current.rollback_standby_environment_revision!),
+            eq(agentSandboxes.lifecycle_revision, agent.lifecycle_revision),
           ),
         )
         .returning({ id: agentSandboxes.id });
@@ -9744,6 +9854,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.docker_image, data.targetImage),
             eq(agentSandboxes.image_digest, data.targetDigest),
             eq(agentSandboxes.environment_revision, agent.rollback_standby_environment_revision!),
+            eq(agentSandboxes.lifecycle_revision, agent.lifecycle_revision),
             sql`${agentSandboxes.rollback_standby_decision_job_id} IS NULL`,
           ),
         )
@@ -9801,7 +9912,8 @@ export class ElizaSandboxService {
           current.rollback_standby_decision_job_id !== decisionJobId ||
           current.sandbox_id !== agent.sandbox_id ||
           current.node_id !== agent.node_id ||
-          current.container_name !== agent.container_name
+          current.container_name !== agent.container_name ||
+          current.lifecycle_revision !== agent.lifecycle_revision
         ) {
           return "changed" as const;
         }
@@ -9842,6 +9954,7 @@ export class ElizaSandboxService {
               eq(agentSandboxes.docker_image, data.targetImage),
               eq(agentSandboxes.image_digest, data.targetDigest),
               eq(agentSandboxes.environment_revision, agent.rollback_standby_environment_revision!),
+              eq(agentSandboxes.lifecycle_revision, agent.lifecycle_revision),
             ),
           )
           .returning();
@@ -9890,6 +10003,9 @@ export class ElizaSandboxService {
       if (current.rollback_standby_decision_job_id !== decisionJobId) {
         throw new Error("Rollback cleanup is owned by a different decision job");
       }
+      if (current.lifecycle_revision !== agent.lifecycle_revision) {
+        throw new Error("Rollback cleanup lifecycle changed after remote retirement");
+      }
       const [cleared] = await tx
         .update(agentSandboxes)
         .set({
@@ -9912,6 +10028,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.docker_image, data.sourceImage),
             eq(agentSandboxes.image_digest, data.sourceDigest),
             eq(agentSandboxes.environment_revision, current.rollback_standby_environment_revision!),
+            eq(agentSandboxes.lifecycle_revision, agent.lifecycle_revision),
           ),
         )
         .returning({ id: agentSandboxes.id });
@@ -10026,6 +10143,7 @@ export class ElizaSandboxService {
                 sql`${agentSandboxes.rollback_standby_restore_validation_aggregate_sha256} IS NULL`,
                 sql`${agentSandboxes.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL`,
                 sql`${agentSandboxes.rollback_standby_restore_candidate_replacement_attempt_id} IS NULL`,
+                eq(agentSandboxes.lifecycle_revision, current.lifecycle_revision),
               ),
             )
             .returning();
@@ -10181,6 +10299,9 @@ export class ElizaSandboxService {
       };
     }
     const sourceEnvironmentRevision = agent.environment_revision;
+    const replacementLifecycleFence: ReplacementLifecycleFence = {
+      lifecycleRevision: agent.lifecycle_revision,
+    };
     // Refuse a fleet upgrade only for a genuinely CUSTOM image (a different
     // repo than the fleet-managed default), NOT for a stale default-family
     // image pinned to an older tag. Comparing the full ref (`docker_image !==
@@ -10282,13 +10403,18 @@ export class ElizaSandboxService {
       // provider records its id as metadata.previousVpnNodeId; it is deleted
       // by id below only after the atomic swap succeeds.
       reclaimStaleVpnNode: false,
-      ...this.replacementCleanupCallbacks(agentId, orgId, {
-        status: "running",
-        environmentRevision: sourceEnvironmentRevision,
-        sandboxId: oldSandboxId,
-        nodeId: oldNodeId,
-        containerName: oldContainerName,
-      }),
+      ...this.replacementCleanupCallbacks(
+        agentId,
+        orgId,
+        {
+          status: "running",
+          environmentRevision: sourceEnvironmentRevision,
+          sandboxId: oldSandboxId,
+          nodeId: oldNodeId,
+          containerName: oldContainerName,
+        },
+        replacementLifecycleFence,
+      ),
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -10374,6 +10500,7 @@ export class ElizaSandboxService {
         oldContainerName,
         oldSandboxId,
         sourceEnvironmentRevision,
+        expectedLifecycleRevision: replacementLifecycleFence.lifecycleRevision,
       });
     }
 
@@ -10382,7 +10509,12 @@ export class ElizaSandboxService {
     // back. A missing/partial snapshot blocks the upgrade: swapping images
     // without a verified full-agent restore point is the data-loss class this
     // path is designed to prevent.
-    const preUpgradeSnapshot = await this.snapshot(agentId, orgId, "pre-upgrade").catch((err) => ({
+    const preUpgradeSnapshot = await this.snapshot(
+      agentId,
+      orgId,
+      "pre-upgrade",
+      replacementLifecycleFence,
+    ).catch((err) => ({
       success: false,
       error: err instanceof Error ? err.message : String(err),
     }));
@@ -10457,6 +10589,7 @@ export class ElizaSandboxService {
             AND organization_id = ${orgId}
             AND status = 'running'
             AND environment_revision = ${sourceEnvironmentRevision}
+            AND lifecycle_revision = ${replacementLifecycleFence.lifecycleRevision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
             AND replacement_cleanup_node_id = ${blueMeta.nodeId}
             AND replacement_cleanup_container_name = ${blueMeta.containerName}
@@ -10675,6 +10808,9 @@ export class ElizaSandboxService {
       };
     }
     const sourceEnvironmentRevision = agent.environment_revision;
+    const replacementLifecycleFence: ReplacementLifecycleFence = {
+      lifecycleRevision: agent.lifecycle_revision,
+    };
     // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
     // a rollback of a default-family agent must not be refused just because its
     // tag differs from the target.
@@ -10765,13 +10901,18 @@ export class ElizaSandboxService {
       // provider records its id as metadata.previousVpnNodeId; it is deleted
       // by id below only after the atomic swap succeeds.
       reclaimStaleVpnNode: false,
-      ...this.replacementCleanupCallbacks(agentId, orgId, {
-        status: "running",
-        environmentRevision: sourceEnvironmentRevision,
-        sandboxId: oldSandboxId,
-        nodeId: oldNodeId,
-        containerName: oldContainerName,
-      }),
+      ...this.replacementCleanupCallbacks(
+        agentId,
+        orgId,
+        {
+          status: "running",
+          environmentRevision: sourceEnvironmentRevision,
+          sandboxId: oldSandboxId,
+          nodeId: oldNodeId,
+          containerName: oldContainerName,
+        },
+        replacementLifecycleFence,
+      ),
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -10950,6 +11091,7 @@ export class ElizaSandboxService {
             AND organization_id = ${orgId}
             AND status = 'running'
             AND environment_revision = ${sourceEnvironmentRevision}
+            AND lifecycle_revision = ${replacementLifecycleFence.lifecycleRevision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
             AND replacement_cleanup_node_id = ${blueMeta.nodeId}
             AND replacement_cleanup_container_name = ${blueMeta.containerName}
@@ -11131,16 +11273,38 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     expected: ReplacementCleanupExpectation,
+    lifecycleFence: ReplacementLifecycleFence,
   ) {
     return {
       onReplacementCreateIntent: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "intent");
+        lifecycleFence.lifecycleRevision = await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          lifecycleFence.lifecycleRevision,
+          "intent",
+        );
       },
       onReplacementCreated: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "created");
+        lifecycleFence.lifecycleRevision = await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          lifecycleFence.lifecycleRevision,
+          "created",
+        );
       },
       onReplacementVpnRegistered: async (handle: SandboxHandle) => {
-        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "vpn");
+        lifecycleFence.lifecycleRevision = await this.persistReplacementCleanupStage(
+          agentId,
+          orgId,
+          handle,
+          expected,
+          lifecycleFence.lifecycleRevision,
+          "vpn",
+        );
       },
     };
   }
@@ -11381,8 +11545,9 @@ export class ElizaSandboxService {
     orgId: string,
     handle: SandboxHandle,
     expected: ReplacementCleanupExpectation,
+    expectedLifecycleRevision: number,
     stage: "intent" | "created" | "vpn",
-  ): Promise<void> {
+  ): Promise<number> {
     const incoming = this.replacementLocatorFromHandle(handle);
     if (stage === "intent" && (incoming.containerId !== null || incoming.vpnNodeId !== null)) {
       throw new Error("Replacement intent already contains a committed remote identity");
@@ -11396,10 +11561,13 @@ export class ElizaSandboxService {
     if (expected.status === "running" && !incoming.allocationCounted) {
       throw new Error("Blue/green replacement requires durable node capacity ownership");
     }
-    await dbWrite.transaction(async (tx) => {
+    return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement ownership");
+      if (current.lifecycle_revision !== expectedLifecycleRevision) {
+        throw new Error("Agent lifecycle changed before replacement ownership");
+      }
       if (
         current.deletion_attempt_id !== null ||
         current.status === "deletion_pending" ||
@@ -11412,7 +11580,9 @@ export class ElizaSandboxService {
         this.assertSameReplacementIdentity(existing, incoming);
         const containerId = existing.containerId ?? incoming.containerId;
         const vpnNodeId = existing.vpnNodeId ?? incoming.vpnNodeId;
-        if (containerId === existing.containerId && vpnNodeId === existing.vpnNodeId) return;
+        if (containerId === existing.containerId && vpnNodeId === existing.vpnNodeId) {
+          return expectedLifecycleRevision;
+        }
         const enriched = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
@@ -11432,12 +11602,13 @@ export class ElizaSandboxService {
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
             AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
             AND ${this.replacementCleanupCreatedAtMatches(existing.createdAt)}
+            AND lifecycle_revision = ${expectedLifecycleRevision}
           RETURNING id
         `);
         if (enriched.rows.length !== 1) {
           throw new Error("Replacement cleanup enrichment CAS failed");
         }
-        return;
+        return expectedLifecycleRevision + 1;
       }
       if (stage !== "intent") {
         throw new Error("Replacement enrichment arrived before durable intent ownership");
@@ -11491,11 +11662,13 @@ export class ElizaSandboxService {
           AND container_name IS NOT DISTINCT FROM ${expected.containerName}
           AND deletion_attempt_id IS NULL
           AND replacement_cleanup_sandbox_id IS NULL
+          AND lifecycle_revision = ${expectedLifecycleRevision}
         RETURNING id
       `);
       if (persisted.rows.length !== 1) {
         throw new Error("Replacement cleanup ownership CAS failed");
       }
+      return expectedLifecycleRevision + 1;
     });
   }
 
@@ -11538,6 +11711,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
           AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
           AND ${this.replacementCleanupCreatedAtMatches(existing.createdAt)}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (persisted.rows.length !== 1) {
@@ -11551,6 +11725,7 @@ export class ElizaSandboxService {
     orgId: string,
     handle: SandboxHandle,
     expectedEnvironmentRevision: number,
+    expectedLifecycleRevision: number,
     updateData: Partial<NewAgentSandbox>,
   ): Promise<AgentSandbox> {
     return dbWrite.transaction(async (tx) => {
@@ -11559,7 +11734,8 @@ export class ElizaSandboxService {
       if (!current) throw new Error("Agent disappeared before replacement adoption");
       if (
         current.status !== "provisioning" ||
-        current.environment_revision !== expectedEnvironmentRevision
+        current.environment_revision !== expectedEnvironmentRevision ||
+        current.lifecycle_revision !== expectedLifecycleRevision
       ) {
         throw new Error("Agent generation changed before replacement adoption");
       }
@@ -11613,6 +11789,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.organization_id, orgId),
             eq(agentSandboxes.status, "provisioning"),
             eq(agentSandboxes.environment_revision, expectedEnvironmentRevision),
+            eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         )
@@ -11779,6 +11956,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${locator.vpnRegistrationStartedAt}
           AND replacement_cleanup_allocation_counted = ${locator.allocationCounted}
           AND ${this.replacementCleanupCreatedAtMatches(locator.createdAt)}
+          AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
@@ -11942,14 +12120,15 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<AgentSandbox | undefined> {
-    const result = await tx.execute<AgentSandbox>(sql`
-      SELECT *
-      FROM ${agentSandboxes}
-      WHERE id = ${agentId}
-        AND organization_id = ${orgId}
-      FOR UPDATE
-    `);
-    return result.rows[0];
+    // The typed builder maps timestamp columns to Dates before lifecycle code
+    // consumes them; the row lock and lifecycle_revision provide ownership.
+    const [row] = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+      .for("update")
+      .limit(1);
+    return row;
   }
 
   private async hasActiveProvisionJobTx(
@@ -12063,7 +12242,8 @@ export class ElizaSandboxService {
     type: AgentBackupSnapshotType,
     stateData: AgentBackupStateData,
     sizeBytes: number,
-  ): Promise<void> {
+    expectedLifecycleRevision: number,
+  ): Promise<number> {
     const [backup] = await tx
       .insert(agentSandboxBackups)
       .values(
@@ -12079,19 +12259,28 @@ export class ElizaSandboxService {
       )
       .returning();
 
-    await tx.execute(sql`
-      UPDATE ${agentSandboxes}
-      SET
-        last_backup_at = NOW(),
-        updated_at = NOW()
-      WHERE id = ${sandboxRecordId}
-    `);
+    const [updated] = await tx
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date(), updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, sandboxRecordId),
+          eq(agentSandboxes.organization_id, organizationId),
+          eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
+        ),
+      )
+      .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+    const lifecycleRevision = updated?.lifecycleRevision;
+    if (lifecycleRevision === undefined) {
+      throw new Error("Snapshot metadata lost its lifecycle revision CAS");
+    }
 
     logger.info("[agent-sandbox] Backup created", {
       agentId: sandboxRecordId,
       type,
       bytes: backup?.size_bytes ?? sizeBytes,
     });
+    return lifecycleRevision;
   }
 
   /**
@@ -12195,6 +12384,7 @@ export class ElizaSandboxService {
     agentId: string,
     organizationId: string,
     environmentRevision: number,
+    lifecycleRevision: number,
     handle: SandboxHandle,
     dockerMeta: DockerSandboxMetadata | undefined,
   ): Promise<void> {
@@ -12231,6 +12421,7 @@ export class ElizaSandboxService {
       organizationId,
       handle,
       environmentRevision,
+      lifecycleRevision,
       updateData,
     );
   }

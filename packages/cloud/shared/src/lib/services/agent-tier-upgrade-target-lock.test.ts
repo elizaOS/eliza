@@ -72,6 +72,7 @@ function makeTx(txIndex: number) {
           return chain;
         },
         where: (_clause: SQL | undefined) => chain,
+        for: () => chain,
         orderBy: () => {
           state.hasOrderBy = true;
           return chain;

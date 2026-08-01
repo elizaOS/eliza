@@ -1,12 +1,9 @@
 /**
  * Regression proof for the observed-running-generation CAS (#17249 fence
  * class): `agentSandboxesRepository.update(..., expectedRunningGeneration)`
- * fenced `updated_at` with a plain eq() — but the stored value may carry
- * MICROSECONDS (raw `updated_at = NOW()` writers) while the expected value
- * came through a typed read, which truncates to milliseconds. The fence
- * silently missed for every µs-stored row, so the heartbeat's observed
- * generation was never persisted after such a write. Same remedy as the
- * sleep and managed-launch CASes: date_trunc('milliseconds', column).
+ * once fenced `updated_at`, which either lost microsecond rows or admitted
+ * same-millisecond ABA writers. The database-owned `lifecycle_revision`
+ * advances on every update, so timestamp precision no longer owns the CAS.
  *
  * The µs row is seeded via an explicit SQL literal — PGlite's own NOW() is
  * ms-only, so a NOW()-seeded row cannot reproduce the mismatch and the
@@ -58,6 +55,8 @@ beforeAll(async () => {
     const schema = { organizations, users, userCharacters, agentSandboxes };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    const { ensureAgentSandboxSchema } = await import("../../ensure-agent-sandbox-schema");
+    await ensureAgentSandboxSchema();
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -101,8 +100,18 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
     return { id: rec.id, orgId: org.id };
   }
 
+  async function readLifecycleRevision(id: string): Promise<number> {
+    const [row] = await dbWrite
+      .select({ lifecycleRevision: agentSandboxes.lifecycle_revision })
+      .from(agentSandboxes)
+      .where(sql`${agentSandboxes.id} = ${id}`)
+      .limit(1);
+    if (!row) throw new Error("seeded agent row disappeared");
+    return row.lifecycleRevision;
+  }
+
   test(
-    "the fence matches a row whose updated_at carries MICROSECONDS",
+    "the fence matches a microsecond row when the observed revision is current",
     async () => {
       expect(pgliteReady).toBe(true);
       const { id, orgId } = await seedRunningAgent();
@@ -112,8 +121,7 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
             SET updated_at = '2026-01-01 00:00:00.123456+00'::timestamptz
             WHERE id = ${id}`,
       );
-      // What the service observed through its typed read: ms-truncated.
-      const observed = new Date("2026-01-01T00:00:00.123Z");
+      const observedRevision = await readLifecycleRevision(id);
 
       const updated = await repo.update(
         id,
@@ -124,13 +132,14 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
           sandboxId: "agent-hb",
           nodeId: "node-1",
           containerName: "agent-hb",
-          updatedAt: observed,
+          lifecycleRevision: observedRevision,
         },
       );
 
       // Pre-fix the eq() fence missed and the CAS write was a silent no-op.
       expect(updated).toBeDefined();
       expect(updated?.last_heartbeat_at).toBeInstanceOf(Date);
+      expect(updated?.lifecycle_revision).toBe(observedRevision + 1);
     },
     PGLITE_TIMEOUT,
   );
@@ -140,14 +149,12 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
     async () => {
       expect(pgliteReady).toBe(true);
       const { id, orgId } = await seedRunningAgent();
+      const observedRevision = await readLifecycleRevision(id);
       await dbWrite.execute(
         sql`UPDATE ${agentSandboxes}
             SET updated_at = '2026-01-01 00:00:00.123456+00'::timestamptz
             WHERE id = ${id}`,
       );
-      // Observed a DIFFERENT millisecond: the row moved since the read.
-      const staleObserved = new Date("2026-01-01T00:00:00.122Z");
-
       const updated = await repo.update(
         id,
         { last_heartbeat_at: new Date() },
@@ -157,7 +164,7 @@ describe("observed-running-generation CAS vs microsecond timestamps", () => {
           sandboxId: "agent-hb",
           nodeId: "node-1",
           containerName: "agent-hb",
-          updatedAt: staleObserved,
+          lifecycleRevision: observedRevision,
         },
       );
 

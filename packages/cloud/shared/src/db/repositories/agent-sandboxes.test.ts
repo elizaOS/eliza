@@ -297,7 +297,7 @@ describe("AgentSandboxesRepository", () => {
         sandboxId: "sandbox-generation-7",
         nodeId: "node-generation-7",
         containerName: "agent-generation-7",
-        updatedAt: new Date("2026-07-23T11:59:00.000Z"),
+        lifecycleRevision: 42,
       },
     );
 
@@ -312,12 +312,8 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("sandbox_id");
     expect(sql).toContain("node_id");
     expect(sql).toContain("container_name");
-    // ms-window fence (#17249 fence class): the stored updated_at may carry
-    // microseconds from raw `updated_at = NOW()` writers, so the CAS compares
-    // date_trunc('milliseconds', updated_at) against the ms-truncated typed
-    // read instead of a plain eq().
-    expect(sql).toContain("date_trunc('milliseconds'");
-    expect(sql).toContain("updated_at");
+    expect(sql).toContain("lifecycle_revision");
+    expect(sql).not.toContain("updated_at");
     expect(sql.match(/is not distinct from/g)).toHaveLength(3);
     expect(query.params).toEqual(
       expect.arrayContaining([
@@ -328,18 +324,9 @@ describe("AgentSandboxesRepository", () => {
         "sandbox-generation-7",
         "node-generation-7",
         "agent-generation-7",
+        42,
       ]),
     );
-    // The raw-sql fence binds the observed generation without the column's
-    // driver mapping, so the param may surface as a Date rather than the
-    // eq()-era ISO string — accept either encoding, but require the value.
-    expect(
-      query.params.some(
-        (p) =>
-          (p instanceof Date && p.toISOString() === "2026-07-23T11:59:00.000Z") ||
-          p === "2026-07-23T11:59:00.000Z",
-      ),
-    ).toBe(true);
   });
 
   test("generic repository updates cannot write through a durable deletion owner", async () => {
@@ -458,6 +445,7 @@ describe("AgentSandboxesRepository", () => {
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
     await new AgentSandboxesRepository().markRunningFromProvisioning(
       "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+      7,
     );
 
     if (!capturedWhere) throw new Error("markRunningFromProvisioning did not build a where clause");
@@ -466,6 +454,7 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("node_id");
     expect(sql).toContain("is not null");
     expect(sql).toContain("<> ''");
+    expect(sql).toContain("lifecycle_revision");
   });
 
   test("fleet-upgrade candidates re-arm on a NEW target after a rollback-safe upgrade failure (#15357)", async () => {
@@ -791,7 +780,7 @@ describe("AgentSandboxesRepository", () => {
   // rows can carry a null node_id (the creator tolerates it), and a claim
   // copies node_id verbatim then DELETEs the pool row — leaving an
   // unattributable orphan with no record to reconcile against.
-  describe("claimWarmContainer null-node guard (C1c)", () => {
+  describe("claimWarmContainer ownership and readiness guards", () => {
     const IMAGE = "ghcr.io/example/bnancy:latest";
     const params = {
       userAgentId: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
@@ -813,6 +802,7 @@ describe("AgentSandboxesRepository", () => {
         warm_claim_credential_state: null,
         agent_config: {},
         character_id: null,
+        lifecycle_revision: 7,
         updated_at: new Date("2026-07-07T12:00:00.000Z"),
       };
     }
@@ -840,7 +830,10 @@ describe("AgentSandboxesRepository", () => {
       };
 
       const { AgentSandboxesRepository } = await import("./agent-sandboxes");
-      const result = await new AgentSandboxesRepository().claimWarmContainer(params);
+      const result = await new AgentSandboxesRepository().claimWarmContainer({
+        ...params,
+        expectedLifecycleRevision: 7,
+      });
 
       expect(result).toBeNull();
       const lowered = claimSelectSql.toLowerCase();
@@ -864,7 +857,10 @@ describe("AgentSandboxesRepository", () => {
       };
 
       const { AgentSandboxesRepository } = await import("./agent-sandboxes");
-      const result = await new AgentSandboxesRepository().claimWarmContainer(params);
+      const result = await new AgentSandboxesRepository().claimWarmContainer({
+        ...params,
+        expectedLifecycleRevision: 7,
+      });
 
       expect(result).toBeNull();
       const lowered = claimSelectSql.toLowerCase();
@@ -906,7 +902,10 @@ describe("AgentSandboxesRepository", () => {
       };
 
       const { AgentSandboxesRepository } = await import("./agent-sandboxes");
-      const result = await new AgentSandboxesRepository().claimWarmContainer(params);
+      const result = await new AgentSandboxesRepository().claimWarmContainer({
+        ...params,
+        expectedLifecycleRevision: 7,
+      });
 
       expect(result).not.toBeNull();
       // The claim inherited the pool row's REAL node_id (never a null).
@@ -936,6 +935,43 @@ describe("AgentSandboxesRepository", () => {
       expect(updateSql).toContain("deletion_attempt_id");
       expect(updateSql).toContain("deletion_pending");
       expect(updateSql).toContain("deletion_failed");
+      expect(updateSql).toContain("lifecycle_revision");
+    });
+
+    test("a stale lifecycle revision cannot consume a warm pool container", async () => {
+      userRowForClaim = { ...pendingUserRow(), lifecycle_revision: 8 };
+      warmClaimUpdateSet.mockClear();
+      warmClaimDeleteWhere.mockClear();
+      executeHandler = (sqlText: string) => {
+        if (sqlText.includes("FOR UPDATE SKIP LOCKED")) {
+          return {
+            rows: [
+              {
+                id: "pool-stale-claim",
+                pool_status: "unclaimed",
+                status: "running",
+                docker_image: IMAGE,
+                image_digest: `sha256:${"b".repeat(64)}`,
+                pool_ready_at: new Date("2026-07-07T11:00:00.000Z"),
+                node_id: "node-1",
+                container_name: "agent-pool-stale-claim",
+                bridge_url: "http://100.64.0.11:3000",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      };
+
+      const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+      const result = await new AgentSandboxesRepository().claimWarmContainer({
+        ...params,
+        expectedLifecycleRevision: 7,
+      });
+
+      expect(result).toBeNull();
+      expect(warmClaimUpdateSet).not.toHaveBeenCalled();
+      expect(warmClaimDeleteWhere).not.toHaveBeenCalled();
     });
 
     test("a deletion-owned user row cannot consume a warm pool container", async () => {

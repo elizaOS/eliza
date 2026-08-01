@@ -13,7 +13,15 @@
  * `requireAuthOrApiKeyWithOrg` (same pattern as eliza-agents-restore-body-guard).
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -37,6 +45,8 @@ const SHARED_RESUME = "cccccccc-7777-4777-8777-777777777777";
 const STOPPED_TARGET = "cccccccc-8888-4888-8888-888888888888";
 const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
 const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SHARED_STALE_REATTACH = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const STALE_REATTACH_TARGET = "cccccccc-dddd-4ddd-8ddd-dddddddddddd";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
 const ORG_FULL = "33333333-3333-4333-8333-333333333333";
@@ -328,6 +338,88 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       await dbWrite
         .delete(agentSandboxes)
         .where(eq(agentSandboxes.id, targetId));
+    }
+  });
+
+  test("reattach rejects a same-timestamp lifecycle ABA before enqueue", async () => {
+    expect(pgliteReady).toBe(true);
+    await setOrgBalance(ORG_A, "10");
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxesRepository } = await import(
+      "@/db/repositories/agent-sandboxes"
+    );
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const { provisioningJobService } = await import(
+      "@/lib/services/provisioning-jobs"
+    );
+
+    await dbWrite.insert(agentSandboxes).values([
+      {
+        id: SHARED_STALE_REATTACH,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Stale Reattach Source",
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      },
+      {
+        id: STALE_REATTACH_TARGET,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Stale Reattach Target",
+        agent_config: { __agentUpgradedFrom: SHARED_STALE_REATTACH },
+        execution_tier: "dedicated-always",
+        status: "stopped",
+        database_status: "none",
+      },
+    ]);
+    const observed = await agentSandboxesRepository.findByIdAndOrg(
+      STALE_REATTACH_TARGET,
+      ORG_A,
+    );
+    if (!observed) throw new Error("stale reattach target was not inserted");
+
+    const enqueueOriginal =
+      provisioningJobService.enqueueAgentProvisionOnce.bind(
+        provisioningJobService,
+      );
+    const enqueue = spyOn(
+      provisioningJobService,
+      "enqueueAgentProvisionOnce",
+    ).mockImplementation(async (params) => {
+      expect(params.expectedLifecycleRevision).toBe(
+        observed.lifecycle_revision,
+      );
+      // Preserve the visible timestamp and values: only the database-owned
+      // revision can distinguish this intervening write from the observed row.
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          status: observed.status,
+          updated_at: observed.updated_at,
+        })
+        .where(eq(agentSandboxes.id, observed.id));
+      return enqueueOriginal(params);
+    });
+
+    try {
+      const res = await upgrade(SHARED_STALE_REATTACH);
+      expect(res.status).toBe(409);
+      const after = await agentSandboxesRepository.findByIdAndOrg(
+        STALE_REATTACH_TARGET,
+        ORG_A,
+      );
+      expect(after?.updated_at?.getTime()).toBe(observed.updated_at?.getTime());
+      expect(after?.lifecycle_revision).toBe(observed.lifecycle_revision + 1);
+      const targetJobs = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.agent_id, STALE_REATTACH_TARGET));
+      expect(targetJobs).toHaveLength(0);
+    } finally {
+      enqueue.mockRestore();
     }
   });
 

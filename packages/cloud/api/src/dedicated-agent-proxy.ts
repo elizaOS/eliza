@@ -257,7 +257,7 @@ async function resumeAndRespond(
             organizationId: orgId,
             userId,
             agentName: sandbox.agent_name ?? agentId,
-            expectedUpdatedAt: sandbox.updated_at,
+            expectedLifecycleRevision: sandbox.lifecycle_revision,
           });
         jobId = job.id;
         alreadyInProgress = !created;

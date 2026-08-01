@@ -259,7 +259,7 @@ async function __hono_POST(
               organizationId: user.organization_id,
               userId: user.id,
               agentName: sandbox.agent_name ?? agentId,
-              expectedUpdatedAt: sandbox.updated_at,
+              expectedLifecycleRevision: sandbox.lifecycle_revision,
             });
           jobId = job.id;
           alreadyInProgress = !created;
