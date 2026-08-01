@@ -5,7 +5,10 @@
  */
 import { randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  SnapshotPayloadTooLargeError,
+} from "@elizaos/shared/agent-backup-limits";
 import {
   and,
   asc,
@@ -2132,9 +2135,10 @@ export class AgentSandboxesRepository {
       chainBytes +=
         cursor.size_bytes ?? Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
       if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
-        throw new Error(
-          `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES} bytes`,
-        );
+        // Typed so the restore sites can tell "too large to apply" from "gone":
+        // the chain is intact and decryptable, so this must fail the provision
+        // closed rather than degrade to an empty boot, and it must never prune.
+        throw new SnapshotPayloadTooLargeError(chainBytes, MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES);
       }
       chain.push(await hydrateAgentSandboxBackup(cursor));
       if (cursor.backup_kind === "full") break;

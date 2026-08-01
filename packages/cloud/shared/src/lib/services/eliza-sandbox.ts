@@ -9,6 +9,7 @@ import { ElizaError } from "@elizaos/core";
 import {
   MAX_RESTORABLE_AGENT_BACKUP_BYTES,
   resolveRetainableAgentBackupBytes,
+  SnapshotPayloadTooLargeError,
 } from "@elizaos/shared/agent-backup-limits";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
@@ -880,27 +881,6 @@ const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
 // token-corrected resume could still restore (#15274).
 const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
 
-/**
- * A reconstructed restore payload larger than what `/api/restore` accepts, so
- * the push is refused locally instead of being sent to be rejected (#17172).
- *
- * Typed because the classification matters in both directions: retrying is
- * pointless (the same bytes exceed the same limit every time), so this must
- * read as UNRECOVERABLE — but the stored backup chain is intact and still
- * decryptable, so it must NOT read as permanently lost and must never prune the
- * chain.
- */
-export class SnapshotPayloadTooLargeError extends Error {
-  readonly name = "SnapshotPayloadTooLargeError";
-  constructor(
-    readonly payloadBytes: number,
-    readonly limitBytes: number,
-  ) {
-    super(
-      `State restore refused: reconstructed payload of ${payloadBytes} bytes exceeds the v1 restorable limit of ${limitBytes} bytes`,
-    );
-  }
-}
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -946,10 +926,12 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
-  // A local size refusal is deterministic: the same reconstructed bytes breach
-  // the same limit on every attempt, so retrying only burns the provision.
-  // Deliberately absent from `isPermanentlyLostSnapshot` — the chain is intact.
-  if (error.name === "SnapshotPayloadTooLargeError") return true;
+  // A size refusal is deliberately NOT unrecoverable-for-this-provision. It is
+  // deterministic, so retrying is pointless — but the chain is intact and
+  // restorable in principle, and the only reason it cannot be applied is a
+  // limit WE chose. Degrading it to a fresh boot would discard recoverable
+  // state; it gets its own terminal branch at each restore site instead, and
+  // the one way past it is wake's explicit `forceFreshBoot` consent.
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
   return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
@@ -2583,7 +2565,10 @@ export class ElizaSandboxService {
             // fresh boot — the caller opted into THAT restore point, so a
             // failure here fails the provision (retryable by the wake job)
             // instead of booting empty (#15603 B6).
-            if (restoreOverride?.kind === "from-backup") throw error;
+            // Ordered before the from-backup rethrow: the gated wake ALWAYS
+            // passes `from-backup`, so checking that first would swallow the
+            // consent sentence on the one path where the consent mechanism
+            // exists.
             if (error instanceof SnapshotPayloadTooLargeError) {
               // Size refusal fails CLOSED even on an ordinary provision: the
               // chain is intact, only too large — booting empty would silently
@@ -2593,6 +2578,7 @@ export class ElizaSandboxService {
                 `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
               );
             }
+            if (restoreOverride?.kind === "from-backup") throw error;
             if (!isUnrecoverableSnapshotError(error)) throw error;
             await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             backup = undefined;
@@ -2621,17 +2607,18 @@ export class ElizaSandboxService {
                   backupId: backup?.id,
                 },
               );
+            } else if (error instanceof SnapshotPayloadTooLargeError) {
+              // Ordered before the from-backup rethrow for the same reason as
+              // the fetch branch: a gated wake would otherwise never see the
+              // consent sentence.
+              throw new Error(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+              );
             } else if (restoreOverride?.kind === "from-backup") {
               // Same no-silent-fresh-boot rule as the fetch above: an explicit
               // restore point that cannot be pushed fails the provision rather
               // than degrading (#15603 B6).
               throw error;
-            } else if (error instanceof SnapshotPayloadTooLargeError) {
-              // Same fail-closed rule as the fetch branch: an oversized state
-              // is refused, never silently traded for an empty boot.
-              throw new Error(
-                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
-              );
             } else if (isUnrecoverableSnapshotError(error)) {
               await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             } else {

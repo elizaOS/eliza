@@ -61,3 +61,29 @@ export function resolveRetainableAgentBackupBytes(
   }
   return Math.min(parsed, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
 }
+
+/**
+ * A restore payload larger than what the restore path accepts, refused locally
+ * instead of being sent to be rejected (#17172).
+ *
+ * It lives beside the limits themselves because BOTH sides that enforce them
+ * throw it — the service before pushing state, and backup-chain reconstruction
+ * while walking the chain — and a service-owned class would make the repository
+ * import its own consumer.
+ *
+ * Typed because the classification matters in both directions: retrying is
+ * pointless (the same bytes exceed the same limit every time), but the stored
+ * chain is intact and still decryptable, so this must never read as permanently
+ * lost and must never prune the chain.
+ */
+export class SnapshotPayloadTooLargeError extends Error {
+  readonly name = "SnapshotPayloadTooLargeError";
+  constructor(
+    readonly payloadBytes: number,
+    readonly limitBytes: number,
+  ) {
+    super(
+      `State restore refused: reconstructed payload of ${payloadBytes} bytes exceeds the v1 restorable limit of ${limitBytes} bytes`,
+    );
+  }
+}
