@@ -47,74 +47,8 @@ interface SignalPairingSessionLike {
   getSnapshot(): SignalPairingSnapshot;
 }
 
-type SignalPairingSessionConstructor = new (options: {
-  authDir: string;
-  accountId: string;
-  cliPath?: string;
-  onEvent: (event: SignalPairingEvent) => void;
-}) => SignalPairingSessionLike;
-
-/**
- * Pairing/auth collaborators used by the setup routes. Production binds the
- * real pairing-service exports once; tests replace this surface instead of
- * re-importing the route graph under `vi.resetModules()`.
- */
-export interface SignalSetupPairingCollaborators {
-  SignalPairingSession: SignalPairingSessionConstructor;
-  sanitizeAccountId: (raw: string) => string;
-  signalAuthExists: (workspaceDir: string, accountId: string) => boolean;
-  signalLogout: (workspaceDir: string, accountId: string) => void;
-}
-
-const defaultPairingCollaborators: SignalSetupPairingCollaborators = {
-  SignalPairingSession: SignalPairingSession as unknown as SignalPairingSessionConstructor,
-  sanitizeAccountId,
-  signalAuthExists,
-  signalLogout,
-};
-
-let pairingCollaborators: SignalSetupPairingCollaborators = {
-  ...defaultPairingCollaborators,
-};
-
-/** Counts how many times this module body has executed in the current process. */
-let signalSetupRoutesModuleEvaluationCount = 0;
-signalSetupRoutesModuleEvaluationCount += 1;
-
 const signalPairingSessions = new Map<string, SignalPairingSessionLike>();
 const signalPairingSnapshots = new Map<string, SignalPairingSnapshot>();
-
-/**
- * Test-only: swap pairing/auth collaborators without reloading the route module.
- * Pass `null` to restore production bindings.
- */
-export function __setSignalSetupPairingCollaboratorsForTests(
-  next: Partial<SignalSetupPairingCollaborators> | null
-): void {
-  if (next === null) {
-    pairingCollaborators = { ...defaultPairingCollaborators };
-    return;
-  }
-  pairingCollaborators = { ...pairingCollaborators, ...next };
-}
-
-/** Test-only: stop active pairing sessions and clear process-local route maps. */
-export function __resetSignalSetupRouteStateForTests(): void {
-  for (const session of signalPairingSessions.values()) {
-    try {
-      session.stop();
-    } catch {
-      // Isolation helper — ignore stop failures from partially constructed fakes.
-    }
-  }
-  signalPairingSessions.clear();
-  signalPairingSnapshots.clear();
-}
-
-/** Test-only: prove the route module body is not re-evaluated between cases. */
-export function __getSignalSetupRoutesModuleEvaluationCountForTests(): number {
-  return signalSetupRoutesModuleEvaluationCount;
-}
 
 const MAX_PAIRING_SESSIONS = 10;
 const TERMINAL_SIGNAL_PAIRING_STATUSES = new Set<SignalPairingStatus>([
@@ -236,9 +170,7 @@ function resolveServiceConnected(runtime: IAgentRuntime): boolean {
 }
 
 function extractAccountId(value: unknown): string {
-  return pairingCollaborators.sanitizeAccountId(
-    typeof value === "string" && value.trim() ? value.trim() : "default"
-  );
+  return sanitizeAccountId(typeof value === "string" && value.trim() ? value.trim() : "default");
 }
 
 // ── GET /api/setup/signal/status ────────────────────────────────────────
@@ -265,7 +197,7 @@ async function handleStatus(
 
   const session = signalPairingSessions.get(accountId);
   const previousSnapshot = signalPairingSnapshots.get(accountId);
-  const authExists = pairingCollaborators.signalAuthExists(workspaceDir, accountId);
+  const authExists = signalAuthExists(workspaceDir, accountId);
   const serviceConnected = resolveServiceConnected(runtime);
 
   res
@@ -322,7 +254,7 @@ async function handleStart(
       : undefined;
 
   let session: SignalPairingSessionLike;
-  session = new pairingCollaborators.SignalPairingSession({
+  session = new SignalPairingSession({
     authDir,
     accountId,
     cliPath: configuredCliPath,
@@ -438,7 +370,7 @@ async function handleCancel(
   const workspaceDir = setupService?.getWorkspaceDir() ?? "";
 
   try {
-    pairingCollaborators.signalLogout(workspaceDir, accountId);
+    signalLogout(workspaceDir, accountId);
   } catch (err) {
     res
       .status(500)
@@ -530,7 +462,7 @@ export function applySignalQrOverride(
   }[],
   workspaceDir: string
 ): void {
-  if (pairingCollaborators.signalAuthExists(workspaceDir, "default")) {
+  if (signalAuthExists(workspaceDir, "default")) {
     const sigPlugin = plugins.find((plugin) => plugin.id === "signal");
     if (sigPlugin) {
       sigPlugin.validationErrors = [];
