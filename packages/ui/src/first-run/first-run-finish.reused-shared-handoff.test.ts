@@ -121,7 +121,7 @@ function ports(): FirstRunFinishPorts {
   return {
     uiLanguage: "en",
     elizaCloudConnected: true,
-    handleCloudLogin: vi.fn(async () => {}),
+    handleInteractiveCloudLogin: vi.fn(async () => {}),
     setRuntimeState: vi.fn(),
     setTab: vi.fn(),
     completeFirstRun: vi.fn(),
@@ -356,10 +356,8 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       ],
     });
     mockSelection(false, { bridgeUrl: "https://cad3c071.elizacloud.ai" });
-    const authWindow = { close: vi.fn() } as unknown as Window;
     const p = ports();
-    p.preOpenWindow = () => authWindow;
-    p.handleCloudLogin = vi.fn(async () => {
+    p.handleInteractiveCloudLogin = vi.fn(async () => {
       window.localStorage.setItem(
         "steward_session_token",
         "fresh-client-token",
@@ -368,7 +366,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
 
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
 
-    expect(p.handleCloudLogin).toHaveBeenCalledWith(authWindow, {
+    expect(p.handleInteractiveCloudLogin).toHaveBeenCalledWith({
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("done");
@@ -384,7 +382,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
 
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
 
-    expect(p.handleCloudLogin).toHaveBeenCalledWith(null, {
+    expect(p.handleInteractiveCloudLogin).toHaveBeenCalledWith({
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("needs-cloud-login");

@@ -51,19 +51,19 @@ function CloudConnectorsUpsell(): React.JSX.Element {
   const {
     elizaCloudConnected,
     elizaCloudLoginBusy,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudLoginBusy: s.elizaCloudLoginBusy,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     setActionNotice: s.setActionNotice,
     t: s.t,
   }));
 
   const handleConnect = useCallback(() => {
-    void handleCloudLogin(preOpenCloudLoginWindow()).catch((error) => {
+    void handleInteractiveCloudLogin().catch((error) => {
       setActionNotice(
         error instanceof Error
           ? error.message
@@ -74,7 +74,7 @@ function CloudConnectorsUpsell(): React.JSX.Element {
         5000,
       );
     });
-  }, [handleCloudLogin, setActionNotice, t]);
+  }, [handleInteractiveCloudLogin, setActionNotice, t]);
 
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: "cloud-connectors-connect-cloud",

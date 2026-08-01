@@ -110,6 +110,7 @@ export function ConfigPageView({
     walletApiKeySaving,
     handleWalletApiKeySave,
     handleCloudLogin,
+    handleInteractiveCloudLogin,
   } = useAppSelectorShallow((s) => ({
     t: s.t,
     elizaCloudConnected: s.elizaCloudConnected,
@@ -119,6 +120,7 @@ export function ConfigPageView({
     walletApiKeySaving: s.walletApiKeySaving,
     handleWalletApiKeySave: s.handleWalletApiKeySave,
     handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
 
   const [secretsOpen, setSecretsOpen] = useState(false);
@@ -317,7 +319,7 @@ export function ConfigPageView({
   const cloudStatusProps = {
     connected: elizaCloudConnected,
     loginBusy: elizaCloudLoginBusy,
-    onLogin: () => void handleCloudLogin(preOpenCloudLoginWindow()),
+    onLogin: () => void handleInteractiveCloudLogin(),
   };
 
   const legacyRpcChains = walletConfig?.legacyCustomChains ?? [];
@@ -361,7 +363,7 @@ export function ConfigPageView({
     }),
     group: "rpc-config",
     description: "Sign in to Eliza Cloud to use managed RPC",
-    onActivate: () => void handleCloudLogin(preOpenCloudLoginWindow()),
+    onActivate: () => void handleInteractiveCloudLogin(),
   });
   const saveEl = useAgentElement<HTMLButtonElement>({
     id: "wallet-rpc-save",
@@ -579,9 +581,7 @@ export function ConfigPageView({
                   size="sm"
                   className="text-xs font-bold"
                   {...cloudConnectEl.agentProps}
-                  onClick={() =>
-                    void handleCloudLogin(preOpenCloudLoginWindow())
-                  }
+                  onClick={() => void handleInteractiveCloudLogin()}
                   disabled={elizaCloudLoginBusy}
                 >
                   {elizaCloudLoginBusy

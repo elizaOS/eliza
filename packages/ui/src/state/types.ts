@@ -920,6 +920,13 @@ export interface AppActions {
     prePoppedWindow?: Window | null,
     options?: CloudLoginOptions,
   ) => Promise<void>;
+  /**
+   * Interactive-only Cloud login entry point. Pre-opens the named popup
+   * window itself, so interactive call sites cannot omit it (type-level
+   * contract, #17129). Use this for user-facing login buttons; keep
+   * `handleCloudLogin` for the deliberate same-tab boot-recovery path.
+   */
+  handleInteractiveCloudLogin: (options?: CloudLoginOptions) => Promise<void>;
   handleCloudDisconnect: (opts?: {
     skipConfirmation?: boolean;
   }) => Promise<void>;

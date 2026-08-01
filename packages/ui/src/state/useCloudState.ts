@@ -50,6 +50,7 @@ import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
   CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,
+  preOpenCloudLoginWindow,
   shouldUseSameTabCloudLogin,
 } from "./cloud-login-launch";
 import {
@@ -1189,6 +1190,25 @@ export function useCloudState({
     };
   }, []);
 
+  /**
+   * Interactive Cloud login entry point for user-facing buttons (Settings,
+   * dashboard, onboarding, connectors upsell). It pre-opens the named popup
+   * window itself, so an interactive call site CANNOT omit the popup — the
+   * defect class fixed in #17064 (an interactive caller forgetting the popup
+   * and silently choosing document-destroying same-tab navigation on hosted
+   * desktop) is unrepresentable through this entry point. Callers that
+   * deliberately need the same-tab recovery path (non-interactive boot
+   * recovery, use-boot-recovery-conductor) keep calling `handleCloudLogin`
+   * directly with no window — that path is named and deliberate there.
+   */
+  const handleInteractiveCloudLogin = useCallback(
+    (options?: CloudLoginOptions): Promise<void> => {
+      const prePoppedWindow = preOpenCloudLoginWindow();
+      return handleCloudLogin(prePoppedWindow, options);
+    },
+    [handleCloudLogin],
+  );
+
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
       const MAIN_CONFIRM_DISCONNECT_MS = 300_000;
@@ -1544,6 +1564,7 @@ export function useCloudState({
     // Callbacks
     pollCloudCredits,
     handleCloudLogin,
+    handleInteractiveCloudLogin,
     handleCloudDisconnect,
     handleCloudSignOut,
   };

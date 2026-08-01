@@ -75,7 +75,6 @@ import {
 import { APP_RESUME_EVENT } from "../events";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
-import { preOpenCloudLoginWindow } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
@@ -119,7 +118,8 @@ const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
 
 // Cloud-only greetings (#13377). The sign-in button reuses the runtime:cloud
 // action value on purpose: the tap IS the user gesture that launches the real
-// login flow (handleCloudLogin inside the provision flow — popup where one can
+// login flow (handleInteractiveCloudLogin inside the provision flow — popup
+// where one can
 // open, same-tab /login navigation where popups are blocked or hostile,
 // #15143). Keep this as one obvious CTA; the Cloud flow itself owns OAuth and
 // provisioning, so there is no second in-chat "Connect" step.
@@ -420,7 +420,7 @@ export function useFirstRunConductor(): void {
     firstRunName,
     completeFirstRun,
     elizaCloudConnected,
-    handleCloudLogin,
+    handleInteractiveCloudLogin,
     setTab,
     setState,
     setUiAccent,
@@ -430,7 +430,7 @@ export function useFirstRunConductor(): void {
     firstRunName: s.firstRunName,
     completeFirstRun: s.completeFirstRun,
     elizaCloudConnected: s.elizaCloudConnected,
-    handleCloudLogin: s.handleCloudLogin,
+    handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
     setTab: s.setTab,
     setState: s.setState,
     setUiAccent: s.setUiAccent,
@@ -598,8 +598,7 @@ export function useFirstRunConductor(): void {
     () => ({
       uiLanguage,
       elizaCloudConnected,
-      handleCloudLogin,
-      preOpenWindow: preOpenCloudLoginWindow,
+      handleInteractiveCloudLogin,
       setRuntimeState: (key, value) => {
         setState(key, value as never);
       },
@@ -630,7 +629,7 @@ export function useFirstRunConductor(): void {
     [
       uiLanguage,
       elizaCloudConnected,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
       setState,
       setTab,
       seedTutorial,
