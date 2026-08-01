@@ -3,7 +3,14 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -38,7 +45,7 @@ if (!pkgManagerAvailable) {
 	process.env.SKIP_REASON ||= "bun or npm required to verify scaffolds";
 }
 
-const noopRuntime = {} as IAgentRuntime;
+const noopRuntime = { getSetting: () => undefined } as unknown as IAgentRuntime;
 
 const PASS_TS = `
 export type Greeting = { hello: string };
@@ -179,6 +186,91 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 			expect(
 				result.checks.find((check) => check.kind === "build")?.passed,
 			).toBe(true);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"publishes the artifact produced by the passing build using the runtime setting",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-app-publish-"));
+			const publishRoot = mkdtempSync(
+				path.join(tmpdir(), "verify-app-publish-root-"),
+			);
+			writeMinimalTsProject(workdir, PASS_TS);
+			writeFileSync(
+				path.join(workdir, "build-shim.mjs"),
+				`import { mkdirSync, writeFileSync } from "node:fs"; mkdirSync("dist", { recursive: true }); writeFileSync("dist/index.html", "fresh-build"); process.stdout.write("build ok\\n");\n`,
+				"utf8",
+			);
+			const publishService = new AppVerificationService({
+				getSetting: (key: string) =>
+					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
+			} as unknown as IAgentRuntime);
+
+			const result = await publishService.verifyApp({
+				workdir,
+				appName: "fresh-app",
+				profile: "build",
+				runId: "int-app-publish",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "APP_CREATE_DONE",
+					appName: "fresh-app",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(result.checks.at(-1)).toEqual(
+				expect.objectContaining({ kind: "publish", passed: true }),
+			);
+			expect(
+				readFileSync(path.join(publishRoot, "fresh-app", "index.html"), "utf8"),
+			).toBe("fresh-build");
+			await publishService.cleanup();
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"does not publish a stale dist artifact when the fast profile did not build",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-app-fast-"));
+			const publishRoot = mkdtempSync(
+				path.join(tmpdir(), "verify-app-fast-root-"),
+			);
+			writeMinimalTsProject(workdir, PASS_TS);
+			mkdirSync(path.join(workdir, "dist"));
+			writeFileSync(
+				path.join(workdir, "dist", "index.html"),
+				"stale-build",
+				"utf8",
+			);
+			const publishService = new AppVerificationService({
+				getSetting: (key: string) =>
+					key === "APP_PUBLISH_DIR" ? publishRoot : undefined,
+			} as unknown as IAgentRuntime);
+
+			const result = await publishService.verifyApp({
+				workdir,
+				appName: "stale-app",
+				profile: "fast",
+				runId: "int-app-fast-no-publish",
+				packageManager: "npm",
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(result.checks.some((check) => check.kind === "publish")).toBe(
+				false,
+			);
+			expect(() =>
+				readFileSync(path.join(publishRoot, "stale-app", "index.html")),
+			).toThrow();
+			await publishService.cleanup();
 		},
 		120_000,
 	);

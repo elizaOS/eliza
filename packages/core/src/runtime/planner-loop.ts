@@ -3246,7 +3246,13 @@ function plannerToolOperationKey(toolCall: PlannerToolCall): string {
 	// completion proof) with the generic fallback, failing verifications whose
 	// checks had all passed.
 	const params = { ...(toolCall.params ?? {}) };
-	delete (params as Record<string, unknown>).description;
+	// SHELL defines description as an execution label; other tools may use the
+	// same field as the payload itself (for example TASKS_CREATE). Keeping this
+	// allow-list tool-specific prevents unrelated mutations from sharing failure
+	// authority merely because their schemas reuse a common field name.
+	if (toolCall.name.toUpperCase() === "SHELL") {
+		delete (params as Record<string, unknown>).description;
+	}
 	return `${toolCall.name.toUpperCase()}|${stableJsonStringify(params)}`;
 }
 
