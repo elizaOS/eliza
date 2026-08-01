@@ -2297,6 +2297,60 @@ describe("ChatOverlay", () => {
     }
   });
 
+  it("reanchors a bottom-pinned transcript during sheet resize without moving a reader in history", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    const callbacks = new Map<Element, ResizeObserverCallback[]>();
+    class TestResizeObserver {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        const targetCallbacks = callbacks.get(target) ?? [];
+        targetCallbacks.push(this.callback);
+        callbacks.set(target, targetCallbacks);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      render(<ChatOverlay controller={makeController()} />);
+      fireEvent.focus(screen.getByLabelText("message"));
+
+      const viewport = screen.getByTestId("chat-thread-scroll");
+      let clientHeight = 100;
+      Object.defineProperties(viewport, {
+        clientHeight: { configurable: true, get: () => clientHeight },
+        scrollHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 400, writable: true },
+      });
+      const resizeViewport = () => {
+        for (const callback of callbacks.get(viewport) ?? []) {
+          callback([], {} as ResizeObserver);
+        }
+      };
+
+      fireEvent.scroll(viewport);
+      clientHeight = 80;
+      resizeViewport();
+      expect(viewport.scrollTop).toBe(420);
+
+      viewport.scrollTop = 120;
+      fireEvent.scroll(viewport);
+      clientHeight = 60;
+      resizeViewport();
+      expect(viewport.scrollTop).toBe(120);
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          }),
+      );
+      expect(viewport.scrollTop).toBe(120);
+    } finally {
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
+    }
+  });
+
   it("returns to the live bottom when the user sends from history", async () => {
     const controller = makeController();
     const scrollTo = vi.fn();

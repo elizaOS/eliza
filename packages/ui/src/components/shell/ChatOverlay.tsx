@@ -297,6 +297,9 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+// Keep the synchronous resize anchor aligned with MessageScroller's own
+// definition of an end-pinned reader.
+const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
 // A landscape phone still needs room for the attach, mic, voice, and text
 // controls. The old 208px cap squeezed the editable field to ~46px and made a
 // rotation look like the composer had broken. Keep the corner treatment, but
@@ -2050,6 +2053,48 @@ export function ChatOverlay({
   // streamed-content growth. The ref remains local because search, keyboard
   // focus, topic jumps, and infinite-history prefetch address the same viewport.
   const threadRef = React.useRef<HTMLDivElement>(null);
+  // MessageScroller intentionally defers resize reconciliation to the next
+  // animation frame. That is correct for ordinary content growth, but the chat
+  // sheet changes this viewport's height on every drag frame: a bottom-pinned
+  // transcript would otherwise paint once at the old scrollTop, then jump when
+  // MessageScroller catches up. Preserve only an already-pinned reader in the
+  // ResizeObserver delivery phase; readers in history retain their exact place.
+  const threadPinnedToEndRef = React.useRef(!firstRunOpen);
+  const handleThreadScroll = React.useCallback(
+    (event: React.UIEvent<HTMLDivElement>) => {
+      const viewport = event.currentTarget;
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      threadPinnedToEndRef.current =
+        end - viewport.scrollTop <= MESSAGE_SCROLLER_END_THRESHOLD_PX;
+    },
+    [],
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a conversation change resets the keyed MessageScroller to its declared start/end policy.
+  React.useLayoutEffect(() => {
+    threadPinnedToEndRef.current = !firstRunOpen;
+  }, [activeConversationId, firstRunOpen]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeConversationId remounts the keyed viewport even while presentation stays true.
+  React.useLayoutEffect(() => {
+    const viewport = threadRef.current;
+    if (
+      !threadPresented ||
+      !viewport ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const preservePinnedEnd = () => {
+      if (!threadPinnedToEndRef.current) return;
+      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+      if (Math.abs(end - viewport.scrollTop) > 0.5) {
+        viewport.scrollTop = end;
+      }
+    };
+    preservePinnedEnd();
+    const observer = new ResizeObserver(preservePinnedEnd);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [activeConversationId, threadPresented]);
   const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
   // Focus the thread for keyboard scrolling when an opener requested it.
   // Deliberately NO dependency array: many requesters (drag settles, flick
@@ -5982,6 +6027,7 @@ export function ChatOverlay({
                   key={activeConversationId ?? "unbound"}
                   autoScroll={!firstRunOpen}
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
+                  scrollEdgeThreshold={MESSAGE_SCROLLER_END_THRESHOLD_PX}
                 >
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
                   <MessageScrollerSearchBridge
@@ -5998,6 +6044,7 @@ export function ChatOverlay({
                         data-testid="chat-thread-scroll"
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
+                        onScroll={handleThreadScroll}
                         aria-label="conversation history"
                         aria-hidden={
                           !sheetOpen || searchOpen ? true : undefined
