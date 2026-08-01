@@ -65,8 +65,8 @@ export function isRuntimePluginPackage(packageName: string): boolean {
   if (packageName.startsWith("plugin-")) return true;
   if (!packageName.startsWith("@")) return false;
 
-  const [, scopedName] = packageName.split("/");
-  return scopedName.startsWith("plugin-");
+  const [scope, scopedName] = packageName.split("/");
+  return scope === "@elizaos" && scopedName?.startsWith("plugin-") === true;
 }
 
 export function shouldBundleDiscoveredPackage(

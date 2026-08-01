@@ -46,7 +46,11 @@ import {
   shouldSkipPackagedDependency,
   visitFiles,
 } from "./copy-runtime-node-modules";
-import { discoverRequiredRuntimePackages } from "./runtime-package-manifest";
+import {
+  discoverRequiredRuntimePackages,
+  isRuntimePluginPackage,
+  shouldBundleDiscoveredPackage,
+} from "./runtime-package-manifest";
 
 let tmpDir: string;
 const workspaceFixtureDirs: string[] = [];
@@ -85,6 +89,23 @@ afterEach(() => {
   for (const dir of workspaceFixtureDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe("runtime plugin classification", () => {
+  it("limits scoped runtime plugins to the elizaOS namespace", () => {
+    expect(isRuntimePluginPackage("@elizaos/plugin-sql")).toBe(true);
+    expect(isRuntimePluginPackage("plugin-legacy-runtime")).toBe(true);
+    expect(isRuntimePluginPackage("@octokit/plugin-request-log")).toBe(false);
+    expect(isRuntimePluginPackage("@babel/plugin-transform-typescript")).toBe(
+      false,
+    );
+  });
+
+  it("keeps vendor packages named plugin-* in the transitive closure", () => {
+    expect(
+      shouldBundleDiscoveredPackage("@octokit/plugin-request-log", new Set()),
+    ).toBe(true);
+  });
 });
 
 describe("matchesRuntimeVariant", () => {
