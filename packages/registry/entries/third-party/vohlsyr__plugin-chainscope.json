@@ -4,6 +4,6 @@
   "kind": "plugin",
   "description": "Multi-chain wallet and transaction intelligence with OFAC sanctions screening via ChainScope, paid per call in USDC on Base through x402.",
   "homepage": "https://chainsscope.duckdns.org",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "tags": ["x402", "blockchain", "wallet", "multi-chain", "payments"]
 }

@@ -4,6 +4,6 @@
   "kind": "plugin",
   "description": "Prompt-injection scanning and clean webpage fetching for AI agents via TrustFetch, paid per call in USDC on Base through x402.",
   "homepage": "https://trustfetch.duckdns.org",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "tags": ["x402", "security", "prompt-injection", "web-fetch", "payments"]
 }
