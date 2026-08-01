@@ -835,6 +835,15 @@ function SheetGrabber({
           onClose();
         }
       }}
+      // Opening the sheet moves this handle before Chromium emits the touch
+      // gesture's compatibility click. Without suppressing that native follow-
+      // up, the click re-hit-tests onto the composer now underneath the release
+      // coordinate and focuses it; the next handle tap then dismisses the
+      // keyboard instead of closing the sheet. Pointer events remain the sole
+      // touch authority, matching PillHandle's moving-target contract below.
+      onTouchEnd={(e) => {
+        if (e.cancelable) e.preventDefault();
+      }}
       {...binding}
       className={cn(
         "appearance-none border-0 bg-transparent text-left",
@@ -6175,11 +6184,22 @@ export function ChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Pending image attachments + any read error, just above the input. */}
+            {/* Pending attachments share the sheet's pull binding so tile and
+                gap pixels remain one continuous drag surface. Their remove
+                controls sit below the grabber's narrow top hit band and stop
+                the pointerdown from seeding a drag, preserving an independent
+                44px-class target for each file. */}
             {hasImages || imageError ? (
-              <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
+              <div
+                data-testid="chat-pending-attachments"
+                className="pointer-events-none relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2"
+              >
                 {hasImages ? (
-                  <div className="flex flex-wrap gap-2">
+                  <div
+                    data-testid="chat-pending-attachment-list"
+                    {...pullBinding}
+                    className="pointer-events-auto flex touch-none flex-wrap gap-2"
+                  >
                     {pendingImages.map((img, i) => {
                       const kind = chatUploadKind(img.mimeType);
                       const removeButton = (
@@ -6187,11 +6207,13 @@ export function ChatOverlay({
                           variant="ghost"
                           size="icon-sm"
                           aria-label={`remove ${img.name}`}
+                          onPointerDown={(event) => event.stopPropagation()}
                           onClick={() => removeImage(i)}
                           // Small visual disc, but a 44px-class hit zone via the
                           // invisible `before` overlay so it's thumb-tappable
-                          // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
+                          // without crowding the tile. Bottom placement keeps
+                          // that hit zone clear of the grabber above the sheet.
+                          className="pointer-events-auto absolute -bottom-1.5 -right-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
                         >
                           ×
                         </Button>
