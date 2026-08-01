@@ -533,7 +533,7 @@ export const memoryAction: Action = {
   descriptionCompressed:
     "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
   routingHint:
-    "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY; do NOT use for open-web lookups -> WEB_SEARCH, for reading messages already in a channel -> MESSAGE (action=search), or for the skill catalog -> SKILL",
+    "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
