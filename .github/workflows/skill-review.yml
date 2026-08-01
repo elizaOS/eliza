@@ -9,48 +9,212 @@ on:
     types: [opened, ready_for_review, synchronize, reopened]
     paths: ['**/SKILL.md']
 
-# Default to least privilege. Override per-job where needed.
+# The default branch owns this workflow and validator. Pull-request skill blobs
+# are materialized as bounded data only: no candidate code is checked out or
+# executed, and the job has no secrets, writes, model, cache, or persistent host.
 permissions:
   contents: read
 
 jobs:
   review:
     if: github.event.pull_request.draft != true
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
-    permissions:
-      pull-requests: write
-      contents: read
-      issues: read
-      id-token: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Checkout trusted validator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 1
-      # Don't fail the workflow when the Anthropic API is unavailable
-      # (low credit balance, rate limit, transient outage). The bot review
-      # is best-effort; a missing review must not block CI.
-      - continue-on-error: true
-        uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: packages/skills/skills/skill-creator/scripts/quick_validate.py
+          sparse-checkout-cone-mode: false
+          path: trusted
+
+      - name: Fetch exact candidate objects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          trusted_sha="$(git -C trusted rev-parse HEAD)"
+          if [ "$trusted_sha" != "$BASE_SHA" ]; then
+            echo "::error::Trusted validator checkout $trusted_sha does not match PR base $BASE_SHA."
+            exit 1
+          fi
+          if [ "$BASE_REPOSITORY" != "$GITHUB_REPOSITORY" ] ||
+             ! [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+             ! [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] ||
+             ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Pull-request event omitted an exact repository, revision, or number."
+            exit 1
+          fi
+          git -C trusted fetch --force --no-tags --depth=1 origin \
+            "refs/pull/${PR_NUMBER}/head:refs/remotes/origin/skill-review-head"
+          candidate_sha="$(git -C trusted rev-parse refs/remotes/origin/skill-review-head)"
+          if [ "$candidate_sha" != "$HEAD_SHA" ]; then
+            echo "::error::Fetched pull-request head $candidate_sha does not match event head $HEAD_SHA."
+            exit 1
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          track_progress: true
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+          python-version: "3.13"
 
-            Review only the changed SKILL.md files in this pull request.
+      - name: Install pinned validator dependency
+        run: |
+          printf '%s\n' \
+            'PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6' \
+            > "$RUNNER_TEMP/skill-validation-requirements.txt"
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --requirement "$RUNNER_TEMP/skill-validation-requirements.txt"
 
-            Focus on:
-            - missing prerequisites or unsupported assumptions
-            - unsafe or over-broad tool guidance
-            - conflicting or duplicated instructions
-            - steps that do not match repo workflow
-            - vague prompts that will cause inconsistent agent behavior
+      - name: Validate every changed skill
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python - "$BASE_SHA" "$HEAD_SHA" "$RUNNER_TEMP/skill-review-data" <<'PY'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import re
+          import subprocess
+          import sys
+          import unicodedata
 
-            Check existing review discussion first and avoid repeating resolved points.
-            Leave inline comments only for actionable problems. Skip praise and non-actionable notes.
-          allowed_bots: "cursor"
-          claude_args: |
-            --model claude-sonnet-4-6
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"
+          base, head, materialized_root = sys.argv[1:]
+          maximum_files = 64
+          maximum_file_bytes = 1_048_576
+          maximum_total_bytes = 4_194_304
+          maximum_path_bytes = 1_024
+          full_sha = re.compile(rb"[0-9a-f]{40}")
+
+          def git(*arguments, binary=False):
+              result = subprocess.run(
+                  ["git", "-C", "trusted", *arguments],
+                  check=True,
+                  capture_output=True,
+              )
+              return result.stdout if binary else result.stdout.decode("utf-8", "strict")
+
+          changed = git(
+              "diff",
+              "--name-only",
+              "--diff-filter=ACMRT",
+              "-z",
+              base,
+              head,
+              "--",
+              ":(glob)**/SKILL.md",
+              binary=True,
+          ).split(b"\0")
+          changed = [path for path in changed if path]
+          if len(changed) > maximum_files:
+              raise ValueError(
+                  f"changed SKILL.md count exceeds the {maximum_files}-file validation bound"
+              )
+          if not changed:
+              print(
+                  "No added, copied, modified, renamed, or type-changed SKILL.md remains at the PR head; deleted skills have no document to validate."
+              )
+              raise SystemExit(0)
+
+          validator_path = Path(
+              "trusted/packages/skills/skills/skill-creator/scripts/quick_validate.py"
+          ).resolve()
+          specification = importlib.util.spec_from_file_location(
+              "trusted_skill_validator", validator_path
+          )
+          if specification is None or specification.loader is None:
+              raise RuntimeError("trusted skill validator could not be loaded")
+          validator = importlib.util.module_from_spec(specification)
+          specification.loader.exec_module(validator)
+
+          root = Path(materialized_root)
+          root.mkdir(mode=0o700)
+          total_bytes = 0
+          failures = []
+          for index, encoded_path in enumerate(changed):
+              path = encoded_path.decode("utf-8", "strict")
+              logical_path = PurePosixPath(path)
+              if (
+                  logical_path.is_absolute()
+                  or logical_path.as_posix() != path
+                  or logical_path.name != "SKILL.md"
+                  or any(part in ("", ".", "..") for part in logical_path.parts)
+                  or len(encoded_path) > maximum_path_bytes
+                  or any(ord(character) < 32 or ord(character) == 127 for character in path)
+                  or unicodedata.normalize("NFC", path) != path
+              ):
+                  raise ValueError(f"changed skill path is not canonical: {path!r}")
+
+              listing = git(
+                  "--literal-pathspecs",
+                  "ls-tree",
+                  "-z",
+                  head,
+                  "--",
+                  path,
+                  binary=True,
+              )
+              records = [record for record in listing.split(b"\0") if record]
+              if len(records) != 1 or b"\t" not in records[0]:
+                  raise ValueError(f"changed skill has no exact tree record: {path!r}")
+              metadata, listed_path = records[0].split(b"\t", 1)
+              fields = metadata.split(b" ")
+              if (
+                  listed_path != encoded_path
+                  or len(fields) != 3
+                  or fields[0] != b"100644"
+                  or fields[1] != b"blob"
+                  or full_sha.fullmatch(fields[2]) is None
+              ):
+                  raise ValueError(
+                      f"changed skill must be one non-executable regular Git blob: {path!r}"
+                  )
+              object_id = fields[2].decode("ascii")
+              size_text = git("cat-file", "-s", object_id).strip()
+              if not size_text.isascii() or not size_text.isdigit():
+                  raise ValueError(f"changed skill blob has an invalid size: {path!r}")
+              size = int(size_text)
+              if size > maximum_file_bytes:
+                  raise ValueError(
+                      f"changed skill exceeds the {maximum_file_bytes}-byte file bound: {path!r}"
+                  )
+              total_bytes += size
+              if total_bytes > maximum_total_bytes:
+                  raise ValueError(
+                      f"changed skills exceed the {maximum_total_bytes}-byte aggregate bound"
+                  )
+              contents = git("cat-file", "blob", object_id, binary=True)
+              if len(contents) != size:
+                  raise ValueError(f"changed skill blob size changed: {path!r}")
+
+              skill_directory = root / f"skill-{index:04d}"
+              skill_directory.mkdir(mode=0o700)
+              skill_path = skill_directory / "SKILL.md"
+              descriptor = os.open(
+                  skill_path,
+                  os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                  0o600,
+              )
+              with os.fdopen(descriptor, "wb") as destination:
+                  destination.write(contents)
+              valid, message = validator.validate_skill(skill_directory)
+              print(f"[SkillReview] {json.dumps(path)}: {json.dumps(message)}")
+              if not valid:
+                  failures.append(path)
+
+          if failures:
+              raise ValueError(
+                  "skill validation failed for "
+                  + ", ".join(json.dumps(path) for path in failures)
+              )
+          PY
