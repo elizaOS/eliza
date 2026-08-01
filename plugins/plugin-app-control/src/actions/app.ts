@@ -359,11 +359,13 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 				// failed-tool fallback) rather than the mode-clarify, which invites
 				// the planner to improvise.
 				if (DELETE_VERBS.test(text) && APP_NOUN.test(text)) {
+					const bulkDelete = /\b(?:all|every)\b/i.test(text);
 					return {
 						success: false,
 						text: "APP has no delete/uninstall mode. Per-app deletion goes through VIEWS action=delete, which asks the user to confirm and enforces protected-app checks; bulk-deleting all apps is not supported. Do not retry APP for this — state it to the user in voice.",
-						userFacingText:
-							"I can't bulk-delete apps. Deletion is per-app with a confirmation — tell me which app and I'll run it through the delete flow.",
+						userFacingText: bulkDelete
+							? "I can't bulk-delete apps. App removal is one app at a time and requires confirmation through the delete flow."
+							: "I can't uninstall apps through APP. App removal is handled one app at a time through the confirmed delete flow.",
 						data: { actionName: "APP", error: "DELETE_UNSUPPORTED" },
 					};
 				}

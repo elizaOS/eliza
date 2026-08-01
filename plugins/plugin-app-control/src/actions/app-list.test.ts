@@ -6,6 +6,7 @@
  * caller aborts and malformed payloads still fail fast.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { AppControlClient } from "../client/api.js";
 import type { AppRunSummary, InstalledAppInfo } from "../types.js";
@@ -48,7 +49,9 @@ describe("APP list transport-failure translation", () => {
 	it("returns a typed failure owning user-facing prose when the read deadline elapses", async () => {
 		const client = clientWith({
 			listInstalledApps: async () => {
-				throw new DOMException("The operation timed out.", "TimeoutError");
+				throw new ElizaError("Loopback request timed out", {
+					code: "LOOPBACK_TIMEOUT",
+				});
 			},
 		});
 
@@ -69,7 +72,9 @@ describe("APP list transport-failure translation", () => {
 	it("returns a typed unreachable failure when fetch cannot connect", async () => {
 		const client = clientWith({
 			listAppRuns: async () => {
-				throw new TypeError("fetch failed");
+				throw new ElizaError("Loopback service is unreachable", {
+					code: "LOOPBACK_UNREACHABLE",
+				});
 			},
 		});
 
@@ -79,6 +84,18 @@ describe("APP list transport-failure translation", () => {
 		expect(result.userFacingText).toContain("isn't reachable");
 		expect(result.data).toEqual(
 			expect.objectContaining({ error: "LOOPBACK_UNREACHABLE" }),
+		);
+	});
+
+	it("does not misclassify an unrelated TypeError as a transport failure", async () => {
+		const client = clientWith({
+			listAppRuns: async () => {
+				throw new TypeError("programmer invariant failed");
+			},
+		});
+
+		await expect(runList({ client })).rejects.toThrow(
+			"programmer invariant failed",
 		);
 	});
 

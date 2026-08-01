@@ -5,7 +5,7 @@
  * plus structured `data` for clients.
  */
 
-import type { ActionResult } from "@elizaos/core";
+import { type ActionResult, isElizaError } from "@elizaos/core";
 import type { AppControlClient } from "../client/api.js";
 import type { AppRunSummary, InstalledAppInfo } from "../types.js";
 
@@ -71,12 +71,9 @@ export interface RunListInput {
 function transportFailureCode(
 	err: unknown,
 ): "LOOPBACK_TIMEOUT" | "LOOPBACK_UNREACHABLE" | null {
-	if (err instanceof Error && err.name === "TimeoutError") {
-		return "LOOPBACK_TIMEOUT";
-	}
-	// fetch signals a connection-level failure (server not listening, DNS,
-	// socket reset) as TypeError.
-	if (err instanceof TypeError) return "LOOPBACK_UNREACHABLE";
+	if (!isElizaError(err)) return null;
+	if (err.code === "LOOPBACK_TIMEOUT") return "LOOPBACK_TIMEOUT";
+	if (err.code === "LOOPBACK_UNREACHABLE") return "LOOPBACK_UNREACHABLE";
 	return null;
 }
 
