@@ -53,7 +53,7 @@ on:
       - "WINDOWS.md"
       - ".github/workflows/windows-ci.yml"
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - "package.json"
       - "bun.lock"

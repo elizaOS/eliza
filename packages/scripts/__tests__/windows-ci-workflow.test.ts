@@ -77,6 +77,12 @@ function extractMatrixCommands(): string[] {
 }
 
 describe("Windows CI workflow", () => {
+  test("gates pull requests into both protected development branches", () => {
+    expect(workflowText).toContain(
+      "  pull_request:\n    branches: [main, develop]\n",
+    );
+  });
+
   test("keeps the shard lane set intentional", () => {
     expect(extractMatrixLanes()).toEqual(EXPECTED_LANES);
   });

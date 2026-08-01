@@ -68,6 +68,23 @@ async function wait(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+async function within<T>(promise: Promise<T>, milliseconds = 500): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`Timed out after ${milliseconds}ms`)),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 afterEach(() => {
   mock.restore();
 });
@@ -101,7 +118,11 @@ describe("execution-lease heartbeat", () => {
   test("renews while execution is active and stops after success", async () => {
     const job = claimedJob();
     stubLaneClaim(job);
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("renewed");
+    const secondRenewal = Promise.withResolvers<void>();
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockImplementation(async () => {
+      if (renew.mock.calls.length >= 2) secondRenewal.resolve();
+      return "renewed";
+    });
     const executionStarted = Promise.withResolvers<void>();
     const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
@@ -115,17 +136,14 @@ describe("execution-lease heartbeat", () => {
 
     const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
     await executionStarted.promise;
-    const renewalDeadline = Date.now() + 2_000;
+    let result: Awaited<typeof processing>;
     try {
-      while (renew.mock.calls.length < 2 && Date.now() < renewalDeadline) {
-        await wait(10);
-      }
-      expect(renew.mock.calls.length).toBeGreaterThanOrEqual(2);
+      await within(secondRenewal.promise);
     } finally {
       releaseExecution.resolve();
+      result = await processing;
     }
 
-    const result = await processing;
     const renewalsBeforeReturn = renew.mock.calls.length;
 
     expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
@@ -136,16 +154,31 @@ describe("execution-lease heartbeat", () => {
   test("stops quietly when the transaction observes normal settlement", async () => {
     const job = claimedJob();
     stubLaneClaim(job);
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("settled");
+    const renewalStarted = Promise.withResolvers<void>();
+    const releaseRenewal = Promise.withResolvers<void>();
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockImplementation(async () => {
+      renewalStarted.resolve();
+      await releaseRenewal.promise;
+      return "settled";
+    });
     const { logger } = await import("../utils/logger");
     const warn = spyOn(logger, "warn");
+    const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
-      executeJob: async () => wait(90),
+      executeJob: async () => releaseExecution.promise,
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
     });
 
-    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    try {
+      await within(renewalStarted.promise);
+    } finally {
+      releaseRenewal.resolve();
+      await wait(0);
+      releaseExecution.resolve();
+      await processing;
+    }
 
     expect(renew.mock.calls).toHaveLength(1);
     expect(
@@ -156,16 +189,31 @@ describe("execution-lease heartbeat", () => {
   test("warns exactly once when the transaction observes ownership loss", async () => {
     const job = claimedJob();
     stubLaneClaim(job);
-    const renew = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
+    const renewalStarted = Promise.withResolvers<void>();
+    const releaseRenewal = Promise.withResolvers<void>();
+    const renew = spyOn(jobsRepository, "renewExecutionLease").mockImplementation(async () => {
+      renewalStarted.resolve();
+      await releaseRenewal.promise;
+      return "lost";
+    });
     const { logger } = await import("../utils/logger");
     const warn = spyOn(logger, "warn");
+    const releaseExecution = Promise.withResolvers<void>();
     const service = new ProvisioningJobService({
-      executeJob: async () => wait(90),
+      executeJob: async () => releaseExecution.promise,
       executionLeaseMs: 60_000,
       executionLeaseHeartbeatMs: 20,
     });
 
-    await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    const processing = service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
+    try {
+      await within(renewalStarted.promise);
+    } finally {
+      releaseRenewal.resolve();
+      await wait(0);
+      releaseExecution.resolve();
+      await processing;
+    }
 
     expect(renew.mock.calls).toHaveLength(1);
     expect(

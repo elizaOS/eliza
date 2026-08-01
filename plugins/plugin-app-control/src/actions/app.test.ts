@@ -40,7 +40,7 @@ describe("APP action role policy", () => {
 		expect(result).toEqual(
 			expect.objectContaining({
 				success: false,
-				text: expect.stringContaining("only my owner"),
+				text: expect.stringContaining("only the owner"),
 			}),
 		);
 		expect(client.listInstalledApps).not.toHaveBeenCalled();
