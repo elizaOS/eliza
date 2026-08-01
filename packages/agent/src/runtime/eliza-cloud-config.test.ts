@@ -13,8 +13,16 @@ import {
   applyCloudConfigToEnv,
   cloudApiKeyFingerprint,
   ensureProvisionedCloudContainerConfig,
+  resolveConfigEnvVaultRefsForBoot,
+  resolveEmbeddingProviderPluginName,
+  resolveRuntimeProviderName,
   shouldStartElizaCloudThinClient,
 } from "./eliza.ts";
+import {
+  _resetAgentHostBridge,
+  defaultAgentHostBridge,
+  setAgentHostBridge,
+} from "./host-bridge.ts";
 import { collectPluginNames } from "./plugin-collector.ts";
 
 // applyCloudConfigToEnv keeps inference cloud-routed for provisioned containers,
@@ -60,6 +68,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  _resetAgentHostBridge();
   vi.restoreAllMocks();
   for (const k of ENV_KEYS) {
     const v = savedEnv[k];
@@ -494,6 +503,34 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
   });
 
+  it("disables cloud embeddings when canonical routing omits the capability", () => {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
+    const config: ElizaConfig = {
+      cloud: { enabled: true, apiKey: "cloud-test" },
+      serviceRouting: {
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+  });
+
+  it("lets an explicit cloud embedding route override a stale false flag", () => {
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+    const config: ElizaConfig = {
+      cloud: { enabled: true, apiKey: "cloud-test" },
+      serviceRouting: {
+        embeddings: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("true");
+  });
+
   it("keeps an env-provided key when config carries none but cloud services are selected (#10819)", () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "env-key";
     const config: ElizaConfig = {
@@ -594,6 +631,22 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
   });
 
+  it("never projects unresolved vault references as cloud credentials", () => {
+    const config: ElizaConfig = {
+      cloud: { enabled: true, apiKey: "vault://ELIZAOS_CLOUD_API_KEY" },
+      serviceRouting: {
+        media: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+      env: {
+        vars: { ELIZAOS_CLOUD_API_KEY: "vault://ELIZAOS_CLOUD_API_KEY" },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+  });
+
   it("still clears a stale env key when cloud is disabled with no service selected", () => {
     // BYOK / disconnected hygiene must survive the capability-only change:
     // cloud present-but-disabled and nothing routed → full env cleanse, so a
@@ -626,6 +679,65 @@ describe("provisioned cloud container topology (#9887)", () => {
 
     process.env.ELIZA_CLOUD_PROVISIONED = "1";
     expect(shouldStartElizaCloudThinClient(config)).toBe(false);
+  });
+});
+
+describe("canonical route to runtime provider identity", () => {
+  it("maps Cerebras through the OpenAI plugin's runtime registration name", () => {
+    const config = {
+      serviceRouting: {
+        llmText: { backend: "cerebras", transport: "direct" },
+        embeddings: { backend: "openai", transport: "direct" },
+      },
+    } as ElizaConfig;
+    const resolved = [
+      {
+        name: "@elizaos/plugin-openai",
+        plugin: { name: "openai", description: "test" },
+      },
+    ];
+
+    expect(resolveRuntimeProviderName(resolved, "@elizaos/plugin-openai")).toBe(
+      "openai",
+    );
+    expect(resolveEmbeddingProviderPluginName(config)).toBe(
+      "@elizaos/plugin-openai",
+    );
+  });
+
+  it("resolves vault-backed cloud credentials before the cloud projection is reapplied", async () => {
+    const config = {
+      cloud: {
+        enabled: true,
+        apiKey: "vault://providers.elizacloud.api-key",
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_API_KEY: "vault://providers.elizacloud.api-key",
+        },
+      },
+    } as ElizaConfig;
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      sharedVault: () => ({
+        ...defaultAgentHostBridge.sharedVault(),
+        has: (key: string) =>
+          Promise.resolve(key === "providers.elizacloud.api-key"),
+        get: (key: string) =>
+          Promise.resolve(
+            key === "providers.elizacloud.api-key" ? "resolved-cloud-key" : "",
+          ),
+      }),
+    });
+
+    applyCloudConfigToEnv(config);
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
+
+    await resolveConfigEnvVaultRefsForBoot(config);
+    applyCloudConfigToEnv(config);
+
+    expect(config.env?.vars?.ELIZAOS_CLOUD_API_KEY).toBe("resolved-cloud-key");
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("resolved-cloud-key");
   });
 });
 
