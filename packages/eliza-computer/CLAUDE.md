@@ -28,12 +28,14 @@ canonical Contents API file set and immutable raw bytes with the archive.
 Working-tree provenance, extra files, and missing files fail closed. Local
 versions are immutable sibling directories behind an atomic
 relative symlink; a process-bound kernel lock survives interrupted commands
-without leaving a stale denial, updates require an ancestor relationship, retain the prior
-verified version, and rollback is explicit and locally plus remotely
-reverified. A canonical per-version authorization receipt preserves the
-candidate PR identity needed to verify a later squash-merge transition; it is
-not a substitute for rechecking all source bytes. Never weaken the fixed
-production GitHub origins, the concurrency lock, or the version/symlink
+without leaving a stale denial. Updates require an ancestor relationship and
+retain the prior verified version. Rollback is explicit: both active and target
+trees are byte-verified against GitHub, and the requested target is
+reauthorized against current GitHub state immediately before activation. A
+canonical per-version authorization receipt preserves the entry-time candidate
+PR identity needed to verify a later squash-merge transition; it neither
+authorizes rollback nor replaces source-byte verification. Never weaken the
+fixed production GitHub origins, the concurrency lock, or the version/symlink
 invariants. Tests may inject only deterministic `file://` authorities through
 the generator's test option, never environment variables.
 

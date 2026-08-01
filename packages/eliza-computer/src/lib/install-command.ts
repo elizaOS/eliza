@@ -2,6 +2,8 @@
  * Generates the independently authenticated, resource-limited skill installer.
  * GitHub authorizes immutable source bytes while the site checksum detects
  * transport corruption; versioned local directories make activation atomic.
+ * Entry receipts preserve transition history but never replace live rollback
+ * authorization for the retained revision about to become active.
  */
 
 interface TestAuthorityOrigins {
@@ -945,12 +947,15 @@ def rollback():
     retained_path = os.path.join(versions_root, revision)
     if not os.path.lexists(retained_path):
         raise ValueError("requested rollback revision is not retained locally")
-    verify_local_version(retained_path, revision)
+    retained_files, _ = verify_local_version(retained_path, revision)
+    # Receipts preserve entry-time authority for forward transitions; every
+    # explicit rollback target must still pass mutable GitHub policy now.
+    authorize_revision(revision, retained_files)
     if revision == current_revision:
         print(f"{skill_name} is already verified at {revision}; no changes made.")
         return
     activate(revision)
-    print(f"Rolled back {skill_name} to locally retained verified revision {revision}.")
+    print(f"Rolled back {skill_name} to currently authorized retained revision {revision}.")
 
 
 def acquire_lock():

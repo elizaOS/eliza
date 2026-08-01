@@ -523,7 +523,7 @@ describe("authenticated skill installer lifecycle", () => {
     expect(behind.stderr).toContain("behind or divergent");
   }, 15_000);
 
-  it("allows a labeled candidate to transition to its squash-merged develop result", () => {
+  it("transitions a labeled candidate to its merged result without reviving it on rollback", () => {
     const root = freshRoot("candidate-merge");
     const installRoot = join(root, "install");
     const filesA = baseFiles("develop-before");
@@ -578,10 +578,165 @@ describe("authenticated skill installer lifecycle", () => {
       `.contribute-to-eliza-versions/${revisionD}`,
     );
     expect(existsSync(versionPath(installRoot, revisionC))).toBe(true);
+
+    const withdrawnRollback = run(
+      command(mergedArtifact, authority),
+      installRoot,
+      {
+        ELIZA_ARMY_SKILL_OPERATION: "rollback",
+        ELIZA_ARMY_SKILL_REVISION: revisionC,
+      },
+    );
+    expect(withdrawnRollback.status).not.toBe(0);
+    expect(withdrawnRollback.stderr).toContain(
+      "neither the current canonical develop skill",
+    );
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionD}`,
+    );
   });
 
   it("rolls back only to a retained, remotely reverified, unmodified revision", () => {
     const root = freshRoot("rollback");
+    const installRoot = join(root, "install");
+    const filesA = baseFiles("develop");
+    const filesC = baseFiles("candidate");
+    const artifactA = writeArtifact(root, revisionA, filesA);
+    const artifactC = writeArtifact(root, revisionC, filesC);
+    let authority = configureAuthority(root, {
+      developHead: revisionA,
+      revisions: { [revisionA]: { files: filesA } },
+    });
+    expect(run(command(artifactA, authority), installRoot).status).toBe(0);
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionA}...${revisionC}`]: aheadComparison(revisionA, revisionC),
+      },
+      developHead: revisionA,
+      revisions: {
+        [revisionA]: { files: filesA },
+        [revisionC]: {
+          files: filesC,
+          pulls: [candidatePull(revisionC)],
+        },
+      },
+      timelines: { 17424: freshCandidateTimeline(revisionC) },
+    });
+    expect(run(command(artifactC, authority), installRoot).status).toBe(0);
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionC}`,
+    );
+
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionC}...${revisionA}`]: {
+          ahead_by: 0,
+          base_commit: { sha: revisionC },
+          behind_by: 1,
+          merge_base_commit: { sha: revisionA },
+          status: "behind",
+        },
+      },
+      developHead: revisionA,
+      revisions: {
+        [revisionA]: { files: filesA },
+        [revisionC]: {
+          files: filesC,
+          pulls: [
+            candidatePull(revisionC, {
+              labels: [],
+              state: "closed",
+            }),
+          ],
+        },
+      },
+    });
+
+    const withdrawnCurrent = run(command(artifactC, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionC,
+    });
+    expect(withdrawnCurrent.status).not.toBe(0);
+    expect(withdrawnCurrent.stderr).toContain(
+      "neither the current canonical develop skill",
+    );
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionC}`,
+    );
+
+    const rollback = run(command(artifactC, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionA,
+    });
+    expect(rollback.status, rollback.stderr).toBe(0);
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionA}`,
+    );
+
+    const sameRevision = run(command(artifactC, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionA,
+    });
+    expect(sameRevision.status, sameRevision.stderr).toBe(0);
+    expect(sameRevision.stdout).toContain("no changes made");
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionA}`,
+    );
+
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionA}...${revisionC}`]: aheadComparison(revisionA, revisionC),
+      },
+      developHead: revisionA,
+      responseOverrides: {
+        "/repos/elizaOS/eliza/git/ref/heads/develop": {
+          object: { sha: revisionA, type: "commit" },
+          ref: "refs/heads/not-develop",
+        },
+      },
+      revisions: {
+        [revisionA]: { files: filesA },
+        [revisionC]: {
+          files: filesC,
+          pulls: [candidatePull(revisionC)],
+        },
+      },
+      timelines: { 17424: freshCandidateTimeline(revisionC) },
+    });
+    const malformedAuthority = run(command(artifactC, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionC,
+    });
+    expect(malformedAuthority.status).not.toBe(0);
+    expect(malformedAuthority.stderr).toContain("wrong identity");
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionA}`,
+    );
+
+    writeFileSync(
+      join(versionPath(installRoot, revisionC), "references", "revision.txt"),
+      "locally modified\n",
+    );
+    const modified = run(command(artifactC, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionC,
+    });
+    expect(modified.status).not.toBe(0);
+    expect(modified.stderr).toContain("differs from GitHub");
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionA}`,
+    );
+
+    const missing = run(command(artifactC, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionD,
+    });
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toContain("not retained locally");
+  });
+
+  it("rejects stale develop rollback until identical current bytes reauthorize it", () => {
+    const root = freshRoot("rollback-develop-history");
     const installRoot = join(root, "install");
     const filesA = baseFiles("revision-a");
     const filesB = baseFiles("revision-b");
@@ -592,6 +747,7 @@ describe("authenticated skill installer lifecycle", () => {
       revisions: { [revisionA]: { files: filesA } },
     });
     expect(run(command(artifactA, authority), installRoot).status).toBe(0);
+
     authority = configureAuthority(root, {
       comparisons: {
         [`${revisionA}...${revisionB}`]: aheadComparison(revisionA, revisionB),
@@ -604,35 +760,145 @@ describe("authenticated skill installer lifecycle", () => {
     });
     expect(run(command(artifactB, authority), installRoot).status).toBe(0);
 
-    const rollback = run(command(artifactB, authority), installRoot, {
+    const stale = run(command(artifactB, authority), installRoot, {
       ELIZA_ARMY_SKILL_OPERATION: "rollback",
       ELIZA_ARMY_SKILL_REVISION: revisionA,
     });
-    expect(rollback.status, rollback.stderr).toBe(0);
+    expect(stale.status).not.toBe(0);
+    expect(stale.stderr).toContain("canonical skill bytes changed");
     expect(currentLink(installRoot)).toBe(
-      `.contribute-to-eliza-versions/${revisionA}`,
+      `.contribute-to-eliza-versions/${revisionB}`,
     );
 
-    writeFileSync(
-      join(versionPath(installRoot, revisionB), "references", "revision.txt"),
-      "locally modified\n",
-    );
-    const modified = run(command(artifactB, authority), installRoot, {
-      ELIZA_ARMY_SKILL_OPERATION: "rollback",
-      ELIZA_ARMY_SKILL_REVISION: revisionB,
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionA}...${revisionD}`]: {
+          ahead_by: 2,
+          base_commit: { sha: revisionA },
+          behind_by: 0,
+          commits: [{ sha: revisionB }, { sha: revisionD }],
+          merge_base_commit: { sha: revisionA },
+          status: "ahead",
+          total_commits: 2,
+        },
+      },
+      developHead: revisionD,
+      revisions: {
+        [revisionA]: { files: filesA },
+        [revisionB]: { files: filesB },
+        [revisionD]: { files: filesA },
+      },
     });
-    expect(modified.status).not.toBe(0);
-    expect(modified.stderr).toContain("differs from GitHub");
+    const reauthorized = run(command(artifactB, authority), installRoot, {
+      ELIZA_ARMY_SKILL_OPERATION: "rollback",
+      ELIZA_ARMY_SKILL_REVISION: revisionA,
+    });
+    expect(reauthorized.status, reauthorized.stderr).toBe(0);
     expect(currentLink(installRoot)).toBe(
       `.contribute-to-eliza-versions/${revisionA}`,
     );
+  });
 
-    const missing = run(command(artifactB, authority), installRoot, {
+  it("reauthorizes a historical candidate receipt through byte-identical develop ancestry", () => {
+    const root = freshRoot("rollback-merged-candidate-ancestor");
+    const installRoot = join(root, "install");
+    const filesA = baseFiles("develop-before");
+    const filesC = baseFiles("candidate");
+    const filesD = baseFiles("develop-after-merge");
+    const artifactA = writeArtifact(root, revisionA, filesA);
+    const artifactC = writeArtifact(root, revisionC, filesC);
+    const artifactD = writeArtifact(root, revisionD, filesD);
+    let authority = configureAuthority(root, {
+      developHead: revisionA,
+      revisions: { [revisionA]: { files: filesA } },
+    });
+    expect(run(command(artifactA, authority), installRoot).status).toBe(0);
+
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionA}...${revisionC}`]: aheadComparison(revisionA, revisionC),
+      },
+      developHead: revisionA,
+      revisions: {
+        [revisionA]: { files: filesA },
+        [revisionC]: {
+          files: filesC,
+          pulls: [candidatePull(revisionC)],
+        },
+      },
+      timelines: { 17424: freshCandidateTimeline(revisionC) },
+    });
+    expect(run(command(artifactC, authority), installRoot).status).toBe(0);
+    const candidateReceipt = JSON.parse(
+      readFileSync(
+        join(
+          versionPath(installRoot, revisionC),
+          ".eliza-army-authorization.json",
+        ),
+        "utf8",
+      ),
+    );
+    expect(candidateReceipt.authorization.kind).toBe("candidate");
+
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionC}...${revisionD}`]: aheadComparison(revisionC, revisionD),
+      },
+      developHead: revisionD,
+      revisions: {
+        [revisionC]: {
+          files: filesC,
+          pulls: [
+            candidatePull(revisionC, {
+              labels: [],
+              merge_commit_sha: revisionD,
+              merged_at: "2026-07-31T12:00:00Z",
+              state: "closed",
+            }),
+          ],
+        },
+        [revisionD]: { files: filesD },
+      },
+    });
+    expect(run(command(artifactD, authority), installRoot).status).toBe(0);
+
+    authority = configureAuthority(root, {
+      comparisons: {
+        [`${revisionC}...${revisionB}`]: {
+          ahead_by: 2,
+          base_commit: { sha: revisionC },
+          behind_by: 0,
+          commits: [{ sha: revisionD }, { sha: revisionB }],
+          merge_base_commit: { sha: revisionC },
+          status: "ahead",
+          total_commits: 2,
+        },
+      },
+      developHead: revisionB,
+      revisions: {
+        [revisionB]: { files: filesC },
+        [revisionC]: {
+          files: filesC,
+          pulls: [
+            candidatePull(revisionC, {
+              labels: [],
+              merge_commit_sha: revisionD,
+              merged_at: "2026-07-31T12:00:00Z",
+              state: "closed",
+            }),
+          ],
+        },
+        [revisionD]: { files: filesD },
+      },
+    });
+    const rollback = run(command(artifactD, authority), installRoot, {
       ELIZA_ARMY_SKILL_OPERATION: "rollback",
       ELIZA_ARMY_SKILL_REVISION: revisionC,
     });
-    expect(missing.status).not.toBe(0);
-    expect(missing.stderr).toContain("not retained locally");
+    expect(rollback.status, rollback.stderr).toBe(0);
+    expect(currentLink(installRoot)).toBe(
+      `.contribute-to-eliza-versions/${revisionC}`,
+    );
   });
 
   it("rejects working-tree provenance and same-origin bytes that differ from GitHub", () => {

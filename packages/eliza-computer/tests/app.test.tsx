@@ -136,6 +136,11 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("tab", { name: "Codex" }));
     expect(screen.getByText(/SKILLS_ROOT=/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Verifies GitHub, installs atomically, and retains the prior version for rollback when authorized.",
+      ),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
