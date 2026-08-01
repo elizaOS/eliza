@@ -24,6 +24,7 @@ const MIGRATIONS_DIR = path.join(
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 const ADD_COLUMN_CREATED_AT = 1_785_384_000_000;
 const CATALOG_GUARD_CREATED_AT = 1_785_528_000_001;
+const HISTORICAL_DRIFT_CREATED_AT = 1_770_518_468_000;
 // Read-only production inspection showed these five historical entries absent
 // from the incrementally migrated ledger. Each timestamp moved backward under
 // the former max-timestamp runner, so the absence is legitimate deployed state.
@@ -89,6 +90,10 @@ async function seedAppliedPrefix(
   await client.query(`
     CREATE TABLE jobs (
       id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+    );
+    CREATE TABLE agent_sandboxes (
+      container_name text,
+      replacement_cleanup_container_name text
     );
     CREATE SCHEMA drizzle;
     CREATE TABLE drizzle.__drizzle_migrations (
@@ -184,7 +189,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain("pending migrations: 2");
+      expect(first.output).toContain("pending migrations: 3");
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -214,6 +219,30 @@ describe.skipIf(!ENABLED)(
       const preflight = await runScript(PREFLIGHT, database.url);
       expect(preflight.exitCode, preflight.output).toBe(0);
       expect(preflight.output).toContain("catalog and journal verified");
+      await database.client.end();
+    }, 30_000);
+
+    test("accepts historical production hash drift but enforces hashes from the checkpoint forward", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184);
+      await database.client.query(
+        "UPDATE drizzle.__drizzle_migrations SET hash = 'historical-drift' WHERE created_at = $1",
+        [HISTORICAL_DRIFT_CREATED_AT],
+      );
+
+      const migrated = await runScript(MIGRATOR, database.url);
+      expect(migrated.exitCode, migrated.output).toBe(0);
+      expect(migrated.output).toContain("pending migrations: 3");
+
+      await database.client.query(
+        "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
+        [CATALOG_GUARD_CREATED_AT],
+      );
+      const checkpointMismatch = await runScript(MIGRATOR, database.url);
+      expect(checkpointMismatch.exitCode).toBe(1);
+      expect(checkpointMismatch.output).toContain(
+        "Migration ledger hash mismatch for 0187_job_execution_interruptions_catalog_guard",
+      );
       await database.client.end();
     }, 30_000);
 
@@ -271,16 +300,6 @@ describe.skipIf(!ENABLED)(
       expect(duplicateResult.exitCode).toBe(1);
       expect(duplicateResult.output).toContain("duplicate created_at");
       await duplicate.client.end();
-
-      const hashMismatch = await createDatabase();
-      await seedAppliedPrefix(hashMismatch.client, 184);
-      await hashMismatch.client.query(
-        "UPDATE drizzle.__drizzle_migrations SET hash = 'wrong' WHERE id = (SELECT max(id) FROM drizzle.__drizzle_migrations)",
-      );
-      const hashMismatchResult = await runScript(MIGRATOR, hashMismatch.url);
-      expect(hashMismatchResult.exitCode).toBe(1);
-      expect(hashMismatchResult.output).toContain("hash mismatch");
-      await hashMismatch.client.end();
 
       const missingRequired = await createDatabase();
       await seedAppliedPrefix(missingRequired.client, 184);
