@@ -54,6 +54,11 @@ const RELAUNCH_VERBS = /\b(relaunch|restart|reboot|reload)\b/i;
 const STOP_VERBS = /\b(close|stop|exit|quit|kill|shut\s*down|terminate)\b/i;
 const LIST_VERBS =
 	/\b(list|show|what['’]s open|running|whats? open|whats? running)\b/i;
+// Deletion verbs get a designed refusal, not a mode: APP deliberately has no
+// delete/uninstall — per-app deletion lives in VIEWS action=delete behind
+// confirmation + protected-app checks. Checked only after inferMode returns
+// null so stop phrasings ("kill/close the app") keep routing to stop.
+const DELETE_VERBS = /\b(delete|uninstall|remove|wipe|erase|purge)\b/i;
 const CREATE_VERBS =
 	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(app|application|game|tool|widget|dashboard)\b/i;
 const PLUGIN_ONLY = /\bplugin\b/i;
@@ -348,6 +353,20 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 			const mode = inferMode(text, actionOptions);
 			if (!mode) {
+				// A delete/uninstall ask has no APP mode by design. Answer with the
+				// designed refusal (with tool-owned userFacingText, so planner-loop
+				// failure authority surfaces this prose instead of the generic
+				// failed-tool fallback) rather than the mode-clarify, which invites
+				// the planner to improvise.
+				if (DELETE_VERBS.test(text) && APP_NOUN.test(text)) {
+					return {
+						success: false,
+						text: "APP has no delete/uninstall mode. Per-app deletion goes through VIEWS action=delete, which asks the user to confirm and enforces protected-app checks; bulk-deleting all apps is not supported. Do not retry APP for this — state it to the user in voice.",
+						userFacingText:
+							"I can't bulk-delete apps. Deletion is per-app with a confirmation — tell me which app and I'll run it through the delete flow.",
+						data: { actionName: "APP", error: "DELETE_UNSUPPORTED" },
+					};
+				}
 				// Planner-facing only: the canned mode menu double-messaged next to
 				// the evaluator's in-voice clarification. The evaluator owns asking
 				// the user, in voice.

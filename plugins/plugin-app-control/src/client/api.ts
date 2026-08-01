@@ -16,7 +16,11 @@ import type {
 	InstalledAppInfo,
 } from "../types.js";
 
-const LOOPBACK_READ_DEADLINE_MS = 2_000;
+// The installed-apps route can run a cold app/plugin registry discovery scan
+// (filesystem walk) that legitimately exceeds 2s on slower hosts; a read
+// deadline below the route's real workload guarantees TimeoutError on every
+// cold list. 10s bounds the read without starving the scan.
+const LOOPBACK_READ_DEADLINE_MS = 10_000;
 const LOOPBACK_STOP_DEADLINE_MS = 10_000;
 const APP_LAUNCH_DEADLINE_MS = 120_000;
 
