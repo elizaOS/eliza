@@ -115,8 +115,71 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
+  it("keeps only Ollama when it owns direct text beside Cloud capabilities", () => {
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "ollama",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("keeps only local inference when it owns direct text beside Cloud capabilities", () => {
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "local-inference",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
   it("keeps local inference when it owns embeddings beside direct Cloud text", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -144,6 +207,67 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-openai")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+  });
+
+  it("keeps only Ollama when it owns direct embeddings beside external direct text", () => {
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "ollama",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("keeps Ollama embeddings when Cloud owns text", () => {
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "ollama",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
   it("remote mode never falls back to cloud or local model providers", () => {
