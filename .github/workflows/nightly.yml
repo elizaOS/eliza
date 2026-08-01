@@ -35,7 +35,7 @@ permissions:
 jobs:
   check-commits:
     name: Check for new commits
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     outputs:
       has_new_commits: ${{ steps.check.outputs.has_new_commits }}
       short_sha: ${{ steps.check.outputs.short_sha }}
@@ -82,7 +82,7 @@ jobs:
     name: Build & Test
     needs: check-commits
     if: needs.check-commits.outputs.has_new_commits == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     outputs:
       nightly_version: ${{ steps.version.outputs.nightly_version }}
@@ -191,7 +191,7 @@ jobs:
     name: Publish to npm (nightly)
     needs: [check-commits, build-and-test, desktop-build-matrix]
     if: needs.check-commits.outputs.has_new_commits == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -243,7 +243,7 @@ jobs:
     name: Create GitHub pre-release
     needs: [check-commits, build-and-test, desktop-build-matrix, publish-npm]
     if: needs.check-commits.outputs.has_new_commits == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -296,7 +296,7 @@ jobs:
     name: Cleanup old nightly releases
     needs: create-release
     if: needs.create-release.result == 'success'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -329,7 +329,7 @@ jobs:
     name: Nightly Summary
     if: always()
     needs: [check-commits, build-and-test, publish-npm, create-release, cleanup]
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Summary
         run: |

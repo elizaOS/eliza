@@ -62,7 +62,7 @@ jobs:
     # Full lane runs on manual dispatch and on the weekly scheduled host-backed
     # cadence. Never on PR; PRs use the label-gated minimal smoke below.
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     permissions:
       contents: read
@@ -211,7 +211,7 @@ jobs:
   # it works on a stock x86 emulator where the embedded on-device agent SIGSEGVs).
   pr-device-smoke:
     if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci:device') }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
@@ -281,7 +281,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
         contains(github.event.pull_request.labels.*.name, 'ci:device'))
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
       ELIZA_BUN_RISCV64_OPTIONAL: "1"

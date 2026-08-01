@@ -35,7 +35,7 @@ jobs:
   live-sweep:
     name: Post-merge live matrix
     if: github.event_name == 'workflow_dispatch' || vars.ELIZA_DEVELOP_LIVE_ENABLED == 'true'
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 480
     env:
       TEST_LANE: post-merge
