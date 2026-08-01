@@ -322,9 +322,18 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		): Promise<ActionResult> => {
 			const actionOptions = normalizeActionOptions(options);
 			if (!(await canManageApps(runtime, message))) {
-				const text = "Permission denied: only the owner may manage apps.";
-				await callback?.({ text });
-				return { success: false, text };
+				const userFacingText = "Sorry — only my owner can manage apps.";
+				await callback?.({ text: userFacingText });
+				// The refusal is the complete answer: verified + turnComplete make
+				// it the sole delivery; the denial stays machine-readable in values.
+				return {
+					success: true,
+					text: "Permission denied: only the owner may manage apps.",
+					userFacingText,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { permissionDenied: true },
+				};
 			}
 
 			const client = clientFactory();

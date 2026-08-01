@@ -4,7 +4,7 @@
  * route.
  */
 
-import type { IAgentRuntime, Memory } from "@elizaos/core";
+import type { HandlerCallback, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { AppControlClient } from "../client/api.js";
 import { createAppAction } from "./app.js";
@@ -26,6 +26,7 @@ describe("APP action role policy", () => {
 			client,
 			hasOwnerAccess: async () => false,
 		});
+		const callback: HandlerCallback = vi.fn(async () => undefined);
 		const result = await action.handler(
 			{ agentId: "agent-1" } as IAgentRuntime,
 			{
@@ -34,15 +35,23 @@ describe("APP action role policy", () => {
 			} as Memory,
 			undefined,
 			{ parameters: { action: "stop", app: "chess" } },
-			undefined,
+			callback,
 		);
 
 		expect(result).toEqual(
 			expect.objectContaining({
-				success: false,
+				success: true,
 				text: expect.stringContaining("only the owner"),
+				userFacingText: "Sorry — only my owner can manage apps.",
+				verifiedUserFacing: true,
+				turnComplete: true,
+				values: { permissionDenied: true },
 			}),
 		);
+		expect(callback).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledWith({
+			text: "Sorry — only my owner can manage apps.",
+		});
 		expect(client.listInstalledApps).not.toHaveBeenCalled();
 		expect(client.stopApp).not.toHaveBeenCalled();
 	});
