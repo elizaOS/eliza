@@ -796,18 +796,19 @@ describe("ElizaSandboxService state restore auth", () => {
     expect(fetchCalls).toBe(0);
   });
 
-  test("the oversized-push refusal is unrecoverable but NOT permanently lost (#17172)", async () => {
-    // Classification is the whole point of typing this error: provisioning
-    // must stop retrying (the same bytes breach the same limit every time),
-    // while the stored backup chain stays intact and must never be pruned.
-    const {
-      SnapshotPayloadTooLargeError,
-      isUnrecoverableSnapshotError,
-      isPermanentlyLostSnapshot,
-    } = await import("./eliza-sandbox.ts?actual");
+  test("the oversized refusal is neither unrecoverable nor permanently lost (#17172)", async () => {
+    // Both classifiers must say no. "Unrecoverable" authorises the fresh-boot
+    // degrade, and an oversized chain is intact and decryptable — degrading it
+    // would discard recoverable state because of a limit we chose. "Permanently
+    // lost" additionally authorises pruning, which would destroy that chain.
+    // The refusal gets its own terminal branch at each restore site instead.
+    const { isUnrecoverableSnapshotError, isPermanentlyLostSnapshot } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const { SnapshotPayloadTooLargeError } = await import("@elizaos/shared/agent-backup-limits");
     const err = new SnapshotPayloadTooLargeError(200, 100);
 
-    expect(isUnrecoverableSnapshotError(err)).toBe(true);
+    expect(isUnrecoverableSnapshotError(err)).toBe(false);
     expect(isPermanentlyLostSnapshot(err)).toBe(false);
     expect(err.payloadBytes).toBe(200);
     expect(err.limitBytes).toBe(100);
@@ -1513,7 +1514,7 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
     // The chain is intact, only too large. Booting empty would silently drop
     // every byte of it, so the refusal must look exactly like the explicit
     // from-backup failure: status error, container torn down, chain unpruned.
-    const { SnapshotPayloadTooLargeError } = await import("./eliza-sandbox.ts?actual");
+    const { SnapshotPayloadTooLargeError } = await import("@elizaos/shared/agent-backup-limits");
     const h = await armFromBackupProvision({
       reconstructError: new SnapshotPayloadTooLargeError(200 * 1024 * 1024, 128 * 1024 * 1024),
     });
@@ -1535,7 +1536,7 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
   });
 
   test("an oversized restore PUSH also fails an ordinary provision closed (#17180 §1)", async () => {
-    const { SnapshotPayloadTooLargeError } = await import("./eliza-sandbox.ts?actual");
+    const { SnapshotPayloadTooLargeError } = await import("@elizaos/shared/agent-backup-limits");
     const h = await armFromBackupProvision({});
     // The push-side refusal fires from the serialized body size inside
     // pushState; injecting at the method boundary avoids materializing 128 MiB
