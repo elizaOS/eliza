@@ -583,7 +583,7 @@ export function MediaGalleryView({
                       defaultValue: "Media item",
                     })}
                 </h2>
-                <span className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-accent">
+                <span className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-txt-strong">
                   {mediaTypeLabel(t, selectedItem.type)}
                 </span>
               </div>

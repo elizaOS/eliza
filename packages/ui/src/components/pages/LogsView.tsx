@@ -97,7 +97,7 @@ const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
                 (
                   {
                     agent: "border-accent/25 bg-accent/10 text-txt-strong",
-                    cloud: "border-accent/20 bg-accent/8 text-accent",
+                    cloud: "border-accent/20 bg-accent/8 text-txt-strong",
                     plugins: "border-accent/25 bg-accent/10 text-txt-strong",
                   } as Record<string, string>
                 )[t] ?? "border-border/35 bg-bg-hover text-muted-strong"
