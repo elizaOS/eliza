@@ -524,7 +524,7 @@
         "repo": "@vohlsyr/plugin-chainscope",
         "v0": null,
         "v1": null,
-        "v2": "0.1.0"
+        "v2": "0.2.0"
       },
       "supports": {
         "v0": false,
@@ -569,7 +569,7 @@
         "repo": "@vohlsyr/plugin-concordance",
         "v0": null,
         "v1": null,
-        "v2": "0.1.0"
+        "v2": "0.2.0"
       },
       "supports": {
         "v0": false,
@@ -614,7 +614,7 @@
         "repo": "@vohlsyr/plugin-trading-strategy-data",
         "v0": null,
         "v1": null,
-        "v2": "0.1.0"
+        "v2": "0.2.0"
       },
       "supports": {
         "v0": false,
@@ -659,7 +659,7 @@
         "repo": "@vohlsyr/plugin-trustfetch",
         "v0": null,
         "v1": null,
-        "v2": "0.1.0"
+        "v2": "0.2.0"
       },
       "supports": {
         "v0": false,
