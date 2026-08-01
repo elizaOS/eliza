@@ -275,6 +275,7 @@ packages/autodoc/text_objects/*
 /env
 **elizadb**
 **/.eliza/
+**/.eliza-local/
 
 # UI Test related files
 screenshots/

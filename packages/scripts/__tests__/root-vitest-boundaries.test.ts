@@ -74,6 +74,34 @@ function writePassingTest(filePath: string, markerPath: string) {
 }
 
 describe("root Vitest boundaries", () => {
+  test("gitignore excludes generated local Eliza state at every workspace depth", () => {
+    const gitRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "local-eliza-state-boundaries-"),
+    );
+    fixtures.push(gitRoot);
+    fs.copyFileSync(
+      path.join(repoRoot, ".gitignore"),
+      path.join(gitRoot, ".gitignore"),
+    );
+    fs.writeFileSync(path.join(gitRoot, ".empty-global-ignore"), "");
+    const initResult = spawnSync("git", ["init", "--quiet"], {
+      cwd: gitRoot,
+      encoding: "utf8",
+    });
+    if (initResult.error) throw initResult.error;
+    expect(initResult.status, initResult.stderr).toBe(0);
+
+    expect(
+      isGitIgnored(gitRoot, ".eliza-local/review/vite.config.views.ts"),
+    ).toBe(true);
+    expect(
+      isGitIgnored(
+        gitRoot,
+        "packages/plugin-example/.eliza-local/runtime.sqlite",
+      ),
+    ).toBe(true);
+  });
+
   test("gitignore worktree exclusions are root-anchored", () => {
     const gitRoot = fs.mkdtempSync(
       path.join(os.tmpdir(), "root-gitignore-boundaries-"),
