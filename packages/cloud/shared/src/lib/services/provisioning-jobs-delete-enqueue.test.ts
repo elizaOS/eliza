@@ -59,6 +59,7 @@ const txSelect = mock(() => {
   const chain = {
     from: () => chain,
     where: () => chain,
+    for: () => chain,
     orderBy: () => chain,
     limit: () => rows,
   } as Record<string, unknown>;
