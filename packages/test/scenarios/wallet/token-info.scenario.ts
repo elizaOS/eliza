@@ -70,10 +70,7 @@ export default scenario({
   description:
     "Looks up token information through the WALLET action (action=token_info) against a scoped mock of the DexScreener API — keyless, no signer, no live network.",
 
-  requires: {
-    plugins: ["@elizaos/plugin-wallet"],
-    services: ["wallet-backend"],
-  },
+  requires: { plugins: ["@elizaos/plugin-wallet"] },
   isolation: "per-scenario",
 
   seed: [

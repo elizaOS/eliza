@@ -4,7 +4,6 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { startFixedRateInvalidation } from "@/lib/fixed-rate-invalidation";
 import "./gradientWaveMaterial";
 
 function ShaderPlane({ interactive }: { interactive: boolean }) {
@@ -88,29 +87,34 @@ function ShaderFrameDriver({ reducedMotion }: { reducedMotion: boolean }) {
       return;
     }
 
-    return startFixedRateInvalidation(invalidate, window);
+    let animationFrame = 0;
+    let previousFrame = 0;
+    const frameInterval = 1000 / 30;
+    const tick = (now: number) => {
+      if (now - previousFrame >= frameInterval) {
+        previousFrame = now;
+        invalidate();
+      }
+      animationFrame = requestAnimationFrame(tick);
+    };
+    animationFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animationFrame);
   }, [invalidate, reducedMotion]);
 
   return null;
 }
 
-export default function ShaderBackground({
-  reducedMotion: reducedMotionOverride,
-}: {
-  reducedMotion?: boolean;
-}) {
-  const [mediaReducedMotion, setMediaReducedMotion] = useState(
+export default function ShaderBackground() {
+  const [reducedMotion, setReducedMotion] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  const reducedMotion = reducedMotionOverride ?? mediaReducedMotion;
 
   useEffect(() => {
-    if (reducedMotionOverride != null) return;
     const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setMediaReducedMotion(query.matches);
+    const update = () => setReducedMotion(query.matches);
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, [reducedMotionOverride]);
+  }, []);
 
   return (
     <div
@@ -119,7 +123,7 @@ export default function ShaderBackground({
       <Canvas
         orthographic
         camera={{ position: [0, 0, 1] }}
-        dpr={[1, 1.5]}
+        dpr={1}
         frameloop="demand"
         gl={{
           alpha: false,

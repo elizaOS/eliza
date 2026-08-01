@@ -4,7 +4,7 @@
  * anomaly detection, ALS attribution across async boundaries, and the emit /
  * format / dev-payload registry. Deterministic — no live model.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildInferenceFlowBreakdown,
 	buildInferenceTimingDevPayload,
@@ -13,12 +13,14 @@ import {
 	getInferenceTimer,
 	INFERENCE_MARKS,
 	InferenceTurnTimer,
+	inferenceTimingRegistry,
 	markInference,
 	nextInferenceTurnId,
 	recordInferenceSpan,
 	runWithInferenceTiming,
 	timeInferenceSpan,
 } from "../inference-timing";
+import { logger } from "../logger";
 
 const tick = () => new Promise((r) => setTimeout(r, 2));
 
@@ -374,6 +376,34 @@ describe("emit + format + registry", () => {
 		).toBeGreaterThan(0);
 	});
 
+	it("clears derived histograms together with turns and spans on reset", () => {
+		inferenceTimingRegistry.reset();
+		const timer = new InferenceTurnTimer({
+			turnId: "reset-derived",
+			label: "message-turn",
+		});
+		timer.recordSpan("model:RESPONSE_HANDLER", 77);
+		timer.mark(INFERENCE_MARKS.firstToken, timer.t0EpochMs + 10);
+		timer.mark(INFERENCE_MARKS.firstVisibleReply, timer.t0EpochMs + 20);
+		timer.mark(INFERENCE_MARKS.replyDelivered, timer.t0EpochMs + 30);
+		timer.mark(INFERENCE_MARKS.responseFinalized, timer.t0EpochMs + 40);
+		inferenceTimingRegistry.record(timer.close());
+		expect(
+			buildInferenceTimingDevPayload().derivedHistograms.timeToFirstTokenMs
+				?.count,
+		).toBe(1);
+
+		inferenceTimingRegistry.reset();
+		const payload = buildInferenceTimingDevPayload();
+		expect(payload.turns).toEqual([]);
+		expect(payload.spanHistograms).toEqual({});
+		expect(
+			Object.values(payload.derivedHistograms).every(
+				(summary) => summary.count === 0,
+			),
+		).toBe(true);
+	});
+
 	it("emitInferenceTiming is no-op-safe for an undefined timer", () => {
 		expect(emitInferenceTiming(undefined)).toBeNull();
 	});
@@ -443,5 +473,101 @@ describe("emit + format + registry", () => {
 				execution: expect.objectContaining({ p95: 5 }),
 			}),
 		);
+	});
+});
+
+describe("post-reply tail watchdog", () => {
+	let warnSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		delete process.env.ELIZA_TURN_TAIL_BUDGET_MS;
+		warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		delete process.env.ELIZA_TURN_TAIL_BUDGET_MS;
+		warnSpy.mockRestore();
+	});
+
+	/** A closed turn with reply at `replyAtMs` and total ≈ `totalMs`, plus a
+	 *  span that starts after the reply mark (the billing/persistence tail). */
+	const makeTailTurn = (args: {
+		replyAtMs: number;
+		totalMs: number;
+		tailSpanMs: number;
+	}) => {
+		const timer = new InferenceTurnTimer({
+			turnId: "tail",
+			label: "message-turn",
+			t0EpochMs: Date.now() - args.totalMs,
+		});
+		timer.mark(
+			INFERENCE_MARKS.replyDelivered,
+			timer.t0EpochMs + args.replyAtMs,
+		);
+		// recordSpan back-dates start from now, so this span's startMs lands in
+		// the tail (well after replyAtMs) for realistic totals.
+		timer.recordSpan("cloud.billing", args.tailSpanMs);
+		return timer;
+	};
+
+	it("warns with turnId, tailMs, and the post-reply spans when the tail exceeds the budget", () => {
+		const timer = makeTailTurn({
+			replyAtMs: 100,
+			totalMs: 3000,
+			tailSpanMs: 1600,
+		});
+		emitInferenceTiming(timer);
+
+		expect(warnSpy).toHaveBeenCalledTimes(1);
+		const [ctx, msg] = warnSpy.mock.calls[0] as [
+			{
+				turnId: string;
+				tailMs: number;
+				tailSpans: Array<{ name: string; durationMs: number }>;
+			},
+			string,
+		];
+		expect(ctx.turnId).toBe("tail");
+		expect(ctx.tailMs).toBeGreaterThan(500);
+		expect(ctx.tailSpans).toEqual([
+			{ name: "cloud.billing", durationMs: 1600 },
+		]);
+		expect(msg).toContain("post-reply tail");
+	});
+
+	it("does not warn when the tail is under budget", () => {
+		const timer = makeTailTurn({
+			replyAtMs: 100,
+			totalMs: 400,
+			tailSpanMs: 200,
+		});
+		emitInferenceTiming(timer);
+		expect(warnSpy).not.toHaveBeenCalled();
+	});
+
+	it("does not warn when no reply mark was recorded (guarded no-op)", () => {
+		const timer = new InferenceTurnTimer({
+			turnId: "no-reply",
+			label: "message-turn",
+			t0EpochMs: Date.now() - 3000,
+		});
+		timer.recordSpan("cloud.billing", 1600);
+		emitInferenceTiming(timer);
+		expect(warnSpy).not.toHaveBeenCalled();
+	});
+
+	it("respects ELIZA_TURN_TAIL_BUDGET_MS overrides, including 0 = disabled", () => {
+		process.env.ELIZA_TURN_TAIL_BUDGET_MS = "5000";
+		emitInferenceTiming(
+			makeTailTurn({ replyAtMs: 100, totalMs: 3000, tailSpanMs: 1600 }),
+		);
+		expect(warnSpy).not.toHaveBeenCalled();
+
+		process.env.ELIZA_TURN_TAIL_BUDGET_MS = "0";
+		emitInferenceTiming(
+			makeTailTurn({ replyAtMs: 100, totalMs: 3000, tailSpanMs: 1600 }),
+		);
+		expect(warnSpy).not.toHaveBeenCalled();
 	});
 });

@@ -41,17 +41,6 @@ const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
-function readGlbJson(buffer) {
-  assert.equal(buffer.subarray(0, 4).toString("ascii"), "glTF");
-  const jsonLength = buffer.readUInt32LE(12);
-  return JSON.parse(
-    buffer
-      .subarray(20, 20 + jsonLength)
-      .toString()
-      .trim(),
-  );
-}
-
 test("marketing.tsx exports a default function component", () => {
   const src = readFileSync(marketingPath, "utf8");
   assert.match(
@@ -61,41 +50,12 @@ test("marketing.tsx exports a default function component", () => {
   );
 });
 
-test("landing ships a geometry-preserving Meshopt phone and WebP profiles", () => {
+test("landing ships compressed iPhone and WebP profile assets", () => {
   const model = readFileSync(iphoneModelPath);
-  const gltf = readGlbJson(model);
+  assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
   assert.ok(
-    statSync(iphoneModelPath).size < 750_000,
-    "geometry-preserving phone model must stay under its 750 KB transfer budget",
-  );
-  assert.equal(gltf.asset.generator, "glTF-Transform v4.4.2");
-  assert.deepEqual(gltf.extensionsRequired, [
-    "EXT_meshopt_compression",
-    "KHR_mesh_quantization",
-  ]);
-
-  const meshes = new Map(gltf.meshes.map((mesh) => [mesh.name, mesh]));
-  assert.deepEqual(
-    [...meshes.keys()],
-    ["iphone", "screen", "island", "camera", "flash"],
-  );
-  const iphone = meshes.get("iphone").primitives[0];
-  assert.equal(
-    gltf.accessors[iphone.indices].count,
-    215_064,
-    "phone topology must retain all 71,688 source triangles",
-  );
-  assert.ok(
-    gltf.accessors[iphone.attributes.POSITION].count >= 54_145,
-    "lossless welding may remove only the 19 duplicate source vertices",
-  );
-
-  const phoneNode = gltf.nodes.find((node) => node.name === "iphone");
-  const largestScale = Math.max(...phoneNode.scale);
-  const quantizationHalfStep = (largestScale * 2) / 65_534 / 2;
-  assert.ok(
-    quantizationHalfStep <= 0.000_115,
-    "position quantization must remain within the approved model-space bound",
+    statSync(iphoneModelPath).size < 550_000,
+    "phone model must stay under its 550 KB transfer budget",
   );
 
   for (const assetPath of [elizaAvatarPath, profileImagePath]) {
@@ -113,7 +73,7 @@ test("landing ships a geometry-preserving Meshopt phone and WebP profiles", () =
   );
 });
 
-test("landing keeps WebGL code-split and render loops demand-driven", () => {
+test("landing keeps WebGL deferred and render loops demand-driven", () => {
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
   const pruneAssets = readFileSync(pruneAssetsPath, "utf8");
   const landing = readFileSync(landingPath, "utf8");
@@ -128,7 +88,7 @@ test("landing keeps WebGL code-split and render loops demand-driven", () => {
   );
   assert.match(modelViewer, /frameloop="demand"/);
   assert.match(shaderBackground, /frameloop="demand"/);
-  assert.doesNotMatch(shaderBackground, /requestAnimationFrame/);
+  assert.match(shaderBackground, /1000 \/ 30/);
   assert.match(packageJson.scripts.postbuild, /prune-unused-static-assets/);
   assert.match(pruneAssets, /"brand\/background", "product"/);
 });

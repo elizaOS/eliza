@@ -282,35 +282,6 @@ function validateScenarioStatus(value) {
   return status;
 }
 
-function validateScenarioRequirements(value) {
-  const requires = value?.requires;
-  if (requires === undefined) {
-    return;
-  }
-  if (requires === null || typeof requires !== "object") {
-    throw new Error(
-      `scenario "${value?.id ?? "<unknown>"}" has invalid requires; expected { plugins?: string[], services?: string[] }`,
-    );
-  }
-  for (const key of ["plugins", "services"]) {
-    const requirements = requires[key];
-    if (requirements === undefined) {
-      continue;
-    }
-    if (
-      !Array.isArray(requirements) ||
-      requirements.some(
-        (requirement) =>
-          typeof requirement !== "string" || requirement.trim().length === 0,
-      )
-    ) {
-      throw new Error(
-        `scenario "${value?.id ?? "<unknown>"}" has invalid requires.${key}; expected non-empty strings`,
-      );
-    }
-  }
-}
-
 /**
  * Resolve a scenario's platform-gated deferral, if any. A deferred scenario is
  * a live-only scenario that additionally cannot run in any current lane because
@@ -360,9 +331,6 @@ export function scenario(value) {
     scenarioTier(value);
     // Validate pending/active inventory status before loader filtering relies on it.
     validateScenarioStatus(value);
-    // Required services are a runtime preflight contract, not an implicit
-    // consequence of whichever plugin happened to register them first.
-    validateScenarioRequirements(value);
     // Validate the deferral shape (and lane compatibility) eagerly too.
     scenarioDeferral(value);
   }

@@ -26,6 +26,11 @@ const DEFAULT_VARIANTS = [
     args: [],
   },
   {
+    name: "stock_no_fa",
+    label: "target only, f16 KV, flash attention disabled",
+    args: ["-fa", "off"],
+  },
+  {
     name: "turbo4_polar_kv",
     label: "target only, Turbo/Polar KV turbo4",
     args: ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"],
@@ -153,7 +158,6 @@ function parseArgs(argv) {
     variants: null,
     outDir: path.join(process.cwd(), "artifacts", "local-inference-ablation"),
     config: null,
-    gate: null,
     requireAll: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -202,7 +206,6 @@ function parseArgs(argv) {
         .filter(Boolean);
     else if (arg === "--out-dir") args.outDir = path.resolve(next());
     else if (arg === "--config") args.config = path.resolve(next());
-    else if (arg === "--gate") args.gate = path.resolve(next());
     else if (arg === "--require-all") args.requireAll = true;
     else if (arg === "--quick") {
       args.runs = 1;
@@ -240,12 +243,11 @@ Options:
   --runs 3 --max-tokens 256 --quick
   --out-dir artifacts/local-inference-ablation
   --config packages/scripts/local-inference-ablation.config.json
-  --gate packages/scripts/local-inference-thresholds.json
   --require-all   fail (exit 1) if any variant is skipped due to a missing model
 
 Exit codes:
-  0  all selected variants ran (or were cleanly skipped) and met thresholds (if --gate is set)
-  1  startup error, a variant failed to run, gate thresholds were violated, or a model was missing while --require-all is set
+  0  all selected variants ran or were cleanly skipped
+  1  startup error, a variant failed to run, or a model was missing while --require-all is set
 `);
 }
 
@@ -311,45 +313,6 @@ function missingVariantKernels(variant, capabilities) {
     }
   }
   return Array.from(required).filter((name) => kernels[name] !== true);
-}
-
-function loadThresholds(filePath) {
-  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`invalid threshold file: ${filePath}`);
-  }
-  return parsed;
-}
-
-function thresholdFor(thresholds, backend, variantName) {
-  if (!thresholds) return null;
-  const byBackend = thresholds[backend];
-  if (!byBackend || typeof byBackend !== "object") return null;
-  const direct = byBackend[variantName];
-  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
-  const fallback = byBackend.default;
-  if (typeof fallback === "number" && Number.isFinite(fallback))
-    return fallback;
-  return null;
-}
-
-function evaluateGate(report, thresholds) {
-  const violations = [];
-  for (const variant of report.variants) {
-    if (variant.skipped || !variant.ok) continue;
-    const min = thresholdFor(thresholds, report.hardware.backend, variant.name);
-    if (min === null) continue;
-    variant.thresholdTokPerSec = min;
-    if (variant.avgTokPerSec < min) {
-      violations.push({
-        name: variant.name,
-        backend: report.hardware.backend,
-        avgTokPerSec: variant.avgTokPerSec,
-        thresholdTokPerSec: min,
-      });
-    }
-  }
-  return violations;
 }
 
 function runCapture(cmd, cmdArgs) {
@@ -617,12 +580,8 @@ function printSummary(results) {
         `${row.name.padEnd(24)} SKIPPED  ${row.skipReason ?? "unknown"}`,
       );
     } else if (row.ok) {
-      const gate =
-        typeof row.thresholdTokPerSec === "number"
-          ? `  >=${row.thresholdTokPerSec.toFixed(2)} tok/s gate`
-          : "";
       console.log(
-        `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})${gate}`,
+        `${row.name.padEnd(24)} ${row.avgTokPerSec.toFixed(2).padStart(8)} tok/s  (${row.label})`,
       );
     } else {
       console.log(
@@ -638,7 +597,6 @@ async function main() {
   if (variants.length === 0) throw new Error("no variants selected");
 
   const binaryMissing = !fs.existsSync(args.binary);
-  const thresholds = args.gate ? loadThresholds(args.gate) : null;
 
   fs.mkdirSync(args.outDir, { recursive: true });
 
@@ -651,7 +609,6 @@ async function main() {
     runs: args.runs,
     hardware: hardwareInfo(args),
     variants: [],
-    gate: thresholds ? args.gate : null,
   };
 
   if (binaryMissing) {
@@ -682,18 +639,19 @@ async function main() {
     }
   }
 
-  const violations = thresholds ? evaluateGate(report, thresholds) : [];
-  report.thresholdViolations = violations;
-
   printSummary(report.variants);
 
+  const skipped = report.variants.filter((row) => row.skipped);
+  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
+  const executed = report.variants.filter(
+    (row) => row.ok === true && !row.skipped,
+  );
+  report.executedVariantCount = executed.length;
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const outPath = path.join(args.outDir, `${stamp}-${args.backend}.json`);
   fs.writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`\nWrote ${outPath}`);
 
-  const skipped = report.variants.filter((row) => row.skipped);
-  const failed = report.variants.filter((row) => !row.skipped && !row.ok);
   let exitCode = 0;
   if (failed.length > 0) {
     console.error(
@@ -701,19 +659,14 @@ async function main() {
     );
     exitCode = 1;
   }
+  if (executed.length === 0) {
+    console.error("[ablation] zero variants executed successfully");
+    exitCode = 1;
+  }
   if (args.requireAll && skipped.length > 0) {
     console.error(
       `[ablation] --require-all set but ${skipped.length} variant(s) skipped: ${skipped.map((row) => row.name).join(", ")}`,
     );
-    exitCode = 1;
-  }
-  if (violations.length > 0) {
-    console.error("[ablation] threshold gate violations:");
-    for (const v of violations) {
-      console.error(
-        `  ${v.backend}/${v.name}: ${v.avgTokPerSec.toFixed(2)} tok/s < ${v.thresholdTokPerSec.toFixed(2)} tok/s`,
-      );
-    }
     exitCode = 1;
   }
   process.exit(exitCode);

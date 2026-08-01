@@ -6,6 +6,16 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["package", "repository", "kind"],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "kind": { "const": "app" } },
+        "required": ["kind"]
+      },
+      "then": { "required": ["app"] },
+      "else": { "not": { "required": ["app"] } }
+    }
+  ],
   "properties": {
     "package": {
       "type": "string",
@@ -43,6 +53,94 @@
       "type": "array",
       "description": "Discovery tags (npm keywords minus elizaos boilerplate).",
       "items": { "type": "string" }
+    },
+    "app": {
+      "type": "object",
+      "description": "Launch metadata consumed before an app package is installed.",
+      "additionalProperties": false,
+      "required": [
+        "displayName",
+        "category",
+        "launchType",
+        "launchUrl",
+        "icon",
+        "capabilities"
+      ],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 },
+        "launchType": { "type": "string", "minLength": 1 },
+        "launchUrl": { "type": ["string", "null"] },
+        "icon": { "type": ["string", "null"] },
+        "heroImage": { "type": ["string", "null"] },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "minPlayers": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "maxPlayers": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "runtimePlugin": { "type": "string" },
+        "bridgeExport": { "type": "string" },
+        "uiExtension": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["detailPanelId"],
+          "properties": {
+            "detailPanelId": { "type": "string", "minLength": 1 }
+          }
+        },
+        "viewer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url"],
+          "properties": {
+            "url": { "type": "string", "minLength": 1 },
+            "embedParams": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "postMessageAuth": { "type": "boolean" },
+            "sandbox": { "type": "string" }
+          }
+        },
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["viewer", "spectate-and-steer", "external"]
+            },
+            "features": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "commands",
+                  "telemetry",
+                  "pause",
+                  "resume",
+                  "suggestions"
+                ]
+              }
+            }
+          }
+        },
+        "developerOnly": { "type": "boolean" },
+        "visibleInAppStore": { "type": "boolean" },
+        "mainTab": { "type": "boolean" },
+        "catalogSection": { "type": "string" },
+        "featured": { "type": "boolean" },
+        "defaultHidden": { "type": "boolean" },
+        "scope": { "type": "string" }
+      }
     }
   }
 }

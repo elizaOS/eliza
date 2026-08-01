@@ -680,9 +680,19 @@ async function createNewApp({
 	// half-created app dir behind.
 	const preflight = await preflightCodingDispatch(runtime);
 	if (!preflight.ok) {
+		// The setup guidance IS the complete answer to this turn (the user must
+		// act before a build can start): verified + turnComplete make the
+		// callback the sole delivery; the failure stays machine-visible in data.
 		const text = `I can't build an app yet. ${preflight.guidance.join(" ")}`;
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			data: { preflightFailed: true },
+		};
 	}
 
 	const { name, displayName } = await extractNames(runtime, intent);
@@ -690,9 +700,18 @@ async function createNewApp({
 	const template = await resolveScaffoldTemplateDir(repoRoot, "min-project");
 	const templateSrc = template.dir;
 	if (!templateSrc) {
+		// Same contract as the preflight guidance above: the explanation is the
+		// turn's complete answer.
 		const text = `I can't scaffold a new app: ${templateMissingGuidance("min-project", template.tried)}`;
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			data: { templateMissing: true },
+		};
 	}
 
 	const { workdir, appDirName } = await findFreeWorkdir(repoRoot, name);
@@ -961,9 +980,17 @@ export async function runCreate({
 		.join(" — ");
 	const intent = explicitIntent || composedIntent || userText;
 	if (!intent) {
+		// The ask is already in-voice; verified provenance stops the evaluator
+		// from re-voicing it as a second message. The result stays unsuccessful
+		// so callers still see the create did not start.
 		const text = "Tell me what app you want to build.";
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: false,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+		};
 	}
 
 	// Explicit edit hint short-circuits the picker.

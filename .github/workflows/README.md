@@ -7,8 +7,9 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
-| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, build, and deterministic lane-integrity checks |
-| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the nine lightweight required contexts |
+| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, and build checks |
+| `develop-pr-gate.yml` | PR target to develop, manual canaries | Base-trusted exact-head aggregate for merge-critical PR checks |
+| `stale-base-guard.yml` | PRs | Content-level silent-revert detection with explicit acknowledgement |
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
@@ -108,8 +109,7 @@ directly.
 
 The heavy post-merge develop **test lanes** in `test.yml` run on the self-hosted
 `self-hosted, hetzner-robot` pool (GitHub-hosted minutes are billing-frozen for
-this org, #13481). Everything the pre-merge **Develop PR Gate** depends on is
-the lightweight PR surface and remains independent of the exhaustive fleet:
+this org, #13481). Pre-merge checks remain independent of the exhaustive fleet:
 
 - **Path classifiers** (`Classify changed paths`) across `test.yml`,
   `scenario-pr.yml`, `dev-smoke.yml`, `docker-ci-smoke.yml`,
@@ -117,36 +117,28 @@ the lightweight PR surface and remains independent of the exhaustive fleet:
   `windows-desktop-preload-smoke.yml` run on `ubuntu-24.04`. They are git-diff +
   node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
   left every downstream job queued indefinitely and gridlocked develop.
-- **`Develop PR Gate`** runs on `ubuntu-24.04` and only observes check metadata
-  from the nine lightweight component contexts. It never waits for post-merge,
-  scheduled, device, aesthetic, or exhaustive suites.
-- **`ci-ok`**, `plugin-tests-status`, and `merge-quality-gate` remain hosted
-  roll-ups inside the post-merge `test.yml` orchestrator. They report branch
-  health after a develop push; they are not the pre-merge required context.
+- **`Develop PR Gate`** is a read-only `pull_request_target` aggregate. It
+  checks out only the base SHA and binds every required result to the PR's exact
+  head SHA, owning workflow, GitHub Actions app, trigger, and terminal success.
+  Missing, stale, skipped, cancelled, timed-out, and failed checks stay red.
+- **`ci-ok`** and `plugin-tests-status` remain result roll-ups inside the
+  post-merge `test.yml` orchestrator. `ci-ok` also depends on the unconditional
+  repo-wide quality job and Linux script-test inventory.
 
-The aggregate contract runs directly under Node in
-`packages/scripts/develop-pr-aggregate.self-test.mjs`; the changed-file gate
-loads the same assertions through
-`packages/scripts/develop-pr-aggregate.test.mjs` so the implementation also
-appears in changed-source coverage reporting.
+The standalone stale-base workflow detects byte-identical historical blob
+restoration inside a PR diff, including the fresh-merge-base failure shape from
+#11271. It intentionally has no commit-count or elapsed-time threshold. The
+`stale-base-ack` label records a deliberate human override.
 
-Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
-in the `changes` job, #13617):
+`packages/scripts/ci-workflow-invariants.mjs` parses workflow YAML and enforces
+unconditional lint, format, typecheck, gitleaks, and script-test execution plus
+their final-gate dependency edges. The develop PR lint job also runs pinned,
+checksum-verified `actionlint` and `zizmor` binaries.
 
-1. **Fleet-drain toggle.** Every self-hosted lane in `test.yml` reads
-   `runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}`.
-   Unset/anything-but-`false` keeps the current self-hosted placement; there is
-   no way to probe fleet health from a `runs-on:` expression, so during an
-   outage an admin sets repo **variable** `HETZNER_FLEET_ONLINE=false` once and
-   the whole workflow falls back to hosted — one flip unblocks the entire queue
-   instead of per-PR admin-bypass. Keep the runner-agnostic step hardening (no
-   `sudo`-only install/cleanup) so lanes run on either runner type.
-2. **Post-merge quality parity.** `merge-quality-gate` runs the same read-only lint /
-   `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
-   `main`, and `ci-ok` needs it on develop `push`. The pre-merge
-   `develop-pr.yml` lint job runs `format:check`, and the stable aggregate waits
-   for that exact job, so formatting is refused before merge even when a busy
-   push wave supersedes post-merge quality runs (#15959).
+The self-hosted test lanes retain the `HETZNER_FLEET_ONLINE=false` hosted-runner
+fallback for outages. Pull-request lint, format, typecheck, build, and secret
+checks are the only quality checks for the proposed change; the post-merge
+workflow concentrates on running the broader test surface.
 
 GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
 separate purpose-built fleet and are unaffected by this policy.
@@ -173,6 +165,14 @@ the exact candidate head passes and a maintainer manually reviews the downloaded
 artifacts. Only then may the old leg be retired and the inventory's
 `migrationState` changed. A code-only/non-GPU contract pass is not hardware
 proof and must not close #16449.
+
+`local-inference-matrix.yml` separately protects host execution on changed
+local-inference code. Every selected runner builds `llama-server` from the exact
+native gitlink, verifies a revision- and SHA-256-pinned smoke model, requires two
+successful variants with three samples each, compares backend-specific median
+ratios against the same-run baseline, and uploads an attestation containing the
+binary, model, report, source, workflow, and host identities. Empty caches,
+missing binaries, skipped variants, zero-work reports, and unverified bytes fail.
 
 ### PR Path Gates
 
@@ -261,9 +261,9 @@ Runs on PRs and pushes to main:
 - Interop TypeScript tests (`packages/interop`)
 
 The broader `test.yml` orchestrator runs after pushes to `develop` to avoid
-duplicating the main-branch CI gate on every PR. The lightweight develop PR
-surface is owned by `develop-pr.yml` and aggregated by `develop-pr-gate.yml`;
-`test.yml` keeps the broader develop push, manual, and scheduled coverage.
+duplicating the main-branch CI surface on every PR. The lightweight develop PR
+checks run directly in `develop-pr.yml`; `test.yml` keeps the broader develop
+push, manual, and scheduled coverage.
 
 ### Live E2E
 

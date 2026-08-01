@@ -229,6 +229,7 @@ export const agentSandboxes = pgTable(
     status_idx: index("agent_sandboxes_status_idx").on(table.status),
     character_idx: index("agent_sandboxes_character_idx").on(table.character_id),
     sandbox_id_idx: index("agent_sandboxes_sandbox_id_idx").on(table.sandbox_id),
+    container_name_idx: index("agent_sandboxes_container_name_idx").on(table.container_name),
     billing_status_idx: index("agent_sandboxes_billing_status_idx").on(table.billing_status),
     deleted_at_idx: index("agent_sandboxes_deleted_at_idx").on(table.deleted_at),
     lifecycle_execution_pair_check: check(
@@ -319,6 +320,11 @@ export const agentSandboxes = pgTable(
     replacement_cleanup_pending_idx: index("agent_sandboxes_replacement_cleanup_pending_idx")
       .on(table.replacement_cleanup_created_at)
       .where(sql`${table.replacement_cleanup_sandbox_id} IS NOT NULL`),
+    replacement_cleanup_container_name_idx: index(
+      "agent_sandboxes_replacement_cleanup_container_name_idx",
+    )
+      .on(table.replacement_cleanup_container_name)
+      .where(sql`${table.replacement_cleanup_container_name} IS NOT NULL`),
   }),
 );
 

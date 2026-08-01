@@ -14,16 +14,18 @@ import {
   ChannelType,
   createMessageMemory,
   drainPostDeliveryTasks,
+  EventType,
   type InferenceFlowStage,
   type InferenceHistogramSummary,
   InferenceTurnTimer,
   inferenceTimingRegistry,
   type Memory,
+  type ModelEventPayload,
+  ModelType,
   runWithInferenceTiming,
   type UUID,
 } from "@elizaos/core";
 import { createTestRuntime } from "@elizaos/core/testing";
-import openaiPlugin from "../../../plugins/plugin-openai/index.ts";
 import { generateChatResponse } from "../src/api/chat-routes.ts";
 
 const DEFAULT_MODEL = "gemma-4-31b";
@@ -39,6 +41,79 @@ export interface Distribution {
   p99: number;
   max: number;
   mean: number;
+}
+
+export interface ModelUsageEvidence {
+  provider: string;
+  model: string;
+  modelName: string;
+  modelLabel?: string;
+  type: string;
+  tokens: {
+    prompt: number;
+    completion: number;
+    total: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    cachedInputTokens?: number;
+  };
+}
+
+export function modelUsageEvidence(
+  payload: ModelEventPayload,
+  expectedModel: string,
+): ModelUsageEvidence {
+  const provider = payload.provider?.trim();
+  const model = payload.model?.trim();
+  const modelName = payload.modelName?.trim();
+  if (provider !== "cerebras") {
+    throw new Error(
+      `Expected MODEL_USED provider cerebras, received ${JSON.stringify(provider)}`,
+    );
+  }
+  if (model !== expectedModel || modelName !== expectedModel) {
+    throw new Error(
+      `Expected MODEL_USED model ${expectedModel}, received ${JSON.stringify({
+        model,
+        modelName,
+      })}`,
+    );
+  }
+  const { tokens } = payload;
+  if (
+    !tokens ||
+    !Number.isFinite(tokens.prompt) ||
+    !Number.isFinite(tokens.completion) ||
+    !Number.isFinite(tokens.total) ||
+    tokens.prompt < 0 ||
+    tokens.completion < 0 ||
+    tokens.total <= 0
+  ) {
+    throw new Error(
+      `MODEL_USED did not report valid provider token usage: ${JSON.stringify(tokens)}`,
+    );
+  }
+  return {
+    provider,
+    model,
+    modelName,
+    ...(payload.modelLabel ? { modelLabel: payload.modelLabel } : {}),
+    type: String(payload.type),
+    tokens: {
+      prompt: tokens.prompt,
+      completion: tokens.completion,
+      total: tokens.total,
+      ...(tokens.cacheReadInputTokens !== undefined
+        ? { cacheReadInputTokens: tokens.cacheReadInputTokens }
+        : {}),
+      ...(tokens.cacheCreationInputTokens !== undefined
+        ? { cacheCreationInputTokens: tokens.cacheCreationInputTokens }
+        : {}),
+      ...(tokens.cachedInputTokens !== undefined
+        ? { cachedInputTokens: tokens.cachedInputTokens }
+        : {}),
+    },
+  };
 }
 
 function rounded(value: number): number {
@@ -82,6 +157,19 @@ export function verifyProofResponse(response: string, proof: string): void {
   if (!normalized.includes(proof.toUpperCase())) {
     throw new Error(
       `Live model response did not contain the requested proof ${proof}: ${JSON.stringify(response)}`,
+    );
+  }
+}
+
+export function verifyExactResponseParity(
+  streamedResponse: string,
+  finalResponse: string,
+): void {
+  if (streamedResponse !== finalResponse) {
+    throw new Error(
+      `Streamed response did not exactly match the final response: ${JSON.stringify(
+        { streamedResponse, finalResponse },
+      )}`,
     );
   }
 }
@@ -141,11 +229,18 @@ async function main(): Promise<void> {
   );
   configuredModelEnvironment(model);
 
+  const { default: openaiPlugin } = await import(
+    "../../../plugins/plugin-openai/index.ts"
+  );
   const { runtime, cleanup } = await createTestRuntime({
     characterName: "CerebrasLatencyAudit",
     plugins: [openaiPlugin],
   });
   try {
+    const modelUsageEvents: ModelEventPayload[] = [];
+    runtime.registerEvent(EventType.MODEL_USED, async (payload) => {
+      modelUsageEvents.push(payload);
+    });
     const worldId = randomUUID() as UUID;
     const roomId = randomUUID() as UUID;
     const entityId = randomUUID() as UUID;
@@ -181,6 +276,7 @@ async function main(): Promise<void> {
         },
       });
       const streamed: string[] = [];
+      const usageEventOffset = modelUsageEvents.length;
       const startedAt = performance.now();
       const result = await generateChatResponse(
         runtime,
@@ -193,11 +289,70 @@ async function main(): Promise<void> {
         },
       );
       const wallMs = performance.now() - startedAt;
-      verifyProofResponse(result.text, proof);
-      verifyProofResponse(streamed.join(""), proof);
+      const turnUsageEvents = modelUsageEvents.slice(usageEventOffset);
+      const modelUsagePayload = turnUsageEvents[0];
+      if (turnUsageEvents.length !== 1 || !modelUsagePayload) {
+        throw new Error(
+          `Expected one MODEL_USED event for ${proof}, observed ${turnUsageEvents.length}`,
+        );
+      }
+      const modelUsage = modelUsageEvidence(modelUsagePayload, model);
+      const streamedText = streamed.join("");
+      try {
+        verifyProofResponse(result.text, proof);
+        verifyProofResponse(streamedText, proof);
+        verifyExactResponseParity(streamedText, result.text);
+      } catch (cause) {
+        throw new Error(
+          `Live chat proof validation failed: ${JSON.stringify({
+            proof,
+            result,
+            streamedText,
+            wallMs: rounded(wallMs),
+          })}`,
+          { cause },
+        );
+      }
       const quiescenceStartedAt = performance.now();
       const backgroundTasks = await drainPostDeliveryTasks(runtime);
       const backgroundQuiescenceMs = performance.now() - quiescenceStartedAt;
+      const totalToQuiescenceMs = performance.now() - startedAt;
+      const recentMessages = await runtime.getMemories({
+        roomId,
+        tableName: "messages",
+        limit: 12,
+      });
+      const persistedResponse = recentMessages.find((memory) => {
+        const text = (memory.content as { text?: unknown }).text;
+        return (
+          memory.entityId === runtime.agentId &&
+          typeof text === "string" &&
+          text === result.text
+        );
+      });
+      if (!persistedResponse?.id) {
+        throw new Error(
+          `Live assistant response was not persisted: ${JSON.stringify({
+            proof,
+            output: result.text,
+            returnedPersistenceIds: result.persistedResponseMessageIds ?? [],
+          })}`,
+        );
+      }
+      if (
+        result.persistedResponseMessageIds?.length &&
+        !result.persistedResponseMessageIds.includes(persistedResponse.id)
+      ) {
+        throw new Error(
+          `Returned persistence ids do not contain the exact assistant memory: ${JSON.stringify(
+            {
+              proof,
+              persistedResponseId: persistedResponse.id,
+              returnedPersistenceIds: result.persistedResponseMessageIds,
+            },
+          )}`,
+        );
+      }
       return {
         index,
         proof,
@@ -206,11 +361,23 @@ async function main(): Promise<void> {
         wallMs: rounded(wallMs),
         backgroundTasks,
         backgroundQuiescenceMs: rounded(backgroundQuiescenceMs),
-        totalToQuiescenceMs: rounded(performance.now() - startedAt),
-        streamedCharacters: streamed.join("").length,
+        totalToQuiescenceMs: rounded(totalToQuiescenceMs),
+        streamedOutput: streamedText,
+        streamedCharacters: streamedText.length,
         outputCharacters: result.text.length,
         usage: result.usage,
+        modelUsage,
         failureKind: result.failureKind ?? null,
+        persistedResponse: {
+          id: persistedResponse.id,
+          entityId: persistedResponse.entityId,
+          roomId: persistedResponse.roomId,
+          text: (persistedResponse.content as { text: string }).text,
+          returnedByMessageService:
+            result.persistedResponseMessageIds?.includes(
+              persistedResponse.id,
+            ) ?? false,
+        },
       };
     };
 
@@ -234,6 +401,132 @@ async function main(): Promise<void> {
         "Every benchmark turn must make exactly one live LLM call",
       );
     }
+
+    const cancellationProof = `CANCEL-${randomUUID()}`;
+    const cancellationMessage = createMessageMemory({
+      id: randomUUID() as UUID,
+      entityId,
+      roomId,
+      content: {
+        text: `Write a detailed response that ends with ${cancellationProof}.`,
+        source: "cerebras_cancellation_audit",
+        channelType: ChannelType.DM,
+      },
+    });
+    const cancellationController = new AbortController();
+    const cancellationReason = new Error(
+      "Cancellation probe owner disconnected",
+    );
+    cancellationReason.name = "AbortError";
+    const originalUseModel = runtime.useModel.bind(runtime);
+    let cancellationTimer: ReturnType<typeof setTimeout> | undefined;
+    let liveModelInvocationObserved = false;
+    let invokedModelType: string | null = null;
+    let modelSignalWasAlreadyAborted = false;
+    runtime.useModel = (async (modelType, params) => {
+      const pending = originalUseModel(modelType, params);
+      if (
+        !liveModelInvocationObserved &&
+        modelType === ModelType.RESPONSE_HANDLER
+      ) {
+        liveModelInvocationObserved = true;
+        invokedModelType = modelType;
+        modelSignalWasAlreadyAborted =
+          typeof params === "object" &&
+          params !== null &&
+          "signal" in params &&
+          params.signal instanceof AbortSignal &&
+          params.signal.aborted;
+        cancellationTimer = setTimeout(() => {
+          cancellationController.abort(cancellationReason);
+        }, 25);
+      }
+      return await pending;
+    }) as typeof runtime.useModel;
+
+    const cancellationStartedAt = performance.now();
+    let cancellationError: unknown;
+    try {
+      await generateChatResponse(
+        runtime,
+        cancellationMessage as Memory,
+        runtime.character.name,
+        { abortSignal: cancellationController.signal },
+      );
+      throw new Error("Cancellation probe unexpectedly completed");
+    } catch (error) {
+      cancellationError = error;
+    } finally {
+      runtime.useModel = originalUseModel;
+      if (cancellationTimer) clearTimeout(cancellationTimer);
+    }
+    const cancellationWallMs = performance.now() - cancellationStartedAt;
+    if (!liveModelInvocationObserved) {
+      throw new Error(
+        "Cancellation probe aborted before a live RESPONSE_HANDLER invocation",
+      );
+    }
+    if (!cancellationController.signal.aborted) {
+      throw new Error("Cancellation probe did not abort its owner signal");
+    }
+    if (
+      cancellationError !== cancellationReason &&
+      (!(cancellationError instanceof Error) ||
+        !cancellationError.message.includes(cancellationReason.message))
+    ) {
+      throw new Error(
+        `Cancellation probe rejected with the wrong reason: ${String(cancellationError)}`,
+      );
+    }
+    const cancellationQuiescenceStartedAt = performance.now();
+    const cancellationBackgroundTasks = await drainPostDeliveryTasks(runtime);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const cancellationBackgroundQuiescenceMs =
+      performance.now() - cancellationQuiescenceStartedAt;
+    const memoriesAfterCancellation = await runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: 100,
+    });
+    const lateCancellationReplies = memoriesAfterCancellation.filter(
+      (memory) =>
+        memory.entityId === runtime.agentId &&
+        String((memory.content as { text?: unknown }).text ?? "").includes(
+          cancellationProof,
+        ),
+    );
+    if (lateCancellationReplies.length > 0) {
+      throw new Error(
+        `Cancelled live turn persisted a late assistant reply: ${JSON.stringify(
+          lateCancellationReplies.map((memory) => memory.id),
+        )}`,
+      );
+    }
+    const cancellationProbe = {
+      proof: cancellationProof,
+      execution:
+        "production generateChatResponse path; owner abort scheduled after the live RESPONSE_HANDLER invocation began",
+      liveModelInvocationObserved,
+      invokedModelType,
+      modelSignalWasAlreadyAborted,
+      ownerSignalAborted: cancellationController.signal.aborted,
+      rejection: {
+        name:
+          cancellationError instanceof Error
+            ? cancellationError.name
+            : typeof cancellationError,
+        message:
+          cancellationError instanceof Error
+            ? cancellationError.message
+            : String(cancellationError),
+      },
+      wallMs: rounded(cancellationWallMs),
+      backgroundTasks: cancellationBackgroundTasks,
+      backgroundQuiescenceMs: rounded(cancellationBackgroundQuiescenceMs),
+      lateAssistantPersistenceIds: lateCancellationReplies.map(
+        (memory) => memory.id,
+      ),
+    };
 
     const registeredProviderNames = runtime.providers.map(
       (provider) => provider.name,
@@ -298,6 +591,7 @@ async function main(): Promise<void> {
       >,
       spanHistograms: chatTelemetry.spanHistograms,
       providerTelemetry: chatTelemetry.providers,
+      cancellationProbe,
       allProviderSweep: {
         execution:
           "every registered provider explicitly selected and executed concurrently by AgentRuntime.composeState",

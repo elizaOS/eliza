@@ -403,6 +403,46 @@ export function calculateProviderOverlaps(
 		}),
 	);
 }
+
+// Per-provider composeState budget. Without an enforced deadline a provider
+// doing synchronous network work can hold every message turn hostage for tens
+// of seconds and still count as healthy (a registry refetch measured 10.9s on
+// a live turn). The default defends interactive latency; a provider with
+// legitimately slow, turn-blocking work declares its own `timeoutMs`. On
+// expiry the provider degrades to a failure record for the turn
+// (`deadline_exceeded`) and composition proceeds without it.
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
+	const raw = Number.parseInt(
+		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
+		10,
+	);
+	if (Number.isFinite(raw) && raw >= 250) return raw;
+	return 3_000;
+})();
+
+// The budget is enforced at execution creation so coalesced awaiters share
+// one deadline. The rejection carries name "TimeoutError" so the composition
+// catch classifies it as `deadline_exceeded` and degrades that provider while
+// the turn proceeds.
+function withProviderDeadline<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+	providerName: string,
+): Promise<T> {
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_, reject) => {
+		timeoutHandle = setTimeout(() => {
+			const error = new Error(
+				`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
+			);
+			error.name = "TimeoutError";
+			reject(error);
+		}, timeoutMs);
+	});
+	return Promise.race([promise, deadline]).finally(() => {
+		if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+	});
+}
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
 	"bio",
@@ -2214,7 +2254,6 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 		if (pluginToRegister.services) {
-			const serviceTypesToStart = new Set<ServiceTypeName>();
 			for (const service of pluginToRegister.services) {
 				const serviceType = service.serviceType as ServiceTypeName;
 
@@ -2245,13 +2284,12 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					services.push(service);
 				}
-				serviceTypesToStart.add(serviceType);
-			}
 
-			// Register every sibling implementation before startup takes a class
-			// snapshot, otherwise the first declaration can fail before a later
-			// implementation of the same service type is visible.
-			for (const serviceType of serviceTypesToStart) {
+				// Eagerly kick off service start so it is available via the
+				// sync getService() by the time actions/routes need it.
+				// Fire-and-forget: cannot await here because _runServiceStart
+				// awaits initPromise which resolves after initialize() completes
+				// (after all registerPlugin calls finish). Awaiting would deadlock.
 				this._ensureServiceStarted(serviceType).catch((err) => {
 					this.logger.error(
 						{
@@ -4513,6 +4551,10 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 				const providerCoalesced = execution !== undefined;
 				if (!execution) {
+					const providerBudgetMs =
+						typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
+							? provider.timeoutMs
+							: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
 					const promise = providerSignal?.aborted
@@ -4520,10 +4562,14 @@ export class AgentRuntime implements IAgentRuntime {
 								providerSignal.reason ??
 									new Error("Provider execution aborted before start"),
 							)
-						: withProviderStep(providerRuntime, provider.name, () =>
-								provider.get(providerRuntime, message, cachedState, {
-									...(providerSignal ? { signal: providerSignal } : {}),
-								}),
+						: withProviderDeadline(
+								withProviderStep(providerRuntime, provider.name, () =>
+									provider.get(providerRuntime, message, cachedState, {
+										...(providerSignal ? { signal: providerSignal } : {}),
+									}),
+								),
+								providerBudgetMs,
+								provider.name,
 							);
 					execution = { promise, startedAt, startedAtMonotonic };
 					if (inFlightKey !== null) {
@@ -4600,6 +4646,26 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
+					if (outcome === "deadline_exceeded") {
+						// error-policy:J4 a budget overrun degrades to an empty
+						// contribution instead of failing the turn: the per-provider
+						// deadline exists to defend interactive latency, and a reply
+						// missing one provider's section is strictly better than no
+						// reply. The overrun stays observable via the span outcome and
+						// reportError above; genuine provider errors below keep the
+						// fail-fast composition contract.
+						return {
+							text: "",
+							values: {},
+							data: {},
+							providerName: provider.name,
+							providerStartedAt: execution.startedAt,
+							providerEndedAt: endedAt,
+							providerDurationMs: duration,
+							providerOutcome: outcome,
+							providerCoalesced,
+						};
+					}
 					return {
 						providerName: provider.name,
 						providerStartedAt: execution.startedAt,
@@ -4959,57 +5025,15 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		let inFlight = this.startingServices.get(key);
 		if (!inFlight) {
-			// Implementations sharing a type are alternatives. Readiness is reached
-			// by the first successful implementation; failures remain observable,
-			// and all original causes are retained if every implementation fails.
+			// Start ALL registered service classes for this type, not just the first.
+			// This supports multiple services of the same type (e.g. multiple wallet services).
 			inFlight = (async () => {
-				try {
-					const first = await Promise.any(
-						classes.map(async (cls) => {
-							const result = await this._runServiceStart(key, serviceType, cls);
-							if (!result) {
-								throw new Error(
-									`Service implementation ${cls.name || "<anonymous>"} did not start`,
-								);
-							}
-							return result;
-						}),
-					);
-					this.serviceRegistrationStatus.set(key, "registered");
-					const handler = this.servicePromiseHandlers.get(key);
-					if (handler) {
-						handler.resolve(first);
-						this.servicePromiseHandlers.delete(key);
-					}
-					return first;
-				} catch (error) {
-					const cause =
-						error instanceof AggregateError
-							? error
-							: new AggregateError(
-									[error],
-									`All implementations of service ${String(serviceType)} failed`,
-								);
-					const startupError = new ElizaError(
-						`Service ${String(serviceType)} not found or failed to start`,
-						{
-							code: "SERVICE_START_FAILED",
-							context: {
-								serviceType: String(serviceType),
-								implementationCount: classes.length,
-							},
-							cause,
-						},
-					);
-					const handler = this.servicePromiseHandlers.get(key);
-					if (handler) {
-						handler.reject(startupError);
-						this.servicePromiseHandlers.delete(key);
-						this.servicePromises.delete(key);
-					}
-					this.serviceRegistrationStatus.set(key, "failed");
-					throw startupError;
+				let first: Service | null = null;
+				for (const cls of classes) {
+					const result = await this._runServiceStart(key, serviceType, cls);
+					if (result && !first) first = result;
 				}
+				return first;
 			})();
 			this.startingServices.set(key, inFlight);
 		}
@@ -5033,21 +5057,18 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId, serviceType },
 				"Service class has no static start method",
 			);
-			throw new Error(
-				`Service implementation ${serviceDef.name || "<anonymous>"} has no static start method`,
-			);
+			this.serviceRegistrationStatus.set(key, "failed");
+			return null;
 		}
 		try {
 			if (this.stopped) {
-				throw new Error(
-					`Runtime stopped before service ${String(serviceType)} could start`,
-				);
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
 			}
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
-				throw new Error(
-					`Service implementation ${serviceDef.name || "<anonymous>"} returned no instance`,
-				);
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
 			}
 			if (this.stopped) {
 				await this._stopServiceInstance(
@@ -5055,9 +5076,8 @@ export class AgentRuntime implements IAgentRuntime {
 					serviceInstance,
 					"late service start after runtime stop",
 				);
-				throw new Error(
-					`Runtime stopped while service ${String(serviceType)} was starting`,
-				);
+				this.serviceRegistrationStatus.set(key, "failed");
+				return null;
 			}
 			if (!this.services.has(key)) {
 				this.services.set(key, []);
@@ -5065,6 +5085,11 @@ export class AgentRuntime implements IAgentRuntime {
 			const serviceList = this.services.get(key);
 			if (serviceList) {
 				serviceList.push(serviceInstance);
+			}
+			const handler = this.servicePromiseHandlers.get(serviceType);
+			if (handler) {
+				handler.resolve(serviceInstance);
+				this.servicePromiseHandlers.delete(serviceType);
 			}
 			if (serviceDef.registerSendHandlers) {
 				serviceDef.registerSendHandlers(this, serviceInstance);
@@ -5075,7 +5100,16 @@ export class AgentRuntime implements IAgentRuntime {
 			this.reportError("AgentRuntime.serviceStart", error, {
 				serviceType,
 			});
-			throw error;
+			const handler = this.servicePromiseHandlers.get(serviceType);
+			if (handler) {
+				handler.reject(
+					error instanceof Error ? error : new Error(String(error)),
+				);
+				this.servicePromiseHandlers.delete(serviceType);
+				this.servicePromises.delete(serviceType);
+			}
+			this.serviceRegistrationStatus.set(key, "failed");
+			return null;
 		}
 	}
 
@@ -6510,24 +6544,20 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					const hasToolCallsField = "toolCalls" in streamRaw;
 					const resolvedToolCalls = hasToolCallsField
-						? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+						? await Promise.resolve(streamRaw.toolCalls)
 						: [];
-					const hasResolvedToolCalls =
-						Array.isArray(resolvedToolCalls) && resolvedToolCalls.length > 0;
-					// Only widen to a GenerateText-shape result when the stream actually
-					// surfaced tool calls. The original streaming contract returns a bare
-					// string; the wider object exists solely to preserve `toolCalls` for
-					// `parsePlannerOutput`, which is irrelevant when none were emitted.
-					if (hasResolvedToolCalls) {
+					// The presence of `toolCalls` marks a native-result contract, even
+					// when the provider returns an empty list. Collapsing that result to a
+					// string discards usage, finish reason, and concrete model metadata,
+					// which makes successful hosted calls unpriceable.
+					if (hasToolCallsField) {
 						const resolvedFinishReason =
 							"finishReason" in streamRaw
-								? await Promise.resolve(streamRaw.finishReason).catch(
-										() => undefined,
-									)
+								? await Promise.resolve(streamRaw.finishReason)
 								: undefined;
 						const resolvedUsage =
 							"usage" in streamRaw
-								? await Promise.resolve(streamRaw.usage).catch(() => undefined)
+								? await Promise.resolve(streamRaw.usage)
 								: undefined;
 						resultRef.current = {
 							text: streamedText,

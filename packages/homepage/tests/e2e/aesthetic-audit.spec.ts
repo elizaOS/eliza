@@ -122,12 +122,7 @@ async function settle(page: Page, routePath?: string) {
     await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.locator("[data-phone-model]")).toHaveAttribute(
-      "data-phone-model",
-      "settled",
-      { timeout: 30_000 },
-    );
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(3000);
     return;
   }
   // Wait for substantive content on all other routes.

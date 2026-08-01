@@ -46,13 +46,18 @@ export async function runReinject({
 		return { success: false, text };
 	}
 
+	// Human wording, no raw removed-path (it stays in values/data); verified +
+	// turnComplete make the confirmation the sole delivery.
 	const text =
-		`Reinjected ${result.pluginName} (removed ${result.removedPath})` +
-		(result.requiresRestart ? "\nRestart required." : "");
+		`Reinjected ${result.pluginName} — back on the standard installed version.` +
+		(result.requiresRestart ? " A restart is needed to pick it up." : "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "reinject",
 			name: result.pluginName,

@@ -48,7 +48,9 @@ export class ChatPreHandlerRegistry {
 		ctx: ChatPreHandlerContext,
 	): Promise<ChatPreHandlerResult | null> {
 		for (const handler of this.list()) {
+			ctx.abortSignal?.throwIfAborted();
 			const result = await handler.tryHandle(ctx);
+			ctx.abortSignal?.throwIfAborted();
 			if (result) return result;
 		}
 		return null;

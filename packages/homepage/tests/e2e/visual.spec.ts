@@ -26,9 +26,10 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The phone is loaded only after the section becomes visible and the browser
-  // gets idle time, so its explicit readiness marker is the stable capture
-  // boundary for both the deferred load and the camera intro.
+  // The phone camera and chat run outside CSS animation controls, so the model
+  // exposes its own capture boundary: data-phone-model flips to "settled" only
+  // once the camera holds its final pose AND the chat canvas has committed its
+  // last intro message. No sleeps — the marker is the whole contract.
   if (routePath === "/" || routePath === "/leaderboard") {
     await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
     const tryButton = page.getByRole("button", { name: "Try Now" }).first();
@@ -47,7 +48,6 @@ async function prepare(page: Page, routePath?: string) {
     await page
       .locator('[data-phone-model="settled"]')
       .waitFor({ timeout: 20_000 });
-    await page.waitForTimeout(500);
     return;
   }
   if (routePath === "/login" || routePath === "/connected") {

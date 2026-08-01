@@ -350,7 +350,17 @@ export const enableAutonomousModeAction: Action = {
 		if (callback) {
 			await callback({ text, data });
 		}
-		return { success: true, text, data };
+		// The confirmation is the complete answer to a single-operation turn:
+		// verified + turnComplete make the callback the sole delivery instead of
+		// double-messaging with the evaluator.
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			data,
+		};
 	},
 };
 
@@ -403,6 +413,14 @@ export const disableAutonomousModeAction: Action = {
 		if (callback) {
 			await callback({ text, data });
 		}
-		return { success: true, text, data };
+		// Same single-delivery contract as the enable path.
+		return {
+			success: true,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			data,
+		};
 	},
 };

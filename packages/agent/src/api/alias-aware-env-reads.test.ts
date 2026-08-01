@@ -6,8 +6,8 @@
  * exported helpers (`resolveCorsOrigin`, `pairingEnabled`, `resolveTerminalRunRejection`,
  * `extractAuthToken`, `isWebSocketAuthorized`, `resolveWalletExportRejection`,
  * `resolveMcpTerminalAuthorizationRejection`) against a live `process.env`; the
- * server.ts/tui/chat-routes port + chat-timeout reads are covered through the same
- * `readAliasedEnv` primitive they call plus the alias-aware `resolveDesktopApiPort`.
+ * server.ts/tui port reads are covered through the same `readAliasedEnv`
+ * primitive they call plus the alias-aware `resolveDesktopApiPort`.
  */
 import type http from "node:http";
 import {
@@ -45,8 +45,6 @@ const TOUCHED_ENV_KEYS = [
   "ELIZA_ALLOW_WS_QUERY_TOKEN",
   "MILADY_API_PORT",
   "ELIZA_API_PORT",
-  "MILADY_CHAT_GENERATION_TIMEOUT_MS",
-  "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
   "MILADY_API_TOKEN",
   "ELIZA_API_TOKEN",
   "ELIZA_API_BIND",
@@ -265,11 +263,9 @@ describe("#13422 P3 — alias-aware boot-critical env reads", () => {
     });
   });
 
-  describe("readAliasedEnv primitive — ELIZA_API_PORT / ELIZA_CHAT_GENERATION_TIMEOUT_MS", () => {
-    // server.ts (port selection + HTTP request timeout), tui/agent-terminal-tui.ts
-    // (port selection), and chat-routes.ts (generation timeout) all migrated to the
-    // exact `readAliasedEnv("ELIZA_API_PORT")` / `readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS")`
-    // calls exercised here; the port selection also feeds the alias-aware resolveDesktopApiPort.
+  describe("readAliasedEnv primitive — ELIZA_API_PORT", () => {
+    // The server and terminal use this exact read, and the result also feeds
+    // the alias-aware desktop port resolver.
     it("resolves ELIZA_API_PORT from the branded alias, honors ELIZA precedence, and writes no mirror", () => {
       process.env.MILADY_API_PORT = "45999";
       expect(readAliasedEnv("ELIZA_API_PORT")).toBe("45999");
@@ -279,15 +275,6 @@ describe("#13422 P3 — alias-aware boot-critical env reads", () => {
       process.env.ELIZA_API_PORT = "31337";
       expect(readAliasedEnv("ELIZA_API_PORT")).toBe("31337");
       expect(resolveDesktopApiPort(process.env)).toBe(31337);
-    });
-
-    it("resolves ELIZA_CHAT_GENERATION_TIMEOUT_MS from the branded alias, honors ELIZA precedence, and writes no mirror", () => {
-      process.env.MILADY_CHAT_GENERATION_TIMEOUT_MS = "123456";
-      expect(readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS")).toBe("123456");
-      expect(process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS).toBeUndefined();
-
-      process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS = "180000";
-      expect(readAliasedEnv("ELIZA_CHAT_GENERATION_TIMEOUT_MS")).toBe("180000");
     });
   });
 });

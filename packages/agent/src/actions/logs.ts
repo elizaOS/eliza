@@ -191,29 +191,21 @@ function setLogLevel(
   const requested =
     typeof params.level === "string" ? params.level.toLowerCase() : "";
   if (!LOG_LEVELS.includes(requested as LogLevel)) {
-    if (callback) {
-      callback({
-        text: `Please specify a valid log level: ${LOG_LEVELS.join(", ")}.`,
-        action: "LOGS_SET_LEVEL_FAILED",
-      });
-    }
-    return failure("Invalid log level.", "LOGS_SET_LEVEL_FAILED", {
-      validLevels: [...LOG_LEVELS],
-    });
+    // Planner-facing only: the canned level list read as tool-speak in chat
+    // next to the evaluator's in-voice reply. The evaluator owns asking.
+    return failure(
+      `No valid log level in the request; ask the user for one of: ${LOG_LEVELS.join(", ")}.`,
+      "LOGS_SET_LEVEL_FAILED",
+      { validLevels: [...LOG_LEVELS] },
+    );
   }
   const level = requested as LogLevel;
   const targetRoomId = params.roomId ?? message.roomId;
 
   const overrides = (runtime as RuntimeWithOverrides).logLevelOverrides;
   if (!overrides) {
-    if (callback) {
-      callback({
-        text: "Dynamic log levels are not supported by this runtime version.",
-        action: "LOGS_SET_LEVEL_FAILED",
-      });
-    }
     return failure(
-      "Dynamic log levels are not supported by this runtime version.",
+      "Dynamic log levels are not supported by this runtime version; tell the user log-level changes are unavailable here.",
       "LOGS_SET_LEVEL_FAILED",
     );
   }
@@ -226,15 +218,22 @@ function setLogLevel(
   }
   elizaLogger.info(`[LOGS] level set to ${level} for room ${targetRoomId}`);
 
+  const changedText = `Log level changed to **${level.toUpperCase()}** for this room.`;
   if (callback) {
     callback({
-      text: `Log level changed to **${level.toUpperCase()}** for this room.`,
+      text: changedText,
       action: "LOGS_SET_LEVEL",
     });
   }
+  // The confirmation is the complete answer to a single-operation turn:
+  // verified + turnComplete make the callback the sole delivery instead of
+  // double-messaging with the evaluator.
   return {
     success: true,
-    text: `Log level changed to ${level.toUpperCase()} for this room.`,
+    text: changedText,
+    userFacingText: changedText,
+    verifiedUserFacing: true,
+    turnComplete: true,
     values: { level },
     data: { actionName: "LOGS", op: "set_level", level, roomId: targetRoomId },
   };
@@ -284,12 +283,7 @@ export const logsAction: Action = {
         | undefined) ?? {};
     const op = params.action ?? params.subaction ?? params.op;
     if (!op || !LOGS_OPS.includes(op)) {
-      if (callback) {
-        callback({
-          text: `Unknown LOGS action. Use one of: ${LOGS_OPS.join(", ")}.`,
-          action: "LOGS_INVALID",
-        });
-      }
+      // Planner-facing only: internal op names are tool-speak, not chat.
       return failure(`Unknown LOGS op: ${String(op)}`, "LOGS_INVALID", {
         validOps: [...LOGS_OPS],
       });

@@ -39,6 +39,7 @@ export {
   parseVaultRef,
   persistProviderApiKey,
   resolveConfigEnvForProcess,
+  resolveConnectorSecretSettings,
   resolveProviderApiKey,
   type VaultLike,
   vaultKeyForProviderApiKey,

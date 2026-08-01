@@ -160,7 +160,6 @@ import {
   toBoolean,
   toNumber,
   toText,
-  withTransaction,
 } from "./sql.js";
 import { buildTelemetryEventFromSignal } from "./telemetry-mapping.js";
 
@@ -230,46 +229,6 @@ export interface LifeOpsScheduleObservationRecord
 
 export interface LifeOpsScheduleMergedStateRecord
   extends LifeOpsScheduleMergedState {}
-
-export type LifeOpsDefinitionScope = Pick<
-  LifeOpsTaskDefinition,
-  "agentId" | "domain" | "subjectType" | "subjectId"
->;
-
-export type PersistedLifeOpsTaskDefinition = LifeOpsTaskDefinition & {
-  revision: number;
-};
-
-export type LifeOpsDefinitionMutationStatus =
-  | "pending"
-  | "completed"
-  | "failed";
-
-export interface LifeOpsDefinitionMutationLedgerEntry
-  extends LifeOpsDefinitionScope {
-  id: string;
-  requestId: string;
-  operation: "update_definition" | "delete_definition";
-  definitionId: string;
-  expectedRevision: number | null;
-  resultRevision: number | null;
-  status: LifeOpsDefinitionMutationStatus;
-  result: Record<string, unknown> | null;
-  failureCode: string | null;
-  observedAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type LifeOpsDefinitionMutationClaim =
-  | {
-      disposition: "claimed";
-      entry: LifeOpsDefinitionMutationLedgerEntry;
-    }
-  | {
-      disposition: "pending" | "completed" | "failed";
-      entry: LifeOpsDefinitionMutationLedgerEntry;
-    };
 
 export {
   createLifeOpsHealthMetricSample,
@@ -391,7 +350,7 @@ function parseOwnershipFields(row: Record<string, unknown>) {
 
 function parseTaskDefinition(
   row: Record<string, unknown>,
-): PersistedLifeOpsTaskDefinition {
+): LifeOpsTaskDefinition {
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
@@ -425,44 +384,6 @@ function parseTaskDefinition(
     goalId: row.goal_id ? toText(row.goal_id) : null,
     source: toText(row.source),
     metadata: parseJsonRecord(row.metadata_json),
-    revision: toNumber(row.revision, 1),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
-}
-
-function parseDefinitionMutationLedger(
-  row: Record<string, unknown>,
-): LifeOpsDefinitionMutationLedgerEntry {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    domain: toText(row.domain) === "agent_ops" ? "agent_ops" : "user_lifeops",
-    subjectType: toText(row.subject_type) === "agent" ? "agent" : "owner",
-    subjectId: toText(row.subject_id),
-    requestId: toText(row.request_id),
-    operation:
-      toText(row.operation) === "delete_definition"
-        ? "delete_definition"
-        : "update_definition",
-    definitionId: toText(row.definition_id),
-    expectedRevision:
-      row.expected_revision === null || row.expected_revision === undefined
-        ? null
-        : toNumber(row.expected_revision),
-    resultRevision:
-      row.result_revision === null || row.result_revision === undefined
-        ? null
-        : toNumber(row.result_revision),
-    status:
-      toText(row.status) === "completed"
-        ? "completed"
-        : toText(row.status) === "failed"
-          ? "failed"
-          : "pending",
-    result: row.result_json ? parseJsonRecord(row.result_json) : null,
-    failureCode: row.failure_code ? toText(row.failure_code) : null,
-    observedAt: toText(row.observed_at),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };
@@ -2503,35 +2424,6 @@ function parseWorkThreadEventRow(
   };
 }
 
-function definitionScopeSql(scope: LifeOpsDefinitionScope): string {
-  return [
-    `agent_id = ${sqlQuote(scope.agentId)}`,
-    `domain = ${sqlQuote(scope.domain)}`,
-    `subject_type = ${sqlQuote(scope.subjectType)}`,
-    `subject_id = ${sqlQuote(scope.subjectId)}`,
-  ].join(" AND ");
-}
-
-function definitionMutationLedgerId(input: {
-  scope: LifeOpsDefinitionScope;
-  requestId: string;
-  operation: LifeOpsDefinitionMutationLedgerEntry["operation"];
-}): string {
-  return crypto
-    .createHash("sha256")
-    .update(
-      [
-        input.scope.agentId,
-        input.scope.domain,
-        input.scope.subjectType,
-        input.scope.subjectId,
-        input.requestId,
-        input.operation,
-      ].join("\u0000"),
-    )
-    .digest("hex");
-}
-
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -2662,47 +2554,6 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
     await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
-    await LifeOpsRepository.ensureDefinitionMutationSchema(runtime);
-  }
-
-  static async ensureDefinitionMutationSchema(
-    runtime: IAgentRuntime,
-  ): Promise<void> {
-    if (await tableExists(runtime, "app_lifeops.life_task_definitions")) {
-      await executeRawSql(
-        runtime,
-        "ALTER TABLE app_lifeops.life_task_definitions ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 1",
-      );
-    }
-    await executeRawSql(
-      runtime,
-      `CREATE TABLE IF NOT EXISTS app_lifeops.life_definition_mutation_ledger (
-        id TEXT PRIMARY KEY,
-        agent_id TEXT NOT NULL,
-        domain TEXT NOT NULL,
-        subject_type TEXT NOT NULL,
-        subject_id TEXT NOT NULL,
-        request_id TEXT NOT NULL,
-        operation TEXT NOT NULL,
-        definition_id TEXT NOT NULL,
-        expected_revision INTEGER,
-        result_revision INTEGER,
-        status TEXT NOT NULL DEFAULT 'pending',
-        result_json TEXT,
-        failure_code TEXT,
-        observed_at TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        CONSTRAINT uniq_life_definition_mutation_request
-          UNIQUE (agent_id, domain, subject_type, subject_id, request_id, operation)
-      )`,
-    );
-    await executeRawSql(
-      runtime,
-      `CREATE INDEX IF NOT EXISTS idx_life_definition_mutation_target
-         ON app_lifeops.life_definition_mutation_ledger
-           (agent_id, domain, subject_type, subject_id, definition_id)`,
-    );
   }
 
   static async ensureSchedulingNegotiationColumns(
@@ -3050,9 +2901,7 @@ export class LifeOpsRepository {
     );
   }
 
-  async createDefinition(
-    definition: LifeOpsTaskDefinition,
-  ): Promise<PersistedLifeOpsTaskDefinition> {
+  async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_task_definitions (
@@ -3060,7 +2909,7 @@ export class LifeOpsRepository {
         context_policy, kind, title, description, original_intent, timezone,
         status, priority, cadence_json, window_policy_json,
         progression_rule_json, website_access_json, reminder_plan_id, goal_id, source,
-        metadata_json, revision, created_at, updated_at
+        metadata_json, created_at, updated_at
       ) VALUES (
         ${sqlQuote(definition.id)},
         ${sqlQuote(definition.agentId)},
@@ -3088,27 +2937,20 @@ export class LifeOpsRepository {
         ${sqlText(definition.goalId)},
         ${sqlQuote(definition.source)},
         ${sqlJson(definition.metadata)},
-        1,
         ${sqlQuote(definition.createdAt)},
         ${sqlQuote(definition.updatedAt)}
       )`,
     );
-    return { ...definition, revision: 1 };
   }
 
-  async updateDefinition(
-    definition: LifeOpsTaskDefinition,
-    options?: {
-      expectedRevision?: number;
-      scope?: LifeOpsDefinitionScope;
-    },
-  ): Promise<PersistedLifeOpsTaskDefinition> {
-    const scope = options?.scope ?? definition;
-    const expectedRevision = options?.expectedRevision;
-    const rows = await executeRawSql(
+  async updateDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
+    await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_task_definitions
-         SET visibility_scope = ${sqlQuote(definition.visibilityScope)},
+         SET domain = ${sqlQuote(definition.domain)},
+             subject_type = ${sqlQuote(definition.subjectType)},
+             subject_id = ${sqlQuote(definition.subjectId)},
+             visibility_scope = ${sqlQuote(definition.visibilityScope)},
              context_policy = ${sqlQuote(definition.contextPolicy)},
              title = ${sqlQuote(definition.title)},
              description = ${sqlQuote(definition.description)},
@@ -3128,76 +2970,34 @@ export class LifeOpsRepository {
              goal_id = ${sqlText(definition.goalId)},
              source = ${sqlQuote(definition.source)},
              metadata_json = ${sqlJson(definition.metadata)},
-             updated_at = ${sqlQuote(definition.updatedAt)},
-             revision = revision + 1
+             updated_at = ${sqlQuote(definition.updatedAt)}
        WHERE id = ${sqlQuote(definition.id)}
-         AND ${definitionScopeSql(scope)}
-         ${
-           expectedRevision === undefined
-             ? ""
-             : `AND revision = ${sqlInteger(expectedRevision)}`
-}
-       RETURNING *`,
+         AND agent_id = ${sqlQuote(definition.agentId)}`,
     );
-    const row = rows[0];
-    if (!row) {
-      if (expectedRevision !== undefined) {
-        throw new OptimisticLockError({
-          table: "life_task_definitions",
-          id: definition.id,
-          expectedVersion: expectedRevision,
-        });
-      }
-      throw new ElizaError(
-        "[LifeOpsRepository] Definition update matched no scoped row",
-        {
-          code: "LIFEOPS_DEFINITION_SCOPE_MISMATCH",
-          context: { ...scope, definitionId: definition.id },
-          severity: "ephemeral",
-        },
-      );
-    }
-    return parseTaskDefinition(row);
   }
 
   async getDefinition(
     agentId: string,
     definitionId: string,
-    scope?: Omit<LifeOpsDefinitionScope, "agentId">,
-  ): Promise<PersistedLifeOpsTaskDefinition | null> {
-    const scopeSql = scope
-      ? `AND domain = ${sqlQuote(scope.domain)}
-         AND subject_type = ${sqlQuote(scope.subjectType)}
-         AND subject_id = ${sqlQuote(scope.subjectId)}`
-      : "";
+  ): Promise<LifeOpsTaskDefinition | null> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(definitionId)}
-          ${scopeSql}
         LIMIT 1`,
     );
     const row = rows[0];
     return row ? parseTaskDefinition(row) : null;
   }
 
-  async listDefinitions(
-    agentId: string,
-    scope?: Omit<LifeOpsDefinitionScope, "agentId">,
-  ): Promise<PersistedLifeOpsTaskDefinition[]> {
-    const scopeSql = scope
-      ? `AND domain = ${sqlQuote(scope.domain)}
-         AND subject_type = ${sqlQuote(scope.subjectType)}
-         AND subject_id = ${sqlQuote(scope.subjectId)}`
-      : "";
+  async listDefinitions(agentId: string): Promise<LifeOpsTaskDefinition[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
-          ${scopeSql}
         ORDER BY created_at ASC`,
     );
     return rows.map(parseTaskDefinition);
@@ -3205,7 +3005,7 @@ export class LifeOpsRepository {
 
   async listActiveDefinitions(
     agentId: string,
-  ): Promise<PersistedLifeOpsTaskDefinition[]> {
+  ): Promise<LifeOpsTaskDefinition[]> {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -3217,235 +3017,32 @@ export class LifeOpsRepository {
     return rows.map(parseTaskDefinition);
   }
 
-  async deleteDefinition(
-    scope: LifeOpsDefinitionScope,
-    definitionId: string,
-    expectedRevision: number,
-  ): Promise<void> {
-    await withTransaction(this.runtime, async (tx) => {
-      const deleted = await executeRawSqlTx(
-        tx,
-        `DELETE FROM app_lifeops.life_task_definitions
-          WHERE id = ${sqlQuote(definitionId)}
-            AND ${definitionScopeSql(scope)}
-            AND revision = ${sqlInteger(expectedRevision)}
-          RETURNING id`,
-      );
-      if (deleted.length === 0) {
-        throw new OptimisticLockError({
-          table: "life_task_definitions",
-          id: definitionId,
-          expectedVersion: expectedRevision,
-        });
-      }
-      await executeRawSqlTx(
-        tx,
-        `DELETE FROM app_reminders.life_reminder_plans
-          WHERE agent_id = ${sqlQuote(scope.agentId)}
-            AND owner_type = 'definition'
-            AND owner_id = ${sqlQuote(definitionId)}`,
-      );
-      await executeRawSqlTx(
-        tx,
-        `DELETE FROM app_goals.life_goal_links
-          WHERE agent_id = ${sqlQuote(scope.agentId)}
-            AND linked_type = 'definition'
-            AND linked_id = ${sqlQuote(definitionId)}`,
-      );
-      await executeRawSqlTx(
-        tx,
-        `DELETE FROM app_lifeops.life_task_occurrences
-          WHERE agent_id = ${sqlQuote(scope.agentId)}
-            AND domain = ${sqlQuote(scope.domain)}
-            AND subject_type = ${sqlQuote(scope.subjectType)}
-            AND subject_id = ${sqlQuote(scope.subjectId)}
-            AND definition_id = ${sqlQuote(definitionId)}`,
-      );
-    });
-  }
-
-  async claimDefinitionMutation(input: {
-    scope: LifeOpsDefinitionScope;
-    requestId: string;
-    operation: LifeOpsDefinitionMutationLedgerEntry["operation"];
-    definitionId: string;
-    expectedRevision: number | null;
-    observedAt?: string;
-  }): Promise<LifeOpsDefinitionMutationClaim> {
-    const timestamp = input.observedAt ?? isoNow();
-    const id = definitionMutationLedgerId(input);
-    const inserted = await executeRawSql(
+  async deleteDefinition(agentId: string, definitionId: string): Promise<void> {
+    await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_definition_mutation_ledger (
-        id, agent_id, domain, subject_type, subject_id, request_id, operation,
-        definition_id, expected_revision, result_revision, status, result_json,
-        failure_code, observed_at, created_at, updated_at
-      ) VALUES (
-        ${sqlQuote(id)},
-        ${sqlQuote(input.scope.agentId)},
-        ${sqlQuote(input.scope.domain)},
-        ${sqlQuote(input.scope.subjectType)},
-        ${sqlQuote(input.scope.subjectId)},
-        ${sqlQuote(input.requestId)},
-        ${sqlQuote(input.operation)},
-        ${sqlQuote(input.definitionId)},
-        ${sqlInteger(input.expectedRevision)},
-        NULL,
-        'pending',
-        NULL,
-        NULL,
-        ${sqlQuote(timestamp)},
-        ${sqlQuote(timestamp)},
-        ${sqlQuote(timestamp)}
-      )
-      ON CONFLICT (
-        agent_id, domain, subject_type, subject_id, request_id, operation
-      ) DO NOTHING
-      RETURNING *`,
+      `DELETE FROM app_reminders.life_reminder_plans
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND owner_type = 'definition'
+          AND owner_id = ${sqlQuote(definitionId)}`,
     );
-    if (inserted[0]) {
-      return {
-        disposition: "claimed",
-        entry: parseDefinitionMutationLedger(inserted[0]),
-      };
-    }
-    const existing = await this.getDefinitionMutation({
-      scope: input.scope,
-      requestId: input.requestId,
-      operation: input.operation,
-    });
-    if (!existing) {
-      throw new ElizaError(
-        "[LifeOpsRepository] Definition mutation claim was not reloadable",
-        {
-          code: "LIFEOPS_DEFINITION_MUTATION_RELOAD_FAILED",
-          context: {
-            ...input.scope,
-            requestId: input.requestId,
-            operation: input.operation,
-          },
-          severity: "fatal",
-        },
-      );
-    }
-    if (existing.definitionId !== input.definitionId) {
-      throw new ElizaError(
-        "[LifeOpsRepository] A request id cannot authorize a different definition mutation",
-        {
-          code: "LIFEOPS_DEFINITION_MUTATION_IDENTITY_MISMATCH",
-          context: {
-            ...input.scope,
-            requestId: input.requestId,
-            operation: input.operation,
-            existingDefinitionId: existing.definitionId,
-            requestedDefinitionId: input.definitionId,
-          },
-          severity: "ephemeral",
-        },
-      );
-    }
-    return { disposition: existing.status, entry: existing };
-  }
-
-  async getDefinitionMutation(input: {
-    scope: LifeOpsDefinitionScope;
-    requestId: string;
-    operation: LifeOpsDefinitionMutationLedgerEntry["operation"];
-  }): Promise<LifeOpsDefinitionMutationLedgerEntry | null> {
-    const rows = await executeRawSql(
+    await executeRawSql(
       this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_definition_mutation_ledger
-        WHERE ${definitionScopeSql(input.scope)}
-          AND request_id = ${sqlQuote(input.requestId)}
-          AND operation = ${sqlQuote(input.operation)}
-        LIMIT 1`,
+      `DELETE FROM app_goals.life_goal_links
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND linked_type = 'definition'
+          AND linked_id = ${sqlQuote(definitionId)}`,
     );
-    return rows[0] ? parseDefinitionMutationLedger(rows[0]) : null;
-  }
-
-  async completeDefinitionMutation(input: {
-    entry: LifeOpsDefinitionMutationLedgerEntry;
-    resultRevision: number | null;
-    result: Record<string, unknown>;
-  }): Promise<LifeOpsDefinitionMutationLedgerEntry> {
-    const timestamp = isoNow();
-    const rows = await executeRawSql(
+    await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_definition_mutation_ledger
-          SET status = 'completed',
-              result_revision = ${sqlInteger(input.resultRevision)},
-              result_json = ${sqlJson(input.result)},
-              failure_code = NULL,
-              updated_at = ${sqlQuote(timestamp)}
-        WHERE id = ${sqlQuote(input.entry.id)}
-          AND ${definitionScopeSql(input.entry)}
-          AND definition_id = ${sqlQuote(input.entry.definitionId)}
-          AND status = 'pending'
-        RETURNING *`,
+      `DELETE FROM app_lifeops.life_task_occurrences
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND definition_id = ${sqlQuote(definitionId)}`,
     );
-    if (rows[0]) {
-      return parseDefinitionMutationLedger(rows[0]);
-    }
-    const existing = await this.getDefinitionMutation({
-      scope: input.entry,
-      requestId: input.entry.requestId,
-      operation: input.entry.operation,
-    });
-    if (existing?.status === "completed") {
-      return existing;
-    }
-    throw new ElizaError(
-      "[LifeOpsRepository] Definition mutation completion lost its claim",
-      {
-        code: "LIFEOPS_DEFINITION_MUTATION_CLAIM_LOST",
-        context: {
-          ...input.entry,
-          result: input.result,
-        },
-        severity: "fatal",
-      },
-    );
-  }
-
-  async failDefinitionMutation(input: {
-    entry: LifeOpsDefinitionMutationLedgerEntry;
-    failureCode: string;
-  }): Promise<LifeOpsDefinitionMutationLedgerEntry> {
-    const timestamp = isoNow();
-    const rows = await executeRawSql(
+    await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_definition_mutation_ledger
-          SET status = 'failed',
-              failure_code = ${sqlQuote(input.failureCode)},
-              updated_at = ${sqlQuote(timestamp)}
-        WHERE id = ${sqlQuote(input.entry.id)}
-          AND ${definitionScopeSql(input.entry)}
-          AND definition_id = ${sqlQuote(input.entry.definitionId)}
-          AND status = 'pending'
-        RETURNING *`,
-    );
-    if (rows[0]) {
-      return parseDefinitionMutationLedger(rows[0]);
-    }
-    const existing = await this.getDefinitionMutation({
-      scope: input.entry,
-      requestId: input.entry.requestId,
-      operation: input.entry.operation,
-    });
-    if (existing) {
-      return existing;
-    }
-    throw new ElizaError(
-      "[LifeOpsRepository] Failed definition mutation was not reloadable",
-      {
-        code: "LIFEOPS_DEFINITION_MUTATION_RELOAD_FAILED",
-        context: {
-          ...input.entry,
-          failureCode: input.failureCode,
-        },
-        severity: "fatal",
-      },
+      `DELETE FROM app_lifeops.life_task_definitions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(definitionId)}`,
     );
   }
 

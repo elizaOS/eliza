@@ -7,10 +7,10 @@
  *    disk, no plugin load required) but isn't loaded yet → "Get" (load/install).
  *
  * The catalog ({@link RegistryAppInfo}) is sourced from `/api/apps`, which the
- * agent builds by reading each plugin's `package.json` `elizaos.app` manifest —
- * so titles, categories, and hero images are available without importing the
- * plugin. Loading happens on demand; until then the entry is a card with a
- * Get button.
+ * agent builds from installed `elizaos.app` manifests and the generated
+ * community registry. That keeps titles, categories, and launch metadata
+ * available before a third-party package is installed. Loading happens on
+ * demand; until then the entry is a card with a Get button.
  *
  * This module is the pure merge/dedupe so it can be unit-tested without React.
  */
@@ -97,6 +97,12 @@ export interface InstalledAppLike {
   name: string;
 }
 
+export type ViewCatalogVisibilityScope = "manager" | "routable";
+
+function isBuiltinShellRoute(view: ViewRegistryEntry): boolean {
+  return view.builtin === true && view.pluginName === "@elizaos/builtin";
+}
+
 export function viewToEntry(view: ViewRegistryEntry): ViewEntry {
   const heroUrl = isShellReachableImageUrl(view.heroImageUrl)
     ? view.heroImageUrl
@@ -173,6 +179,9 @@ function appToEntry(app: RegistryAppInfo, isActive: boolean): ViewEntry {
  *   appended as "Get" (or "Open" when active but viewless, e.g. external apps).
  * - The catalog is only surfaced on a GUI surface — installing is a GUI action;
  *   future non-GUI surfaces list only their loaded views.
+ * - Routable consumers may include first-party shell destinations that are
+ *   intentionally hidden from the plugin manager; launcher curation remains
+ *   responsible for deciding which of those destinations become tiles.
  */
 export function mergeViewCatalog(input: {
   views: ViewRegistryEntry[];
@@ -181,8 +190,17 @@ export function mergeViewCatalog(input: {
   activeModality: ViewModality;
   /** Which view kinds the user/​build has enabled (system+release always on). */
   enabledKinds: EnabledViewKinds;
+  /** Whether `views` is the manager registry or the shell's routable union. */
+  visibilityScope: ViewCatalogVisibilityScope;
 }): ViewEntry[] {
-  const { views, catalog, installed, activeModality, enabledKinds } = input;
+  const {
+    views,
+    catalog,
+    installed,
+    activeModality,
+    enabledKinds,
+    visibilityScope,
+  } = input;
 
   const loadedPluginNames = new Set<string>();
   for (const v of views) {
@@ -192,7 +210,12 @@ export function mergeViewCatalog(input: {
   const viewEntries: ViewEntry[] = [];
   for (const v of views) {
     if (!isViewVisible(v, enabledKinds)) continue;
-    if (v.visibleInManager === false) continue;
+    if (
+      v.visibleInManager === false &&
+      !(visibilityScope === "routable" && isBuiltinShellRoute(v))
+    ) {
+      continue;
+    }
     if ((v.viewType ?? "gui") !== activeModality) continue;
     viewEntries.push(viewToEntry(v));
   }

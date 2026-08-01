@@ -47,10 +47,19 @@ export async function runRelaunch({
 		extractLaunchTarget(message, options);
 
 	if (!target && !explicitRunId) {
-		const text =
-			'I need an app name or runId to relaunch. Try: "relaunch shopify".';
+		const text = "Which app should I relaunch?";
 		await callback?.({ text });
-		return { success: false, text };
+		// The clarify question is the designed ask the user must answer: verified
+		// + turnComplete make it the sole delivery instead of pairing it with a
+		// second evaluator reply.
+		return {
+			success: true,
+			text: "No app name in the relaunch request; asked the user which app to relaunch",
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { awaitingAppName: true },
+		};
 	}
 
 	let appName = target ?? "";
@@ -63,7 +72,15 @@ export async function runRelaunch({
 				candidates,
 			)}\nPlease specify which one.`;
 			await callback?.({ text });
-			return { success: false, text, data: { candidates } };
+			return {
+				success: true,
+				text: `"${target}" matched multiple installed apps; asked the user which one to relaunch`,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				turnComplete: true,
+				values: { awaitingSelection: true },
+				data: { candidates },
+			};
 		}
 		appName = resolution.match?.name ?? target;
 	}
@@ -93,9 +110,16 @@ export async function runRelaunch({
 	}
 
 	if (!appName) {
-		const text = `Stopped run ${explicitRunId} but no app name was supplied to relaunch.`;
+		const text = "I stopped that run, but which app should I relaunch?";
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: true,
+			text: `Stopped run ${explicitRunId} but no app name was supplied; asked the user which app to relaunch`,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			values: { awaitingAppName: true },
+		};
 	}
 
 	const launch = await client.launchApp(appName);
@@ -105,6 +129,7 @@ export async function runRelaunch({
 		: `Relaunched ${launch.displayName}.`;
 
 	let verifySection = "";
+	let verifyFailDetail: string | undefined;
 	const wantsVerify =
 		options?.verify === true || readStringOption(options, "verify") === "true";
 	if (wantsVerify) {
@@ -125,11 +150,15 @@ export async function runRelaunch({
 					appName,
 					profile: "fast",
 				});
-				verifySection = `\nVerify (fast): ${verifyResult.verdict}${
+				// retryablePromptForChild is written for a child coding agent — it
+				// stays planner-facing in the result; the visible line stays human.
+				verifySection =
 					verifyResult.verdict === "fail"
-						? `\n${verifyResult.retryablePromptForChild}`
-						: ""
-				}`;
+						? "\nA quick verification check failed after the relaunch — the app may not be fully working yet."
+						: "\nA quick verification check passed.";
+				if (verifyResult.verdict === "fail") {
+					verifyFailDetail = verifyResult.retryablePromptForChild;
+				}
 			}
 		}
 	}
@@ -142,7 +171,7 @@ export async function runRelaunch({
 
 	return {
 		success: true,
-		text,
+		text: verifyFailDetail ? `${text}\n${verifyFailDetail}` : text,
 		values: {
 			mode: "relaunch",
 			appName,

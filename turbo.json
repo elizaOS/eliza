@@ -305,6 +305,10 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "@elizaos/example-code#typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "@elizaos/plugin-tailscale#typecheck": {
       "dependsOn": ["@elizaos/plugin-tunnel#build"],
       "outputs": []

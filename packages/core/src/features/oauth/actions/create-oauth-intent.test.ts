@@ -69,9 +69,9 @@ describe("CREATE_OAUTH_INTENT", () => {
 
 		expect(result.success).toBe(true);
 		expect(create).toHaveBeenCalledTimes(1);
-		expect(callback).toHaveBeenCalledWith(
-			expect.objectContaining({ action: "CREATE_OAUTH_INTENT" }),
-		);
+		// No visible callback: delivery-target machinery is planner-facing
+		// (the evaluator voices the user-facing message).
+		expect(callback).not.toHaveBeenCalled();
 		expect(result.data?.actionName).toBe("CREATE_OAUTH_INTENT");
 		expect(result.data?.oauthIntentId).toBe("oauth_1");
 		expect(result.data?.eligibleDeliveryTargets).toContain("dm");

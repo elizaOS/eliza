@@ -183,8 +183,17 @@ export async function writeFileHandler(
     );
   if (callback) await callback({ text, source: "coding-tools" });
 
-  return userFacingSuccessResult(text, {
-    path: resolved,
-    bytes,
-  });
+  // The write confirmation is the complete answer to a single-operation turn:
+  // verified + turnComplete make the callback the sole delivery (the live bug
+  // was "Wrote N bytes to <path>" followed by an evaluator "done. <path>").
+  // Multi-step coding turns keep their evaluator — the gate requires a sole
+  // completed tool with a drained queue.
+  return {
+    ...userFacingSuccessResult(text, {
+      path: resolved,
+      bytes,
+    }),
+    verifiedUserFacing: true,
+    turnComplete: true,
+  };
 }

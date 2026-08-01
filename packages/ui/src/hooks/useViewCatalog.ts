@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useMemo, useState } from "react";
-import { client } from "../api";
+import { type AppLaunchResult, client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { loadAppsCatalog } from "../components/apps/load-apps-catalog";
 import { getActiveViewModality } from "../platform/platform-guards";
@@ -32,8 +32,13 @@ export interface UseViewCatalogResult {
   loading: boolean;
   error: Error | null;
   refresh: () => void;
-  /** Launch/install the app behind an entry; resolves when loaded or rejects. */
-  get: (entry: ViewEntry) => Promise<void>;
+  /**
+   * Launch/install the app behind an entry and return the authoritative launch
+   * result. Catalog callers need the returned run/viewer on the first click:
+   * waiting for the installed manifest to be rediscovered is too late to open
+   * a newly-installed app's viewer.
+   */
+  get: (entry: ViewEntry) => Promise<AppLaunchResult | null>;
 }
 
 export function useViewCatalog(): UseViewCatalogResult {
@@ -78,6 +83,7 @@ export function useViewCatalog(): UseViewCatalogResult {
       installed,
       activeModality,
       enabledKinds,
+      visibilityScope: "routable",
     });
     if (Object.keys(pending).length === 0) return merged;
     return merged.map((e) =>
@@ -94,10 +100,10 @@ export function useViewCatalog(): UseViewCatalogResult {
   const get = useCallback(
     async (entry: ViewEntry) => {
       const name = entry.appName;
-      if (!name) return;
+      if (!name) return null;
       setPending((p) => ({ ...p, [entry.key]: "installing" }));
       try {
-        await client.launchApp(name);
+        const launch = await client.launchApp(name);
         // Loading hot-registers the plugin's views; refetch so the entry flips
         // to the loaded view (Open) and drops out of the catalog section.
         refreshViews();
@@ -107,6 +113,7 @@ export function useViewCatalog(): UseViewCatalogResult {
           delete next[entry.key];
           return next;
         });
+        return launch;
       } catch (err) {
         setPending((p) => ({ ...p, [entry.key]: "error" }));
         throw err instanceof Error ? err : new Error(String(err));

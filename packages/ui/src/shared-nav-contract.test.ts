@@ -128,6 +128,12 @@ describe("shared-tier nav vocabulary contract", () => {
     }
   });
 
+  it("carries the canonical path for host views absent from web registries", () => {
+    expect(SHARED_NAV_TARGETS["cloud-apps"]?.path).toBe(
+      HOST_VIEW_TARGETS["cloud-apps"]?.path,
+    );
+  });
+
   it("routes the documents matcher id to the Knowledge builtin", () => {
     expect(SHARED_NAV_TARGETS.documents).toEqual({
       viewId: "documents",

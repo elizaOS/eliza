@@ -4,6 +4,7 @@
  */
 import { logger } from "@elizaos/logger";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
+import { sharedNavPathForViewId } from "@elizaos/shared/views/shared-nav-targets";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
 import { shellHistory } from "./surface-realm-channel";
@@ -70,7 +71,11 @@ export function pathForNavigateViewDetail(
   if (detail.viewPath) return detail.viewPath;
   if (!detail.viewId) return null;
   const entry = desktopEntryForDetail(views, detail.viewId);
-  return entry?.path ?? `/apps/${detail.viewId}`;
+  return (
+    entry?.path ??
+    sharedNavPathForViewId(detail.viewId) ??
+    `/apps/${detail.viewId}`
+  );
 }
 
 export function directTabForNavigateView(
@@ -206,7 +211,7 @@ export function createNavigateViewHandler({
         availableViewsForDesktopTabs,
         detail.viewId,
       );
-      const viewPath = entry?.path ?? `/apps/${detail.viewId}`;
+      const viewPath = path;
       const viewLabel = entry?.label ?? detail.viewId;
       void invokeDesktopBridgeRequest<{ id: string }>({
         rpcMethod: "desktopOpenAppWindow",

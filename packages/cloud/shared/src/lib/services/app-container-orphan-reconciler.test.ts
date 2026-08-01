@@ -1,11 +1,6 @@
 /**
- * Tests for the APP orphan-container reconciler. The diff and orchestration
- * loop now live in the shared `orphan-container-reconciler.ts`; this suite pins
- * the APP-specific wiring: the `appContainerKeyOf` keyOf (the diff key IS the
- * container name), the app terminal-status vocab, and the fail-safe
- * group-by-key diff (#9307) that protects a live app sharing an `app-<slug>`
- * name with stale stopped/failed rows. The orchestration tests pin the "never
- * reap on an unreachable node" and "reap by immutable id, not name" invariants.
+ * Covers the app-specific name, status, duplicate-row, and orchestration rules
+ * supplied to the shared Docker orphan reconciler.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -19,7 +14,6 @@ import {
   reconcileOrphanContainers,
 } from "./orphan-container-reconciler";
 
-/** The app reconciler's pure-diff deltas (matches the production config). */
 const APP_DIFF: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses"> = {
   keyOf: appContainerKeyOf,
   terminalStatuses: new Set(["stopped", "failed", "deleted"]),
@@ -33,7 +27,6 @@ describe("appContainerKeyOf", () => {
   test("rejects names without the app- prefix", () => {
     expect(appContainerKeyOf("postgres")).toBeNull();
     expect(appContainerKeyOf("agent-abc")).toBeNull();
-    // substring match elsewhere in the name must NOT count
     expect(appContainerKeyOf("my-app-x")).toBeNull();
   });
 
@@ -49,11 +42,16 @@ describe("appContainerKeyOf", () => {
 
 describe("computeOrphanContainersToReap (app diff)", () => {
   const live = (key: string, status: string): LiveContainerRef => ({ key, status });
-  const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+  const NOW_MS = 10 * 60_000;
+  const container = (name: string, id: string): NodeContainerRef => ({
+    name,
+    id,
+    createdAtMs: 0,
+  });
   const compute = (containers: readonly NodeContainerRef[], rows: readonly LiveContainerRef[]) =>
-    computeOrphanContainersToReap(containers, rows, APP_DIFF);
+    computeOrphanContainersToReap(containers, rows, APP_DIFF, undefined, NOW_MS);
 
-  test("reaps a container whose name has NO db row", () => {
+  test("reaps a container whose name has no database row", () => {
     const orphans = compute([container("app-gone", "c1")], []);
     expect(orphans).toEqual([{ name: "app-gone", id: "c1", key: "app-gone", reason: "no_db_row" }]);
   });
@@ -67,7 +65,7 @@ describe("computeOrphanContainersToReap (app diff)", () => {
     }
   });
 
-  test("does NOT reap a container with a live (running) db row", () => {
+  test("retains a container with a live database row", () => {
     const orphans = compute([container("app-live", "c3")], [live("app-live", "running")]);
     expect(orphans).toEqual([]);
   });
@@ -219,8 +217,8 @@ describe("reconcileOrphanContainers (app orchestration)", () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "app-orphan", id: "c-orph" },
-        { name: "app-live", id: "c-live" },
+        { name: "app-orphan", id: "c-orph", createdAtMs: 0 },
+        { name: "app-live", id: "c-live", createdAtMs: 0 },
       ]),
       removeContainer,
     });
@@ -234,7 +232,7 @@ describe("reconcileOrphanContainers (app orchestration)", () => {
     expect(result).toEqual({ nodesScanned: 1, nodesSkipped: 0, reaped: 1, reapFailed: 0 });
   });
 
-  test("SKIPS a node whose container listing failed — never reaps on a blind node", async () => {
+  test("skips a node whose container listing failed", async () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({ listContainers: mock(async () => null), removeContainer });
 
@@ -247,7 +245,7 @@ describe("reconcileOrphanContainers (app orchestration)", () => {
     expect(result).toEqual({ nodesScanned: 0, nodesSkipped: 1, reaped: 0, reapFailed: 0 });
   });
 
-  test("SKIPS a non-healthy node (defensive: caller should pre-filter)", async () => {
+  test("skips a non-healthy node before listing containers", async () => {
     const listContainers = mock(async () => [] as NodeContainerRef[]);
     const node = makeNode({ status: "offline", listContainers });
 
@@ -264,8 +262,8 @@ describe("reconcileOrphanContainers (app orchestration)", () => {
   test("counts a failed removal as reapFailed without aborting the rest", async () => {
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "app-a", id: "ca" },
-        { name: "app-b", id: "cb" },
+        { name: "app-a", id: "ca", createdAtMs: 0 },
+        { name: "app-b", id: "cb", createdAtMs: 0 },
       ]),
       removeContainer: mock(async (id: string) => {
         if (id === "ca") throw new Error("ssh broke");

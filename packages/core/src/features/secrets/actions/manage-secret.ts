@@ -279,14 +279,11 @@ export const secretsAction: Action = {
 			logger.warn(
 				"[SECRETS] Missing or unknown action; expected one of: get, set, delete, list, check, mirror, request",
 			);
-			const text =
-				"I'm not sure what secret operation you want. Choose get, set, delete, list, check, mirror, or request.";
-			if (callback) {
-				await callback({ text, action: "SECRETS" });
-			}
+			// Planner-facing only: the canned op menu is raw tool-speak a chat
+			// user never asked for. The evaluator owns asking the user, in voice.
 			return {
 				success: false,
-				text,
+				text: "No clear secret operation found in the request; ask the user whether they want to get, set, delete, list, check, mirror, or request a secret.",
 				data: { actionName: "SECRETS", action: null },
 			};
 		}

@@ -1,7 +1,10 @@
 /**
  * LIST_CLOUD_APPS action tests: the user's app inventory (name / url / status). The @elizaos/cloud-sdk client is faked (helpers.ts, SDK boundary only); the action runs for real.
  */
+
 import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { IAgentRuntime } from "@elizaos/core";
+import { settleActionHandler } from "../../../packages/core/src/runtime/action-handler-settlement";
 import {
   captureCallback,
   FakeElizaCloudClient,
@@ -190,6 +193,80 @@ describe("LIST_CLOUD_APPS", () => {
       expect(result?.userFacingText).toBe(cb.calls[0]?.text);
       expect(result?.verifiedUserFacing).toBe(true);
       expect(result?.continueChain).toBe(false);
+    });
+
+    it("keeps callback transport failures separate from every API outcome", async () => {
+      const cases = [
+        {
+          name: "populated inventory",
+          listApps: () =>
+            Promise.resolve({
+              success: true,
+              apps: [makeApp({ name: "Alpha" })],
+            }),
+          success: true,
+          deliveredText: "You have 1 app on Eliza Cloud:",
+        },
+        {
+          name: "empty inventory",
+          listApps: () => Promise.resolve({ success: true, apps: [] }),
+          success: true,
+          deliveredText: "haven't created any apps",
+        },
+        {
+          name: "SDK failure",
+          listApps: () => Promise.reject(new Error("cloud unavailable")),
+          success: false,
+          deliveredText: "couldn't fetch",
+        },
+      ] as const;
+
+      for (const testCase of cases) {
+        resetSdk();
+        setListApps(testCase.listApps);
+        const callback = mock(async () => {
+          throw new Error(`transport unavailable: ${testCase.name}`);
+        });
+        const reportError = mock(() => undefined);
+        const runtime = {
+          ...keyedRuntime(),
+          reportError,
+          logger: {
+            debug: mock(() => undefined),
+            info: mock(() => undefined),
+            warn: mock(() => undefined),
+            error: mock(() => undefined),
+          },
+        } as unknown as IAgentRuntime;
+
+        const result = await settleActionHandler({
+          runtime,
+          action: listCloudAppsAction,
+          callback,
+          invoke: (settledCallback) =>
+            listCloudAppsAction.handler(
+              runtime,
+              makeMessage("list my cloud apps"),
+              undefined,
+              undefined,
+              settledCallback,
+            ),
+        });
+
+        expect(result.success).toBe(testCase.success);
+        expect(callback).toHaveBeenCalledTimes(1);
+        expect(callback.mock.calls[0]?.[0]?.text).toContain(
+          testCase.deliveredText,
+        );
+        expect(result.data?.callbackDeliveryFailures).toEqual([
+          `transport unavailable: ${testCase.name}`,
+        ]);
+        expect(reportError).toHaveBeenCalledWith(
+          "ActionCallbackDelivery",
+          expect.any(Error),
+          expect.objectContaining({ actionName: "LIST_CLOUD_APPS" }),
+        );
+      }
     });
   });
 });

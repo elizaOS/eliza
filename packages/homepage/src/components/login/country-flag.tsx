@@ -1,12 +1,19 @@
 /**
- * Cross-platform country flag renderer for homepage phone-number pickers.
+ * Country flag renderer for the homepage phone-number picker.
  */
-import { getCountryFlagPath } from "@/lib/countries";
-
 interface CountryFlagProps {
   countryCode: string;
   className?: string;
-  title: string;
+  title?: string;
+}
+
+function getCountryFlag(countryCode: string): string {
+  const normalized = countryCode.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return countryCode;
+
+  return String.fromCodePoint(
+    ...normalized.split("").map((char) => 127397 + char.charCodeAt(0)),
+  );
 }
 
 export function CountryFlag({
@@ -14,27 +21,14 @@ export function CountryFlag({
   className,
   title,
 }: CountryFlagProps) {
-  const flagPath = getCountryFlagPath(countryCode);
-
   return (
     <span
-      className={`${className ?? ""} inline-flex items-center justify-center overflow-hidden`}
-      title={title}
+      className={`${className ?? ""} inline-flex items-center justify-center text-base leading-none`}
+      title={title ?? countryCode}
       role="img"
-      aria-label={title}
+      aria-label={title ?? countryCode}
     >
-      {flagPath ? (
-        <img
-          src={flagPath}
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-          decoding="async"
-          className="size-full object-cover"
-        />
-      ) : (
-        countryCode.toUpperCase()
-      )}
+      {getCountryFlag(countryCode)}
     </span>
   );
 }

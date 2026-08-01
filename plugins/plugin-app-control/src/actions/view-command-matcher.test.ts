@@ -39,6 +39,7 @@ describe("matchViewCommand — explicit user examples", () => {
 		["show my knowledge hub", "documents"],
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
+		["open plugins", "plugins-page"],
 		// coding cockpit — wins over task-coordinator's bare "coding"
 		["open the cockpit", "cockpit"],
 		["open coding cockpit", "cockpit"],
@@ -187,6 +188,9 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"thanks, that was helpful",
 		"can you summarize this article",
 		"i love using this app",
+		"open apps",
+		"open my apps",
+		"open applications",
 		"showcase knowledge",
 		"open knowledgebase",
 		"open knowledgeable",

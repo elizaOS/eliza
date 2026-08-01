@@ -32,9 +32,9 @@ packages/homepage/
       brand/eliza-logo.tsx      Eliza SVG logo component (ElizaLogo)
       ShaderBackground/         react-three/fiber WebGL gradient wave (gradientWaveMaterial + ShaderBackground, lazy-loaded)
       ChatUI/renderChatToCanvas.ts  Canvas-rendered chat bubble surface for the onboarding demo
-      ModelViewers/ModelB.tsx   Demand-rendered 3D phone loaded after viewport-idle or interaction
+      ModelViewers/ModelB.tsx   3D model viewer (react-three/fiber); eager import in leaderboard
       login/phone-number-input.tsx  E.164 phone input with country picker
-      login/country-flag.tsx    Same-origin SVG flag with localized accessible naming
+      login/country-flag.tsx    Country flag glyph for the phone picker
       providers/query-provider.tsx  TanStack Query client wrapper
       DocumentMetaManager.tsx   <title> / <meta> manager
       QRCode.tsx                QR code renderer (inline SVG)
@@ -44,9 +44,6 @@ packages/homepage/
       api/siws.ts               Sign-In-With-Solana (SIWS) — signInWithSolana, nonce/verify against Cloud API
       context/auth-context.tsx  AuthProvider + useAuth hook — session token in localStorage
       hooks/use-eliza-app-provisioning-chat.ts  Provisioning-chat hook for onboarding
-      hooks/use-deferred-render.ts  Visibility + idle/interaction gate for the phone renderer
-      countries.ts             Localized country metadata and deterministic flag paths
-      fixed-rate-invalidation.ts  Display-rate-independent 30 Hz shader scheduler
       contact.ts                SMS / WhatsApp number constants and href builders
       query-client.ts           Shared TanStack Query client instance
       spring-types.ts           react-spring type helper
@@ -58,7 +55,7 @@ packages/homepage/
       release-data.ts           Auto-generated from GitHub Releases API — do not edit by hand
     types/
       speech-recognition.d.ts   Ambient SpeechRecognition Web API types
-  public/                       Static assets, local country flags, and inert Pages AASA fallback
+  public/                       Static assets plus an intentionally inert Pages AASA fallback
   wrangler-aasa.toml            Production-only route for the exact eliza.app AASA URL
   tests/
     smoke.node.test.mjs         Node --test smoke suite (the `test` script)
@@ -66,7 +63,6 @@ packages/homepage/
     e2e/                        Playwright e2e specs (aesthetic-audit, route-coverage, visual, live-routes, ...)
   scripts/
     generate-contact-sheet.mjs  Generates HTML contact sheet from Playwright screenshots
-    prune-unused-static-assets.mjs  Fail-closed removal of unreferenced hydrated output
     verify-aasa-response.mjs    Separately gates exact origin and Apple CDN bytes, metadata, identity, and routes
   vite.config.ts                Vite config — aliases and bundle visualizer
   playwright.config.ts          Playwright config for e2e
@@ -107,7 +103,7 @@ bun run --cwd packages/homepage check:release-data  # Validate generated release
 1. `node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds` — syncs only the brand assets referenced by the homepage into `public/`.
 2. `node ../app-core/scripts/write-homepage-release-data.mjs` — fetches GitHub Releases and writes `src/generated/release-data.ts`.
 
-**postbuild** runs `scripts/prune-unused-static-assets.mjs` so optional artifact-bundle backgrounds and product concepts cannot inflate the Cloudflare Pages upload when a developer checkout has hydrated them into `public/`. The script scans all searchable build output first and aborts without deleting anything if either candidate path is referenced.
+**postbuild** runs `scripts/prune-unused-static-assets.mjs` so optional artifact-bundle backgrounds and product concepts cannot inflate the Cloudflare Pages upload when a developer checkout has hydrated them into `public/`.
 
 ## Config / env vars
 
@@ -145,10 +141,7 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 
 - **`src/generated/release-data.ts` is auto-generated.** Never edit it by hand; it is overwritten on every `dev`/`build`. Run the generator script if you need fresh data.
 - **Vite aliases resolve `@elizaos/ui` sub-paths to source.** There is no bare `@elizaos/ui` alias; only explicit sub-path aliases (`@elizaos/ui/cloud-ui`, `@elizaos/ui/button`, `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu`, `@elizaos/ui/i18n/region`, `@elizaos/ui/product-switcher`) map to `packages/ui/src/`. Use those sub-path imports; adding a new sub-path requires a new alias entry in `vite.config.ts`.
-- **ShaderBackground and VideoCall are lazy-loaded** in `landing.tsx` (`React.lazy()` + `Suspense`). `ModelB` is additionally gated by viewport visibility plus browser idle, with interaction as an immediate opt-in; neither its module chunk nor `/models/iphone-meshopt.glb` is requested on the initial route turn.
-- **Reduced motion is owned by the landing page.** It is passed into both WebGL surfaces and the phone runtime; camera, model, chat, switcher, shader, and React Spring motion must all remain static when the preference is active.
-- **Phone model provenance is reviewed and reproducible.** `docs/phone-model-provenance.md` records the source/build hashes, exact command, retained topology, and quantization bound. Do not simplify or replace the GLB without updating those measurements and exact-head Linux visual evidence.
-- **Country flags are local SVG files.** `public/country-flags/` vendors the MIT `country-flag-icons` 3x2 artwork so Windows does not fall back to regional-indicator letters. Accessible country names come from `Intl.DisplayNames` using the active homepage locale.
+- **ShaderBackground and VideoCall are lazy-loaded** in `landing.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` sits behind its own Suspense boundary because it drives the messaging surface but must not block the page chrome while its 3D asset loads.
 - **Cloudflare Pages is the only homepage host.** `public/_redirects` provides SPA fallback and `public/_headers` provides static response headers. Do not add Vercel or GitHub Pages deployment configuration.
 - **Dev server port is 4444** (not the standard 5173). `bun run dev` is required; `vite preview` alone will not have the correct env from the orchestrator.
 - **The production AASA response is owned by the exact-path Worker** in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in a separate job, and never treats cache-bypass behavior as release evidence.

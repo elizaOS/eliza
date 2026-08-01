@@ -84,19 +84,26 @@ describe("background catalog (#13538)", () => {
     }
   });
 
-  it("the boot default is the Canopy jungle wallpaper over the black base", () => {
-    // The app boots to the Canopy photo wallpaper (misty jungle river valley).
+  it("the boot default is the Ember Night sunset wallpaper over the black base", () => {
+    // The app boots to the Ember Night sunset wallpaper (warm orange clouds).
     // The base color stays black so the host-chrome FOUC/manifest baseline is
-    // unchanged and the black→image settle is invisible at boot.
+    // unchanged and the black→image settle stays quiet at boot.
     expect(DEFAULT_BACKGROUND_CONFIG.mode).toBe("image");
     expect(DEFAULT_BACKGROUND_CONFIG.color).toBe("#000000");
-    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/wallpapers/canopy.webp");
-    // The Ember Night gallery tile still resolves to the served sunset asset.
+    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/bg-sunset.webp");
+    // DIVERGENCE GUARD: the boot config must equal the catalog default
+    // entry's render source. The old phone/desktop mismatch came from
+    // DEFAULT_BACKGROUND_CONFIG (Canopy) disagreeing with the catalog's
+    // declared default id (ember-night); this pins the two together.
     const def = BACKGROUND_CATALOG.find(
       (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
     );
     expect(def?.kind).toBe("image");
     expect(def?.source).toBe("/bg-sunset.webp");
+    expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe(def?.source);
+    // Canopy remains a selectable gallery scene, just not the default.
+    const canopy = BACKGROUND_CATALOG.find((e) => e.id === "canopy");
+    expect(canopy?.source).toBe("/wallpapers/canopy.webp");
   });
 
   it("resolveCatalogEntry matches by id, label, and fuzzy name", () => {

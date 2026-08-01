@@ -454,7 +454,9 @@ export async function runViewsDelete({
 		pluginName: view.pluginName,
 	});
 
-	const text = `Are you sure you want to delete the ${view.label} view (${view.pluginName})? Confirm with confirm=true, or cancel with confirm=false.`;
+	// The chat bubble stays human (no confirm=true/plugin-name tool syntax);
+	// the confirm mechanics live in the planner-facing result text.
+	const text = `Are you sure you want to delete the ${view.label} view? Say yes to delete it or no to keep it.`;
 	await callback?.({ text });
 	logger.info(
 		`[plugin-app-control] VIEWS/delete awaiting confirmation viewId=${view.id} pluginName=${view.pluginName} room=${roomId}`,
@@ -462,7 +464,7 @@ export async function runViewsDelete({
 
 	return {
 		success: true,
-		text,
+		text: `Asked the user to confirm deleting ${view.label} (${view.pluginName}); re-run with confirm=true to delete or confirm=false to cancel.`,
 		values: {
 			mode: "delete",
 			subMode: "confirm",

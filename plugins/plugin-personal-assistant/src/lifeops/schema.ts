@@ -76,7 +76,6 @@ export const lifeAccountPrivacy = appLifeopsPgSchema.table(
       .notNull()
       .default("[]"),
     metadataJson: text("metadata_json").notNull().default("{}"),
-    revision: integer("revision").notNull().default(1),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -122,45 +121,6 @@ export const lifeTaskDefinitions = appLifeopsPgSchema.table(
       t.subjectType,
       t.subjectId,
       t.status,
-    ),
-  ],
-);
-
-export const lifeDefinitionMutationLedger = appLifeopsPgSchema.table(
-  "life_definition_mutation_ledger",
-  {
-    id: text("id").primaryKey(),
-    agentId: text("agent_id").notNull(),
-    domain: text("domain").notNull(),
-    subjectType: text("subject_type").notNull(),
-    subjectId: text("subject_id").notNull(),
-    requestId: text("request_id").notNull(),
-    operation: text("operation").notNull(),
-    definitionId: text("definition_id").notNull(),
-    expectedRevision: integer("expected_revision"),
-    resultRevision: integer("result_revision"),
-    status: text("status").notNull().default("pending"),
-    resultJson: text("result_json"),
-    failureCode: text("failure_code"),
-    observedAt: text("observed_at").notNull(),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (t) => [
-    unique("uniq_life_definition_mutation_request").on(
-      t.agentId,
-      t.domain,
-      t.subjectType,
-      t.subjectId,
-      t.requestId,
-      t.operation,
-    ),
-    index("idx_life_definition_mutation_target").on(
-      t.agentId,
-      t.domain,
-      t.subjectType,
-      t.subjectId,
-      t.definitionId,
     ),
   ],
 );
@@ -1984,7 +1944,6 @@ export const lifeOpsSchema = {
   lifeConnectorGrants,
   lifeAccountPrivacy,
   lifeTaskDefinitions,
-  lifeDefinitionMutationLedger,
   lifeTaskOccurrences,
   lifeGoalDefinitions,
   lifeGoalLinks,

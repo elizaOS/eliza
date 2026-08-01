@@ -9,6 +9,7 @@
  */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -802,8 +803,39 @@ describe("CloudAgentsSection load state (error vs empty)", () => {
     );
     view.unmount();
 
-    resolveFetch?.({ success: true, data: [] });
-    await pendingFetch;
+    await act(async () => {
+      resolveFetch?.({ success: true, data: [] });
+      await pendingFetch;
+    });
+  });
+
+  it("does not let an older list response overwrite a newer refresh", async () => {
+    let resolveInitial:
+      | ((value: { success: true; data: [] }) => void)
+      | undefined;
+    const initialFetch = new Promise<{ success: true; data: [] }>((resolve) => {
+      resolveInitial = resolve;
+    });
+    clientMock.getCloudCompatAgents
+      .mockReturnValueOnce(initialFetch)
+      .mockResolvedValueOnce({
+        success: true,
+        data: [agent({ agent_name: "Newest" })],
+      });
+
+    render(<CloudAgentsSection />);
+    await waitFor(() =>
+      expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1),
+    );
+    fireEvent.click(screen.getByText("Refresh"));
+    await waitFor(() => expect(screen.getByText("Newest")).toBeTruthy());
+
+    await act(async () => {
+      resolveInitial?.({ success: true, data: [] });
+      await initialFetch;
+    });
+    expect(screen.getByText("Newest")).toBeTruthy();
+    expect(screen.queryByTestId("cloud-agents-empty")).toBeNull();
   });
 });
 

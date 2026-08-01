@@ -96,6 +96,65 @@ export async function resolveConfigEnvForProcess(
   return { resolved, missing };
 }
 
+/**
+ * Resolve `vault://<key>` sentinels found in connector env projections
+ * (the output of `collectConnectorEnvVars`) into an env-key → plaintext
+ * overlay for the runtime-settings projection.
+ *
+ * The overlay is delivered ONLY to the in-memory runtime settings map
+ * (`AgentRuntime.settings`, read via `runtime.getSetting()`); callers MUST
+ * NOT write resolved values into `process.env` — mirroring a resolved
+ * connector secret into the environment leaks it to every child process and
+ * co-tenant agent (the same invariant core's `getSetting()` documents).
+ *
+ * Fail-closed: a sentinel that cannot be resolved is reported in `failures`
+ * by env key + vault key ONLY — never any value, and never the underlying
+ * vault error (which could echo storage internals) — and the env key is
+ * omitted from the overlay, so downstream consumers see the connector as
+ * unconfigured instead of receiving the sentinel literal or a partial value.
+ *
+ * Non-sentinel entries are ignored here; the legacy plain-value path is
+ * responsible for them (backward compatible by construction — the `vault://`
+ * scheme is opt-in per value).
+ */
+export async function resolveConnectorSecretSettings(
+  connectorEnvVars: Record<string, string>,
+  vault: VaultLike,
+): Promise<{ resolved: Record<string, string>; failures: string[] }> {
+  const resolved: Record<string, string> = {};
+  const failures: string[] = [];
+  // Discord's token mirrors to two env keys from one vault entry — cache so
+  // one vault read (and one audit record) covers both aliases.
+  const cache = new Map<string, string | null>();
+
+  for (const [envKey, value] of Object.entries(connectorEnvVars)) {
+    if (!isVaultRef(value)) continue;
+    const vaultKey = parseVaultRef(value);
+    if (!vaultKey) {
+      failures.push(`${envKey} (malformed vault ref)`);
+      continue;
+    }
+    let secret = cache.get(vaultKey);
+    if (secret === undefined) {
+      try {
+        secret = (await vault.has(vaultKey)) ? await vault.get(vaultKey) : null;
+      } catch {
+        // Redacted on purpose: the caught error is dropped, not rethrown or
+        // stringified — key names are the only material that may surface.
+        secret = null;
+      }
+      cache.set(vaultKey, secret);
+    }
+    if (secret === null || secret.length === 0) {
+      failures.push(`${envKey} (vault://${vaultKey})`);
+      continue;
+    }
+    resolved[envKey] = secret;
+  }
+
+  return { resolved, failures };
+}
+
 /** Stable vault key for a provider API key. */
 export function vaultKeyForProviderApiKey(normalizedProvider: string): string {
   if (!normalizedProvider || normalizedProvider.includes(".")) {

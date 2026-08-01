@@ -46,13 +46,18 @@ export async function runSync({
 		return { success: false, text };
 	}
 
+	// Human wording, no commit-hash git-jargon (it stays in values/data);
+	// verified + turnComplete make the confirmation the sole delivery.
 	const text =
-		`Synced ${result.pluginName}: ${result.upstreamCommits} new upstream commit(s) at ${result.commitHash.slice(0, 8)}` +
-		(result.requiresRestart ? "\nRestart required." : "");
+		`Synced ${result.pluginName} with ${result.upstreamCommits} new upstream update(s).` +
+		(result.requiresRestart ? " A restart is needed to pick them up." : "");
 	await callback?.({ text });
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "sync",
 			name: result.pluginName,

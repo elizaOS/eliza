@@ -54,21 +54,11 @@ if (args.length === 0) {
 
 const dir = path.resolve(args[0]);
 let reportPath = null;
-let scenarioTimeoutMs = 900_000;
 for (let i = 1; i < args.length; i += 1) {
   if (args[i] === "--report" && args[i + 1]) {
     reportPath = path.resolve(args[i + 1]);
     i += 1;
-  } else if (args[i] === "--scenario-timeout-ms" && args[i + 1]) {
-    scenarioTimeoutMs = Number.parseInt(args[i + 1], 10);
-    i += 1;
   }
-}
-if (!Number.isSafeInteger(scenarioTimeoutMs) || scenarioTimeoutMs <= 0) {
-  console.error(
-    `[isolated] --scenario-timeout-ms must be a positive integer (got '${scenarioTimeoutMs}')`,
-  );
-  process.exit(2);
 }
 
 if (!fs.existsSync(dir)) {
@@ -107,7 +97,6 @@ for (const id of ids) {
     "/tmp",
     `scenario-isolated-${id.replace(/[^a-z0-9._-]/gi, "_")}.json`,
   );
-  fs.rmSync(tmpReport, { force: true });
   const child = spawnSync(
     "bun",
     [CLI, "run", dir, "--scenario", id, "--report", tmpReport],
@@ -116,15 +105,8 @@ for (const id of ids) {
       encoding: "utf8",
       stdio: ["inherit", "inherit", "inherit"],
       env: process.env,
-      timeout: scenarioTimeoutMs,
-      killSignal: "SIGKILL",
     },
   );
-  if (child.error?.code === "ETIMEDOUT") {
-    console.error(
-      `[isolated] ${id} exceeded ${scenarioTimeoutMs}ms and was terminated`,
-    );
-  }
   if (!fs.existsSync(tmpReport)) {
     console.error(`[isolated] ${id} produced no report (exit ${child.status})`);
     failed += 1;

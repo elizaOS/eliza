@@ -405,6 +405,7 @@ function selectConnectorFallback(payload: {
 
 async function buildSynthesisResultText(payload: {
   tasks: Array<{
+    label?: string;
     originalTask: string;
     completionSummary: string;
     validationSummary?: string;
@@ -421,6 +422,7 @@ async function buildSynthesisResultText(payload: {
 }
 
 async function buildTaskResultLine(task: {
+  label?: string;
   originalTask: string;
   completionSummary: string;
   validationSummary?: string;
@@ -436,7 +438,19 @@ async function buildTaskResultLine(task: {
   // user-actionable payload such a task owns; otherwise state what happened.
   if (task.status !== "completed") {
     if (validationSummary) return validationSummary;
-    return `${task.originalTask} — ${task.status} before completion.`;
+    // originalTask can be the ENTIRE composed kickoff prompt (the tasks.ts
+    // "--- Swarm Coordination ---" scaffold plus embedded examples) — relaying
+    // it raw posted a wall of prompt text to a live Discord room. Prefer the
+    // spawn label; a kickoff-shaped originalTask is never usable, otherwise a
+    // single capped line keeps the lifecycle notice a notice.
+    const label = task.label?.trim();
+    const firstLine = task.originalTask.split("\n", 1)[0]?.trim() ?? "";
+    const ask =
+      label ||
+      (task.originalTask.includes("--- Swarm Coordination ---")
+        ? "coding task"
+        : firstLine.slice(0, 140) || "coding task");
+    return `${ask} — ${task.status} before completion.`;
   }
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
   // `[tool output: …]` envelope blocks from the completionSummary before it is

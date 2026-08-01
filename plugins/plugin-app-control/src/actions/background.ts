@@ -755,10 +755,18 @@ export function createBackgroundAction(
 			);
 
 			if (!plan) {
+				// The ask is already in-voice; verified provenance stops the
+				// evaluator from re-voicing it as a second message. The result
+				// stays unsuccessful so callers see nothing was applied.
 				const reply =
 					'Tell me how to change the background — e.g. "make the background teal", "use this photo", "generate a misty forest", or "undo".';
 				await callback?.({ text: reply });
-				return { success: false, text: reply };
+				return {
+					success: false,
+					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+				};
 			}
 
 			logger.info(
@@ -768,23 +776,47 @@ export function createBackgroundAction(
 			);
 
 			try {
+				// Every outcome reply below is the complete answer to a
+				// single-operation turn: verified + turnComplete make the callback
+				// the sole delivery instead of double-messaging with the evaluator.
 				if (plan.op === "undo") {
 					await emit({ op: "undo" });
 					const reply = "Reverted the background to the previous one.";
 					await callback?.({ text: reply });
-					return { success: true, text: reply, values: { op: "undo" } };
+					return {
+						success: true,
+						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: { op: "undo" },
+					};
 				}
 				if (plan.op === "redo") {
 					await emit({ op: "redo" });
 					const reply = "Re-applied the background you undid.";
 					await callback?.({ text: reply });
-					return { success: true, text: reply, values: { op: "redo" } };
+					return {
+						success: true,
+						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: { op: "redo" },
+					};
 				}
 				if (plan.op === "reset") {
 					await emit({ op: "reset" });
 					const reply = "Reset the background to the default.";
 					await callback?.({ text: reply });
-					return { success: true, text: reply, values: { op: "reset" } };
+					return {
+						success: true,
+						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: { op: "reset" },
+					};
 				}
 				if (plan.op === "navigate-upload") {
 					// No image to apply — take the user to the Background view, where
@@ -796,6 +828,9 @@ export function createBackgroundAction(
 					return {
 						success: true,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { op: "navigate-upload", viewId: "background" },
 					};
 				}
@@ -804,10 +839,20 @@ export function createBackgroundAction(
 					// The [BACKGROUND] marker is parsed by the UI into the
 					// BackgroundSettingsControls filmstrip; the picks it makes drive the
 					// same persisted background config globally (no view event needed).
+					// The [BACKGROUND] marker must reach chat verbatim (the UI parses
+					// it into the filmstrip), so userFacingText carries the exact
+					// callback string.
 					const reply =
 						"Here are your background options — pick one:\n\n[BACKGROUND]";
 					await callback?.({ text: reply });
-					return { success: true, text: reply, values: { op: "pick" } };
+					return {
+						success: true,
+						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
+						values: { op: "pick" },
+					};
 				}
 				if ("mode" in plan && plan.mode === "catalog") {
 					// Named curated-catalog entry. The renderer resolves catalogId →
@@ -818,6 +863,9 @@ export function createBackgroundAction(
 					return {
 						success: true,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { op: "set", mode: "catalog", catalogId: plan.catalogId },
 					};
 				}
@@ -830,6 +878,9 @@ export function createBackgroundAction(
 					return {
 						success: true,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { op: "set", mode: "glsl", presetId: plan.presetId },
 					};
 				}
@@ -841,6 +892,9 @@ export function createBackgroundAction(
 					return {
 						success: true,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { op: "set", mode: "glsl", tweak: plan.tweakLabel },
 					};
 				}
@@ -851,6 +905,9 @@ export function createBackgroundAction(
 					return {
 						success: true,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { op: "set", mode: "shader", color: plan.color },
 					};
 				}
@@ -861,6 +918,9 @@ export function createBackgroundAction(
 					return {
 						success: true,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { op: "set", mode: "image" },
 						data: { imageUrl: plan.imageUrl },
 					};
@@ -873,6 +933,9 @@ export function createBackgroundAction(
 				return {
 					success: true,
 					text: reply,
+					userFacingText: reply,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					values: { op: "set", mode: "image" },
 					data: { imageUrl: url, prompt: plan.generatePrompt },
 				};

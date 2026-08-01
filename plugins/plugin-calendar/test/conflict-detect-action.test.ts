@@ -125,10 +125,14 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
       (parameter) => parameter.name === "range",
     );
 
-    expect(range?.schema.oneOf).toEqual([
+    // anyOf, not oneOf: strict-mode provider grammars (Cerebras) reject
+    // oneOf, and the invariant under test is that both range forms are
+    // declared — not which union keyword carries them.
+    expect(range?.schema.anyOf).toEqual([
       { type: "string", enum: ["today", "week"] },
       { type: "object", additionalProperties: true },
     ]);
+    expect(range?.schema.oneOf).toBeUndefined();
   });
 
   it("fails closed when the host authorization adapter denies access", async () => {

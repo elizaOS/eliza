@@ -84,6 +84,9 @@ describe("App navigate-view shell handler", () => {
     expect(pathForNavigateViewDetail({ viewId: "remote-ledger" })).toBe(
       "/apps/remote-ledger",
     );
+    expect(pathForNavigateViewDetail({ viewId: "cloud-apps" })).toBe(
+      "/cloud-apps",
+    );
     expect(
       pathForNavigateViewDetail({ viewId: "settings" }, [
         view({ id: "settings", label: "Settings", path: "/settings" }),

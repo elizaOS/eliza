@@ -59,7 +59,6 @@ import {
   pluginPackageIsRegistered,
   resolveRequiredPluginPackages,
 } from "./required-plugins.ts";
-import { waitForScenarioRequiredServices } from "./required-services.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -73,7 +72,6 @@ export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
   turnTimeoutMs: number;
-  serviceStartTimeoutMs?: number;
   executionProfile?: ScenarioExecutionProfile;
   runDir?: string;
 }
@@ -2426,6 +2424,17 @@ export async function runScenario(
         const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
           await runtime.registerPlugin(candidate);
+          // Required-plugin registration waits for every service attempt to
+          // settle so the first scenario turn cannot race a usable service.
+          // A plugin may also bundle credential-gated services the scenario
+          // never touches; their failures are already observable through
+          // AgentRuntime.serviceStart/reportError and do not invalidate the
+          // successfully registered actions or sibling services.
+          await Promise.allSettled(
+            (candidate.services ?? []).map((service) =>
+              runtime.getServiceLoadPromise(service.serviceType),
+            ),
+          );
           autoLoaded.add(pkg);
         }
       } catch (err) {
@@ -2445,11 +2454,6 @@ export async function runScenario(
       report.skipReason = `required plugin(s) not registered: ${missing.join(",")}`;
       return report;
     }
-    await waitForScenarioRequiredServices(
-      runtime,
-      scenario,
-      opts.serviceStartTimeoutMs,
-    );
 
     // Re-attach interceptor so any actions registered by seed plugins are wrapped.
     interceptor.detach();

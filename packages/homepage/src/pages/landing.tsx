@@ -14,12 +14,12 @@ import {
 import {
   animated,
   to,
-  useReducedMotion,
   useSpring,
   useSprings,
   useTrail,
 } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
+import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import type {
   ButtonHTMLAttributes,
   ComponentType,
@@ -37,10 +37,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
-import { CountryFlag } from "@/components/login/country-flag";
-import { useCountryOptions } from "@/components/login/phone-number-input";
 import type { ModelBHandle } from "@/components/ModelViewers/ModelB";
-import { useDeferredRender } from "@/lib/hooks/use-deferred-render";
 import { useT } from "@/providers/I18nProvider";
 
 // Heavy WebGL bundles stay behind Suspense so the interactive route chrome can
@@ -81,6 +78,38 @@ const AnimatedSvg = animated.svg as ComponentType<
   AnimatedSvgProps<SVGSVGElement>
 >;
 const AnimatedG = animated.g as ComponentType<AnimatedSvgProps<SVGGElement>>;
+
+const COUNTRY_CODES = getCountries();
+const COUNTRY_DISPLAY_NAMES =
+  typeof Intl !== "undefined"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+
+function getCountryName(code: string): string {
+  try {
+    return COUNTRY_DISPLAY_NAMES?.of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+function getCountryFlag(countryCode: string): string {
+  const codePoints = countryCode
+    .toUpperCase()
+    .split("")
+    .map((char) => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
+
+const COUNTRIES = COUNTRY_CODES.map((code) => {
+  return {
+    code,
+    flag: getCountryFlag(code),
+    name: getCountryName(code),
+    dial: `+${getCountryCallingCode(code)}`,
+    placeholder: "000 000 0000",
+  };
+}).sort((a, b) => a.name.localeCompare(b.name));
 
 type Platform = "imessage" | "telegram" | "discord" | "try";
 
@@ -144,21 +173,10 @@ function AnimatedLetters({
 export default function Leaderboard() {
   const navigate = useNavigate();
   const t = useT();
-  const springReducedMotion = useReducedMotion();
-  const [initialReducedMotion] = useState(
-    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-  );
-  const reducedMotion = springReducedMotion ?? initialReducedMotion;
-  const { ready: phoneReady, targetRef: phoneTargetRef } = useDeferredRender();
-  const countryOptions = useCountryOptions();
-  const countries = countryOptions.map((option) => ({
-    ...option,
-    dial: `+${option.dialCode}`,
-    placeholder: "000 000 0000",
-  }));
   const modelRef = useRef<ModelBHandle>(null);
-  const [platform, setPlatform] = useState<Platform>("imessage");
   const [phoneSettled, setPhoneSettled] = useState(false);
+  const [chatSettled, setChatSettled] = useState(false);
+  const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
   const [showUI, setShowUI] = useState(false);
   const [introDone, setIntroDone] = useState(false);
@@ -177,11 +195,6 @@ export default function Leaderboard() {
 
   useEffect(() => {
     if (!measured) return;
-    if (reducedMotion) {
-      setLSwapped(true);
-      lScaleApi.start({ scale: 1, immediate: true });
-      return;
-    }
     lScaleApi.start({
       scale: 1.15,
       config: { duration: 500, easing: (t: number) => 1 - (1 - t) ** 3 },
@@ -203,7 +216,7 @@ export default function Leaderboard() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [measured, lScaleApi, reducedMotion]);
+  }, [measured, lScaleApi]);
 
   const svgScaleSpring = useSpring({
     scale: measured ? 1 : 1.3,
@@ -230,11 +243,6 @@ export default function Leaderboard() {
 
   useEffect(() => {
     if (!measured) return;
-    if (reducedMotion) {
-      setISwapped(true);
-      iSquashApi.start({ scaleX: 1, scaleY: 1, immediate: true });
-      return;
-    }
     const t1 = setTimeout(() => {
       iSquashApi.start({
         scaleX: 0,
@@ -254,18 +262,13 @@ export default function Leaderboard() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [measured, iSquashApi, reducedMotion]);
+  }, [measured, iSquashApi]);
 
   const eDisplaceRef = useRef<SVGFEDisplacementMapElement>(null);
   const [eSwapped, setESwapped] = useState(false);
 
   useEffect(() => {
     if (!measured) return;
-    if (reducedMotion) {
-      eDisplaceRef.current?.setAttribute("scale", "150");
-      setESwapped(true);
-      return;
-    }
     let raf: number;
     let t0 = performance.now();
 
@@ -302,7 +305,7 @@ export default function Leaderboard() {
       clearTimeout(t1);
       cancelAnimationFrame(raf);
     };
-  }, [measured, reducedMotion]);
+  }, [measured]);
 
   const aBlurRef = useRef<SVGFEGaussianBlurElement>(null);
   const faScaleRef = useRef<SVGGElement>(null);
@@ -310,15 +313,6 @@ export default function Leaderboard() {
 
   useEffect(() => {
     if (!measured) return;
-    if (reducedMotion) {
-      aBlurRef.current?.setAttribute("stdDeviation", "0");
-      faScaleRef.current?.setAttribute(
-        "transform",
-        "translate(988, 372) scale(1) translate(-988, -372)",
-      );
-      setASwapped(true);
-      return;
-    }
     let raf: number;
     let t0 = performance.now();
     const blurDuration = 600;
@@ -371,24 +365,13 @@ export default function Leaderboard() {
       cancelAnimationFrame(raf);
       clearTimeout(t1);
     };
-  }, [measured, reducedMotion]);
+  }, [measured]);
 
   const clipOldRef = useRef<SVGPolygonElement>(null);
   const clipNewRef = useRef<SVGPolygonElement>(null);
 
   useEffect(() => {
     if (!measured) return;
-    if (reducedMotion) {
-      clipOldRef.current?.setAttribute(
-        "points",
-        "790,380 990,80 790,80 790,380",
-      );
-      clipNewRef.current?.setAttribute(
-        "points",
-        "515,380 515,80 990,80 790,380",
-      );
-      return;
-    }
     const startDelay = 700;
     const duration = 800;
     let raf: number;
@@ -415,7 +398,7 @@ export default function Leaderboard() {
       clearTimeout(t);
       cancelAnimationFrame(raf);
     };
-  }, [measured, reducedMotion]);
+  }, [measured]);
 
   useEffect(() => {
     const update = () => {
@@ -481,8 +464,7 @@ export default function Leaderboard() {
 
   const [selectedCountry, setSelectedCountry] = useState("US");
   const country =
-    countries.find((candidate) => candidate.code === selectedCountry) ??
-    countries[0];
+    COUNTRIES.find((c) => c.code === selectedCountry) ?? COUNTRIES[0];
   const [phoneDigits, setPhoneDigits] = useState("");
 
   useEffect(() => {
@@ -567,18 +549,13 @@ export default function Leaderboard() {
   });
 
   useEffect(() => {
-    if (reducedMotion) {
-      setIntroDone(true);
-      setShowUI(true);
-      return;
-    }
     const id1 = setTimeout(() => setIntroDone(true), INTRO_DELAY + 680);
     const id2 = setTimeout(() => setShowUI(true), INTRO_DELAY + 800);
     return () => {
       clearTimeout(id1);
       clearTimeout(id2);
     };
-  }, [reducedMotion]);
+  }, []);
 
   const tabBarBgSpring = useSpring({
     reveal: showUI ? 120 : -20,
@@ -770,40 +747,35 @@ export default function Leaderboard() {
       }}
     >
       <Suspense fallback={null}>
-        <ShaderBackground reducedMotion={reducedMotion} />
+        <ShaderBackground />
       </Suspense>
       <div
         aria-hidden="true"
         className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')]"
       />
       <div
-        ref={phoneTargetRef}
-        className="fixed inset-0 pointer-events-none"
-        data-phone-model={
-          phoneReady ? (phoneSettled ? "settled" : "loading") : "deferred"
-        }
         aria-hidden="true"
+        className="fixed inset-0 pointer-events-none"
+        data-phone-model={phoneSettled && chatSettled ? "settled" : "loading"}
       />
-      {phoneReady ? (
-        <Suspense fallback={null}>
-          <ModelB
-            ref={modelRef}
-            tryActive={platform === "try"}
-            switcherOpen={switcherOpen}
-            onWaitingChange={setWaiting}
-            onVideoClick={handleVideoClick}
-            onReady={() => setPhoneSettled(true)}
-            onBackClick={handleLoginClick}
-            onSwitcherDone={handleSwitcherDone}
-            onSwitcherOpen={handleSwitcherOpen}
-            loginTitle={loginTitle}
-            loginSubtitle={loginSubtitle}
-            platform={platform}
-            introDelayMs={INTRO_DELAY}
-            reducedMotion={reducedMotion}
-          />
-        </Suspense>
-      ) : null}
+      <Suspense fallback={null}>
+        <ModelB
+          ref={modelRef}
+          tryActive={platform === "try"}
+          switcherOpen={switcherOpen}
+          onWaitingChange={setWaiting}
+          onVideoClick={handleVideoClick}
+          onReady={() => setPhoneSettled(true)}
+          onChatSettled={setChatSettled}
+          onBackClick={handleLoginClick}
+          onSwitcherDone={handleSwitcherDone}
+          onSwitcherOpen={handleSwitcherOpen}
+          loginTitle={loginTitle}
+          loginSubtitle={loginSubtitle}
+          platform={platform}
+          introDelayMs={INTRO_DELAY}
+        />
+      </Suspense>
       <div className="relative z-30 pointer-events-none">
         <header className="flex items-center justify-between p-5 pointer-events-auto">
           <button
@@ -1241,11 +1213,7 @@ export default function Leaderboard() {
               </title>
               <path d="M6 9l6 6 6-6" />
             </svg>
-            <CountryFlag
-              countryCode={country.code}
-              title={country.name}
-              className="h-6 w-9 rounded-xs"
-            />
+            <span className="text-3xl leading-none">{country.flag}</span>
             <select
               value={selectedCountry}
               onChange={(e) => {
@@ -1254,9 +1222,9 @@ export default function Leaderboard() {
               }}
               className="absolute inset-0 opacity-0 cursor-pointer"
             >
-              {countries.map((c) => (
+              {COUNTRIES.map((c) => (
                 <option key={c.code} value={c.code}>
-                  {c.name} ({c.dial})
+                  {c.flag} {c.name} ({c.dial})
                 </option>
               ))}
             </select>

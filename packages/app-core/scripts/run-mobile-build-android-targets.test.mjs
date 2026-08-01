@@ -1,5 +1,8 @@
 /** Exercises run mobile build android targets behavior with deterministic app-core test fixtures. */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.mjs";
@@ -7,11 +10,18 @@ import {
   ANDROID_BUILD_TARGETS,
   resolveAndroidBuildTarget,
   resolveAndroidGradleCommands,
+  resolveMobileBuildPolicy,
 } from "./run-mobile-build.mjs";
 
 const websiteBlockerSettings = "include ':elizaos-capacitor-websiteblocker'";
 const mobileBuildScript = fileURLToPath(
   new URL("./run-mobile-build.mjs", import.meta.url),
+);
+const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const appPackageJsonPath = path.resolve(scriptsDir, "../../app/package.json");
+const runMobileBuildSource = fs.readFileSync(
+  path.resolve(scriptsDir, "run-mobile-build.mjs"),
+  "utf8",
 );
 
 describe("Android mobile build target table", () => {
@@ -20,6 +30,7 @@ describe("Android mobile build target table", () => {
       "android",
       "android-cloud",
       "android-cloud-debug",
+      "android-cloud-hybrid",
       "android-sms-gateway",
       "android-system",
     ]);
@@ -36,6 +47,19 @@ describe("Android mobile build target table", () => {
       webTarget: "android-cloud",
       env: { ELIZA_ANDROID_CLOUD_BUILD: "1" },
       cleartextPolicy: { allowCleartext: false, label: "cloud" },
+    });
+    expect(ANDROID_BUILD_TARGETS["android-cloud-hybrid"]).toMatchObject({
+      target: "android-cloud-hybrid",
+      webTarget: "android-cloud-hybrid",
+      env: { ELIZA_ANDROID_CLOUD_HYBRID_BUILD: "1" },
+      buildMobileAgentBundle: true,
+      cleartextPolicy: { allowCleartext: true, label: "cloud-hybrid" },
+      agentRuntime: { bunChannel: "stable" },
+      gradle: {
+        metadataVariant: "debug",
+        finalTask: ":app:assembleDebug",
+      },
+      artifactAuditKey: "sideload",
     });
     expect(ANDROID_BUILD_TARGETS["android-cloud-debug"]).toMatchObject({
       target: "android-cloud-debug",
@@ -79,6 +103,76 @@ describe("Android mobile build target table", () => {
     expect(`${result.stdout}\n${result.stderr}`).toContain(
       "Refusing target `android` under ELIZA_PLAY_STORE_BUILD",
     );
+  });
+
+  it("resolves Android lane policies without changing android default or cloud-only modes", () => {
+    expect(resolveMobileBuildPolicy("android")).toMatchObject({
+      capacitorTarget: "android",
+      buildVariant: "direct",
+      androidRuntimeMode: "local",
+      runtimeExecutionMode: "local-yolo",
+      releaseAuthority: "github-release-android-package-installer",
+    });
+    expect(resolveMobileBuildPolicy("android-cloud")).toMatchObject({
+      capacitorTarget: "android",
+      buildVariant: "store",
+      androidRuntimeMode: "cloud",
+      runtimeExecutionMode: "cloud",
+      releaseAuthority: "google-play",
+    });
+    expect(resolveMobileBuildPolicy("android-cloud-hybrid")).toMatchObject({
+      capacitorTarget: "android",
+      buildVariant: "direct",
+      androidRuntimeMode: "cloud-hybrid",
+      runtimeExecutionMode: "local-yolo",
+      releaseAuthority: "github-release-android-package-installer",
+    });
+  });
+
+  it("exposes and dispatches a first-class Android cloud-hybrid target", () => {
+    const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
+
+    expect(packageJson.scripts["build:android:cloud-hybrid"]).toBe(
+      "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-hybrid",
+    );
+    expect(runMobileBuildSource).toContain('target !== "android-cloud-hybrid"');
+    expect(runMobileBuildSource).toContain(
+      'await runAndroidBuild("android-cloud-hybrid")',
+    );
+
+    const fixtureRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-android-cloud-hybrid-cli-"),
+    );
+    const sdkRoot = path.join(fixtureRoot, "android-sdk");
+    const javaHome = path.join(fixtureRoot, "jdk-21");
+    fs.mkdirSync(sdkRoot);
+    fs.mkdirSync(javaHome);
+    fs.writeFileSync(path.join(javaHome, "release"), 'JAVA_VERSION="21"\n');
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(scriptsDir, "run-mobile-build.mjs"), "android-cloud-hybrid"],
+        {
+          cwd: scriptsDir,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            ANDROID_HOME: sdkRoot,
+            ANDROID_SDK_ROOT: sdkRoot,
+            JAVA_HOME: javaHome,
+            VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+          },
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        "Refusing leaked Android runtime-mode env for target 'android-cloud-hybrid'",
+      );
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it("fails loudly for unknown public Android targets", () => {
@@ -142,6 +236,23 @@ describe("Android Gradle command table", () => {
       buildArgs: [
         "-PelizaCloudBuild=true",
         "-PelizaStripAgentAssets=true",
+        ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
+        ":app:assembleDebug",
+      ],
+    });
+  });
+
+  it("generates Android cloud-hybrid commands as a direct local-agent APK lane", () => {
+    expect(
+      resolveAndroidGradleCommands("android-cloud-hybrid", {
+        env: {},
+        settingsGradle: websiteBlockerSettings,
+      }),
+    ).toEqual({
+      metadataArgs: [
+        ":capacitor-cordova-android-plugins:writeDebugAarMetadata",
+      ],
+      buildArgs: [
         ":elizaos-capacitor-websiteblocker:testDebugUnitTest",
         ":app:assembleDebug",
       ],

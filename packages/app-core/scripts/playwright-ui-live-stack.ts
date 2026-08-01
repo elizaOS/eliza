@@ -4,7 +4,7 @@ import {
   execFileSync,
   spawn,
 } from "node:child_process";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import {
   access,
   cp,
@@ -64,12 +64,15 @@ const REAL_LOCAL_AGENT_SCRIPT = path.join(
   import.meta.dirname,
   "serve-real-local-agent.ts",
 );
+const NODE_TSX_RUNNER = path.join(import.meta.dirname, "run-node-tsx.mjs");
 const READY_TIMEOUT_MS = 180_000;
 const API_PORT = Number(process.env.ELIZA_UI_SMOKE_API_PORT ?? "31337");
 const UI_PORT = Number(process.env.ELIZA_UI_SMOKE_PORT ?? "2138");
 const UI_SMOKE_RUN_ID = process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() ?? "";
 const LIVE_PROVIDER = await selectLiveProviderAsync();
 const REAL_LOCAL_STACK = process.env.ELIZA_UI_SMOKE_REAL_LOCAL_STACK === "1";
+const REAL_LOCAL_BACKEND_LOG_PATH =
+  process.env.ELIZA_UI_SMOKE_BACKEND_LOG_PATH?.trim();
 // Precedence (force-stub > live opt-in > CI default) lives in one tested helper.
 // The key behavior: ELIZA_UI_SMOKE_LIVE_STACK=1 overrides the CI-based stub force
 // so a genuinely-real lane is possible (GitHub Actions always sets CI=true, which
@@ -428,6 +431,63 @@ async function fetchApiWithRetry(
   throw lastError;
 }
 
+async function proxyBackendRequest(args: {
+  apiBase: string;
+  fallThroughOnNotFound: boolean;
+  request: IncomingMessage;
+  requestUrl: URL;
+  response: ServerResponse<IncomingMessage>;
+}): Promise<boolean> {
+  const body = await readRequestBody(args.request);
+  const headers: Record<string, string> = {};
+  for (const name of ["accept", "authorization", "content-type", "cookie"]) {
+    const value = args.request.headers[name];
+    if (typeof value === "string") headers[name] = value;
+  }
+
+  const upstream = await fetchApiWithRetry(
+    `${args.apiBase}${args.requestUrl.pathname}${args.requestUrl.search}`,
+    {
+      body: body.byteLength > 0 ? body : undefined,
+      headers,
+      method: args.request.method ?? "GET",
+    },
+  );
+  if (args.fallThroughOnNotFound && upstream.status === 404) {
+    await upstream.body?.cancel().catch(() => undefined);
+    return false;
+  }
+
+  const proxyHeaders: Record<string, string> = {};
+  upstream.headers.forEach((value, key) => {
+    if (key.toLowerCase() !== "transfer-encoding") {
+      proxyHeaders[key] = value;
+    }
+  });
+  args.response.writeHead(upstream.status, proxyHeaders);
+  if (!upstream.body) {
+    args.response.end();
+    return true;
+  }
+
+  const reader = upstream.body.getReader();
+  try {
+    while (!args.response.writableEnded) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!args.response.write(value)) {
+        await new Promise<void>((resolve) => {
+          args.response.once("drain", resolve);
+        });
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  args.response.end();
+  return true;
+}
+
 async function proxyUiRequest(args: {
   apiBase: string;
   request: IncomingMessage;
@@ -437,52 +497,11 @@ async function proxyUiRequest(args: {
   const requestUrl = new URL(args.request.url ?? "/", "http://127.0.0.1");
 
   if (requestUrl.pathname.startsWith("/api/")) {
-    const body = await readRequestBody(args.request);
-    const headers: Record<string, string> = {};
-    const contentType = args.request.headers["content-type"];
-    if (typeof contentType === "string") {
-      headers["content-type"] = contentType;
-    }
-    const authorization = args.request.headers.authorization;
-    if (typeof authorization === "string") {
-      headers.authorization = authorization;
-    }
-
-    const upstream = await fetchApiWithRetry(
-      `${args.apiBase}${requestUrl.pathname}${requestUrl.search}`,
-      {
-        body: body.byteLength > 0 ? body : undefined,
-        headers,
-        method: args.request.method ?? "GET",
-      },
-    );
-    const proxyHeaders: Record<string, string> = {};
-    upstream.headers.forEach((value, key) => {
-      if (key.toLowerCase() === "transfer-encoding") {
-        return;
-      }
-      proxyHeaders[key] = value;
+    await proxyBackendRequest({
+      ...args,
+      requestUrl,
+      fallThroughOnNotFound: false,
     });
-    args.response.writeHead(upstream.status, proxyHeaders);
-    if (!upstream.body) {
-      args.response.end();
-      return;
-    }
-    const reader = upstream.body.getReader();
-    try {
-      while (!args.response.writableEnded) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!args.response.write(value)) {
-          await new Promise<void>((resolve) => {
-            args.response.once("drain", resolve);
-          });
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    args.response.end();
     return;
   }
 
@@ -494,6 +513,15 @@ async function proxyUiRequest(args: {
     resolveDistAssetPath(requestedPath, args.uiDistDir) ??
     resolveCompanionPublicAssetPath(requestedPath);
   const isAssetRequest = path.extname(requestedPath).length > 0;
+  if (!filePath && requestUrl.pathname !== "/") {
+    const forwarded = await proxyBackendRequest({
+      ...args,
+      requestUrl,
+      fallThroughOnNotFound:
+        args.request.method === "GET" || args.request.method === "HEAD",
+    });
+    if (forwarded) return;
+  }
   const indexHtmlPath = path.join(args.uiDistDir, "index.html");
   if (!filePath && isAssetRequest) {
     args.response.writeHead(404, {
@@ -1075,27 +1103,43 @@ async function startRealLocalStack(): Promise<StartedStack> {
   let apiChild: ChildProcessWithoutNullStreams | null = null;
   let uiServer: Server | null = null;
   try {
+    const backendLogPath = REAL_LOCAL_BACKEND_LOG_PATH
+      ? path.resolve(REPO_ROOT, REAL_LOCAL_BACKEND_LOG_PATH)
+      : null;
+    if (backendLogPath) {
+      await mkdir(path.dirname(backendLogPath), { recursive: true });
+      await writeFile(backendLogPath, "", "utf8");
+    }
     const uiDistDir = await snapshotUiDist(stateDir);
     const apiBase = `http://127.0.0.1:${API_PORT}`;
-    apiChild = spawn(resolveBunCommand(), ["--bun", REAL_LOCAL_AGENT_SCRIPT], {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        FORCE_COLOR: "0",
-        ELIZA_API_PORT: String(API_PORT),
-        ELIZA_PORT: String(API_PORT),
-        ELIZA_PAIRING_DISABLED: "1",
-        ELIZA_E2E_MODEL_STREAM_CHUNK_SIZE: "8",
-        ELIZA_E2E_MODEL_STREAM_INTERVAL_MS: "16",
+    apiChild = spawn(
+      process.execPath,
+      [NODE_TSX_RUNNER, REAL_LOCAL_AGENT_SCRIPT],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          FORCE_COLOR: "0",
+          ELIZA_API_PORT: String(API_PORT),
+          ELIZA_PORT: String(API_PORT),
+          ELIZA_STATE_DIR: stateDir,
+          ELIZA_PAIRING_DISABLED: "1",
+          ELIZA_E2E_MODEL_STREAM_CHUNK_SIZE: "8",
+          ELIZA_E2E_MODEL_STREAM_INTERVAL_MS: "16",
+        },
+        stdio: ["ignore", "pipe", "pipe"],
       },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    );
 
     apiChild.stdout.on("data", (chunk) => {
-      process.stdout.write(`[ui-smoke][real-local] ${chunk}`);
+      const output = `[ui-smoke][real-local] ${chunk}`;
+      process.stdout.write(output);
+      if (backendLogPath) appendFileSync(backendLogPath, output);
     });
     apiChild.stderr.on("data", (chunk) => {
-      process.stdout.write(`[ui-smoke][real-local-err] ${chunk}`);
+      const output = `[ui-smoke][real-local-err] ${chunk}`;
+      process.stdout.write(output);
+      if (backendLogPath) appendFileSync(backendLogPath, output);
     });
 
     await waitForJsonPredicate<{ state?: string }>(

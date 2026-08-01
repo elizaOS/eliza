@@ -1,6 +1,6 @@
 # Hetzner Agent E2E
 
-Nightly end-to-end smoke that provisions a real Hetzner cpx11 server,
+Nightly end-to-end smoke that provisions a real Hetzner cpx22 server,
 deploys a trivial agent via the Eliza Cloud staging API, runs a
 bridge-ping healthcheck plus one real chat turn (a `message.send`
 JSON-RPC through the production Worker bridge path, requiring a reply
@@ -8,6 +8,11 @@ that echoes a per-run proof token and carries no fabrication flag),
 and tears everything down. A reaper
 workflow sweeps any servers older than 60 minutes every half hour as a
 safety net.
+
+Before allocation, the provisioner also removes older servers carrying both
+`ci=true` and `workflow=hetzner-e2e`. The workflow concurrency group prevents
+official E2E runs from overlapping, and malformed or untagged inventory entries
+are never deletion candidates.
 
 The workflow gracefully skips when secrets are unset, so it can land
 on `develop` and be activated later by adding secrets. Once secrets
@@ -46,8 +51,7 @@ In the repo settings, create a new environment named
 
 ## Estimated cost
 
-Default `cx22` in `fsn1` is roughly €0.006/hr (cpx11's deprecated
-successor — comparable 2 vCPU / 4 GB footprint). A nightly run that
+Default `cpx22` in `fsn1` is a shared 2 vCPU / 4 GB server. A nightly run that
 lives ~10 minutes is **about $0.30–$1.00/month** depending on
 healthcheck duration. The reaper enforces a 60-minute upper bound so
 the worst case (a stuck workflow) is bounded at one server-hour per
@@ -55,8 +59,8 @@ run.
 
 If the requested `HETZNER_E2E_SERVER_TYPE` is deprecated or not
 offered at `HETZNER_E2E_LOCATION`, the provisioner falls back through
-a short list of known-good shared-cpu combos (cx22 in fsn1/nbg1, cax11
-ARM in fsn1/hel1/nbg1) before giving up.
+a short list of known-good shared-cpu `cpx22` locations, followed by `cpx11` in
+`hil`, before giving up.
 
 ## Manual trigger / dry run
 
@@ -74,6 +78,8 @@ intend to create a real billable server.
 - `.github/workflows/hetzner-e2e.yml` — provision + deploy + healthcheck + teardown
 - `.github/workflows/hetzner-e2e-reaper.yml` — scheduled label-selector sweep
 - `hetzner-e2e-provision.ts` — `HetznerCloudClient.createServer()`
+- `hetzner-e2e-provision-diagnostic.ts` — validated failure classification and
+  operator summary rendering
 - `hetzner-e2e-wait-ready.ts` — SSH-poll for cloud-init + Docker
 - `hetzner-e2e-deploy-agent.ts` — create + provision a trivial agent
 - `hetzner-e2e-healthcheck.ts` — single `status.get` bridge ping
