@@ -48,6 +48,11 @@ interface QueryClient {
 
 function migrationPath(file: string): string {
   const candidates = [
+    path.resolve(
+      import.meta.dir,
+      "../../../cloud/shared/src/db/migrations",
+      file,
+    ),
     path.join(process.cwd(), "packages/cloud/shared/src/db/migrations", file),
     path.join(process.cwd(), "src/db/migrations", file),
   ];
