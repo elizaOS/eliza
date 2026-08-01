@@ -52,7 +52,7 @@ runs:
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
       env:
-        HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ runner.name }}
+        HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}
       with:
         bun-version: 1.4.0
 `;
@@ -201,7 +201,22 @@ describe("ci-turbo-cache-contract", () => {
     const root = buildRepo({ workspaceSetup: sharedHomeSetup });
     try {
       expect(() => runContract(root)).toThrow(
-        /setup-bun HOME must be isolated by run, attempt, job, and runner/,
+        /setup-bun HOME must be isolated by run, attempt, and job/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when setup-bun HOME includes human-readable runner metadata", () => {
+    const unsafeHomeSetup = WORKSPACE_SETUP_YAML.replace(
+      `HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}\n`,
+      `HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ runner.name }}\n`,
+    );
+    const root = buildRepo({ workspaceSetup: unsafeHomeSetup });
+    try {
+      expect(() => runContract(root)).toThrow(
+        /without space-bearing runner metadata/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -229,7 +244,7 @@ describe("ci-turbo-cache-contract", () => {
     expect(lintJob).not.toMatch(/continue-on-error/);
     expect(workflow).toMatch(/BUN_VERSION:\s*["']1\.4\.0["']/);
     expect(workflow).toMatch(
-      /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}-\$\{\{\s*runner\.name\s*\}\}/,
+      /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}\s*[\r\n]+/,
     );
   });
 

@@ -68,7 +68,17 @@ for (const fixture of [
     name: "shared Bun executable installation",
     key: "cloudSetup",
     mutate: (source) => source.replace(/ {6}env:\n {8}HOME:.*\n/, ""),
-    pattern: /setup-bun HOME must be isolated by run, attempt, job, and runner/,
+    pattern: /setup-bun HOME must be isolated by run, attempt, and job/,
+  },
+  {
+    name: "space-bearing runner name in Bun HOME",
+    key: "cloudSetup",
+    mutate: (source) =>
+      source.replace(
+        `-\${{ github.job }}\n`,
+        `-\${{ github.job }}-\${{ runner.name }}\n`,
+      ),
+    pattern: /without space-bearing runner metadata/,
   },
   {
     name: "degraded Cloud e2e database backend",

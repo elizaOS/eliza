@@ -299,10 +299,11 @@ runs:
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
       env:
-        # Multiple runner services share a host account. setup-bun installs via
-        # os.homedir(), so a per-job HOME prevents concurrent executable
-        # replacement from failing with ETXTBSY on the shared ~/.bun/bin/bun.
-        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ runner.name }}
+        # setup-bun installs via os.homedir(), so a per-job HOME prevents
+        # concurrent executable replacement on the shared ~/.bun/bin/bun.
+        # runner.name is human-readable and may contain spaces, which setup-bun's
+        # executable probe cannot safely consume as part of HOME.
+        HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
       with:
         bun-version: ${{ inputs.bun-version }}
 
