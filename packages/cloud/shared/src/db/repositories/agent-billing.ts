@@ -181,10 +181,19 @@ export class AgentBillingRepository {
         sandbox_id: null,
         bridge_url: null,
         health_url: null,
+        node_id: null,
+        container_name: null,
+        headscale_ip: null,
+        bridge_port: null,
+        web_ui_port: null,
         updated_at: now,
       })
       .where(
-        and(eq(agentSandboxes.id, sandboxId), sql`${agentSandboxes.deletion_attempt_id} IS NULL`),
+        and(
+          eq(agentSandboxes.id, sandboxId),
+          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          isNull(agentSandboxes.rollback_standby_state),
+        ),
       );
   }
 

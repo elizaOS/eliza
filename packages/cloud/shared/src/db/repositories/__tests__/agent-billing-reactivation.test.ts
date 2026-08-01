@@ -129,6 +129,55 @@ afterAll(async () => {
 });
 
 describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
+  test("credit suspension clears the complete primary compute placement", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const sandboxId = await seedSandbox(organizationId, userId, "active");
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        sandbox_id: "agent-billing-fixture",
+        bridge_url: "https://agent-billing-fixture.example",
+        health_url: "https://agent-billing-fixture.example/health",
+        node_id: "node-billing-fixture",
+        container_name: "agent-billing-fixture",
+        headscale_ip: "100.64.0.2",
+        bridge_port: 2138,
+        web_ui_port: 31337,
+      })
+      .where(eq(agentSandboxes.id, sandboxId));
+
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(sandboxId, new Date());
+
+    const [row] = await dbWrite
+      .select({
+        status: agentSandboxes.status,
+        billing_status: agentSandboxes.billing_status,
+        sandbox_id: agentSandboxes.sandbox_id,
+        bridge_url: agentSandboxes.bridge_url,
+        health_url: agentSandboxes.health_url,
+        node_id: agentSandboxes.node_id,
+        container_name: agentSandboxes.container_name,
+        headscale_ip: agentSandboxes.headscale_ip,
+        bridge_port: agentSandboxes.bridge_port,
+        web_ui_port: agentSandboxes.web_ui_port,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(row).toEqual({
+      status: "stopped",
+      billing_status: "suspended",
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      node_id: null,
+      container_name: null,
+      headscale_ip: null,
+      bridge_port: null,
+      web_ui_port: null,
+    });
+  });
+
   test("a suspended running agent is EXCLUDED from the billable set until reactivated", async () => {
     expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();

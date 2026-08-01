@@ -1779,6 +1779,20 @@ describe("ElizaSandboxService shutdown capture fence", () => {
         41,
       );
       expect(sqlBoundParams(finalUpdate).at(-1)).toBe(42);
+      const finalSql = new PgDialect().sqlToQuery(finalUpdate as SQL).sql.toLowerCase();
+      for (const column of [
+        "sandbox_id",
+        "bridge_url",
+        "health_url",
+        "node_id",
+        "container_name",
+        "headscale_ip",
+        "bridge_port",
+        "web_ui_port",
+      ]) {
+        expect(finalSql).toContain(`${column} = null`);
+      }
+      expect(finalSql).toContain("rollback_standby_state is null");
       expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
     } finally {
       upgradeTransactionImpl = null;
@@ -1789,6 +1803,56 @@ describe("ElizaSandboxService shutdown capture fence", () => {
       activeProvision.mockRestore();
       persistSnapshot.mockRestore();
       pruneBackups.mockRestore();
+    }
+  });
+
+  test("refuses shutdown when rollback standby appears after the snapshot-source read", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const snapshotSource = customSandbox();
+    const locked = {
+      ...snapshotSource,
+      rollback_standby_state: "paused" as const,
+      rollback_standby_generation: "77777777-7777-4777-8777-777777777777",
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as ShutdownFenceService;
+    const getForWrite = spyOn(svc, "getAgentForWrite").mockResolvedValue(snapshotSource);
+    const fetchSnapshot = spyOn(svc, "fetchSnapshotState").mockResolvedValue({
+      stateData: { memories: [], config: {}, workspaceFiles: {} },
+      sizeBytes: 2,
+      bridgeUrl: snapshotSource.bridge_url!,
+    });
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(locked);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const persistSnapshot = spyOn(svc, "persistSnapshotWithinTransaction");
+    const execute = mock(async () => ({ rows: [] }));
+    upgradeTransactionImpl = async (fn) => fn({ execute });
+    try {
+      expect(await svc.shutdown(snapshotSource.id, snapshotSource.organization_id)).toEqual({
+        success: false,
+        error: `Agent ${snapshotSource.id} has unresolved rollback standby generation ${locked.rollback_standby_generation}`,
+      });
+      expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+      expect(persistSnapshot).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      getForWrite.mockRestore();
+      fetchSnapshot.mockRestore();
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      persistSnapshot.mockRestore();
     }
   });
 
@@ -3545,6 +3609,9 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       container_name: null,
       bridge_url: null,
       health_url: null,
+      headscale_ip: null,
+      bridge_port: null,
+      web_ui_port: null,
     };
     const provider: SandboxProvider = {
       create: mock(async () => {
@@ -3752,6 +3819,115 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     }
   });
 
+  test("suspend refuses incomplete primary locators before its stopped fast path", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+
+    for (const status of ["running", "stopped"] as const) {
+      const rec: AgentSandbox = {
+        ...claimedPendingRow(),
+        status,
+        sandbox_id: null,
+        node_id: null,
+        container_name: null,
+        bridge_url: null,
+        health_url: null,
+        headscale_ip: null,
+        bridge_port: 0,
+        web_ui_port: null,
+      };
+      const provider: SandboxProvider = {
+        create: mock(async () => {
+          throw new Error("must not create");
+        }),
+        stop: mock(async () => {}),
+        stopForReplacement: mock(async () => {}),
+        checkHealth: mock(async () => true),
+      };
+      type SuspendIntegritySvc = {
+        executeSuspend(
+          agentId: string,
+          orgId: string,
+        ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
+        lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+        getAgentForLifecycleMutation(
+          tx: unknown,
+          agentId: string,
+          orgId: string,
+        ): Promise<AgentSandbox | undefined>;
+        hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+      };
+      const svc = new ElizaSandboxService(provider) as unknown as SuspendIntegritySvc;
+      const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+      const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+      const activeJob = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+      const execute = mock(async () => ({ rows: [] }));
+      upgradeTransactionImpl = async (fn) => fn({ execute });
+      try {
+        expect(await svc.executeSuspend(AGENT, ORG)).toEqual({
+          success: false,
+          containerStopped: false,
+          error: "Sandbox locator is incomplete; compute was left unchanged",
+        });
+        expect(provider.stop).not.toHaveBeenCalled();
+        expect(provider.stopForReplacement).not.toHaveBeenCalled();
+        expect(execute).not.toHaveBeenCalled();
+      } finally {
+        upgradeTransactionImpl = null;
+        lockLifecycle.mockRestore();
+        getForMutation.mockRestore();
+        activeJob.mockRestore();
+      }
+    }
+  });
+
+  test("suspend refuses to stop the primary beneath an active rollback standby", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec: AgentSandbox = {
+      ...claimedPendingRow(),
+      rollback_standby_state: "paused",
+      rollback_standby_generation: "77777777-7777-4777-8777-777777777777",
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type SuspendStandbySvc = {
+      executeSuspend(
+        agentId: string,
+        orgId: string,
+      ): Promise<{ success: boolean; containerStopped: boolean; error?: string }>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as SuspendStandbySvc;
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const execute = mock(async () => ({ rows: [] }));
+    upgradeTransactionImpl = async (fn) => fn({ execute });
+    try {
+      expect(await svc.executeSuspend(AGENT, ORG)).toEqual({
+        success: false,
+        containerStopped: false,
+        error: `Agent ${AGENT} has unresolved rollback standby generation ${rec.rollback_standby_generation}`,
+      });
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+    }
+  });
+
   type SleepSvc = {
     executeSleep(
       agentId: string,
@@ -3842,6 +4018,46 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     }
   });
 
+  test("sleep refuses an incomplete primary locator before backup or teardown", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec: AgentSandbox = {
+      ...claimedPendingRow(),
+      status: "stopped",
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      headscale_ip: null,
+      bridge_port: null,
+      web_ui_port: 0,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as SleepSvc;
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
+    const backup = spyOn(agentSandboxesRepository, "getLatestStoredBackup");
+    try {
+      expect(await svc.executeSleep(AGENT, ORG)).toEqual({
+        success: false,
+        containerRemoved: false,
+        error: "Sandbox locator is incomplete; compute was left unchanged",
+      });
+      expect(backup).not.toHaveBeenCalled();
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      find.mockRestore();
+      backup.mockRestore();
+    }
+  });
+
   test("sleep rejects a newer lifecycle generation without stopping or clearing it", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const rec = { ...claimedPendingRow(), status: "stopped" as const };
@@ -3920,6 +4136,73 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();
       tx.activeReplacement.mockRestore();
+    }
+  });
+});
+
+describe("ElizaSandboxService destructive locator integrity", () => {
+  test("delete refuses an already-pending row with an incomplete primary locator", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec: AgentSandbox = {
+      ...customSandbox(),
+      status: "deletion_pending",
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      deletion_started_at: new Date("2026-07-23T14:00:00.000Z"),
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      headscale_ip: null,
+      bridge_port: null,
+      web_ui_port: 0,
+    };
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    type DeleteIntegritySvc = {
+      deleteAgent(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }>;
+      lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+      getAgentForLifecycleMutation(
+        tx: unknown,
+        agentId: string,
+        orgId: string,
+      ): Promise<AgentSandbox | undefined>;
+      hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+      hasActiveReplacementJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+    };
+    const svc = new ElizaSandboxService(provider) as unknown as DeleteIntegritySvc;
+    const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
+    const activeProvision = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
+    const activeReplacement = spyOn(svc, "hasActiveReplacementJobTx").mockResolvedValue(false);
+    const revoke = spyOn(apiKeysService, "revokeForAgent");
+    const history = spyOn(sharedRuntimeHistoryRepository, "deleteByAgent");
+    const execute = mock(async () => ({ rows: [] }));
+    upgradeTransactionImpl = async (fn) => fn({ execute });
+    try {
+      expect(await svc.deleteAgent(rec.id, rec.organization_id)).toEqual({
+        success: false,
+        error: "Sandbox locator is incomplete; compute was left unchanged",
+      });
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(revoke).not.toHaveBeenCalled();
+      expect(history).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      upgradeTransactionImpl = null;
+      lockLifecycle.mockRestore();
+      getForMutation.mockRestore();
+      activeProvision.mockRestore();
+      activeReplacement.mockRestore();
+      revoke.mockRestore();
+      history.mockRestore();
     }
   });
 });
@@ -4308,7 +4591,7 @@ describe("failed warm-claim replacement teardown", () => {
     }
   });
 
-  test("a partial old locator fails closed before teardown or reset", async () => {
+  test("a port-only old locator fails closed before teardown or reset", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const failed = failedWarmClaim();
     const create = mock(async () => {
@@ -4323,7 +4606,17 @@ describe("failed warm-claim replacement teardown", () => {
     };
     const svc = new ElizaSandboxService(provider) as unknown as RetrySvc;
     const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(failed);
-    const partial = { ...failed, sandbox_id: null };
+    const partial: AgentSandbox = {
+      ...failed,
+      sandbox_id: null,
+      node_id: null,
+      container_name: null,
+      bridge_url: null,
+      health_url: null,
+      headscale_ip: null,
+      bridge_port: 0,
+      web_ui_port: null,
+    };
     const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
     const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(partial);
     const writes: unknown[] = [];
@@ -4424,9 +4717,11 @@ describe("failed warm-claim replacement teardown", () => {
       .mockResolvedValue(resetRow);
     const lockLifecycle = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
     const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(failed);
+    let resetSql: unknown;
     upgradeTransactionImpl = async (fn) =>
       fn({
-        execute: async () => {
+        execute: async (query) => {
+          resetSql = query;
           order.push("cas-reset");
           return { rows: [{ id: failed.id }] };
         },
@@ -4456,6 +4751,9 @@ describe("failed warm-claim replacement teardown", () => {
       expect(order).toEqual(["strict-stop", "cas-reset", "create"]);
       expect(stopForReplacement).toHaveBeenCalledTimes(1);
       expect(create).toHaveBeenCalledTimes(1);
+      const resetText = new PgDialect().sqlToQuery(resetSql as SQL).sql.toLowerCase();
+      expect(resetText).toContain("bridge_port = null");
+      expect(resetText).toContain("web_ui_port = null");
     } finally {
       upgradeTransactionImpl = null;
       find.mockRestore();

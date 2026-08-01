@@ -234,6 +234,33 @@ const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
   "sleeping",
 ];
 
+type PrimaryComputePlacement = Pick<
+  AgentSandbox,
+  | "sandbox_id"
+  | "node_id"
+  | "container_name"
+  | "bridge_url"
+  | "health_url"
+  | "headscale_ip"
+  | "bridge_port"
+  | "web_ui_port"
+>;
+
+function hasIncompletePrimaryComputeLocator(row: PrimaryComputePlacement): boolean {
+  if (row.sandbox_id?.trim()) return false;
+
+  return (
+    row.sandbox_id !== null ||
+    row.node_id !== null ||
+    row.container_name !== null ||
+    row.bridge_url !== null ||
+    row.health_url !== null ||
+    row.headscale_ip !== null ||
+    row.bridge_port !== null ||
+    row.web_ui_port !== null
+  );
+}
+
 /** Thrown by createAgent when a fresh create would exceed `maxNonTerminalAgents`. */
 export class AgentQuotaExceededError extends Error {
   readonly count: number;
@@ -2054,6 +2081,12 @@ export class ElizaSandboxService {
       const hasActiveReplacementJob = await this.hasActiveReplacementJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob || hasActiveReplacementJob) {
         return { ok: false as const, error: "Agent provisioning is in progress" };
+      }
+      if (hasIncompletePrimaryComputeLocator(rec)) {
+        return {
+          ok: false as const,
+          error: "Sandbox locator is incomplete; compute was left unchanged",
+        };
       }
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
       // A retry preserves the original audit timestamp while taking a fresh
@@ -4127,7 +4160,7 @@ export class ElizaSandboxService {
           error: "Warm-claim retry ownership changed before teardown",
         };
       }
-      if (!current.sandbox_id && (current.node_id || current.container_name)) {
+      if (hasIncompletePrimaryComputeLocator(current)) {
         return {
           success: false as const,
           error: "Previous warm-claim container locator is incomplete",
@@ -4159,6 +4192,8 @@ export class ElizaSandboxService {
           node_id = NULL,
           container_name = NULL,
           headscale_ip = NULL,
+          bridge_port = NULL,
+          web_ui_port = NULL,
           error_message = NULL,
           updated_at = NOW()
         WHERE id = ${agentId}
@@ -7134,6 +7169,12 @@ export class ElizaSandboxService {
       if (this.getReplacementCleanupLocator(rec)) {
         return { success: false, error: "Agent replacement cleanup is still pending" } as const;
       }
+      if (rec.rollback_standby_state) {
+        return {
+          success: false,
+          error: `Agent ${agentId} has unresolved rollback standby generation ${rec.rollback_standby_generation}`,
+        } as const;
+      }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
       const recoveringWarmCredentialFence =
@@ -7165,17 +7206,7 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      const hasPlacementWithoutSandbox =
-        rec.status === "running" &&
-        rec.sandbox_id === null &&
-        (rec.node_id !== null ||
-          rec.container_name !== null ||
-          rec.bridge_url !== null ||
-          rec.health_url !== null ||
-          rec.headscale_ip !== null ||
-          rec.bridge_port !== null ||
-          rec.web_ui_port !== null);
-      if (hasPlacementWithoutSandbox) {
+      if (hasIncompletePrimaryComputeLocator(rec)) {
         return {
           success: false,
           error: "Sandbox locator is incomplete; compute was left unchanged",
@@ -7241,10 +7272,16 @@ export class ElizaSandboxService {
           sandbox_id = NULL,
           bridge_url = NULL,
           health_url = NULL,
+          node_id = NULL,
+          container_name = NULL,
+          headscale_ip = NULL,
+          bridge_port = NULL,
+          web_ui_port = NULL,
           updated_at = NOW()
         WHERE id = ${rec.id}
           AND organization_id = ${orgId}
           AND lifecycle_revision = ${lifecycleRevision}
+          AND rollback_standby_state IS NULL
         RETURNING id
       `);
       if (stopped.rows.length !== 1) {
@@ -7295,6 +7332,13 @@ export class ElizaSandboxService {
           error: "Agent replacement cleanup is still pending",
         } as const;
       }
+      if (rec.rollback_standby_state) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: `Agent ${agentId} has unresolved rollback standby generation ${rec.rollback_standby_generation}`,
+        } as const;
+      }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
@@ -7302,6 +7346,13 @@ export class ElizaSandboxService {
           success: false,
           containerStopped: false,
           error: "Agent provisioning is in progress",
+        } as const;
+      }
+      if (hasIncompletePrimaryComputeLocator(rec)) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Sandbox locator is incomplete; compute was left unchanged",
         } as const;
       }
       if (rec.status === "stopped") return { success: true, containerStopped: true } as const;
@@ -7435,6 +7486,20 @@ export class ElizaSandboxService {
         error: "Agent replacement cleanup is still pending",
       };
     }
+    if (rec.rollback_standby_state) {
+      return {
+        success: false,
+        containerRemoved: false,
+        error: `Agent ${agentId} has unresolved rollback standby generation ${rec.rollback_standby_generation}`,
+      };
+    }
+    if (hasIncompletePrimaryComputeLocator(rec)) {
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Sandbox locator is incomplete; compute was left unchanged",
+      };
+    }
     if (rec.status === "sleeping") return { success: true, containerRemoved: true };
     if (rec.status === "provisioning") {
       return {
@@ -7529,6 +7594,13 @@ export class ElizaSandboxService {
           error: "Agent replacement cleanup is still pending",
         };
       }
+      if (current.rollback_standby_state) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: `Agent ${agentId} has unresolved rollback standby generation ${current.rollback_standby_generation}`,
+        };
+      }
       if (
         current.status === "provisioning" ||
         (await this.hasActiveReplacementJobTx(tx, agentId, orgId))
@@ -7556,7 +7628,7 @@ export class ElizaSandboxService {
           error: "Agent lifecycle changed while sleep was prepared",
         };
       }
-      if (!current.sandbox_id && (current.node_id || current.container_name)) {
+      if (hasIncompletePrimaryComputeLocator(current)) {
         return {
           success: false as const,
           containerRemoved: false,
@@ -7597,6 +7669,7 @@ export class ElizaSandboxService {
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
           AND environment_revision = ${current.environment_revision}
           AND lifecycle_revision = ${current.lifecycle_revision}
+          AND rollback_standby_state IS NULL
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
