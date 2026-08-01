@@ -90,6 +90,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
   it("keeps a direct Cerebras text provider beside Cloud capabilities", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -112,11 +113,13 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     expect(names.has("@elizaos/plugin-openai")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
   it("keeps only Ollama when it owns direct text beside Cloud capabilities", () => {
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+    process.env.OPENAI_API_KEY = "sk-test";
 
     const config: ElizaConfig = {
       deploymentTarget: {
@@ -142,6 +145,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
