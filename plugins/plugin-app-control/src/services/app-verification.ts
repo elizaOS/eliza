@@ -1299,7 +1299,10 @@ export class AppVerificationService extends Service {
 		// Settings-first with env fallback, mirroring resolvePublishTarget on
 		// the prompt side — a settings-only install must get the authoritative
 		// re-publish, not just the deploy prompt (review finding on #17479).
-		const publishSetting = this.runtime.getSetting("APP_PUBLISH_DIR");
+		const publishSetting =
+			typeof this.runtime.getSetting === "function"
+				? this.runtime.getSetting("APP_PUBLISH_DIR")
+				: undefined;
 		const publishRoot =
 			(typeof publishSetting === "string" ? publishSetting.trim() : "") ||
 			process.env.ELIZA_APP_PUBLISH_DIR?.trim();
@@ -1316,15 +1319,49 @@ export class AppVerificationService extends Service {
 			const publishStart = nowMs();
 			const fs = await import("node:fs/promises");
 			const distDir = path.join(opts.workdir, "dist");
-			const target = path.join(publishRoot, opts.appName);
+			// Containment: appName is caller input — resolve and require the
+			// target to stay inside the publish root so a traversal-shaped name
+			// ("../outside") can never write beside it.
+			const publishRootReal = path.resolve(publishRoot);
+			const target = path.resolve(publishRootReal, opts.appName);
 			let publishLog = `Publishing ${distDir} -> ${target}\n`;
 			let published = false;
 			try {
+				if (
+					target === publishRootReal ||
+					!target.startsWith(publishRootReal + path.sep)
+				) {
+					throw new Error(
+						`app name ${JSON.stringify(opts.appName)} resolves outside the publish root`,
+					);
+				}
 				await fs.access(path.join(distDir, "index.html"));
-				await fs.mkdir(target, { recursive: true });
-				await fs.cp(distDir, target, { recursive: true });
+				// Staged replacement: copy into a sibling staging dir, then swap.
+				// Overlaying the live dir in place preserved obsolete files from
+				// earlier builds and exposed a partially copied mixed build while
+				// the copy ran; the swap keeps the live dir whole-old or whole-new.
+				const staging = `${target}.staging-${runId}`;
+				const retired = `${target}.retired-${runId}`;
+				await fs.rm(staging, { recursive: true, force: true });
+				await fs.cp(distDir, staging, { recursive: true });
+				const hadPrevious = await fs.access(target).then(
+					() => true,
+					() => false,
+				);
+				if (hadPrevious) await fs.rename(target, retired);
+				try {
+					await fs.rename(staging, target);
+				} catch (swapErr) {
+					// Restore the previous live build before failing the check so
+					// a botched swap never leaves the app missing entirely.
+					if (hadPrevious) await fs.rename(retired, target);
+					throw swapErr;
+				}
+				// error-policy:J6 best-effort teardown — the retired copy is dead
+				// weight once the swap landed.
+				await fs.rm(retired, { recursive: true, force: true }).catch(() => {});
 				published = true;
-				publishLog += "Publish complete.\n";
+				publishLog += "Publish complete (staged swap).\n";
 			} catch (err) {
 				// error-policy:J1 boundary — a publish failure becomes a failed
 				// check on the result, never a silent pass with a stale page.
