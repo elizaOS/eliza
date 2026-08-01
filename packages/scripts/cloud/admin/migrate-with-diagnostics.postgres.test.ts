@@ -25,13 +25,22 @@ const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 const ADD_COLUMN_CREATED_AT = 1_785_384_000_000;
 const CATALOG_GUARD_CREATED_AT = 1_785_528_000_001;
 const HISTORICAL_DRIFT_CREATED_AT = 1_770_518_468_000;
-// Read-only production inspection showed these five historical entries absent
-// from the incrementally migrated ledger. Each timestamp moved backward under
-// the former max-timestamp runner, so the absence is legitimate deployed state.
+// One deployed snapshot omitted these five backward-timestamp entries. Another
+// observed ledger contained 0017 and placed both it and 0081 after 0105; the
+// hybrid fixture preserves that shape while the other modes preserve the first.
 const PRODUCTION_LEGACY_SKIPPED_CREATED_AT = new Set([
   1_764_259_200_000, 1_771_275_600_000, 1_771_275_601_000, 1_771_275_602_000,
   1_771_275_603_000,
 ]);
+const PRODUCTION_HYBRID_SKIPPED_CREATED_AT = new Set([
+  1_771_275_600_000, 1_771_275_601_000, 1_771_275_602_000, 1_771_275_603_000,
+]);
+const PRODUCTION_LATE_BACKFILL_TAGS = [
+  "0017_add_organization_encryption_keys", // gitleaks:allow immutable migration tag, not credential material
+  "0081_db_optimization_and_r2_trajectories",
+] as const;
+const PRODUCTION_BACKFILL_ANCHOR_TAG =
+  "0105_managed_domains_cloudflare_provider";
 const BASE_URL =
   process.env.MIGRATION_TEST_DATABASE_URL ??
   process.env.TEST_DATABASE_URL ??
@@ -86,7 +95,7 @@ async function journalEntries(): Promise<JournalEntry[]> {
 async function seedAppliedPrefix(
   client: pg.Client,
   length: number,
-  order: "timestamp" | "journal" = "journal",
+  order: "timestamp" | "journal" | "production-hybrid" = "journal",
 ): Promise<void> {
   await client.query(`
     CREATE TABLE jobs (
@@ -107,11 +116,35 @@ async function seedAppliedPrefix(
   // Deployed historical runners used both orders. Timestamp mode preserves
   // production inversions where a later journal entry ran first; journal mode
   // preserves older installations that recorded backward timestamps in place.
-  const entries = (await journalEntries())
+  const skipped =
+    order === "production-hybrid"
+      ? PRODUCTION_HYBRID_SKIPPED_CREATED_AT
+      : PRODUCTION_LEGACY_SKIPPED_CREATED_AT;
+  let entries = (await journalEntries())
     .slice(0, length)
-    .filter((entry) => !PRODUCTION_LEGACY_SKIPPED_CREATED_AT.has(entry.when));
-  if (order === "timestamp") {
+    .filter((entry) => !skipped.has(entry.when));
+  if (order !== "journal") {
     entries.sort((left, right) => left.when - right.when);
+  }
+  if (order === "production-hybrid") {
+    const lateBackfills = PRODUCTION_LATE_BACKFILL_TAGS.map((tag) => {
+      const entry = entries.find((candidate) => candidate.tag === tag);
+      if (!entry) throw new Error(`Missing production backfill fixture ${tag}`);
+      return entry;
+    });
+    entries = entries.filter(
+      (entry) =>
+        !PRODUCTION_LATE_BACKFILL_TAGS.some((tag) => tag === entry.tag),
+    );
+    const anchorIndex = entries.findIndex(
+      (entry) => entry.tag === PRODUCTION_BACKFILL_ANCHOR_TAG,
+    );
+    if (anchorIndex === -1) {
+      throw new Error(
+        `Missing production backfill anchor ${PRODUCTION_BACKFILL_ANCHOR_TAG}`,
+      );
+    }
+    entries.splice(anchorIndex + 1, 0, ...lateBackfills);
   }
   for (const entry of entries) {
     const sql = await readFile(
@@ -292,6 +325,38 @@ describe.skipIf(!ENABLED)(
     test("accepts historical journal order when legacy timestamps invert", async () => {
       const database = await createDatabase();
       await seedAppliedPrefix(database.client, 184, "journal");
+
+      const migrated = await runScript(MIGRATOR, database.url);
+      expect(migrated.exitCode, migrated.output).toBe(0);
+      expect(migrated.output).toContain("pending migrations: 3");
+      await database.client.end();
+    }, 120_000);
+
+    test("accepts the production hybrid order with late historical backfills", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, 184, "production-hybrid");
+      const entries = await journalEntries();
+      const encryptionKeys = entries[17];
+      const databaseOptimization = entries[81];
+      const managedDomains = entries[101];
+      if (!encryptionKeys || !databaseOptimization || !managedDomains) {
+        throw new Error("Missing production hybrid fixture entries");
+      }
+
+      const appliedOrder = await database.client.query<{
+        created_at: string;
+      }>(
+        `SELECT created_at::text
+         FROM drizzle.__drizzle_migrations
+         WHERE created_at = ANY($1::bigint[])
+         ORDER BY id ASC`,
+        [[managedDomains.when, encryptionKeys.when, databaseOptimization.when]],
+      );
+      expect(appliedOrder.rows.map((row) => Number(row.created_at))).toEqual([
+        managedDomains.when,
+        encryptionKeys.when,
+        databaseOptimization.when,
+      ]);
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);

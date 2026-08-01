@@ -17,6 +17,8 @@ on:
       - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
       - 'packages/scripts/cloud/admin/eliza-agent-router.service'
       - 'packages/scripts/cloud/admin/ensure-generated-keywords.sh'
+      - 'packages/scripts/cloud/admin/preflight-job-execution-interruptions.ts'
+      - 'packages/scripts/cloud/admin/error-preserving-cleanup.ts'
       - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
       - 'packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts'
       - 'packages/cloud/shared/src/lib/services/eliza-sandbox.ts'
@@ -456,6 +458,7 @@ jobs:
               exit 1
             fi
             DATABASE_URL="$EFFECTIVE_DATABASE_URL" \
+              timeout --foreground --signal=TERM --kill-after=5s 8m \
               bun --conditions=eliza-source \
               packages/scripts/cloud/admin/preflight-job-execution-interruptions.ts
             unset EFFECTIVE_DATABASE_URL

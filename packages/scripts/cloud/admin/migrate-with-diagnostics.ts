@@ -9,6 +9,11 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
 import pg from "pg";
+import {
+  type CleanupFailure,
+  runCleanupSteps,
+  runWithCleanup,
+} from "./error-preserving-cleanup";
 
 const { Client } = pg;
 
@@ -214,6 +219,15 @@ function formatDatabaseError(error: unknown): string {
   return details.join(" ");
 }
 
+function reportMigrationCleanupFailure(failure: CleanupFailure): void {
+  const context = failure.primaryFailure
+    ? " while preserving the primary migration failure"
+    : "";
+  console.error(
+    `[db:migrate] ${failure.label} failed${context}: ${formatDatabaseError(failure.cleanupError)}`,
+  );
+}
+
 async function ensureMigrationsTable(client: MigrationClient): Promise<void> {
   await client.query(`CREATE SCHEMA IF NOT EXISTS "${MIGRATIONS_SCHEMA}"`);
   await client.query(`
@@ -399,7 +413,8 @@ async function releaseMigrationLock(client: MigrationClient): Promise<void> {
   console.log("[db:migrate] released migration lock");
 }
 
-async function applyMigration(
+/** Applies one journal migration atomically and retries only after rollback. */
+export async function applyMigration(
   client: MigrationClient,
   migration: Migration,
   options: LockRetryOptions,
@@ -436,7 +451,18 @@ async function applyMigration(
       await client.query("COMMIT");
       return;
     } catch (error) {
-      await client.query("ROLLBACK");
+      await runCleanupSteps(
+        [
+          {
+            label: `rollback for ${entry.tag}`,
+            run: async () => {
+              await client.query("ROLLBACK");
+            },
+          },
+        ],
+        reportMigrationCleanupFailure,
+        { error },
+      );
       if (!isLockTimeout(error)) throw error;
       if (attempt === options.maxAttempts) {
         console.error(
@@ -497,6 +523,66 @@ async function createPgClient(url: string): Promise<MigrationClient> {
   };
 }
 
+/** Runs the validated migration plan and owns lock and client teardown. */
+export async function runMigrations(
+  client: MigrationClient,
+  migrations: Migration[],
+  retryOptions: LockRetryOptions,
+): Promise<void> {
+  let lockHeld = false;
+  await runWithCleanup(
+    async () => {
+      if (client.backend === "postgres") {
+        await acquireMigrationLock(client, retryOptions);
+        lockHeld = true;
+      } else {
+        console.log(
+          "[db:migrate] PGlite backend uses its single-writer database lock",
+        );
+      }
+      await ensureMigrationsTable(client);
+
+      const applied = await getAppliedMigrations(client);
+      const validatedLedger = validateAppliedMigrationLedger(
+        applied,
+        migrations,
+      );
+      const lastApplied = applied.at(-1);
+      const lastAppliedCreatedAt = lastApplied
+        ? createdAtValue(lastApplied)
+        : null;
+      console.log(
+        `[db:migrate] last applied migration: ${
+          lastAppliedCreatedAt === null
+            ? "none"
+            : `${lastAppliedCreatedAt} (${lastApplied?.hash.slice(0, 12)})`
+        }`,
+      );
+
+      const pending = migrations.slice(
+        validatedLedger.lastAppliedJournalIndex + 1,
+      );
+      console.log(`[db:migrate] pending migrations: ${pending.length}`);
+
+      for (const migration of pending) {
+        await applyMigration(client, migration, retryOptions);
+      }
+
+      console.log("[db:migrate] migrations complete");
+    },
+    [
+      {
+        label: "migration advisory unlock",
+        run: async () => {
+          if (lockHeld) await releaseMigrationLock(client);
+        },
+      },
+      { label: "database client close", run: () => client.end() },
+    ],
+    reportMigrationCleanupFailure,
+  );
+}
+
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -513,52 +599,12 @@ async function main(): Promise<void> {
     ? await createPGliteClient(databaseUrl)
     : await createPgClient(databaseUrl);
 
-  let lockHeld = false;
-  try {
-    if (client.backend === "postgres") {
-      await acquireMigrationLock(client, retryOptions);
-      lockHeld = true;
-    } else {
-      console.log(
-        "[db:migrate] PGlite backend uses its single-writer database lock",
-      );
-    }
-    await ensureMigrationsTable(client);
-
-    const applied = await getAppliedMigrations(client);
-    const validatedLedger = validateAppliedMigrationLedger(applied, migrations);
-    const lastApplied = applied.at(-1);
-    const lastAppliedCreatedAt = lastApplied
-      ? createdAtValue(lastApplied)
-      : null;
-    console.log(
-      `[db:migrate] last applied migration: ${
-        lastAppliedCreatedAt === null
-          ? "none"
-          : `${lastAppliedCreatedAt} (${lastApplied?.hash.slice(0, 12)})`
-      }`,
-    );
-
-    const pending = migrations.slice(
-      validatedLedger.lastAppliedJournalIndex + 1,
-    );
-    console.log(`[db:migrate] pending migrations: ${pending.length}`);
-
-    for (const migration of pending) {
-      await applyMigration(client, migration, retryOptions);
-    }
-
-    console.log("[db:migrate] migrations complete");
-  } finally {
-    try {
-      if (lockHeld) await releaseMigrationLock(client);
-    } finally {
-      await client.end();
-    }
-  }
+  await runMigrations(client, migrations, retryOptions);
 }
 
-main().catch((error) => {
-  console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
+    process.exit(1);
+  });
+}
