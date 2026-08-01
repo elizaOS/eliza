@@ -17,6 +17,8 @@ const APP_CACHE_INVALIDATION_NAMESPACE = "26b00669-dff1-4fb8-a27b-8c9ff984eb21";
 
 interface AppCacheInvalidationJobData {
   appId: string;
+  apiKeyId: string | null;
+  slug: string;
   sourceJobId: string;
 }
 
@@ -82,7 +84,7 @@ function readAppCacheInvalidationJobData(job: { data: unknown }): AppCacheInvali
       severity: "fatal",
     });
   }
-  const { appId, sourceJobId } = job.data as Record<string, unknown>;
+  const { appId, apiKeyId, slug, sourceJobId } = job.data as Record<string, unknown>;
   if (typeof appId !== "string" || appId.length === 0) {
     throw new ElizaError("App cache invalidation job has no app id", {
       code: "APP_CACHE_INVALIDATION_JOB_INVALID",
@@ -97,7 +99,21 @@ function readAppCacheInvalidationJobData(job: { data: unknown }): AppCacheInvali
       severity: "fatal",
     });
   }
-  return { appId, sourceJobId };
+  if (typeof slug !== "string" || slug.length === 0) {
+    throw new ElizaError("App cache invalidation job has no app slug", {
+      code: "APP_CACHE_INVALIDATION_JOB_INVALID",
+      context: { appId, sourceJobId },
+      severity: "fatal",
+    });
+  }
+  if (apiKeyId !== null && (typeof apiKeyId !== "string" || apiKeyId.length === 0)) {
+    throw new ElizaError("App cache invalidation job has an invalid API key id", {
+      code: "APP_CACHE_INVALIDATION_JOB_INVALID",
+      context: { appId, sourceJobId },
+      severity: "fatal",
+    });
+  }
+  return { appId, apiKeyId, slug, sourceJobId };
 }
 
 /**
@@ -107,10 +123,15 @@ function readAppCacheInvalidationJobData(job: { data: unknown }): AppCacheInvali
 export async function enqueueAppCacheInvalidation(
   tx: DbTransaction,
   sourceJob: Job,
-  appId: string,
+  app: { id: string; api_key_id: string | null; slug: string },
 ): Promise<void> {
   const id = appCacheInvalidationJobId(sourceJob.id);
-  const data: Record<string, unknown> = { appId, sourceJobId: sourceJob.id };
+  const data: Record<string, unknown> = {
+    appId: app.id,
+    apiKeyId: app.api_key_id,
+    slug: app.slug,
+    sourceJobId: sourceJob.id,
+  };
   await tx
     .insert(jobs)
     .values({
@@ -140,21 +161,23 @@ export async function enqueueAppCacheInvalidation(
     persisted.type !== JOB_TYPES.APP_CACHE_INVALIDATE ||
     persisted.organizationId !== sourceJob.organization_id ||
     persisted.userId !== sourceJob.user_id ||
-    persisted.data.appId !== appId ||
+    persisted.data.appId !== app.id ||
+    persisted.data.apiKeyId !== app.api_key_id ||
+    persisted.data.slug !== app.slug ||
     persisted.data.sourceJobId !== sourceJob.id
   ) {
     throw new ElizaError("App cache invalidation replay does not match its durable task", {
       code: "APP_CACHE_INVALIDATION_REPLAY_MISMATCH",
-      context: { appId, sourceJobId: sourceJob.id, taskId: id },
+      context: { appId: app.id, sourceJobId: sourceJob.id, taskId: id },
       severity: "fatal",
     });
   }
 }
 
 export async function dispatchAppCacheInvalidationJob(job: Job): Promise<void> {
-  const { appId, sourceJobId } = readAppCacheInvalidationJobData(job);
+  const { appId, apiKeyId, slug, sourceJobId } = readAppCacheInvalidationJobData(job);
   try {
-    await appsService.invalidateCacheStrict(appId);
+    await appsService.invalidateCacheStrict(appId, apiKeyId ?? undefined, slug);
   } catch (cause) {
     // error-policy:J2 preserve the cache failure while adding durable task identity.
     throw new AppCacheInvalidationRetryError(appId, sourceJobId, cause);

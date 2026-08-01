@@ -27,6 +27,7 @@ mock.module("../../../db/repositories/apps", () => ({
   // must be present or other importers hit a link error.
   AppsRepository: class {},
   withAppCacheFence: mock(),
+  withAppCacheFences: mock(),
 }));
 
 const { appChargeRequestsService } = await import("../app-charge-requests");

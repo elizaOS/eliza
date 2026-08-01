@@ -323,6 +323,73 @@ describe("AppsRepository.update", () => {
     }
   });
 
+  test("serializes slug and API-key hydration before durable multi-key deletion", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const apiKeyId = crypto.randomUUID();
+    const created = await createApp({
+      name: "Derived Cache Fence",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+      api_key_id: apiKeyId,
+    });
+
+    const paths = [
+      {
+        key: CacheKeys.app.bySlug(created.slug),
+        hydrate: () => appsService.getBySlug(created.slug),
+      },
+      {
+        key: CacheKeys.app.byApiKeyId(apiKeyId),
+        hydrate: () => appsService.getByApiKeyId(apiKeyId),
+      },
+    ];
+
+    for (const path of paths) {
+      await cache.del(path.key);
+      let hydrationReachedCache: (() => void) | undefined;
+      const hydrationAtCache = new Promise<void>((resolve) => {
+        hydrationReachedCache = resolve;
+      });
+      let releaseHydration: (() => void) | undefined;
+      const hydrationRelease = new Promise<void>((resolve) => {
+        releaseHydration = resolve;
+      });
+      const originalSet = cache.set.bind(cache);
+      const originalDelete = cache.delConfirmed.bind(cache);
+      let deleteCalls = 0;
+      const setSpy = spyOn(cache, "set").mockImplementation(async (cacheKey, value, ttl) => {
+        if (cacheKey === path.key) {
+          hydrationReachedCache?.();
+          await hydrationRelease;
+        }
+        await originalSet(cacheKey, value, ttl);
+      });
+      const deleteSpy = spyOn(cache, "delConfirmed").mockImplementation(async (...args) => {
+        deleteCalls++;
+        return await originalDelete(...args);
+      });
+
+      try {
+        const hydration = path.hydrate();
+        await hydrationAtCache;
+        const invalidation = appsService.invalidateCacheStrict(created.id, apiKeyId, created.slug);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(deleteCalls).toBe(0);
+
+        releaseHydration?.();
+        expect((await hydration)?.id).toBe(created.id);
+        await invalidation;
+        expect(deleteCalls).toBe(4);
+        expect(await cache.get(path.key)).toBeNull();
+      } finally {
+        releaseHydration?.();
+        setSpy.mockRestore();
+        deleteSpy.mockRestore();
+      }
+    }
+  });
+
   test("strict invalidation rejects a configured but unavailable cache backend", async () => {
     expect(pgliteReady).toBe(true);
     const internal = cache as unknown as {

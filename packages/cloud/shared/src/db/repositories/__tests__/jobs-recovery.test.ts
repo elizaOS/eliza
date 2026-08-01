@@ -54,6 +54,9 @@ function memoryBucket(objects: Map<string, string>): RuntimeR2Bucket {
 
 let dbWrite: typeof import("../../client").dbWrite;
 let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
+let cache: typeof import("../../../lib/cache/client").cache;
+let CacheKeys: typeof import("../../../lib/cache/keys").CacheKeys;
+let CacheTTL: typeof import("../../../lib/cache/keys").CacheTTL;
 let repo: typeof import("../jobs").jobsRepository;
 let AppsServiceSingleton: typeof import("../../../lib/services/apps").appsService;
 let ProvisioningJobServiceCtor: typeof import("../../../lib/services/provisioning-jobs").ProvisioningJobService;
@@ -161,6 +164,8 @@ function pendingCutoverAudit(jobId: string): Record<string, unknown> {
 
 beforeAll(async () => {
   try {
+    ({ cache } = await import("../../../lib/cache/client"));
+    ({ CacheKeys, CacheTTL } = await import("../../../lib/cache/keys"));
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../client"));
     ({ jobsRepository: repo } = await import("../jobs"));
     ({ appsService: AppsServiceSingleton } = await import("../../../lib/services/apps"));
@@ -226,6 +231,8 @@ beforeAll(async () => {
       `CREATE TABLE IF NOT EXISTS apps (
         id uuid PRIMARY KEY,
         organization_id uuid NOT NULL,
+        slug text,
+        api_key_id uuid,
         deployment_status text NOT NULL,
         updated_at timestamp NOT NULL DEFAULT now()
       );`,
@@ -1180,9 +1187,11 @@ describe("jobsRepository.recoverStaleJobs", () => {
     async () => {
       const sourceJobId = "00000000-0000-4000-8000-000000180914";
       const appId = "00000000-0000-4000-8000-000000180915";
+      const apiKeyId = "00000000-0000-4000-8000-000000180918";
+      const slug = "durable-cache-retry";
       await dbWrite.execute(
-        `INSERT INTO apps (id, organization_id, deployment_status, updated_at)
-         VALUES ('${appId}', '${ORG_ID}', 'building', NOW());`,
+        `INSERT INTO apps (id, organization_id, slug, api_key_id, deployment_status, updated_at)
+         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', 'building', NOW());`,
       );
       await seedJob({
         id: sourceJobId,
@@ -1202,7 +1211,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
         type: jobTypes.APP_CACHE_INVALIDATE,
         status: "pending",
         attempts: 0,
-        data: { appId, sourceJobId },
+        data: { appId, apiKeyId, slug, sourceJobId },
       });
 
       let invalidationCalls = 0;
@@ -1265,16 +1274,71 @@ describe("jobsRepository.recoverStaleJobs", () => {
   );
 
   test(
+    "durable app recovery dispatch clears every persisted lookup identity through the real cache service",
+    async () => {
+      const sourceJobId = "00000000-0000-4000-8000-000000180920";
+      const appId = "00000000-0000-4000-8000-000000180921";
+      const apiKeyId = "00000000-0000-4000-8000-000000180922";
+      const slug = "durable-cache-all-identities";
+      await dbWrite.execute(
+        `INSERT INTO apps (id, organization_id, slug, api_key_id, deployment_status, updated_at)
+         VALUES ('${appId}', '${ORG_ID}', '${slug}', '${apiKeyId}', 'building', NOW());`,
+      );
+      await seedJob({
+        id: sourceJobId,
+        maxAttempts: 1,
+        type: jobTypes.APP_DEPLOY,
+        data: { appId },
+      });
+
+      const staleApp = { id: appId, slug, api_key_id: apiKeyId, deployment_status: "building" };
+      const keys = [
+        CacheKeys.app.byId(appId),
+        CacheKeys.app.bySlug(slug),
+        CacheKeys.app.byApiKeyId(apiKeyId),
+        CacheKeys.app.costMarkup(appId),
+      ];
+      await Promise.all(keys.map((key) => cache.set(key, staleApp, CacheTTL.app.byId)));
+
+      const service = new ProvisioningJobServiceCtor();
+      expect(
+        await service.recoverInterruptedJobsOnStartup(new Date("2021-01-01T00:00:00.000Z"), [
+          jobTypes.APP_DEPLOY,
+        ]),
+      ).toMatchObject({ permanentlyFailed: 1, failures: [] });
+
+      const taskId = cacheInvalidationJobId(sourceJobId);
+      expect(await repo.findByIdForWrite(taskId)).toMatchObject({
+        status: "pending",
+        data: { appId, apiKeyId, slug, sourceJobId },
+      });
+      expect(
+        await service.processPendingJobs(1, { jobTypes: [jobTypes.APP_CACHE_INVALIDATE] }),
+      ).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
+      expect(await repo.findByIdForWrite(taskId)).toMatchObject({ status: "completed" });
+      expect(await Promise.all(keys.map((key) => cache.get(key)))).toEqual([
+        null,
+        null,
+        null,
+        null,
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "observed cache failures exhaust finite attempts and preserve a redacted cause chain",
     async () => {
       const sourceJobId = "00000000-0000-4000-8000-000000180916";
       const appId = "00000000-0000-4000-8000-000000180917";
+      const apiKeyId = "00000000-0000-4000-8000-000000180919";
+      const slug = "durable-cache-exhaustion";
       const taskId = cacheInvalidationJobId(sourceJobId);
       await seedJob({
         id: taskId,
         maxAttempts: 3,
         type: jobTypes.APP_CACHE_INVALIDATE,
-        data: { appId, sourceJobId },
+        data: { appId, apiKeyId, slug, sourceJobId },
       });
       await dbWrite
         .update(jobs)

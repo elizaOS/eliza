@@ -1,4 +1,5 @@
-// Persists apps records for cloud services through the shared DB boundary.
+/** Persists apps and serializes their database-backed cache identities across processes. */
+import { ElizaError } from "@elizaos/core";
 import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
@@ -23,19 +24,50 @@ import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
 import { organizations } from "../schemas/organizations";
 
-/** Serializes cache publication and invalidation for one app across processes. */
+interface AppCacheFenceIdentity {
+  appId?: string;
+  apiKeyId?: string | null;
+  slug?: string | null;
+}
+
+/** Serializes cache publication and invalidation for app-derived keys across processes. */
+export async function withAppCacheFences<T>(
+  identity: AppCacheFenceIdentity,
+  operation: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  const fenceKeys = [
+    identity.appId,
+    identity.apiKeyId ? `api-key:${identity.apiKeyId}` : undefined,
+    identity.slug ? `slug:${identity.slug}` : undefined,
+  ]
+    .filter((key): key is string => key !== undefined)
+    .sort();
+  if (fenceKeys.length === 0) {
+    throw new ElizaError("App cache fencing requires at least one cache identity", {
+      code: "APP_CACHE_FENCE_IDENTITY_REQUIRED",
+      severity: "fatal",
+    });
+  }
+
+  return await dbWrite.transaction(async (tx) => {
+    // Stable ordering prevents two multi-key invalidations from deadlocking.
+    // Each hydration takes its lookup key's same lock, so a stale authoritative
+    // read cannot publish after the durable delete has acknowledged success.
+    for (const fenceKey of fenceKeys) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext('app-cache'), hashtext(${fenceKey}))`,
+      );
+    }
+    return await operation(tx);
+  });
+}
+
+/** Serializes by-id cache publication and invalidation for one app. */
 export async function withAppCacheFence<T>(
   appId: string,
   operation: (tx: DbTransaction) => Promise<T>,
 ): Promise<T> {
-  return await dbWrite.transaction(async (tx) => {
-    // The lock spans the authoritative read and cache write/delete. Every
-    // process therefore observes one order for a given app, including the
-    // stale-read/delete/refill crash window that a process-local epoch cannot
-    // close.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('app-cache'), hashtext(${appId}))`);
-    return await operation(tx);
-  });
+  return await withAppCacheFences({ appId }, operation);
 }
 
 /**
@@ -48,7 +80,7 @@ async function invalidateAppCacheEntries(
   apiKeyId?: string | null,
   slug?: string | null,
 ): Promise<void> {
-  await withAppCacheFence(appId, async () => {
+  await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
     const keys: Promise<void>[] = [
       cache.del(CacheKeys.app.byId(appId)),
       cache.del(CacheKeys.app.costMarkup(appId)),
@@ -114,6 +146,30 @@ export class AppsRepository {
       const [app] = UUID_PATTERN.test(id)
         ? await tx.select().from(apps).where(eq(apps.id, id)).limit(1)
         : [];
+      await publish(app);
+      return app;
+    });
+  }
+
+  /** Reads and publishes a slug lookup under the same durable slug fence used by invalidation. */
+  async hydrateBySlugForCache(
+    slug: string,
+    publish: (app: App | undefined) => Promise<void>,
+  ): Promise<App | undefined> {
+    return await withAppCacheFences({ slug }, async (tx) => {
+      const [app] = await tx.select().from(apps).where(eq(apps.slug, slug)).limit(1);
+      await publish(app);
+      return app;
+    });
+  }
+
+  /** Reads and publishes an API-key lookup under its durable invalidation fence. */
+  async hydrateByApiKeyIdForCache(
+    apiKeyId: string,
+    publish: (app: App | undefined) => Promise<void>,
+  ): Promise<App | undefined> {
+    return await withAppCacheFences({ apiKeyId }, async (tx) => {
+      const [app] = await tx.select().from(apps).where(eq(apps.api_key_id, apiKeyId)).limit(1);
       await publish(app);
       return app;
     });

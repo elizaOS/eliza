@@ -9,7 +9,7 @@ import {
   type AppUser,
   appsRepository,
   type NewApp,
-  withAppCacheFence,
+  withAppCacheFences,
 } from "../../db/repositories/apps";
 
 // Re-export the app row types so consumers (and tests) can import them from the
@@ -237,15 +237,13 @@ export class AppsService {
       return cached as App;
     }
 
-    const app = await appsRepository.findBySlug(slug);
-
-    if (app) {
-      await cache.set(cacheKey, app, CacheTTL.app.bySlug);
-    } else {
-      await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
-    }
-
-    return app;
+    return await appsRepository.hydrateBySlugForCache(slug, async (app) => {
+      if (app) {
+        await cache.set(cacheKey, app, CacheTTL.app.bySlug);
+      } else {
+        await cache.set(cacheKey, { __none: true }, CacheTTL.app.none);
+      }
+    });
   }
 
   async getByAffiliateCode(code: string): Promise<App | undefined> {
@@ -303,19 +301,15 @@ export class AppsService {
       return cached;
     }
 
-    // Cache miss - query DB directly
-    const app = await appsRepository.findByApiKeyId(apiKeyId);
-
-    // Cache result (including null to prevent repeated lookups for invalid keys)
-    if (app) {
-      await cache.set(cacheKey, app, CacheTTL.app.byApiKeyId);
-      logger.debug("[Apps] Cached app by API key", {
-        apiKeyId: apiKeyId.substring(0, 8),
-        appId: app.id,
-      });
-    }
-
-    return app;
+    return await appsRepository.hydrateByApiKeyIdForCache(apiKeyId, async (app) => {
+      if (app) {
+        await cache.set(cacheKey, app, CacheTTL.app.byApiKeyId);
+        logger.debug("[Apps] Cached app by API key", {
+          apiKeyId: apiKeyId.substring(0, 8),
+          appId: app.id,
+        });
+      }
+    });
   }
 
   /**
@@ -326,7 +320,7 @@ export class AppsService {
    * would leave stale data; we look up the existing row's slug to evict it too.
    */
   async invalidateCache(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
-    await withAppCacheFence(appId, async () => {
+    await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
       const promises: Promise<void>[] = [
         cache.del(CacheKeys.app.byId(appId)),
         cache.del(CacheKeys.app.costMarkup(appId)),
@@ -351,7 +345,7 @@ export class AppsService {
    * request-path callers retain {@link invalidateCache}'s best-effort behavior.
    */
   async invalidateCacheStrict(appId: string, apiKeyId?: string, slug?: string): Promise<void> {
-    await withAppCacheFence(appId, async () => {
+    await withAppCacheFences({ appId, apiKeyId, slug }, async () => {
       const deletes = [
         cache.delConfirmed(CacheKeys.app.byId(appId)),
         cache.delConfirmed(CacheKeys.app.costMarkup(appId)),

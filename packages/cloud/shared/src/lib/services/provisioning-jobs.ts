@@ -3337,9 +3337,9 @@ export class ProvisioningJobService {
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
-            .returning({ id: apps.id });
+            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
-            await enqueueAppCacheInvalidation(tx, failedJob, failedApp.id);
+            await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
             logger.warn(
               "[provisioning-jobs] Marked app deployment as failed after permanent failure",
               { jobId: job.id, appId },
@@ -3384,9 +3384,9 @@ export class ProvisioningJobService {
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
-            .returning({ id: apps.id });
+            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
-            await enqueueAppCacheInvalidation(tx, failedJob, failedApp.id);
+            await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
             logger.warn(
               "[provisioning-jobs] Marked app deployment as failed after container provision permanent failure",
               { jobId: job.id, containerId, appId },
