@@ -100,6 +100,12 @@ for (const fixture of [
     pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
+    name: "ephemeral cloud Bun executable path is cached",
+    key: "cloudSetup",
+    mutate: (source) => source.replace("        no-cache: true\n", ""),
+    pattern: /without caching the ephemeral executable path/,
+  },
+  {
     name: "degraded Cloud e2e database backend",
     key: "cloudTests",
     mutate: (source) =>
@@ -181,11 +187,23 @@ for (const fixture of [
     pattern: /CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
+    name: "ephemeral CLI Bun executable path is cached",
+    key: "qualityFork",
+    mutate: (source) => source.replace("          no-cache: true\n", ""),
+    pattern: /without caching the ephemeral executable path/,
+  },
+  {
     name: "misplaced workspace setup-bun HOME",
     key: "setupWorkspace",
     mutate: (source) => source.replace(/ {8}USERPROFILE:.*\n/, ""),
     pattern:
       /setup-bun home must be isolated on the setup-bun step for every matrix entry and OS/,
+  },
+  {
+    name: "ephemeral workspace Bun executable path is cached",
+    key: "setupWorkspace",
+    mutate: (source) => source.replace("        no-cache: true\n", ""),
+    pattern: /without caching the ephemeral executable path/,
   },
   {
     name: "conditional lint",

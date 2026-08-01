@@ -199,8 +199,9 @@ export function validateWorkflowSources(sources) {
   );
   invariant(
     cloudSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
-      cloudSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME,
-    `${WORKFLOW_PATHS.cloudSetup}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS`,
+      cloudSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME &&
+      cloudSetupBun?.with?.["no-cache"] === true,
+    `${WORKFLOW_PATHS.cloudSetup}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path`,
   );
   const postgresStart = cloudSetupSteps.find(
     (step) =>
@@ -261,8 +262,9 @@ export function validateWorkflowSources(sources) {
   ].steps.find((step) => step?.uses?.startsWith("oven-sh/setup-bun@"));
   invariant(
     forkCliSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
-      forkCliSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME,
-    `${WORKFLOW_PATHS.qualityFork}: CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS`,
+      forkCliSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME &&
+      forkCliSetupBun?.with?.["no-cache"] === true,
+    `${WORKFLOW_PATHS.qualityFork}: CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path`,
   );
   invariant(
     setupWorkspace.runs?.using === "composite" &&
@@ -274,8 +276,9 @@ export function validateWorkflowSources(sources) {
   );
   invariant(
     workspaceSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
-      workspaceSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME,
-    `${WORKFLOW_PATHS.setupWorkspace}: setup-bun home must be isolated on the setup-bun step for every matrix entry and OS`,
+      workspaceSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME &&
+      workspaceSetupBun?.with?.["no-cache"] === true,
+    `${WORKFLOW_PATHS.setupWorkspace}: setup-bun home must be isolated on the setup-bun step for every matrix entry and OS without caching the ephemeral executable path`,
   );
 
   const lint = requireJob(develop, WORKFLOW_PATHS.develop, "lint");

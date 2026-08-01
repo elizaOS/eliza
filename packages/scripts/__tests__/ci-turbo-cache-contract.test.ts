@@ -59,6 +59,7 @@ runs:
         USERPROFILE: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}
       with:
         bun-version: 1.3.14
+        no-cache: true
 `;
 
 const CLEAN_ADOPTER = `name: Clean adopter
@@ -220,7 +221,7 @@ describe("ci-turbo-cache-contract", () => {
     const root = buildRepo({ workspaceSetup: unsafeHomeSetup });
     try {
       expect(() => runContract(root)).toThrow(
-        /without space-bearing runner metadata/,
+        /space-bearing runner metadata/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -236,6 +237,21 @@ describe("ci-turbo-cache-contract", () => {
     try {
       expect(() => runContract(root)).toThrow(
         /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when setup-bun caches an ephemeral executable path", () => {
+    const cachedEphemeralHomeSetup = WORKSPACE_SETUP_YAML.replace(
+      "        no-cache: true\n",
+      "",
+    );
+    const root = buildRepo({ workspaceSetup: cachedEphemeralHomeSetup });
+    try {
+      expect(() => runContract(root)).toThrow(
+        /without caching the ephemeral executable path/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });

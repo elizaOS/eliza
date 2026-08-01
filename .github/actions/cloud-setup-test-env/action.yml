@@ -45,6 +45,7 @@ runs:
         USERPROFILE: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ strategy.job-index || 0 }}
       with:
         bun-version: ${{ inputs.bun-version }}
+        no-cache: true
 
     - name: Install dependencies
       shell: bash
