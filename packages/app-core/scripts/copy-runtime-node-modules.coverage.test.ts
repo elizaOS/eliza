@@ -611,11 +611,15 @@ describe("isPackageCompatibleWithCurrentPlatform", () => {
 });
 
 describe("getRuntimeDependencyEntries", () => {
-  it("merges deps + optionalDeps + non-optional peerDeps, sorted, DEP_SKIP filtered", () => {
+  it("merges runtime deps while excluding declaration-only packages", () => {
     // This mirrors the exact walk that dragged the smithers optional AWS
     // clients into the desktop bundle: optionalDependencies ARE included.
     const manifestPath = writeManifest("walker", {
-      dependencies: { beta: "1.0.0", typescript: "5.0.0" },
+      dependencies: {
+        "@types/ws": "^7.4.4",
+        beta: "1.0.0",
+        typescript: "5.0.0",
+      },
       optionalDependencies: { alpha: "2.0.0", beta: "9.9.9" },
       peerDependencies: { gamma: "3.0.0", delta: "4.0.0" },
       peerDependenciesMeta: { delta: { optional: true } },
@@ -624,8 +628,10 @@ describe("getRuntimeDependencyEntries", () => {
     const entries = getRuntimeDependencyEntries(manifestPath);
     const names = entries.map((e) => e.name);
 
-    // typescript is in DEP_SKIP => dropped.
+    // Compilers and DefinitelyTyped declarations cannot satisfy runtime
+    // imports, even when an upstream manifest misclassifies them as deps.
     expect(names).not.toContain("typescript");
+    expect(names).not.toContain("@types/ws");
     // delta is an optional peer => dropped.
     expect(names).not.toContain("delta");
     // alpha (optional), beta (dep wins over optional), gamma (required peer).

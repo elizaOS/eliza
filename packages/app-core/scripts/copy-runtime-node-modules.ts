@@ -82,7 +82,13 @@ const RM_PATH_RECURSIVE_SCRIPT = path.join(
 const PUBLISHED_PACKAGE_FETCH_TIMEOUT_MS = 10_000;
 const ALLOW_REGISTRY_FETCH =
   process.env.ELIZA_RUNTIME_COPY_ALLOW_REGISTRY_FETCH === "1";
-const DEP_SKIP = new Set(["typescript", "@types/node"]);
+function isDevelopmentOnlyDependency(name: string): boolean {
+  // DefinitelyTyped packages contain declarations, not runtime modules. Some
+  // published packages (notably jayson) incorrectly place them in
+  // `dependencies`; following those edges can fail a production closure on a
+  // harmless major-version mismatch and can never satisfy a runtime import.
+  return name === "typescript" || name.startsWith("@types/");
+}
 const ALWAYS_HOISTED_PACKAGES = new Set([
   // @brighter/storage-adapter-s3 accepts broad S3 client ranges; reuse the
   // runtime root copy instead of nesting a private AWS SDK tree that exceeds
@@ -2273,19 +2279,19 @@ export function getRuntimeDependencyEntries(
   >();
 
   for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) {
-    if (!DEP_SKIP.has(name)) {
+    if (!isDevelopmentOnlyDependency(name)) {
       entries.set(name, { spec, kind: "dependency" });
     }
   }
 
   for (const [name, spec] of Object.entries(pkg.optionalDependencies ?? {})) {
-    if (!DEP_SKIP.has(name) && !entries.has(name)) {
+    if (!isDevelopmentOnlyDependency(name) && !entries.has(name)) {
       entries.set(name, { spec, kind: "optional" });
     }
   }
 
   for (const [name, spec] of Object.entries(pkg.peerDependencies ?? {})) {
-    if (DEP_SKIP.has(name) || entries.has(name)) {
+    if (isDevelopmentOnlyDependency(name) || entries.has(name)) {
       continue;
     }
 
@@ -2833,7 +2839,7 @@ function main(): void {
       } = request;
       if (
         !name ||
-        DEP_SKIP.has(name) ||
+        isDevelopmentOnlyDependency(name) ||
         !isPackageNameCompatibleWithCurrentPlatform(name)
       ) {
         continue;
