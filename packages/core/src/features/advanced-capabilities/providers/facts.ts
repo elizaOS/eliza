@@ -315,6 +315,7 @@ const factsProvider: Provider = {
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (
