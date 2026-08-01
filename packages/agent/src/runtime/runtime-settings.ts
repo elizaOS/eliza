@@ -12,6 +12,8 @@ import { isVaultRef } from "./operations/vault-bridge.ts";
 
 export interface RuntimeSettingsProjectionOptions {
   preferredProviderId?: string;
+  brainProviderName?: string;
+  embeddingProviderName?: string;
   visionModeSetting?: string;
   managedSkillsDir?: string;
   bundledSkillsDir?: string | null;
@@ -86,6 +88,12 @@ export function buildRuntimeSettingsProjection(
     ...(options.connectorSecretsOverlay ?? {}),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
+      : {}),
+    ...(options.brainProviderName
+      ? { ELIZA_BRAIN_PROVIDER: options.brainProviderName }
+      : {}),
+    ...(options.embeddingProviderName
+      ? { ELIZA_EMBEDDING_PROVIDER: options.embeddingProviderName }
       : {}),
     ...(options.visionModeSetting
       ? { VISION_MODE: options.visionModeSetting }
