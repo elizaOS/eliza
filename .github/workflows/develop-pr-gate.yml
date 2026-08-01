@@ -40,14 +40,14 @@ jobs:
   gate:
     name: Develop PR Gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       AGGREGATE_EVENT_NAME: ${{ github.event_name }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number || '' }}
       PR_ACTION: ${{ github.event.action || '' }}
       PR_UPDATED_AT: ${{ github.event.pull_request.updated_at || '' }}
-      POLL_TIMEOUT_SECONDS: "2400"
+      POLL_TIMEOUT_SECONDS: "4200"
       POLL_INTERVAL_SECONDS: "30"
       CANARY_SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.canary || '' }}
     steps:

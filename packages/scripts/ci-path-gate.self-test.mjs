@@ -148,6 +148,21 @@ assertGate(
   },
 );
 
+for (const path of [
+  ".github/workflows/mobile-build-smoke.yml",
+  "packages/app-core/scripts/run-mobile-build.mjs",
+  "packages/app-core/platforms/android/app/build.gradle",
+  "packages/app/src/main.tsx",
+]) {
+  assertGate(
+    `Android release input ${path}`,
+    runGate({ config: "mobile", files: [path] }),
+    {
+      android: "true",
+    },
+  );
+}
+
 assertGate(
   "docker runtime",
   runGate({ config: "docker", files: ["plugins/plugin-openai/src/index.ts"] }),

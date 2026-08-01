@@ -133,7 +133,7 @@ export function validateAggregateWorkflow(workflow) {
 
   assertIncludes(workflow, "    name: Develop PR Gate", "stable job name");
   assertIncludes(workflow, "    runs-on: ubuntu-24.04", "hosted runner");
-  assertIncludes(workflow, "    timeout-minutes: 45", "bounded timeout");
+  assertIncludes(workflow, "    timeout-minutes: 75", "bounded timeout");
   assertEqual(
     count(workflow, /uses:\s*actions\/checkout@/g),
     1,

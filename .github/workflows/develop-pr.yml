@@ -74,6 +74,7 @@ jobs:
           .github/workflows/cloud-tests.yml
           .github/workflows/gitleaks.yml
           .github/workflows/local-inference-matrix.yml
+          .github/workflows/mobile-build-smoke.yml
           .github/workflows/stale-base-guard.yml
           .github/workflows/test.yml
 

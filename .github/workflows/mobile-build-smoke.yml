@@ -10,7 +10,7 @@ on:
         type: string
         default: standalone
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
     inputs:
@@ -843,13 +843,17 @@ jobs:
             | tee "$RUNNER_TEMP/android-cloud-release-aab-audit.log"
 
       - name: Verify release AAB audit evidence
+        id: release-aab-evidence
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
           AAB_PATH="packages/app-core/platforms/android/app/build/outputs/bundle/release/app-release.aab"
           AUDIT_LOG="$RUNNER_TEMP/android-cloud-release-aab-audit.log"
           ATTESTATION="$RUNNER_TEMP/android-cloud-release-attestation.json"
+          SHA256="$RUNNER_TEMP/android-cloud-release-aab.sha256"
           test -s "$AAB_PATH"
+          test -s "$AUDIT_LOG"
           node - "$AUDIT_LOG" "$ATTESTATION" "$AAB_PATH" <<'NODE'
           const crypto = require("node:crypto");
           const fs = require("node:fs");
@@ -875,10 +879,12 @@ jobs:
           }
           fs.writeFileSync(outputPath, `${JSON.stringify(attestation, null, 2)}\n`);
           NODE
-          sha256sum "$AAB_PATH" | tee "$RUNNER_TEMP/android-cloud-release-aab.sha256"
+          sha256sum "$AAB_PATH" | tee "$SHA256"
+          test -s "$ATTESTATION"
+          test -s "$SHA256"
 
       - name: Upload release AAB audit evidence
-        if: always()
+        if: ${{ always() && steps.release-aab-evidence.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-cloud-release-aab-audit
@@ -888,4 +894,33 @@ jobs:
             ${{ runner.temp }}/android-cloud-release-aab.sha256
             ${{ runner.temp }}/android-cloud-release-attestation.json
           retention-days: 7
-          if-no-files-found: warn
+          if-no-files-found: error
+
+  android-release-aab-required:
+    name: Android release AAB gate
+    needs: [changes, build-android]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Enforce the selected Android release AAB result
+        shell: bash
+        env:
+          CLASSIFIER_RESULT: ${{ needs.changes.result }}
+          ANDROID_SELECTED: ${{ needs.changes.outputs.android }}
+          ANDROID_BUILD_RESULT: ${{ needs.build-android.result }}
+        run: |
+          set -euo pipefail
+          if [ "$CLASSIFIER_RESULT" != "success" ]; then
+            echo "::error::Mobile path classification concluded $CLASSIFIER_RESULT"
+            exit 1
+          fi
+          if [ "$ANDROID_SELECTED" != "true" ]; then
+            echo "Android release AAB build not selected by the mobile path contract"
+            exit 0
+          fi
+          if [ "$ANDROID_BUILD_RESULT" != "success" ]; then
+            echo "::error::Selected Android release AAB build concluded $ANDROID_BUILD_RESULT"
+            exit 1
+          fi
+          echo "Selected Android release AAB build and evidence contract passed"

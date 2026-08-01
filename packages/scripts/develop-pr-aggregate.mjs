@@ -38,6 +38,13 @@ const STALE_BASE_ACTIONS = [
   "labeled",
   "unlabeled",
 ];
+const MOBILE_BUILD_SMOKE_ACTIONS = [
+  "opened",
+  "synchronize",
+  "reopened",
+  "ready_for_review",
+  "labeled",
+];
 
 export const REQUIRED_CHECKS = Object.freeze([
   {
@@ -74,6 +81,11 @@ export const REQUIRED_CHECKS = Object.freeze([
     context: "stale-base guard",
     workflowPath: ".github/workflows/stale-base-guard.yml",
     triggerActions: STALE_BASE_ACTIONS,
+  },
+  {
+    context: "Android release AAB gate",
+    workflowPath: ".github/workflows/mobile-build-smoke.yml",
+    triggerActions: MOBILE_BUILD_SMOKE_ACTIONS,
   },
 ]);
 
@@ -525,7 +537,7 @@ async function runProduction(env) {
   const timeoutSeconds = positiveInteger(
     env.POLL_TIMEOUT_SECONDS,
     "POLL_TIMEOUT_SECONDS",
-    2_400,
+    4_200,
   );
   const intervalSeconds = positiveInteger(
     env.POLL_INTERVAL_SECONDS,
