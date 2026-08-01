@@ -97,6 +97,13 @@ const LEGACY_TIMESTAMP_SKIPPABLE_TAGS = new Set([
   "0065_add_generations_is_public",
 ]);
 
+// Historical SQL files were edited after deployment, so their stored hashes
+// cannot truthfully authenticate the current checkout. The catalog-guard
+// migration is the first immutable checkpoint owned by this runner; hashes
+// from this entry forward are enforced on every subsequent invocation.
+const HASH_IDENTITY_ENFORCEMENT_TAG =
+  "0187_job_execution_interruptions_catalog_guard";
+
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
 }
@@ -256,6 +263,14 @@ function validateAppliedMigrationLedger(
 
   const seenCreatedAt = new Set<number>();
   const appliedJournalIndexes = new Set<number>();
+  const hashIdentityEnforcementIndex = migrations.findIndex(
+    (migration) => migration.entry.tag === HASH_IDENTITY_ENFORCEMENT_TAG,
+  );
+  if (hashIdentityEnforcementIndex === -1) {
+    throw new Error(
+      `Migration journal is missing hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
+    );
+  }
   let lastAppliedJournalIndex = -1;
   for (const row of applied) {
     const createdAt = createdAtValue(row);
@@ -277,7 +292,10 @@ function validateAppliedMigrationLedger(
         `Migration ledger row id=${row.id} has no matching journal entry for created_at=${createdAt}`,
       );
     }
-    if (row.hash !== matched.migration.hash) {
+    if (
+      matched.journalIndex >= hashIdentityEnforcementIndex &&
+      row.hash !== matched.migration.hash
+    ) {
       throw new Error(
         `Migration ledger hash mismatch for ${matched.migration.entry.tag}: expected ${matched.migration.hash}, found ${row.hash}`,
       );
