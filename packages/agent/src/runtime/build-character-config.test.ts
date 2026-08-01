@@ -231,7 +231,7 @@ describe("connector policy projection", () => {
           },
         ],
       },
-    } as ElizaConfig);
+    } as unknown as ElizaConfig);
 
     expect(character.secrets).toMatchObject({
       [connectorAccountCredentialSettingKey("slack", "support", "botToken")]:
