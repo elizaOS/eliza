@@ -26,6 +26,8 @@ describe("matchViewCommand — explicit user examples", () => {
 		["open the home dashboard", "chat"],
 		["return to the main screen", "chat"],
 		["open my calendar", "calendar"],
+		["open calender", "calendar"],
+		["could you switch to calender please", "calendar"],
 		["go to my inbox", "inbox"],
 		["show my wallet", "wallet"],
 		["open the todos view", "todos"],
