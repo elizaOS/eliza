@@ -124,6 +124,18 @@ export interface VoiceCapabilitySnapshot {
 }
 
 /**
+ * A Cloud voice route is runnable only when the server can authenticate it and
+ * the active config selects the proxy. The status endpoint exposes those as
+ * separate facts, so neither flag alone is a capability signal.
+ */
+export function isCloudVoiceRunnable(input: {
+  connected: boolean;
+  proxyAvailable: boolean;
+}): boolean {
+  return input.connected && input.proxyAvailable;
+}
+
+/**
  * The terminal browser-SpeechSynthesis fallback. `robot-voice` is not one of
  * the three server-backed engines the TTS queue dispatches (eliza-cloud /
  * local-inference / elevenlabs), so `useVoiceChat`'s processQueue routes it to
