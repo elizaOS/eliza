@@ -20,6 +20,9 @@ const { runContract } = await import(
 );
 
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
+const CI_BUN_VERSION = JSON.parse(
+  readFileSync(join(REAL_REPO_ROOT, ".github", "ci-bun-version.json"), "utf8"),
+).version;
 
 const SHIM_YAML = `name: "GitHub-native Turbo cache"
 description: "test shim"
@@ -54,7 +57,7 @@ runs:
       env:
         HOME: \${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}
       with:
-        bun-version: 1.4.0
+        bun-version: 1.3.14
 `;
 
 const CLEAN_ADOPTER = `name: Clean adopter
@@ -242,7 +245,7 @@ describe("ci-turbo-cache-contract", () => {
       expect(lintJob).toContain(command);
     }
     expect(lintJob).not.toMatch(/continue-on-error/);
-    expect(workflow).toMatch(/BUN_VERSION:\s*["']1\.4\.0["']/);
+    expect(workflow).toContain(`BUN_VERSION: "${CI_BUN_VERSION}"`);
     expect(workflow).toMatch(
       /name:\s*Setup Bun[\s\S]*?HOME:\s*\$\{\{\s*runner\.temp\s*\}\}\/bun-home-\$\{\{\s*github\.run_id\s*\}\}-\$\{\{\s*github\.run_attempt\s*\}\}-\$\{\{\s*github\.job\s*\}\}\s*[\r\n]+/,
     );

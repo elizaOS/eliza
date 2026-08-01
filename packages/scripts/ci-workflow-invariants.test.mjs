@@ -10,6 +10,10 @@ import { validateWorkflowSources } from "./ci-workflow-invariants.mjs";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const sources = {
+  ciBunVersion: readFileSync(
+    path.join(root, ".github/ci-bun-version.json"),
+    "utf8",
+  ),
   cloudSetup: readFileSync(
     path.join(root, ".github/actions/cloud-setup-test-env/action.yml"),
     "utf8",
@@ -26,7 +30,6 @@ const sources = {
     path.join(root, ".github/workflows/gitleaks.yml"),
     "utf8",
   ),
-  packageJson: readFileSync(path.join(root, "package.json"), "utf8"),
   qualityFork: readFileSync(
     path.join(root, ".github/workflows/quality-fork.yml"),
     "utf8",
@@ -118,14 +121,11 @@ for (const fixture of [
       /jobs.future-fork-job must use the isolated ubuntu-24.04 hosted runner/,
   },
   {
-    name: "unpinned Bun version for fork validation",
-    key: "packageJson",
+    name: "divergent Bun version for fork validation",
+    key: "ciBunVersion",
     mutate: (source) =>
-      source.replace(
-        '"packageManager": "bun@1.4.0"',
-        '"packageManager": "bun@1.4.1"',
-      ),
-    pattern: /fork validation must use the repository Bun version/,
+      source.replace(/"version":\s*"\d+\.\d+\.\d+"/, '"version": "0.0.0"'),
+    pattern: /fork validation must use the canonical CI Bun version/,
   },
   {
     name: "missing manual fork proof trigger",
