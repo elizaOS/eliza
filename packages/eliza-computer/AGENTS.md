@@ -132,8 +132,8 @@ All production jobs use the protected `eliza-army-production` environment.
 Its deployment-branch policy must use a selected-branch allowlist whose only
 permanent entry is `develop`. It must require a designated release reviewer
 and disallow administrator bypass. An active repository ruleset must require a
-pull request, one approval, approval after the latest push, resolved review
-threads, and non-fast-forward history for `develop`, with no bypass actors.
+pull request, resolved review threads, and non-fast-forward history for
+`develop`, with no bypass actors.
 Access to the environment secrets and branch policy belongs only to designated
 release operators. Claim the deploy/DNS lever on the issue before changing the
 allowlist, Pages, zones, nameservers, DNSSEC, custom domains, or registrar

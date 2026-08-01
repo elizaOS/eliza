@@ -297,7 +297,10 @@ function remoteUrl(origin, path, verificationToken, attempt) {
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
-  const url = new URL(`/${encodedPath}`, origin);
+  // Pages canonically serves the entry document at the apex and redirects
+  // /index.html, so its bytes must be checked at the public route.
+  const publicPath = path === "index.html" ? "/" : `/${encodedPath}`;
+  const url = new URL(publicPath, origin);
   url.searchParams.set("verify", `${verificationToken}-${attempt}`);
   return url;
 }

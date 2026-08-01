@@ -102,9 +102,17 @@ describe("Cloudflare Pages deployment manifest", () => {
     const requested = [];
     const fetchImpl = async (url, init) => {
       const parsed = new URL(url);
-      const path = decodeURIComponent(parsed.pathname.slice(1));
-      requested.push({ init, path, token: parsed.searchParams.get("verify") });
-      return new Response(await readFile(join(root, path)), { status: 200 });
+      const publicPath = decodeURIComponent(parsed.pathname);
+      const bundlePath =
+        publicPath === "/" ? "index.html" : publicPath.slice(1);
+      requested.push({
+        init,
+        path: publicPath,
+        token: parsed.searchParams.get("verify"),
+      });
+      return new Response(await readFile(join(root, bundlePath)), {
+        status: 200,
+      });
     };
 
     await expect(
@@ -115,12 +123,17 @@ describe("Cloudflare Pages deployment manifest", () => {
         retryDelayMs: 0,
       }),
     ).resolves.toBe(manifest.files.length);
-    expect(requested[0].path).toBe(MANIFEST_FILENAME);
+    expect(requested[0].path).toBe(`/${MANIFEST_FILENAME}`);
     expect(requested.map((request) => request.path).sort()).toEqual(
       [
-        MANIFEST_FILENAME,
-        ...manifest.files.map((record) => record.path),
+        `/${MANIFEST_FILENAME}`,
+        ...manifest.files.map((record) =>
+          record.path === "index.html" ? "/" : `/${record.path}`,
+        ),
       ].sort(),
+    );
+    expect(requested.map((request) => request.path)).not.toContain(
+      "/index.html",
     );
     expect(requested.every((request) => request.token === "release-1-1")).toBe(
       true,
