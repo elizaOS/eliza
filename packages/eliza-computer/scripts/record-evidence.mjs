@@ -446,7 +446,12 @@ try {
   };
   const expectedOrigin = new URL(baseUrl).origin;
 
-  async function capture(name, viewport, recordVideo = false) {
+  async function capture(
+    name,
+    viewport,
+    recordVideo = false,
+    captureScreenshot = true,
+  ) {
     const context = await browser.newContext({
       deviceScaleFactor: 1,
       extraHTTPHeaders: {
@@ -499,12 +504,14 @@ try {
     if (previewServer && previewState) {
       assertPreviewRunning(previewServer, previewState);
     }
-    await page.screenshot({
-      fullPage: true,
-      path: join(evidenceRoot, `${name}.jpg`),
-      quality: 88,
-      type: "jpeg",
-    });
+    if (captureScreenshot) {
+      await page.screenshot({
+        fullPage: true,
+        path: join(evidenceRoot, `${name}.jpg`),
+        quality: 88,
+        type: "jpeg",
+      });
+    }
 
     let video;
     if (recordVideo) {
@@ -527,7 +534,8 @@ try {
   }
 
   try {
-    await capture("after-desktop", { width: 1440, height: 1000 }, true);
+    await capture("after-desktop", { width: 1440, height: 1000 });
+    await capture("walkthrough", { width: 1440, height: 900 }, true, false);
     await capture("after-mobile", { width: 320, height: 800 });
     if (previewServer && previewState) {
       assertPreviewRunning(previewServer, previewState);
