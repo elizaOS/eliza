@@ -204,10 +204,7 @@ export function buildRunnerWorkspacePrunePlan(input: {
     }
 
     for (const child of children) {
-      if (
-        !child.isDirectory() ||
-        RUNNER_MANAGED_WORK_ENTRIES.has(child.name)
-      ) {
+      if (!child.isDirectory() || RUNNER_MANAGED_WORK_ENTRIES.has(child.name)) {
         continue;
       }
       const childPath = path.join(workDir, child.name);

@@ -85,7 +85,10 @@ describe("parseRunnerWorkspacePruneArgs", () => {
     ).toThrow("Unknown flag --min-age");
 
     expect(() =>
-      parseRunnerWorkspacePruneArgs(["--root", "/var/runners", "--nope", "1"], {}),
+      parseRunnerWorkspacePruneArgs(
+        ["--root", "/var/runners", "--nope", "1"],
+        {},
+      ),
     ).toThrow("Unknown flag --nope");
   });
 
