@@ -204,14 +204,17 @@ export function Launcher({
         )}
       >
         {/* The full-page variant owns vertical overflow; Home's embedded variant
-            stays natural-height so the shared app region is the sole scroller. */}
+            stays natural-height so the shared app region is the sole scroller.
+            The full-page scroll port itself ends above chat. Bottom padding
+            alone would make the last row reachable but still paint it beneath
+            the resting composer before the user scrolls. */}
         <div
           data-testid="launcher-page-window"
           className={cn(
             "scrollbar-hide relative flex touch-pan-y flex-col items-center overscroll-y-contain pt-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
             embedded
               ? "overflow-visible px-2 pb-8 [@media(orientation:landscape)_and_(max-height:520px)]:pt-0"
-              : "scroll-fade scroll-fade-t-[3.5rem] scroll-fade-b-[calc(var(--eliza-chat-clearance,5.25rem)+1.25rem)] [--scroll-fade-reveal:1px] min-h-0 flex-1 scroll-pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)] overflow-y-auto ps-6 pe-[calc(1.5rem+var(--eliza-chat-side-clearance,0px))] pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.75rem)]",
+              : "scroll-fade scroll-fade-t-[3.5rem] scroll-fade-b-[1.25rem] [--scroll-fade-reveal:1px] min-h-0 flex-1 mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1rem)] scroll-pb-7 overflow-y-auto ps-6 pe-[calc(1.5rem+var(--eliza-chat-side-clearance,0px))] pb-7",
           )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">

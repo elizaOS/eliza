@@ -94,6 +94,10 @@ describe("Launcher", () => {
     expect(page.className).toContain("scroll-fade-t-[3.5rem]");
     expect(page.className).toContain("[--scroll-fade-reveal:1px]");
     expect(page.className).toContain("scroll-fade-b-");
+    expect(page.className).toContain(
+      "mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1rem)]",
+    );
+    expect(page.className).toContain("scroll-pb-7");
     const grid = page.querySelector(".grid");
     expect(grid?.className).toContain("grid-cols-3");
     expect(grid?.className).toContain("min-[360px]:grid-cols-4");
