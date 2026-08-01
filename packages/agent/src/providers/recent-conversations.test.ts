@@ -63,4 +63,24 @@ describe("recentConversationsProvider fast-fail (#12265)", () => {
     expect(reportError).not.toHaveBeenCalled();
     expect(result).toEqual({ text: "", values: {}, data: {} });
   });
+
+  it("rethrows cancellation instead of reporting and degrading it", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("turn cancelled", "AbortError");
+    const reportError = vi.fn();
+    const runtime = {
+      getRoom: async () => {
+        controller.abort(reason);
+        throw new Error("room read interrupted");
+      },
+      reportError,
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      recentConversationsProvider.get(runtime, message(), EMPTY_STATE, {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+    expect(reportError).not.toHaveBeenCalled();
+  });
 });

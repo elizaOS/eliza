@@ -7,7 +7,11 @@
  * matches yields empty output; errors fail soft to empty text.
  */
 import { logger } from "../../../../logger.ts";
-import type { Provider, ProviderResult } from "../../../../types/components.ts";
+import type {
+	Provider,
+	ProviderExecutionContext,
+	ProviderResult,
+} from "../../../../types/components.ts";
 import type { Memory } from "../../../../types/memory.ts";
 import type { IAgentRuntime } from "../../../../types/runtime.ts";
 import type { State } from "../../../../types/state.ts";
@@ -40,8 +44,10 @@ export const experienceProvider: Provider = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state?: State,
+		context?: ProviderExecutionContext,
 	): Promise<ProviderResult> {
 		try {
+			context?.signal?.throwIfAborted();
 			const experienceService = runtime.getService(
 				"EXPERIENCE",
 			) as ExperienceService | null;
@@ -56,18 +62,25 @@ export const experienceProvider: Provider = {
 				return { text: "", data: {}, values: {} };
 			}
 
-			const semanticExperiences = await experienceService.queryExperiences({
-				query: messageText,
-				limit: 5,
-				minConfidence: 0.6,
-				minImportance: 0.5,
-				includeRelated: true,
-			});
-			const topExperiences = await experienceService.listExperiences({
-				limit: 3,
-				minConfidence: 0.7,
-				minImportance: 0.7,
-			});
+			const semanticExperiences = await experienceService.queryExperiences(
+				{
+					query: messageText,
+					limit: 5,
+					minConfidence: 0.6,
+					minImportance: 0.5,
+					includeRelated: true,
+				},
+				context?.signal,
+			);
+			const topExperiences = await experienceService.listExperiences(
+				{
+					limit: 3,
+					minConfidence: 0.7,
+					minImportance: 0.7,
+				},
+				context?.signal,
+			);
+			context?.signal?.throwIfAborted();
 			const relevantExperiences = [
 				...new Map(
 					[...semanticExperiences, ...topExperiences].map((experience) => [
@@ -105,6 +118,7 @@ export const experienceProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			context?.signal?.throwIfAborted();
 			return {
 				text: "",
 				data: {

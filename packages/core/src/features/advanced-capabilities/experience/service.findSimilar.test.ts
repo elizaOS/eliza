@@ -16,10 +16,22 @@ import { ExperienceType, OutcomeType } from "./types.ts";
 // assert findSimilarExperiences falls back to the recency/quality sort instead
 // of throwing or hanging.
 const embedRecallQuery =
-	vi.fn<(runtime: IAgentRuntime, text: string) => Promise<number[] | null>>();
+	vi.fn<
+		(
+			runtime: IAgentRuntime,
+			text: string,
+			options?: { signal?: AbortSignal },
+		) => Promise<number[] | null>
+	>();
 vi.mock("../../documents/recall-embed.ts", () => ({
-	embedRecallQuery: (runtime: IAgentRuntime, text: string) =>
-		embedRecallQuery(runtime, text),
+	embedRecallQuery: (
+		runtime: IAgentRuntime,
+		text: string,
+		options?: { signal?: AbortSignal },
+	) =>
+		options
+			? embedRecallQuery(runtime, text, options)
+			: embedRecallQuery(runtime, text),
 }));
 
 // Imported after the mock is registered.
@@ -117,6 +129,26 @@ describe("ExperienceService.findSimilarExperiences — shared recall embed fail-
 		expect(embedRecallQuery).toHaveBeenCalledWith(runtime, "any query");
 		expect(useModel).not.toHaveBeenCalled();
 		expect(results.length).toBeGreaterThan(0);
+
+		await service.stop();
+	});
+
+	test("forwards cancellation to the shared recall embedder", async () => {
+		const controller = new AbortController();
+		const reason = new DOMException("turn cancelled", "AbortError");
+		embedRecallQuery.mockImplementation(async (_runtime, _text, options) => {
+			expect(options?.signal).toBe(controller.signal);
+			controller.abort(reason);
+			throw reason;
+		});
+		const { runtime } = makeRuntime();
+		const service = await ExperienceService.start(runtime);
+		await vi.waitFor(() => expect(runtime.getMemories).toHaveBeenCalled());
+		await Promise.resolve();
+
+		await expect(
+			service.findSimilarExperiences("any query", 5, controller.signal),
+		).rejects.toBe(reason);
 
 		await service.stop();
 	});

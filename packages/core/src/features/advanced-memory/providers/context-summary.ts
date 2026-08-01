@@ -10,6 +10,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderExecutionContext,
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
@@ -36,8 +37,10 @@ export const contextSummaryProvider: Provider = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State,
+		context?: ProviderExecutionContext,
 	): Promise<ProviderResult> => {
 		try {
+			context?.signal?.throwIfAborted();
 			const memoryService = runtime.getService(
 				"memory",
 			) as MemoryService | null;
@@ -51,8 +54,11 @@ export const contextSummaryProvider: Provider = {
 				};
 			}
 
-			const currentSummary =
-				await memoryService.getCurrentSessionSummary(roomId);
+			const currentSummary = await memoryService.getCurrentSessionSummary(
+				roomId,
+				context?.signal,
+			);
+			context?.signal?.throwIfAborted();
 			if (!currentSummary) {
 				logAdvancedMemoryTrajectory({
 					runtime,
@@ -124,6 +130,7 @@ export const contextSummaryProvider: Provider = {
 				text: sessionSummariesWithTopics,
 			};
 		} catch (error) {
+			context?.signal?.throwIfAborted();
 			const err = error instanceof Error ? error.message : String(error);
 			logger.error(
 				{ src: "provider:memory", err },

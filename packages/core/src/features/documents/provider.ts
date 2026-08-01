@@ -12,6 +12,7 @@ import {
 	type Memory,
 	MemoryType,
 	type Provider,
+	type ProviderExecutionContext,
 } from "../../types";
 import { addHeader } from "../../utils";
 import { DocumentService } from "./service.ts";
@@ -60,7 +61,13 @@ export const documentsProvider: Provider = {
 	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
-	get: async (runtime: IAgentRuntime, message: Memory) => {
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state,
+		context?: ProviderExecutionContext,
+	) => {
+		context?.signal?.throwIfAborted();
 		const service = runtime.getService<DocumentService>(
 			DocumentService.serviceType,
 		);
@@ -77,9 +84,14 @@ export const documentsProvider: Provider = {
 		}
 
 		const { relevantFragments, documents } =
-			await service.composeProviderDocuments(message, {
-				limit: MAX_AVAILABLE_DOCUMENTS,
-			});
+			await service.composeProviderDocuments(
+				message,
+				{
+					limit: MAX_AVAILABLE_DOCUMENTS,
+				},
+				context?.signal,
+			);
+		context?.signal?.throwIfAborted();
 		const relevantSnippets = relevantFragments
 			.slice(0, MAX_RELEVANT_SNIPPETS)
 			.map((fragment, index) => {

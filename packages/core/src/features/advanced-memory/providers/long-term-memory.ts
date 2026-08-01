@@ -12,6 +12,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderExecutionContext,
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
@@ -41,8 +42,10 @@ export const longTermMemoryProvider: Provider = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State,
+		context?: ProviderExecutionContext,
 	): Promise<ProviderResult> => {
 		try {
+			context?.signal?.throwIfAborted();
 			const memoryService = runtime.getService(
 				"memory",
 			) as MemoryService | null;
@@ -67,7 +70,9 @@ export const longTermMemoryProvider: Provider = {
 				entityId,
 				undefined,
 				25,
+				context?.signal,
 			);
+			context?.signal?.throwIfAborted();
 			if (memories.length === 0) {
 				logAdvancedMemoryTrajectory({
 					runtime,
@@ -141,6 +146,7 @@ export const longTermMemoryProvider: Provider = {
 				text,
 			};
 		} catch (error) {
+			context?.signal?.throwIfAborted();
 			const err = error instanceof Error ? error.message : String(error);
 			logger.error(
 				{ src: "provider:memory", err },

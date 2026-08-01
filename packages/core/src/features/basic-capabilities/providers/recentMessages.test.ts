@@ -589,4 +589,28 @@ describe("recentMessagesProvider", () => {
 			"the blue key is under the mat",
 		);
 	});
+
+	it("rethrows cancellation instead of degrading it to empty history", async () => {
+		const controller = new AbortController();
+		const reason = new DOMException("turn cancelled", "AbortError");
+		const runtime = makeRuntime(
+			[],
+			{},
+			{
+				getRoom: vi.fn(async () => {
+					controller.abort(reason);
+					throw new Error("room read interrupted");
+				}),
+			},
+		);
+
+		await expect(
+			recentMessagesProvider.get(
+				runtime,
+				makeMemory("current", USER_ID, "hello", "discord", 2000),
+				{ values: {}, data: {}, text: "" },
+				{ signal: controller.signal },
+			),
+		).rejects.toBe(reason);
+	});
 });

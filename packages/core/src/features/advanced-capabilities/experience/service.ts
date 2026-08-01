@@ -647,8 +647,14 @@ export class ExperienceService extends Service {
 		return experience ? this.cloneExperience(experience) : null;
 	}
 
-	async listExperiences(query: ExperienceQuery = {}): Promise<Experience[]> {
-		return this.resolveExperiences(query, false);
+	async listExperiences(
+		query: ExperienceQuery = {},
+		signal?: AbortSignal,
+	): Promise<Experience[]> {
+		signal?.throwIfAborted();
+		const experiences = await this.resolveExperiences(query, false, signal);
+		signal?.throwIfAborted();
+		return experiences;
 	}
 
 	async updateExperience(
@@ -774,14 +780,22 @@ export class ExperienceService extends Service {
 		return true;
 	}
 
-	async queryExperiences(query: ExperienceQuery): Promise<Experience[]> {
-		return this.resolveExperiences(query, true);
+	async queryExperiences(
+		query: ExperienceQuery,
+		signal?: AbortSignal,
+	): Promise<Experience[]> {
+		signal?.throwIfAborted();
+		const experiences = await this.resolveExperiences(query, true, signal);
+		signal?.throwIfAborted();
+		return experiences;
 	}
 
 	private async resolveExperiences(
 		query: ExperienceQuery,
 		trackAccess: boolean,
+		signal?: AbortSignal,
 	): Promise<Experience[]> {
+		signal?.throwIfAborted();
 		let results: Experience[] = [];
 		const limit = query.limit ?? 10;
 
@@ -798,7 +812,7 @@ export class ExperienceService extends Service {
 			);
 			const fetchLimit = hasFilters ? Math.max(limit * 5, 50) : limit;
 			const candidates = this.applyFilters(
-				await this.findSimilarExperiences(query.query, fetchLimit),
+				await this.findSimilarExperiences(query.query, fetchLimit, signal),
 				query,
 			);
 			results = candidates.slice(0, limit);
@@ -835,6 +849,7 @@ export class ExperienceService extends Service {
 			results.push(...related);
 		}
 
+		signal?.throwIfAborted();
 		if (trackAccess) {
 			this.touchExperiences(results);
 		}
@@ -904,7 +919,12 @@ export class ExperienceService extends Service {
 	 *   A minimum similarity threshold filters out noise so quality signals
 	 *   can't promote genuinely irrelevant experiences.
 	 */
-	async findSimilarExperiences(text: string, limit = 5): Promise<Experience[]> {
+	async findSimilarExperiences(
+		text: string,
+		limit = 5,
+		signal?: AbortSignal,
+	): Promise<Experience[]> {
+		signal?.throwIfAborted();
 		if (!text || this.experiences.size === 0) {
 			return [];
 		}
@@ -913,7 +933,10 @@ export class ExperienceService extends Service {
 		// (documents, relevant-conversations) so the same query text hits the
 		// embed endpoint once per turn. `null` means timed out/failed — fail open
 		// to the recency sort, exactly as the empty/zero-embedding case does.
-		const queryEmbedding = await embedRecallQuery(this.runtime, text);
+		const queryEmbedding = signal
+			? await embedRecallQuery(this.runtime, text, { signal })
+			: await embedRecallQuery(this.runtime, text);
+		signal?.throwIfAborted();
 		if (queryEmbedding === null) {
 			logger.warn(
 				"[ExperienceService] Query embedding unavailable, falling back to recency sort",

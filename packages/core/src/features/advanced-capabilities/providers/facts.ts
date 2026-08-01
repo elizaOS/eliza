@@ -28,6 +28,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderExecutionContext,
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
@@ -322,8 +323,10 @@ const factsProvider: Provider = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		_state: State,
+		context?: ProviderExecutionContext,
 	): Promise<ProviderResult> => {
 		try {
+			context?.signal?.throwIfAborted();
 			const recentMessagesPromise = runtime.getMemories({
 				tableName: "messages",
 				roomId: message.roomId,
@@ -338,6 +341,7 @@ const factsProvider: Provider = {
 				recentMessagesPromise,
 				relatedEntityIdsPromise,
 			]);
+			context?.signal?.throwIfAborted();
 
 			// Build the lexical query from the current message and recent context.
 			const lastMessageLines: string[] = [];
@@ -395,6 +399,7 @@ const factsProvider: Provider = {
 					}),
 				),
 			]);
+			context?.signal?.throwIfAborted();
 			const entityFacts = entityFactPools.flat();
 
 			const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
@@ -542,6 +547,7 @@ const factsProvider: Provider = {
 				text,
 			};
 		} catch (cause) {
+			context?.signal?.throwIfAborted();
 			// error-policy:J2 Add provider scope before the message boundary reports the failed turn.
 			throw new ElizaError("Facts provider read failed", {
 				code: "FACTS_PROVIDER_READ_FAILED",

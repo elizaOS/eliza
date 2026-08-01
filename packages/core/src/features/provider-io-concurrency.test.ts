@@ -214,6 +214,25 @@ describe("provider database I/O concurrency", () => {
 		});
 	});
 
+	it("rethrows FACTS cancellation without wrapping it as a provider failure", async () => {
+		const controller = new AbortController();
+		const reason = new DOMException("turn cancelled", "AbortError");
+		const runtime = {
+			agentId,
+			getService: vi.fn(() => null),
+			getMemories: vi.fn(async () => {
+				controller.abort(reason);
+				throw new Error("database read interrupted");
+			}),
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			factsProvider.get(runtime, message, state, {
+				signal: controller.signal,
+			}),
+		).rejects.toBe(reason);
+	});
+
 	it("loads every RELATIONSHIPS counterpart with one batch query", async () => {
 		const relationships: Relationship[] = [
 			{
@@ -275,6 +294,25 @@ describe("provider database I/O concurrency", () => {
 
 		await relationshipsProvider.get(runtime, message, state);
 		expect(getEntitiesByIds).not.toHaveBeenCalled();
+	});
+
+	it("stops RELATIONSHIPS after an uncancellable database read observes abort", async () => {
+		const controller = new AbortController();
+		const reason = new DOMException("turn cancelled", "AbortError");
+		const runtime = {
+			agentId,
+			getService: vi.fn(() => null),
+			getRelationships: vi.fn(async () => {
+				controller.abort(reason);
+				return [];
+			}),
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			relationshipsProvider.get(runtime, message, state, {
+				signal: controller.signal,
+			}),
+		).rejects.toBe(reason);
 	});
 
 	it("starts WORLD room-list and participant reads together after the authoritative world exists", async () => {
@@ -344,6 +382,7 @@ describe("provider database I/O concurrency", () => {
 	});
 
 	it("uses the DOCUMENTS service's bounded concurrent read composition", async () => {
+		const controller = new AbortController();
 		const composition = deferred<{
 			relevantFragments: Memory[];
 			documents: Memory[];
@@ -357,11 +396,15 @@ describe("provider database I/O concurrency", () => {
 			),
 		} as unknown as IAgentRuntime;
 
-		const resultPromise = documentsProvider.get(runtime, message, state);
-		await Promise.resolve();
-		expect(service.composeProviderDocuments).toHaveBeenCalledWith(message, {
-			limit: 25,
+		const resultPromise = documentsProvider.get(runtime, message, state, {
+			signal: controller.signal,
 		});
+		await Promise.resolve();
+		expect(service.composeProviderDocuments).toHaveBeenCalledWith(
+			message,
+			{ limit: 25 },
+			controller.signal,
+		);
 
 		composition.resolve({
 			relevantFragments: [],
@@ -379,5 +422,25 @@ describe("provider database I/O concurrency", () => {
 		await expect(resultPromise).resolves.toMatchObject({
 			values: { documentsAvailable: true, documentsCount: 1 },
 		});
+	});
+
+	it("rethrows DOCUMENTS cancellation after service composition settles", async () => {
+		const controller = new AbortController();
+		const reason = new DOMException("turn cancelled", "AbortError");
+		const service = {
+			composeProviderDocuments: vi.fn(async () => {
+				controller.abort(reason);
+				return { relevantFragments: [], documents: [] };
+			}),
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+
+		await expect(
+			documentsProvider.get(runtime, message, state, {
+				signal: controller.signal,
+			}),
+		).rejects.toBe(reason);
 	});
 });

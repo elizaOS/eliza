@@ -644,7 +644,9 @@ export class DocumentService extends Service {
 	async composeProviderDocuments(
 		message: Memory,
 		listOptions: DocumentListOptions,
+		signal?: AbortSignal,
 	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+		signal?.throwIfAborted();
 		const resolveRequester = createDocumentProviderRequesterResolver(
 			this.runtime,
 			message,
@@ -655,11 +657,12 @@ export class DocumentService extends Service {
 				undefined,
 				undefined,
 				undefined,
-				undefined,
+				{ signal },
 				resolveRequester,
 			),
 			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
 		]);
+		signal?.throwIfAborted();
 		return { relevantFragments, documents: listResult.documents };
 	}
 

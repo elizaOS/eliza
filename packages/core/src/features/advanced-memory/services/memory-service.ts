@@ -462,11 +462,15 @@ export class MemoryService extends Service {
 		entityId: UUID,
 		category?: LongTermMemoryCategory,
 		limit = 10,
+		signal?: AbortSignal,
 	): Promise<LongTermMemory[]> {
+		signal?.throwIfAborted();
 		if (limit <= 0) return [];
 		const storage = await this.getStorage();
+		signal?.throwIfAborted();
 		if (!storage) return [];
 		const entityIds = await getRelatedEntityIds(this.runtime, entityId);
+		signal?.throwIfAborted();
 		const memories = (
 			await Promise.all(
 				entityIds.map((relatedEntityId) =>
@@ -477,6 +481,7 @@ export class MemoryService extends Service {
 				),
 			)
 		).flat();
+		signal?.throwIfAborted();
 		// The storage layer already expands the full identity cluster per entity,
 		// so fanning out across related entity IDs returns the same records N times.
 		// Dedupe by id so a cluster of N members yields `limit` distinct memories,
@@ -519,10 +524,20 @@ export class MemoryService extends Service {
 		);
 	}
 
-	async getCurrentSessionSummary(roomId: UUID): Promise<SessionSummary | null> {
+	async getCurrentSessionSummary(
+		roomId: UUID,
+		signal?: AbortSignal,
+	): Promise<SessionSummary | null> {
+		signal?.throwIfAborted();
 		const storage = await this.getStorage();
+		signal?.throwIfAborted();
 		if (!storage) return null;
-		return storage.getCurrentSessionSummary(this.runtime.agentId, roomId);
+		const summary = await storage.getCurrentSessionSummary(
+			this.runtime.agentId,
+			roomId,
+		);
+		signal?.throwIfAborted();
+		return summary;
 	}
 
 	async storeSessionSummary(

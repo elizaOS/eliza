@@ -9,6 +9,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderExecutionContext,
   ProviderResult,
   Room,
   State,
@@ -57,6 +58,7 @@ export const recentConversationsProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
+    context?: ProviderExecutionContext,
   ): Promise<ProviderResult> {
     const entityId = message.entityId as UUID | undefined;
     if (!entityId) {
@@ -64,7 +66,9 @@ export const recentConversationsProvider: Provider = {
     }
 
     try {
+      context?.signal?.throwIfAborted();
       const currentRoom = await runtime.getRoom(message.roomId);
+      context?.signal?.throwIfAborted();
       const currentMeta = extractConversationMetadataFromRoom(currentRoom);
       if (
         isAutomationConversationMetadata(currentMeta) ||
@@ -74,6 +78,7 @@ export const recentConversationsProvider: Provider = {
       }
 
       const roomIds = await runtime.getRoomsForParticipant(entityId);
+      context?.signal?.throwIfAborted();
       if (!roomIds || roomIds.length === 0) {
         return { text: "", values: {}, data: {} };
       }
@@ -86,6 +91,7 @@ export const recentConversationsProvider: Provider = {
         roomIds: scanRoomIds,
         limit: MAX_RECENT_MESSAGES,
       });
+      context?.signal?.throwIfAborted();
 
       if (!memories || memories.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -109,6 +115,7 @@ export const recentConversationsProvider: Provider = {
           try {
             roomCache.set(rid, await runtime.getRoom(rid));
           } catch {
+            context?.signal?.throwIfAborted();
             roomCache.set(rid, null);
           }
         }
@@ -138,6 +145,7 @@ export const recentConversationsProvider: Provider = {
         },
       };
     } catch (error) {
+      context?.signal?.throwIfAborted();
       // error-policy:J4 recall failure degrades to no recent-conversations text,
       // but must be distinguishable from a legit-empty recall: reportError
       // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of

@@ -35,6 +35,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	Provider,
+	ProviderExecutionContext,
 	ProviderResult,
 	State,
 	UUID,
@@ -278,7 +279,9 @@ async function ensureFormattingEntities(
 	runtime: IAgentRuntime,
 	entities: Entity[],
 	messages: Memory[],
+	signal?: AbortSignal,
 ): Promise<Entity[]> {
+	signal?.throwIfAborted();
 	const entitiesById = new Map<UUID, Entity>();
 	for (const entity of entities) {
 		if (entity.id) {
@@ -305,6 +308,7 @@ async function ensureFormattingEntities(
 	const resolvedEntities = await Promise.all(
 		missingEntityIds.map((entityId) => runtime.getEntityById(entityId)),
 	);
+	signal?.throwIfAborted();
 
 	for (let i = 0; i < missingEntityIds.length; i += 1) {
 		const entityId = missingEntityIds[i];
@@ -333,13 +337,17 @@ const getRecentInteractions = async (
 	sourceEntityId: UUID,
 	targetEntityId: UUID,
 	excludeRoomId: UUID,
+	signal?: AbortSignal,
 ): Promise<Memory[]> => {
+	signal?.throwIfAborted();
 	const sourceEntityIds = await getRelatedEntityIds(runtime, sourceEntityId);
+	signal?.throwIfAborted();
 	const roomsByIdentity = await Promise.all(
 		sourceEntityIds.map((entityId) =>
 			runtime.getRoomsForParticipants([entityId, targetEntityId]),
 		),
 	);
+	signal?.throwIfAborted();
 	const rooms = Array.from(new Set(roomsByIdentity.flat()));
 	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
 	if (otherRooms.length === 0) {
@@ -347,11 +355,13 @@ const getRecentInteractions = async (
 	}
 
 	// Check the existing memories in the database
-	return runtime.getMemoriesByRoomIds({
+	const memories = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
 		limit: 20,
 	});
+	signal?.throwIfAborted();
+	return memories;
 };
 
 export const recentMessagesProvider: Provider = {
@@ -371,8 +381,10 @@ export const recentMessagesProvider: Provider = {
 		runtime: IAgentRuntime,
 		message: Memory,
 		state: State,
+		context?: ProviderExecutionContext,
 	): Promise<ProviderResult> => {
 		try {
+			context?.signal?.throwIfAborted();
 			const { roomId } = message;
 			const configuredConversationLength = Math.min(
 				runtime.getConversationLength(),
@@ -406,6 +418,7 @@ export const recentMessagesProvider: Provider = {
 
 			// First get room to check for compaction point
 			const room = await runtime.getRoom(roomId);
+			context?.signal?.throwIfAborted();
 
 			// Check for compaction point - only load messages after this timestamp
 			const lastCompactionAt = room?.metadata?.lastCompactionAt as
@@ -431,11 +444,13 @@ export const recentMessagesProvider: Provider = {
 								message.entityId,
 								runtime.agentId,
 								roomId,
+								context?.signal,
 							).then((interactions) =>
 								interactions.slice(0, MAX_RECENT_INTERACTIONS),
 							)
 						: Promise.resolve([]),
 				]);
+			context?.signal?.throwIfAborted();
 
 			// Separate action results from regular messages
 			const actionResultMessages = recentMessagesData.filter(
@@ -475,7 +490,9 @@ export const recentMessagesProvider: Provider = {
 				runtime,
 				entitiesData,
 				[message, ...dialogueMessages],
+				context?.signal,
 			);
+			context?.signal?.throwIfAborted();
 
 			// Default to message format if room is not found or type is undefined
 			const isPostFormat = room?.type
@@ -639,6 +656,7 @@ export const recentMessagesProvider: Provider = {
 							runtime.getEntityById(entityId),
 						),
 					);
+					context?.signal?.throwIfAborted();
 
 					entities.forEach((entity, index) => {
 						if (entity) {
@@ -753,6 +771,7 @@ export const recentMessagesProvider: Provider = {
 				text,
 			};
 		} catch (error) {
+			context?.signal?.throwIfAborted();
 			return {
 				data: {
 					recentMessages: [],

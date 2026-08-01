@@ -15,6 +15,7 @@ import type {
 	Memory,
 	Metadata,
 	Provider,
+	ProviderExecutionContext,
 	Relationship,
 	UUID,
 } from "../../../types/index.ts";
@@ -42,7 +43,9 @@ async function formatRelationships(
 	runtime: IAgentRuntime,
 	relationships: Relationship[],
 	currentEntityIds: UUID[],
+	signal?: AbortSignal,
 ) {
+	signal?.throwIfAborted();
 	const currentEntityIdSet = new Set(currentEntityIds);
 	// Sort relationships by interaction strength (descending)
 	const sortedRelationships = relationships
@@ -82,6 +85,7 @@ async function formatRelationships(
 		uniqueEntityIds.length > 0
 			? await runtime.getEntitiesByIds(uniqueEntityIds)
 			: [];
+	signal?.throwIfAborted();
 
 	// Create a lookup map for efficient access
 	const entityMap = new Map<string, Entity>(
@@ -178,15 +182,23 @@ const relationshipsProvider: Provider = {
 	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
-	get: async (runtime: IAgentRuntime, message: Memory) => {
+	get: async (
+		runtime: IAgentRuntime,
+		message: Memory,
+		_state,
+		context?: ProviderExecutionContext,
+	) => {
+		context?.signal?.throwIfAborted();
 		const relatedEntityIds = await getRelatedEntityIds(
 			runtime,
 			message.entityId,
 		);
+		context?.signal?.throwIfAborted();
 		// Get all relationships for the current user
 		const relationships = await runtime.getRelationships({
 			entityIds: relatedEntityIds,
 		});
+		context?.signal?.throwIfAborted();
 
 		if (!relationships || relationships.length === 0) {
 			return {
@@ -204,6 +216,7 @@ const relationshipsProvider: Provider = {
 			runtime,
 			relationships,
 			relatedEntityIds,
+			context?.signal,
 		);
 
 		if (!formattedRelationships) {

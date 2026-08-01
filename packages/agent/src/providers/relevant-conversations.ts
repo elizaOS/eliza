@@ -11,6 +11,7 @@ import type {
   IAgentRuntime,
   Memory,
   Provider,
+  ProviderExecutionContext,
   ProviderResult,
   Room,
   State,
@@ -57,7 +58,9 @@ function memoryCreatedAt(memory: Memory): number {
 async function loadHashMemories(
   runtime: IAgentRuntime,
   query: string,
+  signal?: AbortSignal,
 ): Promise<Memory[]> {
+  signal?.throwIfAborted();
   const agentName = runtime.character.name?.trim() || "Eliza";
   const roomId = stringToUuid(`${agentName}-hash-memory-room`) as UUID;
   const memories = await runtime.getMemories({
@@ -66,6 +69,7 @@ async function loadHashMemories(
     limit: HASH_MEMORY_SCAN_LIMIT,
     includeEmbedding: false,
   });
+  signal?.throwIfAborted();
 
   // Only hash memories are candidates; rank them together so BM25's IDF is
   // computed over the hash-memory corpus.
@@ -113,6 +117,7 @@ export const relevantConversationsProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State,
+    context?: ProviderExecutionContext,
   ): Promise<ProviderResult> {
     const text = message.content.text;
     if (!text || text.trim().length < 5) {
@@ -120,7 +125,9 @@ export const relevantConversationsProvider: Provider = {
     }
 
     try {
+      context?.signal?.throwIfAborted();
       const currentRoom = await runtime.getRoom(message.roomId);
+      context?.signal?.throwIfAborted();
       if (
         isAutomationConversationMetadata(
           extractConversationMetadataFromRoom(currentRoom),
@@ -131,14 +138,20 @@ export const relevantConversationsProvider: Provider = {
 
       // Lexical hash-memory recall mirrors the /api/memory/remember writer and
       // works even when no TEXT_EMBEDDING model is registered.
-      const hashMemories = await loadHashMemories(runtime, text);
+      const hashMemories = await loadHashMemories(
+        runtime,
+        text,
+        context?.signal,
+      );
 
       // Embed the current message for semantic search. Routes through the one
       // shared per-turn recall-query embed so this provider, document recall, and
       // experience recall reuse a single embed round-trip per turn. `null` means
       // the embed timed out/failed (or no embedding model) — fail open and rely
       // on lexical hash memories alone.
-      const embedding = await embedRecallQuery(runtime, text);
+      const embedding = await embedRecallQuery(runtime, text, {
+        signal: context?.signal,
+      });
       const results: Memory[] =
         embedding && embedding.length > 0
           ? await runtime.searchMemories({
@@ -148,6 +161,7 @@ export const relevantConversationsProvider: Provider = {
               limit: MAX_RELEVANT_RESULTS + 5, // fetch extra to filter current room
             })
           : [];
+      context?.signal?.throwIfAborted();
 
       // Filter out messages from the current conversation to avoid echo, dedupe
       // by id (hash memories prepended so they win on overlap), then cap.
@@ -173,6 +187,7 @@ export const relevantConversationsProvider: Provider = {
           try {
             roomCache.set(rid, await runtime.getRoom(rid));
           } catch {
+            context?.signal?.throwIfAborted();
             // error-policy:J4 one room's source tag degrades to untagged; the
             // outer catch reports a wholesale recall failure, this per-room miss
             // is cosmetic and must not abort the whole provider.
@@ -210,6 +225,7 @@ export const relevantConversationsProvider: Provider = {
         },
       };
     } catch (error) {
+      context?.signal?.throwIfAborted();
       // error-policy:J4 recall failure degrades to no relevant-conversations
       // text, but must be distinguishable from a legit-empty recall: reportError
       // surfaces the broken pipeline to the agent via RECENT_ERRORS instead of
