@@ -5,7 +5,7 @@
  * Each sample composes a fresh message with the full provider inventory, then
  * repeats that composition inside the same production turn context. The report
  * separates first execution from reuse, ranks providers by p95, and includes
- * aggregate wall time and observed concurrency.
+ * aggregate wall time and provider-span overlap.
  */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
 		const wallSamples: number[] = [];
 		const cachedWallSamples: number[] = [];
 		const cachedProviderCounts: number[] = [];
-		const concurrencySamples: number[] = [];
+		const spanOverlapSamples: number[] = [];
 		const iterations = warmupCount + sampleCount;
 
 		for (let iteration = 0; iteration < iterations; iteration += 1) {
@@ -169,7 +169,10 @@ async function main(): Promise<void> {
 				samplesByProvider.get(providerName)?.push(span.durationMs);
 				summedProviderMs += span.durationMs;
 			}
-			concurrencySamples.push(
+			// Summed span time over wall time measures how much provider spans
+			// overlap, not how many database calls actually executed concurrently:
+			// spans can overlap while their adapter reads still serialize.
+			spanOverlapSamples.push(
 				wallMs > 0 ? summedProviderMs / wallMs : summedProviderMs,
 			);
 		}
@@ -195,7 +198,7 @@ async function main(): Promise<void> {
 			freshComposeWallMs: distribution(wallSamples),
 			reusedComposeWallMs: distribution(cachedWallSamples),
 			reusedProviderResultsPerSample: distribution(cachedProviderCounts),
-			effectiveParallelism: distribution(concurrencySamples),
+			providerSpanOverlap: distribution(spanOverlapSamples),
 			providers,
 		};
 		const serialized = `${JSON.stringify(output, null, 2)}\n`;

@@ -352,11 +352,7 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
 
-type ProviderExecutionOutcome =
-	| "success"
-	| "error"
-	| "aborted"
-	| "deadline_exceeded";
+type ProviderExecutionOutcome = "success" | "error" | "aborted";
 
 interface ProviderExecutionRecord extends ProviderResult {
 	providerName: string;
@@ -380,8 +376,6 @@ interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
 	startedAt: number;
 	startedAtMonotonic: number;
-	timeoutMs?: number;
-	timeoutMode: "fail" | "degrade";
 }
 
 export function calculateProviderOverlaps(
@@ -406,82 +400,31 @@ export function calculateProviderOverlaps(
 	);
 }
 
-// Provider authors opt into a deadline with `timeoutMs`; operators can apply a
-// global default when deployment evidence supports one. An implicit default
-// would change the semantics of every third-party provider without knowing
-// whether its context is optional or how long its backing service can take.
-const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
-	const raw = Number.parseInt(
-		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
-		10,
-	);
-	if (Number.isFinite(raw) && raw >= 250) return raw;
-	return undefined;
-})();
-
-class ProviderDeadlineError extends Error {
-	readonly timeoutMs: number;
-
-	constructor(providerName: string, timeoutMs: number) {
-		super(
-			`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
-		);
-		this.name = "TimeoutError";
-		this.timeoutMs = timeoutMs;
-	}
-}
-
-// The budget and its derived signal are created once per execution so
-// coalesced awaiters share one deadline. JavaScript cannot preempt a provider
-// that ignores AbortSignal, but cooperative database/network/subprocess work
-// receives the timeout immediately and the turn never waits past the budget.
-function withProviderDeadline<T>(
-	run: (signal: AbortSignal) => Promise<T>,
-	timeoutMs: number | undefined,
-	providerName: string,
-	parentSignal?: AbortSignal,
+// Providers receive the owning turn signal directly. The race releases
+// composition even when a provider has not yet propagated cancellation to its
+// I/O boundary, while the provider promise remains observed until it settles.
+function withProviderCancellation<T>(
+	run: (signal?: AbortSignal) => Promise<T>,
+	signal?: AbortSignal,
 ): Promise<T> {
-	const controller = new AbortController();
-	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-	let rejectFromSignal: (() => void) | undefined;
-	const abortFromParent = () => {
-		controller.abort(
-			parentSignal?.reason ?? new Error("Provider execution aborted"),
+	if (!signal) return Promise.resolve().then(() => run());
+	if (signal.aborted) {
+		return Promise.reject(
+			signal.reason ?? new Error("Provider execution aborted"),
 		);
-	};
-	if (parentSignal?.aborted) {
-		abortFromParent();
-	} else {
-		parentSignal?.addEventListener("abort", abortFromParent, { once: true });
 	}
+	let rejectFromSignal: (() => void) | undefined;
 	const aborted = new Promise<never>((_, reject) => {
 		rejectFromSignal = () => {
-			reject(
-				controller.signal.reason ?? new Error("Provider execution aborted"),
-			);
+			reject(signal.reason ?? new Error("Provider execution aborted"));
 		};
-		if (controller.signal.aborted) {
-			rejectFromSignal?.();
-			return;
-		}
-		controller.signal.addEventListener("abort", rejectFromSignal, {
-			once: true,
-		});
+		signal.addEventListener("abort", rejectFromSignal, { once: true });
 	});
-	if (!controller.signal.aborted && timeoutMs !== undefined) {
-		timeoutHandle = setTimeout(() => {
-			controller.abort(new ProviderDeadlineError(providerName, timeoutMs));
-		}, timeoutMs);
-	}
-	const providerPromise = controller.signal.aborted
-		? Promise.reject(controller.signal.reason)
-		: Promise.resolve().then(() => run(controller.signal));
+	const providerPromise = Promise.resolve().then(() => run(signal));
 	return Promise.race([providerPromise, aborted]).finally(() => {
-		if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
 		if (rejectFromSignal) {
-			controller.signal.removeEventListener("abort", rejectFromSignal);
+			signal.removeEventListener("abort", rejectFromSignal);
 		}
-		parentSignal?.removeEventListener("abort", abortFromParent);
 	});
 }
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
@@ -4592,30 +4535,24 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 				const providerCoalesced = execution !== undefined;
 				if (!execution) {
-					const providerBudgetMs =
-						typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
-							? provider.timeoutMs
-							: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
-					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
-					const promise = withProviderDeadline(
+					const promise = withProviderCancellation(
 						(signal) =>
 							withProviderStep(providerRuntime, provider.name, () =>
-								provider.get(providerRuntime, message, cachedState, {
-									signal,
-								}),
+								provider.get(
+									providerRuntime,
+									message,
+									cachedState,
+									signal ? { signal } : undefined,
+								),
 							),
-						providerBudgetMs,
-						provider.name,
 						providerSignal,
 					);
 					execution = {
 						promise,
 						startedAt,
 						startedAtMonotonic,
-						timeoutMs: providerBudgetMs,
-						timeoutMode,
 					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
@@ -4652,24 +4589,14 @@ export class AgentRuntime implements IAgentRuntime {
 					const duration = performance.now() - execution.startedAtMonotonic;
 					const outcome: ProviderExecutionOutcome = providerSignal?.aborted
 						? "aborted"
-						: cause instanceof ProviderDeadlineError
-							? "deadline_exceeded"
-							: cause instanceof Error && cause.name === "AbortError"
-								? "aborted"
-								: "error";
+						: "error";
 					const code =
 						outcome === "aborted"
 							? "PROVIDER_COMPOSITION_ABORTED"
-							: outcome === "deadline_exceeded"
-								? "PROVIDER_DEADLINE_EXCEEDED"
-								: "PROVIDER_COMPOSITION_FAILED";
+							: "PROVIDER_COMPOSITION_FAILED";
 					const error = new ElizaError(
 						`Provider "${provider.name}" ${
-							outcome === "aborted"
-								? "was aborted"
-								: outcome === "deadline_exceeded"
-									? "exceeded its boundary deadline"
-									: "failed"
+							outcome === "aborted" ? "was aborted" : "failed"
 						} during state composition`,
 						{
 							code,
@@ -4681,8 +4608,6 @@ export class AgentRuntime implements IAgentRuntime {
 								roomId: message.roomId,
 								messageId: message.id,
 								outcome,
-								timeoutMs: execution.timeoutMs,
-								timeoutMode: execution.timeoutMode,
 							},
 						},
 					);
@@ -4692,30 +4617,6 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
-					if (
-						outcome === "deadline_exceeded" &&
-						execution.timeoutMode === "degrade" &&
-						execution.timeoutMs !== undefined
-					) {
-						// error-policy:J4 optional providers may explicitly degrade,
-						// but the prompt and structured state must remain distinguishable
-						// from a legitimate empty result for the rest of the turn.
-						return {
-							text: `[Provider ${provider.name} unavailable this turn: exceeded ${execution.timeoutMs}ms deadline.]`,
-							values: {},
-							data: {
-								available: false,
-								reason: "deadline_exceeded",
-								timeoutMs: execution.timeoutMs,
-							},
-							providerName: provider.name,
-							providerStartedAt: execution.startedAt,
-							providerEndedAt: endedAt,
-							providerDurationMs: duration,
-							providerOutcome: outcome,
-							providerCoalesced,
-						};
-					}
 					return {
 						providerName: provider.name,
 						providerStartedAt: execution.startedAt,
@@ -4731,9 +4632,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const providerOverlaps = calculateProviderOverlaps(providerData);
 		const failedProviderData = providerData.filter(
 			(record) => record.providerError !== undefined,
-		);
-		const degradedProviderData = providerData.filter(
-			(record) => record.providerOutcome === "deadline_exceeded",
 		);
 		for (const provider of reusedProviders) {
 			const cached = (
@@ -4752,7 +4650,6 @@ export class AgentRuntime implements IAgentRuntime {
 			providers: providersToRun.length,
 			reused: providersToGet.length - providersToRun.length,
 			failed: failedProviderData.length,
-			degraded: degradedProviderData.length,
 		});
 
 		const currentProviderResults: Record<string, CachedProviderResult> = {

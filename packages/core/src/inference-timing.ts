@@ -712,7 +712,6 @@ export interface ProviderInferenceTelemetry {
 	successes: number;
 	errors: number;
 	aborted: number;
-	deadlineExceeded: number;
 	coalesced: number;
 	unknown: number;
 }
@@ -728,7 +727,6 @@ function summarizeProviderInference(
 			successes: number;
 			errors: number;
 			aborted: number;
-			deadlineExceeded: number;
 			coalesced: number;
 			unknown: number;
 		}
@@ -742,7 +740,6 @@ function summarizeProviderInference(
 			successes: 0,
 			errors: 0,
 			aborted: 0,
-			deadlineExceeded: 0,
 			coalesced: 0,
 			unknown: 0,
 		};
@@ -767,9 +764,6 @@ function summarizeProviderInference(
 				case "aborted":
 					entry.aborted += 1;
 					break;
-				case "deadline_exceeded":
-					entry.deadlineExceeded += 1;
-					break;
 				case "error":
 					entry.errors += 1;
 					break;
@@ -788,7 +782,6 @@ function summarizeProviderInference(
 			successes: entry.successes,
 			errors: entry.errors,
 			aborted: entry.aborted,
-			deadlineExceeded: entry.deadlineExceeded,
 			coalesced: entry.coalesced,
 			unknown: entry.unknown,
 		}))

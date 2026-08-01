@@ -1,7 +1,8 @@
 /**
  * Provider execution invariants for state composition: sibling providers start
- * concurrently, duplicate in-flight work coalesces, failures stay observable,
- * and turn cancellation reaches provider-owned boundaries.
+ * concurrently, valid work has no elapsed-time deadline, duplicate in-flight
+ * work coalesces, failures stay observable, and owner cancellation reaches
+ * provider boundaries.
  */
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors";
@@ -73,6 +74,40 @@ describe("composeState provider execution", () => {
 		expect(maxActive).toBe(3);
 		release.resolve();
 		await compose;
+	});
+
+	it("waits for valid provider work until the provider completes", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-no-deadline" } as Character,
+		});
+		const started = deferred();
+		const release = deferred();
+		let settled = false;
+		runtime.registerProvider({
+			name: "OWNER_BOUND_WORK",
+			get: async () => {
+				started.resolve();
+				await release.promise;
+				return { text: "completed without a clock" };
+			},
+		});
+
+		const compose = runtime.composeState(
+			makeMessage("abababab-abab-abab-abab-abababababab"),
+			["OWNER_BOUND_WORK"],
+			true,
+		);
+		void compose.finally(() => {
+			settled = true;
+		});
+		await started.promise;
+		await Promise.resolve();
+		expect(settled).toBe(false);
+
+		release.resolve();
+		const state = await compose;
+		expect(state.text).toBe("completed without a clock");
+		expect(settled).toBe(true);
 	});
 
 	it("uses position only for render order and gives siblings the same pre-compose state", async () => {
@@ -207,7 +242,7 @@ describe("composeState provider execution", () => {
 		await started.promise;
 		const turnSignal = runtime.turnControllers.signalFor(ROOM_ID);
 		expect(receivedSignal).toBeDefined();
-		expect(receivedSignal).not.toBe(turnSignal);
+		expect(receivedSignal).toBe(turnSignal);
 		expect(runtime.turnControllers.abortTurn(ROOM_ID, "user stopped")).toBe(
 			true,
 		);
@@ -230,5 +265,65 @@ describe("composeState provider execution", () => {
 				}),
 			]),
 		);
+	});
+
+	it("stops awaiting non-cooperative work when the owning turn is cancelled", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-owner-cancellation" } as Character,
+		});
+		const started = deferred();
+		const release = deferred();
+		let providerCompleted = false;
+		runtime.registerProvider({
+			name: "NON_COOPERATIVE",
+			get: async () => {
+				started.resolve();
+				await release.promise;
+				providerCompleted = true;
+				return { text: "late result" };
+			},
+		});
+		const message = makeMessage("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+
+		const turn = runtime.turnControllers.runWith(ROOM_ID, () =>
+			runtime.composeState(message, ["NON_COOPERATIVE"], true),
+		);
+		await started.promise;
+		runtime.turnControllers.abortTurn(ROOM_ID, "owner cancelled");
+
+		const error = await turn.catch((cause: unknown) => cause);
+		expect(error).toMatchObject({ code: "TURN_ABORTED" });
+		expect(providerCompleted).toBe(false);
+		expect(runtime.stateCache.has(message.id as string)).toBe(false);
+
+		release.resolve();
+		await release.promise;
+		await Promise.resolve();
+		expect(providerCompleted).toBe(true);
+		expect(runtime.stateCache.has(message.id as string)).toBe(false);
+	});
+
+	it("treats a provider-owned TimeoutError as a provider failure", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-timeout-error" } as Character,
+		});
+		runtime.registerProvider({
+			name: "PLUGIN_TIMEOUT_ERROR",
+			get: async () => {
+				const error = new Error("provider operation timed out");
+				error.name = "TimeoutError";
+				throw error;
+			},
+		});
+
+		const error = await runtime
+			.composeState(
+				makeMessage("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				["PLUGIN_TIMEOUT_ERROR"],
+				true,
+			)
+			.catch((cause: unknown) => cause);
+
+		expect(error).toMatchObject({ code: "PROVIDER_COMPOSITION_FAILED" });
 	});
 });
