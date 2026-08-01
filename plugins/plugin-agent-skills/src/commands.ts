@@ -1,0 +1,38 @@
+/** Contributes loaded Agent Skills to the shared runtime command registry. */
+
+import type {
+	CommandRegistryService,
+	IAgentRuntime,
+} from "@elizaos/core";
+import type { AgentSkillsService } from "./services/skills";
+
+/** Register every loaded skill after skills and commands services are ready. */
+export function registerLoadedSkillCommands(
+	runtime: IAgentRuntime,
+	service: AgentSkillsService,
+): number {
+	const commands = runtime.getService<CommandRegistryService>("commands");
+	if (!commands) return 0;
+
+	let registered = 0;
+	for (const skill of service.getLoadedSkills()) {
+		const slug = skill.slug.toLowerCase();
+		commands.register({
+			key: `skill-${slug}`,
+			description: skill.description.substring(0, 80),
+			textAliases: [`/${slug}`],
+			scope: "both",
+			category: "skills",
+			acceptsArgs: true,
+			args: [
+				{
+					name: "input",
+					description: "Task or question for this skill",
+					captureRemaining: true,
+				},
+			],
+		});
+		registered += 1;
+	}
+	return registered;
+}

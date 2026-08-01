@@ -38,6 +38,7 @@ src/
     restart.ts            Runtime restart helpers
     release-plugin-policy.ts  Plugin release-channel gating policy
     boot-telemetry.ts / boot-timer.ts  Boot timing and telemetry
+    runtime-maintenance-service.ts  Post-migration startup maintenance owned by runtime lifecycle
     view-action-affinity.ts  View↔action routing affinity
     web-search-tools.ts / vault-profile-resolver.ts  Miscellaneous runtime helpers
     trajectory-*.ts       Trajectory persistence / query / internals

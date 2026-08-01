@@ -18,6 +18,7 @@ import { skillAction } from "./actions/skill";
 import { useSkillAction } from "./actions/use-skill";
 // Binance direct-skill dispatch (registered as a chat pre-handler)
 import { binanceSkillPreHandler } from "./binance/pre-handler";
+import { registerLoadedSkillCommands } from "./commands";
 // Providers
 import { enabledSkillsProvider } from "./providers/enabled-skills";
 import {
@@ -132,10 +133,12 @@ export const agentSkillsPlugin: Plugin = {
 			"AGENT_SKILLS_SERVICE",
 		);
 		if (service) {
+			const registeredCommands = registerLoadedSkillCommands(runtime, service);
 			const stats = service.getCatalogStats();
 			runtime.logger.info(
 				`AgentSkills: Ready — ${stats.loaded} skills loaded, ` +
-					`${stats.total} in catalog (storage: ${stats.storageType})`,
+					`${stats.total} in catalog, ${registeredCommands} slash commands ` +
+					`(storage: ${stats.storageType})`,
 			);
 		}
 	},

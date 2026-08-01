@@ -6,15 +6,9 @@
  * Memory search/get actions are superseded by the todos plugin.
  */
 
-import type {
-  CommandRegistryService,
-  IAgentRuntime,
-  Plugin,
-  ServiceClass,
-} from "@elizaos/core";
+import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import {
   AgentEventService,
-  logger,
   NotificationService,
   PairingService,
   promoteSubactionsToActions,
@@ -35,7 +29,7 @@ import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
-import { registerAttachmentKnowledgeBackfillTask } from "../api/attachment-knowledge-backfill.ts";
+import { registerAttachmentKnowledgeBackfillWorker } from "../api/attachment-knowledge-backfill.ts";
 import { registerAttachmentKnowledgeIngestHook } from "../api/attachment-knowledge-ingest.ts";
 import {
   backgroundGenerateImageRoute,
@@ -44,7 +38,7 @@ import {
 import { filesRoutes } from "../api/files-routes.ts";
 import {
   mediaFileRoute,
-  registerMediaGcTask,
+  registerMediaGcWorker,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
 import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
@@ -88,11 +82,11 @@ import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
-import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
+import { RuntimeMaintenanceService } from "./runtime-maintenance-service.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
@@ -100,23 +94,6 @@ export type ElizaPluginConfig = {
   sessionStorePath?: string;
   agentId?: string;
 };
-
-type AgentSkillsService = {
-  getLoadedSkills: () => Array<{
-    slug: string;
-    name: string;
-    description: string;
-  }>;
-};
-
-function isAgentSkillsService(value: unknown): value is AgentSkillsService {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    typeof (value as { getLoadedSkills?: unknown }).getLoadedSkills ===
-      "function"
-  );
-}
 
 export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
   const workspaceDir =
@@ -164,6 +141,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       PendingPromptsService as ServiceClass,
       GlobalPauseService as ServiceClass,
       HandoffService as ServiceClass,
+      RuntimeMaintenanceService as ServiceClass,
       // Bounded retention for the memories/embeddings partitions. Registers
       // always but stays a no-op unless ELIZA_MEMORY_RETENTION_DAYS or
       // ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM is set — the mechanism that
@@ -187,74 +165,20 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
-      // One-time (#12177): fold legacy `schedule:<cron>` tag encoding on
-      // workbench tasks into a prompt-kind TriggerConfig. Idempotent; a
-      // failure must not block boot.
-      void migrateWorkbenchScheduleTags(runtime).catch((err) => {
-        runtime.logger.warn(
-          { src: "trigger-runtime", err: String(err) },
-          "Workbench schedule-tag migration failed",
-        );
-      });
       registerErrorEscalation(runtime);
       setCustomActionsRuntime(runtime);
       // Media store: persist inline data: URLs out of context/history, and
       // sweep orphaned files daily. The serving route is declared below.
       registerMediaPipelineHook(runtime);
-      registerMediaGcTask(runtime);
+      registerMediaGcWorker(runtime);
       // Attachment → knowledge ingest (#13593): mirror chat attachments into the
       // knowledge store, tagged by room/sender/role/media-format, with a
       // source-trust-derived scope (owner/DM → owner-private; public room →
       // user-private) so owner-only knowledge cannot spill into public rooms.
       registerAttachmentKnowledgeIngestHook(runtime);
-      // One-time (#13593): backfill room/media-format tags onto pre-existing
-      // transcript-mirror knowledge records. Idempotent; must not block boot.
-      registerAttachmentKnowledgeBackfillTask(runtime);
-      const registerSkillsAsCommands = () => {
-        const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
-        if (!isAgentSkillsService(skillsService)) return false;
-
-        const skills = skillsService.getLoadedSkills();
-        if (skills.length === 0) return false;
-
-        // Commands are contributed through the runtime service registered by
-        // the commands plugin — no import edge into it, and the service
-        // appends without resetting commands other plugins registered.
-        const commands = runtime.getService<CommandRegistryService>("commands");
-        if (!commands) return false;
-
-        let registered = 0;
-        for (const skill of skills) {
-          const slug = skill.slug.toLowerCase();
-          commands.register({
-            key: `skill-${slug}`,
-            description: skill.description.substring(0, 80),
-            textAliases: [`/${slug}`],
-            scope: "both",
-            category: "skills",
-            acceptsArgs: true,
-            args: [
-              {
-                name: "input",
-                description: "Task or question for this skill",
-                captureRemaining: true,
-              },
-            ],
-          });
-          registered++;
-        }
-
-        if (registered > 0) {
-          logger.info(
-            `[eliza] Registered ${registered} skills as slash commands`,
-          );
-        }
-        return true;
-      };
-
-      if (!registerSkillsAsCommands()) {
-        setTimeout(() => registerSkillsAsCommands(), 5000);
-      }
+      // The worker must exist before TaskService starts. RuntimeMaintenanceService
+      // creates its idempotent queue row only after SQL migrations finish.
+      registerAttachmentKnowledgeBackfillWorker(runtime);
     },
 
     providers: [
