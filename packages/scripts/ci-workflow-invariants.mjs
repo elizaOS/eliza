@@ -26,6 +26,7 @@ const WORKFLOW_PATHS = Object.freeze({
   gitleaks: ".github/workflows/gitleaks.yml",
   tests: ".github/workflows/test.yml",
 });
+const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ runner.name }}`;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -176,6 +177,13 @@ export function validateWorkflowSources(sources) {
   invariant(
     !cloudSetupSteps.some((step) => step?.uses?.startsWith("actions/cache@")),
     `${WORKFLOW_PATHS.cloudSetup}: multi-gigabyte Bun install archives are prohibited`,
+  );
+  const cloudSetupBun = cloudSetupSteps.find((step) =>
+    step?.uses?.startsWith("oven-sh/setup-bun@"),
+  );
+  invariant(
+    cloudSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.cloudSetup}: setup-bun HOME must be isolated by run, attempt, job, and runner`,
   );
   const postgresStart = cloudSetupSteps.find(
     (step) =>

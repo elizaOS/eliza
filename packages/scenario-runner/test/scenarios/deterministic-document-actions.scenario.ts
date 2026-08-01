@@ -284,14 +284,12 @@ export default scenario({
       actionName: "DOCUMENT",
       room: "guest",
       options: { parameters: guestDeleteParams },
-      responseIncludesAny: [
-        "Only the owner can edit or delete global and owner-private documents.",
-      ],
+      responseIncludesAny: ["Only the owner can edit or delete"],
       assertTurn: (execution) =>
         expectDocumentTurn(execution, {
           success: false,
           subaction: "delete",
-          values: { error: "forbidden" },
+          values: { error: "forbidden", documentId: seededDocumentId },
         }),
     },
     {
@@ -336,7 +334,7 @@ export default scenario({
         expectDocumentTurn(execution, {
           success: false,
           subaction: "delete",
-          values: { error: "not_found" },
+          values: { error: "not_found", documentId: seededDocumentId },
         }),
     },
     {
@@ -346,7 +344,7 @@ export default scenario({
       actionName: "DOCUMENT",
       room: "main",
       options: { parameters: { action: "delete" } },
-      responseIncludesAny: ["I need a valid document id to delete."],
+      responseIncludesAny: ["No valid document id found"],
       assertTurn: (execution) =>
         expectDocumentTurn(execution, {
           success: false,

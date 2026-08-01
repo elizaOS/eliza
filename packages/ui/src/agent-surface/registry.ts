@@ -335,9 +335,26 @@ export function getViewRegistry(
   return viewRegistries.get(key(viewId, viewType));
 }
 
+/** Make a provider-owned registry discoverable by capability bridges. */
+export function attachViewRegistry(
+  viewId: string,
+  viewType: AgentViewType,
+  registry: ViewAgentRegistry,
+): void {
+  viewRegistries.set(key(viewId, viewType), registry);
+}
+
 export function removeViewRegistry(
   viewId: string,
   viewType: AgentViewType,
+  expectedRegistry?: ViewAgentRegistry,
 ): void {
-  viewRegistries.delete(key(viewId, viewType));
+  const registryKey = key(viewId, viewType);
+  if (
+    expectedRegistry !== undefined &&
+    viewRegistries.get(registryKey) !== expectedRegistry
+  ) {
+    return;
+  }
+  viewRegistries.delete(registryKey);
 }

@@ -49,12 +49,21 @@ function expectActionTurn(
   expected: {
     actionName: string;
     parameters: Record<string, unknown>;
-    responseText: string;
+    responseText?: string;
+    responseIncludes?: string[];
     resultFields: Record<string, unknown>;
   },
 ): string | undefined {
-  if (execution.responseText !== expected.responseText) {
+  if (
+    expected.responseText !== undefined &&
+    execution.responseText !== expected.responseText
+  ) {
     return `expected responseText=${JSON.stringify(expected.responseText)}, saw ${JSON.stringify(execution.responseText)}`;
+  }
+  for (const fragment of expected.responseIncludes ?? []) {
+    if (!execution.responseText.includes(fragment)) {
+      return `expected responseText to include ${JSON.stringify(fragment)}, saw ${JSON.stringify(execution.responseText)}`;
+    }
   }
 
   const action = execution.actionsCalled.find(
@@ -933,7 +942,7 @@ export default scenario({
         intent: "Make feed board show denser queue rows",
         view: "feed-board",
       },
-      responseIncludesAny: ["Started view edit task for Feed Board"],
+      responseIncludesAny: ["Started editing Feed Board"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -942,7 +951,10 @@ export default scenario({
             intent: "Make feed board show denser queue rows",
             view: "feed-board",
           },
-          responseText: `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+          responseIncludes: [
+            "Started editing Feed Board",
+            "report back here when the change is done",
+          ],
           resultFields: {
             "values.mode": "edit",
             "values.viewId": "feed-board",

@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.4.0"
   NODE_VERSION: "24.15.0"
 
 # Default to least privilege. Override per-job where needed.
@@ -235,6 +235,8 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        env:
+          HOME: ${{ runner.temp }}/bun-home-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ runner.name }}
         with:
           bun-version: ${{ env.BUN_VERSION }}
 

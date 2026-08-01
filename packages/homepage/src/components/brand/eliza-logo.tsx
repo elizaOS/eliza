@@ -13,7 +13,7 @@ export function ElizaLogo({ className }: ElizaLogoProps) {
       alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
       width={512}
       height={216}
-      className={className}
+      className={`w-auto ${className ?? ""}`}
       draggable={false}
     />
   );

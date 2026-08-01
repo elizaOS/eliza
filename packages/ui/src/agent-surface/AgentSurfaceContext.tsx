@@ -13,7 +13,11 @@ import {
   AgentSurfaceContext,
   type AgentSurfaceContextValue,
 } from "./AgentSurfaceContext.hooks";
-import { getOrCreateViewRegistry, removeViewRegistry } from "./registry";
+import {
+  attachViewRegistry,
+  getOrCreateViewRegistry,
+  removeViewRegistry,
+} from "./registry";
 import type { AgentViewType } from "./types";
 
 export interface AgentSurfaceProviderProps {
@@ -42,10 +46,13 @@ export function AgentSurfaceProvider({
   }
 
   useEffect(() => {
-    // Re-assert the module-map entry on mount (it may have been created above
-    // during render) and tear it down on unmount.
-    getOrCreateViewRegistry(viewId, viewType);
-    return () => removeViewRegistry(viewId, viewType);
+    const registry = valueRef.current?.registry;
+    if (!registry) return;
+
+    // React StrictMode replays effects without replaying provider state. Keep
+    // the globally discoverable entry tied to the registry children received.
+    attachViewRegistry(viewId, viewType, registry);
+    return () => removeViewRegistry(viewId, viewType, registry);
   }, [viewId, viewType]);
 
   return (

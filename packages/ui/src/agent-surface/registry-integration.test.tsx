@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
-import { useState } from "react";
+/**
+ * Exercises the capability bridge against live React registrations, including
+ * lifecycle behavior that only appears under StrictMode effect replay.
+ */
+import { act, cleanup, render } from "@testing-library/react";
+import { StrictMode, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentSurfaceProvider } from "./AgentSurfaceContext";
 import { handleAgentSurfaceCapability } from "./capabilities";
@@ -87,9 +91,12 @@ describe("agent-surface render integration", () => {
 
     const registry = getViewRegistry(VIEW, "gui");
     if (!registry) throw new Error("registry missing");
-    const result = handleAgentSurfaceCapability(registry, "agent-fill", {
-      id: "note",
-      value: "hello",
+    let result: ReturnType<typeof handleAgentSurfaceCapability> | undefined;
+    act(() => {
+      result = handleAgentSurfaceCapability(registry, "agent-fill", {
+        id: "note",
+        value: "hello",
+      });
     });
     expect(result).toMatchObject({ ok: true, id: "note", value: "hello" });
   });
@@ -143,6 +150,24 @@ describe("agent-surface render integration", () => {
     expect(getViewRegistry("ephemeral", "gui")).toBeDefined();
     unmount();
     expect(getViewRegistry("ephemeral", "gui")).toBeUndefined();
+  });
+
+  it("keeps the provider registry discoverable during StrictMode effect replay", () => {
+    const { unmount } = render(
+      <StrictMode>
+        <AgentSurfaceProvider viewId="strict-mode" viewType="gui">
+          <AgentButton agentId="strict-action">Act</AgentButton>
+        </AgentSurfaceProvider>
+      </StrictMode>,
+    );
+
+    const registry = getViewRegistry("strict-mode", "gui");
+    expect(registry?.snapshot().elements.map((element) => element.id)).toEqual([
+      "strict-action",
+    ]);
+
+    unmount();
+    expect(getViewRegistry("strict-mode", "gui")).toBeUndefined();
   });
 
   it("toggles highlight mode via the set-highlight capability", () => {

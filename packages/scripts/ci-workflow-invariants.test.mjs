@@ -65,6 +65,12 @@ for (const fixture of [
     pattern: /multi-gigabyte Bun install archives are prohibited/,
   },
   {
+    name: "shared Bun executable installation",
+    key: "cloudSetup",
+    mutate: (source) => source.replace(/ {6}env:\n {8}HOME:.*\n/, ""),
+    pattern: /setup-bun HOME must be isolated by run, attempt, job, and runner/,
+  },
+  {
     name: "degraded Cloud e2e database backend",
     key: "cloudTests",
     mutate: (source) =>
