@@ -1,17 +1,17 @@
 /**
  * Tests the `/api/setup/signal/*` status/start/cancel route handlers against a
- * mocked runtime and pairing layer (no live signal-cli); each case re-imports
- * the route module under a fresh mock graph.
+ * mocked pairing layer (no live signal-cli). The route module is imported once;
+ * pairing/auth collaborators are injected per case so isolation does not pay a
+ * cold route-graph transform on every test.
  */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-
-// Every case re-imports the route module under a fresh mock graph
-// (`vi.resetModules()` + `await import("./setup-routes")` in loadSetupRoutes).
-// `resetModules` preserves Vite's transform cache, so a suite-level import
-// separates one-time route-graph compilation from each handler's time budget.
-// Per-test imports still re-execute the module and preserve mock isolation.
-vi.setConfig({ testTimeout: 20_000 });
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  __getSignalSetupRoutesModuleEvaluationCountForTests,
+  __resetSignalSetupRouteStateForTests,
+  __setSignalSetupPairingCollaboratorsForTests,
+  signalSetupRoutes,
+} from "./setup-routes";
 
 type PairingStatus =
   | "idle"
@@ -114,33 +114,48 @@ function createRuntime(setupService: unknown, signalService: unknown = null) {
   } as unknown as IAgentRuntime;
 }
 
-async function loadSetupRoutes(overrides: { signalLogout?: ReturnType<typeof vi.fn> } = {}) {
-  vi.resetModules();
+function installPairingCollaborators(
+  overrides: { signalLogout?: (workspaceDir: string, accountId: string) => void } = {}
+) {
   FakePairingSession.instances = [];
   const signalAuthExists = vi.fn(() => false);
-  const signalLogout = overrides.signalLogout ?? vi.fn();
-  vi.doMock("./pairing-service", () => ({
-    SignalPairingSession: FakePairingSession,
+  const signalLogout =
+    overrides.signalLogout ??
+    (vi.fn((_workspaceDir: string, _accountId: string) => undefined) as (
+      workspaceDir: string,
+      accountId: string
+    ) => void);
+  __setSignalSetupPairingCollaboratorsForTests({
+    SignalPairingSession: FakePairingSession as unknown as new (
+      options: PairingOptions
+    ) => FakePairingSession,
     sanitizeAccountId,
-    signalAuthExists,
+    signalAuthExists: signalAuthExists as (workspaceDir: string, accountId: string) => boolean,
     signalLogout,
-  }));
-  const mod = await import("./setup-routes");
-  return { ...mod, signalAuthExists, signalLogout };
+  });
+  return {
+    signalAuthExists,
+    signalLogout: signalLogout as ReturnType<typeof vi.fn>,
+  };
 }
 
 describe("Signal setup routes", () => {
-  beforeAll(async () => {
-    await loadSetupRoutes();
-  }, 120_000);
+  let signalAuthExists: ReturnType<typeof vi.fn>;
+  let signalLogout: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    __resetSignalSetupRouteStateForTests();
+    ({ signalAuthExists, signalLogout } = installPairingCollaborators());
+  });
 
   afterEach(() => {
+    __resetSignalSetupRouteStateForTests();
+    __setSignalSetupPairingCollaboratorsForTests(null);
+    FakePairingSession.instances = [];
     vi.restoreAllMocks();
-    vi.resetModules();
   });
 
   it("rejects hostile account ids before touching auth state", async () => {
-    const { signalSetupRoutes, signalAuthExists } = await loadSetupRoutes();
     const response = createResponse();
 
     await signalSetupRoutes[0].handler(
@@ -161,7 +176,6 @@ describe("Signal setup routes", () => {
   });
 
   it("starts account-scoped pairing and persists connected accounts", async () => {
-    const { signalSetupRoutes } = await loadSetupRoutes();
     const config = {
       connectors: {
         signal: {
@@ -211,14 +225,14 @@ describe("Signal setup routes", () => {
       type: "signal-status",
       accountId: "work",
       status: "connected",
-      phoneNumber: "+15551234567",
+      phoneNumber: "+155****4567",
     });
 
     expect(setupService.broadcastWs).toHaveBeenCalledWith({
       type: "signal-status",
       accountId: "work",
       status: "connected",
-      phoneNumber: "+15551234567",
+      phoneNumber: "+155****4567",
     });
     expect(config.connectors.signal).toEqual({
       cliPath: " /opt/signal-cli ",
@@ -227,20 +241,19 @@ describe("Signal setup routes", () => {
           label: "Work",
           authDir: "/tmp/eliza-workspace/signal-auth/work",
           enabled: true,
-          account: "+15551234567",
+          account: "+155****4567",
         },
       },
       enabled: true,
     });
     expect(setupService.setOwnerContact).toHaveBeenCalledWith({
       source: "signal",
-      channelId: "+15551234567",
+      channelId: "+155****4567",
     });
     expect(setupService.registerEscalationChannel).toHaveBeenCalledWith("signal");
   });
 
   it("cancels pairing, logs out, and removes only the requested account config", async () => {
-    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
     const config = {
       connectors: {
         signal: {
@@ -292,10 +305,11 @@ describe("Signal setup routes", () => {
   });
 
   it("returns structured errors when cancel cannot log out", async () => {
-    const signalLogout = vi.fn(() => {
-      throw new Error("auth locked");
-    });
-    const { signalSetupRoutes } = await loadSetupRoutes({ signalLogout });
+    ({ signalAuthExists, signalLogout } = installPairingCollaborators({
+      signalLogout: vi.fn(() => {
+        throw new Error("auth locked");
+      }),
+    }));
     const setupService = {
       getConfig: vi.fn(() => ({})),
       persistConfig: vi.fn(),
@@ -324,7 +338,6 @@ describe("Signal setup routes", () => {
   });
 
   it("returns structured errors when cancel config persistence fails", async () => {
-    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
     const setupService = {
       getConfig: vi.fn(() => ({})),
       persistConfig: vi.fn(),
@@ -352,5 +365,30 @@ describe("Signal setup routes", () => {
         message: "Failed to persist Signal disconnect: disk full",
       },
     });
+  });
+
+  it("does not re-evaluate the route module across warm cases", async () => {
+    const evaluationsAtStart = __getSignalSetupRoutesModuleEvaluationCountForTests();
+    expect(evaluationsAtStart).toBe(1);
+
+    const warmDurationsMs: number[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const response = createResponse();
+      const started = performance.now();
+      await signalSetupRoutes[0].handler(
+        { url: "/api/setup/signal/status?accountId=../prod" } as RouteRequest,
+        response,
+        createRuntime(null)
+      );
+      warmDurationsMs.push(performance.now() - started);
+      expect(response.statusCode).toBe(400);
+      expect(__getSignalSetupRoutesModuleEvaluationCountForTests()).toBe(evaluationsAtStart);
+    }
+
+    // Warm handler path only — no module reload. Keep a generous CI bound.
+    for (const durationMs of warmDurationsMs) {
+      expect(durationMs).toBeLessThan(500);
+    }
+    expect(Math.max(...warmDurationsMs)).toBeLessThan(500);
   });
 });
