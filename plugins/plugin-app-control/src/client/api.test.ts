@@ -193,4 +193,24 @@ describe("app-control client deadlines", () => {
 		await expect(request).rejects.toMatchObject({ name: "AbortError" });
 		expect(observedSignal?.aborted).toBe(true);
 	});
+
+	it("classifies fetch transport failures at the HTTP boundary", async () => {
+		vi.spyOn(AbortSignal, "timeout").mockReturnValue(
+			new AbortController().signal,
+		);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new TypeError("fetch failed");
+			}),
+		);
+
+		await expect(
+			createAppControlClient().listInstalledApps(),
+		).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "LOOPBACK_UNREACHABLE",
+			context: { path: "/api/apps/installed" },
+		});
+	});
 });

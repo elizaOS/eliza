@@ -6,7 +6,7 @@
  * caller-supplied abort signal can cancel it with the surrounding turn.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { ElizaError, resolveServerOnlyPort } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
 import type {
 	AppControlErrorPayload,
@@ -72,16 +72,42 @@ async function requestJson<T>(
 	const url = `${getApiBase()}${path}`;
 	const deadlineSignal = AbortSignal.timeout(deadlineMs);
 	const callerSignal = init.signal;
-	const response = await fetch(url, {
-		...init,
-		headers: {
-			...createViewsRequestHeaders(),
-			...(init.headers ?? {}),
-		},
-		signal: callerSignal
-			? AbortSignal.any([callerSignal, deadlineSignal])
-			: deadlineSignal,
-	});
+	let response: Response;
+	try {
+		response = await fetch(url, {
+			...init,
+			headers: {
+				...createViewsRequestHeaders(),
+				...(init.headers ?? {}),
+			},
+			signal: callerSignal
+				? AbortSignal.any([callerSignal, deadlineSignal])
+				: deadlineSignal,
+		});
+	} catch (err) {
+		// A caller abort owns turn teardown and must retain its original reason.
+		if (callerSignal?.aborted) throw callerSignal.reason ?? err;
+
+		// error-policy:J2 attach stable transport codes at the HTTP boundary so
+		// action handlers never have to infer network failures from Error classes.
+		if (err instanceof Error && err.name === "TimeoutError") {
+			throw new ElizaError(`Loopback request timed out: ${path}`, {
+				code: "LOOPBACK_TIMEOUT",
+				cause: err,
+				context: { path, deadlineMs },
+				severity: "ephemeral",
+			});
+		}
+		if (err instanceof TypeError) {
+			throw new ElizaError(`Loopback service is unreachable: ${path}`, {
+				code: "LOOPBACK_UNREACHABLE",
+				cause: err,
+				context: { path },
+				severity: "ephemeral",
+			});
+		}
+		throw err;
+	}
 
 	const rawText = await response.text();
 	let body: unknown = null;

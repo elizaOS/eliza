@@ -40,7 +40,7 @@ describe("APP action role policy", () => {
 		expect(result).toEqual(
 			expect.objectContaining({
 				success: false,
-				text: expect.stringContaining("only the owner"),
+				text: expect.stringContaining("only my owner"),
 			}),
 		);
 		expect(client.listInstalledApps).not.toHaveBeenCalled();
@@ -63,9 +63,12 @@ describe("APP delete refusal", () => {
 		};
 	}
 
-	it.each(["delete all my apps", "uninstall the chess app"])(
+	it.each([
+		["delete all my apps", "can't bulk-delete"],
+		["uninstall the chess app", "can't uninstall apps through APP"],
+	])(
 		"answers %j with the designed refusal owning user-facing prose",
-		async (text) => {
+		async (text, expectedText) => {
 			const client = untouchedClient();
 			const result = await ownerAction(client).handler(
 				{ agentId: "agent-1" } as IAgentRuntime,
@@ -78,7 +81,7 @@ describe("APP delete refusal", () => {
 			expect(result).toEqual(
 				expect.objectContaining({
 					success: false,
-					userFacingText: expect.stringContaining("can't bulk-delete"),
+					userFacingText: expect.stringContaining(expectedText),
 					data: expect.objectContaining({ error: "DELETE_UNSUPPORTED" }),
 				}),
 			);
