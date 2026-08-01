@@ -54,11 +54,16 @@ export const DEFAULT_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
 			// Stage 1 route "forget that fact" / "delete the experience about X"
 			// here instead of misclassifying them as a `simple` direct reply
 			// (#14623). The bare label "Memory" alone gave the compact-tier
-			// catalog no signal for the destructive verbs.
+			// catalog no signal for the destructive verbs. The same applies to
+			// beyond-window conversation recall/count ("how many times have I
+			// mentioned X"): the MEMORY action searches the stored message
+			// record, but without naming that here Stage 1 treated the visible
+			// recent-messages window as the whole conversation and answered
+			// from it (tj-69d82bb89ebb69).
 			description:
-				"Read, write, recall, edit, and delete the agent's stored memories, long-term facts, and learned experiences — including forgetting a specific memory or experience.",
+				"Read, write, recall, edit, and delete the agent's stored memories, long-term facts, and learned experiences — including forgetting a specific memory or experience, and searching or counting what was said earlier in this conversation beyond the visible recent messages.",
 			descriptionCompressed:
-				"Agent memories, facts & learned experiences: recall, edit, delete/forget",
+				"Agent memories, facts & learned experiences: recall, edit, delete/forget; search/count conversation history beyond the visible window",
 			sensitivity: "personal",
 			cacheScope: "agent",
 			roleGate: { minRole: "USER" },

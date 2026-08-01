@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
+import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -3231,6 +3232,132 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(sourceText).toContain(
 			"that run status IS verifiable with the task/sub-agent tools",
+		);
+		// Live regression (2026-08-01, tj-69d82bb89ebb69): the "no separate
+		// chat-history search tool" sentence was unconditional, but on runtimes
+		// with a registered `memory` context it is FALSE — the memory actions DO
+		// search the stored message record. Stage 1 obeyed the denial verbatim
+		// and answered "how many times have i mentioned bitcoin?" from the
+		// bounded visible window instead of escalating. The denial is now
+		// conditional on the turn's role-filtered availableContexts containing a
+		// `memory` context — a structural capability check, never a match on the
+		// user's message text. Both branches must stay pinned: the no-memory
+		// branch keeps the honest denial (the 2026-05-25 fabricated-search
+		// guard), the memory branch declares the window bounded and routes
+		// beyond-window recall/count to the memory context.
+		expect(sourceText).toContain("hasMemoryRecallSurface");
+		expect(sourceText).toContain(
+			"only the most recent window of a longer stored conversation",
+		);
+		expect(sourceText).toContain(
+			"route it to the memory context (set requiresTool)",
+		);
+		expect(sourceText).toContain(
+			"Never answer a beyond-window recall or count question from the visible window alone",
+		);
+	});
+
+	it("renders the bounded-window disclosure and routes beyond-window recall to the planner when a memory context is available", async () => {
+		// Rendered-prompt + route-decision pin for the tj-69d82bb89ebb69 fix.
+		// With a role-visible `memory` context registered, the Stage 1 user
+		// message must declare the visible dialogue a bounded window of a longer
+		// stored conversation and must NOT claim "there is no separate
+		// chat-history search tool" — that claim is false on this surface and
+		// the model obeys it verbatim. The memory vote then promotes to the
+		// planner (the tool path) instead of shipping a window-bounded denial as
+		// a direct reply.
+		const registry = new ContextRegistry([
+			{
+				id: "general",
+				label: "General",
+				description: "Normal conversation.",
+			},
+			{
+				id: "memory",
+				label: "Memory",
+				description: "Stored memories and conversation history.",
+				roleGate: { minRole: "USER" },
+			},
+		]);
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "History count needs the stored record.",
+				contexts: ["memory"],
+				replyText: "Let me check the stored history.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "You mentioned bitcoin 4 times." },
+					},
+				],
+			},
+		]);
+		(runtime as { contexts?: ContextRegistry }).contexts = registry;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const userContent = params.messages?.[1]?.content ?? "";
+		expect(userContent).toContain(
+			"only the most recent window of a longer stored conversation",
+		);
+		expect(userContent).toContain(
+			"route it to the memory context (set requiresTool)",
+		);
+		expect(userContent).not.toContain(
+			"there is no separate chat-history search tool",
+		);
+		// Route decision: the memory vote reaches the planner (tool path).
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"You mentioned bitcoin 4 times.",
+			);
+		}
+	});
+
+	it("keeps the honest no-search denial when no memory context is registered", async () => {
+		// The no-memory branch preserves today's sentence byte-identically so
+		// minimal runtimes keep the 2026-05-25 fabricated-search guard
+		// (tj-b1ee98c2593f97): an honest denial beats inventing a search the
+		// runtime cannot perform.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I don't see bitcoin in the recent messages I can see.",
+			}),
+		]);
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "how many times have i mentioned bitcoin in this channel?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const userContent = params.messages?.[1]?.content ?? "";
+		expect(userContent).toContain(
+			"there is no separate chat-history search tool",
+		);
+		expect(userContent).not.toContain(
+			"only the most recent window of a longer stored conversation",
 		);
 	});
 

@@ -3027,6 +3027,21 @@ async function createV5MessageContextObject(args: {
 		includeOwnReplies: !args.includeTools,
 	});
 
+	// The recall-miss guidance in the boundary must reflect the turn's actual
+	// capability surface. When a role-visible `memory` context is registered,
+	// this runtime DOES have a chat-history search tool (the memory actions
+	// search the stored message record), so hardcoding "there is no separate
+	// chat-history search tool" is a false capability denial — live incident
+	// tj-69d82bb89ebb69: Stage 1 obeyed the denial verbatim and answered a
+	// beyond-window count question ("how many times have i mentioned bitcoin")
+	// from the bounded visible window. Branching on availableContexts (already
+	// role-filtered by every caller) is structural — no user message text is
+	// ever inspected — and runtimes without a memory surface keep the original
+	// sentence byte-identical, preserving the fabricated-search guard
+	// (2026-05-25, tj-b1ee98c2593f97).
+	const hasMemoryRecallSurface = (args.availableContexts ?? []).some(
+		(context) => context.id === "memory",
+	);
 	events.push({
 		id: "current-turn-boundary",
 		type: "instruction",
@@ -3040,7 +3055,10 @@ async function createV5MessageContextObject(args: {
 			(args.includeTools
 				? ""
 				: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +
-			' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.',
+			' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly.' +
+			(hasMemoryRecallSurface
+				? ' The prior_message blocks are only the most recent window of a longer stored conversation — older messages exist but are not shown here, and the memory context can search them. When the asked-about token appears neither in the current message nor in any visible prior_message block, or the question asks about the conversation beyond the visible window ("how many times have I mentioned X", "have I ever told you about Y"), that is a live lookup over the stored record: route it to the memory context (set requiresTool) so the stored history is actually searched this turn. Never answer a beyond-window recall or count question from the visible window alone, never present the visible window as the whole conversation, and never claim you searched anything a tool did not return this turn. Run status is equally checkable: when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.'
+				: ' Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.'),
 	});
 
 	// Prompt automations execute without a visible human message; their reply is
