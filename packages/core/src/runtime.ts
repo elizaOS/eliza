@@ -9391,11 +9391,21 @@ ${section_end}`;
 				"Database adapter not initialized before ensureEmbeddingDimension",
 			);
 		}
+		const configuredProvider = this.getSetting("ELIZA_EMBEDDING_PROVIDER");
+		const embeddingProvider =
+			typeof configuredProvider === "string" && configuredProvider.trim()
+				? configuredProvider.trim()
+				: undefined;
 		const registrations = this.resolveModelRegistrations(
 			ModelType.TEXT_EMBEDDING,
+			embeddingProvider,
 		);
 		if (registrations.length === 0) {
-			throw new Error("No TEXT_EMBEDDING model registered");
+			throw new Error(
+				embeddingProvider
+					? `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler`
+					: "No TEXT_EMBEDDING model registered",
+			);
 		}
 
 		// Probe every registered TEXT_EMBEDDING provider in the same priority
