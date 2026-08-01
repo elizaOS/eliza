@@ -510,6 +510,9 @@ describe("provisioned cloud container topology (#9887)", () => {
   });
 
   it("honors canonical capability routes without a legacy cloud block", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "env-key";
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://staging.example.test/api/v1";
+
     const config: ElizaConfig = {
       deploymentTarget: {
         runtime: "cloud",
@@ -537,6 +540,44 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_MEDIA).toBe("true");
     expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("env-key");
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBe(
+      "https://staging.example.test/api/v1",
+    );
+  });
+
+  it("hydrates canonical Cloud credentials from config.env without a legacy cloud block", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+      },
+      env: {
+        vars: {
+          ELIZAOS_CLOUD_API_KEY: "config-env-key",
+          ELIZAOS_CLOUD_BASE_URL: "https://config.example.test/api/v1",
+        },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("config-env-key");
+    expect(process.env.ELIZAOS_CLOUD_BASE_URL).toBe(
+      "https://config.example.test/api/v1",
+    );
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_MEDIA).toBe("true");
   });
 
   it("still scrubs a leaked [REDACTED] placeholder from the env (#10819)", () => {
