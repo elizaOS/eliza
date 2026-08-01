@@ -590,3 +590,23 @@ describe("recentMessagesProvider", () => {
 		);
 	});
 });
+
+describe("recentMessages window disclosure", () => {
+	it("names the window in the header so history questions are not answered from it alone", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "bitcoin is up", "discord", 1000),
+			makeMemory("msg-2", AGENT_ID, "noted", "discord", 2000),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "how many times did i say bitcoin", "discord", 3000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		const text = result.text ?? "";
+		expect(text).toContain("# Conversation Messages (most recent");
+		expect(text).toContain("older history is not shown here");
+		expect(text).toContain("MEMORY op:search");
+	});
+});
