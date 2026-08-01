@@ -26,6 +26,15 @@ const sources = {
     path.join(root, ".github/workflows/gitleaks.yml"),
     "utf8",
   ),
+  packageJson: readFileSync(path.join(root, "package.json"), "utf8"),
+  qualityFork: readFileSync(
+    path.join(root, ".github/workflows/quality-fork.yml"),
+    "utf8",
+  ),
+  setupWorkspace: readFileSync(
+    path.join(root, ".github/actions/setup-bun-workspace/action.yml"),
+    "utf8",
+  ),
   tests: readFileSync(path.join(root, ".github/workflows/test.yml"), "utf8"),
 };
 
@@ -65,6 +74,22 @@ for (const fixture of [
     pattern: /multi-gigabyte Bun install archives are prohibited/,
   },
   {
+    name: "shared Bun executable installation",
+    key: "cloudSetup",
+    mutate: (source) => source.replace(/ {6}env:\n {8}HOME:.*\n/, ""),
+    pattern: /setup-bun HOME must be isolated by run, attempt, and job/,
+  },
+  {
+    name: "space-bearing runner name in Bun HOME",
+    key: "cloudSetup",
+    mutate: (source) =>
+      source.replace(
+        `-\${{ github.job }}\n`,
+        `-\${{ github.job }}-\${{ runner.name }}\n`,
+      ),
+    pattern: /without space-bearing runner metadata/,
+  },
+  {
     name: "degraded Cloud e2e database backend",
     key: "cloudTests",
     mutate: (source) =>
@@ -83,6 +108,60 @@ for (const fixture of [
         "    - name: Run database migrations\n      if: false\n",
       ),
     pattern: /database migrations must remain fail-closed/,
+  },
+  {
+    name: "persistent runner admission for fork validation",
+    key: "qualityFork",
+    mutate: (source) =>
+      `${source}\n  future-fork-job:\n    if: github.event_name == 'workflow_dispatch'\n    runs-on: self-hosted\n    steps:\n      - run: true\n`,
+    pattern:
+      /jobs.future-fork-job must use the isolated ubuntu-24.04 hosted runner/,
+  },
+  {
+    name: "unpinned Bun version for fork validation",
+    key: "packageJson",
+    mutate: (source) =>
+      source.replace(
+        '"packageManager": "bun@1.4.0"',
+        '"packageManager": "bun@1.4.1"',
+      ),
+    pattern: /fork validation must use the repository Bun version/,
+  },
+  {
+    name: "missing manual fork proof trigger",
+    key: "qualityFork",
+    mutate: (source) => source.replace("  workflow_dispatch:\n", ""),
+    pattern: /workflow_dispatch must remain available for exact-head proof/,
+  },
+  {
+    name: "fork job excluded from manual exact-head proof",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        "    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)\n",
+        "    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true\n",
+      ),
+    pattern: /jobs.lint must remain executable by workflow_dispatch/,
+  },
+  {
+    name: "shared CLI Bun executable installation",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        /      - name: Setup Bun\n([\s\S]*?) {8}env:\n {10}HOME:.*\n/,
+        "      - name: Setup Bun\n$1",
+      ),
+    pattern: /CLI setup-bun HOME must be isolated by run, attempt, and job/,
+  },
+  {
+    name: "misplaced workspace setup-bun HOME",
+    key: "setupWorkspace",
+    mutate: (source) =>
+      source.replace(
+        / {6}env:\n {8}# setup-bun installs[\s\S]*? {8}HOME:.*\n/,
+        "",
+      ),
+    pattern: /setup-bun HOME must be isolated on the setup-bun step/,
   },
   {
     name: "conditional lint",

@@ -24,8 +24,12 @@ const WORKFLOW_PATHS = Object.freeze({
   cloudTests: ".github/workflows/cloud-tests.yml",
   develop: ".github/workflows/develop-pr.yml",
   gitleaks: ".github/workflows/gitleaks.yml",
+  packageJson: "package.json",
+  qualityFork: ".github/workflows/quality-fork.yml",
+  setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
   tests: ".github/workflows/test.yml",
 });
+const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}`;
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -117,7 +121,16 @@ export function validateWorkflowSources(sources) {
   );
   const develop = parseWorkflow(WORKFLOW_PATHS.develop, sources.develop);
   const gitleaks = parseWorkflow(WORKFLOW_PATHS.gitleaks, sources.gitleaks);
+  const qualityFork = parseWorkflow(
+    WORKFLOW_PATHS.qualityFork,
+    sources.qualityFork,
+  );
+  const setupWorkspace = parseYamlMapping(
+    WORKFLOW_PATHS.setupWorkspace,
+    sources.setupWorkspace,
+  );
   const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
+  const packageJson = JSON.parse(sources.packageJson);
 
   const cloudE2e = requireJob(
     cloudTests,
@@ -177,6 +190,13 @@ export function validateWorkflowSources(sources) {
     !cloudSetupSteps.some((step) => step?.uses?.startsWith("actions/cache@")),
     `${WORKFLOW_PATHS.cloudSetup}: multi-gigabyte Bun install archives are prohibited`,
   );
+  const cloudSetupBun = cloudSetupSteps.find((step) =>
+    step?.uses?.startsWith("oven-sh/setup-bun@"),
+  );
+  invariant(
+    cloudSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.cloudSetup}: setup-bun HOME must be isolated by run, attempt, and job without space-bearing runner metadata`,
+  );
   const postgresStart = cloudSetupSteps.find(
     (step) =>
       typeof step?.run === "string" &&
@@ -196,6 +216,57 @@ export function validateWorkflowSources(sources) {
     migrations?.if === "inputs.setup-db == 'true'" &&
       migrations["continue-on-error"] !== true,
     `${WORKFLOW_PATHS.cloudSetup}: database migrations must remain fail-closed for setup-db`,
+  );
+
+  invariant(
+    typeof packageJson.packageManager === "string" &&
+      packageJson.packageManager.startsWith("bun@"),
+    `${WORKFLOW_PATHS.packageJson}: packageManager must pin Bun`,
+  );
+  const repositoryBunVersion = packageJson.packageManager.slice("bun@".length);
+  invariant(
+    qualityFork.env?.BUN_VERSION === repositoryBunVersion,
+    `${WORKFLOW_PATHS.qualityFork}: fork validation must use the repository Bun version`,
+  );
+  invariant(
+    qualityFork.on &&
+      typeof qualityFork.on === "object" &&
+      Object.hasOwn(qualityFork.on, "workflow_dispatch"),
+    `${WORKFLOW_PATHS.qualityFork}: workflow_dispatch must remain available for exact-head proof`,
+  );
+  for (const [jobName, job] of Object.entries(qualityFork.jobs)) {
+    invariant(
+      job && typeof job === "object",
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must be a mapping`,
+    );
+    invariant(
+      job["runs-on"] === "ubuntu-24.04",
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must use the isolated ubuntu-24.04 hosted runner`,
+    );
+    invariant(
+      typeof job.if === "string" &&
+        job.if.includes("github.event_name == 'workflow_dispatch'"),
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must remain executable by workflow_dispatch`,
+    );
+  }
+  const forkCliSetupBun = qualityFork.jobs[
+    "elizaos-cli-global-smoke"
+  ].steps.find((step) => step?.uses?.startsWith("oven-sh/setup-bun@"));
+  invariant(
+    forkCliSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.qualityFork}: CLI setup-bun HOME must be isolated by run, attempt, and job`,
+  );
+  invariant(
+    setupWorkspace.runs?.using === "composite" &&
+      Array.isArray(setupWorkspace.runs.steps),
+    `${WORKFLOW_PATHS.setupWorkspace}: runs.steps must be a composite step list`,
+  );
+  const workspaceSetupBun = setupWorkspace.runs.steps.find((step) =>
+    step?.uses?.startsWith("oven-sh/setup-bun@"),
+  );
+  invariant(
+    workspaceSetupBun?.env?.HOME === ISOLATED_BUN_HOME,
+    `${WORKFLOW_PATHS.setupWorkspace}: setup-bun HOME must be isolated on the setup-bun step`,
   );
 
   const lint = requireJob(develop, WORKFLOW_PATHS.develop, "lint");
@@ -306,6 +377,18 @@ export function run(repoRoot = REPO_ROOT) {
     develop: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.develop), "utf8"),
     gitleaks: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.gitleaks),
+      "utf8",
+    ),
+    packageJson: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.packageJson),
+      "utf8",
+    ),
+    qualityFork: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.qualityFork),
+      "utf8",
+    ),
+    setupWorkspace: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.setupWorkspace),
       "utf8",
     ),
     tests: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.tests), "utf8"),
