@@ -30,7 +30,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `apple-store-release.yml` | Manual, reusable | Canonical signed iOS/macOS store build and publish authority |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
 | `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
-| `jsdoc-automation.yml` | Manual | JSDoc generation |
 
 ## Release Workflows
 
@@ -302,10 +301,6 @@ Documentation quality workflow:
 - **Quality Checks:** Double headers, missing frontmatter, heading hierarchy
 
 Automatically creates PRs with fixes when issues are found.
-
-### JSDoc Automation (`jsdoc-automation.yml`)
-
-Manual workflow for generating JSDoc documentation.
 
 ## Manual Release Process
 
