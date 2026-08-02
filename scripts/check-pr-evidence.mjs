@@ -344,6 +344,35 @@ function hasSubstantiveInlineLog(text) {
 const INLINE_TRANSCRIPT_MIN_LINES = 3;
 const INLINE_TRANSCRIPT_MIN_CHARS = 120;
 
+function inlineTranscriptMeasurements(text) {
+  const source = String(text ?? "");
+  const blocks = [
+    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
+    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
+    ...source.matchAll(/```[\s\S]*?```/g),
+  ].map((match) => match[0]);
+
+  return blocks.flatMap((block) => {
+    const content = block
+      // A <summary> is a caption, not evidence — it must not carry the block.
+      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/```/g, " ");
+    if (NON_REAL_EVIDENCE_RE.test(content)) return [];
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    return [{ lines: lines.length, chars: lines.join("").length }];
+  });
+}
+
+function inlineTranscriptMeetsFloor({ lines, chars }) {
+  return (
+    lines >= INLINE_TRANSCRIPT_MIN_LINES && chars >= INLINE_TRANSCRIPT_MIN_CHARS
+  );
+}
+
 /**
  * True when the row carries a pasted log/transcript body rather than a link to
  * one. CONTRIBUTING.md § Evidence and the root AGENTS.md both prescribe "long
@@ -358,28 +387,7 @@ const INLINE_TRANSCRIPT_MIN_CHARS = 120;
  * before this is consulted, so screenshots and video still demand real media.
  */
 export function hasInlineTranscriptEvidence(text) {
-  const source = String(text ?? "");
-  const blocks = [
-    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
-    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
-    ...source.matchAll(/```[\s\S]*?```/g),
-  ].map((match) => match[0]);
-  return blocks.some((block) => {
-    const content = block
-      // A <summary> is a caption, not evidence — it must not carry the block.
-      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/```/g, " ");
-    const lines = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    return (
-      lines.length >= INLINE_TRANSCRIPT_MIN_LINES &&
-      lines.join("").length >= INLINE_TRANSCRIPT_MIN_CHARS &&
-      !NON_REAL_EVIDENCE_RE.test(content)
-    );
-  });
+  return inlineTranscriptMeasurements(text).some(inlineTranscriptMeetsFloor);
 }
 
 /**
@@ -392,32 +400,17 @@ export function hasInlineTranscriptEvidence(text) {
  * empty row keeps its plain `blank`.
  */
 export function describeInlineTranscriptShortfall(text) {
-  const source = String(text ?? "");
-  const blocks = [
-    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
-    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
-    ...source.matchAll(/```[\s\S]*?```/g),
-  ].map((match) => match[0]);
-  if (blocks.length === 0) return null;
-
   let best = null;
-  for (const block of blocks) {
-    const content = block
-      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
-      .replace(/<[^>]*>/g, " ")
-      .replace(/```/g, " ");
-    if (NON_REAL_EVIDENCE_RE.test(content)) continue;
-    const lines = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    const chars = lines.join("").length;
-    // Report the closest attempt rather than the first.
-    if (best === null || lines.length + chars > best.lines + best.chars) {
-      best = { lines: lines.length, chars };
+  for (const measurement of inlineTranscriptMeasurements(text)) {
+    // Report the closest attempt rather than whichever block appears first.
+    if (
+      best === null ||
+      measurement.lines + measurement.chars > best.lines + best.chars
+    ) {
+      best = measurement;
     }
   }
-  if (best === null) return null;
+  if (best === null || inlineTranscriptMeetsFloor(best)) return null;
 
   const missed = [];
   if (best.lines < INLINE_TRANSCRIPT_MIN_LINES) {
