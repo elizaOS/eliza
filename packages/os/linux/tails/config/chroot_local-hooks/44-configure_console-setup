@@ -1,7 +1,0 @@
-#!/bin/sh
-
-set -e
-
-echo "Configuring the console codeset to support more languages"
-
-sed -i -e 's,^CODESET=.*$,CODESET="Uni1",' /etc/default/console-setup
