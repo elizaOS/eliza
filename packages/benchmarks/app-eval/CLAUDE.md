@@ -84,7 +84,10 @@ bun test packages/benchmarks/app-eval/evaluate.real.test.ts
   (or `OPENAI_*`) to blend an LLM judge's 0-10 rating into the score
   (`APP_EVAL_LLM_JUDGE_WEIGHT`, default 0.5). See `llm_judge.py` / `test_llm_judge.py`.
 - `adapter.py` exposes `APP_EVAL_ADAPTER` for integration with the benchmarks
-  orchestrator's adapter discovery path; set `ELIZA_APP_ROOT` before use.
+  orchestrator's adapter discovery path; set `ELIZA_APP_ROOT` before use. Its
+  `provider` and `model` settings select one direct-provider credential and the
+  corresponding model-tier variables; supported providers are `anthropic`,
+  `openai`, and `cerebras`.
 - `code_agent_coding.py` is the matrix-comparison path for coding tasks. Run it
   by file path (`python3 packages/benchmarks/app-eval/code_agent_coding.py …`)
   with `packages/` on `PYTHONPATH`; it imports `benchmarks.nl2repo.adapter_matrix`
@@ -131,5 +134,5 @@ behavior, **re-capture** evidence; stale proof is worse than none.
 - A **real-model** run (not the mock/smoke fixture) producing the score-report JSON, with the numbers inspected and the provider/model recorded.
 - The per-item trajectories the harness captured, spot-reviewed for correctness — a green harness run over mock fixtures is not a result.
 - The provider matrix actually exercised, and the scoring math validated against a known case.
-- Failure / timeout / partial-output handling in the harness itself.
+- Failure / cancellation / partial-output handling in the harness itself.
 <!-- END: evidence-and-e2e-mandate -->

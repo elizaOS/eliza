@@ -168,7 +168,6 @@ async function main() {
       ELIZA_DEV_NO_WATCH: "1",
       ELIZA_DEV_QUIET_LOGS: "1",
       ELIZA_NO_VISION_DEPS: "1",
-      ELIZA_PLUGIN_BOOT_TIMEOUT_MS: "120000",
       FORCE_COLOR: "0",
       NODE_NO_WARNINGS: "1",
     },

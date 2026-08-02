@@ -115,7 +115,13 @@ Each criterion is weighted according to the task's `evaluation.criteria` array. 
 
 ## Integration with elizaOS Benchmarks
 
-The `adapter.py` file integrates with the elizaOS benchmarks orchestrator. Set `ELIZA_APP_ROOT` to the app repo root and place the adapter in the orchestrator's adapters directory.
+The `adapter.py` file integrates with the elizaOS benchmarks orchestrator. Set
+`ELIZA_APP_ROOT` to the app repo root and place the adapter in the orchestrator's
+adapters directory. Its `provider` and `model` configuration is authoritative:
+the child receives only the selected direct-provider credential and the matching
+model-tier variables. Supported providers are `anthropic`, `openai`, and
+`cerebras`; for the fastest Cerebras path use `provider=cerebras` and
+`model=gemma-4-31b`.
 
 ## CLI Options
 
@@ -126,5 +132,4 @@ The `adapter.py` file integrates with the elizaOS benchmarks orchestrator. Set `
 | `--root <path>` | App repo root | auto-detect |
 | `--dry-run` | Show tasks without running | false |
 | `--server` | Server mode (boot once) | false |
-| `--timeout <ms>` | Per-task timeout | 120000 |
 | `--verbose` | Detailed output | false |

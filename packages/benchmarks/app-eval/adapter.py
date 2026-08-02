@@ -24,6 +24,13 @@ from pathlib import Path
 from typing import Any
 
 
+_PROVIDER_API_KEYS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+}
+
+
 @dataclass
 class AppBenchmarkConfig:
     """Configuration for running elizaOS app benchmarks."""
@@ -31,10 +38,18 @@ class AppBenchmarkConfig:
     app_root: str = ""
     model: str = "claude-sonnet-4-6"
     provider: str = "anthropic"
-    timeout_seconds: int = 120
     server_mode: bool = False
 
     def __post_init__(self) -> None:
+        self.provider = self.provider.strip().lower()
+        self.model = self.model.strip()
+        if self.provider not in _PROVIDER_API_KEYS:
+            raise ValueError(
+                f"unsupported provider {self.provider!r}; expected one of "
+                f"{', '.join(sorted(_PROVIDER_API_KEYS))}"
+            )
+        if not self.model:
+            raise ValueError("model must be a non-empty string")
         if not self.app_root:
             self.app_root = (
                 os.environ.get("ELIZA_APP_ROOT")
@@ -60,20 +75,37 @@ def build_benchmark_command(
         "benchmark",
         "--task",
         task_file,
-        "--timeout",
-        str(config.timeout_seconds * 1000),
     ]
 
 
 def _build_env(config: AppBenchmarkConfig) -> dict[str, str]:
-    """Build the subprocess environment, forwarding relevant API keys."""
+    """Build an environment that selects exactly one direct text provider."""
     env = os.environ.copy()
     env["ELIZA_HEADLESS"] = "1"
     env["NODE_ENV"] = "production"
+    env["BENCHMARK_MODEL_PROVIDER"] = config.provider
+    env["BENCHMARK_MODEL_NAME"] = config.model
+
+    # Runtime provider discovery is API-key driven. Remove competing direct-text
+    # credentials so an unrelated developer-shell key cannot win registration
+    # order and make the reported provider/model configuration fictional.
+    for provider, api_key in _PROVIDER_API_KEYS.items():
+        if provider != config.provider:
+            env.pop(api_key, None)
+
     if config.provider == "anthropic":
-        env.setdefault("ANTHROPIC_API_KEY", os.environ.get("ANTHROPIC_API_KEY", ""))
+        env["ANTHROPIC_SMALL_MODEL"] = config.model
+        env["ANTHROPIC_LARGE_MODEL"] = config.model
     elif config.provider == "openai":
-        env.setdefault("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+        env["OPENAI_SMALL_MODEL"] = config.model
+        env["OPENAI_LARGE_MODEL"] = config.model
+    else:
+        # Cerebras is served by plugin-openai's explicit compatibility mode.
+        # OPENAI_API_KEY must remain absent or the plugin selects OpenAI mode.
+        env.pop("OPENAI_API_KEY", None)
+        env["CEREBRAS_MODEL"] = config.model
+        env["CEREBRAS_SMALL_MODEL"] = config.model
+        env["CEREBRAS_LARGE_MODEL"] = config.model
     return env
 
 
@@ -93,6 +125,21 @@ def _parse_json_objects(text: str) -> list[dict[str, Any]]:
     return objects
 
 
+def _is_benchmark_result(value: dict[str, Any]) -> bool:
+    """Reject JSON-shaped logs and accept only the benchmark wire schema."""
+    return (
+        isinstance(value.get("id"), str)
+        and isinstance(value.get("response"), str)
+        and isinstance(value.get("task_type"), str)
+        and isinstance(value.get("actions_taken"), list)
+        and all(isinstance(action, str) for action in value["actions_taken"])
+        and isinstance(value.get("duration_ms"), (int, float))
+        and not isinstance(value.get("duration_ms"), bool)
+        and isinstance(value.get("success"), bool)
+        and ("error" not in value or isinstance(value.get("error"), str))
+    )
+
+
 def _failure_result(
     task: dict[str, Any],
     *,
@@ -102,6 +149,7 @@ def _failure_result(
     return {
         "id": task.get("id", "unknown"),
         "response": "",
+        "task_type": str(task.get("type") or ""),
         "actions_taken": [],
         "duration_ms": duration_ms,
         "success": False,
@@ -138,13 +186,16 @@ def run_benchmark(
             cmd,
             capture_output=True,
             text=True,
-            timeout=config.timeout_seconds + 30,  # Extra buffer for startup
             env=env,
             cwd=config.app_root,
         )
 
         if result.returncode == 0:
-            parsed = _parse_json_objects(result.stdout)
+            parsed = [
+                value
+                for value in _parse_json_objects(result.stdout)
+                if _is_benchmark_result(value) and value["id"] == task["id"]
+            ]
             if parsed:
                 return parsed[-1]
 
@@ -168,13 +219,8 @@ def run_benchmark(
                     f"{result.stderr[:500]}"
                 ),
             }
-    except subprocess.TimeoutExpired:
-        return _failure_result(
-            task,
-            duration_ms=config.timeout_seconds * 1000,
-            error="Timeout",
-        )
     except Exception as e:
+        # error-policy:J1 subprocess launch failures become explicit task failures.
         return _failure_result(task, duration_ms=0, error=str(e))
 
 
@@ -203,13 +249,8 @@ def run_benchmark_batch(
         str(root / "packages" / "agent" / "src" / "bin.ts"),
         "benchmark",
         "--server",
-        "--timeout",
-        str(config.timeout_seconds * 1000),
     ]
     env = _build_env(config)
-
-    # Total timeout: startup buffer + per-task timeout
-    total_timeout = 60 + (config.timeout_seconds + 5) * len(tasks)
 
     try:
         stdin_data = "\n".join(json.dumps(t) for t in tasks) + "\n"
@@ -218,26 +259,45 @@ def run_benchmark_batch(
             input=stdin_data,
             capture_output=True,
             text=True,
-            timeout=total_timeout,
             env=env,
             cwd=config.app_root,
         )
 
-        results = _parse_json_objects(result.stdout)
-        seen_ids = {
-            str(r.get("id"))
-            for r in results
-            if isinstance(r.get("id"), (str, int, float))
-        }
+        expected_ids = {str(task.get("id", "unknown")) for task in tasks}
+        parsed_results = [
+            value
+            for value in _parse_json_objects(result.stdout)
+            if _is_benchmark_result(value) and value["id"] in expected_ids
+        ]
+        result_by_id: dict[str, dict[str, Any]] = {}
+        duplicate_ids: set[str] = set()
+        for parsed in parsed_results:
+            parsed_id = parsed["id"]
+            if parsed_id in result_by_id:
+                duplicate_ids.add(parsed_id)
+            result_by_id[parsed_id] = parsed
+
         error_suffix = ""
         if result.returncode != 0:
             error_suffix = (
                 f"Process exited with code {result.returncode}: "
                 f"{result.stderr[:500]}"
             )
+        results: list[dict[str, Any]] = []
         for task in tasks:
             task_id = str(task.get("id", "unknown"))
-            if task_id in seen_ids:
+            if task_id in duplicate_ids:
+                results.append(
+                    _failure_result(
+                        task,
+                        duration_ms=0,
+                        error=f"Duplicate benchmark results received for {task_id}",
+                    )
+                )
+                continue
+            parsed = result_by_id.get(task_id)
+            if parsed is not None:
+                results.append(parsed)
                 continue
             results.append(
                 _failure_result(
@@ -248,16 +308,8 @@ def run_benchmark_batch(
             )
         return results
 
-    except subprocess.TimeoutExpired:
-        return [
-            _failure_result(
-                t,
-                duration_ms=config.timeout_seconds * 1000,
-                error="Batch timeout",
-            )
-            for t in tasks
-        ]
     except Exception as e:
+        # error-policy:J1 one server-process failure is explicit for every task.
         return [
             _failure_result(t, duration_ms=0, error=str(e))
             for t in tasks
@@ -301,7 +353,6 @@ def extract_score(result_path: str) -> dict[str, Any]:
                     "total_tasks": data.get("total_tasks", 0),
                     "completed": data.get("completed", 0),
                     "failed": data.get("failed", 0),
-                    "timed_out": data.get("timed_out", 0),
                     "avg_duration_ms": data.get("avg_duration_ms", 0),
                 },
             }
@@ -330,7 +381,6 @@ APP_EVAL_ADAPTER: dict[str, Any] = {
     "batch_runner": run_benchmark_batch,
     "score_extractor": extract_score,
     "required_env": [],
-    "default_timeout_seconds": 120,
     "default_extra_config": {
         "model": "claude-sonnet-4-6",
         "provider": "anthropic",
