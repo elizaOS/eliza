@@ -221,9 +221,9 @@ test("exempts the live lane from the zombie janitor's age+idle reaper", () => {
     ),
     "utf8",
   );
-  expect(janitor).toContain(
-    "'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC),Live Scenarios'",
-  );
+  expect(janitor).toContain("'Live Scenarios'");
+  expect(janitor).not.toContain("ElizaOS Cuttlefish");
+  expect(janitor).not.toContain("ElizaOS OpenAgent E1");
 });
 
 test("fans every requested shard out of the manifest and rejects ambiguity", () => {

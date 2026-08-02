@@ -26,8 +26,8 @@ on:
       # iOS-signing preflight checks for missing iOS secrets and
       # exits with a clear ::error::, so the job still fails loudly
       # when it can't sign — just inside the job, not at the parent
-      # workflow's startup. Same pattern as publish-apt-repo.yml
-      # (PR #7976), android-release.yml, update-homebrew.yml.
+      # workflow's startup. Same pattern as android-release.yml and
+      # update-homebrew.yml.
       APPLE_ID:
         required: false
       APPLE_TEAM_ID:

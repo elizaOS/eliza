@@ -20,7 +20,7 @@ on:
       # ANDROID_KEYSTORE_BASE64 being non-empty) skips with a clear
       # warning when the secrets are absent, instead of aborting the
       # whole release pipeline at workflow startup with no logs. Same
-      # pattern as publish-apt-repo.yml (PR #7976) and update-homebrew.yml.
+      # pattern as the other reusable release workflows.
       ANDROID_KEYSTORE_BASE64:
         required: false
       ANDROID_KEYSTORE_PASSWORD:
