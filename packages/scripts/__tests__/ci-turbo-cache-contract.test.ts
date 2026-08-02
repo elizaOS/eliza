@@ -220,9 +220,7 @@ describe("ci-turbo-cache-contract", () => {
     );
     const root = buildRepo({ workspaceSetup: unsafeHomeSetup });
     try {
-      expect(() => runContract(root)).toThrow(
-        /space-bearing runner metadata/,
-      );
+      expect(() => runContract(root)).toThrow(/space-bearing runner metadata/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

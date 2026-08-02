@@ -80,24 +80,24 @@ for (const fixture of [
     name: "shared Bun executable installation",
     key: "cloudSetup",
     mutate: (source) => source.replace(/ {8}USERPROFILE:.*\n/, ""),
-    pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
+    pattern:
+      /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "space-bearing runner name in Bun HOME",
     key: "cloudSetup",
     mutate: (source) =>
-      source.replace(
-        `\${{ strategy.job-index || 0 }}`,
-        `\${{ runner.name }}`,
-      ),
-    pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
+      source.replace(`\${{ strategy.job-index || 0 }}`, `\${{ runner.name }}`),
+    pattern:
+      /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "matrix jobs share a Bun home",
     key: "cloudSetup",
     mutate: (source) =>
       source.replaceAll(`-\${{ strategy.job-index || 0 }}`, ""),
-    pattern: /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
+    pattern:
+      /setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "ephemeral cloud Bun executable path is cached",
@@ -151,8 +151,8 @@ for (const fixture of [
     key: "qualityFork",
     mutate: (source) =>
       source.replace(
-        "quality-fork-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
-        "quality-fork-${{ github.ref }}",
+        `quality-fork-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
+        `quality-fork-\${{ github.ref }}`,
       ),
     pattern:
       /manual exact-head proof must not share a concurrency group with pull request events/,
@@ -187,27 +187,33 @@ for (const fixture of [
         "      - name: Install pinned skill validator dependency\n",
         "      - name: Omit pinned skill validator dependency\n",
       ),
-    pattern: /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+    pattern:
+      /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
   },
   {
     name: "unhashed hosted-build skill validator dependency",
     key: "qualityFork",
     mutate: (source) => source.replace("            --require-hashes \\\n", ""),
-    pattern: /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+    pattern:
+      /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
   },
   {
     name: "mismatched hosted-build skill validator Python",
     key: "qualityFork",
     mutate: (source) =>
-      source.replace('          python-version: "3.13"\n', '          python-version: "3.12"\n'),
-    pattern: /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+      source.replace(
+        '          python-version: "3.13"\n',
+        '          python-version: "3.12"\n',
+      ),
+    pattern:
+      /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
   },
   {
     name: "shared CLI Bun executable installation",
     key: "qualityFork",
-    mutate: (source) =>
-      source.replace(/ {10}USERPROFILE:.*\n/, ""),
-    pattern: /CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
+    mutate: (source) => source.replace(/ {10}USERPROFILE:.*\n/, ""),
+    pattern:
+      /CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS/,
   },
   {
     name: "ephemeral CLI Bun executable path is cached",

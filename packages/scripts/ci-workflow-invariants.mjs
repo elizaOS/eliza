@@ -32,8 +32,7 @@ const WORKFLOW_PATHS = Object.freeze({
 const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}`;
 const FORK_JOB_GUARD =
   "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
-const FORK_CONCURRENCY_GROUP =
-  "quality-fork-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}";
+const FORK_CONCURRENCY_GROUP = `quality-fork-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`;
 const PY_YAML_313_X64_REQUIREMENT =
   "PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
 
@@ -261,7 +260,9 @@ export function validateWorkflowSources(sources) {
   }
   const forkBuild = qualityFork.jobs.build;
   invariant(
-    forkBuild && typeof forkBuild === "object" && Array.isArray(forkBuild.steps),
+    forkBuild &&
+      typeof forkBuild === "object" &&
+      Array.isArray(forkBuild.steps),
     `${WORKFLOW_PATHS.qualityFork}: jobs.build must be a job with steps`,
   );
   const forkBuildSetup = forkBuild.steps.find(
