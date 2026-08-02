@@ -226,4 +226,75 @@ describe("effect receipt proof resolution", () => {
 			).toBe(false);
 		}
 	});
+
+	it("accepts a replayed no-op as committed desired-state proof", () => {
+		const replayedNoop = {
+			...appliedReceipt(),
+			outcome: "noop",
+			commit: undefined,
+			reason: "an equivalent reminder already exists",
+			idempotency: { key: "request-1", replayed: true },
+		} as EffectReceipt;
+		const result = {
+			verifiedUserFacing: true,
+			userFacingText: "An equivalent reminder already exists.",
+			effectReceipts: [replayedNoop],
+			userFacingEffectReceiptIds: [replayedNoop.receiptId],
+		};
+
+		expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+		expect(resolveAppliedUserFacingEffectReceipts(result)?.[0]).toMatchObject({
+			receiptId: "receipt-1",
+			outcome: "noop",
+			idempotency: { key: "request-1", replayed: true },
+		});
+		// A non-replayed no-op still proves nothing: "nothing changed" without a
+		// verified earlier commit is not desired-state evidence.
+		expect(
+			hasAppliedUserFacingEffectProof({
+				...result,
+				effectReceipts: [
+					{
+						...replayedNoop,
+						idempotency: { key: "request-1", replayed: false },
+					} as EffectReceipt,
+				],
+			}),
+		).toBe(false);
+	});
+
+	it("rejects a replayed no-op whose observed commit was reverted this turn", () => {
+		const replayedNoop = {
+			...appliedReceipt(),
+			outcome: "noop",
+			commit: undefined,
+			reason: "an equivalent reminder already exists",
+			idempotency: { key: "request-1", replayed: true },
+		} as EffectReceipt;
+		const rollback: EffectReceipt = {
+			...appliedReceipt(),
+			receiptId: "receipt-rollback",
+			operation: "lifeops.reminder.rollback",
+			outcome: "rolled_back",
+			commit: undefined,
+			rollback: {
+				receiptId: "rollback-transaction-1",
+				revertedReceiptIds: [replayedNoop.receiptId],
+				rolledBackAt: "2026-07-27T18:01:00.000Z",
+			},
+		} as EffectReceipt;
+		const result = {
+			verifiedUserFacing: true,
+			userFacingText: "An equivalent reminder already exists.",
+			effectReceipts: [replayedNoop],
+			userFacingEffectReceiptIds: [replayedNoop.receiptId],
+		};
+
+		expect(
+			resolveAppliedUserFacingEffectReceipts(
+				result,
+				mergeEffectReceipts([replayedNoop], [rollback]),
+			),
+		).toBeNull();
+	});
 });
