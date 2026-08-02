@@ -19,7 +19,7 @@ import { ChatMessage } from "./chat-message";
 import type { ChatMessageData } from "./chat-types";
 
 beforeAll(() => {
-  // Hover device: `(hover: hover) and (pointer: fine)` matches so ChatMessage
+  // Wide hover device: the responsive fine-pointer query matches so ChatMessage
   // takes the pointer (panel-rail) chrome, not the touch tap-reveal chrome.
   // Installed before the first render because the MediaQueryList is cached on
   // first read.
@@ -51,12 +51,18 @@ function makeMessage(
 describe("ChatMessage desktop hover chrome", () => {
   it("reveals the neutral action rail without a destructive control", () => {
     render(<ChatMessage message={makeMessage()} onCopy={vi.fn()} />);
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      "(min-width: 768px) and (hover: hover) and (pointer: fine)",
+    );
     const message = screen.getByTestId("chat-message");
     const rail = screen.getByTestId("chat-message-action-rail");
 
-    expect(
-      screen.getByRole("button", { name: "Copy message", hidden: true }),
-    ).toBeTruthy();
+    const copy = screen.getByRole("button", {
+      name: "Copy message",
+      hidden: true,
+    });
+    expect(copy.className).toContain("max-md:h-11");
+    expect(copy.className).toContain("max-md:w-11");
     expect(
       screen.queryByRole("button", { name: /delete/i, hidden: true }),
     ).toBeNull();
@@ -137,7 +143,9 @@ describe("ChatMessage desktop hover chrome", () => {
     const restingContentClass = content?.className;
     expect(message.className).toContain("mb-0");
     expect(content?.className).toContain("pb-6");
-    expect(content?.className).toContain("pointer-coarse:pb-12");
+    expect(content?.className).toContain("transition-[padding-bottom]");
+    expect(content?.className).not.toContain("pb-0");
+    expect(content?.className).not.toContain("pb-12");
     expect(actions.className).toContain("bottom-0");
     expect(actions.className).toContain("absolute");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
