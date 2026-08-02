@@ -35,6 +35,7 @@ export interface WorkspacePlan {
   workDirs: string[];
   entries: WorkspaceEntry[];
   skippedFresh: number;
+  skippedProtected: number;
   totalBytes: number;
 }
 
@@ -43,10 +44,12 @@ const DEFAULT_MIN_AGE_HOURS = 6;
 const MIN_AGE_HOURS_FLOOR = 1;
 /** Flags that take a value. Anything else is rejected rather than ignored. */
 const VALUE_FLAGS = new Set(["root", "min-age-hours"]);
-// These directories belong to the runner process, not to a completed job.
-// Deleting them can remove command files while an action is still publishing
-// state, even when this script's process guard observes no Runner.Worker.
-const RUNNER_MANAGED_WORK_ENTRIES = new Set([
+/**
+ * Direct `_work` children owned by the runner rather than a completed job.
+ * Deleting them can remove command files while an action is publishing state,
+ * even when the process guard observes no Runner.Worker.
+ */
+export const RUNNER_MANAGED_WORK_ENTRIES = new Set([
   "_actions",
   "_PipelineMapping",
   "_temp",
@@ -193,6 +196,7 @@ export function buildRunnerWorkspacePrunePlan(input: {
   const workDirs = findRunnerWorkDirs(input.root);
   const entries: WorkspaceEntry[] = [];
   let skippedFresh = 0;
+  let skippedProtected = 0;
 
   for (const workDir of workDirs) {
     let children: ReturnType<typeof readdirSync>;
@@ -204,7 +208,9 @@ export function buildRunnerWorkspacePrunePlan(input: {
     }
 
     for (const child of children) {
-      if (!child.isDirectory() || RUNNER_MANAGED_WORK_ENTRIES.has(child.name)) {
+      if (!child.isDirectory()) continue;
+      if (RUNNER_MANAGED_WORK_ENTRIES.has(child.name)) {
+        skippedProtected += 1;
         continue;
       }
       const childPath = path.join(workDir, child.name);
@@ -233,6 +239,7 @@ export function buildRunnerWorkspacePrunePlan(input: {
     workDirs,
     entries,
     skippedFresh,
+    skippedProtected,
     totalBytes: entries.reduce((sum, entry) => sum + entry.bytes, 0),
   };
 }
@@ -280,6 +287,9 @@ async function main(): Promise<void> {
   );
   console.log(
     `[prune-runner-workspaces] skipped fresh entries: ${plan.skippedFresh}`,
+  );
+  console.log(
+    `[prune-runner-workspaces] skipped runner control entries: ${plan.skippedProtected}`,
   );
   console.log(
     `[prune-runner-workspaces] reclaimable: ${formatBytes(plan.totalBytes)}`,

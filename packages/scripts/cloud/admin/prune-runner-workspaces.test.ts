@@ -17,6 +17,7 @@ import {
   buildRunnerWorkspacePrunePlan,
   findRunnerWorkDirs,
   parseRunnerWorkspacePruneArgs,
+  RUNNER_MANAGED_WORK_ENTRIES,
 } from "./prune-runner-workspaces";
 
 const roots: string[] = [];
@@ -123,6 +124,9 @@ describe("buildRunnerWorkspacePrunePlan", () => {
       "_tool",
       "_update",
     ];
+    expect([...RUNNER_MANAGED_WORK_ENTRIES].sort()).toEqual(
+      [...runnerManaged].sort(),
+    );
     mkdirSync(staleWorkspace, { recursive: true });
     for (const name of runnerManaged) {
       const controlDir = join(work, name);
@@ -146,6 +150,7 @@ describe("buildRunnerWorkspacePrunePlan", () => {
 
     expect(plan.entries.map((entry) => entry.path)).toEqual([staleWorkspace]);
     expect(plan.skippedFresh).toBe(0);
+    expect(plan.skippedProtected).toBe(runnerManaged.length);
   });
 
   it("selects only stale children of _work directories", () => {
@@ -173,6 +178,7 @@ describe("buildRunnerWorkspacePrunePlan", () => {
     expect(plan.workDirs).toEqual([work]);
     expect(plan.entries.map((entry) => entry.path)).toEqual([stale]);
     expect(plan.skippedFresh).toBe(1);
+    expect(plan.skippedProtected).toBe(0);
     expect(plan.totalBytes).toBeGreaterThan(0);
   });
 });
