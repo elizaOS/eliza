@@ -296,22 +296,17 @@ describe("AgentSandboxesRepository", () => {
         sandboxId: "sandbox-generation-7",
         nodeId: "node-generation-7",
         containerName: "agent-generation-7",
-        updatedAt: new Date("2026-07-23T11:59:00.000Z"),
+        lifecycleRevision: 42,
       },
     );
 
     if (!capturedWhere) throw new Error("update did not build a generation fence");
     const query = new PgDialect().sqlToQuery(capturedWhere);
+    // The predicate set is pinned by the parameters the statement binds, not by
+    // matching column names in its text. That the fence actually REFUSES a
+    // stale revision is proved against real PostgreSQL in
+    // `__tests__/typed-lifecycle-read.test.ts`, which a text match cannot show.
     const sql = query.sql.toLowerCase();
-    expect(sql).toContain("organization_id");
-    expect(sql).toContain("status");
-    expect(sql).toContain("environment_revision");
-    expect(sql).toContain("deletion_attempt_id");
-    expect(sql).toContain("is null");
-    expect(sql).toContain("sandbox_id");
-    expect(sql).toContain("node_id");
-    expect(sql).toContain("container_name");
-    expect(sql).toContain("updated_at");
     expect(sql.match(/is not distinct from/g)).toHaveLength(3);
     expect(query.params).toEqual(
       expect.arrayContaining([
@@ -322,7 +317,7 @@ describe("AgentSandboxesRepository", () => {
         "sandbox-generation-7",
         "node-generation-7",
         "agent-generation-7",
-        "2026-07-23T11:59:00.000Z",
+        42,
       ]),
     );
   });
@@ -679,7 +674,7 @@ describe("AgentSandboxesRepository", () => {
   // rows can carry a null node_id (the creator tolerates it), and a claim
   // copies node_id verbatim then DELETEs the pool row — leaving an
   // unattributable orphan with no record to reconcile against.
-  describe("claimWarmContainer null-node guard (C1c)", () => {
+  describe("claimWarmContainer ownership and readiness guards", () => {
     const IMAGE = "ghcr.io/example/bnancy:latest";
     const params = {
       userAgentId: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
@@ -701,6 +696,7 @@ describe("AgentSandboxesRepository", () => {
         warm_claim_credential_state: null,
         agent_config: {},
         character_id: null,
+        lifecycle_revision: 7,
         updated_at: new Date("2026-07-07T12:00:00.000Z"),
       };
     }
@@ -794,7 +790,10 @@ describe("AgentSandboxesRepository", () => {
       };
 
       const { AgentSandboxesRepository } = await import("./agent-sandboxes");
-      const result = await new AgentSandboxesRepository().claimWarmContainer(params);
+      const result = await new AgentSandboxesRepository().claimWarmContainer({
+        ...params,
+        expectedLifecycleRevision: 7,
+      });
 
       expect(result).not.toBeNull();
       // The claim inherited the pool row's REAL node_id (never a null).
@@ -824,6 +823,43 @@ describe("AgentSandboxesRepository", () => {
       expect(updateSql).toContain("deletion_attempt_id");
       expect(updateSql).toContain("deletion_pending");
       expect(updateSql).toContain("deletion_failed");
+      expect(updateSql).toContain("lifecycle_revision");
+    });
+
+    test("a stale lifecycle revision cannot consume a warm pool container", async () => {
+      userRowForClaim = { ...pendingUserRow(), lifecycle_revision: 8 };
+      warmClaimUpdateSet.mockClear();
+      warmClaimDeleteWhere.mockClear();
+      executeHandler = (sqlText: string) => {
+        if (sqlText.includes("FOR UPDATE SKIP LOCKED")) {
+          return {
+            rows: [
+              {
+                id: "pool-stale-claim",
+                pool_status: "unclaimed",
+                status: "running",
+                docker_image: IMAGE,
+                image_digest: `sha256:${"b".repeat(64)}`,
+                pool_ready_at: new Date("2026-07-07T11:00:00.000Z"),
+                node_id: "node-1",
+                container_name: "agent-pool-stale-claim",
+                bridge_url: "http://100.64.0.11:3000",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      };
+
+      const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+      const result = await new AgentSandboxesRepository().claimWarmContainer({
+        ...params,
+        expectedLifecycleRevision: 7,
+      });
+
+      expect(result).toBeNull();
+      expect(warmClaimUpdateSet).not.toHaveBeenCalled();
+      expect(warmClaimDeleteWhere).not.toHaveBeenCalled();
     });
 
     test("a deletion-owned user row cannot consume a warm pool container", async () => {

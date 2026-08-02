@@ -2,13 +2,16 @@
  * Per-account credential storage.
  *
  * Layout: `<stateDir>/auth/{providerId}/{accountId}.json` (mode 0600,
- * atomic writes). Multiple accounts per provider are supported.
+ * atomic writes). Multiple accounts per provider are supported. Test-process
+ * deletion is confined to physically resolved OS temporary paths so inherited
+ * developer state and symlink targets cannot be removed.
  *
  */
 
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import { writeJsonAtomicSync } from "./atomic-json.ts";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
@@ -58,6 +61,82 @@ function ensureProviderDir(provider: AccountCredentialProvider): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
+}
+
+function isTestProcess(): boolean {
+  const argv = process.argv.join(" ").toLowerCase();
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST === "true" ||
+    process.env.BUN_ENV === "test" ||
+    argv.includes("vitest") ||
+    argv.includes("bun test")
+  );
+}
+
+function isPathWithin(parent: string, target: string): boolean {
+  const relative = path.relative(parent, target);
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function resolvePhysicalPath(target: string): string {
+  let existingAncestor = path.resolve(target);
+  const missingSegments: string[] = [];
+
+  // Missing account files still need their nearest existing ancestor resolved;
+  // otherwise an `auth` or provider symlink could make a lexical temp path unsafe.
+  while (!fs.existsSync(existingAncestor)) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) {
+      return path.resolve(target);
+    }
+    missingSegments.unshift(path.basename(existingAncestor));
+    existingAncestor = parent;
+  }
+
+  return path.resolve(
+    fs.realpathSync.native(existingAncestor),
+    ...missingSegments,
+  );
+}
+
+function isUnderOsTempDir(target: string): boolean {
+  const resolvedTarget = path.resolve(target);
+  const resolvedTemp = path.resolve(tmpdir());
+  if (!isPathWithin(resolvedTemp, resolvedTarget)) {
+    return false;
+  }
+
+  return isPathWithin(
+    fs.realpathSync.native(resolvedTemp),
+    resolvePhysicalPath(resolvedTarget),
+  );
+}
+
+function assertDestructiveStorageAllowed(file: string): void {
+  if (!isTestProcess() || process.env.ELIZA_ALLOW_REAL_STATE_IN_TESTS === "1") {
+    return;
+  }
+
+  if (isUnderOsTempDir(file)) {
+    return;
+  }
+
+  throw new ElizaError(
+    "Refusing to delete credentials from a non-temporary Eliza state directory during tests. " +
+      "Set ELIZA_HOME or ELIZA_STATE_DIR to a mkdtemp directory under the OS temporary directory, " +
+      "or set ELIZA_ALLOW_REAL_STATE_IN_TESTS=1 to override.",
+    {
+      code: "AUTH_CREDENTIAL_DELETE_OUTSIDE_TEST_STATE",
+      context: { file },
+      severity: "fatal",
+    },
+  );
 }
 
 function isAccountCredentialRecord(
@@ -170,6 +249,7 @@ export function deleteAccount(
   accountId: string,
 ): void {
   const file = accountFile(provider, accountId);
+  assertDestructiveStorageAllowed(file);
   try {
     fs.unlinkSync(file);
     logger.info(`[auth] Deleted ${provider} account "${accountId}"`);

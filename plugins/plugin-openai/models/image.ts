@@ -215,7 +215,8 @@ export async function handleImageDescription(
         promptTokens: data.usage.prompt_tokens,
         completionTokens: data.usage.completion_tokens,
         totalTokens: data.usage.total_tokens,
-      }
+      },
+      modelName
     );
   }
 

@@ -97,9 +97,15 @@ export async function getSecretHandler(
 		await callback({ text, action: "SECRETS" });
 	}
 
+	// The (masked) value readout is the complete answer to a single-operation
+	// turn: verified + turnComplete make the callback the sole delivery and
+	// keep the evaluator from re-echoing the masked value.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		data: {
 			actionName: "SECRETS",
 			action: "get",

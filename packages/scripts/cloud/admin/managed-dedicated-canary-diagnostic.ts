@@ -432,10 +432,15 @@ function classifySandboxError(
   // Recovery preserves the last permanent failure while adding newer jobs, so
   // raw equality and counters identify its writer without exposing another
   // arbitrary-text profile or assuming the retained writer is still newest.
+  // A recovery-authored terminal failure is a legitimate envelope cause too:
+  // the recovery sweep now runs the same dependent-row writeback the live
+  // execution path runs. It needs no extra counter fence — job-level
+  // validation already pins a terminal message's own attempt count to the
+  // job's attempts and maxAttempts, which the equalities below pin to the
+  // envelope's.
   const sourceIndex = jobs.findIndex(
     ({ diagnostic, rawError }) =>
       typeof rawError === "string" &&
-      classifyTerminalFailure(rawError) === null &&
       rawError === envelope.cause &&
       diagnostic.status === "failed" &&
       diagnostic.attempts === envelope.attempts &&

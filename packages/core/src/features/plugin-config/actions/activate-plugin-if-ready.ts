@@ -73,7 +73,7 @@ export const activatePluginIfReadyAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const pluginName =
@@ -110,10 +110,9 @@ export const activatePluginIfReadyAction: Action = {
 			logger.info(
 				`[ActivatePluginIfReady] plugin=${pluginName} not_ready missing=${status.missing.length}`,
 			);
-			const text = `Plugin '${pluginName}' is not ready. Missing: ${status.missing.join(", ")}.`;
-			if (callback) {
-				await callback({ text, action: "ACTIVATE_PLUGIN_IF_READY" });
-			}
+			// Planner-facing only: the raw missing-key list is not the user's
+			// answer; the evaluator phrases what is still needed in voice.
+			const text = `Plugin '${pluginName}' is not ready. Missing: ${status.missing.join(", ")}; ask the user to provide these settings.`;
 			return {
 				success: false,
 				text,
@@ -151,11 +150,9 @@ export const activatePluginIfReadyAction: Action = {
 
 		logger.info(`[ActivatePluginIfReady] plugin=${pluginName} activated`);
 
+		// Planner-facing only: the terse status is tool-speak; the evaluator's
+		// in-voice reply is the user's single confirmation.
 		const text = `Plugin '${pluginName}' activated.`;
-		if (callback) {
-			await callback({ text, action: "ACTIVATE_PLUGIN_IF_READY" });
-		}
-
 		return {
 			success: true,
 			text,

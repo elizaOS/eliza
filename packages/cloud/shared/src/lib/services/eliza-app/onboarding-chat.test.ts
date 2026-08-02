@@ -3,12 +3,19 @@ import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "b
 import * as realCloudBindings from "../../runtime/cloud-bindings";
 import type { OnboardingChatMessage, OnboardingSession } from "./onboarding-chat";
 
+function continuationToken(result: { loginUrl: string }): string {
+  const token = new URL(result.loginUrl).searchParams.get("onboardingSession");
+  if (!token) {
+    throw new Error("onboarding login URL has no continuation token");
+  }
+  return token;
+}
+
 const sessionCache = new Map<string, unknown>();
 const ensureElizaAppProvisioning = mock();
 const getElizaAppProvisioningStatus = mock();
 const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
-const generateText = mock();
 const launchManagedElizaAgent = mock();
 const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
@@ -50,34 +57,6 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
-mock.module("@ai-sdk/openai", () => ({
-  createOpenAI: mock(() => ({
-    chat: mock(() => "mock-model"),
-  })),
-  openai: mock(() => "mock-openai-model"),
-}));
-
-class MockAPICallError extends Error {}
-class MockRetryError extends Error {}
-
-mock.module("ai", () => ({
-  APICallError: MockAPICallError,
-  Output: {
-    json: mock(() => ({})),
-    object: mock((value: unknown) => value),
-  },
-  RetryError: MockRetryError,
-  convertToModelMessages: mock((messages: unknown) => messages),
-  embed: mock(async () => ({ embedding: [] })),
-  embedMany: mock(async () => ({ embeddings: [] })),
-  generateText,
-  jsonSchema: mock((schema: unknown) => schema),
-  streamText: mock(() => {
-    throw new Error("streamText is outside this onboarding-chat test fixture");
-  }),
-  wrapLanguageModel: mock(({ model }: { model: unknown }) => model),
-}));
-
 mock.module("../eliza-managed-launch", () => ({
   launchManagedElizaAgent,
 }));
@@ -106,7 +85,6 @@ describe("runOnboardingChat", () => {
     findOrCreateByPhone.mockReset();
     linkPhoneToUser.mockReset();
     linkPhoneToUser.mockResolvedValue({ success: true });
-    generateText.mockReset();
     launchManagedElizaAgent.mockReset();
     loggerWarn.mockReset();
     cloudEnv = {};
@@ -155,25 +133,31 @@ describe("runOnboardingChat", () => {
 
     expect(result.requiresLogin).toBe(true);
     expect(result.provisioning.status).toBe("none");
-    expect(result.loginUrl).toContain(
-      "/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
+    expect(continuationToken(result)).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
+    expect(result.loginUrl).not.toContain("platform%3A");
+    expect(result.loginUrl).not.toContain("14155550123");
     expect(result.reply).toContain("Connect Eliza Cloud here:");
     expect(result.reply).toContain(result.loginUrl);
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
   });
 
-  test("forces the exact login URL when generated copy rewrites link punctuation", async () => {
+  test("stays deterministic and model-free even when a Cerebras key is configured", async () => {
     cloudEnv = {
       CEREBRAS_API_KEY: "test-key",
       ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
     };
-    generateText.mockResolvedValue({
-      text: "Nice to meet you. Connect here: https://elizaos‑homepage.pages.dev/get‑started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
+    const first = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "blooio",
+      platformUserId: "+14155550123",
+      sessionId: "platform:blooio:+14155550123",
+      trustedPlatformIdentity: true,
     });
-
-    const result = await runOnboardingChat({
+    sessionCache.clear();
+    const second = await runOnboardingChat({
       message: "My name is Sam",
       platform: "blooio",
       platformUserId: "+14155550123",
@@ -181,145 +165,12 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
 
-    expect(result.requiresLogin).toBe(true);
-    expect(result.reply).toContain(result.loginUrl);
-    expect(result.reply).not.toContain("elizaos‑homepage");
-    expect(result.reply).not.toContain("get‑started");
-  });
-
-  test("removes markdown punctuation around generated login URLs", async () => {
-    cloudEnv = {
-      CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
-    };
-    generateText.mockResolvedValue({
-      text: "Nice to meet you. Connect here: **https://elizaos-homepage.pages.dev/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123**",
-    });
-
-    const result = await runOnboardingChat({
-      message: "My name is Sam",
-      platform: "blooio",
-      platformUserId: "+14155550123",
-      sessionId: "platform:blooio:+14155550123",
-      trustedPlatformIdentity: true,
-    });
-
-    expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
-    expect(result.reply).not.toContain(`${result.loginUrl}**`);
-  });
-
-  test("removes orphaned markdown lines after replacing generated login URLs", async () => {
-    cloudEnv = {
-      CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
-    };
-    generateText.mockResolvedValue({
-      text: [
-        "Nice to meet you.",
-        "**https://elizaos-homepage.pages.dev/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
-        "Your starter credit will be ready.",
-      ].join("\n"),
-    });
-
-    const result = await runOnboardingChat({
-      message: "My name is Sam",
-      platform: "blooio",
-      platformUserId: "+14155550123",
-      sessionId: "platform:blooio:+14155550123",
-      trustedPlatformIdentity: true,
-    });
-
-    expect(result.reply).toContain("Nice to meet you.");
-    expect(result.reply).toContain("Your starter credit will be ready.");
-    expect(result.reply).toContain(result.loginUrl);
-    expect(result.reply).not.toMatch(/^\s*[*_`~]+\s*$/m);
-  });
-
-  test("enforces exact starter credit copy before the login URL", async () => {
-    cloudEnv = {
-      CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
-    };
-    generateText.mockResolvedValue({
-      text: [
-        "Pricing is usage‑based cloud credits, and new users start with a complimentary $5 credit.",
-        "Connect here: https://elizaos-homepage.pages.dev/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
-      ].join("\n"),
-    });
-
-    const result = await runOnboardingChat({
-      message: "My name is Sam",
-      platform: "blooio",
-      platformUserId: "+14155550123",
-      sessionId: "platform:blooio:+14155550123",
-      trustedPlatformIdentity: true,
-    });
-
-    expect(result.reply).toContain("usage-based cloud credits");
-    expect(result.reply).toContain("$5 free credit");
-    expect(result.reply).toContain(result.loginUrl);
-  });
-
-  test("forces generated SMS onboarding replies to ASCII text", async () => {
-    cloudEnv = {
-      CEREBRAS_API_KEY: "test-key",
-      ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
-    };
-    generateText.mockResolvedValue({
-      text: [
-        "Hi Sam!",
-        "Eliza Cloud gives you a private “Eliza” agent that lives in its own cloud container.",
-        "It can help with tasks—all just for you.",
-        "You’re getting **$5 of free credits** to try it out.",
-        "Connect here: https://elizaos-homepage.pages.dev/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
-      ].join("\n"),
-    });
-
-    const result = await runOnboardingChat({
-      message: "My name is Sam",
-      platform: "blooio",
-      platformUserId: "+14155550123",
-      sessionId: "platform:blooio:+14155550123",
-      trustedPlatformIdentity: true,
-    });
-
-    expect(result.reply).toContain("Hi Sam!");
-    expect(result.reply).toContain('private "Eliza" agent');
-    expect(result.reply).toContain("tasks-all just for you");
-    expect(result.reply).toContain("You're getting $5 of free credits");
-    expect(result.reply).not.toContain("**");
-    expect(result.reply).not.toMatch(/[^\x09\x0A\x0D\x20-\x7E]/);
-  });
-
-  test("sanitizes duplicated URL schemes from generated onboarding replies", async () => {
-    cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-    generateText.mockResolvedValue({
-      text: "Open <httpshttps://elizacloud.ai/dashboard/agents>.",
-    });
-    findOrCreateByPhone.mockResolvedValue({
-      user: { id: "user-1", name: null },
-      organization: { id: "org-1" },
-    });
-    ensureElizaAppProvisioning.mockResolvedValue({
-      status: "provisioning",
-      agentId: "agent-1",
-      bridgeUrl: null,
-      sandbox: null,
-    });
-
-    const result = await runOnboardingChat({
-      message: "My name is Sam",
-      platform: "blooio",
-      platformUserId: "+14155550123",
-      sessionId: "platform:blooio:+14155550123",
-      trustedPlatformIdentity: true,
-      authenticatedUser: {
-        userId: "user-1",
-        organizationId: "org-1",
-      },
-    });
-
-    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/agents>.");
+    expect(first.reply.replace(first.loginUrl, "<login>")).toBe(
+      second.reply.replace(second.loginUrl, "<login>"),
+    );
+    expect(first.reply).toContain("$5 free credit");
+    expect(first.reply.endsWith(`Connect Eliza Cloud here: ${first.loginUrl}`)).toBe(true);
+    expect(first.reply).not.toMatch(/[^\x09\x0A\x0D\x20-\x7E]/);
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {
@@ -410,7 +261,7 @@ describe("runOnboardingChat", () => {
       const continued = await runOnboardingChat({
         platform: "blooio",
         platformUserId: "+14155550123",
-        sessionId: "platform:blooio:+14155550123",
+        sessionId: continuationToken(result),
         authenticatedUser: {
           userId: "user-1",
           organizationId: "org-1",
@@ -436,7 +287,7 @@ describe("runOnboardingChat", () => {
       sandbox: null,
     });
 
-    await runOnboardingChat({
+    const gatewayTurn = await runOnboardingChat({
       message: "My name is Sam",
       platform: "blooio",
       platformUserId: "+14155550123",
@@ -453,7 +304,7 @@ describe("runOnboardingChat", () => {
 
     const result = await runOnboardingChat({
       platform: "blooio",
-      sessionId: "platform:blooio:+14155550123",
+      sessionId: continuationToken(gatewayTurn),
       authenticatedUser: {
         userId: "phone-user",
         organizationId: "phone-org",
@@ -587,6 +438,27 @@ describe("runOnboardingChat", () => {
       expect(linkPhoneToUser).not.toHaveBeenCalled();
     });
 
+    test("an authenticated caller cannot claim an existing unbound session by public platform id", async () => {
+      const victim = await runTrustedPhoneTurn("My name is Sam");
+      const victimSnapshot = JSON.stringify(getCachedSession(PLATFORM_SESSION));
+      ensureElizaAppProvisioning.mockResolvedValue(noProvisioning());
+      getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
+
+      const attacker = await runOnboardingChat({
+        sessionId: PLATFORM_SESSION,
+        authenticatedUser: { userId: "attacker-user", organizationId: "attacker-org" },
+      });
+
+      expect(attacker.session.id).not.toBe(PLATFORM_SESSION);
+      expect(attacker.session.id).toMatch(UUID_PATTERN);
+      expect(attacker.session.name).toBeUndefined();
+      expect(
+        attacker.session.history.map((message: OnboardingChatMessage) => message.content),
+      ).not.toContain("My name is Sam");
+      expect(JSON.stringify(getCachedSession(PLATFORM_SESSION))).toBe(victimSnapshot);
+      expect(continuationToken(victim)).toMatch(UUID_PATTERN);
+    });
+
     test("a session bound to one user never carries over to a different authenticated user", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "provisioning",
@@ -596,9 +468,9 @@ describe("runOnboardingChat", () => {
       });
       getElizaAppProvisioningStatus.mockResolvedValue(noProvisioning());
 
-      await runTrustedPhoneTurn("My name is Sam");
+      const victim = await runTrustedPhoneTurn("My name is Sam");
       const victimBound = await runOnboardingChat({
-        sessionId: PLATFORM_SESSION,
+        sessionId: continuationToken(victim),
         platform: "blooio",
         authenticatedUser: { userId: "victim-user", organizationId: "victim-org" },
       });
@@ -621,7 +493,7 @@ describe("runOnboardingChat", () => {
       expect(linkPhoneToUser).not.toHaveBeenCalledWith("attacker-user", PHONE);
     });
 
-    test("a web continuation cannot mutate the platform identity and still links the phone", async () => {
+    test("an opaque web continuation cannot mutate the platform identity and still links the phone", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-1",
@@ -629,9 +501,9 @@ describe("runOnboardingChat", () => {
         sandbox: null,
       });
 
-      await runTrustedPhoneTurn("My name is Sam");
+      const gatewayTurn = await runTrustedPhoneTurn("My name is Sam");
       const continued = await runOnboardingChat({
-        sessionId: PLATFORM_SESSION,
+        sessionId: continuationToken(gatewayTurn),
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
       });
@@ -822,11 +694,12 @@ describe("runOnboardingChat", () => {
       ]);
       expect(typeof a.reply).toBe("string");
       expect(typeof b.reply).toBe("string");
-      expect(a.session.history).toHaveLength(2);
-      expect(b.session.history).toHaveLength(2);
-      // Last write wins on the KV cache: exactly one turn's messages persist.
+      expect([a.session.history.length, b.session.history.length].sort()).toEqual([2, 4]);
       const cached = getCachedSession(PLATFORM_SESSION);
-      expect(cached.history.length).toBe(2);
+      expect(cached.history.length).toBe(4);
+      expect(cached.history.map((message) => message.content)).toEqual(
+        expect.arrayContaining(["first hello", "second hello"]),
+      );
     });
   });
 
@@ -874,11 +747,7 @@ describe("runOnboardingChat", () => {
     });
 
     test("insufficient-credits reply is deterministic and points at billing", async () => {
-      // With a live Cerebras client configured, only the deterministic
-      // early-return keeps the model out of the money-state reply; without
-      // this key the not-called assertion below is vacuously true.
       cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-      generateText.mockResolvedValue({ text: "model-improvised billing copy" });
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "insufficient_credits",
         agentId: null,
@@ -895,7 +764,6 @@ describe("runOnboardingChat", () => {
       });
       expect(result.provisioning.status).toBe("insufficient_credits");
       expect(result.handoffComplete).toBe(false);
-      expect(generateText).not.toHaveBeenCalled();
       expect(result.reply).toContain("You're out of credits, Sam.");
       expect(result.reply).toContain("/dashboard/billing");
       expect(result.reply).toContain("usage-based:");
@@ -943,11 +811,12 @@ describe("runOnboardingChat", () => {
         expect(first.reply).toContain("finishing the handoff");
         expect(first.reply).not.toContain("copied this onboarding chat");
         expect(rememberCalls).toBe(1);
+        const browserContinuation = continuationToken(first);
 
         rememberStatus = 200;
         const second = await runOnboardingChat({
           platform: "blooio",
-          sessionId: PLATFORM_SESSION,
+          sessionId: browserContinuation,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
         });
         expect(second.handoffComplete).toBe(true);
@@ -956,7 +825,7 @@ describe("runOnboardingChat", () => {
 
         const third = await runOnboardingChat({
           platform: "blooio",
-          sessionId: PLATFORM_SESSION,
+          sessionId: browserContinuation,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
         });
         expect(third.handoffComplete).toBe(true);
@@ -1012,48 +881,6 @@ describe("runOnboardingChat", () => {
       } finally {
         globalThis.fetch = originalFetch;
       }
-    });
-  });
-
-  describe("generated reply hardening", () => {
-    test("LLM failure falls back and still ends with the exact login link", async () => {
-      cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-      generateText.mockRejectedValue(new Error("cerebras down"));
-      const result = await runTrustedPhoneTurn("My name is Sam");
-      expect(result.reply).toContain("Nice to meet you, Sam");
-      expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
-    });
-
-    test("an emoji-only LLM reply falls back to deterministic copy", async () => {
-      cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-      generateText.mockResolvedValue({ text: " 🎉🎉 " });
-      const result = await runTrustedPhoneTurn("My name is Sam");
-      expect(result.reply).toContain("Nice to meet you, Sam");
-      expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
-    });
-
-    test("an LLM reply that is only a URL still produces a non-empty reply with the login link", async () => {
-      cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-      generateText.mockResolvedValue({ text: "https://elsewhere.example/start-here" });
-      const result = await runTrustedPhoneTurn("My name is Sam");
-      expect(result.reply.length).toBeGreaterThan(0);
-      expect(result.reply).not.toContain("elsewhere.example");
-      expect(result.reply).toContain("$5 free credit");
-      expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
-    });
-
-    test("an LLM reply with multiple URLs keeps exactly one URL: the login link", async () => {
-      cloudEnv = { CEREBRAS_API_KEY: "test-key" };
-      generateText.mockResolvedValue({
-        text: [
-          "Visit https://a.example/one and https://b.example/two now!",
-          "Also check https://c.example today.",
-        ].join("\n"),
-      });
-      const result = await runTrustedPhoneTurn("My name is Sam");
-      const urlMatches = result.reply.match(/https?:\/\//g) ?? [];
-      expect(urlMatches).toHaveLength(1);
-      expect(result.reply.endsWith(`Connect Eliza Cloud here: ${result.loginUrl}`)).toBe(true);
     });
   });
 });

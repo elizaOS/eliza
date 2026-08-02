@@ -849,12 +849,9 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
 );
 
 /**
- * Stage 1 (messageHandler / shouldRespond) does NOT need wall-clock,
- * room entities, or document store context. It just decides
- * processMessage + which contexts apply. Excluding these from the
- * Stage 1 prompt keeps the user message byte-stable across responses
- * (no per-call CURRENT_TIME drift) so the provider's prefix cache
- * grows with the conversation rather than resetting every turn.
+ * Stage 1 (messageHandler / shouldRespond) does NOT need room entities
+ * or document store context. It just decides processMessage + which
+ * contexts apply.
  *
  * These exclusions apply to COMPOSITION as well as rendering:
  * `composeResponseState` subtracts them from the include list it hands
@@ -866,32 +863,23 @@ const MODEL_CONTEXT_PROVIDER_EXCLUSION_SET = new Set<string>(
  * planner recompose runs any provider missing from the turn's cached
  * state (see composeState's refreshProviders contract in runtime.ts).
  *
+ * CURRENT_TIME is deliberately NOT excluded: the system prompt promises
+ * a CURRENT_TIME signal in every runtime context (see the date/time
+ * exception in packages/prompts), and simple-path turns run exactly one
+ * compose pass — excluding it here turns a missing provider into a
+ * confidently hallucinated timestamp. A prose gate that re-included it
+ * only for messages that "looked like" time questions silently dropped
+ * the signal on near-miss phrasings ("whats todays date and time?").
+ * The provider is pure synchronous formatting, and the prefix-cache cost
+ * is nil in practice: FACTS is BM25-ranked per message and renders
+ * adjacent to CURRENT_TIME, so the user-message bytes already churn at
+ * that position every turn.
+ *
  * Note: we still keep FACTS composed and rendered — Stage 1 may need a
  * grounded fact to discriminate ambiguous routing, and stored facts must
  * be recallable on the simple path (see CORE_RESPONSE_STATE_PROVIDERS).
  */
-const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = [
-	"CURRENT_TIME",
-	"ENTITIES",
-	"DOCUMENTS",
-] as const;
-
-function isCurrentTimeQuestion(message: Memory): boolean {
-	const text = message.content.text?.toLowerCase() ?? "";
-	if (!text) return false;
-	return /\b(?:what(?:'s| is)?|tell me|give me|do you know|current)\b[\s\S]{0,80}\b(?:date|time|year|day|today)\b/.test(
-		text,
-	);
-}
-
-function stage1ProviderExclusionsForMessage(message: Memory): string[] {
-	const exclusions = [...STAGE1_EXTRA_PROVIDER_EXCLUSIONS];
-	if (isCurrentTimeQuestion(message)) {
-		const index = exclusions.indexOf("CURRENT_TIME");
-		if (index >= 0) exclusions.splice(index, 1);
-	}
-	return exclusions;
-}
+const STAGE1_EXTRA_PROVIDER_EXCLUSIONS = ["ENTITIES", "DOCUMENTS"] as const;
 function hasInboundBenchmarkContext(message: Memory): boolean {
 	const metadata = message.metadata as Record<string, unknown> | undefined;
 	const benchmarkContext = metadata?.benchmarkContext;
@@ -1111,7 +1099,7 @@ export function stage1ResponseStateProviderNames(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): string[] {
-	const exclusions = new Set(stage1ProviderExclusionsForMessage(message));
+	const exclusions = new Set<string>(STAGE1_EXTRA_PROVIDER_EXCLUSIONS);
 	return [
 		...CORE_RESPONSE_STATE_PROVIDERS,
 		...alwaysOnResponseStateProviderNames(runtime),
@@ -1371,7 +1359,6 @@ function _resolvePromptAttachments(
  */
 type ResolvedMessageOptions = {
 	maxRetries: number;
-	timeoutDuration: number;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -1382,6 +1369,7 @@ type ResolvedMessageOptions = {
 	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
 	 */
 	abortSignal?: AbortSignal;
+	onSettledActionResult?: (result: ActionResult) => void;
 };
 
 function normalizeShouldRespondModelType(
@@ -4103,8 +4091,7 @@ export async function renderMessageHandlerStablePrefix(
 		state,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions:
-			stage1ProviderExclusionsForMessage(syntheticMessage),
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
 	});
 	const rendered = renderContextObject(context);
 	const stableSegments = rendered.promptSegments.filter(
@@ -6135,6 +6122,7 @@ async function runDeterministicPlannerFallback(args: {
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	callback?: HandlerCallback;
+	onSettledActionResult?: (result: ActionResult) => void;
 	plannerError: unknown;
 }): Promise<PlannerLoopResult | null> {
 	const requiredToolMiss = isRequiredToolMissLimit(args.plannerError);
@@ -6217,7 +6205,12 @@ async function runDeterministicPlannerFallback(args: {
 			...(args.callback ? { callback: args.callback } : {}),
 		}),
 		plannerRuntime: args.plannerRuntime,
-		executorOptions: { actions: args.actions },
+		executorOptions: {
+			actions: args.actions,
+			...(args.onSettledActionResult
+				? { onSettledResult: args.onSettledActionResult }
+				: {}),
+		},
 		evaluatorEffects: args.evaluatorEffects,
 		recorder: args.recorder,
 		trajectoryId: args.trajectoryId,
@@ -6817,6 +6810,7 @@ export async function runShortcutGate(args: {
 	state: State;
 	responseId: UUID;
 	senderRole: RoleGateRole;
+	onSettledActionResult?: (result: ActionResult) => void;
 }): Promise<V5MessageRuntimeStage1Result | null> {
 	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
 	const text = getUserMessageText(args.message) ?? "";
@@ -6864,7 +6858,12 @@ export async function runShortcutGate(args: {
 			name: action.name,
 			params: { ...target.parameters, ...match.parameters },
 		},
-		{ actions: [action] },
+		{
+			actions: [action],
+			...(args.onSettledActionResult
+				? { onSettledResult: args.onSettledActionResult }
+				: {}),
+		},
 	);
 	if (captured === undefined) {
 		const executionError = shortcutActionResult.data?.error;
@@ -6995,6 +6994,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	onSettledActionResult?: (result: ActionResult) => void;
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
 	) => Promise<void> | void;
@@ -7010,7 +7010,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		...args,
 		userRoles: [senderRole],
 		availableContexts,
-		extraProviderExclusions: stage1ProviderExclusionsForMessage(args.message),
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
 	});
 	const stage1PreprocessStartedAt = performance.now();
 
@@ -8172,7 +8172,14 @@ export async function runV5MessageRuntimeStage1(args: {
 											: {}),
 									}),
 									plannerRuntime,
-									executorOptions: { actions: exposedPlannerActions },
+									executorOptions: {
+										actions: exposedPlannerActions,
+										...(args.onSettledActionResult
+											? {
+													onSettledResult: args.onSettledActionResult,
+												}
+											: {}),
+									},
 									evaluatorEffects,
 									recorder,
 									trajectoryId,
@@ -8213,6 +8220,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				trajectoryId,
 				plannerLoopConfig: args.plannerLoopConfig,
 				...(recordingCallback ? { callback: recordingCallback } : {}),
+				...(args.onSettledActionResult
+					? { onSettledActionResult: args.onSettledActionResult }
+					: {}),
 				plannerError: error,
 			});
 			if (!fallbackResult) {
@@ -10564,10 +10574,6 @@ export class DefaultMessageService implements IMessageService {
 
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
-					// A turn has no implicit wall-clock deadline. Callers that own a
-					// real execution budget may provide one explicitly; cancellation
-					// otherwise travels through abortSignal.
-					timeoutDuration: options?.timeoutDuration ?? 0,
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -10581,6 +10587,11 @@ export class DefaultMessageService implements IMessageService {
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+					...(options?.onSettledActionResult
+						? {
+								onSettledActionResult: options.onSettledActionResult,
+							}
+						: {}),
 				};
 
 				const deliveredVisibleTexts = new Set<string>();
@@ -10596,8 +10607,6 @@ export class DefaultMessageService implements IMessageService {
 					recordDeliveredVisibleText,
 				);
 
-				// Set up timeout monitoring
-				let timeoutId: NodeJS.Timeout | undefined;
 				// A host route may open the timer before calling the message service so
 				// augmentation and response normalization share this same timeline.
 				// Only the layer that creates the timer closes and persists it.
@@ -10680,26 +10689,6 @@ export class DefaultMessageService implements IMessageService {
 							} as RunEventPayload),
 						),
 					);
-
-					const timeoutPromise = new Promise<never>((_, reject) => {
-						if (opts.timeoutDuration <= 0) return;
-						timeoutId = setTimeout(async () => {
-							await runtime.emitEvent(EventType.RUN_TIMEOUT, {
-								runtime,
-								source: "messageHandler",
-								runId,
-								messageId: message.id,
-								roomId: message.roomId,
-								entityId: message.entityId,
-								startTime,
-								status: "timeout",
-								endTime: Date.now(),
-								duration: Date.now() - startTime,
-								error: "Run exceeded timeout",
-							} as RunEventPayload);
-							reject(new Error("Run exceeded timeout"));
-						}, opts.timeoutDuration);
-					});
 
 					// Structured streaming is handled by dynamicPromptExecFromState for
 					// text fields. Native v5 planner/tool/evaluator events use the same
@@ -10792,13 +10781,7 @@ export class DefaultMessageService implements IMessageService {
 						},
 					);
 
-					const result = await Promise.race([
-						processingPromise,
-						timeoutPromise,
-					]);
-
-					// Clean up timeout
-					clearTimeout(timeoutId);
+					const result = await processingPromise;
 
 					// Voice: Handle the rest of the message
 					if (firstSentenceSent && result.responseContent?.text) {
@@ -10874,8 +10857,6 @@ export class DefaultMessageService implements IMessageService {
 
 					return result;
 				} finally {
-					clearTimeout(timeoutId);
-
 					// Close + emit the per-turn latency breakdown. Detached side
 					// effects (post-turn evaluators) intentionally run after this and
 					// are NOT counted in turn latency — that is the proof they don't
@@ -11420,6 +11401,9 @@ export class DefaultMessageService implements IMessageService {
 				state,
 				responseId,
 				senderRole: shortcutSenderRole,
+				...(opts.onSettledActionResult
+					? { onSettledActionResult: opts.onSettledActionResult }
+					: {}),
 			});
 			if (shortcutOutcome && shortcutOutcome.kind === "direct_reply") {
 				strategyResult = shortcutOutcome.result;
@@ -11448,6 +11432,11 @@ export class DefaultMessageService implements IMessageService {
 							responseId,
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
+							...(opts.onSettledActionResult
+								? {
+										onSettledActionResult: opts.onSettledActionResult,
+									}
+								: {}),
 							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 						}),
 					),
@@ -11481,6 +11470,15 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				const callerSignal = getStreamingContext()?.abortSignal;
+				if (callerSignal?.aborted) {
+					const reason = callerSignal.reason;
+					throw reason instanceof TurnAbortedError
+						? reason
+						: new TurnAbortedError(
+								reason instanceof Error ? reason.message : String(reason),
+							);
+				}
 				if (
 					error instanceof TurnAbortedError ||
 					(isRecord(error) && error.code === "TURN_ABORTED")

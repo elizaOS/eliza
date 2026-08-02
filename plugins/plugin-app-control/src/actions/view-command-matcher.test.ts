@@ -39,6 +39,10 @@ describe("matchViewCommand — explicit user examples", () => {
 		["show my knowledge hub", "documents"],
 		["switch to focus mode", "focus"],
 		["open my goals", "goals"],
+		["open cloud apps", "cloud-apps"],
+		["show my deployed apps", "cloud-apps"],
+		["go to app deployments", "cloud-apps"],
+		["open plugins", "plugins-page"],
 		// coding cockpit — wins over task-coordinator's bare "coding"
 		["open the cockpit", "cockpit"],
 		["open coding cockpit", "cockpit"],
@@ -82,6 +86,11 @@ describe("matchViewCommand — multilingual", () => {
 		["mở cài đặt", "settings"],
 		// tl
 		["buksan ang settings", "settings"],
+		["abre aplicaciones en la nube", "cloud-apps"],
+		["ouvre les applications cloud", "cloud-apps"],
+		["打开云应用", "cloud-apps"],
+		["クラウドアプリを開いて", "cloud-apps"],
+		["클라우드 앱 열어", "cloud-apps"],
 	];
 	for (const [text, view] of cases) {
 		it(`"${text}" → ${view}`, () => {
@@ -139,6 +148,9 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"thanks, that was helpful",
 		"can you summarize this article",
 		"i love using this app",
+		"open apps",
+		"open my apps",
+		"open applications",
 		"showcase knowledge",
 		"open knowledgebase",
 		"open knowledgeable",

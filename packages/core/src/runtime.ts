@@ -380,6 +380,8 @@ interface InFlightProviderExecution {
 	promise: Promise<ProviderResult>;
 	startedAt: number;
 	startedAtMonotonic: number;
+	timeoutMs?: number;
+	timeoutMode: "fail" | "degrade";
 }
 
 export function calculateProviderOverlaps(
@@ -402,6 +404,85 @@ export function calculateProviderOverlaps(
 				: [];
 		}),
 	);
+}
+
+// Provider authors opt into a deadline with `timeoutMs`; operators can apply a
+// global default when deployment evidence supports one. An implicit default
+// would change the semantics of every third-party provider without knowing
+// whether its context is optional or how long its backing service can take.
+const COMPOSE_STATE_PROVIDER_TIMEOUT_MS = (() => {
+	const raw = Number.parseInt(
+		process.env.ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS ?? "",
+		10,
+	);
+	if (Number.isFinite(raw) && raw >= 250) return raw;
+	return undefined;
+})();
+
+class ProviderDeadlineError extends Error {
+	readonly timeoutMs: number;
+
+	constructor(providerName: string, timeoutMs: number) {
+		super(
+			`Provider "${providerName}" exceeded its ${timeoutMs}ms composeState budget`,
+		);
+		this.name = "TimeoutError";
+		this.timeoutMs = timeoutMs;
+	}
+}
+
+// The budget and its derived signal are created once per execution so
+// coalesced awaiters share one deadline. JavaScript cannot preempt a provider
+// that ignores AbortSignal, but cooperative database/network/subprocess work
+// receives the timeout immediately and the turn never waits past the budget.
+function withProviderDeadline<T>(
+	run: (signal: AbortSignal) => Promise<T>,
+	timeoutMs: number | undefined,
+	providerName: string,
+	parentSignal?: AbortSignal,
+): Promise<T> {
+	const controller = new AbortController();
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	let rejectFromSignal: (() => void) | undefined;
+	const abortFromParent = () => {
+		controller.abort(
+			parentSignal?.reason ?? new Error("Provider execution aborted"),
+		);
+	};
+	if (parentSignal?.aborted) {
+		abortFromParent();
+	} else {
+		parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+	}
+	const aborted = new Promise<never>((_, reject) => {
+		rejectFromSignal = () => {
+			reject(
+				controller.signal.reason ?? new Error("Provider execution aborted"),
+			);
+		};
+		if (controller.signal.aborted) {
+			rejectFromSignal?.();
+			return;
+		}
+		controller.signal.addEventListener("abort", rejectFromSignal, {
+			once: true,
+		});
+	});
+	if (!controller.signal.aborted && timeoutMs !== undefined) {
+		timeoutHandle = setTimeout(() => {
+			controller.abort(new ProviderDeadlineError(providerName, timeoutMs));
+		}, timeoutMs);
+	}
+	const providerPromise = controller.signal.aborted
+		? Promise.reject(controller.signal.reason)
+		: Promise.resolve().then(() => run(controller.signal));
+	return Promise.race([providerPromise, aborted]).finally(() => {
+		if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+		if (rejectFromSignal) {
+			controller.signal.removeEventListener("abort", rejectFromSignal);
+		}
+		parentSignal?.removeEventListener("abort", abortFromParent);
+	});
 }
 const STABLE_PROMPT_TEMPLATE_KEYS = new Set([
 	"agentName",
@@ -4511,19 +4592,31 @@ export class AgentRuntime implements IAgentRuntime {
 						: undefined;
 				const providerCoalesced = execution !== undefined;
 				if (!execution) {
+					const providerBudgetMs =
+						typeof provider.timeoutMs === "number" && provider.timeoutMs >= 250
+							? provider.timeoutMs
+							: COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
+					const timeoutMode = provider.timeoutMode ?? "fail";
 					const startedAt = Date.now();
 					const startedAtMonotonic = performance.now();
-					const promise = providerSignal?.aborted
-						? Promise.reject(
-								providerSignal.reason ??
-									new Error("Provider execution aborted before start"),
-							)
-						: withProviderStep(providerRuntime, provider.name, () =>
+					const promise = withProviderDeadline(
+						(signal) =>
+							withProviderStep(providerRuntime, provider.name, () =>
 								provider.get(providerRuntime, message, cachedState, {
-									...(providerSignal ? { signal: providerSignal } : {}),
+									signal,
 								}),
-							);
-					execution = { promise, startedAt, startedAtMonotonic };
+							),
+						providerBudgetMs,
+						provider.name,
+						providerSignal,
+					);
+					execution = {
+						promise,
+						startedAt,
+						startedAtMonotonic,
+						timeoutMs: providerBudgetMs,
+						timeoutMode,
+					};
 					if (inFlightKey !== null) {
 						this.providerExecutionsInFlight.set(inFlightKey, execution);
 						const cleanup = () => {
@@ -4557,12 +4650,11 @@ export class AgentRuntime implements IAgentRuntime {
 				} catch (cause) {
 					const endedAt = Date.now();
 					const duration = performance.now() - execution.startedAtMonotonic;
-					const causeName = cause instanceof Error ? cause.name : "";
 					const outcome: ProviderExecutionOutcome = providerSignal?.aborted
 						? "aborted"
-						: causeName === "TimeoutError"
+						: cause instanceof ProviderDeadlineError
 							? "deadline_exceeded"
-							: causeName === "AbortError"
+							: cause instanceof Error && cause.name === "AbortError"
 								? "aborted"
 								: "error";
 					const code =
@@ -4589,6 +4681,8 @@ export class AgentRuntime implements IAgentRuntime {
 								roomId: message.roomId,
 								messageId: message.id,
 								outcome,
+								timeoutMs: execution.timeoutMs,
+								timeoutMode: execution.timeoutMode,
 							},
 						},
 					);
@@ -4598,6 +4692,30 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
+					if (
+						outcome === "deadline_exceeded" &&
+						execution.timeoutMode === "degrade" &&
+						execution.timeoutMs !== undefined
+					) {
+						// error-policy:J4 optional providers may explicitly degrade,
+						// but the prompt and structured state must remain distinguishable
+						// from a legitimate empty result for the rest of the turn.
+						return {
+							text: `[Provider ${provider.name} unavailable this turn: exceeded ${execution.timeoutMs}ms deadline.]`,
+							values: {},
+							data: {
+								available: false,
+								reason: "deadline_exceeded",
+								timeoutMs: execution.timeoutMs,
+							},
+							providerName: provider.name,
+							providerStartedAt: execution.startedAt,
+							providerEndedAt: endedAt,
+							providerDurationMs: duration,
+							providerOutcome: outcome,
+							providerCoalesced,
+						};
+					}
 					return {
 						providerName: provider.name,
 						providerStartedAt: execution.startedAt,
@@ -4613,6 +4731,9 @@ export class AgentRuntime implements IAgentRuntime {
 		const providerOverlaps = calculateProviderOverlaps(providerData);
 		const failedProviderData = providerData.filter(
 			(record) => record.providerError !== undefined,
+		);
+		const degradedProviderData = providerData.filter(
+			(record) => record.providerOutcome === "deadline_exceeded",
 		);
 		for (const provider of reusedProviders) {
 			const cached = (
@@ -4631,6 +4752,7 @@ export class AgentRuntime implements IAgentRuntime {
 			providers: providersToRun.length,
 			reused: providersToGet.length - providersToRun.length,
 			failed: failedProviderData.length,
+			degraded: degradedProviderData.length,
 		});
 
 		const currentProviderResults: Record<string, CachedProviderResult> = {
@@ -4783,7 +4905,7 @@ export class AgentRuntime implements IAgentRuntime {
 						data: {
 							textLength:
 								typeof cached?.text === "string" ? cached.text.length : 0,
-							outcome: "success",
+							outcome: cached?.providerOutcome ?? "success",
 							coalesced: false,
 							cacheHit: true,
 							...(typeof cached?.providerDurationMs === "number"
@@ -6476,24 +6598,20 @@ export class AgentRuntime implements IAgentRuntime {
 					};
 					const hasToolCallsField = "toolCalls" in streamRaw;
 					const resolvedToolCalls = hasToolCallsField
-						? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+						? await Promise.resolve(streamRaw.toolCalls)
 						: [];
-					const hasResolvedToolCalls =
-						Array.isArray(resolvedToolCalls) && resolvedToolCalls.length > 0;
-					// Only widen to a GenerateText-shape result when the stream actually
-					// surfaced tool calls. The original streaming contract returns a bare
-					// string; the wider object exists solely to preserve `toolCalls` for
-					// `parsePlannerOutput`, which is irrelevant when none were emitted.
-					if (hasResolvedToolCalls) {
+					// The presence of `toolCalls` marks a native-result contract, even
+					// when the provider returns an empty list. Collapsing that result to a
+					// string discards usage, finish reason, and concrete model metadata,
+					// which makes successful hosted calls unpriceable.
+					if (hasToolCallsField) {
 						const resolvedFinishReason =
 							"finishReason" in streamRaw
-								? await Promise.resolve(streamRaw.finishReason).catch(
-										() => undefined,
-									)
+								? await Promise.resolve(streamRaw.finishReason)
 								: undefined;
 						const resolvedUsage =
 							"usage" in streamRaw
-								? await Promise.resolve(streamRaw.usage).catch(() => undefined)
+								? await Promise.resolve(streamRaw.usage)
 								: undefined;
 						resultRef.current = {
 							text: streamedText,

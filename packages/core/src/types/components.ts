@@ -30,7 +30,14 @@ export type {
  * Supports basic JSON Schema properties for parameter definition.
  */
 export interface ActionParameterSchema {
-	type: string;
+	/**
+	 * JSON Schema instance type. Optional because a schema may instead be a
+	 * pure union (`oneOf`/`anyOf`) — a sibling `type` alongside union branches
+	 * of differing types contradicts the branches, and strict provider
+	 * grammars reject the contradiction. A schema should carry `type` or a
+	 * union keyword, never neither.
+	 */
+	type?: string;
 	description?: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
@@ -695,15 +702,18 @@ export interface ProviderResult {
  * Turn-scoped execution controls supplied by the runtime to every provider.
  *
  * Providers that start database, network, subprocess, or other interruptible
- * work must propagate `signal` to that boundary. The runtime never converts an
- * aborted provider into empty context: cancellation rejects state composition.
+ * work must propagate `signal` to that boundary. Parent-turn cancellation
+ * rejects state composition; a provider-owned deadline aborts this signal and
+ * is translated according to the provider's `timeoutMode`.
  */
 export interface ProviderExecutionContext {
 	signal?: AbortSignal;
 }
 
 /**
- * Provider for external data/services
+ * Provider for external data/services. `get` is a read-only context operation:
+ * it must not commit external side effects because a deadline can stop waiting
+ * for a provider that has not cooperatively observed its abort signal.
  */
 export interface Provider {
 	/** Provider name */
@@ -778,6 +788,22 @@ export interface Provider {
 
 	/** Cache partition hint for stable provider content. */
 	cacheScope?: CacheScope;
+
+	/**
+	 * Per-provider composeState time budget in milliseconds. When the budget
+	 * elapses the runtime aborts the provider signal and stops waiting. Providers
+	 * without a budget preserve their existing runtime unless an operator sets
+	 * `ELIZA_COMPOSE_PROVIDER_TIMEOUT_MS` as a global default. Providers must
+	 * propagate `ProviderExecutionContext.signal` to interruptible boundaries.
+	 */
+	timeoutMs?: number;
+
+	/**
+	 * Timeout handling policy. The default `fail` preserves composeState's
+	 * all-or-nothing contract. `degrade` is reserved for optional providers whose
+	 * consumers can safely operate on an explicit unavailable contribution.
+	 */
+	timeoutMode?: "fail" | "degrade";
 
 	/**
 	 * Whether plugin registration should install this provider into the runtime.

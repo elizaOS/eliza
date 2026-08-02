@@ -203,16 +203,16 @@ function stopResponse(runId: string) {
   };
 }
 
-function unloadPluginResponse(pluginName: string) {
+function stopByNameResponse() {
   return {
     success: true,
     appName: "feed",
     runId: null,
     stoppedAt: "2026-05-29T12:02:00.000Z",
-    pluginUninstalled: true,
-    needsRestart: true,
-    stopScope: "plugin-uninstalled",
-    message: `Plugin ${pluginName} unloaded.`,
+    pluginUninstalled: false,
+    needsRestart: false,
+    stopScope: "viewer-session",
+    message: "Feed stopped.",
   };
 }
 
@@ -341,7 +341,7 @@ export default scenario({
             request.method === "POST" &&
             request.pathname === "/api/apps/stop"
           ) {
-            return jsonResponse(unloadPluginResponse("@elizaos/plugin-feed"));
+            return jsonResponse(stopByNameResponse());
           }
 
           // VIEWS/delete now performs a real uninstall via POST
@@ -873,6 +873,28 @@ export default scenario({
     },
     {
       kind: "action",
+      name: "stop feed app",
+      text: "Stop the feed app",
+      actionName: "APP",
+      options: { action: "stop", app: "feed" },
+      responseIncludesAny: ["Feed stopped."],
+      assertTurn: (execution) =>
+        expectActionTurn(execution, {
+          actionName: "APP",
+          parameters: { action: "stop", app: "feed" },
+          responseText: "Feed stopped.",
+          resultFields: {
+            "values.mode": "stop",
+            "values.appName": "feed",
+            "values.runId": null,
+            "values.stopScope": "viewer-session",
+            "data.stop.pluginUninstalled": false,
+            "data.stop.needsRestart": false,
+          },
+        }),
+    },
+    {
+      kind: "action",
       name: "create-mode edit feed board view",
       text: "Create improvements for the feed board view",
       actionName: "VIEWS",
@@ -1051,7 +1073,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "APP",
       status: "success",
-      minCount: 5,
+      minCount: 6,
     },
     {
       type: "selectedActionArguments",
@@ -1084,6 +1106,7 @@ export default scenario({
         /"list"/,
         /"launch"/,
         /"relaunch"/,
+        /"stop"/,
         /"load_from_directory"/,
         /"create"/,
         /run-feed-launch-1/,
@@ -1300,6 +1323,23 @@ export default scenario({
             pathname: "/api/apps/launch",
             response: {
               body: launchResponse("run-feed-relaunch-2"),
+              status: 200,
+            },
+            search: "",
+          },
+          {
+            body: null,
+            method: "GET",
+            pathname: "/api/apps/installed",
+            response: { body: installedApps, status: 200 },
+            search: "",
+          },
+          {
+            body: { name: "feed" },
+            method: "POST",
+            pathname: "/api/apps/stop",
+            response: {
+              body: stopByNameResponse(),
               status: 200,
             },
             search: "",

@@ -144,6 +144,7 @@ export function AgentAction({
       type="button"
       {...control.agentProps}
       {...rest}
+      aria-label={rest["aria-label"] ?? (compact ? agentLabel : undefined)}
       disabled={disabled}
       onClick={onClick}
       style={{

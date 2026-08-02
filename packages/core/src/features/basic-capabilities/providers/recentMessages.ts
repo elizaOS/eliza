@@ -362,6 +362,9 @@ export const recentMessagesProvider: Provider = {
 	contextGate: { anyOf: ["memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	// Conversation history is correctness-critical and may span several indexed
+	// reads on remote adapters. Extend its deadline without allowing partial state.
+	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (

@@ -106,9 +106,15 @@ export async function checkSecretHandler(
 		await callback({ text, action: "SECRETS" });
 	}
 
+	// The check result is the complete answer to a single-operation turn:
+	// verified + turnComplete make the callback the sole delivery instead of
+	// double-messaging with the evaluator.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		data: { actionName: "SECRETS", action: "check", present, missing },
 	};
 }

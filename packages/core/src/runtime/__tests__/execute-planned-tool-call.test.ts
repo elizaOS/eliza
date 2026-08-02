@@ -152,6 +152,35 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
+	it("does not start an action or publish a settlement when cancellation wins during validation", async () => {
+		const abortController = new AbortController();
+		const abortReason = new Error("transport disconnected before commit");
+		const handler = vi.fn(async () => ({ success: true }));
+		const onSettledResult = vi.fn();
+		const action = makeAction({
+			name: "CREATE_TASK",
+			validate: async () => {
+				abortController.abort(abortReason);
+				return true;
+			},
+			handler,
+		});
+
+		await expect(
+			executePlannedToolCall(
+				makeRuntime([action]),
+				{ message: makeMessage() },
+				{ name: action.name, params: {} },
+				{
+					abortSignal: abortController.signal,
+					onSettledResult,
+				},
+			),
+		).rejects.toBe(abortReason);
+		expect(handler).not.toHaveBeenCalled();
+		expect(onSettledResult).not.toHaveBeenCalled();
+	});
+
 	it("drops undeclared planner wrapper args without weakening strict validation", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({
@@ -1129,6 +1158,7 @@ describe("executePlannedToolCall", () => {
 	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();
+		const onSettledResult = vi.fn();
 		const action = makeAction({
 			name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
 			suppressActionResultClipboard: true,
@@ -1151,6 +1181,7 @@ describe("executePlannedToolCall", () => {
 					runtime,
 					{ message: makeMessage() },
 					{ name: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE", params: {} },
+					{ onSettledResult },
 				),
 		);
 
@@ -1197,6 +1228,14 @@ describe("executePlannedToolCall", () => {
 			}),
 		);
 		expect(JSON.stringify(onToolResult.mock.calls)).not.toContain(
+			"secret-token",
+		);
+		expect(onSettledResult).toHaveBeenCalledWith({
+			success: true,
+			text: "declared",
+			data: { actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE" },
+		});
+		expect(JSON.stringify(onSettledResult.mock.calls)).not.toContain(
 			"secret-token",
 		);
 	});
@@ -1283,6 +1322,7 @@ describe("executePlannedToolCall", () => {
 		let participants = [owner, agent];
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();
+		const onSettledResult = vi.fn();
 		const callback = vi.fn(async () => []);
 		const action = makeAction({
 			name: "OWNER_PRIVATE",
@@ -1327,6 +1367,7 @@ describe("executePlannedToolCall", () => {
 					runtime,
 					{ message: turn, callback, userRoles: ["OWNER"] },
 					{ name: action.name, params: {} },
+					{ onSettledResult },
 				),
 		);
 
@@ -1346,10 +1387,15 @@ describe("executePlannedToolCall", () => {
 		const observable = JSON.stringify({
 			callback: callback.mock.calls,
 			events: emitEvent.mock.calls,
+			settlement: onSettledResult.mock.calls,
 			streaming: onToolResult.mock.calls,
 			result,
 		});
 		expect(observable).not.toContain("OWNER_PRIVATE_CANARY");
+		expect(onSettledResult).toHaveBeenCalledWith({
+			success: true,
+			data: { actionName: "OWNER_PRIVATE" },
+		});
 	});
 
 	it("emits failed ACTION_COMPLETED events with string errors for thrown handlers", async () => {

@@ -52,10 +52,15 @@ const serviceState = vi.hoisted(() => ({
     request: { preset?: string; minutes?: number };
   }>,
   createCalls: [] as Array<Record<string, unknown>>,
+  updateCalls: [] as Array<{
+    id: string;
+    request: Record<string, unknown>;
+  }>,
   extraDefinitions: [] as Array<Record<string, unknown>>,
   goalCreateCalls: [] as Array<Record<string, unknown>>,
   deleteDefinitionCalls: [] as string[],
   deleteGoalCalls: [] as string[],
+  ownerEntityIds: [] as Array<string | undefined>,
 }));
 
 vi.mock("../lifeops/service.js", () => {
@@ -67,6 +72,10 @@ vi.mock("../lifeops/service.js", () => {
     }
   }
   class LifeOpsService {
+    constructor(_runtime: IAgentRuntime, options?: { ownerEntityId?: string }) {
+      serviceState.ownerEntityIds.push(options?.ownerEntityId);
+    }
+
     repository = {
       listAuditEvents: async (
         _agentId: string,
@@ -130,6 +139,24 @@ vi.mock("../lifeops/service.js", () => {
           status: "active",
         },
         reminderPlan: request.reminderPlan ?? null,
+      };
+    }
+    async updateDefinition(id: string, request: Record<string, unknown>) {
+      serviceState.updateCalls.push({ id, request });
+      const current = serviceState.extraDefinitions.find(
+        (entry) => (entry.definition as { id?: string } | undefined)?.id === id,
+      )?.definition as Record<string, unknown> | undefined;
+      return {
+        definition: {
+          ...current,
+          ...request,
+          id,
+          windowPolicy: request.windowPolicy ??
+            current?.windowPolicy ?? {
+              timezone: request.timezone ?? current?.timezone ?? "UTC",
+              windows: [],
+            },
+        },
       };
     }
     async createGoal(request: Record<string, unknown>) {
@@ -598,6 +625,144 @@ function taskPlanJson(overrides: Record<string, unknown>): string {
   });
 }
 
+describe("runLifeOperationHandler definition update targeting", () => {
+  beforeEach(() => {
+    serviceState.extraDefinitions.length = 0;
+    serviceState.updateCalls.length = 0;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("persists an explicit destination timezone and resolves the local clock in that zone", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    serviceState.extraDefinitions.push({
+      definition: {
+        id: "def-arrival",
+        title: "Call Elena after landing",
+        domain: "user_lifeops",
+        timezone: "UTC",
+        cadence: {
+          kind: "once",
+          dueAt: "2026-07-02T07:00:00.000Z",
+        },
+        windowPolicy: {
+          timezone: "UTC",
+          windows: [
+            {
+              name: "morning",
+              label: "Morning",
+              startMinute: 300,
+              endMinute: 720,
+            },
+          ],
+        },
+      },
+    });
+    const runtime = makeRuntime((prompt) =>
+      prompt.includes("update an existing task/habit")
+        ? JSON.stringify({
+            title: null,
+            cadenceKind: null,
+            windows: null,
+            weekdays: null,
+            timeOfDay: "09:00",
+            everyMinutes: null,
+            priority: null,
+            description: null,
+            dueDate: null,
+            dueInDays: null,
+            dueWeekday: null,
+            dueInMinutes: null,
+          })
+        : "",
+    );
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        'move the "Call Elena after landing" reminder to nine Tokyo time',
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "update",
+          intent:
+            'move the "Call Elena after landing" reminder to nine Tokyo time',
+          target: "Call Elena after landing",
+          details: {
+            time: "09:00",
+            timezone: "Asia/Tokyo",
+          },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    expect(serviceState.updateCalls).toEqual([
+      {
+        id: "def-arrival",
+        request: expect.objectContaining({
+          timezone: "Asia/Tokyo",
+          cadence: {
+            kind: "once",
+            dueAt: "2026-07-02T00:00:00.000Z",
+          },
+          windowPolicy: expect.objectContaining({
+            timezone: "Asia/Tokyo",
+          }),
+        }),
+      },
+    ]);
+  });
+
+  it("asks which definition instead of mutating the first partial-title match", async () => {
+    for (const [id, title] of [
+      ["def-before", "Call Elena before the outbound leg"],
+      ["def-after", "Call Elena after landing"],
+    ]) {
+      serviceState.extraDefinitions.push({
+        definition: {
+          id,
+          title,
+          domain: "user_lifeops",
+          timezone: "UTC",
+          cadence: {
+            kind: "once",
+            dueAt: "2026-07-02T07:00:00.000Z",
+          },
+          windowPolicy: { timezone: "UTC", windows: [] },
+        },
+      });
+    }
+
+    const result = await runLifeOperationHandler(
+      makeRuntime(() => ""),
+      makeMessage("move my Elena call reminder to nine"),
+      undefined,
+      {
+        parameters: {
+          action: "update",
+          intent: "move my Elena call reminder to nine",
+          target: "Call Elena before the outbound leg",
+          details: { time: "09:00" },
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("Multiple items match");
+    expect(result.text).toContain("Call Elena before the outbound leg");
+    expect(result.text).toContain("Call Elena after landing");
+    expect(result.text).toContain("what timezone");
+    expect(serviceState.updateCalls).toHaveLength(0);
+  });
+});
+
 describe("runLifeOperationHandler clarification contract", () => {
   it("marks a reminder-plan response as user-facing and awaiting owner input", async () => {
     const clarification =
@@ -669,18 +834,26 @@ describe("runLifeOperationHandler clarification contract", () => {
       return clarification;
     });
 
+    const message = makeMessage("Remind me about my report deadline.");
+    const options = {
+      parameters: {
+        action: "create",
+        intent: "Create a report deadline reminder.",
+        title: "Report deadline",
+        ownerSurface: "OWNER_REMINDERS",
+      },
+    } as HandlerOptions;
     const result = await runLifeOperationHandler(
       runtime,
-      makeMessage("Remind me about my report deadline."),
+      message,
       undefined,
-      {
-        parameters: {
-          action: "create",
-          intent: "Create a report deadline reminder.",
-          title: "Report deadline",
-          ownerSurface: "OWNER_REMINDERS",
-        },
-      } as HandlerOptions,
+      options,
+    );
+    const retry = await runLifeOperationHandler(
+      runtime,
+      message,
+      undefined,
+      options,
     );
 
     expect(result).toMatchObject({
@@ -701,6 +874,7 @@ describe("runLifeOperationHandler clarification contract", () => {
         awaitingUserInput: true,
       },
     });
+    expect(retry.effectReceipts).toEqual(result.effectReceipts);
     expect(serviceState.createCalls).toHaveLength(0);
   });
 });
@@ -881,6 +1055,7 @@ describe("runLifeOperationHandler snooze durations", () => {
     serviceState.snoozeCalls.length = 0;
     serviceState.createCalls.length = 0;
     serviceState.goalCreateCalls.length = 0;
+    serviceState.ownerEntityIds.length = 0;
     serviceState.deleteDefinitionCalls.length = 0;
     serviceState.deleteGoalCalls.length = 0;
   });
@@ -1561,6 +1736,7 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
     serviceState.snoozeCalls.length = 0;
     serviceState.createCalls.length = 0;
     serviceState.goalCreateCalls.length = 0;
+    serviceState.ownerEntityIds.length = 0;
   });
 
   it('schedules "remind me friday at 5pm" on Friday 17:00, not now', async () => {
@@ -1577,23 +1753,20 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
       return "";
     });
     const before = Date.now();
-    const result = await runLifeOperationHandler(
-      runtime,
-      makeMessage("remind me friday at 5pm to call mom"),
-      undefined,
-      {
-        parameters: {
-          action: "create_reminder",
-          intent: "remind me friday at 5pm to call mom",
-        },
-      } as HandlerOptions,
-    );
+    const message = makeMessage("remind me friday at 5pm to call mom");
+    const result = await runLifeOperationHandler(runtime, message, undefined, {
+      parameters: {
+        action: "create_reminder",
+        intent: "remind me friday at 5pm to call mom",
+      },
+    } as HandlerOptions);
     expect(result.success).toBe(true);
     // A completed persist is canonical: the planner must echo the action's
     // own confirmation instead of paraphrasing the save state (#16941).
     expect(result.verifiedUserFacing).toBe(true);
     expect(result.userFacingText ?? "").not.toBe("");
     expect(serviceState.createCalls).toHaveLength(1);
+    expect(serviceState.ownerEntityIds).toContain(message.entityId);
     const cadence = serviceState.createCalls[0]?.cadence as {
       kind: string;
       dueAt: string;

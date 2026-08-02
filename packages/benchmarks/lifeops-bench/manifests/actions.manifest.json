@@ -823,7 +823,7 @@
             },
             "passengers": {
               "description": "Either an integer passenger count or the canonical passenger array.",
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "number"
                 },
@@ -1381,7 +1381,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1394,7 +1394,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1407,7 +1407,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1420,7 +1420,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1433,7 +1433,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1446,7 +1446,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1459,7 +1459,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1472,7 +1472,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1914,7 +1914,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1927,7 +1927,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1940,7 +1940,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1953,7 +1953,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1966,7 +1966,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1979,7 +1979,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -1992,7 +1992,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2005,7 +2005,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2447,7 +2447,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2460,7 +2460,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2473,7 +2473,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2486,7 +2486,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2499,7 +2499,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2512,7 +2512,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2525,7 +2525,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2538,7 +2538,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2980,7 +2980,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -2993,7 +2993,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3006,7 +3006,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3019,7 +3019,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3032,7 +3032,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3045,7 +3045,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3058,7 +3058,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3071,7 +3071,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3513,7 +3513,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3526,7 +3526,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3539,7 +3539,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3552,7 +3552,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3565,7 +3565,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3578,7 +3578,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3591,7 +3591,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -3604,7 +3604,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4046,7 +4046,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4059,7 +4059,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4072,7 +4072,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4085,7 +4085,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4098,7 +4098,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4111,7 +4111,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4124,7 +4124,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4137,7 +4137,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4579,7 +4579,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4592,7 +4592,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4605,7 +4605,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4618,7 +4618,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4631,7 +4631,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4644,7 +4644,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4657,7 +4657,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -4670,7 +4670,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5112,7 +5112,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5125,7 +5125,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5138,7 +5138,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5151,7 +5151,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5164,7 +5164,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5177,7 +5177,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5190,7 +5190,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5203,7 +5203,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5645,7 +5645,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5658,7 +5658,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5671,7 +5671,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5684,7 +5684,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5697,7 +5697,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5710,7 +5710,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5723,7 +5723,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -5736,7 +5736,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6240,7 +6240,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6253,7 +6253,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6266,7 +6266,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6279,7 +6279,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6292,7 +6292,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6305,7 +6305,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6318,7 +6318,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6331,7 +6331,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6773,7 +6773,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6786,7 +6786,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6799,7 +6799,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6812,7 +6812,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6825,7 +6825,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6838,7 +6838,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6851,7 +6851,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -6864,7 +6864,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7306,7 +7306,7 @@
                   "type": "boolean"
                 },
                 "recurrence": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7319,7 +7319,7 @@
                   ]
                 },
                 "rrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7332,7 +7332,7 @@
                   ]
                 },
                 "recurrencerule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7345,7 +7345,7 @@
                   ]
                 },
                 "recurrence_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7358,7 +7358,7 @@
                   ]
                 },
                 "repeat": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7371,7 +7371,7 @@
                   ]
                 },
                 "repeats": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7384,7 +7384,7 @@
                   ]
                 },
                 "repeatrule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7397,7 +7397,7 @@
                   ]
                 },
                 "repeat_rule": {
-                  "oneOf": [
+                  "anyOf": [
                     {
                       "type": "string"
                     },
@@ -7575,7 +7575,7 @@
             },
             "range": {
               "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "string",
                   "enum": ["today", "week"]
@@ -7644,7 +7644,7 @@
             },
             "range": {
               "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "string",
                   "enum": ["today", "week"]
@@ -7713,7 +7713,7 @@
             },
             "range": {
               "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "string",
                   "enum": ["today", "week"]
@@ -7782,7 +7782,7 @@
             },
             "range": {
               "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
-              "oneOf": [
+              "anyOf": [
                 {
                   "type": "string",
                   "enum": ["today", "week"]

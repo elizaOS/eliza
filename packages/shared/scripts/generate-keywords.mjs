@@ -17,7 +17,14 @@
  * site cannot silently imply target selection that does not exist (#15847).
  */
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -282,6 +289,18 @@ function generateTypeScriptStandalone(entries, locales) {
   return `${lines.join("\n")}\n`;
 }
 
+function writeGeneratedFile(outputPath, content) {
+  const temporaryPath = `${outputPath}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temporaryPath, content, "utf-8");
+    // Package builds can invoke this generator concurrently. Renaming a fully
+    // written sibling keeps every reader on either complete version.
+    renameSync(temporaryPath, outputPath);
+  } finally {
+    rmSync(temporaryPath, { force: true });
+  }
+}
+
 // --- Main ---
 
 console.log("Generating keyword code from JSON...\n");
@@ -294,12 +313,12 @@ mkdirSync(generatedDir, { recursive: true });
 
 const ts = generateTypeScript(entries, locales);
 const outPath = join(generatedDir, "validation-keyword-data.ts");
-writeFileSync(outPath, ts, "utf-8");
+writeGeneratedFile(outPath, ts);
 console.log(`  TypeScript (shared): ${outPath}`);
 
 const js = generateJavaScript(entries);
 const jsOutPath = join(generatedDir, "validation-keyword-data.js");
-writeFileSync(jsOutPath, js, "utf-8");
+writeGeneratedFile(jsOutPath, js);
 console.log(`  JavaScript (shared): ${jsOutPath}`);
 
 // Also generate for @elizaos/core — same data,
@@ -316,7 +335,7 @@ const tsCorePath = join(
 mkdirSync(tsCorePath, { recursive: true });
 const tsCoreContent = generateTypeScriptStandalone(entries, locales);
 const tsCoreOutPath = join(tsCorePath, "validation-keyword-data.ts");
-writeFileSync(tsCoreOutPath, tsCoreContent, "utf-8");
+writeGeneratedFile(tsCoreOutPath, tsCoreContent);
 console.log(`  TypeScript (core):   ${tsCoreOutPath}`);
 
 console.log("\nDone!");

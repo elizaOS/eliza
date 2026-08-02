@@ -15,6 +15,7 @@ import {
   getLargeModel,
   getResponseHandlerModel,
   getSmallModel,
+  getUsageProvider,
 } from "../utils/config";
 
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
@@ -78,6 +79,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     });
     expect(getBaseURL(runtime)).toBe("https://api.cerebras.ai/v1");
     expect(getApiKey(runtime)).toBe("csk-cerebras-fake");
+    expect(getUsageProvider(runtime)).toBe("cerebras");
   });
 
   it("prefers CEREBRAS_API_KEY over OPENAI_API_KEY in Cerebras mode", () => {
@@ -236,6 +238,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getLargeModel(runtime)).toBe("gpt-5.2");
     expect(getResponseHandlerModel(runtime)).toBe("gpt-5.2");
     expect(getActionPlannerModel(runtime)).toBe("gpt-5.2");
+    expect(getUsageProvider(runtime)).toBe("evolink");
   });
 
   it("supports explicit EvoLink base URL and model overrides", () => {
@@ -262,6 +265,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getBaseURL(runtime)).toBe("https://api.openai.com/v1");
     expect(getApiKey(runtime)).toBe("sk-openai-fake");
     expect(getSmallModel(runtime)).toBe("gpt-5.6-luna");
+    expect(getUsageProvider(runtime)).toBe("openai");
   });
 
   it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {

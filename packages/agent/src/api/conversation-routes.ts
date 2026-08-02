@@ -3938,22 +3938,16 @@ export async function handleConversationRoutes(
       }
       // Get the last user message to use as the prompt for generation
       let prompt = "A generic conversation";
-      try {
-        const memories = await state.runtime.getMemories({
-          roomId: conv.roomId,
-          tableName: "messages",
-          limit: 5,
-        });
-        const lastUserMemory = memories.find(
-          (m) => m.entityId !== state.runtime?.agentId,
-        );
-        if (lastUserMemory?.content?.text) {
-          prompt = String(lastUserMemory.content.text);
-        }
-      } catch (err) {
-        logger.warn(
-          `[conversations] Failed to fetch context for title generation: ${err instanceof Error ? err.message : String(err)}`,
-        );
+      const memories = await state.runtime.getMemories({
+        roomId: conv.roomId,
+        tableName: "messages",
+        limit: 5,
+      });
+      const lastUserMemory = memories.find(
+        (m) => m.entityId !== state.runtime?.agentId,
+      );
+      if (lastUserMemory?.content?.text) {
+        prompt = String(lastUserMemory.content.text);
       }
 
       const titleAbortTracker = createRequestDisconnectAbortTracker({

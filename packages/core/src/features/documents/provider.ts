@@ -55,6 +55,9 @@ export const documentsProvider: Provider = {
 	contextGate: { anyOf: ["documents"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	// Retrieval is supplemental context and may include an embedding round-trip.
+	timeoutMs: 10_000,
+	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {
@@ -73,7 +76,11 @@ export const documentsProvider: Provider = {
 			};
 		}
 
-		const relevantSnippets = (await service.searchDocuments(message))
+		const { relevantFragments, documents } =
+			await service.composeProviderDocuments(message, {
+				limit: MAX_AVAILABLE_DOCUMENTS,
+			});
+		const relevantSnippets = relevantFragments
 			.slice(0, MAX_RELEVANT_SNIPPETS)
 			.map((fragment, index) => {
 				const metadata = fragment.metadata as
@@ -95,9 +102,6 @@ export const documentsProvider: Provider = {
 				};
 			});
 
-		const documents = await service.listDocuments(message, {
-			limit: MAX_AVAILABLE_DOCUMENTS,
-		});
 		const summaries = documents
 			.filter((memory) => memory.metadata?.type === MemoryType.DOCUMENT)
 			.map(summarizeDocument);

@@ -113,6 +113,10 @@ class_name = "InferenceAdmissionGate"
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
+[[durable_objects.bindings]]
+name = "ONBOARDING_SESSIONS"
+class_name = "OnboardingSessionCoordinator"
+
 [[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
@@ -124,6 +128,10 @@ new_sqlite_classes = ["InferenceAdmissionGate"]
 [[migrations]]
 tag = "anonymous-chat-gates-v1"
 new_sqlite_classes = ["AnonymousChatGate"]
+
+[[migrations]]
+tag = "onboarding-session-coordinator-v1"
+new_sqlite_classes = ["OnboardingSessionCoordinator"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -506,6 +514,10 @@ class_name = "InferenceAdmissionGate"
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
+[[env.staging.durable_objects.bindings]]
+name = "ONBOARDING_SESSIONS"
+class_name = "OnboardingSessionCoordinator"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -696,6 +708,10 @@ class_name = "InferenceAdmissionGate"
 [[env.production.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
+
+[[env.production.durable_objects.bindings]]
+name = "ONBOARDING_SESSIONS"
+class_name = "OnboardingSessionCoordinator"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

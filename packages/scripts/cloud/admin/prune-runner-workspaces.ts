@@ -41,6 +41,8 @@ export interface WorkspacePlan {
 const DEFAULT_ROOT = "/opt/actions-runners";
 const DEFAULT_MIN_AGE_HOURS = 6;
 const MIN_AGE_HOURS_FLOOR = 1;
+/** Flags that take a value. Anything else is rejected rather than ignored. */
+const VALUE_FLAGS = new Set(["root", "min-age-hours"]);
 
 export function parseRunnerWorkspacePruneArgs(
   argv: string[],
@@ -62,13 +64,24 @@ export function parseRunnerWorkspacePruneArgs(
     }
     if (arg.startsWith("--")) {
       const key = arg.slice(2);
+      // Reject unknown flags instead of silently dropping them. A silently
+      // ignored flag reads as "configured" at the call site while the tool
+      // runs on defaults — e.g. a scheduled unit passing `--min-age 19` kept
+      // pruning at the 6h default with no diagnostic.
+      if (!VALUE_FLAGS.has(key)) {
+        throw new Error(
+          `Unknown flag --${key}. Supported: ${[...VALUE_FLAGS].map((f) => `--${f}`).join(", ")}, --dry-run, --allow-active`,
+        );
+      }
       const value = argv[i + 1];
       if (value === undefined || value.startsWith("--")) {
         throw new Error(`Flag --${key} requires a value`);
       }
       flags.set(key, value);
       i++;
+      continue;
     }
+    throw new Error(`Unexpected argument: ${arg}`);
   }
 
   const rawRoot =

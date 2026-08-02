@@ -491,12 +491,14 @@ async function handleSearch(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const query = getQuery(params);
 	if (!query) {
-		const text = "What would you like me to search for in documents?";
-		await emit(callback, { text });
+		// Planner-facing only: canned clarifications double-message next to the
+		// evaluator's in-voice reply. The evaluator owns asking the user, in voice.
+		const text =
+			"No search query found in the request; ask the user what they'd like to search for in documents.";
 		return result(false, text, "search", {
 			values: { error: "missing_query" },
 		});
@@ -524,7 +526,8 @@ async function handleSearch(
 			: `Found ${visible.length} document fragment(s) for "${query}":\n\n${visible
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`;
-	await emit(callback, { text, actions: ["DOCUMENT"] });
+	// No visible callback: fragments are intermediate retrieval data for the
+	// planner to synthesize into the answer, not the answer itself.
 	return result(true, text, "search", {
 		values: { query, results: visible },
 		data: { query, results: visible },
@@ -535,24 +538,24 @@ async function handleRead(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
-	callback?: HandlerCallback,
+	_callback?: HandlerCallback,
 ): Promise<ActionResult> {
 	const documentId = getDocumentId(params, message);
 	if (!documentId) {
-		const text = "I need a valid document id to read.";
-		await emit(callback, { text });
+		const text =
+			"No valid document id found in the request; ask the user which document to read.";
 		return result(false, text, "read", { values: { error: "invalid_id" } });
 	}
 
 	const document = await service.getDocumentById(documentId, message);
 	if (!document) {
-		const text = `Document ${documentId} not found.`;
-		await emit(callback, { text });
+		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
 
+	// No visible callback: dumping the raw document text as a chat bubble is
+	// not the answer — the planner presents the content in voice.
 	const text = document.content.text ?? "";
-	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "read", {
 		values: { documentId, textLength: text.length },
 		data: { document },
@@ -568,8 +571,8 @@ async function handleWrite(
 ): Promise<ActionResult> {
 	const text = getCleanWriteText(params);
 	if (!text) {
-		const response = "I need non-empty text to create a document.";
-		await emit(callback, { text: response });
+		const response =
+			"No document text found in the request; ask the user what the document should contain.";
 		return result(false, response, "write", {
 			values: { error: "missing_text" },
 		});
@@ -584,7 +587,6 @@ async function handleWrite(
 		scopedToEntityId,
 	);
 	if (accessError) {
-		await emit(callback, { text: accessError });
 		return result(false, accessError, "write", {
 			values: { error: "forbidden" },
 		});
@@ -623,9 +625,15 @@ async function handleWrite(
 		},
 	});
 
-	const response = `Created document "${title}" with ${stored.fragmentCount} fragment(s). Document id: ${stored.clientDocumentId}.`;
+	// Humanized single delivery: the save confirmation is the complete answer,
+	// so verified + turnComplete keep the evaluator from double-messaging. The
+	// UUID and fragment count stay planner-facing in values/data.
+	const response = `Saved "${title}" to your documents.`;
 	await emit(callback, { text: response, actions: ["DOCUMENT"] });
 	return result(true, response, "write", {
+		userFacingText: response,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -645,13 +653,13 @@ async function handleEdit(
 	const documentId = getDocumentId(params, message);
 	const text = typeof params.text === "string" ? params.text : params.content;
 	if (!documentId) {
-		const response = "I need a valid document id to edit.";
-		await emit(callback, { text: response });
+		const response =
+			"No valid document id found in the request; ask the user which document to edit.";
 		return result(false, response, "edit", { values: { error: "invalid_id" } });
 	}
 	if (typeof text !== "string" || !text.trim()) {
-		const response = "I need non-empty text to update the document.";
-		await emit(callback, { text: response });
+		const response =
+			"No replacement text found in the request; ask the user what the document should say.";
 		return result(false, response, "edit", {
 			values: { error: "missing_text" },
 		});
@@ -662,9 +670,14 @@ async function handleEdit(
 		content: text.trim(),
 		message,
 	});
-	const response = `Updated document ${updated.documentId}. Re-fragmented into ${updated.fragmentCount} piece(s).`;
+	// Humanized single delivery: the update confirmation is the complete
+	// answer; the UUID and fragment count stay planner-facing in values.
+	const response = "Updated the document.";
 	await emit(callback, { text: response, actions: ["DOCUMENT"] });
 	return result(true, response, "edit", {
+		userFacingText: response,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			documentId: updated.documentId,
 			fragmentCount: updated.fragmentCount,
@@ -680,8 +693,8 @@ async function handleDelete(
 ): Promise<ActionResult> {
 	const documentId = getDocumentId(params, message);
 	if (!documentId) {
-		const text = "I need a valid document id to delete.";
-		await emit(callback, { text });
+		const text =
+			"No valid document id found in the request; ask the user which document to delete.";
 		return result(false, text, "delete", { values: { error: "invalid_id" } });
 	}
 
@@ -697,24 +710,29 @@ async function handleDelete(
 		const code = error instanceof ElizaError ? error.code : undefined;
 		if (code === "DOCUMENT_MUTATION_FORBIDDEN") {
 			const text =
-				"Only the owner can edit or delete global and owner-private documents.";
-			await emit(callback, { text });
+				"Only the owner can edit or delete global and owner-private documents; tell the user this one is off limits.";
 			return result(false, text, "delete", {
 				values: { error: "forbidden", documentId },
 			});
 		}
 		if (code === "DOCUMENT_NOT_FOUND") {
-			const text = `No document ${documentId} to delete.`;
-			await emit(callback, { text });
+			const text = `Document ${documentId} was not found; tell the user there's nothing to delete.`;
 			return result(false, text, "delete", {
 				values: { error: "not_found", documentId },
 			});
 		}
 		throw error;
 	}
-	const text = `Deleted document ${documentId}.`;
+	// Humanized single delivery: the delete confirmation is the complete
+	// answer; the UUID stays planner-facing in values.
+	const text = "Deleted the document.";
 	await emit(callback, { text, actions: ["DOCUMENT"] });
-	return result(true, text, "delete", { values: { documentId } });
+	return result(true, text, "delete", {
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
+		values: { documentId },
+	});
 }
 
 function parseTimestampParam(value: unknown): number | undefined {
@@ -823,7 +841,12 @@ async function handleList(
 			: {}),
 	};
 	await emit(callback, { text, actions: ["DOCUMENT"] });
+	// The listing IS the complete answer: verified + turnComplete make the
+	// callback the sole delivery instead of double-messaging with the evaluator.
 	return result(true, text, "list", {
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: listData,
 		data: listData,
 	});
@@ -840,8 +863,8 @@ async function handleImportFile(
 	const content =
 		typeof params.content === "string" ? params.content.trim() : "";
 	if (!filePath && !content) {
-		const text = "I need a file path or text content to import.";
-		await emit(callback, { text });
+		const text =
+			"No file path or text content found in the request; ask the user what to import.";
 		return result(false, text, "import_file", {
 			values: { error: "missing_source" },
 		});
@@ -856,7 +879,6 @@ async function handleImportFile(
 		scopedToEntityId,
 	);
 	if (accessError) {
-		await emit(callback, { text: accessError });
 		return result(false, accessError, "import_file", {
 			values: { error: "forbidden" },
 		});
@@ -871,8 +893,7 @@ async function handleImportFile(
 	);
 	if (filePath) {
 		if (!fs.existsSync(filePath)) {
-			const text = `I couldn't find the file at ${filePath}.`;
-			await emit(callback, { text });
+			const text = `No file exists at ${filePath}; tell the user it couldn't be found.`;
 			return result(false, text, "import_file", {
 				values: { error: "not_found" },
 			});
@@ -887,9 +908,14 @@ async function handleImportFile(
 			},
 		});
 		const filename = path.basename(filePath);
-		const text = `Imported "${filename}" with ${stored.fragmentCount} fragment(s). Document id: ${stored.clientDocumentId}.`;
+		// Humanized single delivery: the import confirmation is the complete
+		// answer; the UUID and fragment count stay planner-facing in values.
+		const text = `Imported "${filename}" into your documents.`;
 		await emit(callback, { text, actions: ["DOCUMENT"] });
 		return result(true, text, "import_file", {
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			values: {
 				documentId: stored.clientDocumentId,
 				fragmentCount: stored.fragmentCount,
@@ -922,9 +948,12 @@ async function handleImportFile(
 			textBacked: true,
 		},
 	});
-	const text = `Imported "${title}" with ${stored.fragmentCount} fragment(s). Document id: ${stored.clientDocumentId}.`;
+	const text = `Imported "${title}" into your documents.`;
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "import_file", {
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -943,8 +972,8 @@ async function handleImportUrl(
 ): Promise<ActionResult> {
 	const url = getUrl(params, message);
 	if (!url) {
-		const text = "I need a URL to import.";
-		await emit(callback, { text });
+		const text =
+			"No URL found in the request; ask the user which URL to import.";
 		return result(false, text, "import_url", {
 			values: { error: "missing_url" },
 		});
@@ -962,7 +991,6 @@ async function handleImportUrl(
 		scopedToEntityId,
 	);
 	if (accessError) {
-		await emit(callback, { text: accessError });
 		return result(false, accessError, "import_url", {
 			values: { error: "forbidden" },
 		});
@@ -1003,9 +1031,14 @@ async function handleImportUrl(
 			: fetched.contentType === "html"
 				? "page"
 				: "document";
-	const text = `Imported ${label} from ${url}. Stored as ${fetched.filename} with ${stored.fragmentCount} fragment(s).`;
+	// Humanized single delivery: the import confirmation is the complete
+	// answer; filename and fragment count stay planner-facing in values.
+	const text = `Imported the ${label} from ${url} into your documents.`;
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "import_url", {
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			documentId: stored.clientDocumentId,
 			fragmentCount: stored.fragmentCount,
@@ -1214,8 +1247,10 @@ export const documentAction: Action = {
 		);
 
 		if (!service) {
-			const text = "Documents service not available.";
-			await emit(callback, { text });
+			// Planner-facing only: infrastructure-speak next to the evaluator's
+			// reply was a live double message. The evaluator explains in voice.
+			const text =
+				"The documents service is not available; tell the user documents can't be used right now.";
 			return result(false, text, "search", {
 				values: { error: "service_unavailable" },
 			});
@@ -1233,7 +1268,6 @@ export const documentAction: Action = {
 			subactions: DOCUMENT_SUBACTIONS,
 		});
 		if (!resolved.ok) {
-			await emit(callback, { text: resolved.clarification });
 			return result(false, resolved.clarification, "search", {
 				values: { error: "missing_sub_action", missing: resolved.missing },
 			});
@@ -1262,10 +1296,10 @@ export const documentAction: Action = {
 			}
 		} catch (error) {
 			logger.error({ error }, `Error in DOCUMENT ${subaction} action`);
-			const text = `I couldn't ${subaction.replace("_", " ")} documents: ${
+			// Planner-facing only: internal exception text must not leak to chat.
+			const text = `The documents ${subaction.replace("_", " ")} operation failed: ${
 				error instanceof Error ? error.message : String(error)
 			}`;
-			await emit(callback, { text });
 			return result(false, text, subaction, {
 				error: error instanceof Error ? error.message : String(error),
 				values: {

@@ -71,7 +71,7 @@ export const probePluginConfigRequirementsAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const pluginName =
@@ -111,14 +111,12 @@ export const probePluginConfigRequirementsAction: Action = {
 			`[ProbePluginConfigRequirements] plugin=${pluginName} required=${requirements.required.length} missing=${requirements.missing.length}`,
 		);
 
+		// Planner-facing only: raw env-key names are probe input for the planner,
+		// not the user's answer.
 		const text =
 			requirements.missing.length === 0
 				? `Plugin '${pluginName}' has all required config keys.`
 				: `Plugin '${pluginName}' is missing: ${requirements.missing.join(", ")}.`;
-
-		if (callback) {
-			await callback({ text, action: "PROBE_PLUGIN_CONFIG_REQUIREMENTS" });
-		}
 
 		return {
 			success: true,

@@ -16,7 +16,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
-import { useRoutableViews } from "../../hooks/useAvailableViews";
+import { viewToEntry } from "../../hooks/view-catalog";
 import {
   getShellSurface,
   resetShellSurfaceForTests,
@@ -26,8 +26,26 @@ import { runAnimationFramesImmediately } from "../../testing/run-animation-frame
 import { LauncherSurface } from "../pages/LauncherSurface";
 import { HomeLauncherSurface } from "./HomeLauncherSurface";
 
-vi.mock("../../hooks/useAvailableViews", () => ({
-  useRoutableViews: vi.fn(),
+const { useViewCatalogMock } = vi.hoisted(() => ({
+  useViewCatalogMock: vi.fn(),
+}));
+
+vi.mock("../../hooks/useViewCatalog", () => ({
+  useViewCatalog: useViewCatalogMock,
+}));
+vi.mock("../../api", () => ({
+  client: { getBaseUrl: () => "http://localhost:31337" },
+}));
+vi.mock("../../api/app-shell-capabilities", () => ({
+  isLimitedCloudAgentApiResourceUrl: () => false,
+  supportsFullAppShellRoutes: () => true,
+}));
+vi.mock("../../utils/openExternalUrl", () => ({
+  openExternalUrl: vi.fn(),
+}));
+vi.mock("../../navigation", () => ({
+  isAospShellEnabled: () => false,
+  LAUNCHER_AOSP_ONLY_VIEW_IDS: ["phone"],
 }));
 vi.mock("../../state/useViewKinds", () => ({
   useEnabledViewKinds: vi.fn(),
@@ -40,7 +58,6 @@ vi.mock(import("../../platform/platform-guards"), async (importOriginal) => {
   return { ...actual, getActiveViewModality: () => "gui" as const };
 });
 
-const useRoutableViewsMock = vi.mocked(useRoutableViews);
 const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);
 
 function view(
@@ -88,11 +105,12 @@ beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   useEnabledViewKindsMock.mockReturnValue({ developer: true, preview: true });
-  useRoutableViewsMock.mockReturnValue({
-    views: ALL_VIEWS,
+  useViewCatalogMock.mockReturnValue({
+    entries: ALL_VIEWS.map(viewToEntry),
     loading: false,
     error: null,
     refresh: vi.fn(),
+    get: vi.fn(),
   });
 });
 

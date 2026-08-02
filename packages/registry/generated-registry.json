@@ -227,6 +227,82 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@rati-osf/plugin-ruby-high": {
+      "git": {
+        "repo": "cenetex/plugin-ruby-high",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@rati-osf/plugin-ruby-high",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.5"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
+      "homepage": "https://ruby-high.ai",
+      "topics": [
+        "ruby-high",
+        "education",
+        "agents",
+        "game"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "app",
+      "registryKind": "app",
+      "directory": null,
+      "app": {
+        "displayName": "Ruby High",
+        "category": "education",
+        "launchType": "connect",
+        "launchUrl": null,
+        "icon": "https://unpkg.com/@rati-osf/plugin-ruby-high@0.1.5/images/ruby-high-app-icon.png",
+        "heroImage": "https://unpkg.com/@rati-osf/plugin-ruby-high@0.1.5/images/ruby-eliza-plugin-launch.jpg",
+        "capabilities": [
+          "education",
+          "agent-gameplay",
+          "bounded-autonomy",
+          "spectate-and-steer"
+        ],
+        "runtimePlugin": "@rati-osf/plugin-ruby-high",
+        "viewer": {
+          "url": "/ruby-high/viewer",
+          "postMessageAuth": false,
+          "sandbox": "allow-scripts allow-same-origin allow-popups"
+        },
+        "session": {
+          "mode": "external",
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
+        },
+        "visibleInAppStore": true,
+        "catalogSection": "other",
+        "minPlayers": null,
+        "maxPlayers": null
+      }
+    },
     "@seekdaseek/plugin-agentfeed": {
       "git": {
         "repo": "seekdaseek/plugin-agentfeed",

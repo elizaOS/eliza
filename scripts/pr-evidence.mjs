@@ -350,8 +350,42 @@ export function patchRow(body, id, line) {
   );
 }
 
-async function runGate(pr, body) {
-  const { evaluatePrEvidence } = await import(
+export function patchEvidenceHead(body, headSha) {
+  if (!/^[a-f0-9]{40}$/i.test(String(headSha ?? ""))) {
+    throw new Error("evidence head must be a full 40-character commit SHA");
+  }
+  const marker = `<!-- evidence-head:${headSha.toLowerCase()} -->`;
+  const pattern = /<!--\s*evidence-head:[^>]*-->/i;
+  if (pattern.test(body)) return body.replace(pattern, marker);
+  const gateHeading = body.indexOf("# Evidence Gate");
+  if (gateHeading === -1) return `${body.trimEnd()}\n\n${marker}\n`;
+  const headingEnd = body.indexOf("\n", gateHeading);
+  return `${body.slice(0, headingEnd + 1)}\n${marker}\n${body.slice(headingEnd + 1)}`;
+}
+
+function readPrHead(pr) {
+  const head = gh([
+    "pr",
+    "view",
+    String(pr),
+    "--json",
+    "headRefOid",
+    "-q",
+    ".headRefOid",
+  ]).trim();
+  if (!/^[a-f0-9]{40}$/i.test(head)) {
+    throw new Error(`PR #${pr} did not return a full head SHA`);
+  }
+  return head.toLowerCase();
+}
+
+async function runGate(pr, body, headSha) {
+  const {
+    artifactVerificationRows,
+    evaluatePrEvidence,
+    hasMatchingEvidenceHead,
+    verifyReferencedArtifacts,
+  } = await import(
     pathToFileURL(join(import.meta.dirname, "check-pr-evidence.mjs")).href
   );
   const labels = gh([
@@ -383,17 +417,30 @@ async function runGate(pr, body) {
   ])
     .split("\n")
     .filter(Boolean);
-  const { ok, findings } = evaluatePrEvidence(body, undefined, {
+  const evaluation = evaluatePrEvidence(body, undefined, {
     labels,
     changedFiles,
     addedFiles,
   });
-  for (const f of findings) {
+  const verification = await verifyReferencedArtifacts(
+    body,
+    artifactVerificationRows(body),
+  );
+  const headOk = hasMatchingEvidenceHead(body, headSha);
+  console.log(
+    `  [${headOk ? "ok  " : "FAIL"}] evidence-head: ${headOk ? "matches current PR head" : "does not match current PR head"}`,
+  );
+  for (const f of evaluation.findings) {
     console.log(
       `  [${f.status === "ok" ? "ok  " : "FAIL"}] ${f.id}: ${f.status}`,
     );
   }
-  return ok;
+  for (const finding of verification.findings) {
+    console.log(
+      `  [${finding.status === "ok" ? "ok  " : "FAIL"}] ${finding.id} artifact: ${finding.status} — ${finding.url}`,
+    );
+  }
+  return evaluation.ok && verification.ok && headOk;
 }
 
 async function rows(pr, args) {
@@ -431,13 +478,17 @@ async function rows(pr, args) {
     }
   }
 
-  let body = gh(["pr", "view", String(pr), "--json", "body", "-q", ".body"]);
+  const headSha = readPrHead(pr);
+  let body = patchEvidenceHead(
+    gh(["pr", "view", String(pr), "--json", "body", "-q", ".body"]),
+    headSha,
+  );
   for (const { id, value } of rowArgs) {
     body = patchRow(body, id, renderRow(id, value));
   }
 
   console.log("\nLocal gate verdict on the new body:");
-  const ok = await runGate(pr, body);
+  const ok = await runGate(pr, body, headSha);
   if (dryRun) {
     console.log(
       `\n--dry-run: PR #${pr} not edited. Gate ${ok ? "would PASS" : "would FAIL"}.`,
@@ -454,8 +505,9 @@ async function rows(pr, args) {
 }
 
 async function verify(pr) {
+  const headSha = readPrHead(pr);
   const body = gh(["pr", "view", String(pr), "--json", "body", "-q", ".body"]);
-  const ok = await runGate(pr, body);
+  const ok = await runGate(pr, body, headSha);
   console.log(ok ? "\nEvidence gate PASSES." : "\nEvidence gate FAILS.");
   if (!ok) process.exit(1);
 }

@@ -72,7 +72,7 @@ test("browser back and forward restore hash and query driven route views", async
   test.setTimeout(90_000);
   const errors = collectPageErrors(page);
 
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/downloads", { waitUntil: "domcontentloaded" });
   await expect(
     page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
   ).toBeVisible();
@@ -94,7 +94,7 @@ test("browser back and forward restore hash and query driven route views", async
   ).toBeVisible();
 
   await page.goBack({ waitUntil: "domcontentloaded" });
-  await expect(page).toHaveURL(/\/#download$/);
+  await expect(page).toHaveURL(/\/downloads#download$/);
   await expect(
     page.getByRole("heading", { name: /^Install the app\.$/ }),
   ).toBeVisible();

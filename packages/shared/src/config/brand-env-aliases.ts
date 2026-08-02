@@ -21,10 +21,6 @@ export const BRAND_ENV_ALIAS_DEFINITIONS = [
     elizaKey: "ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT",
   },
   {
-    brandSuffix: "CHAT_GENERATION_TIMEOUT_MS",
-    elizaKey: "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
-  },
-  {
     brandSuffix: "SKIP_LOCAL_PLUGIN_ROLES",
     elizaKey: "ELIZA_SKIP_LOCAL_PLUGIN_ROLES",
   },

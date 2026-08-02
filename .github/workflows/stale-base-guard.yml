@@ -9,14 +9,11 @@
 # #11419; this guard is the final acceptance criterion of #11376.
 #
 # What runs (packages/scripts/stale-base-guard.mjs, plumbing-only, seconds):
-#   1. Silent-revert detection — fail when the PR sets a file byte-identically
+#   Silent-revert detection — fail when the PR sets a file byte-identically
 #      back to an older blob from the target branch's history, discarding
 #      newer merged work. Re-land/heal PRs (restoring work a clobber reverted)
 #      pass; deletion-only findings are non-blocking notices unless a
 #      modification-revert corroborates the stale-tree signature.
-#   2. Staleness backstop — fail when the merge-base is > 200 first-parent
-#      commits or > 72h behind the target tip.
-#
 # Override: apply the `stale-base-ack` label for a deliberate revert — the
 # guard then passes with loud warnings instead of failing.
 #
@@ -60,6 +57,7 @@ jobs:
           fetch-depth: 1500
           filter: blob:none
           submodules: false
+          persist-credentials: false
 
       # The guard steps below invoke `node` directly, but self-hosted
       # (hetzner-robot) runners are not guaranteed to have Node on PATH, so
@@ -99,7 +97,7 @@ jobs:
       - name: Self-test the guard on fixture repos
         run: node "$RUNNER_TEMP/stale-base-guard.self-test.mjs"
 
-      - name: Detect silent reverts + stale base
+      - name: Detect content-level silent reverts
         env:
           # The detector is plumbing-only; hard-disable promisor blob fetches
           # so an accidental content read fails loudly instead of hitting the
@@ -111,8 +109,6 @@ jobs:
             --base "refs/remotes/origin/${BASE_REF}" \
             --head "$HEAD_SHA" \
             --window 1200 \
-            --max-behind-commits 200 \
-            --max-behind-hours 72 \
             ${ACK:+--ack} \
             --github \
             --summary "$GITHUB_STEP_SUMMARY"

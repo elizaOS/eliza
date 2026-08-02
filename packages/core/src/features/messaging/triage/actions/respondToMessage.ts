@@ -166,16 +166,22 @@ export const respondToMessageAction: Action = {
 						externalId: r.sentExternalId ?? `pending:${r.draftId}`,
 					})),
 				);
-				const text = `Reply drafted on ${record.source} and pending approval (request ${enq.requestId}).`;
+				const text = `I've drafted the reply on ${record.source} — it's waiting for approval before it goes out.`;
 				logger.info(
 					`[RespondToMessage] policy hold: draftId=${record.draftId} requestId=${enq.requestId}`,
 				);
 				if (callback) {
 					await callback({ text, action: "MESSAGE" });
 				}
+				// The hold notice is a completed user-facing ask: verified +
+				// turnComplete make it the sole delivery; the pending state and
+				// request id stay machine-readable in data.
 				return {
-					success: false,
-					text,
+					success: true,
+					text: `Reply drafted on ${record.source} and pending approval (request ${enq.requestId}).`,
+					userFacingText: text,
+					verifiedUserFacing: true,
+					turnComplete: true,
 					continueChain: false,
 					data: {
 						requiresConfirmation: true,
@@ -198,9 +204,14 @@ export const respondToMessageAction: Action = {
 		if (callback) {
 			await callback({ text, action: "MESSAGE" });
 		}
+		// The sent confirmation is the complete answer to a single-operation
+		// turn: verified + turnComplete make it the sole delivery.
 		return {
 			success: true,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			data: {
 				draftId: sent.draftId,
 				source: sent.source,

@@ -24,9 +24,12 @@ import ts from "typescript";
 
 /**
  * One GUI declaration per shipped plugin view: `[id, label, pluginDirName,
- * path, componentExport]`. Every entry must pass `checkSmokeViewParity` — its
- * plugin directory exists and its source both declares the `id` and exports the
- * `componentExport`. Do NOT add a view here for a plugin that no longer exists.
+ * path, componentExport, viewType?, surface?]`. Every entry must pass
+ * `checkSmokeViewParity` — its plugin directory exists and its source both
+ * declares the `id` and exports the `componentExport`. Surface grants are
+ * explicit because omitting one makes the smoke registry less capable than the
+ * production manifest and can turn a valid bridge action into a false denial.
+ * Do NOT add a view here for a plugin that no longer exists.
  */
 export const smokeViewDeclarations = [
   ["birdclaw", "Birdclaw", "plugin-birdclaw", "/birdclaw", "BirdclawView"],
@@ -80,7 +83,15 @@ export const smokeViewDeclarations = [
     "/vector-browser",
     "VectorBrowserView",
   ],
-  ["feed", "Feed", "plugin-feed", "/feed", "FeedView"],
+  [
+    "feed",
+    "Feed",
+    "plugin-feed",
+    "/feed",
+    "FeedView",
+    "gui",
+    { capabilities: ["agent-surface"] },
+  ],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   [
     "screenshare",
@@ -102,6 +113,8 @@ export const smokeViewDeclarations = [
     "plugin-task-coordinator",
     "/orchestrator",
     "OrchestratorView",
+    "gui",
+    { capabilities: ["agent-surface"] },
   ],
   [
     "trajectory-logger",

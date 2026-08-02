@@ -75,18 +75,20 @@ async function formatRelationships(
 		),
 	);
 
-	// Fetch all required entities in a single batch operation
-	const entities = await Promise.all(
-		uniqueEntityIds.map((id) => runtime.getEntityById(id)),
-	);
+	// Relationship fan-out can contain dozens of counterparts. One adapter
+	// query keeps provider latency constant instead of paying one SQL round-trip
+	// per entity.
+	const entities =
+		uniqueEntityIds.length > 0
+			? await runtime.getEntitiesByIds(uniqueEntityIds)
+			: [];
 
 	// Create a lookup map for efficient access
-	const entityMap = new Map<string, Entity | null>();
-	entities.forEach((entity, index) => {
-		if (entity) {
-			entityMap.set(uniqueEntityIds[index], entity);
-		}
-	});
+	const entityMap = new Map<string, Entity>(
+		entities.flatMap((entity) =>
+			entity.id === undefined ? [] : [[entity.id, entity] as const],
+		),
+	);
 
 	const formatMetadata = (metadata?: Metadata) => {
 		if (!metadata) return "";
@@ -173,6 +175,7 @@ const relationshipsProvider: Provider = {
 	contextGate: { anyOf: ["contacts", "memory"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	timeoutMs: 8_000,
 	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {

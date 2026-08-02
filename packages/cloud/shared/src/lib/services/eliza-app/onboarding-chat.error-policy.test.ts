@@ -10,7 +10,6 @@ const sessionCache = new Map<string, unknown>();
 const ensureElizaAppProvisioning = mock();
 const getElizaAppProvisioningStatus = mock();
 const linkPhoneToUser = mock();
-const generateText = mock();
 const launchManagedElizaAgent = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
@@ -27,15 +26,6 @@ mock.module("../../cache/client", () => ({
 mock.module("../../runtime/cloud-bindings", () => ({
   ...REAL_CLOUD_BINDINGS,
   getCloudAwareEnv: mock(() => cloudEnv),
-}));
-
-mock.module("@ai-sdk/openai", () => ({
-  createOpenAI: mock(() => ({ chat: mock(() => "mock-model") })),
-  openai: mock(() => "mock-openai-model"),
-}));
-
-mock.module("ai", () => ({
-  generateText,
 }));
 
 mock.module("../eliza-managed-launch", () => ({
@@ -81,7 +71,6 @@ describe("onboarding-chat phone-link error policy", () => {
     ensureElizaAppProvisioning.mockReset();
     getElizaAppProvisioningStatus.mockReset();
     linkPhoneToUser.mockReset();
-    generateText.mockReset();
     launchManagedElizaAgent.mockReset();
     ensureElizaAppProvisioning.mockResolvedValue(provisioning());
     getElizaAppProvisioningStatus.mockResolvedValue(provisioning());

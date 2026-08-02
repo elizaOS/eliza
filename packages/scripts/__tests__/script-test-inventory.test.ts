@@ -411,6 +411,7 @@ jobs:
       "--config=packages/scripts/bunfig.script-tests.toml",
       "test",
     ]);
+    expect(command).toContain("--parallel=4");
     expect(command.indexOf("--reporter=junit")).toBeLessThan(
       command.indexOf("packages/scripts/example.test.ts"),
     );

@@ -176,6 +176,31 @@ describe("withModelUsageCapture", () => {
     expect(captured.usage).toBeNull();
   });
 
+  it("does not mislabel a logical model slot as a concrete billable model", async () => {
+    const runtime = createRuntime();
+
+    const captured = await withModelUsageCapture(runtime, async () => {
+      await runtime.emitEvent(EventType.MODEL_USED, {
+        runtime,
+        provider: "cerebras",
+        type: ModelType.RESPONSE_HANDLER,
+        tokens: {
+          prompt: 10,
+          completion: 2,
+          total: 12,
+        },
+      });
+    });
+
+    expect(captured.usage).toMatchObject({
+      provider: "cerebras",
+      promptTokens: 10,
+      completionTokens: 2,
+      llmCalls: 1,
+    });
+    expect(captured.usage).not.toHaveProperty("model");
+  });
+
   it("propagates request failures and leaves the next capture clean", async () => {
     const runtime = createRuntime();
 

@@ -20,10 +20,10 @@ const FONT = "'Poppins', Arial, system-ui, sans-serif";
 // the theme background is white/black (`:root`/`.dark`) or the brand orange
 // #ff8a24 (`.theme-app`), none of which is the home shader base — so a
 // dedicated launch token is used. Whitelabel seam: hosts override
-// `--launch-bg` / `--accent-foreground`; the literal fallbacks are the
+// `--launch-bg` / `--launch-foreground`; the literal fallbacks are the
 // elizaOS defaults.
 const LAUNCH_SURFACE =
-  "bg-[var(--launch-bg,#000000)] text-[var(--accent-foreground,#fff)]";
+  "bg-[var(--launch-bg,#000000)] text-[var(--launch-foreground,#fdfaf7)]";
 
 // A fast, already-cached boot flips the view through the loading state for only
 // a few milliseconds before the app is ready. Painting the full-screen orange

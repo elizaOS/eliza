@@ -75,7 +75,6 @@ import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
-import { NotificationBanners } from "./components/shell/NotificationBanners";
 import {
   NotificationsDataBoot,
   NotificationsShellBoot,
@@ -3119,14 +3118,11 @@ function AppContent() {
             when not eligible; re-triggerable from Settings → Permissions. */}
         <PermissionPrimingOverlay />
         {/* Headless notification wiring: boots the notification store (hydrate
-            + live stream), routes interrupt toasts through ActionNotice, and
-            sends every "open notifications" entry point (menu/tray/deep-link)
-            to the dashboard, where NotificationsHomeCenter is the one
-            notification surface. Renders null. */}
+            + live stream) and sends every "open notifications" entry point
+            (menu/tray/deep-link) to the dashboard, where
+            NotificationsHomeCenter is the one in-app notification surface.
+            Native platforms may still raise their OS notification. */}
         <NotificationsShellBoot />
-        {/* Top-of-screen glass banners for live notification arrivals (iOS/
-            Android heads-up idiom). Renders only while the queue is non-empty. */}
-        <NotificationBanners />
         {/* Tiny dismissible build stamp (bottom-left) so testers can verify
             PWA cache freshness at a glance. Best-effort: hidden when
             /build-info.json is absent (production builds without the

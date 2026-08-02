@@ -83,7 +83,7 @@ export const listInboxAction: Action = {
 		_message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	): Promise<ActionResult> => {
 		try {
 			const params = parseListInboxParams(options);
@@ -114,14 +114,13 @@ export const listInboxAction: Action = {
 				`[ListInbox] returning ${trimmed.length} of ${unread.length} unread message(s)`,
 			);
 
+			// No visible callback: the bare count is tool-speak next to the
+			// evaluator's actual inbox rundown. The summary stays planner-facing
+			// in the result text with the messages in data.
 			const text =
 				trimmed.length === 0
 					? "No unread messages across connected platforms."
-					: `You have ${unread.length} unread across ${new Set(unread.map((m) => m.source)).size} platform(s).`;
-
-			if (callback) {
-				await callback({ text, action: "MESSAGE" });
-			}
+					: `${unread.length} unread message(s) across ${new Set(unread.map((m) => m.source)).size} platform(s); details in data.messages.`;
 
 			return {
 				success: true,

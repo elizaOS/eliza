@@ -129,7 +129,7 @@ function getDiscordBotApplicationId(): string {
   return getDiscordClientId();
 }
 
-const MONO = "Poppins, system-ui, sans-serif";
+const MONO = "Geist, system-ui, sans-serif";
 
 function ProvisioningChatStep({
   onboardingSessionId,
@@ -146,8 +146,9 @@ function ProvisioningChatStep({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (messages.length === 0 && !isLoading) return;
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  });
+  }, [messages.length, isLoading]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -919,7 +920,7 @@ export default function GetStartedPage() {
     return (
       <main
         className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
           {t("homepage_eliza.common.loading", { defaultValue: "Loading…" })}
@@ -940,7 +941,7 @@ export default function GetStartedPage() {
     return (
       <main
         className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
           {t("homepage_eliza.common.redirecting", {
@@ -955,7 +956,7 @@ export default function GetStartedPage() {
     return (
       <main
         className="theme-app brand-section brand-section--orange min-h-screen flex flex-col items-center justify-center px-4"
-        style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
+        style={{ fontFamily: "Geist, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
           {t("homepage_eliza.getStarted.redirectingToDiscord", {

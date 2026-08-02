@@ -1420,7 +1420,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           });
           await manageSources.click();
           await page
-            .getByText("New calendars are included automatically")
+            .getByText("New calendars join automatically")
             .waitFor({ state: "visible", timeout: 5_000 });
           paint = await readPaint();
         }

@@ -19,6 +19,7 @@ import { serveBlobHostRequest } from "./blob-host";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
+export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;

@@ -6,7 +6,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { ViewEntry } from "../../hooks/view-catalog";
+import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
+import { mergeViewCatalog, type ViewEntry } from "../../hooks/view-catalog";
 import {
   getInternalToolAppDescriptors,
   getInternalToolAppTargetTab,
@@ -39,6 +40,68 @@ function ids(page: ViewEntry[]): string[] {
 }
 
 const APPS_ONLY = { developer: false, preview: false } as const;
+
+function registryEntry(
+  id: string,
+  over: Partial<ViewRegistryEntry> = {},
+): ViewRegistryEntry {
+  return {
+    id,
+    label: id,
+    available: true,
+    pluginName: `@elizaos/plugin-${id}`,
+    viewType: "gui",
+    path: `/${id}`,
+    ...over,
+  };
+}
+
+describe("routable launcher catalog pipeline", () => {
+  it("surfaces shell destinations without leaking manager-hidden or curated-out views", () => {
+    const merged = mergeViewCatalog({
+      views: [
+        registryEntry("settings", {
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+        registryEntry("my-apps", {
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+        registryEntry("views", {
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+        registryEntry("database", {
+          builtin: true,
+          pluginName: "@elizaos/builtin",
+          visibleInManager: false,
+        }),
+        registryEntry("hidden-plugin", { visibleInManager: false }),
+        registryEntry("wallet", { visibleInManager: true }),
+      ],
+      catalog: [],
+      installed: [],
+      activeModality: "gui",
+      enabledKinds: APPS_ONLY,
+      visibilityScope: "routable",
+    });
+
+    const page = curateLauncherPages(merged, {
+      isAosp: false,
+      enabledKinds: APPS_ONLY,
+      cloudActive: false,
+    });
+
+    expect(ids(page)).toEqual(["settings", "wallet", "my-apps"]);
+    expect(ids(page)).not.toContain("views");
+    expect(ids(page)).not.toContain("database");
+    expect(ids(page)).not.toContain("hidden-plugin");
+  });
+});
 
 describe("curateLauncherPages", () => {
   it("puts apps then developer tools on ONE page when Developer Mode is on", () => {

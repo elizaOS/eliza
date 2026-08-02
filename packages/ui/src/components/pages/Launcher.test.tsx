@@ -119,6 +119,29 @@ describe("Launcher", () => {
     ).toBe("");
   });
 
+  it("compacts long unbroken labels without shrinking ordinary or wrapped labels", () => {
+    render(
+      <Launcher
+        entries={[
+          entry("automations", "Automations"),
+          entry("settings", "Settings"),
+          entry("memory", "Memory Viewer"),
+        ]}
+        onLaunch={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByText("Automations").getAttribute("data-compact-label"),
+    ).toBe("true");
+    expect(
+      screen.getByText("Settings").getAttribute("data-compact-label"),
+    ).toBeNull();
+    expect(
+      screen.getByText("Memory Viewer").getAttribute("data-compact-label"),
+    ).toBeNull();
+  });
+
   it("renders at natural height when embedded in Home's app scroller", () => {
     render(<Launcher entries={FEW} onLaunch={() => {}} embedded />);
     const page = screen.getByTestId("launcher-page-window");

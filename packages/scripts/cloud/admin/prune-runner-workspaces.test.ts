@@ -75,6 +75,25 @@ describe("parseRunnerWorkspacePruneArgs", () => {
       parseRunnerWorkspacePruneArgs(["--min-age-hours", "0"], {}),
     ).toThrow("Invalid min-age-hours");
   });
+
+  it("rejects an unknown flag instead of silently running on defaults", () => {
+    // A silently dropped flag reads as configured at the call site while the
+    // tool prunes at its default window: a scheduled unit passing `--min-age 19`
+    // kept pruning at 6h with no diagnostic anywhere.
+    expect(() =>
+      parseRunnerWorkspacePruneArgs(["--min-age", "19"], {}),
+    ).toThrow("Unknown flag --min-age");
+
+    expect(() =>
+      parseRunnerWorkspacePruneArgs(["--root", "/var/runners", "--nope", "1"], {}),
+    ).toThrow("Unknown flag --nope");
+  });
+
+  it("rejects a stray positional argument", () => {
+    expect(() => parseRunnerWorkspacePruneArgs(["19"], {})).toThrow(
+      "Unexpected argument: 19",
+    );
+  });
 });
 
 describe("findRunnerWorkDirs", () => {

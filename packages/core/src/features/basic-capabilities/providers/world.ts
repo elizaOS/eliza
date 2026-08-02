@@ -118,6 +118,10 @@ export const worldProvider: Provider = {
 				text: "Unable to retrieve world information - world not found",
 			} as ProviderResult;
 		}
+		const [worldRooms, participants] = await Promise.all([
+			runtime.getRooms(worldId),
+			runtime.getParticipantsForRoom(message.roomId),
+		]);
 
 		logger.debug(
 			{
@@ -129,8 +133,6 @@ export const worldProvider: Provider = {
 			"Found world",
 		);
 
-		// Get all rooms in the current world
-		const worldRooms = await runtime.getRooms(worldId);
 		logger.debug(
 			{
 				src: "plugin:basic-capabilities:provider:world",
@@ -141,8 +143,6 @@ export const worldProvider: Provider = {
 			"Found rooms in world",
 		);
 
-		// Get participants for the current room
-		const participants = await runtime.getParticipantsForRoom(message.roomId);
 		logger.debug(
 			{
 				src: "plugin:basic-capabilities:provider:world",

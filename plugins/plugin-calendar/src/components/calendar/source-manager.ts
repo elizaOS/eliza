@@ -51,6 +51,7 @@ export interface CalendarSourceManagerModel {
 
 export interface CalendarSourceManagerSnapshotRow
   extends CalendarSourceManagerRow {
+  detailsOpen: boolean;
   pending: boolean;
   mutationError: string | null;
 }

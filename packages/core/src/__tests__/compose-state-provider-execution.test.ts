@@ -75,6 +75,39 @@ describe("composeState provider execution", () => {
 		await compose;
 	});
 
+	it("uses position only for render order and gives siblings the same pre-compose state", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-order" } as Character,
+		});
+		const seenProviderMaps: unknown[] = [];
+		runtime.registerProvider({
+			name: "LATE_POSITION",
+			position: 20,
+			get: async (_runtime, _message, state) => {
+				seenProviderMaps.push(state.data.providers);
+				await new Promise((resolve) => setTimeout(resolve, 20));
+				return { text: "late-position" };
+			},
+		});
+		runtime.registerProvider({
+			name: "EARLY_POSITION",
+			position: -20,
+			get: async (_runtime, _message, state) => {
+				seenProviderMaps.push(state.data.providers);
+				return { text: "early-position" };
+			},
+		});
+
+		const state = await runtime.composeState(
+			makeMessage("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
+			["LATE_POSITION", "EARLY_POSITION"],
+			true,
+		);
+
+		expect(state.text).toBe("early-position\nlate-position");
+		expect(seenProviderMaps).toEqual([undefined, undefined]);
+	});
+
 	it("coalesces duplicate in-flight provider work for the same message", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-coalescing" } as Character,
@@ -172,10 +205,14 @@ describe("composeState provider execution", () => {
 			runtime.composeState(message, ["ABORTABLE"], true),
 		);
 		await started.promise;
-		expect(receivedSignal).toBe(runtime.turnControllers.signalFor(ROOM_ID));
+		const turnSignal = runtime.turnControllers.signalFor(ROOM_ID);
+		expect(receivedSignal).toBeDefined();
+		expect(receivedSignal).not.toBe(turnSignal);
 		expect(runtime.turnControllers.abortTurn(ROOM_ID, "user stopped")).toBe(
 			true,
 		);
+		expect(receivedSignal?.aborted).toBe(true);
+		expect(receivedSignal?.reason).toBe(turnSignal?.reason);
 
 		// A designed turn abort surfaces as the abort itself (TURN_ABORTED), so
 		// the message boundary keeps its ack-and-stop contract instead of

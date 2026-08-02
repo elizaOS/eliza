@@ -661,8 +661,9 @@ export function createConflictDetectAction(
         description:
           "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
         schema: {
-          type: "object" as const,
-          oneOf: [
+          // anyOf, not oneOf: strict-mode provider grammars reject oneOf, and
+          // a sibling `type` would contradict the string branch.
+          anyOf: [
             { type: "string" as const, enum: ["today", "week"] },
             { type: "object" as const, additionalProperties: true },
           ],

@@ -38,6 +38,9 @@ const LAUNCHER_RESPONSIVE_CSS = `
 [data-testid="launcher"] [data-launcher-label] {
   font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem);
 }
+[data-testid="launcher"] [data-launcher-label][data-compact-label="true"] {
+  font-size: .75rem;
+}
 @media (orientation: landscape) and (max-height: 520px) {
   [data-testid="launcher"] [data-launcher-icon] { width: 3.5rem; height: 3.5rem; }
 }
@@ -80,6 +83,9 @@ function viewKindBadge(entry: ViewEntry): {
 // tiles whose props actually changed, not the whole page.
 const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   const badge = viewKindBadge(entry);
+  const hasLongUnbrokenLabel = entry.label
+    .split(/\s+/)
+    .some((word) => word.length > 10);
   // A long stationary press must NOT ghost-launch on release: the browser
   // synthesizes a compat click from that same press, and a bare onClick would
   // launch whatever tile the finger held (the gesture-matrix "no ghost-launch"
@@ -149,6 +155,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             (#14427). line-clamp-2 still wraps multi-word labels. */}
         <span
           data-launcher-label=""
+          data-compact-label={hasLongUnbrokenLabel || undefined}
           className={cn(
             "line-clamp-2 max-w-[5.5rem] text-center text-xs font-semibold leading-tight tracking-normal whitespace-normal",
             WALLPAPER_TEXT.base,

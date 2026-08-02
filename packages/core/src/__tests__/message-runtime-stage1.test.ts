@@ -3053,7 +3053,13 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 	});
 
-	it("includes CURRENT_TIME in Stage 1 only for direct date/time/year questions", async () => {
+	it("renders CURRENT_TIME in Stage 1 for every turn, regardless of phrasing", async () => {
+		// Live incident (tj-a82f2bfeaf021c): a regex gate only re-included
+		// CURRENT_TIME for messages matching a "time question" pattern, so
+		// "whats todays date and time?" (no apostrophe) lost the time block
+		// and the model hallucinated a two-week-old date — while the system
+		// prompt asserts the context ALWAYS carries a CURRENT_TIME signal.
+		// The signal is unconditional now; no prose matching may gate it.
 		const makeTimeState = (): State => ({
 			values: { availableContexts: "simple, general" },
 			data: {
@@ -3074,31 +3080,24 @@ describe("runV5MessageRuntimeStage1", () => {
 				extra: { requiresTool: false },
 			});
 
-		const dateRuntime = makeRuntime([response()]);
-		await runV5MessageRuntimeStage1({
-			runtime: dateRuntime,
-			message: makeMessage({ text: "What year is it?" }),
-			state: makeTimeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		const dateParams = useModelCalls(dateRuntime)[0]?.[1] as {
-			messages?: Array<{ content?: string | null }>;
-		};
-		expect(dateParams.messages?.[1]?.content ?? "").toContain("# Current Time");
-
-		const genericRuntime = makeRuntime([response()]);
-		await runV5MessageRuntimeStage1({
-			runtime: genericRuntime,
-			message: makeMessage({ text: "Tell me a short joke." }),
-			state: makeTimeState(),
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-		const genericParams = useModelCalls(genericRuntime)[0]?.[1] as {
-			messages?: Array<{ content?: string | null }>;
-		};
-		expect(genericParams.messages?.[1]?.content ?? "").not.toContain(
-			"# Current Time",
-		);
+		// The incident phrasing (fails any "looks like a time question" regex)
+		// and a message with no time intent at all must both see the block.
+		for (const text of [
+			"whats todays date and time?",
+			"Tell me a short joke.",
+		]) {
+			const runtime = makeRuntime([response()]);
+			await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({ text }),
+				state: makeTimeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			expect(params.messages?.[1]?.content ?? "").toContain("# Current Time");
+		}
 	});
 
 	it("current_turn_boundary allows recall questions to read from visible prior_message blocks", async () => {
@@ -3625,6 +3624,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			},
 		] as IAgentRuntime["actions"];
 		const earlyReply = vi.fn(async () => undefined);
+		const onSettledActionResult = vi.fn();
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -3632,12 +3632,22 @@ describe("runV5MessageRuntimeStage1", () => {
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 			onResponseHandlerEarlyReply: earlyReply,
+			onSettledActionResult,
 		});
 
 		expect(earlyReply).toHaveBeenCalledWith(
 			expect.objectContaining({ text: "On it." }),
 		);
 		expect(result.kind).toBe("planned_reply");
+		expect(onSettledActionResult).toHaveBeenCalledTimes(1);
+		expect(onSettledActionResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				success: true,
+				effectReceipts: [
+					expect.objectContaining({ receiptId: "receipt-reminder-1" }),
+				],
+			}),
+		);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(canonicalText);
 			expect(result.result.responseContent?.effectReceiptIds).toEqual([

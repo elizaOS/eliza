@@ -134,14 +134,17 @@ jobs:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Fresh attempt 3 completed the entire two-worker suite and failed closed
-    # on three bounded mobile visual diffs in 25m38s total. Retain the complete
-    # 48-test suite and a finite 32m ceiling, a measured 25% cold-run margin.
-    timeout-minutes: 32
+    # A cold workspace build alone has taken 13m and the two-worker homepage
+    # suite 25m38s total; the old 32m ceiling cancelled real runs mid-suite
+    # whenever both were cold (observed on #17157 and #17256). 45m covers the
+    # measured worst case of each phase with margin; homepage-scope gating
+    # below keeps non-homepage PRs from paying the suite at all.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -161,17 +164,52 @@ jobs:
       - name: Build
         run: bun run build
 
+      # Mirrors quality.yml's homepage-scope gate: the homepage Playwright
+      # suite only proves anything when a homepage release surface changed,
+      # and unconditionally running it burned ~20 runner-minutes per fork PR
+      # while pushing cold runs past the job ceiling.
+      - name: Check homepage smoke scope
+        id: homepage-scope
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          if merge_base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"; then
+            changed_files="$(git diff --name-only "${merge_base}" HEAD)"
+          else
+            echo "No merge base found with origin/${{ github.base_ref }}; falling back to direct base/head diff." >&2
+            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}" HEAD)"
+          fi
+          if grep -Eq '^(packages/homepage/|packages/shared/|packages/app-core/scripts/write-homepage-release-data\.mjs|\.github/workflows/(deploy-homepage|release-electrobun|release-orchestrator|quality-fork)\.yml)' <<< "${changed_files}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip unrelated homepage smoke
+        if: steps.homepage-scope.outputs.run != 'true'
+        run: echo "Skipping homepage smoke; this PR does not touch homepage release surfaces."
+
       - name: Build homepage
+        if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
         run: bun run build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install homepage browser
+        if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
         run: ./node_modules/.bin/playwright install chromium
 
       - name: Test homepage downloads
+        if: steps.homepage-scope.outputs.run == 'true'
         working-directory: packages/homepage
         # The provisioned runner reported six default workers. Heavy animated
         # visual routes then contended, timed out, and multiplied into retries.

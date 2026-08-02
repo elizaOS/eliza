@@ -51,8 +51,23 @@ export async function collectHoverViolations(
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");
     if (bucket(rest) !== "orange") continue; // only orange-resting buttons matter
+    const label = (
+      (await btn.getAttribute("aria-label")) ||
+      (await btn.getAttribute("data-agent-label")) ||
+      (await btn.getAttribute("title")) ||
+      (await btn.innerText())
+    )
+      .trim()
+      .slice(0, 48);
     let hoverError: string | null = null;
     try {
+      await btn.evaluate((element) => {
+        element.scrollIntoView({
+          block: "center",
+          inline: "center",
+          behavior: "instant",
+        });
+      });
       await btn.hover({ timeout: 1000 });
     } catch (error) {
       hoverError = (error instanceof Error ? error.message : String(error))
@@ -62,7 +77,6 @@ export async function collectHoverViolations(
     if (hoverError !== null) {
       // The hover never applied, so reading the "hover" background would just
       // re-read the rest color and vacuously pass. Surface the probe failure.
-      const label = (await btn.innerText().catch(() => "")).slice(0, 24);
       hoverFailures.push(`"${label}" hover probe failed: ${hoverError}`);
       continue;
     }
@@ -71,7 +85,6 @@ export async function collectHoverViolations(
       .catch(() => "");
     const dest = bucket(hover);
     if (dest === "black" || dest === "white" || dest === "transparent") {
-      const label = (await btn.innerText().catch(() => "")).slice(0, 24);
       violations.push(`"${label}" orange→${dest} (${rest} -> ${hover})`);
     }
   }

@@ -3,6 +3,10 @@
  *
  * Routes all payment operations through a single structural discriminator:
  * `action=create_request|deliver_link|verify_payload|settle|await_callback|cancel_request`.
+ *
+ * Results are planner-facing only: raw request ids, cent amounts, and
+ * settlement statuses are tool-speak, so no handler emits a visible callback —
+ * the evaluator phrases the user-facing reply from the result text.
  */
 
 import { logger } from "../../../logger.ts";
@@ -14,7 +18,6 @@ import type {
 } from "../../../sensitive-requests/dispatch-registry.ts";
 import type {
 	Action,
-	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	JsonValue,
@@ -223,19 +226,9 @@ function dataFor(action: PaymentAction, data: Record<string, unknown> = {}) {
 	return { actionName: "PAYMENT", paymentAction: action, ...data };
 }
 
-async function maybeCallback(
-	callback: HandlerCallback | undefined,
-	text: string,
-) {
-	if (callback) {
-		await callback({ text, action: "PAYMENT" });
-	}
-}
-
 async function handleCreateRequest(
 	runtime: IAgentRuntime,
 	params: PaymentParams,
-	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "create_request";
 	const client = runtime.getService<Service & PaymentRequestsClient>(
@@ -269,7 +262,6 @@ async function handleCreateRequest(
 	);
 
 	const text = `Created payment request ${envelope.paymentRequestId} for ${envelope.amountCents} ${envelope.currency}.`;
-	await maybeCallback(callback, text);
 
 	return {
 		success: true,
@@ -287,7 +279,6 @@ async function handleDeliverLink(
 	runtime: IAgentRuntime,
 	message: Memory,
 	params: PaymentParams,
-	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "deliver_link";
 	const client = runtime.getService<Service & PaymentRequestsClient>(
@@ -379,7 +370,6 @@ async function handleDeliverLink(
 	const text = result.delivered
 		? `Delivered payment request ${paymentRequestId} via ${target}.`
 		: `Failed to deliver payment request ${paymentRequestId} via ${target}${result.error ? `: ${result.error}` : ""}.`;
-	await maybeCallback(callback, text);
 
 	return {
 		success: result.delivered,
@@ -395,7 +385,6 @@ async function handleDeliverLink(
 async function handleVerifyPayload(
 	runtime: IAgentRuntime,
 	params: PaymentParams,
-	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "verify_payload";
 	const bus = runtime.getService<Service & PaymentBusClient>(
@@ -428,7 +417,6 @@ async function handleVerifyPayload(
 	const text = verification.valid
 		? `Payment proof for ${paymentRequestId} is valid.`
 		: `Payment proof for ${paymentRequestId} is invalid${verification.error ? `: ${verification.error}` : ""}.`;
-	await maybeCallback(callback, text);
 
 	return {
 		success: verification.valid,
@@ -442,11 +430,7 @@ async function handleVerifyPayload(
 	};
 }
 
-async function handleSettle(
-	runtime: IAgentRuntime,
-	params: PaymentParams,
-	callback?: HandlerCallback,
-) {
+async function handleSettle(runtime: IAgentRuntime, params: PaymentParams) {
 	const action: PaymentAction = "settle";
 	const settler = runtime.getService<Service & PaymentSettler>(
 		PAYMENT_SETTLER_SERVICE,
@@ -483,7 +467,6 @@ async function handleSettle(
 		settlement.status === "settled"
 			? `Payment ${paymentRequestId} settled${settlement.txRef ? ` (tx ${settlement.txRef})` : ""}.`
 			: `Payment ${paymentRequestId} settle attempt ended with status ${settlement.status}${settlement.error ? `: ${settlement.error}` : ""}.`;
-	await maybeCallback(callback, text);
 
 	return {
 		success: settlement.status === "settled",
@@ -495,7 +478,6 @@ async function handleSettle(
 async function handleAwaitCallback(
 	runtime: IAgentRuntime,
 	params: PaymentParams,
-	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "await_callback";
 	const bus = runtime.getService<Service & PaymentBusClient>(
@@ -546,7 +528,6 @@ async function handleAwaitCallback(
 		settlement.status === "settled"
 			? `Payment ${paymentRequestId} settled.`
 			: `Payment ${paymentRequestId} ended in status ${settlement.status}${settlement.error ? `: ${settlement.error}` : ""}.`;
-	await maybeCallback(callback, text);
 
 	return {
 		success: settlement.status === "settled",
@@ -558,7 +539,6 @@ async function handleAwaitCallback(
 async function handleCancelRequest(
 	runtime: IAgentRuntime,
 	params: PaymentParams,
-	callback?: HandlerCallback,
 ) {
 	const action: PaymentAction = "cancel_request";
 	const client = runtime.getService<Service & PaymentRequestsClient>(
@@ -594,7 +574,6 @@ async function handleCancelRequest(
 	);
 
 	const text = `Payment request ${paymentRequestId} is now ${envelope.status}.`;
-	await maybeCallback(callback, text);
 
 	return {
 		success: envelope.status === "canceled",
@@ -811,7 +790,6 @@ export const paymentAction: Action = {
 		message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const action = normalizePaymentAction(params.action);
@@ -825,17 +803,17 @@ export const paymentAction: Action = {
 
 		switch (action) {
 			case "create_request":
-				return handleCreateRequest(runtime, params, callback);
+				return handleCreateRequest(runtime, params);
 			case "deliver_link":
-				return handleDeliverLink(runtime, message, params, callback);
+				return handleDeliverLink(runtime, message, params);
 			case "verify_payload":
-				return handleVerifyPayload(runtime, params, callback);
+				return handleVerifyPayload(runtime, params);
 			case "settle":
-				return handleSettle(runtime, params, callback);
+				return handleSettle(runtime, params);
 			case "await_callback":
-				return handleAwaitCallback(runtime, params, callback);
+				return handleAwaitCallback(runtime, params);
 			case "cancel_request":
-				return handleCancelRequest(runtime, params, callback);
+				return handleCancelRequest(runtime, params);
 		}
 	},
 

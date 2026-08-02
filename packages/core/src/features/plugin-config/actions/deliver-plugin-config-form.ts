@@ -129,7 +129,7 @@ export const deliverPluginConfigFormAction: Action = {
 		message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const pluginName =
@@ -173,10 +173,9 @@ export const deliverPluginConfigFormAction: Action = {
 			requirements.required.includes(k),
 		);
 		if (missingRequired.length === 0) {
-			const text = `Plugin '${pluginName}' has no missing required config keys.`;
-			if (callback) {
-				await callback({ text, action: "DELIVER_PLUGIN_CONFIG_FORM" });
-			}
+			// Planner-facing only: the no-op status is tool-speak that
+			// double-messaged next to the evaluator's in-voice reply.
+			const text = `Plugin '${pluginName}' has no missing required config keys; nothing to deliver.`;
 			return {
 				success: true,
 				text,
@@ -244,10 +243,9 @@ export const deliverPluginConfigFormAction: Action = {
 			`[DeliverPluginConfigForm] plugin=${pluginName} target=${target} delivered=${deliveredCount}/${entries.length}`,
 		);
 
+		// No visible callback: the dispatch adapter already delivers the config
+		// form itself; announcing dispatch counts double-messaged next to it.
 		const text = `Dispatched ${deliveredCount}/${entries.length} config request(s) for '${pluginName}' via ${target}.`;
-		if (callback) {
-			await callback({ text, action: "DELIVER_PLUGIN_CONFIG_FORM" });
-		}
 
 		return {
 			success: deliveredCount === entries.length,

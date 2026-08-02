@@ -4,7 +4,7 @@ Static React + Vite SPA that serves as the elizaOS public homepage (`eliza.app`)
 
 ## Purpose / role
 
-This package builds and deploys the public-facing marketing site and user onboarding flow for elizaOS. It is not imported by any other package; it is a standalone Vite app that produces `dist/` for deployment to GitHub Pages or Cloudflare Pages. It consumes `@elizaos/ui` and `@elizaos/shared` from the monorepo workspace.
+This package builds and deploys the public-facing Eliza landing experience and user onboarding flow. It is not imported by any other package; it is a standalone Vite app that produces `dist/` for Cloudflare Pages. It consumes `@elizaos/ui` and `@elizaos/shared` from the monorepo workspace.
 
 ## Layout
 
@@ -21,8 +21,8 @@ packages/homepage/
     App.tsx                     Route table (BrowserRouter + React Router)
     index.css                   Global Tailwind v4 styles
     pages/
-      marketing.tsx             "/" — download buttons, platform icons, release data
-      leaderboard.tsx           "/leaderboard" — animated onboarding + platform tab switcher
+      landing.tsx               "/" and "/leaderboard" — animated onboarding + platform switcher
+      marketing.tsx             "/downloads" — download buttons, platform icons, release data
       login.tsx                 "/login" — redirects to /get-started or /connected based on auth
       get-started.tsx           "/get-started" — SMS/Telegram/Discord/WhatsApp/Solana sign-in
       connected.tsx             "/connected" — post-auth dashboard (linked platforms, sign-out)
@@ -64,7 +64,7 @@ packages/homepage/
   scripts/
     generate-contact-sheet.mjs  Generates HTML contact sheet from Playwright screenshots
     verify-aasa-response.mjs    Separately gates exact origin and Apple CDN bytes, metadata, identity, and routes
-  vite.config.ts                Vite config — aliases, gh404Fallback plugin, bundle visualizer
+  vite.config.ts                Vite config — aliases and bundle visualizer
   playwright.config.ts          Playwright config for e2e
 ```
 
@@ -81,6 +81,8 @@ All scripts are run with `bun run --cwd packages/homepage <script>`.
 ```bash
 bun run --cwd packages/homepage dev            # Vite dev server on :4444 (runs predev first)
 bun run --cwd packages/homepage build          # Production build → dist/ (runs prebuild first)
+bun run --cwd packages/homepage deploy:preview # Build and publish a Cloudflare Pages preview
+bun run --cwd packages/homepage deploy:production # Build and publish to eliza.app
 bun run --cwd packages/homepage clean          # Remove dist/
 bun run --cwd packages/homepage preview        # Serve dist/ on :4444
 bun run --cwd packages/homepage typecheck      # tsc -b (generates release-data first)
@@ -98,8 +100,10 @@ bun run --cwd packages/homepage check:release-data  # Validate generated release
 ```
 
 **predev / prebuild** run automatically before `dev` and `build`:
-1. `node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --background --background-videos` — syncs brand assets into `public/`.
+1. `node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds` — syncs only the brand assets referenced by the homepage into `public/`.
 2. `node ../app-core/scripts/write-homepage-release-data.mjs` — fetches GitHub Releases and writes `src/generated/release-data.ts`.
+
+**postbuild** runs `scripts/prune-unused-static-assets.mjs` so optional artifact-bundle backgrounds and product concepts cannot inflate the Cloudflare Pages upload when a developer checkout has hydrated them into `public/`.
 
 ## Config / env vars
 
@@ -137,11 +141,10 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 
 - **`src/generated/release-data.ts` is auto-generated.** Never edit it by hand; it is overwritten on every `dev`/`build`. Run the generator script if you need fresh data.
 - **Vite aliases resolve `@elizaos/ui` sub-paths to source.** There is no bare `@elizaos/ui` alias; only explicit sub-path aliases (`@elizaos/ui/cloud-ui`, `@elizaos/ui/button`, `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu`, `@elizaos/ui/i18n/region`, `@elizaos/ui/product-switcher`) map to `packages/ui/src/`. Use those sub-path imports; adding a new sub-path requires a new alias entry in `vite.config.ts`.
-- **ShaderBackground and VideoCall are lazy-loaded** in `leaderboard.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` is imported eagerly because it drives the messaging surface on first paint — but it pulls in `three`/`@react-three/fiber`, so don't add more eager `three` imports elsewhere.
-- **GitHub Pages deep-link fallback:** The `gh404Fallback` Vite plugin copies `index.html` → `404.html` at build time. `public/_redirects` and `public/_headers` serve the same purpose on Cloudflare Pages.
-- **`CF_PAGES=1` disables the 404.html copy** — set this env var when building for Cloudflare Pages.
+- **ShaderBackground and VideoCall are lazy-loaded** in `landing.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` sits behind its own Suspense boundary because it drives the messaging surface but must not block the page chrome while its 3D asset loads.
+- **Cloudflare Pages is the only homepage host.** `public/_redirects` provides SPA fallback and `public/_headers` provides static response headers. Do not add Vercel or GitHub Pages deployment configuration.
 - **Dev server port is 4444** (not the standard 5173). `bun run dev` is required; `vite preview` alone will not have the correct env from the orchestrator.
-- **GitHub Pages ignores `public/_headers`.** The production AASA response is owned by the exact-path Worker in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in a separate job, and never treats cache-bypass behavior as release evidence.
+- **The production AASA response is owned by the exact-path Worker** in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in a separate job, and never treats cache-bypass behavior as release evidence.
 - **SIWS test signer:** Playwright e2e injects `window.__siwsTestSigner` to simulate Solana wallet sign-in without a real wallet extension.
 - For logging, architecture, and naming conventions see the root `AGENTS.md`.
 

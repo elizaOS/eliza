@@ -279,6 +279,30 @@ export async function resolveDocumentRequester(
 	}
 }
 
+type DocumentRequesterResolver = () => Promise<DocumentRequester>;
+
+/**
+ * Coalesces requester authorization only for one caller-owned read composition.
+ * Rejections are evicted so a retry re-reads the authoritative role and room
+ * membership instead of retaining a transient authorization failure.
+ */
+export function createDocumentProviderRequesterResolver(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): DocumentRequesterResolver {
+	let pending: Promise<DocumentRequester> | undefined;
+	return () => {
+		if (pending) return pending;
+		const current = resolveDocumentRequester(runtime, message);
+		pending = current;
+		// error-policy:J5 callers await current; this observer only evicts a rejected read memo.
+		void current.catch(() => {
+			if (pending === current) pending = undefined;
+		});
+		return current;
+	};
+}
+
 function normalizeDocumentScope(
 	scope: AddDocumentOptions["scope"] | undefined,
 ): DocumentVisibilityScope {
@@ -513,6 +537,15 @@ export class DocumentService extends Service {
 		message?: Memory,
 		options: DocumentListOptions = {},
 	): Promise<DocumentListResult> {
+		return this.listDocumentsDetailedWithRequester(options, () =>
+			resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	private async listDocumentsDetailedWithRequester(
+		options: DocumentListOptions,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<DocumentListResult> {
 		const limit =
 			typeof options.limit === "number" && Number.isFinite(options.limit)
 				? Math.max(
@@ -544,7 +577,7 @@ export class DocumentService extends Service {
 			);
 		}
 
-		const requester = await resolveDocumentRequester(this.runtime, message);
+		const requester = await resolveRequester();
 		const query = options.query?.trim();
 		const normalizedQuery = query?.toLowerCase();
 		const queryParams: DocumentListQueryParams = {
@@ -607,6 +640,29 @@ export class DocumentService extends Service {
 		};
 	}
 
+	/** Runs the DOCUMENTS provider's search and inventory reads on one snapshot. */
+	async composeProviderDocuments(
+		message: Memory,
+		listOptions: DocumentListOptions,
+	): Promise<{ relevantFragments: StoredDocument[]; documents: Memory[] }> {
+		const resolveRequester = createDocumentProviderRequesterResolver(
+			this.runtime,
+			message,
+		);
+		const [relevantFragments, listResult] = await Promise.all([
+			this.searchDocumentsWithRequester(
+				message,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				resolveRequester,
+			),
+			this.listDocumentsDetailedWithRequester(listOptions, resolveRequester),
+		]);
+		return { relevantFragments, documents: listResult.documents };
+	}
+
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
 		const requester = await resolveDocumentRequester(this.runtime, message);
 		const document = await this.runtime.adapter.getDocument({
@@ -617,14 +673,14 @@ export class DocumentService extends Service {
 			requesterRole: requester.role,
 		});
 		if (!document) {
-			// The read above is scoped to the requester, so a document the caller
-			// cannot READ is indistinguishable from one that does not exist — and
-			// reporting NOT_FOUND here made the adapter's `forbidden` verdict
-			// unreachable for exactly the case it exists for (a non-owner trying to
-			// delete a global / owner-private document). Distinguish the two with an
-			// unscoped existence probe so the mutation wall renders the real reason.
-			const existsUnscoped = await this.runtime.getMemoryById(documentId);
-			if (existsUnscoped) {
+			// A hidden document owned by this runtime is a forbidden mutation, while
+			// foreign-agent and non-document rows remain indistinguishable from a
+			// missing UUID. This preserves tenant isolation across the unscoped probe.
+			const existingUnscoped = await this.runtime.getMemoryById(documentId);
+			if (
+				existingUnscoped?.agentId === this.runtime.agentId &&
+				readDocumentMutationSnapshot(existingUnscoped)
+			) {
 				throw new ElizaError(
 					`Document ${documentId} cannot be deleted by this requester`,
 					{
@@ -1118,6 +1174,24 @@ export class DocumentService extends Service {
 		accessContext?: AccessContext,
 		options?: { turnMessageId?: UUID; signal?: AbortSignal },
 	): Promise<StoredDocument[]> {
+		return this.searchDocumentsWithRequester(
+			message,
+			scope,
+			searchMode,
+			accessContext,
+			options,
+			() => resolveDocumentRequester(this.runtime, message),
+		);
+	}
+
+	private async searchDocumentsWithRequester(
+		message: Memory,
+		scope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } | undefined,
+		searchMode: SearchMode | undefined,
+		accessContext: AccessContext | undefined,
+		options: { turnMessageId?: UUID; signal?: AbortSignal } | undefined,
+		resolveRequester: DocumentRequesterResolver,
+	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
 			logger.warn("Invalid or empty message content for document query");
 			return [];
@@ -1134,7 +1208,7 @@ export class DocumentService extends Service {
 					this.runtime,
 					accessContext,
 				)
-			: await resolveDocumentRequester(this.runtime, message);
+			: await resolveRequester();
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;

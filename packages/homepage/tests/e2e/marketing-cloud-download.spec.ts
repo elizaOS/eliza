@@ -58,10 +58,10 @@ async function expectReachableHead(
   ).toBeLessThan(400);
 }
 
-test("homepage centers Eliza App downloads and product CTAs", async ({
+test("downloads page centers Eliza App downloads and product CTAs", async ({
   page,
 }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/downloads", { waitUntil: "domcontentloaded" });
   await expect(page.locator("h1").first()).toBeVisible({ timeout: 10_000 });
 
   await expect
@@ -74,7 +74,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     )
     .toBe(0);
 
-  await expect(page).toHaveTitle("Eliza — your agent, everywhere");
+  await expect(page).toHaveTitle("Eliza");
   await expect(
     page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
   ).toBeVisible();
@@ -164,18 +164,21 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     page.getByRole("link", { name: /^Try Eliza Cloud$/ }).last(),
   );
 
-  await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
+  await expect(page.locator(".app-shell")).toHaveCSS(
+    "font-family",
+    "Geist, Arial, sans-serif",
+  );
   await expect(page.locator(".brand-section").first()).toHaveCSS(
     "border-radius",
     "0px",
   );
 });
 
-test("homepage live marketing links resolve for cloud, os, release, and downloads", async ({
+test("downloads page live links resolve for cloud, os, release, and downloads", async ({
   page,
   request,
 }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.goto("/downloads", { waitUntil: "domcontentloaded" });
   await expect(
     page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
   ).toBeVisible();

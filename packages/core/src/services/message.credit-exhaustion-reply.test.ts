@@ -39,7 +39,7 @@ const ROOM = "00000000-0000-0000-0000-00000000001c" as UUID;
 const RUN_ID = "00000000-0000-0000-0000-00000000001d" as UUID;
 
 /** The error shape plugin-elizacloud throws when Eliza Cloud returns 402. */
-function makeCreditExhaustionError(): Error {
+function makeElizaCloudCreditExhaustionError(): Error {
 	return Object.assign(
 		new Error("Insufficient credits. Required: $0.0014, Available: $0.0000"),
 		{
@@ -50,6 +50,13 @@ function makeCreditExhaustionError(): Error {
 			},
 		},
 	);
+}
+
+/** The AI SDK error shape produced by a direct Cerebras 402 response. */
+function makeDirectCerebrasCreditExhaustionError(): Error {
+	return Object.assign(new Error("Cerebras API error: 402 Payment Required"), {
+		statusCode: 402,
+	});
 }
 
 function makeMessage(overrides: Partial<Content> = {}): Memory {
@@ -161,27 +168,39 @@ describe("connector turn failing on 402 credit exhaustion", () => {
 		vi.unstubAllEnvs();
 	});
 
-	it("delivers the actionable top-up reply, not the generic retry", async () => {
+	it("delivers the actionable provider-neutral reply for an Eliza Cloud 402", async () => {
 		const { result, visibleTexts } = await runTurn(
 			makeMessage(),
 			makeRoom(ChannelType.GROUP),
-			makeCreditExhaustionError(),
+			makeElizaCloudCreditExhaustionError(),
 		);
 
 		expect(result.didRespond).toBe(true);
 		expect(visibleTexts).toHaveLength(1);
 		// The user must learn the real, actionable condition — same reply the
-		// direct API path sends — instead of "try again" (retrying a drained
-		// account can never succeed) or the rate-limited "give it a few
-		// seconds" template.
+		// direct API path sends — without this shared boundary claiming which
+		// configured provider owns the exhausted balance.
 		expect(visibleTexts[0]).toBe(INSUFFICIENT_CREDITS_REPLY);
+	});
+
+	it("does not blame Eliza Cloud for a direct Cerebras 402", async () => {
+		const { result, visibleTexts } = await runTurn(
+			makeMessage(),
+			makeRoom(ChannelType.GROUP),
+			makeDirectCerebrasCreditExhaustionError(),
+		);
+
+		expect(result.didRespond).toBe(true);
+		expect(visibleTexts).toEqual([INSUFFICIENT_CREDITS_REPLY]);
+		expect(visibleTexts[0]).not.toMatch(/Eliza Cloud|cloud balance/i);
+		expect(visibleTexts[0]).toMatch(/configured AI provider/i);
 	});
 
 	it("marks the synthetic reply with the structural insufficient_credits kind", async () => {
 		const { deliveries } = await runTurn(
 			makeMessage({ channelType: ChannelType.DM }),
 			makeRoom(ChannelType.DM),
-			makeCreditExhaustionError(),
+			makeElizaCloudCreditExhaustionError(),
 		);
 
 		const failureReply = deliveries.find(

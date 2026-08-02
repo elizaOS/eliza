@@ -42,6 +42,10 @@ const EXACT_FALLBACK_REPLIES: ReadonlyArray<{
     kind: "no_response",
   },
   {
+    text: "the configured ai provider is out of credits or quota. add credits or increase its quota, then try again.",
+    kind: "insufficient_credits",
+  },
+  {
     text: "eliza cloud credits are depleted. top up the cloud balance and try again.",
     kind: "insufficient_credits",
   },

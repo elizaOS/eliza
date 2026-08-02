@@ -52,7 +52,19 @@ function appRegistryEntry(name: string) {
   return {
     name,
     description: "test app",
-    npm: { package: pkg },
+    gitRepo: "example/test-app",
+    gitUrl: "https://github.com/example/test-app.git",
+    topics: [],
+    stars: 0,
+    language: "TypeScript",
+    npm: {
+      package: pkg,
+      v0Version: null,
+      v1Version: null,
+      v2Version: "1.0.0",
+    },
+    git: { v0Branch: null, v1Branch: null, v2Branch: "main" },
+    supports: { v0: false, v1: false, v2: true },
     // runtimePlugin resolves pluginName without the npm fallback path.
     runtimePlugin: pkg,
     // launchType connect + a launch URL lets launch() build a viewer config
@@ -270,7 +282,7 @@ describe("AppManager run lifecycle (launch/stop/attach/heartbeat/reap)", () => {
 });
 
 describe("AppManager catalog surface", () => {
-  it("listAvailable filters to app-interface registry entries", async () => {
+  it("listAvailable includes third-party app-interface registry entries", async () => {
     registry.getRegistryPlugins.mockResolvedValue(
       new Map([
         ["chess", appRegistryEntry("chess")],
@@ -280,9 +292,12 @@ describe("AppManager catalog surface", () => {
     const pm = makePluginManager("chess");
     const manager = new AppManager({ stateDir });
     const available = await manager.listAvailable(pm.pluginManager);
-    // "chess" is not on the curated catalog, so the curated list is empty —
-    // but the call exercised the full registry read + filter path.
-    expect(Array.isArray(available)).toBe(true);
+    expect(available.map((app) => app.name)).toEqual(["chess"]);
+    expect(available[0]).toMatchObject({
+      displayName: "chess",
+      launchType: "connect",
+      launchUrl: "https://example.com/app",
+    });
   });
 
   it("search returns scored results through the registry-queries seam", async () => {

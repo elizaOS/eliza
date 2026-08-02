@@ -16,6 +16,26 @@ Definition of Done: full standard in [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 - [ ] A reviewer can confirm the change works without reading the code, from the
       evidence attached below.
 
+# Contribution provenance
+
+Declare the actual assistance used for implementation and review. This is
+self-reported provenance, not a request for chain-of-thought. Never include
+prompts containing secrets, tokens, private session IDs, or hidden reasoning.
+Use exact `provider/model-id` values; `GPT`, `Claude`, or `AI` are not specific
+enough. Human-only work must say so explicitly.
+
+<!-- contribution-attribution:v1 -->
+<!-- attribution-row:ai-assistance -->
+- AI assistance: `yes` / `no - human-only contribution`
+<!-- attribution-row:models -->
+- Model(s) used: `provider/model-id` / `None - human-only contribution`
+<!-- attribution-row:client -->
+- Client / agent tooling: `client-name` / `None - human-only contribution`
+<!-- attribution-row:skill-revision -->
+- Skill revision: `owner/repo@full-commit-sha:path` / `N/A - no contribution skill used`
+<!-- attribution-row:status -->
+- Attribution status: `self-reported`
+
 # Sync with develop
 
 - [ ] Rebased/merged onto the latest `origin/develop`; zero conflicts.
@@ -76,6 +96,10 @@ None: Automated tests are acceptable.
 
 # Evidence Gate
 
+Evidence must match the exact commit reviewed. `scripts/pr-evidence.mjs rows`
+sets this marker from the live PR head; rerun it after every push.
+<!-- evidence-head:replace-with-current-40-character-head-sha -->
+
 Any change testable on the frontend is not mergeable without a video walkthrough,
 before/after screenshots, and logs. If you did not attach them, say why.
 
@@ -107,6 +131,9 @@ repo.
 - [ ] Domain artifacts are attached where applicable (DB rows, memories,
       scheduled tasks, wallet/on-chain output, generated files, audio, etc.), or
       marked `N/A - <reason>`.
+<!-- evidence-row:ocr-review -->
+- [ ] OCR visual-text review output is attached for UI changes, or marked
+      `N/A - <reason>` when the change has no rendered visual surface.
 
 # Evidence Details
 

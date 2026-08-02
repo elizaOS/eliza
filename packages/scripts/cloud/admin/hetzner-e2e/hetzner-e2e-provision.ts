@@ -7,25 +7,30 @@
  *   CI_SSH_PUBLIC_KEY_ID       - Numeric Hetzner SSH key id (one-time uploaded)
  *   GITHUB_RUN_ID              - run id, embedded in labels
  *   HETZNER_E2E_LOCATION       - default fsn1
- *   HETZNER_E2E_SERVER_TYPE    - default cx22 (cpx11 was deprecated)
+ *   HETZNER_E2E_SERVER_TYPE    - default cpx22
  *   HETZNER_E2E_IMAGE          - default ubuntu-24.04
  *
- * On success: prints `{id, ip}` JSON to stdout AND writes the server id
- * into the state file IMMEDIATELY after the create-call returns, before
- * any further work — so a crash never leaks a server.
+ * On success the CLI prints `{id, ip}` JSON and writes the canonical
+ * `server_id` into the state file immediately after creation. Project-wide
+ * quota failures stop after one create attempt and report only aggregate
+ * capacity data so private server details never enter CI logs.
  */
 
 import {
   HetznerCloudClient,
   HetznerCloudError,
 } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import {
+  buildProvisionFailureDiagnostic,
+  type CapacityInventory,
+  writeProvisionFailureDiagnostic,
+} from "./hetzner-e2e-provision-diagnostic";
 import { appendStateAtomic } from "./state-file";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    console.error(`[hetzner-e2e-provision] missing env: ${name}`);
-    process.exit(1);
+    throw new Error(`[hetzner-e2e-provision] missing env: ${name}`);
   }
   return value;
 }
@@ -50,22 +55,10 @@ const SERVER_TYPE_FALLBACKS: ReadonlyArray<{
   { serverType: "cpx11", location: "hil" }, // US-West fallback
 ];
 
-// Conditions under which we should try the next fallback combo. Covers
-// Hetzner's "this server type can't be created here" and "this server
-// type is going away" responses — both render the requested combo
-// unusable and a different shared-cpu type / location is the natural
-// remediation. We also treat project-wide quota exhaustion as retryable
-// because the pre-reap pass runs immediately before the loop: if it
-// freed any slots, the next attempt may now fit under the cap. The
-// fallback ladder is finite (~5 combos) so a genuinely exhausted project
-// will still surface as the last combo's error after the loop exits.
-// Pure auth / billing failures (HTTP 401, real 403 without limit code)
-// are NOT in this list — those are surfaced unchanged so the operator
-// fixes the underlying account issue.
+// Only placement-specific failures can improve by changing type or location.
+// Project quota, authentication, and billing failures apply to every combo and
+// must stop immediately so CI does not issue redundant create requests.
 function isRetryableCombo(err: unknown): boolean {
-  if (err instanceof HetznerCloudError && err.code === "quota_exceeded") {
-    return true;
-  }
   // "error during placement" (HTTP 412) is Hetzner's transient signal that the
   // requested type can't be placed in that location right now — a different
   // location usually succeeds, so keep walking the fallback ladder instead of
@@ -83,55 +76,114 @@ function isRetryableCombo(err: unknown): boolean {
     message.includes("is deprecated") ||
     message.includes("server_type_deprecated") ||
     message.includes("resource_unavailable") ||
-    message.includes("not_found") || // Hetzner returns 404 when a deprecated type is fully removed
-    // Hetzner returns HTTP 403 with body `{ error: { code: "limit_reached",
-    // message: "server limit reached" } }` when the project cap is hit.
-    // Match both the apiCode and the human message so we stay correct even
-    // if mapStatusToCode is bypassed (e.g. transport layer wraps the body).
-    message.includes("server limit reached") ||
-    message.includes("limit_reached") ||
-    message.includes("resource_limit_exceeded")
+    message.includes("not_found") // Hetzner returns 404 when a deprecated type is fully removed
   );
 }
 
-// Pre-provision reap: delete any prior CI servers older than this. Stops a
-// chain of failed runs (which leak servers because teardown only fires when
-// provision succeeds) from blocking new runs with "server limit reached".
-// 20min is well above the ~10min healthy E2E budget; anything older is
-// guaranteed dead. The half-hourly reaper workflow handles the >60min case;
-// this is the fast lane.
+function isProjectQuotaError(err: unknown): err is HetznerCloudError {
+  return err instanceof HetznerCloudError && err.code === "quota_exceeded";
+}
+
+// The workflow's non-overlapping concurrency guarantees that an older tagged
+// server cannot belong to another active official run when this provisioner
+// starts. The age floor still protects manually created lookalikes and clocks.
 const PRE_REAP_AGE_MS = 20 * 60 * 1000;
 
-async function preReapOldServers(
-  client: InstanceType<typeof HetznerCloudClient>,
-): Promise<void> {
-  const servers = await client
-    .listServers({ ci: "true", workflow: "hetzner-e2e" })
-    .catch((err: unknown) => {
-      console.warn(
-        `[hetzner-e2e-provision] pre-reap listServers failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return [] as Awaited<ReturnType<typeof client.listServers>>;
-    });
+async function preReapOldServers(client: HetznerCloudClient): Promise<void> {
+  const servers = await client.listServers({
+    ci: "true",
+    workflow: "hetzner-e2e",
+  });
   const now = Date.now();
   for (const server of servers) {
-    const created = Date.parse(server.created);
+    const candidate = asRecord(server);
+    const labels = asRecord(candidate?.labels);
+    if (
+      labels?.ci !== "true" ||
+      labels.workflow !== "hetzner-e2e" ||
+      !Number.isSafeInteger(candidate?.id) ||
+      Number(candidate?.id) <= 0 ||
+      typeof candidate?.created !== "string"
+    ) {
+      continue;
+    }
+    const created = Date.parse(candidate.created);
     if (!Number.isFinite(created)) continue;
     if (now - created < PRE_REAP_AGE_MS) continue;
+    const name = sanitizedDimension(candidate.name);
     console.error(
-      `[hetzner-e2e-provision] pre-reap deleting ${server.id} (${server.name}) age=${Math.round((now - created) / 60000)}min`,
+      `[hetzner-e2e-provision] pre-reap deleting ${candidate.id} (${name}) age=${Math.round((now - created) / 60000)}min`,
     );
-    try {
-      await client.deleteServer(server.id);
-    } catch (err) {
-      console.warn(
-        `[hetzner-e2e-provision] pre-reap delete ${server.id} failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    await client.deleteServer(Number(candidate.id));
   }
 }
 
-async function main(): Promise<void> {
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function sanitizedDimension(value: unknown): string {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 64 &&
+    /^[A-Za-z0-9._-]+$/.test(value)
+    ? value
+    : "unknown";
+}
+
+function incrementCount(counts: Record<string, number>, key: string): void {
+  counts[key] = (counts[key] ?? 0) + 1;
+}
+
+async function readSanitizedCapacityInventory(
+  client: HetznerCloudClient,
+): Promise<CapacityInventory> {
+  const response: unknown = await client.listServers();
+  if (!Array.isArray(response)) {
+    throw new Error(
+      "Hetzner capacity inventory did not contain a server array",
+    );
+  }
+  const servers = response;
+  const inventory: CapacityInventory = {
+    totalServers: servers.length,
+    hetznerE2eServers: 0,
+    otherServers: 0,
+    byStatus: {},
+    byServerType: {},
+    byLocation: {},
+  };
+
+  for (const server of servers) {
+    const candidate = asRecord(server);
+    const labels = asRecord(candidate?.labels);
+    const isHetznerE2e =
+      labels?.ci === "true" && labels.workflow === "hetzner-e2e";
+    if (isHetznerE2e) {
+      inventory.hetznerE2eServers++;
+    } else {
+      inventory.otherServers++;
+    }
+    const serverType = asRecord(candidate?.server_type);
+    const datacenter = asRecord(candidate?.datacenter);
+    const location = asRecord(datacenter?.location);
+    incrementCount(inventory.byStatus, sanitizedDimension(candidate?.status));
+    incrementCount(
+      inventory.byServerType,
+      sanitizedDimension(serverType?.name),
+    );
+    incrementCount(inventory.byLocation, sanitizedDimension(location?.name));
+  }
+
+  return inventory;
+}
+
+export async function runHetznerE2eProvision(): Promise<{
+  id: number;
+  ip: string;
+}> {
   const token = requireEnv("HCLOUD_TOKEN_CI");
   const sshKeyId = Number.parseInt(requireEnv("CI_SSH_PUBLIC_KEY_ID"), 10);
   if (!Number.isFinite(sshKeyId)) {
@@ -140,12 +192,16 @@ async function main(): Promise<void> {
     );
   }
 
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: This standalone GitHub Actions script is outside Turbo task caching.
   const runId = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: This standalone GitHub Actions script is outside Turbo task caching.
   const requestedLocation = process.env.HETZNER_E2E_LOCATION ?? "fsn1";
   // cx22 is now deprecated; cpx22 (x86 2 vCPU / 4 GB) is the current shared
   // type available across fsn1/hel1/nbg1 per GET /v1/datacenters. Operators can
   // still pin a specific type via env.
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: This standalone GitHub Actions script is outside Turbo task caching.
   const requestedServerType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cpx22";
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: This standalone GitHub Actions script is outside Turbo task caching.
   const image = process.env.HETZNER_E2E_IMAGE ?? "ubuntu-24.04";
   const createdAt = new Date().toISOString();
 
@@ -178,8 +234,6 @@ async function main(): Promise<void> {
   let server: Awaited<ReturnType<typeof client.createServer>>["server"] | null =
     null;
   let lastError: unknown;
-  let serverType = requestedServerType;
-  let location = requestedLocation;
   for (const attempt of attempts) {
     try {
       const created = await client.createServer({
@@ -198,8 +252,6 @@ async function main(): Promise<void> {
         },
       });
       server = created.server;
-      serverType = attempt.serverType;
-      location = attempt.location;
       if (
         attempt.serverType !== requestedServerType ||
         attempt.location !== requestedLocation
@@ -211,6 +263,30 @@ async function main(): Promise<void> {
       break;
     } catch (err) {
       lastError = err;
+      if (isProjectQuotaError(err)) {
+        let inventory: CapacityInventory | null = null;
+        let inventoryError: unknown;
+        try {
+          inventory = await readSanitizedCapacityInventory(client);
+        } catch (error) {
+          // error-policy:J2 The create failure remains the cause; the diagnostic failure is attached separately.
+          inventoryError = error;
+        }
+        if (inventory) {
+          console.error(
+            `[hetzner-e2e-provision] project capacity inventory: ${JSON.stringify(inventory)}`,
+          );
+        }
+        throw new HetznerE2eQuotaError(
+          "quota_exceeded",
+          `Hetzner project quota exhausted after ${attempt.serverType}@${attempt.location} (${err.message}). ` +
+            "Operator action required: inspect project capacity or raise the server limit; changing location cannot bypass a project-wide quota.",
+          err.status,
+          err,
+          inventory,
+          inventoryError,
+        );
+      }
       if (!isRetryableCombo(err)) {
         // Surface a hint before propagating: a non-retryable failure on
         // the first attempt is almost always an auth/account problem
@@ -232,23 +308,6 @@ async function main(): Promise<void> {
     }
   }
   if (!server) {
-    // Layer 2 diagnostic: when every fallback combo also failed with
-    // quota_exceeded, the operator needs a single actionable next step —
-    // not a stack of "unavailable" lines that look like a transient API
-    // glitch. Refresh `HCLOUD_TOKEN_CI` only if the token's project no
-    // longer matches the CI project; otherwise delete leaked servers in
-    // the Hetzner console (https://console.hetzner.cloud/) and re-run.
-    if (
-      lastError instanceof HetznerCloudError &&
-      lastError.code === "quota_exceeded"
-    ) {
-      throw new Error(
-        `Hetzner project quota exhausted across all fallback combos (last error: ${lastError.message}). ` +
-          "Operator action required: pre-reap freed nothing in 20min window, and the workflow cannot proceed. " +
-          "Check https://console.hetzner.cloud/ for leaked CI servers (label ci=true, workflow=hetzner-e2e), " +
-          "or rotate HCLOUD_TOKEN_CI if it now points to a project with a tighter cap.",
-      );
-    }
     throw lastError instanceof Error
       ? lastError
       : new Error("Hetzner provisioning failed across all fallback combos");
@@ -264,7 +323,48 @@ async function main(): Promise<void> {
     run_id: String(runId),
   });
 
-  console.log(JSON.stringify({ id: server.id, ip }));
+  return { id: server.id, ip };
 }
 
-await main();
+if (import.meta.main) {
+  void runHetznerE2eProvision()
+    .then((result) => {
+      console.log(JSON.stringify(result));
+    })
+    .catch((error: unknown) => {
+      const diagnostic = buildProvisionFailureDiagnostic(error);
+      const diagnosticPath =
+        // biome-ignore lint/suspicious/noUndeclaredEnvVars: GitHub Actions injects this standalone script path.
+        process.env.HETZNER_E2E_DIAGNOSTIC_FILE ??
+        "/tmp/hetzner-e2e-provision-diagnostic.json";
+      try {
+        writeProvisionFailureDiagnostic(diagnosticPath, diagnostic);
+      } catch (diagnosticWriteError) {
+        // error-policy:J2 Preserve the provisioning failure if its reporting boundary also fails.
+        throw new AggregateError(
+          [error, diagnosticWriteError],
+          "Hetzner provisioning failed and its structured diagnostic could not be written",
+          { cause: error },
+        );
+      }
+      console.error(
+        `[hetzner-e2e-provision] failure diagnostic: ${JSON.stringify(diagnostic)}`,
+      );
+      console.error(error);
+      process.exitCode = 1;
+    });
+}
+
+class HetznerE2eQuotaError extends HetznerCloudError {
+  constructor(
+    code: "quota_exceeded",
+    message: string,
+    status: number | undefined,
+    cause: unknown,
+    public readonly inventory: CapacityInventory | null,
+    public readonly inventoryError: unknown,
+  ) {
+    super(code, message, status, cause);
+    this.name = "HetznerE2eQuotaError";
+  }
+}

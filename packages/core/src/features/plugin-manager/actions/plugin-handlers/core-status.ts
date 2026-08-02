@@ -20,16 +20,16 @@ export interface CoreStatusInput {
 	callback?: HandlerCallback;
 }
 
+// Planner-facing only: the status dump (paths, commit, version) is planner
+// input, not a chat bubble — it double-messaged next to the evaluator's reply.
 export async function runCoreStatus({
 	runtime,
-	callback,
 }: CoreStatusInput): Promise<ActionResult> {
 	const service = runtime.getService(
 		"core_manager",
 	) as CoreManagerService | null;
 	if (!service) {
 		const text = "Core manager service not available";
-		await callback?.({ text });
 		return { success: false, text };
 	}
 
@@ -54,7 +54,6 @@ export async function runCoreStatus({
 	}
 
 	const text = lines.join("\n");
-	await callback?.({ text });
 	return {
 		success: true,
 		text,

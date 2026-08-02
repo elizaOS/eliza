@@ -571,6 +571,7 @@ function customSandbox(): AgentSandbox {
     error_count: 0,
     environment_vars: { ELIZA_API_TOKEN: "agent-token" },
     environment_revision: 0,
+    lifecycle_revision: 0,
     node_id: "node-1",
     container_name: "agent-e06bb509",
     bridge_port: 18923,
@@ -758,6 +759,85 @@ describe("ElizaSandboxService state restore auth", () => {
       config: { restored: true },
       workspaceFiles: {},
     });
+  });
+
+  test("refuses a restore payload over the v1 restorable limit BEFORE the fetch (#17172)", async () => {
+    // `/api/restore` caps its request body at the same canonical limit, so an
+    // oversized push is a guaranteed far-end rejection. This runs on the
+    // blue/green rollback path, where a failed request is a failed ROLLBACK —
+    // so the refusal has to happen locally, before anything is sent.
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { MAX_RESTORABLE_AGENT_BACKUP_BYTES } = await import(
+      "@elizaos/shared/agent-backup-limits"
+    );
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return Response.json({ ok: true });
+    });
+
+    // One oversized value is enough to push the serialized body past the cap;
+    // build it from a repeated char so the payload is big but cheap to make.
+    const oversized = "x".repeat(MAX_RESTORABLE_AGENT_BACKUP_BYTES + 1024);
+    const push = (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
+          options: { trusted: true; authRec: Pick<AgentSandbox, "id" | "environment_vars"> },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      { memories: [], config: { blob: oversized }, workspaceFiles: {} },
+      { trusted: true, authRec: customSandbox() },
+    );
+
+    await expect(push).rejects.toThrow(/exceeds the v1 restorable limit/);
+    expect(fetchCalls).toBe(0);
+  });
+
+  test("the oversized refusal is neither unrecoverable nor permanently lost (#17172)", async () => {
+    // Both classifiers must say no. "Unrecoverable" authorises the fresh-boot
+    // degrade, and an oversized chain is intact and decryptable — degrading it
+    // would discard recoverable state because of a limit we chose. "Permanently
+    // lost" additionally authorises pruning, which would destroy that chain.
+    // The refusal gets its own terminal branch at each restore site instead.
+    const { isUnrecoverableSnapshotError, isPermanentlyLostSnapshot } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const { SnapshotPayloadTooLargeError } = await import("@elizaos/shared/agent-backup-limits");
+    const err = new SnapshotPayloadTooLargeError(200, 100);
+
+    expect(isUnrecoverableSnapshotError(err)).toBe(false);
+    expect(isPermanentlyLostSnapshot(err)).toBe(false);
+    expect(err.payloadBytes).toBe(200);
+    expect(err.limitBytes).toBe(100);
+  });
+
+  test("pushes a restore payload that fits the v1 restorable limit (#17172)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return Response.json({ ok: true });
+    });
+
+    await (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
+          options: { trusted: true; authRec: Pick<AgentSandbox, "id" | "environment_vars"> },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      { memories: [], config: { small: "payload" }, workspaceFiles: {} },
+      { trusted: true, authRec: customSandbox() },
+    );
+
+    expect(fetchCalls).toBe(1);
   });
 
   test("keeps legacy bridge URL restores unauthenticated when no sandbox record is supplied", async () => {
@@ -1311,8 +1391,11 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
       findById: agentSandboxesRepository.findById,
       trySetProvisioning: agentSandboxesRepository.trySetProvisioning,
       getBackupById: agentSandboxesRepository.getBackupById,
+      getLatestBackup: agentSandboxesRepository.getLatestBackup,
       getReconstructedBackupState: agentSandboxesRepository.getReconstructedBackupState,
     };
+    // Ordinary provisions (no override) read the LATEST backup, not an id.
+    agentSandboxesRepository.getLatestBackup = mock(async () => backup);
     agentSandboxesRepository.findByIdAndOrg = mock(async () => rec);
     agentSandboxesRepository.findById = mock(async () => rec);
     agentSandboxesRepository.trySetProvisioning = mock(async () => ({
@@ -1348,6 +1431,7 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
         agentSandboxesRepository.findById = originals.findById;
         agentSandboxesRepository.trySetProvisioning = originals.trySetProvisioning;
         agentSandboxesRepository.getBackupById = originals.getBackupById;
+        agentSandboxesRepository.getLatestBackup = originals.getLatestBackup;
         agentSandboxesRepository.getReconstructedBackupState =
           originals.getReconstructedBackupState;
         createForAgentSpy.mockRestore();
@@ -1426,6 +1510,172 @@ describe("ElizaSandboxService provision — from-backup override (#15603 B6)", (
       h.restore();
     }
   });
+
+  test("an oversized restore FAILS an ORDINARY provision closed — no silent fresh boot (#17180 §1)", async () => {
+    // The chain is intact, only too large. Booting empty would silently drop
+    // every byte of it, so the refusal must look exactly like the explicit
+    // from-backup failure: status error, container torn down, chain unpruned.
+    const { SnapshotPayloadTooLargeError } = await import("@elizaos/shared/agent-backup-limits");
+    const h = await armFromBackupProvision({
+      reconstructError: new SnapshotPayloadTooLargeError(200 * 1024 * 1024, 128 * 1024 * 1024),
+    });
+    try {
+      const result = await h.svc.provision(h.rec.id, h.rec.organization_id);
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected provision failure");
+      expect(result.error).toContain("forceFreshBoot");
+      expect(h.updateSpy).toHaveBeenCalledWith(
+        h.rec.id,
+        expect.objectContaining({ status: "error" }),
+      );
+      expect(h.provider.stop).toHaveBeenCalled();
+      expect(h.pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("an oversized restore PUSH also fails an ordinary provision closed (#17180 §1)", async () => {
+    const { SnapshotPayloadTooLargeError } = await import("@elizaos/shared/agent-backup-limits");
+    const h = await armFromBackupProvision({});
+    // The push-side refusal fires from the serialized body size inside
+    // pushState; injecting at the method boundary avoids materializing 128 MiB
+    // in the test while exercising the provision branch that catches it.
+    const pushSpy = spyOn(
+      h.svc as unknown as { pushState: () => Promise<void> },
+      "pushState",
+    ).mockRejectedValue(new SnapshotPayloadTooLargeError(200 * 1024 * 1024, 128 * 1024 * 1024));
+    try {
+      const result = await h.svc.provision(h.rec.id, h.rec.organization_id);
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected provision failure");
+      expect(result.error).toContain("forceFreshBoot");
+      expect(h.updateSpy).toHaveBeenCalledWith(
+        h.rec.id,
+        expect.objectContaining({ status: "error" }),
+      );
+      expect(h.pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      pushSpy.mockRestore();
+      h.restore();
+    }
+  });
+});
+
+describe("ElizaSandboxService shutdown fails closed without a current capture (#17180 §2)", () => {
+  test("a failing pre-stop capture refuses the shutdown and leaves the agent running", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    const svc = new ElizaSandboxService(provider);
+    const getForWrite = spyOn(
+      svc as unknown as { getAgentForWrite: () => Promise<unknown> },
+      "getAgentForWrite",
+    ).mockResolvedValue(rec);
+    const fetchSnap = spyOn(
+      svc as unknown as { fetchSnapshotState: () => Promise<never> },
+      "fetchSnapshotState",
+    ).mockRejectedValue(new Error("snapshot endpoint timed out"));
+    try {
+      const result = await svc.shutdown(rec.id, rec.organization_id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Refusing to stop without a current backup");
+      expect(result.error).toContain("snapshot endpoint timed out");
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+    }
+  });
+});
+
+describe("ElizaSandboxService sleep refuses an unproven fallback backup (#17180 §3)", () => {
+  test("capture failed and the latest stored backup cannot be verified — sleep aborts", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const provider: SandboxProvider = {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stop: mock(async () => {}),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    globalThis.fetch = mock(async () => {
+      throw new Error("snapshot unavailable");
+    });
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(rec);
+    // Unstamped row whose payload really fails decrypt: a GENUINE envelope
+    // encrypted under different AAD coordinates, so the verifier's decrypt
+    // (bound to this row's id) raises a real AeadError and the REAL gate
+    // classifies it decrypt-failed. (A non-envelope object would pass through
+    // decrypt as legacy plaintext; a malformed key id would be an infra throw.)
+    resetKmsClientForTests();
+    const foreignEnvelope = await encryptField(
+      KMS_TEST_ORG,
+      '{"memories":[],"config":{},"workspaceFiles":{}}',
+      KMS_TEST_COORDS,
+    );
+    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
+      {
+        id: "stale-unproven",
+        sandbox_record_id: rec.id,
+        snapshot_type: "pre-shutdown",
+        state_data: {
+          kind: "encrypted-agent-backup-state",
+          algorithm: "kms-aes-256-gcm",
+          ...foreignEnvelope,
+        },
+        state_data_storage: "inline",
+        state_data_key: null,
+        backup_kind: "full",
+        parent_backup_id: null,
+        content_hash: null,
+        size_bytes: 2,
+        verification_status: null,
+        verified_at: null,
+        verification_error: null,
+        created_at: new Date("2026-01-01T00:00:00.000Z"),
+      } as never,
+    );
+    const stamp = spyOn(agentSandboxesRepository, "stampBackupVerification").mockResolvedValue(
+      undefined as never,
+    );
+    const listMeta = spyOn(agentSandboxesRepository, "listBackupMetadata").mockResolvedValue(
+      [] as never,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update");
+    try {
+      const result = await new ElizaSandboxService(provider).executeSleep(
+        rec.id,
+        rec.organization_id,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.containerRemoved).toBe(false);
+      expect(result.error).toContain("Refusing to deactivate on an unproven backup");
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      find.mockRestore();
+      storedBackup.mockRestore();
+      stamp.mockRestore();
+      listMeta.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService sleep", () => {
@@ -1450,6 +1700,11 @@ describe("ElizaSandboxService sleep", () => {
     const latestBackupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
       undefined,
     );
+    // The gate consults the un-hydrated read; nothing durable exists.
+    const storedBackupSpy = spyOn(
+      agentSandboxesRepository,
+      "getLatestStoredBackup",
+    ).mockResolvedValue(undefined);
     const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
     const updateSpy = spyOn(agentSandboxesRepository, "update");
 
@@ -1471,6 +1726,7 @@ describe("ElizaSandboxService sleep", () => {
     } finally {
       findSpy.mockRestore();
       latestBackupSpy.mockRestore();
+      storedBackupSpy.mockRestore();
       createBackupSpy.mockRestore();
       updateSpy.mockRestore();
     }
@@ -1982,7 +2238,7 @@ describe("ElizaSandboxService heartbeat", () => {
         sandboxId: sandbox.sandbox_id,
         nodeId: sandbox.node_id,
         containerName: sandbox.container_name,
-        updatedAt: sandbox.updated_at,
+        lifecycleRevision: sandbox.lifecycle_revision,
       });
     } finally {
       findSpy.mockRestore();
@@ -3161,6 +3417,18 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
       id: "durable-backup",
     } as never);
+    // Fresh verified stamp: the sleep fallback gate accepts this row without
+    // a live decrypt, keeping these tests focused on the later stages.
+    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
+      {
+        id: "durable-backup",
+        sandbox_record_id: rec.id,
+        snapshot_type: "pre-shutdown",
+        verification_status: "verified",
+        verified_at: new Date(),
+        created_at: new Date(),
+      } as never,
+    );
     const tx = armSleepTransaction(svc, rec);
     try {
       const result = await svc.executeSleep(AGENT, ORG);
@@ -3176,6 +3444,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       upgradeTransactionImpl = null;
       find.mockRestore();
       backup.mockRestore();
+      storedBackup.mockRestore();
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();
       tx.activeReplacement.mockRestore();
@@ -3205,6 +3474,18 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
       id: "durable-backup",
     } as never);
+    // Fresh verified stamp: the sleep fallback gate accepts this row without
+    // a live decrypt, keeping these tests focused on the later stages.
+    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
+      {
+        id: "durable-backup",
+        sandbox_record_id: rec.id,
+        snapshot_type: "pre-shutdown",
+        verification_status: "verified",
+        verified_at: new Date(),
+        created_at: new Date(),
+      } as never,
+    );
     const tx = armSleepTransaction(svc, replacement);
 
     try {
@@ -3220,6 +3501,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       upgradeTransactionImpl = null;
       find.mockRestore();
       backup.mockRestore();
+      storedBackup.mockRestore();
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();
       tx.activeReplacement.mockRestore();
@@ -3242,6 +3524,18 @@ describe("replacement lifecycle teardown is absence-proof", () => {
     const backup = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue({
       id: "durable-backup",
     } as never);
+    // Fresh verified stamp: the sleep fallback gate accepts this row without
+    // a live decrypt, keeping these tests focused on the later stages.
+    const storedBackup = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
+      {
+        id: "durable-backup",
+        sandbox_record_id: rec.id,
+        snapshot_type: "pre-shutdown",
+        verification_status: "verified",
+        verified_at: new Date(),
+        created_at: new Date(),
+      } as never,
+    );
     const prune = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(undefined);
     const tx = armSleepTransaction(svc, rec);
 
@@ -3260,6 +3554,7 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       upgradeTransactionImpl = null;
       find.mockRestore();
       backup.mockRestore();
+      storedBackup.mockRestore();
       prune.mockRestore();
       tx.lockLifecycle.mockRestore();
       tx.getForMutation.mockRestore();
@@ -8140,7 +8435,8 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       const sql = new PgDialect().sqlToQuery(whereClause).sql.toLowerCase();
       expect(sql).toContain("deletion_attempt_id");
       expect(sql).toContain("environment_revision");
-      expect(sql).toContain("updated_at");
+      expect(sql).toContain("lifecycle_revision");
+      expect(sql).not.toContain("updated_at");
       expect(sql).toContain("claimed_at");
     } finally {
       upgradeTransactionImpl = null;

@@ -1,35 +1,18 @@
-// Stub for the view catalog in the home-screen e2e: reports a single static
-// "weather" app entry (with a generated hero SVG) so gated home tiles render
-// deterministically without hitting the live catalog service.
-import { generateViewHeroSvgFor } from "@elizaos/shared";
+/**
+ * Deterministic catalog adapter for the real home-screen launcher fixture.
+ *
+ * Both launcher data hooks consume the same synthetic view registry so a
+ * production refactor between hook surfaces cannot silently change the fixture
+ * from a representative launcher into a one-tile catalog.
+ */
 
-const WEATHER_HERO = `data:image/svg+xml,${encodeURIComponent(
-  generateViewHeroSvgFor({
-    id: "weather",
-    label: "Weather",
-    icon: "CloudSun",
-  }),
-)}`;
+import { viewToEntry } from "../../../hooks/view-catalog";
+import { useRoutableViews } from "./home-screen-fixture.views-stub";
 
 export function useViewCatalog() {
+  const { views } = useRoutableViews();
   return {
-    entries: [
-      {
-        key: "app:weather",
-        id: "weather",
-        label: "Weather",
-        icon: "CloudSun",
-        imageUrl: WEATHER_HERO,
-        fallbackImageUrl: WEATHER_HERO,
-        hasHero: false,
-        modality: "gui",
-        state: "available",
-        kind: "app",
-        appName: "weather",
-        pluginName: "weather",
-        viewKind: "release",
-      },
-    ],
+    entries: views.map(viewToEntry),
     loading: false,
     error: null,
     refresh: () => {},

@@ -70,6 +70,8 @@ function createMockReq(
       }
     } else if (event === "end") {
       setImmediate(() => listener());
+    } else {
+      http.IncomingMessage.prototype.on.call(req, event, listener);
     }
     return req;
   }) as never;
@@ -155,6 +157,39 @@ function createMessageService(
         didRespond: true,
         responseContent: content,
         responseMessages: [{ id: stringToUuid("reply-msg"), content }],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } as unknown as MessageService;
+}
+
+function createCallbackMessageService(
+  finalReply: string,
+  streamedReply?: string,
+): MessageService {
+  const finalContent = { text: finalReply, actions: ["REPLY"] };
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      if (streamedReply) {
+        await callback?.({
+          text: streamedReply,
+          actions: ["REPLY"],
+          merge: "append",
+        });
+      }
+      await callback?.(finalContent);
+      return {
+        didRespond: true,
+        responseContent: finalContent,
+        responseMessages: [
+          { id: stringToUuid("callback-reply-msg"), content: finalContent },
+        ],
       };
     },
     shouldRespond: () => ({
@@ -274,6 +309,7 @@ function createCtx(opts: {
   };
 
   return {
+    req,
     record,
     state,
     invoke: () =>
@@ -515,6 +551,259 @@ describe("POST /api/agents/:id/message (issue #7680)", () => {
 describe("compatibility transport transcript visibility", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("streams callback-only replies through the OpenAI-compatible transport", async () => {
+    const agentId = stringToUuid("openai-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService("callback reply"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Reply through the callback" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      choices?: Array<{ delta?: { content?: string } }>;
+    }>;
+    const text = frames
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice) => choice.delta?.content ?? "")
+      .join("");
+    expect(text).toBe("callback reply");
+  });
+
+  it("cancels an OpenAI-compatible stream when the request is aborted", async () => {
+    const agentId = stringToUuid("openai-disconnect-agent") as UUID;
+    let generationStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      generationStarted = resolve;
+    });
+    let observedSignal: AbortSignal | undefined;
+    const runtime = createRuntime(agentId, {
+      messageService: {
+        async handleMessage(_runtime, _message, _callback, options) {
+          observedSignal = options?.abortSignal;
+          generationStarted?.();
+          await new Promise<void>((_resolve, reject) => {
+            options?.abortSignal?.addEventListener(
+              "abort",
+              () => reject(options.abortSignal?.reason),
+              { once: true },
+            );
+          });
+          throw new Error("unreachable");
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      } as unknown as MessageService,
+    });
+    const { req, record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Cancel this turn" }],
+      },
+      runtime,
+    });
+
+    const pending = invoke();
+    await started;
+    req.emit("aborted");
+
+    await expect(pending).resolves.toBe(true);
+    expect(observedSignal?.aborted).toBe(true);
+    expect(record.writes.join("")).not.toContain("data: [DONE]");
+  });
+
+  it("does not treat normal request close as an OpenAI stream disconnect", async () => {
+    const agentId = stringToUuid("openai-request-close-agent") as UUID;
+    let releaseGeneration: (() => void) | undefined;
+    const release = new Promise<void>((resolve) => {
+      releaseGeneration = resolve;
+    });
+    let generationStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      generationStarted = resolve;
+    });
+    let observedSignal: AbortSignal | undefined;
+    const runtime = createRuntime(agentId, {
+      messageService: {
+        async handleMessage(_runtime, _message, _callback, options) {
+          observedSignal = options?.abortSignal;
+          generationStarted?.();
+          await release;
+          return {
+            didRespond: true,
+            responseContent: { text: "still connected" },
+            responseMessages: [],
+          };
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      } as unknown as MessageService,
+    });
+    const { req, record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Finish normally" }],
+      },
+      runtime,
+    });
+
+    const pending = invoke();
+    await started;
+    req.emit("close");
+    expect(observedSignal?.aborted).toBe(false);
+    releaseGeneration?.();
+
+    await expect(pending).resolves.toBe(true);
+    expect(record.writes.join("")).toContain("still connected");
+    expect(record.writes.join("")).toContain("data: [DONE]");
+  });
+
+  it("ends an OpenAI-compatible divergent stream with an observable error, not success", async () => {
+    const agentId = stringToUuid("openai-divergent-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService(
+        "authoritative final reply",
+        "provisional streamed reply",
+      ),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/chat/completions",
+      body: {
+        model: "eliza",
+        stream: true,
+        messages: [{ role: "user", content: "Change the callback reply" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    const frames = parseSseJsonFrames(record) as Array<{
+      error?: { type?: string; code?: string };
+      choices?: Array<{
+        delta?: { content?: string };
+        finish_reason?: string | null;
+      }>;
+    }>;
+    const streamedText = frames
+      .flatMap((frame) => frame.choices ?? [])
+      .map((choice) => choice.delta?.content ?? "")
+      .join("");
+    expect(streamedText).toBe("provisional streamed reply");
+    expect(frames).toContainEqual({
+      error: expect.objectContaining({
+        type: "stream_error",
+        code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
+      }),
+    });
+    expect(
+      frames
+        .flatMap((frame) => frame.choices ?? [])
+        .some((choice) => choice.finish_reason === "stop"),
+    ).toBe(false);
+    expect(record.writes.join("")).not.toContain("data: [DONE]");
+  });
+
+  it("streams callback-only replies through the Anthropic-compatible transport", async () => {
+    const agentId = stringToUuid("anthropic-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService("callback reply"),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "Reply through the callback" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    expect(record.status).toBe(200);
+    const frames = parseSseJsonFrames(record) as Array<{
+      type?: string;
+      delta?: { text?: string };
+    }>;
+    const text = frames
+      .filter((frame) => frame.type === "content_block_delta")
+      .map((frame) => frame.delta?.text ?? "")
+      .join("");
+    expect(text).toBe("callback reply");
+  });
+
+  it("ends an Anthropic-compatible divergent stream with an error before completion", async () => {
+    const agentId = stringToUuid("anthropic-divergent-callback-agent") as UUID;
+    const runtime = createRuntime(agentId, {
+      messageService: createCallbackMessageService(
+        "authoritative final reply",
+        "provisional streamed reply",
+      ),
+    });
+    const { record, invoke } = createCtx({
+      method: "POST",
+      pathname: "/v1/messages",
+      body: {
+        model: "eliza",
+        max_tokens: 128,
+        stream: true,
+        messages: [{ role: "user", content: "Change the callback reply" }],
+      },
+      runtime,
+    });
+
+    expect(await invoke()).toBe(true);
+    const frames = parseSseJsonFrames(record) as Array<{
+      type?: string;
+      delta?: { text?: string };
+      error?: { type?: string; code?: string };
+    }>;
+    const streamedText = frames
+      .filter((frame) => frame.type === "content_block_delta")
+      .map((frame) => frame.delta?.text ?? "")
+      .join("");
+    expect(streamedText).toBe("provisional streamed reply");
+    expect(frames).toContainEqual({
+      type: "error",
+      error: expect.objectContaining({
+        type: "stream_error",
+        code: "CHAT_APPEND_ONLY_STREAM_DIVERGENCE",
+      }),
+    });
+    expect(frames.map((frame) => frame.type)).not.toContain(
+      "content_block_stop",
+    );
+    expect(frames.map((frame) => frame.type)).not.toContain("message_delta");
+    expect(frames.map((frame) => frame.type)).not.toContain("message_stop");
   });
 
   it("returns empty OpenAI-compatible non-streaming content for an internal turn", async () => {

@@ -7,7 +7,7 @@
  * merging it silently reverts work already merged on the target branch.
  * #11271's merge-base was only 8 minutes old — the staleness was inside the
  * PR's own tree — so a merge-base age check alone can never catch it. This
- * guard therefore runs a content-level detection plus a backstop:
+ * guard therefore uses content identity rather than branch age or distance:
  *
  * (Files the PR leaves untouched relative to its merge-base are safe by
  * construction: GitHub's squash/merge machinery three-way-merges, so a
@@ -35,10 +35,6 @@
  *    (a stale checkout reverts modified files en masse — #11271 had 200+);
  *    deletion-only findings surface as loud non-blocking notices.
  *
- * 2. STALENESS BACKSTOP. Fail when the merge-base is further behind the
- *    target tip than --max-behind-commits (first-parent) or
- *    --max-behind-hours (committer time).
- *
  * Override: the `stale-base-ack` label (--ack) downgrades failures to loud
  * warnings — for deliberate revert PRs.
  *
@@ -50,7 +46,6 @@
  *   node packages/scripts/stale-base-guard.mjs \
  *     --base <target-tip-ref> --head <pr-head-ref> \
  *     [--merge-base <ref>] [--window 1200] \
- *     [--max-behind-commits 200] [--max-behind-hours 72] \
  *     [--ack] [--github] [--summary <path>] [--json <path>] [--repo <dir>]
  *
  * Exit codes: 0 = pass (or acked), 1 = findings, 2 = usage/internal error.
@@ -65,8 +60,6 @@ const PATHSPEC_CHUNK = 500;
 function parseArgs(argv) {
   const args = {
     window: 1200,
-    maxBehindCommits: 200,
-    maxBehindHours: 72,
     ack: false,
     github: false,
     repo: process.cwd(),
@@ -96,12 +89,6 @@ function parseArgs(argv) {
       case "--window":
         args.window = Number(next());
         break;
-      case "--max-behind-commits":
-        args.maxBehindCommits = Number(next());
-        break;
-      case "--max-behind-hours":
-        args.maxBehindHours = Number(next());
-        break;
       case "--ack":
         args.ack = true;
         break;
@@ -124,11 +111,7 @@ function parseArgs(argv) {
   if (!args.base || !args.head) {
     throw new Error("--base and --head are required");
   }
-  for (const [name, v] of [
-    ["--window", args.window],
-    ["--max-behind-commits", args.maxBehindCommits],
-    ["--max-behind-hours", args.maxBehindHours],
-  ]) {
+  for (const [name, v] of [["--window", args.window]]) {
     if (!Number.isFinite(v) || v < 0)
       throw new Error(`${name} must be a non-negative number`);
   }
@@ -332,46 +315,15 @@ function main() {
       base,
       head,
       mergeBase: null,
-      staleness: {
-        behindCommits: null,
-        behindHours: null,
+      history: {
         failed: true,
         reason:
-          "no merge-base found in the available history — the PR branch point is far behind the target branch",
+          "no merge-base found in the available history, so content-level revert detection cannot run",
       },
       revertFindings: [],
       deletionNotices: [],
     });
   }
-
-  // --- Staleness backstop -------------------------------------------------
-  const behindCommits = Number(
-    gitText(repo, [
-      "rev-list",
-      "--count",
-      "--first-parent",
-      `${mergeBase}..${base}`,
-    ]),
-  );
-  const ctOf = (sha) => parseCommit(repo, sha).ct;
-  const behindHours = Math.max(0, (ctOf(base) - ctOf(mergeBase)) / 3600);
-  const staleReasons = [];
-  if (behindCommits > args.maxBehindCommits) {
-    staleReasons.push(
-      `merge-base is ${behindCommits} first-parent commits behind the target tip (limit ${args.maxBehindCommits})`,
-    );
-  }
-  if (behindHours > args.maxBehindHours) {
-    staleReasons.push(
-      `merge-base is ${behindHours.toFixed(1)}h behind the target tip (limit ${args.maxBehindHours}h)`,
-    );
-  }
-  const staleness = {
-    behindCommits,
-    behindHours: Number(behindHours.toFixed(2)),
-    failed: staleReasons.length > 0,
-    reason: staleReasons.join("; ") || null,
-  };
 
   // --- Silent-revert detection ---------------------------------------------
   const prDiff = diffRaw(repo, mergeBase, head);
@@ -416,15 +368,15 @@ function main() {
     base,
     head,
     mergeBase,
-    staleness,
+    history: { failed: false, reason: null },
     revertFindings: blockingFindings,
     deletionNotices,
   });
 }
 
 function report(args, result) {
-  const { staleness, revertFindings, deletionNotices } = result;
-  const failed = staleness.failed || revertFindings.length > 0;
+  const { history, revertFindings, deletionNotices } = result;
+  const failed = history.failed || revertFindings.length > 0;
   const verdict = !failed ? "pass" : args.ack ? "acked" : "fail";
   const out = { ...result, ack: args.ack, verdict };
   if (args.json) writeFileSync(args.json, `${JSON.stringify(out, null, 2)}\n`);
@@ -437,13 +389,13 @@ function report(args, result) {
   const level = args.ack ? "warning" : "error";
 
   emit(
-    `stale-base guard: base=${result.base?.slice(0, 10)} head=${result.head?.slice(0, 10)} merge-base=${result.mergeBase ? result.mergeBase.slice(0, 10) : "NONE"} behind=${staleness.behindCommits ?? "?"} commits / ${staleness.behindHours ?? "?"}h`,
+    `stale-base guard: base=${result.base?.slice(0, 10)} head=${result.head?.slice(0, 10)} merge-base=${result.mergeBase ? result.mergeBase.slice(0, 10) : "NONE"}`,
   );
 
-  if (staleness.failed) {
+  if (history.failed) {
     annotate(
       level,
-      `stale-base guard — STALE BASE: ${staleness.reason}. Rebase onto the target branch (git fetch origin && git rebase), re-verify, and force-push with --force-with-lease.`,
+      `stale-base guard — HISTORY UNAVAILABLE: ${history.reason}. Fetch enough target and head history, then rerun the guard.`,
     );
   }
   for (const f of revertFindings.slice(0, MAX_INLINE_ANNOTATIONS)) {
@@ -472,7 +424,7 @@ function report(args, result) {
     );
   }
   if (verdict === "pass")
-    emit("stale-base guard: PASS — no silent reverts, base is fresh.");
+    emit("stale-base guard: PASS — no content-level silent reverts.");
 
   if (args.summary) {
     const lines = [
@@ -482,11 +434,11 @@ function report(args, result) {
       "",
       `- base: \`${result.base}\``,
       `- head: \`${result.head}\``,
-      `- merge-base: \`${result.mergeBase ?? "none found"}\` (${staleness.behindCommits ?? "?"} commits / ${staleness.behindHours ?? "?"}h behind target tip)`,
+      `- merge-base: \`${result.mergeBase ?? "none found"}\``,
       "",
     ];
-    if (staleness.failed)
-      lines.push(`⛔ **Stale base**: ${staleness.reason}`, "");
+    if (history.failed)
+      lines.push(`⛔ **History unavailable**: ${history.reason}`, "");
     if (revertFindings.length > 0) {
       lines.push(
         `⛔ **Silent reverts** (${revertFindings.length} file(s) set back to pre-merge blobs):`,

@@ -132,7 +132,7 @@ export const deliverOAuthLinkAction: Action = {
 		message: Memory,
 		_state?: State,
 		options?: HandlerOptions,
-		callback?: HandlerCallback,
+		_callback?: HandlerCallback,
 	) => {
 		const params = readParams(options);
 		const client = runtime.getService<Service & OAuthIntentsClient>(
@@ -221,12 +221,11 @@ export const deliverOAuthLinkAction: Action = {
 			`[DELIVER_OAUTH_LINK] oauthIntentId=${oauthIntentId} target=${target} delivered=${result.delivered}`,
 		);
 
+		// No visible callback: the delivered link itself is the user-facing
+		// artifact; this status line (and any raw failure) stays planner-facing.
 		const text = result.delivered
 			? `Delivered OAuth link ${oauthIntentId} via ${target}.`
 			: `Failed to deliver OAuth link ${oauthIntentId} via ${target}${result.error ? `: ${result.error}` : ""}.`;
-		if (callback) {
-			await callback({ text, action: "DELIVER_OAUTH_LINK" });
-		}
 
 		return {
 			success: result.delivered,

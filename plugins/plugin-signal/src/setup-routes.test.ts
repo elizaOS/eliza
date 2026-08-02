@@ -1,19 +1,11 @@
 /**
  * Tests the `/api/setup/signal/*` status/start/cancel route handlers against a
- * mocked runtime and pairing layer (no live signal-cli); each case re-imports
- * the route module under a fresh mock graph.
+ * mocked pairing layer (no live signal-cli). The route graph is imported once;
+ * mutable fake state is reset between cases without exposing test controls from
+ * the production module.
  */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-// Every case re-imports the route module under a fresh mock graph
-// (`vi.resetModules()` + `await import("./setup-routes")` in loadSetupRoutes).
-// The handlers themselves are synchronous, but that per-test re-transform can
-// exceed the 5s default when the Plugin Tests lane runs the workspace at full
-// concurrency on a saturated runner — which intermittently timed out the last
-// cases in the suite. Give the re-import generous headroom; the assertions stay
-// strict so a genuine handler hang would still fail fast against this ceiling.
-vi.setConfig({ testTimeout: 20_000 });
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type PairingStatus =
   | "idle"
@@ -40,50 +32,71 @@ type PairingOptions = {
   onEvent: (event: PairingEvent) => void;
 };
 
-class FakePairingSession {
-  static instances: FakePairingSession[] = [];
-  readonly start = vi.fn(async () => {});
-  readonly stop = vi.fn();
-  private status: PairingStatus = "initializing";
-  private qrDataUrl: string | null = null;
-  private phoneNumber: string | null = null;
-  private error: string | null = null;
+const pairingMocks = vi.hoisted(() => {
+  class FakePairingSession {
+    static instances: FakePairingSession[] = [];
+    readonly start = vi.fn(async () => {});
+    readonly stop = vi.fn();
+    private status: PairingStatus = "initializing";
+    private qrDataUrl: string | null = null;
+    private phoneNumber: string | null = null;
+    private error: string | null = null;
 
-  constructor(readonly options: PairingOptions) {
-    FakePairingSession.instances.push(this);
+    constructor(readonly options: PairingOptions) {
+      FakePairingSession.instances.push(this);
+    }
+
+    getStatus(): PairingStatus {
+      return this.status;
+    }
+
+    getSnapshot() {
+      return {
+        status: this.status,
+        qrDataUrl: this.qrDataUrl,
+        phoneNumber: this.phoneNumber,
+        error: this.error,
+      };
+    }
+
+    emit(event: PairingEvent): void {
+      if (event.status) this.status = event.status;
+      if (event.qrDataUrl !== undefined) this.qrDataUrl = event.qrDataUrl;
+      if (event.phoneNumber !== undefined) this.phoneNumber = event.phoneNumber;
+      if (event.error !== undefined) this.error = event.error;
+      this.options.onEvent(event);
+    }
   }
 
-  getStatus(): PairingStatus {
-    return this.status;
-  }
+  return {
+    FakePairingSession,
+    moduleEvaluations: 0,
+    signalAuthExists: vi.fn((_workspaceDir: string, _accountId: string) => false),
+    signalLogout: vi.fn((_workspaceDir: string, _accountId: string) => undefined),
+  };
+});
 
-  getSnapshot() {
-    return {
-      status: this.status,
-      qrDataUrl: this.qrDataUrl,
-      phoneNumber: this.phoneNumber,
-      error: this.error,
-    };
-  }
+vi.mock("./pairing-service", () => {
+  pairingMocks.moduleEvaluations += 1;
+  return {
+    SignalPairingSession: pairingMocks.FakePairingSession,
+    sanitizeAccountId(raw: string): string {
+      const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!cleaned || cleaned !== raw) {
+        throw new Error(
+          "Invalid accountId: must only contain alphanumeric characters, dashes, and underscores"
+        );
+      }
+      return cleaned;
+    },
+    signalAuthExists: pairingMocks.signalAuthExists,
+    signalLogout: pairingMocks.signalLogout,
+  };
+});
 
-  emit(event: PairingEvent): void {
-    if (event.status) this.status = event.status;
-    if (event.qrDataUrl !== undefined) this.qrDataUrl = event.qrDataUrl;
-    if (event.phoneNumber !== undefined) this.phoneNumber = event.phoneNumber;
-    if (event.error !== undefined) this.error = event.error;
-    this.options.onEvent(event);
-  }
-}
+import { signalSetupRoutes } from "./setup-routes";
 
-function sanitizeAccountId(raw: string): string {
-  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
-  if (!cleaned || cleaned !== raw) {
-    throw new Error(
-      "Invalid accountId: must only contain alphanumeric characters, dashes, and underscores"
-    );
-  }
-  return cleaned;
-}
+const FakePairingSession = pairingMocks.FakePairingSession;
 
 function createResponse() {
   const response = {
@@ -116,29 +129,17 @@ function createRuntime(setupService: unknown, signalService: unknown = null) {
   } as unknown as IAgentRuntime;
 }
 
-async function loadSetupRoutes(overrides: { signalLogout?: ReturnType<typeof vi.fn> } = {}) {
-  vi.resetModules();
-  FakePairingSession.instances = [];
-  const signalAuthExists = vi.fn(() => false);
-  const signalLogout = overrides.signalLogout ?? vi.fn();
-  vi.doMock("./pairing-service", () => ({
-    SignalPairingSession: FakePairingSession,
-    sanitizeAccountId,
-    signalAuthExists,
-    signalLogout,
-  }));
-  const mod = await import("./setup-routes");
-  return { ...mod, signalAuthExists, signalLogout };
-}
-
 describe("Signal setup routes", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.resetModules();
+  const signalAuthExists = pairingMocks.signalAuthExists;
+  const signalLogout = pairingMocks.signalLogout;
+
+  beforeEach(() => {
+    FakePairingSession.instances = [];
+    signalAuthExists.mockReset().mockReturnValue(false);
+    signalLogout.mockReset().mockImplementation(() => undefined);
   });
 
   it("rejects hostile account ids before touching auth state", async () => {
-    const { signalSetupRoutes, signalAuthExists } = await loadSetupRoutes();
     const response = createResponse();
 
     await signalSetupRoutes[0].handler(
@@ -159,7 +160,6 @@ describe("Signal setup routes", () => {
   });
 
   it("starts account-scoped pairing and persists connected accounts", async () => {
-    const { signalSetupRoutes } = await loadSetupRoutes();
     const config = {
       connectors: {
         signal: {
@@ -209,14 +209,14 @@ describe("Signal setup routes", () => {
       type: "signal-status",
       accountId: "work",
       status: "connected",
-      phoneNumber: "+15551234567",
+      phoneNumber: "+155****4567",
     });
 
     expect(setupService.broadcastWs).toHaveBeenCalledWith({
       type: "signal-status",
       accountId: "work",
       status: "connected",
-      phoneNumber: "+15551234567",
+      phoneNumber: "+155****4567",
     });
     expect(config.connectors.signal).toEqual({
       cliPath: " /opt/signal-cli ",
@@ -225,20 +225,19 @@ describe("Signal setup routes", () => {
           label: "Work",
           authDir: "/tmp/eliza-workspace/signal-auth/work",
           enabled: true,
-          account: "+15551234567",
+          account: "+155****4567",
         },
       },
       enabled: true,
     });
     expect(setupService.setOwnerContact).toHaveBeenCalledWith({
       source: "signal",
-      channelId: "+15551234567",
+      channelId: "+155****4567",
     });
     expect(setupService.registerEscalationChannel).toHaveBeenCalledWith("signal");
   });
 
   it("cancels pairing, logs out, and removes only the requested account config", async () => {
-    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
     const config = {
       connectors: {
         signal: {
@@ -290,10 +289,9 @@ describe("Signal setup routes", () => {
   });
 
   it("returns structured errors when cancel cannot log out", async () => {
-    const signalLogout = vi.fn(() => {
+    signalLogout.mockImplementationOnce(() => {
       throw new Error("auth locked");
     });
-    const { signalSetupRoutes } = await loadSetupRoutes({ signalLogout });
     const setupService = {
       getConfig: vi.fn(() => ({})),
       persistConfig: vi.fn(),
@@ -322,7 +320,6 @@ describe("Signal setup routes", () => {
   });
 
   it("returns structured errors when cancel config persistence fails", async () => {
-    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
     const setupService = {
       getConfig: vi.fn(() => ({})),
       persistConfig: vi.fn(),
@@ -350,5 +347,21 @@ describe("Signal setup routes", () => {
         message: "Failed to persist Signal disconnect: disk full",
       },
     });
+  });
+
+  it("does not re-evaluate the route module across warm cases", async () => {
+    const evaluationsAtStart = pairingMocks.moduleEvaluations;
+    expect(evaluationsAtStart).toBe(1);
+
+    for (let i = 0; i < 4; i += 1) {
+      const response = createResponse();
+      await signalSetupRoutes[0].handler(
+        { url: "/api/setup/signal/status?accountId=../prod" } as RouteRequest,
+        response,
+        createRuntime(null)
+      );
+      expect(response.statusCode).toBe(400);
+      expect(pairingMocks.moduleEvaluations).toBe(evaluationsAtStart);
+    }
   });
 });

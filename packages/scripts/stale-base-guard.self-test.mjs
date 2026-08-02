@@ -3,7 +3,7 @@
  * Self-test for stale-base-guard.mjs (#11376). Builds throwaway fixture repos
  * in a temp dir and asserts the guard's verdicts on every behavior class:
  * clean edits, the #11271 stale-tree clobber shape, heal/re-land PRs,
- * deletion-only PRs, additions, staleness backstops, window bounding, and the
+ * deletion-only PRs, additions, window bounding, unavailable history, and the
  * `stale-base-ack` override. Runs in CI before the guard itself.
  */
 import assert from "node:assert/strict";
@@ -131,7 +131,7 @@ function branchFrom(dir, name, start) {
   const { status, result } = runGuard(dir, { base: c3, head: "pr" });
   assert.equal(status, 0, "clean edit must pass");
   assert.equal(result.verdict, "pass");
-  assert.equal(result.staleness.behindCommits, 0);
+  assert.equal(result.history.failed, false);
   console.log("ok 1 - clean edit on fresh base passes");
 }
 
@@ -153,11 +153,7 @@ function branchFrom(dir, name, start) {
   const { status, result } = runGuard(dir, { base: c3, head: "pr" });
   assert.equal(status, 1, "stale-tree clobber must fail");
   assert.equal(result.verdict, "fail");
-  assert.equal(
-    result.staleness.failed,
-    false,
-    "merge-base is fresh; content check must catch it",
-  );
+  assert.equal(result.history.failed, false);
   assert.deepEqual(findingPaths(result), ["a.txt", "b.txt", "new.txt"]);
   const byPath = Object.fromEntries(
     result.revertFindings.map((f) => [f.path, f]),
@@ -224,57 +220,7 @@ function branchFrom(dir, name, start) {
   console.log("ok 5 - byte-identical re-add of a deleted file passes");
 }
 
-// --- 6. Staleness backstop: commits behind ----------------------------------
-{
-  const { dir, c3 } = baseFixture();
-  branchFrom(dir, "pr", c3);
-  commit(dir, { "p.txt": "pi-0" }, "pr: fine change on stale base");
-  git(dir, ["checkout", "-q", "develop"]);
-  for (let i = 0; i < 5; i++)
-    commit(dir, { "w.txt": `work-${i}` }, `develop moves ${i}`);
-  const { status, result } = runGuard(dir, {
-    base: "develop",
-    head: "pr",
-    extra: ["--max-behind-commits", "3"],
-  });
-  assert.equal(status, 1, "stale base (commits) must fail");
-  assert.equal(result.staleness.failed, true);
-  assert.equal(result.staleness.behindCommits, 5);
-  assert.deepEqual(findingPaths(result), []);
-  const acked = runGuard(dir, {
-    base: "develop",
-    head: "pr",
-    extra: ["--max-behind-commits", "3", "--ack"],
-  });
-  assert.equal(acked.status, 0);
-  assert.equal(acked.result.verdict, "acked");
-  console.log("ok 6 - staleness backstop (commits) fails; ack overrides");
-}
-
-// --- 7. Staleness backstop: hours behind -------------------------------------
-{
-  const { dir, c3 } = baseFixture();
-  branchFrom(dir, "pr", c3);
-  commit(dir, { "p.txt": "pi-0" }, "pr change");
-  git(dir, ["checkout", "-q", "develop"]);
-  commit(dir, { "w.txt": "work" }, "develop moves 100h later", {
-    hoursFromEpoch: hourCounter + 100,
-  });
-  const { status, result } = runGuard(dir, {
-    base: "develop",
-    head: "pr",
-    extra: ["--max-behind-hours", "72"],
-  });
-  assert.equal(status, 1, "stale base (hours) must fail");
-  assert.equal(result.staleness.failed, true);
-  assert.ok(
-    result.staleness.behindHours > 72,
-    `behindHours=${result.staleness.behindHours}`,
-  );
-  console.log("ok 7 - staleness backstop (hours) fails");
-}
-
-// --- 8. Window bounds the history walk ---------------------------------------
+// --- 6. Window bounds the history walk ---------------------------------------
 {
   const { dir, c3 } = baseFixture();
   branchFrom(dir, "pr", c3);
@@ -291,24 +237,22 @@ function branchFrom(dir, name, start) {
   // c3 (a.txt) is inside the 1-commit window; c2 (b.txt) is outside it.
   assert.equal(status, 1);
   assert.deepEqual(findingPaths(result), ["a.txt"]);
-  console.log("ok 8 - --window bounds how far back reverts are detected");
+  console.log("ok 6 - --window bounds how far back reverts are detected");
 }
 
-// --- 9. No merge-base: severe staleness failure ------------------------------
+// --- 7. No merge-base fails closed because content cannot be checked ----------
 {
   const { dir, c3 } = baseFixture();
   git(dir, ["checkout", "-q", "--orphan", "pr"]);
   commit(dir, { "o.txt": "orphan" }, "unrelated history");
   const { status, result } = runGuard(dir, { base: c3, head: "pr" });
   assert.equal(status, 1, "missing merge-base must fail");
-  assert.equal(result.staleness.failed, true);
-  assert.match(result.staleness.reason, /no merge-base/);
+  assert.equal(result.history.failed, true);
+  assert.match(result.history.reason, /no merge-base/);
   const acked = runGuard(dir, { base: c3, head: "pr", extra: ["--ack"] });
   assert.equal(acked.status, 0);
-  console.log(
-    "ok 9 - missing merge-base fails as severe staleness; ack overrides",
-  );
+  console.log("ok 7 - missing merge-base fails closed; ack overrides");
 }
 
 for (const dir of roots) rmSync(dir, { recursive: true, force: true });
-console.log("stale-base-guard self-test: 9/9 passed");
+console.log("stale-base-guard self-test: 7/7 passed");

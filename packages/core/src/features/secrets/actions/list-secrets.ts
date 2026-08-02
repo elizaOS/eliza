@@ -108,9 +108,15 @@ export async function listSecretsHandler(
 		await callback({ text, action: "SECRETS" });
 	}
 
+	// The list summary is the complete answer to a single-operation turn:
+	// verified + turnComplete make the callback the sole delivery instead of
+	// double-messaging with the evaluator.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		data: {
 			actionName: "SECRETS",
 			action: "list",

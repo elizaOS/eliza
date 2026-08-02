@@ -2,8 +2,8 @@
 /**
  * The notification store (`notification-store`): list/read/remove/clear flows,
  * unread counting, WebSocket-event ingestion, and the native-first delivery
- * policy (OS surface on desktop/mobile, glass banner as the web fallback).
- * jsdom with the API client and bridges mocked — deterministic, no real server.
+ * policy. The persistent Home inbox remains the sole in-app surface. jsdom
+ * with the API client and bridges mocked — deterministic, no real server.
  */
 import type { AgentNotification } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,12 +46,6 @@ vi.mock("../../bridge/native-notifications", () => ({
   showWebNotification: (...args: unknown[]) => showWebNotification(...args),
 }));
 
-const pushNotificationBanner = vi.fn();
-vi.mock("./notification-banner-store", () => ({
-  pushNotificationBanner: (...args: unknown[]) =>
-    pushNotificationBanner(...args),
-}));
-
 import {
   __resetAuthStatusForTests,
   __setAuthStatusForTests,
@@ -88,7 +82,7 @@ function makeNotification(
 }
 
 /**
- * Delivery is fire-and-forget async (desktop → native → glass); settle its
+ * Delivery is fire-and-forget async (desktop → native → browser); settle its
  * promise chain before asserting which sink fired.
  */
 async function flushDelivery(): Promise<void> {
@@ -116,7 +110,6 @@ describe("notification-store", () => {
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
     showNativeNotification.mockReset().mockResolvedValue("none");
     showWebNotification.mockReset().mockReturnValue(false);
-    pushNotificationBanner.mockReset();
     // Default: window focused.
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
@@ -139,16 +132,15 @@ describe("notification-store", () => {
     expect(state.unreadCount).toBe(0);
   });
 
-  // ── Delivery policy: native-first, glass fallback ─────────────────────────
+  // ── Delivery policy: native-first, persistent inbox fallback ──────────────
 
-  it("desktop bridge owns the alert: no native, web, or banner double-fire", async () => {
+  it("desktop bridge owns the alert without a second native or web delivery", async () => {
     invokeDesktopBridgeRequest.mockResolvedValue({ id: "os-1" });
     __ingestNotificationForTests(makeNotification({ priority: "normal" }), 1);
     await flushDelivery();
     expect(invokeDesktopBridgeRequest).toHaveBeenCalledTimes(1);
     expect(showNativeNotification).not.toHaveBeenCalled();
     expect(showWebNotification).not.toHaveBeenCalled();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("desktop OS notification fires even while the window is focused", async () => {
@@ -159,16 +151,14 @@ describe("notification-store", () => {
     );
     await flushDelivery();
     expect(invokeDesktopBridgeRequest).toHaveBeenCalledTimes(1);
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
-  it("Capacitor native channel owns the alert on mobile: no banner", async () => {
+  it("Capacitor native channel owns the alert on mobile", async () => {
     showNativeNotification.mockResolvedValue("local");
     __ingestNotificationForTests(makeNotification({ priority: "high" }), 1);
     await flushDelivery();
     expect(showNativeNotification).toHaveBeenCalledTimes(1);
     expect(showWebNotification).not.toHaveBeenCalled();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("threads groupKey into the native request so the OS surface coalesces", async () => {
@@ -183,56 +173,54 @@ describe("notification-store", () => {
     });
   });
 
-  it("web focused: the glass banner is the surface (no web Notification)", async () => {
+  it("focused web keeps the arrival in the Home inbox without a duplicate interrupt", async () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Deploy done", body: "Build #42" }),
       1,
     );
     await flushDelivery();
-    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
-    expect(pushNotificationBanner.mock.calls[0][0].title).toBe("Deploy done");
     expect(showWebNotification).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications[0]?.title).toBe("Deploy done");
   });
 
-  it("web hidden tab: browser Notification replaces the unseen glass banner", async () => {
+  it("web hidden tab raises a browser Notification when available", async () => {
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     showWebNotification.mockReturnValue(true);
     __ingestNotificationForTests(makeNotification({ priority: "urgent" }), 1);
     await flushDelivery();
     expect(showWebNotification).toHaveBeenCalledTimes(1);
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
-  it("web hidden tab without Notification permission still queues the banner", async () => {
+  it("web hidden tab without Notification permission retains the persistent inbox row", async () => {
     vi.spyOn(document, "hasFocus").mockReturnValue(false);
     showWebNotification.mockReturnValue(false);
     __ingestNotificationForTests(makeNotification({ priority: "urgent" }), 1);
     await flushDelivery();
-    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
-    expect(pushNotificationBanner.mock.calls[0][0].priority).toBe("urgent");
+    expect(showWebNotification).toHaveBeenCalledTimes(1);
+    expect(__getStateForTests().notifications).toHaveLength(1);
   });
 
-  it("a rejecting desktop bridge falls through to the glass fallback", async () => {
+  it("a rejecting desktop bridge still retains the persistent inbox row", async () => {
     invokeDesktopBridgeRequest.mockRejectedValue(new Error("bridge gone"));
     __ingestNotificationForTests(makeNotification({ priority: "high" }), 1);
     await flushDelivery();
-    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(showNativeNotification).toHaveBeenCalledTimes(1);
+    expect(__getStateForTests().notifications).toHaveLength(1);
   });
 
-  it("a rejecting native channel falls through to the glass fallback", async () => {
+  it("a rejecting native channel still retains the persistent inbox row", async () => {
     showNativeNotification.mockRejectedValue(new Error("plugin broke"));
     __ingestNotificationForTests(makeNotification({ priority: "high" }), 1);
     await flushDelivery();
-    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
+    expect(__getStateForTests().notifications).toHaveLength(1);
   });
 
-  it("silent tier is inbox-only: no desktop, native, web, or banner", async () => {
+  it("silent tier is inbox-only: no desktop, native, or web interrupt", async () => {
     __ingestNotificationForTests(makeNotification({ priority: "low" }), 1);
     await flushDelivery();
     expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
     expect(showNativeNotification).not.toHaveBeenCalled();
     expect(showWebNotification).not.toHaveBeenCalled();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("silent tier stays inbox-only even while unfocused", async () => {
@@ -241,7 +229,6 @@ describe("notification-store", () => {
     await flushDelivery();
     expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
     expect(showNativeNotification).not.toHaveBeenCalled();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("normal priority reaches the native surface regardless of focus", async () => {
@@ -256,7 +243,6 @@ describe("notification-store", () => {
       rpcMethod: "desktopShowNotification",
       params: expect.objectContaining({ urgency: "normal", silent: false }),
     });
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("initNotifications hydrates and subscribes to the WS stream once", async () => {
@@ -329,7 +315,6 @@ describe("notification-store", () => {
     expect(recovered.unreadCount).toBe(2);
     expect(listNotifications).toHaveBeenCalledTimes(2);
     expect(onWsEvent).toHaveBeenCalledTimes(2);
-    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
   });
 
   it("stops after the bounded hydrate retry budget and exposes terminal failure", async () => {
@@ -380,7 +365,7 @@ describe("notification-store", () => {
     ) => void;
     handler({ stream: "assistant", payload: { text: "hi" } });
     await flushDelivery();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
   it("WS handler ingests a notification-stream event", async () => {
@@ -397,8 +382,7 @@ describe("notification-store", () => {
       },
     });
     await flushDelivery();
-    expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
-    expect(pushNotificationBanner.mock.calls[0][0].title).toBe("From WS");
+    expect(__getStateForTests().notifications[0]?.title).toBe("From WS");
   });
 
   it("WS handler drops a payload missing id or title (validated, not cast)", async () => {
@@ -417,7 +401,6 @@ describe("notification-store", () => {
       payload: { notification: { title: "no id" } },
     });
     await flushDelivery();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
     expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
@@ -474,7 +457,6 @@ describe("notification-store", () => {
     );
     expect(stored?.readAt).toBe(123);
     expect(__getStateForTests().unreadCount).toBe(0);
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
     expect(showNativeNotification).not.toHaveBeenCalled();
     expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
     expect(showWebNotification).not.toHaveBeenCalled();
@@ -619,7 +601,6 @@ describe("notification-store", () => {
     await flushDelivery();
     expect(__getStateForTests().notifications).toHaveLength(0);
     expect(removeNotificationApi).not.toHaveBeenCalled();
-    expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
   it("reverts the optimistic read when the write rejects (no silent divergence)", async () => {

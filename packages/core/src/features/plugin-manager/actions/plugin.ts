@@ -616,9 +616,18 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			if (!(await canManagePlugins(runtime, message))) {
-				const text = "Permission denied: only the owner may manage plugins.";
+				const text = "Sorry — plugin management is owner-only.";
 				await callback?.({ text });
-				return { success: false, text };
+				// The refusal is the complete answer: verified + turnComplete make
+				// it the sole delivery; the denial stays machine-readable in values.
+				return {
+					success: true,
+					text: "Permission denied: only the owner may manage plugins.",
+					userFacingText: text,
+					verifiedUserFacing: true,
+					turnComplete: true,
+					values: { permissionDenied: true },
+				};
 			}
 
 			const text = message.content.text ?? "";
@@ -669,12 +678,12 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			});
 
 			if (!resolved.ok) {
-				const reply =
-					'Tell me which plugin operation to run. Try: "install @elizaos/plugin-discord", "list ejected plugins", "search for plugins for blockchain", "create a new plugin for X".';
-				await callback?.({ text: reply });
+				// Planner-facing only: the canned clarification boilerplate was a
+				// live double message next to the evaluator's in-voice reply. The
+				// evaluator owns asking the user, in voice.
 				return {
 					success: false,
-					text: reply,
+					text: "No clear plugin operation found in the request; ask the user whether they want to install, eject, list, search for, or create a plugin.",
 					data: { action: "clarify", missing: resolved.missing },
 				};
 			}

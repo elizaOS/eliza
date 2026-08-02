@@ -10,16 +10,22 @@
  */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import { AgentRuntime, type Character, type UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  type Character,
+  type Plugin,
+  type UUID,
+} from "@elizaos/core";
 import { sql } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
 import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
 import {
-  createSignalSourceRegistry,
-  registerSignalSourceRegistry,
-} from "../lifeops/registries/signal-source-registry.js";
-import { registerBuiltinSignalSources } from "../lifeops/telemetry-mapping.js";
+  activateLifeOpsActivitySignals,
+  deactivateLifeOpsActivitySignals,
+} from "../lifeops/activity-signal-lifecycle.js";
+import { getSignalSourceRegistry } from "../lifeops/registries/signal-source-registry.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   handleLifeOpsRoutes,
   type LifeOpsRouteContext,
@@ -117,12 +123,11 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
       character: { name: "lifeops-activity-e2e" } as Character,
       adapter,
     });
-    const registry = createSignalSourceRegistry();
-    registerBuiltinSignalSources(registry);
-    registerSignalSourceRegistry(runtime, registry);
+    activateLifeOpsActivitySignals(runtime);
   });
 
   afterEach(async () => {
+    deactivateLifeOpsActivitySignals(runtime);
     await adapter.close();
     await manager.close();
   });
@@ -232,6 +237,100 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
     expect(created.signal.platform).toBe("web_app");
     // observedAt defaults server-side when the client omits it.
     expect(Number.isFinite(Date.parse(created.signal.observedAt))).toBe(true);
+  });
+
+  it("disables routes on unload and restores them with a fresh registry on reload", async () => {
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    deactivateLifeOpsActivitySignals(runtime);
+    const reportError = vi.spyOn(runtime, "reportError");
+    const lifecyclePlugin: Plugin = {
+      name: "lifeops-activity-signal-lifecycle-regression",
+      description: "Exercises the production activity-signal lifecycle hooks",
+      init: async (_config, pluginRuntime) => {
+        activateLifeOpsActivitySignals(pluginRuntime);
+      },
+      dispose: async (pluginRuntime) => {
+        deactivateLifeOpsActivitySignals(pluginRuntime);
+      },
+    };
+
+    await runtime.registerPlugin(lifecyclePlugin);
+    const registryBeforeUnload = getSignalSourceRegistry(runtime);
+    expect(registryBeforeUnload).not.toBeNull();
+    const activePost = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+      body: {
+        source: "page_visibility",
+        platform: "web_app",
+        state: "active",
+        metadata: { phase: "before-unload" },
+      },
+    });
+    expect(await handleLifeOpsRoutes(activePost.ctx)).toBe(true);
+    expect(activePost.res.statusCode).toBe(201);
+
+    await runtime.unloadPlugin(lifecyclePlugin.name);
+    expect(getSignalSourceRegistry(runtime)).toBeNull();
+    const inactivePost = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+      body: {
+        source: "page_visibility",
+        platform: "web_app",
+        state: "background",
+        metadata: { phase: "after-unload" },
+      },
+    });
+    const readInactiveBody = vi.spyOn(inactivePost.ctx, "readJsonBody");
+    expect(await handleLifeOpsRoutes(inactivePost.ctx)).toBe(true);
+    expect(inactivePost.res.statusCode).toBe(503);
+    expect(JSON.parse(inactivePost.res.body ?? "{}")).toEqual({
+      error:
+        "LifeOps activity signals are unavailable because the personal-assistant runtime is not active",
+    });
+    expect(readInactiveBody).not.toHaveBeenCalled();
+    const inactiveGet = buildCtx({
+      method: "GET",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+    });
+    expect(await handleLifeOpsRoutes(inactiveGet.ctx)).toBe(true);
+    expect(inactiveGet.res.statusCode).toBe(503);
+
+    await runtime.reloadPlugin(lifecyclePlugin);
+    const registryAfterReload = getSignalSourceRegistry(runtime);
+    expect(registryAfterReload).not.toBeNull();
+    expect(registryAfterReload).not.toBe(registryBeforeUnload);
+    const reloadedPost = buildCtx({
+      method: "POST",
+      pathname: "/api/lifeops/activity-signals",
+      runtime,
+      body: {
+        source: "app_lifecycle",
+        platform: "desktop_app",
+        state: "active",
+        metadata: { phase: "after-reload" },
+      },
+    });
+    expect(await handleLifeOpsRoutes(reloadedPost.ctx)).toBe(true);
+    expect(reloadedPost.res.statusCode).toBe(201);
+
+    const primaryRows = await adapter
+      .getDatabase()
+      .execute(
+        sql.raw(
+          "SELECT source FROM app_lifeops.life_activity_signals ORDER BY created_at",
+        ),
+      );
+    expect(primaryRows.rows).toEqual([
+      { source: "page_visibility" },
+      { source: "app_lifecycle" },
+    ]);
+    expect(reportError).not.toHaveBeenCalled();
+    expect(runtime.getRecentReportedErrors()).toEqual([]);
   });
 
   it("rejects an unknown source with 400 and persists nothing", async () => {

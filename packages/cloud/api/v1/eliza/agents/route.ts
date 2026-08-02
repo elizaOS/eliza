@@ -751,9 +751,9 @@ app.post("/", async (c) => {
       );
     }
 
-    // `expectedUpdatedAt` is intentionally omitted: the row was just created
+    // The expected revision is intentionally omitted: the row was just created
     // (and possibly touched by the managed-env update above), so there is no
-    // concurrent handle to guard against — passing the stale create timestamp
+    // concurrent handle to guard against. Passing the stale create revision
     // would spuriously trip the race check after a managed-env write.
     const job = await provisioningJobService.enqueueAgentProvision({
       agentId: agent.id,

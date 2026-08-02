@@ -1,12 +1,9 @@
 /**
- * Coverage lane composing the ProvisioningJobService suites for the
- * changed-file gate (#16639) — same pattern as the docker-sandbox-provider
- * and orchestrator composites: the worker's claim/dispatch/recovery surface
- * spans many co-located suites, and a worker-touching change needs their
- * UNION to exercise the class. Imported dispatch suites must use per-test
- * spies rather than module-global DB mocks: Bun schedules imported-suite hooks
- * together, and replacing the DB helper module while Drizzle pulls the PGlite
- * schema terminates the runner before it can report an assertion.
+ * Composes ProvisioningJobService claim, dispatch, and recovery suites into
+ * one package-runner entry. Imported dispatch suites use per-test spies rather
+ * than module-global DB mocks because Bun schedules imported-suite hooks
+ * together, and replacing the DB helper while Drizzle loads the PGlite schema
+ * can terminate the runner before it reports an assertion.
  */
 import { describe, expect, test } from "bun:test";
 import "./provisioning-jobs-agent-downgrade.test.ts";

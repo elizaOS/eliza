@@ -21,6 +21,8 @@ import type { IAgentRuntime } from "./runtime";
 export interface ChatPreHandlerContext {
 	runtime: IAgentRuntime;
 	message: Memory;
+	/** Cancellation owned by the request or host that started this turn. */
+	abortSignal?: AbortSignal;
 	/**
 	 * Append text to the in-flight response stream (e.g. a loading hint the user
 	 * sees immediately). Mirrors the chat loop's incremental callback path.

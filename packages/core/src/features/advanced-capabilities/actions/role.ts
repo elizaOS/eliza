@@ -430,13 +430,13 @@ async function applyAssignments(args: {
 	const { runtime, message, assignments, op, callback } = args;
 
 	const resolved = await resolveWorldForMessage(runtime, message);
+	// Planner-facing only: the canned "no world context" boilerplate shipped
+	// visibly next to the evaluator's own error reply. The evaluator owns
+	// phrasing the failure to the user, in voice.
 	if (!resolved) {
-		await callback?.({
-			text: "Cannot manage roles — no world context for this room.",
-		});
 		return {
 			success: false,
-			text: "World not found",
+			text: "Cannot manage roles — no world context for this room; tell the user roles are unavailable here.",
 			error: "WORLD_NOT_FOUND",
 			data: { actionName: "ROLE", op },
 		};
@@ -444,12 +444,9 @@ async function applyAssignments(args: {
 
 	const { world, metadata } = resolved;
 	if (!world) {
-		await callback?.({
-			text: "Cannot manage roles — no world context for this room.",
-		});
 		return {
 			success: false,
-			text: "World not found",
+			text: "Cannot manage roles — no world context for this room; tell the user roles are unavailable here.",
 			error: "WORLD_NOT_FOUND",
 			data: { actionName: "ROLE", op },
 		};
@@ -469,12 +466,9 @@ async function applyAssignments(args: {
 	// gate and contradicted the declaration. Per-assignment `canModifyRole` below
 	// still bounds which target roles an OWNER may set.
 	if (requesterRole !== "OWNER") {
-		await callback?.({
-			text: "Only OWNERs can manage roles.",
-		});
 		return {
 			success: false,
-			text: "Insufficient permissions",
+			text: "Only OWNERs can manage roles; tell the user they lack permission.",
 			error: "INSUFFICIENT_PERMISSIONS",
 			data: { actionName: "ROLE", op, requesterRole },
 		};
@@ -546,20 +540,21 @@ async function applyAssignments(args: {
 		);
 	}
 
-	const summary =
-		op === "revoke"
-			? `Revoked ${successes.length} role(s)`
-			: `Updated ${successes.length} role(s)`;
+	const summary = `${op === "revoke" ? "Revoked" : "Updated"} ${successes.length} role${successes.length === 1 ? "" : "s"}${failures.length > 0 ? `; ${failures.length} failed` : ""}.`;
 
-	await callback?.({
-		text:
-			failures.length > 0 ? `${summary}; ${failures.length} failed.` : summary,
-		actions: ["ROLE"],
-	});
+	await callback?.({ text: summary, actions: ["ROLE"] });
 
+	// The role-change confirmation is the complete answer to a
+	// single-operation turn: verified + turnComplete make the callback the
+	// sole delivery instead of double-messaging with the evaluator (the gate
+	// still requires success, so the all-failed case falls back to the
+	// evaluator's in-voice reply).
 	return {
 		success: successes.length > 0,
 		text: summary,
+		userFacingText: summary,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			successCount: successes.length,
 			failureCount: failures.length,
@@ -581,25 +576,39 @@ async function handleList(args: {
 }): Promise<ActionResult> {
 	const { runtime, message, callback } = args;
 	const resolved = await resolveWorldForMessage(runtime, message);
+	// Planner-facing only: "No world context found." is internal-state
+	// tool-speak; the evaluator owns phrasing the failure to the user.
 	if (!resolved) {
-		await callback?.({ text: "No world context found." });
 		return {
 			success: false,
-			text: "World not found",
+			text: "No world context found for this room; tell the user roles are unavailable here.",
 			error: "WORLD_NOT_FOUND",
 			data: { actionName: "ROLE", op: "list" },
 		};
 	}
 	const roles = resolved.metadata.roles ?? {};
 	const entries = Object.entries(roles);
-	const text =
-		entries.length === 0
-			? "No role assignments."
-			: entries.map(([entityId, role]) => `${entityId}: ${role}`).join("\n");
+	// Resolve display names so chat sees "Pat: ADMIN", not a raw UUID dump;
+	// unresolvable entities fall back to the id.
+	const lines = await Promise.all(
+		entries.map(async ([entityId, role]) => {
+			const entity =
+				typeof runtime.getEntityById === "function"
+					? await runtime.getEntityById(entityId as UUID)
+					: null;
+			return `${entity?.names?.[0] ?? entityId}: ${role}`;
+		}),
+	);
+	const text = entries.length === 0 ? "No role assignments." : lines.join("\n");
 	await callback?.({ text, actions: ["ROLE"] });
+	// The roles list is the complete answer to a single-operation turn:
+	// verified + turnComplete make the callback the sole delivery.
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: { roleCount: entries.length },
 		data: {
 			actionName: "ROLE",
@@ -734,9 +743,12 @@ export const roleAction: Action = {
 		});
 
 		if (assignments.length === 0) {
+			// Planner-facing only: extraction-error boilerplate ("User X not
+			// found.") shipped visibly next to the evaluator's reply. The
+			// evaluator owns asking the user, in voice.
 			const reason =
-				errors[0] ?? "No valid role assignments derived from the request.";
-			await callback?.({ text: reason });
+				errors[0] ??
+				"No valid role assignments derived from the request; ask the user who to change and to what role.";
 			return {
 				success: false,
 				text: reason,

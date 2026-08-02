@@ -20,7 +20,12 @@ export {
 } from "./schema.ts";
 export type {
   GeneratedRegistry,
+  GeneratedRegistryAppMetadata,
   GeneratedRegistryEntry,
+  RegistryAppMetadata,
+  RegistryAppSession,
+  RegistryAppUiExtension,
+  RegistryAppViewer,
   RegistryEntry,
   RegistryEntryKind,
 } from "./types.ts";
