@@ -113,7 +113,9 @@ export class NotesService extends Service {
     return note;
   }
 
-  async createNote(inputValue: unknown): Promise<StickyNote> {
+  async createNoteWithCommit(
+    inputValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
     const input = parseCreateNoteInput(inputValue);
     const now = this.now().toISOString();
     const id = parseEntityId(this.createId());
@@ -137,10 +139,17 @@ export class NotesService extends Service {
       return note;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:created");
-    return transaction.value;
+    return transaction;
   }
 
-  async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
+  async createNote(inputValue: unknown): Promise<StickyNote> {
+    return (await this.createNoteWithCommit(inputValue)).value;
+  }
+
+  async updateNoteWithCommit(
+    idValue: unknown,
+    patchValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
     const updatedAt = this.now().toISOString();
@@ -159,10 +168,16 @@ export class NotesService extends Service {
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
-    return transaction.value;
+    return transaction;
   }
 
-  async deleteNote(idValue: unknown): Promise<StickyNote> {
+  async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
+    return (await this.updateNoteWithCommit(idValue, patchValue)).value;
+  }
+
+  async deleteNoteWithCommit(
+    idValue: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
     const id = parseEntityId(idValue);
     const transaction = await this.store.transact((draft) => {
       const index = draft.notes.findIndex((note) => note.id === id);
@@ -172,17 +187,28 @@ export class NotesService extends Service {
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
-    return transaction.value;
+    return transaction;
   }
 
-  async clearNotes(): Promise<number> {
+  async deleteNote(idValue: unknown): Promise<StickyNote> {
+    return (await this.deleteNoteWithCommit(idValue)).value;
+  }
+
+  async clearNotesWithCommit(): Promise<{
+    value: number;
+    snapshot: NotesSnapshot;
+  }> {
     const transaction = await this.store.transact((draft) => {
       const count = draft.notes.length;
       draft.notes = [];
       return count;
     });
     await this.emitStateUpdated(transaction.snapshot, "notes:cleared");
-    return transaction.value;
+    return transaction;
+  }
+
+  async clearNotes(): Promise<number> {
+    return (await this.clearNotesWithCommit()).value;
   }
 
   private async emitStateUpdated(
