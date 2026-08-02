@@ -242,7 +242,6 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
-  ["Remote Plugins", "remote-plugins"],
   ["Connectors", "connectors"],
   ["Wearables", "wearables"],
   ["App Permissions", "app-permissions"],
@@ -2020,80 +2019,80 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   });
 
   await page.route(/\/api\/views\/notes\/interact$/, async (route) => {
-      if (route.request().method() !== "POST") {
-        await route.fallback();
-        return;
-      }
-      const payload: unknown = route.request().postDataJSON();
-      if (!isSmokeRecord(payload) || typeof payload.capability !== "string") {
-        await route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({ error: "Invalid Notes interaction." }),
-        });
-        return;
-      }
-      const params = isSmokeRecord(payload.params) ? payload.params : {};
-      const now = new Date(
-        Date.parse(SMOKE_GENERATED_AT) + (notesRevision + 1) * 1_000,
-      ).toISOString();
-
-      if (payload.capability === "create-note") {
-        smokeNotes = [
-          {
-            id: `note-smoke-${notesRevision + 1}`,
-            title: smokeString(params, "title", "Smoke note"),
-            body: smokeString(params, "body"),
-            color: smokeString(params, "color", "yellow"),
-            createdAt: now,
-            updatedAt: now,
-          },
-          ...smokeNotes,
-        ];
-      } else if (payload.capability === "update-note") {
-        const id = smokeString(params, "id");
-        smokeNotes = smokeNotes.map((note) =>
-          note.id === id
-            ? {
-                ...note,
-                title: smokeString(params, "title", note.title),
-                body: smokeString(params, "body", note.body),
-                color: smokeString(params, "color", note.color),
-                updatedAt: now,
-              }
-            : note,
-        );
-      } else if (payload.capability === "delete-note") {
-        const id = smokeString(params, "id");
-        smokeNotes = smokeNotes.filter((note) => note.id !== id);
-      } else if (payload.capability === "clear-notes") {
-        smokeNotes = [];
-      } else {
-        await route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({
-            error: `Unsupported Notes interaction: ${payload.capability}`,
-          }),
-        });
-        return;
-      }
-
-      notesRevision += 1;
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const payload: unknown = route.request().postDataJSON();
+    if (!isSmokeRecord(payload) || typeof payload.capability !== "string") {
       await route.fulfill({
-        status: 200,
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Invalid Notes interaction." }),
+      });
+      return;
+    }
+    const params = isSmokeRecord(payload.params) ? payload.params : {};
+    const now = new Date(
+      Date.parse(SMOKE_GENERATED_AT) + (notesRevision + 1) * 1_000,
+    ).toISOString();
+
+    if (payload.capability === "create-note") {
+      smokeNotes = [
+        {
+          id: `note-smoke-${notesRevision + 1}`,
+          title: smokeString(params, "title", "Smoke note"),
+          body: smokeString(params, "body"),
+          color: smokeString(params, "color", "yellow"),
+          createdAt: now,
+          updatedAt: now,
+        },
+        ...smokeNotes,
+      ];
+    } else if (payload.capability === "update-note") {
+      const id = smokeString(params, "id");
+      smokeNotes = smokeNotes.map((note) =>
+        note.id === id
+          ? {
+              ...note,
+              title: smokeString(params, "title", note.title),
+              body: smokeString(params, "body", note.body),
+              color: smokeString(params, "color", note.color),
+              updatedAt: now,
+            }
+          : note,
+      );
+    } else if (payload.capability === "delete-note") {
+      const id = smokeString(params, "id");
+      smokeNotes = smokeNotes.filter((note) => note.id !== id);
+    } else if (payload.capability === "clear-notes") {
+      smokeNotes = [];
+    } else {
+      await route.fulfill({
+        status: 400,
         contentType: "application/json",
         body: JSON.stringify({
-          requestId: `notes-smoke-${notesRevision}`,
-          success: true,
-          result: {
-            success: true,
-            text: `Handled ${payload.capability}.`,
-            state: notesSnapshot(),
-          },
+          error: `Unsupported Notes interaction: ${payload.capability}`,
         }),
       });
+      return;
+    }
+
+    notesRevision += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        requestId: `notes-smoke-${notesRevision}`,
+        success: true,
+        result: {
+          success: true,
+          text: `Handled ${payload.capability}.`,
+          state: notesSnapshot(),
+        },
+      }),
     });
+  });
 
   // The Transcripts view (client.listTranscripts) hits this on mount; the
   // keyless loopback stack answers 501 for unimplemented endpoints, which surface

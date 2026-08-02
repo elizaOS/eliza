@@ -136,7 +136,8 @@ packages/        framework, shared libraries, and product surfaces
   cloud/shared/  shared cloud backend: db (Drizzle), billing, services, types
   cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
-  security/ security/soc2-verify/ vault/  secrets, key management, compliance tooling
+  vault/         encrypted secrets and master-key management
+  core/src/security/  KMS, MCP validation, and network policy primitives
   robot/                         robotics
   homepage/ docs/  marketing site and docs site
   examples/      30+ standalone runnable examples (each has its own README)
