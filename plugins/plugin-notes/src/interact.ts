@@ -6,6 +6,7 @@
  */
 
 import {
+  type AppliedEffectReceipt,
   ElizaError,
   type IAgentRuntime,
   isElizaError,
@@ -20,6 +21,8 @@ export interface NotesInteractResult {
   text: string;
   state?: NotesSnapshot;
   data?: unknown;
+  effectReceipts?: readonly AppliedEffectReceipt[];
+  userFacingEffectReceiptIds?: readonly string[];
   error?: {
     code: string;
     message: string;
@@ -163,47 +166,6 @@ function resolveNoteTarget(
   return candidate.id;
 }
 
-function parseCalendarEventTarget(
-  params: Record<string, unknown>,
-):
-  | { selector: "id"; value: string }
-  | { selector: CalendarEventLookupSelector; value: string } {
-  const selectorNames = ["id", "title", "query"] as const;
-  const providedSelectors = selectorNames.filter((name) =>
-    Object.hasOwn(params, name),
-  );
-  if (providedSelectors.length !== 1) {
-    throw new ElizaError(
-      "delete-calendar-event requires exactly one of id, title, or query.",
-      {
-        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
-        context: {
-          fields: selectorNames,
-          providedFields: providedSelectors,
-        },
-        severity: "ephemeral",
-      },
-    );
-  }
-  const selector = providedSelectors[0];
-  const selectorValue = selector ? params[selector] : undefined;
-  if (
-    !selector ||
-    typeof selectorValue !== "string" ||
-    selectorValue.trim().length === 0
-  ) {
-    throw new ElizaError(
-      `delete-calendar-event ${selector ?? "selector"} must be a nonblank string.`,
-      {
-        code: "SIMPLE_VIEWS_VALIDATION_FAILED",
-        context: { field: selector ?? "selector" },
-        severity: "ephemeral",
-      },
-    );
-  }
-  return { selector, value: selectorValue.trim() };
-}
-
 function success(
   service: NotesService,
   text: string,
@@ -216,6 +178,39 @@ function success(
   };
   if (data !== undefined) result.data = data;
   return result;
+}
+
+function mutationSuccess(
+  state: NotesSnapshot,
+  capability: string,
+  resource: { kind: string; id: string },
+  text: string,
+  data?: unknown,
+): NotesInteractResult {
+  const observedAt = new Date().toISOString();
+  const receiptId = `notes:${capability}:${resource.id}:${state.revision}`;
+  const receipt: AppliedEffectReceipt = {
+    receiptId,
+    operation: `notes.${capability}`,
+    resource: { ...resource, version: String(state.revision) },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: `notes:revision:${state.revision}`,
+      committedAt: observedAt,
+    },
+  };
+  return {
+    success: true,
+    text,
+    state,
+    ...(data !== undefined ? { data } : {}),
+    effectReceipts: [receipt],
+    userFacingEffectReceiptIds: [receiptId],
+  };
 }
 
 async function dispatchCapability(
@@ -235,26 +230,51 @@ async function dispatchCapability(
     return success(service, `Read sticky note "${note.title}".`, { note });
   }
   if (capability === "create-note") {
-    const note = await service.createNote(params);
-    return success(service, `Created sticky note "${note.title}".`, { note });
+    const { value: note, snapshot } =
+      await service.createNoteWithCommit(params);
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Created sticky note "${note.title}".`,
+      { note },
+    );
   }
   if (capability === "update-note") {
-    const note = await service.updateNote(
+    const { value: note, snapshot } = await service.updateNoteWithCommit(
       requiredParam(params, "id"),
       withoutId(params),
     );
-    return success(service, `Updated sticky note "${note.title}".`, { note });
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Updated sticky note "${note.title}".`,
+      { note },
+    );
   }
   if (capability === "delete-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
     const id = resolveNoteTarget(service.listNotes(), params);
-    const note = await service.deleteNote(id);
-    return success(service, `Deleted sticky note "${note.title}".`, { note });
+    const { value: note, snapshot } = await service.deleteNoteWithCommit(id);
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Deleted sticky note "${note.title}".`,
+      { note },
+    );
   }
   if (capability === "clear-notes") {
     assertOnlyParams(params, []);
-    const cleared = await service.clearNotes();
-    return success(service, `Cleared ${cleared} sticky note(s).`, { cleared });
+    const { value: cleared, snapshot } = await service.clearNotesWithCommit();
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note-collection", id: "notes" },
+      `Cleared ${cleared} sticky note(s).`,
+      { cleared },
+    );
   }
   throw new ElizaError(`Notes does not support capability "${capability}".`, {
     code: "NOTES_UNKNOWN_CAPABILITY",
