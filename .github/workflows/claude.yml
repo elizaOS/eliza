@@ -111,11 +111,8 @@ jobs:
           # reference was never configured, which left every @claude mention
           # silently dead behind continue-on-error.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-<<<<<<< HEAD
-
           # Allow cursor bot to trigger reviews
           allowed_bots: "cursor"
-=======
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Signed file operations keep repository mutations inside the
           # action's scoped GitHub MCP instead of injecting shell-based git
@@ -123,7 +120,6 @@ jobs:
           use_commit_signing: "true"
           additional_permissions: |
             actions: read
->>>>>>> 332bdc638f33529a468863af74d1cf5a4367821e
 
           # Claude CLI arguments for model, allowed tools, and system prompt
           # Bare Edit/Write entries would bypass the action's workspace-scoped
