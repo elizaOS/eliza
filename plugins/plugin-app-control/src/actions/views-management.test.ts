@@ -2374,7 +2374,9 @@ describe("view management actions", () => {
 		);
 		const deleteNoteWithMalformedPlannerIdResult = await action.handler(
 			runtime as never,
-			message("delete the Receipt Applied QA note") as never,
+			message(
+				composedViewPrompt("delete the Receipt Applied QA note"),
+			) as never,
 			undefined,
 			{
 				action: "interact",

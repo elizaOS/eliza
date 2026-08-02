@@ -2876,7 +2876,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const paramsResolution = readCapabilityParams(
 							actionOptions,
 							resolvedCapability?.capability,
-							text,
+							viewRequestText(text),
 						);
 						if (!paramsResolution.ok) {
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`;
