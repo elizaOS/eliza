@@ -6106,9 +6106,12 @@ export function ChatOverlay({
                             className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                           />
                         ) : null}
-                        {/* Normal chat keeps the latest line near the composer. First-run
-                  starts at the top of the transcript so the opening prompt reads
-                  like the first turn in a conversation. */}
+                        {/* Normal chat consumes only the free space in genuinely
+                  short threads to keep their latest line near the composer.
+                  Once content fills the viewport there is no free space to
+                  distribute, so long transcripts retain their natural flow.
+                  First-run starts at the top so the opening prompt reads like
+                  the first turn. */}
                         <MessageScrollerContent
                           ref={threadContentRef}
                           aria-busy={responding}
@@ -6116,7 +6119,7 @@ export function ChatOverlay({
                             "flex flex-col gap-0",
                             firstRunOpen
                               ? "shrink-0 pt-8"
-                              : "mt-auto pb-3 pt-8",
+                              : "mt-auto justify-end pb-3 pt-8",
                           )}
                         >
                           {/* Top sentinel for infinite upward scroll (#13532, #14279):
