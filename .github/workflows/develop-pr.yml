@@ -1,12 +1,11 @@
 name: Develop PR
 
-# Lightweight gate for pull requests targeting `develop`: lint, typecheck, and
-# build only. The full test/e2e/scenario/benchmark surface runs post-merge on
-# push to `develop` (and nightly/on-demand), not on every PR — so PR feedback
-# stays fast and hosted-runner capacity is spent on the ~200 daily PRs' fast
-# signal rather than the whole integration matrix. `main` PRs keep the heavy
-# gates via `ci.yaml`, `test.yml`'s peers, and `quality.yml`. Steps mirror
-# `ci.yaml` so PR and post-merge lanes stay in agreement.
+# Lightweight gate for pull requests targeting `develop`: lint, typecheck,
+# build, and the unit suites owned by changed plugin packages. The broader
+# test/e2e/scenario/benchmark surface runs post-merge on push to `develop` (and
+# nightly/on-demand), keeping pre-merge feedback scoped to affected code.
+# `main` PRs retain the heavy gates through `ci.yaml`, `test.yml`'s peers, and
+# `quality.yml`. Steps mirror their post-merge counterparts where applicable.
 
 on:
   pull_request:
@@ -167,10 +166,12 @@ jobs:
   # Scoped to plugin packages the PR actually changes: the full plugin sweep is
   # a sharded post-merge lane and is far too slow for a per-PR gate.
   plugin-tests:
+    name: plugin-tests
     runs-on: ubuntu-latest
-    # 20 not 10: `build:core` alone is ~1.5 min, and the cap only binds when a
-    # PR touches an unusual number of plugin packages at once.
-    timeout-minutes: 20
+    # Rust-backed plugin suites can compile their native test harness on a cold
+    # hosted runner. The cache keeps normal runs short; the cap prevents a
+    # changed plugin from consuming an unbounded gate slot.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -194,41 +195,81 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # Emits a `(plugins/<pkg>)`-anchored regex — the same label surface
-      # `TEST_PACKAGE_FILTER` already matches in `test:plugins`. Only directories
-      # that are real packages with a `test` script are included, so a PR
-      # touching, say, `plugins/dist/**` does not select a task-less filter.
+      # Both sides of a rename are treated as changes so moving a file between
+      # plugins cannot leave the source package's tests out of the gate.
+      # Direct plugin workspaces are the only plugin shape declared by the root
+      # workspace manifest; nested package.json files are implementation data.
       - name: Resolve changed plugin packages
         id: changed
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          selected=""
-          for pkg in $(git diff --name-only "$BASE_SHA"...HEAD -- plugins \
-            | awk -F/ 'NF > 2 && $1 == "plugins" { print $2 }' | sort -u); do
-            if [ -f "plugins/$pkg/package.json" ] \
-              && node -e "process.exit(require('./plugins/$pkg/package.json').scripts?.test ? 0 : 1)"; then
-              selected="${selected:+$selected|}$pkg"
+          selected=()
+          changed_paths_file=$(mktemp)
+          sorted_packages_file=$(mktemp)
+          trap 'rm -f "$changed_paths_file" "$sorted_packages_file"' EXIT
+          git diff --no-renames --name-only -z "$BASE_SHA"...HEAD -- plugins > "$changed_paths_file"
+          while IFS= read -r -d '' changed_path; do
+            pkg="${changed_path#plugins/}"
+            pkg="${pkg%%/*}"
+            if [[ ! "$pkg" =~ ^plugin-[a-z0-9-]+$ ]]; then
+              echo "Unsupported plugin workspace path: $changed_path" >&2
+              exit 1
             fi
-          done
-          if [ -z "$selected" ]; then
-            echo "filter=" >> "$GITHUB_OUTPUT"
-            echo "No changed plugin package has a test script; nothing to gate."
-          else
-            echo "filter=\\(plugins/($selected)\\)" >> "$GITHUB_OUTPUT"
-            echo "Gating plugin packages: $selected"
+            manifest="plugins/$pkg/package.json"
+            if [ -f "$manifest" ] && node -e '
+              const { readFileSync } = require("node:fs");
+              const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
+              process.exit(typeof manifest.scripts?.test === "string" ? 0 : 1);
+            ' "$manifest"; then
+              selected+=("$pkg")
+            fi
+          done < "$changed_paths_file"
+
+          if [ "${#selected[@]}" -gt 0 ]; then
+            printf '%s\n' "${selected[@]}" | sort -u > "$sorted_packages_file"
+            selected=()
+            while IFS= read -r pkg; do
+              selected+=("$pkg")
+            done < "$sorted_packages_file"
           fi
 
-      # Same runner the post-merge lane uses for these packages: each package's
-      # own `test` script (`vitest run`) via run-all-tests.mjs. `--min-tasks=1`
-      # fails closed if the filter selects nothing, so a silently empty gate
-      # cannot report green.
+          if [ "${#selected[@]}" -eq 0 ]; then
+            echo "filter=" >> "$GITHUB_OUTPUT"
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            echo "No changed plugin package has a test script; nothing to gate."
+          else
+            joined=$(IFS='|'; echo "${selected[*]}")
+            echo "filter=\\(plugins/($joined)\\)" >> "$GITHUB_OUTPUT"
+            echo "count=${#selected[@]}" >> "$GITHUB_OUTPUT"
+            echo "Gating ${#selected[@]} plugin package(s): $joined"
+          fi
+
+      - name: Cache cargo registry and shared target dir
+        if: steps.changed.outputs.filter != ''
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ github.workspace }}/.cargo-shared-target
+          key: ${{ runner.os }}-cargo-develop-plugin-tests-${{ hashFiles('plugins/*/rust/Cargo.lock', 'plugins/*/rust/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-develop-plugin-tests-
+
+      # The post-merge plugin lane builds the core dependency graph and view
+      # bundles before invoking package-owned test scripts. Matching those
+      # prerequisites prevents a clean hosted runner from failing on absent
+      # generated artifacts instead of the changed plugin's behavior.
       - name: Run unit tests for changed plugins
         if: steps.changed.outputs.filter != ''
         env:
+          CARGO_INCREMENTAL: "0"
+          CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-target
           TEST_PACKAGE_FILTER: ${{ steps.changed.outputs.filter }}
           TEST_SCRIPT_FILTER: "^test$"
         run: |
           bun run build:core
-          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --min-tasks=1
+          bun run build:views
+          node packages/scripts/run-all-tests.mjs --only=test --no-cloud --concurrency=3 --min-tasks=${{ steps.changed.outputs.count }}

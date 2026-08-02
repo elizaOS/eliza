@@ -210,6 +210,35 @@ export function validateWorkflowSources(sources) {
     "run typecheck",
   );
 
+  const pluginTests = requireJob(
+    develop,
+    WORKFLOW_PATHS.develop,
+    "plugin-tests",
+  );
+  const changedPlugins = pluginTests.steps.find(
+    (step) => step?.id === "changed" && typeof step.run === "string",
+  );
+  invariant(
+    changedPlugins?.run.includes("git diff --no-renames --name-only -z") &&
+      changedPlugins.run.includes('echo "count=$' + '{#selected[@]}"'),
+    `${WORKFLOW_PATHS.develop}: jobs.plugin-tests must select both sides of renames and emit an exact task floor`,
+  );
+  const runPluginTests = pluginTests.steps.find(
+    (step) =>
+      typeof step?.run === "string" &&
+      step.run.includes("packages/scripts/run-all-tests.mjs"),
+  );
+  invariant(
+    runPluginTests?.if === "steps.changed.outputs.filter != ''" &&
+      runPluginTests["continue-on-error"] !== true &&
+      runPluginTests.run.includes("bun run build:core") &&
+      runPluginTests.run.includes("bun run build:views") &&
+      runPluginTests.run.includes(
+        "--min-tasks=$" + "{{ steps.changed.outputs.count }}",
+      ),
+    `${WORKFLOW_PATHS.develop}: jobs.plugin-tests must run the package-owned tests with clean-run prerequisites and an exact task floor`,
+  );
+
   const secrets = requireJob(gitleaks, WORKFLOW_PATHS.gitleaks, "gitleaks");
   requireCommand(
     secrets,
