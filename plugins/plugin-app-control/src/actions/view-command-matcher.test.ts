@@ -25,6 +25,8 @@ describe("matchViewCommand — explicit user examples", () => {
 		["return to the main screen", "chat"],
 		["open my calendar", "calendar"],
 		["go to my inbox", "inbox"],
+		["go to browser", "browser"],
+		["open browser", "browser"],
 		["show my wallet", "wallet"],
 		["open the todos view", "todos"],
 		["open notes", "notes"],
@@ -82,6 +84,7 @@ describe("matchViewCommand — multilingual", () => {
 		["설정 열어", "settings"],
 		["내 캘린더 보여줘", "calendar"],
 		["지갑 열어줘", "wallet"],
+		["打开浏览器", "browser"],
 		// vi
 		["mở cài đặt", "settings"],
 		// tl

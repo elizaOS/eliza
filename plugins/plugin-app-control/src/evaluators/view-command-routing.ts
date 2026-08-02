@@ -2,6 +2,7 @@
  * Pre-LLM view-command routing helper for explicit navigation utterances.
  */
 
+import { SHARED_NAV_TARGETS } from "@elizaos/shared/views/shared-nav-targets";
 import { matchViewCommand } from "../actions/view-command-matcher.js";
 
 export const VIEWS_ACTION_NAME = "VIEWS";
@@ -35,5 +36,7 @@ export function resolveViewCommandShortcut(
 ): string | null {
 	if (!hasRegisteredViewsAction(context)) return null;
 	const text = messageText(context);
-	return matchViewCommand(text);
+	const matchedViewId = matchViewCommand(text);
+	if (!matchedViewId) return null;
+	return SHARED_NAV_TARGETS[matchedViewId]?.viewId ?? matchedViewId;
 }

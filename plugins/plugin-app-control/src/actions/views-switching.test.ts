@@ -162,6 +162,17 @@ const REGISTRY: ViewSummary[] = [
 		visibleInManager: true,
 	},
 	{
+		id: "browser",
+		label: "Browser",
+		description: "Isolated native browser tabs",
+		path: "/browser",
+		pluginName: "@elizaos/builtin",
+		available: true,
+		viewType: "gui",
+		tags: ["browser", "web", "internet"],
+		visibleInManager: true,
+	},
+	{
 		id: "settings",
 		label: "Settings",
 		description: "Configuration, plugins, credentials, and preferences",
@@ -173,6 +184,17 @@ const REGISTRY: ViewSummary[] = [
 		visibleInManager: true,
 	},
 	// First-party plugin views referenced by the product spec.
+	{
+		id: "inventory",
+		label: "Wallet",
+		description: "Canonical builtin wallet inventory surface",
+		path: "/wallet",
+		pluginName: "@elizaos/builtin",
+		available: true,
+		viewType: "gui",
+		tags: ["wallet", "inventory", "crypto"],
+		visibleInManager: true,
+	},
 	{
 		id: "inbox",
 		label: "Inbox",
@@ -312,9 +334,10 @@ describe("view switching — VIEWS action resolver", () => {
 			["show settings", "settings"],
 			["open settings", "settings"],
 			["go to the settings view", "settings"],
-			["show my wallet", "wallet"],
-			["open the wallet view", "wallet"],
-			["go to my wallet", "wallet"],
+			["go to browser", "browser"],
+			["show my wallet", "inventory"],
+			["open the wallet view", "inventory"],
+			["go to my wallet", "inventory"],
 			["open the calendar", "calendar"],
 			["go to calendar", "calendar"],
 			["show the inbox", "inbox"],
@@ -336,11 +359,11 @@ describe("view switching — VIEWS action resolver", () => {
 			},
 		);
 
-		it("dispatches navigate to the exact /api/views/<id>/navigate endpoint", async () => {
+		it("dispatches wallet navigation to the canonical builtin catalog id", async () => {
 			installNavigateCapture();
-			await runShow(REGISTRY, "open the wallet view");
+			await runShow(REGISTRY, "go to wallet");
 			expect(globalThis.fetch).toHaveBeenCalledWith(
-				"http://127.0.0.1:3456/api/views/wallet/navigate",
+				"http://127.0.0.1:3456/api/views/inventory/navigate",
 				expect.objectContaining({ method: "POST" }),
 			);
 		});
@@ -469,9 +492,9 @@ describe("view switching — VIEWS action resolver", () => {
 		> = [
 			["open my calendar", "wallet", "calendar"],
 			["check my messages", "calendar", "inbox"],
-			["show my wallet", "calendar", "wallet"],
+			["show my wallet", "calendar", "inventory"],
 			["muéstrame mi calendario", "wallet", "calendar"],
-			["我的钱包", "calendar", "wallet"],
+			["我的钱包", "calendar", "inventory"],
 		];
 		it.each(HALLUCINATION_CASES)(
 			'"%s" + bogus view param "%s" still navigates to "%s"',
@@ -634,21 +657,21 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(navigated).toEqual(["inbox"]);
 		});
 
-		it("routes 'show me my balance' to the wallet", async () => {
+		it("routes 'show me my balance' to the canonical wallet inventory", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(REGISTRY, "show me my balance");
 			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["wallet"]);
+			expect(navigated).toEqual(["inventory"]);
 		});
 
-		it("routes 'give me an overview of my wallet' to wallet (no 'view'-in-overview misparse)", async () => {
+		it("routes 'give me an overview of my wallet' to the canonical inventory (no 'view'-in-overview misparse)", async () => {
 			const { navigated } = installNavigateCapture();
 			const { result } = await runShow(
 				REGISTRY,
 				"give me an overview of my wallet",
 			);
 			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["wallet"]);
+			expect(navigated).toEqual(["inventory"]);
 		});
 	});
 

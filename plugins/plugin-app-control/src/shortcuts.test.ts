@@ -30,6 +30,8 @@ describe("viewNavigationShortcuts (#8791)", () => {
 			"show me my calendar",
 			"hey can you open settings please",
 			"open app builder",
+			"go to browser",
+			"go to wallet",
 			"check my messages",
 			"go to my email",
 			"what's on my calendar",

@@ -53,6 +53,8 @@ describe("BUILTIN_VIEWS categorization", () => {
   it("sorts every built-in view into the curated system/developer/preview IA", () => {
     const byId = new Map(BUILTIN_VIEWS.map((v) => [v.id, resolveViewKind(v)]));
     expect(byId.get("chat")).toBe("system");
+    expect(byId.get("browser")).toBe("system");
+    expect(byId.get("inventory")).toBe("system");
     expect(byId.get("settings")).toBe("system");
     expect(byId.get("character")).toBe("system");
     expect(byId.get("documents")).toBe("system");
@@ -67,6 +69,8 @@ describe("BUILTIN_VIEWS categorization", () => {
     expect(byId.get("trajectories")).toBe("developer");
     expect(byId.get("camera")).toBe("preview");
     expect(byId.get("background")).toBe("preview");
+    const builtinIds = new Set(BUILTIN_VIEWS.map((view) => view.id));
+    expect(builtinIds.has("wallet")).toBe(false);
     // No built-in is left uncategorized (resolves to a concrete kind).
     for (const v of BUILTIN_VIEWS) {
       expect(["system", "release", "developer", "preview"]).toContain(

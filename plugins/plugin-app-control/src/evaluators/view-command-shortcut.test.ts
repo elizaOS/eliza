@@ -63,7 +63,9 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["open my inbox", "inbox"],
 		["check my messages", "inbox"],
 		["revisa mi correo", "inbox"],
-		["show my wallet", "wallet"],
+		["go to browser", "browser"],
+		["go to wallet", "inventory"],
+		["show my wallet", "inventory"],
 		["abre ajustes", "settings"],
 		["打开设置", "settings"],
 		["설정 열어", "settings"],
@@ -87,6 +89,20 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			});
 		});
 	}
+
+	it("translates matcher ids through the shared routable catalog target map", async () => {
+		const browser = await run("go to browser");
+		const wallet = await run("go to wallet");
+
+		expect(browser?.deterministicToolCall?.params).toMatchObject({
+			action: "show",
+			view: "browser",
+		});
+		expect(wallet?.deterministicToolCall?.params).toMatchObject({
+			action: "show",
+			view: "inventory",
+		});
+	});
 
 	it("overrides an already-tool-marked explicit view command", async () => {
 		const patch = await run("open app builder", {

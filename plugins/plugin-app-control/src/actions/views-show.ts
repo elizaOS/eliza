@@ -440,8 +440,13 @@ export async function runViewsShow({
 	const messageText = getUserMessageText(message);
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
-	// supplies the view id. Either source is enough to proceed.
-	const rigidIntentViewId = matchViewCommand(messageText);
+	// supplies the view id. Matcher ids and client catalog ids are separate
+	// namespaces, so translate rigid matches through the canonical shared map
+	// before resolving them against the registered view catalog.
+	const rigidMatcherViewId = matchViewCommand(messageText);
+	const rigidIntentViewId = rigidMatcherViewId
+		? (SHARED_NAV_TARGETS[rigidMatcherViewId]?.viewId ?? rigidMatcherViewId)
+		: null;
 	const intentViewId = rigidIntentViewId ?? resolveIntentView(messageText);
 	let target = extractViewTarget(message, options) ?? intentViewId;
 	if (!target) {
@@ -497,8 +502,8 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const canonicalTarget = rigidIntentViewId
-		? SHARED_NAV_TARGETS[rigidIntentViewId]
+	const canonicalTarget = rigidMatcherViewId
+		? SHARED_NAV_TARGETS[rigidMatcherViewId]
 		: undefined;
 	const navigationLabel =
 		canonicalTarget?.viewId === view.id ? canonicalTarget.label : view.label;

@@ -33,6 +33,7 @@ const BUILTIN_NAV_PATHS: Record<string, string> = {
   character: "/character",
   automations: "/automations",
   background: "/background",
+  browser: "/browser",
   documents: "/character/documents",
   memories: "/apps/memories",
   transcripts: "/apps/transcripts",

@@ -65,6 +65,7 @@ export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   // inventory → /wallet in packages/ui/src/navigation); emitting the matcher's
   // raw "wallet" id would land in the client's not-found state.
   wallet: { viewId: "inventory", label: "Wallet" },
+  browser: { viewId: "browser", label: "Browser" },
   calendar: { viewId: "calendar", label: "Calendar" },
   inbox: { viewId: "inbox", label: "Inbox" },
   finances: { viewId: "finances", label: "Finances" },
