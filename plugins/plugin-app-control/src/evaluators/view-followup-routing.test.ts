@@ -210,6 +210,23 @@ describe("viewFollowupRoutingEvaluator", () => {
 		});
 	});
 
+	it("binds an explicitly named delete target to the capability query", async () => {
+		mockLoopback({ viewId: "notes" });
+		const ctx = context("delete the Receipt Applied QA note");
+		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(true);
+		await expect(
+			viewFollowupRoutingEvaluator.evaluate(ctx),
+		).resolves.toMatchObject({
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: {
+					capability: "delete-note",
+					params: { query: "Receipt Applied QA" },
+				},
+			},
+		});
+	});
+
 	it("routes a bulk delete to the capability without an item selector", async () => {
 		mockLoopback({ viewId: "notes" });
 		const ctx = context("delete all of them");
