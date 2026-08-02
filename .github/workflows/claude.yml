@@ -123,7 +123,7 @@ jobs:
             Contribution skill revision: N/A - interactive Claude workflow does not invoke the contribution skill
             Attribution status: self-reported
             — [claude-code-action]
-            <!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-opus-4-7","client":"claude-code-action","skill_revision":"N/A - interactive Claude workflow does not invoke the contribution skill"} -->'
+            <!-- elizaos-contribution-attribution:v1 {"provider":"anthropic","model":"claude-opus-4-7","client":"claude-code-action","skill_revision":"N/A - interactive Claude workflow does not invoke the contribution skill"} -->'
 
   audit-attribution:
     name: Audit Claude GitHub output attribution

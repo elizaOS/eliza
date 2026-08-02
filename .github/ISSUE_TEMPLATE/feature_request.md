@@ -12,7 +12,7 @@ assignees: ""
 The rows below default to a human-only request and are valid as-is. If AI
 helped produce this request, change `AI assistance` to `yes`, replace the N/A
 rows with the exact runtime values, then append only the lane signature and
-matching eliza-computer-attribution:v1 JSON marker from CONTRIBUTING.md as the
+matching elizaos-contribution-attribution:v1 JSON marker from CONTRIBUTING.md as the
 final two body lines. Do not repeat the visible rows. Human-only requests do
 not add an attribution marker.
 -->

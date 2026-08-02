@@ -16,7 +16,7 @@ function machineFooter(overrides = {}) {
     client: "Codex desktop",
     lane: "qa-agent",
     skillRevision:
-      "elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza",
+      "elizaOS/army@0123456789abcdef0123456789abcdef01234567:skills/contribute-to-eliza",
     ...overrides,
   };
   const marker = {
@@ -30,14 +30,14 @@ Client / agent tooling: ${values.client}
 Contribution skill revision: ${values.skillRevision}
 Attribution status: self-reported
 — [${values.lane}]
-<!-- eliza-computer-attribution:v1 ${JSON.stringify(marker)} -->`;
+<!-- elizaos-contribution-attribution:v1 ${JSON.stringify(marker)} -->`;
 }
 
 function workflowMachineFooter(path) {
   const workflow = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
   const matches = [
     ...workflow.matchAll(
-      /AI provider\/model:[^\n]*\n[\s\S]*?<!--\s*eliza-computer-attribution:v1\s+\{[^\n]*\}\s*-->/g,
+      /AI provider\/model:[^\n]*\n[\s\S]*?<!--\s*elizaos-contribution-attribution:v1\s+\{[^\n]*\}\s*-->/g,
     ),
   ];
   assert.ok(matches.length > 0, `${path} must contain a machine footer`);
@@ -156,9 +156,9 @@ Attribution status: self-reported`);
 
   it("ignores quoted and fenced footer markers without weakening a real footer", () => {
     const quotedMarker =
-      '> <!-- eliza-computer-attribution:v1 {"provider":"fake"} -->';
+      '> <!-- elizaos-contribution-attribution:v1 {"provider":"fake"} -->';
     const fencedMarker =
-      '~~~text\n<!-- eliza-computer-attribution:v1 {"provider":"fake"} -->\n~~~';
+      '~~~text\n<!-- elizaos-contribution-attribution:v1 {"provider":"fake"} -->\n~~~';
     const fencedLane = "````text\n— [example-agent]\n```\n````";
     for (const prefix of [quotedMarker, fencedMarker, fencedLane]) {
       const result = evaluateCommentAttribution(
@@ -196,7 +196,7 @@ Attribution status: self-reported`);
     assert.ok(mixed.findings.some((finding) => finding.id === "no-ai-reason"));
 
     const markerConflict = evaluateCommentAttribution(
-      `${issue}\n<!-- eliza-computer-attribution:v1 -->`,
+      `${issue}\n<!-- elizaos-contribution-attribution:v1 -->`,
       { issueBody: true },
     );
     assert.equal(markerConflict.ok, false);
@@ -207,8 +207,8 @@ Attribution status: self-reported`);
     );
 
     for (const exampleMarker of [
-      "> <!-- eliza-computer-attribution:v1 -->",
-      "```text\n<!-- eliza-computer-attribution:v1 -->\n```",
+      "> <!-- elizaos-contribution-attribution:v1 -->",
+      "```text\n<!-- elizaos-contribution-attribution:v1 -->\n```",
     ]) {
       const example = evaluateCommentAttribution(
         `${exampleMarker}\n\n${issue}`,
@@ -345,7 +345,7 @@ ${machineFooter()}`;
     );
 
     const malformedExtra = evaluateCommentAttribution(
-      `<!-- eliza-computer-attribution:v1 -->\n${machineFooter()}`,
+      `<!-- elizaos-contribution-attribution:v1 -->\n${machineFooter()}`,
       { required: true },
     );
     assert.equal(malformedExtra.ok, false);

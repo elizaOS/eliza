@@ -78,10 +78,10 @@ AI-authored issue comment, pull request comment, and review body must end with:
 ```text
 AI provider/model: <provider> / <exact-model-id>
 Client / agent tooling: <client>
-Contribution skill revision: elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza
+Contribution skill revision: elizaOS/army@<full-commit-sha>:skills/contribute-to-eliza
 Attribution status: self-reported
 — [<lane-tag>]
-<!-- eliza-computer-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza"} -->
+<!-- elizaos-contribution-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"elizaOS/army@<full-commit-sha>:skills/contribute-to-eliza"} -->
 ```
 
 Do not infer or abbreviate the model, and do not substitute a model family such

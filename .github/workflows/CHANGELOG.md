@@ -8,21 +8,9 @@ do not have to carry CI-only history.
 
 ### Added
 
-- Added `eliza-computer.yml` as the exact-artifact Cloudflare Pages authority
-  for the eliza.army contribution site. It refreshes the public GitHub
-  leaderboard, packages the canonical contribution skill, deploys only a clean
-  `develop` revision, verifies Cloudflare commit metadata, and byte-compares the
-  public skill and leaderboard with the tested build.
-
 - Added contribution attribution checks for issue comments and hardened the
   existing AI workflows so every automated GitHub text mutation carries an
   exact provider/model/client declaration.
-
-- Added a base-controlled metadata workflow that removes the
-  `eliza-army-release-candidate` label whenever a pull request's head changes.
-  It runs on a GitHub-hosted runner with no checkout, candidate execution, or
-  repository-content write permission, so approval never silently follows a
-  new revision.
 
 ### Changed
 
@@ -30,11 +18,6 @@ do not have to carry CI-only history.
   deterministic validation on a GitHub-hosted runner. The validator comes from
   the exact PR base, PyYAML is hash-pinned, and the job has no secrets, write
   permissions, or persistent runner state.
-
-- Restricted every eliza.army production release path, including manual
-  dispatch, to `develop`. Release jobs install the lockfile-pinned Wrangler
-  without lifecycle scripts and never execute candidate-controlled deployment
-  workflows with Cloudflare credentials.
 
 - Interactive `@claude` assistance is opt-in behind
   `CLAUDE_INTERACTIVE_ENABLED=true`. Its pinned third-party action retains a

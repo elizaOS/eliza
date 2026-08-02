@@ -490,7 +490,7 @@ describe("check-pr-evidence parser", () => {
       "domain-artifacts": "- [x] OCR report [ocr](ocr.txt)",
     });
     const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
-      changedFiles: ["packages/eliza-computer/src/App.tsx"],
+      changedFiles: ["packages/app/src/App.tsx"],
     });
     assert.equal(ok, false);
     assert.ok(
@@ -1175,15 +1175,6 @@ describe("check-pr-evidence row primitives", () => {
     });
     assert.equal(forced.ok, false);
 
-    const contributionSite = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
-      labels: "",
-      changedFiles: ["packages/eliza-computer/src/App.tsx"],
-    });
-    assert.equal(
-      contributionSite.ok,
-      false,
-      "eliza.army is a rendered UI surface and requires visual proof",
-    );
   });
 
   it("normalizes labels and detects surface labels", () => {
@@ -2214,12 +2205,12 @@ describe("remote artifact verification", () => {
         {
           method: "GET",
           status: 200,
-          url: "https://eliza.army/leaderboard.json",
+          url: "https://eliza.app/api/agents",
         },
         {
           method: "GET",
           status: 200,
-          url: "https://eliza.army/skill/SKILL.md",
+          url: "https://eliza.app/api/plugins",
         },
       ],
       generatedAt: "2026-07-31T18:00:00Z",

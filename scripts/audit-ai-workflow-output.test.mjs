@@ -69,7 +69,7 @@ Client / agent tooling: ${values.client}
 Contribution skill revision: ${values.skillRevision}
 Attribution status: self-reported
 — [${values.lane}]
-<!-- eliza-computer-attribution:v1 {"provider":"${providerSlug}","model":"${values.model}","client":"${values.client}","skill_revision":"${values.skillRevision}"} -->`;
+<!-- elizaos-contribution-attribution:v1 {"provider":"${providerSlug}","model":"${values.model}","client":"${values.client}","skill_revision":"${values.skillRevision}"} -->`;
 }
 
 function issueBody() {
@@ -86,7 +86,7 @@ function issueBody() {
 Weekly maintenance found an actionable dependency update.
 
 — [${EXPECTED.lane}]
-<!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"${EXPECTED.model}","client":"${EXPECTED.client}","skill_revision":"${EXPECTED.skillRevision}"} -->`;
+<!-- elizaos-contribution-attribution:v1 {"provider":"anthropic","model":"${EXPECTED.model}","client":"${EXPECTED.client}","skill_revision":"${EXPECTED.skillRevision}"} -->`;
 }
 
 function snapshot(records = [], overrides = {}) {

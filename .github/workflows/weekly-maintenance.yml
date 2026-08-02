@@ -89,7 +89,7 @@ jobs:
             Contribution skill revision: N/A - weekly maintenance does not invoke the contribution skill
             Attribution status: self-reported
             — [weekly-maintenance-agent]
-            <!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-opus-4-7","client":"claude-code-action","skill_revision":"N/A - weekly maintenance does not invoke the contribution skill"} -->
+            <!-- elizaos-contribution-attribution:v1 {"provider":"anthropic","model":"claude-opus-4-7","client":"claude-code-action","skill_revision":"N/A - weekly maintenance does not invoke the contribution skill"} -->
 
           # Claude CLI arguments for model and allowed tools
           claude_args: |

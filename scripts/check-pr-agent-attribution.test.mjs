@@ -44,7 +44,7 @@ function body({
   assistance = "yes",
   models = "`openai/gpt-5.6-sol`",
   client = "Codex Desktop",
-  revision = "`elizaOS/eliza@0123456789abcdef0123456789abcdef01234567:packages/skills/skills/contribute-to-eliza`",
+  revision = "`elizaOS/army@0123456789abcdef0123456789abcdef01234567:skills/contribute-to-eliza`",
   status = "self-reported",
 } = {}) {
   return `<!-- contribution-attribution:v1 -->

@@ -127,7 +127,6 @@ packages/        framework, shared libraries, and product surfaces
   shared/        cross-package utilities + brand assets
   ui/            shared React component library
   app/           web + desktop dashboard, desktop shell, and current cloud apex UI
-  eliza-computer/ eliza.army contribution hub, live work queue, leaderboard, and skill download
   tui/           terminal UI
   skills/        runtime skills knowledge base (USE_SKILL)
   scenario-runner/ scenario + eval harness

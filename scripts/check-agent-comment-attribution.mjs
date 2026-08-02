@@ -13,7 +13,7 @@ const CLAIM_LINE_RE = /^CLAIMING(?:\s+(?:REVIEW|LEVER))?\s*:/i;
 const ATTRIBUTION_DECLARATION_RE =
   /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
 const ATTRIBUTION_MARKER_LINE_RE =
-  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/i;
+  /^<!--\s*elizaos-contribution-attribution:v1\b[^\r\n]*-->\s*$/i;
 const HUMAN_ONLY_FOOTER_RE =
   /(?:^|\n)AI assistance:\s*no\s*[-\u2013\u2014]\s*human-only (?:claim|comment|review)\s*\nAttribution status:\s*self-reported\s*$/i;
 const NO_AI_VALUE_RE = /^(?:no|none|n\/?a)\s*[-:\u2013\u2014]\s*(\S[\s\S]*?)$/i;
@@ -120,11 +120,11 @@ function markerRecords(source) {
     .map((record) => {
       const raw = record.raw.trim();
       const any = raw.match(
-        /^<!--\s*eliza-computer-attribution:v1\b([\s\S]*?)-->\s*$/i,
+        /^<!--\s*elizaos-contribution-attribution:v1\b([\s\S]*?)-->\s*$/i,
       );
       if (!any) return null;
       const wellFormed = raw.match(
-        /^<!--\s*eliza-computer-attribution:v1\s+(\{[^\r\n]*\})\s*-->\s*$/i,
+        /^<!--\s*elizaos-contribution-attribution:v1\s+(\{[^\r\n]*\})\s*-->\s*$/i,
       );
       const leadingWhitespace =
         record.raw.length - record.raw.trimStart().length;
@@ -388,7 +388,7 @@ export function evaluateCommentAttribution(body, options = {}) {
     findings.push({
       id: "marker",
       message:
-        "Exactly one well-formed eliza-computer-attribution:v1 JSON marker must appear.",
+        "Exactly one well-formed elizaos-contribution-attribution:v1 JSON marker must appear.",
     });
   }
 

@@ -66,10 +66,7 @@ const commands = buildSkillCommandSpecs(entries);
 
 This package ships **`elizaos`**, **`eliza-cloud`**, and
 **`eliza-app-development`** as concise references for elizaOS runtime concepts,
-Eliza Cloud as a backend, and application development. It also ships
-**`contribute-to-eliza`**, the evidence-first workflow for safely finishing
-issues and independently reviewing or repairing open pull requests with exact
-model attribution.
+Eliza Cloud as a backend, and application development.
 
 ## Skill Discovery
 

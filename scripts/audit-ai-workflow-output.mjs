@@ -29,7 +29,7 @@ const REPOSITORY_RE =
 const LOGIN_RE = /^[a-z0-9](?:[a-z0-9-]{0,38})?(?:\[bot\])?$/i;
 const LANE_RE = /^[a-z0-9][a-z0-9-]{1,48}$/i;
 const ATTRIBUTION_MARKER_RE =
-  /^<!--\s*eliza-computer-attribution:v1\b[^\r\n]*-->\s*$/im;
+  /^<!--\s*elizaos-contribution-attribution:v1\b[^\r\n]*-->\s*$/im;
 
 function bodyHash(body) {
   return createHash("sha256")

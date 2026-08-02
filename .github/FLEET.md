@@ -28,7 +28,7 @@ tracking issues only as durable logs of a specific push, closed by the owner.
   Its signed footer also names the client and the full contribution-skill
   revision (`owner/repo@full-commit-sha:path`) when a skill was used, marks the
   status `self-reported`, and carries the matching valid-JSON
-  `eliza-computer-attribution:v1` marker. If the exact identity is unavailable,
+  `elizaos-contribution-attribution:v1` marker. If the exact identity is unavailable,
   do not post until the operator supplies it. Never expose hidden reasoning,
   private prompts, session IDs, credentials, or tokens.
 - One lane tag = one running context. If you inherit a lane, say so in the

@@ -436,7 +436,7 @@ jobs:
           Contribution skill revision: N/A - docs CI does not invoke the contribution skill
           Attribution status: self-reported
           — [docs-ci-agent]
-          <!-- eliza-computer-attribution:v1 {"provider":"anthropic","model":"claude-sonnet-4-6","client":"claude-code-action","skill_revision":"N/A - docs CI does not invoke the contribution skill"} -->
+          <!-- elizaos-contribution-attribution:v1 {"provider":"anthropic","model":"claude-sonnet-4-6","client":"claude-code-action","skill_revision":"N/A - docs CI does not invoke the contribution skill"} -->
           EOF
 
           gh pr create \

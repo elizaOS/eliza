@@ -24,8 +24,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
 | `skill-review.yml` | PRs changing `SKILL.md` | Secretless deterministic validation with the trusted canonical validator |
-| `eliza-computer.yml` | Push to develop, schedule, manual from develop | Build, deploy, and byte-verify the eliza.army contribution site, skill, and live leaderboard |
-| `eliza-army-release-label.yml` | PR head changes targeting develop | Remove stale eliza.army release approval without checking out or executing PR code |
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `build-llama-ffi-android.yml` | Native-source push to develop, tag, manual, reusable | Canonical fused Android producer: arm64-v8a Vulkan and x86_64 CPU artifacts |
 | `build-android.yml` | Manual | Android app build; finds an input-compatible native producer run through the Actions API |
@@ -33,15 +31,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `apple-store-release.yml` | Manual, reusable | Canonical signed iOS/macOS store build and publish authority |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
 | `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
-
-### eliza.army release approval freshness
-
-`eliza-army-release-label.yml` treats `eliza-army-release-candidate` as an
-approval of one immutable PR head, never the branch name. Every `synchronize`
-event targeting `develop` removes that exact label through the GitHub API.
-Maintainers wait for the invalidation run to finish, review the new head, and
-then reapply the label. The privileged workflow reads only event metadata: it
-does not check out a repository revision or execute candidate-controlled code.
 
 ## Release Workflows
 
