@@ -4,7 +4,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -25,6 +26,7 @@ import {
 
 let tmpDir: string;
 let nodeModulesDir: string;
+let externalFixtureDir: string | undefined;
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -38,6 +40,7 @@ const cleanupHelperScript = path.join(
   "scripts",
   "rm-path-recursive.mjs",
 );
+const tsxLoader = fileURLToPath(import.meta.resolve("tsx"));
 
 function removePathRecursive(targetPath: string): void {
   execFileSync(process.execPath, [cleanupHelperScript, targetPath], {
@@ -70,6 +73,10 @@ describe("assertRequiredBundledPackagesLanded", () => {
 
   afterEach(() => {
     removePathRecursive(tmpDir);
+    if (externalFixtureDir) {
+      removePathRecursive(externalFixtureDir);
+      externalFixtureDir = undefined;
+    }
   });
 
   it("passes when every required package has a package.json", () => {
@@ -350,6 +357,85 @@ describe("assertRequiredBundledPackagesLanded", () => {
     expect(
       shouldBundleDiscoveredPackage("@elizaos/plugin-openai", new Set()),
     ).toBe(false);
+  });
+
+  it("bundles baseline support packages available only through the workspace", () => {
+    const fixtureRoot = mkdtempSync(
+      path.join(os.tmpdir(), "eliza-runtime-copy-workspace-"),
+    );
+    externalFixtureDir = fixtureRoot;
+    const fixtureDist = path.join(fixtureRoot, "dist");
+    const walletRoot = path.join(fixtureRoot, "plugins", "plugin-wallet");
+    const walletDist = path.join(walletRoot, "dist");
+    const cleanupScriptDir = path.join(fixtureRoot, "packages", "scripts");
+    mkdirSync(path.join(fixtureRoot, "node_modules"), { recursive: true });
+    mkdirSync(fixtureDist, { recursive: true });
+    mkdirSync(walletDist, { recursive: true });
+    mkdirSync(cleanupScriptDir, { recursive: true });
+
+    writeFileSync(
+      path.join(fixtureRoot, "package.json"),
+      JSON.stringify({
+        name: "runtime-copy-fixture",
+        private: true,
+        workspaces: ["plugins/*"],
+      }),
+    );
+    writeFileSync(
+      path.join(fixtureDist, "entry.js"),
+      'import "@elizaos/plugin-wallet/diagnostic";\n',
+    );
+    writeFileSync(
+      path.join(walletRoot, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/plugin-wallet",
+        version: "1.0.0",
+        type: "module",
+        files: ["dist"],
+        exports: { "./diagnostic": "./dist/diagnostic.js" },
+      }),
+    );
+    writeFileSync(
+      path.join(walletDist, "diagnostic.js"),
+      "export const walletDiagnosticDescriptor = {};\n",
+    );
+    writeFileSync(
+      path.join(cleanupScriptDir, "rm-path-recursive.mjs"),
+      'import { rmSync } from "node:fs"; rmSync(process.argv[2], { force: true, recursive: true });\n',
+    );
+
+    execFileSync(
+      process.execPath,
+      [
+        "--import",
+        tsxLoader,
+        path.join(
+          repoRoot,
+          "packages",
+          "app-core",
+          "scripts",
+          "copy-runtime-node-modules.ts",
+        ),
+        "--scan-dir",
+        "dist",
+        "--target-dist",
+        "dist",
+      ],
+      { cwd: fixtureRoot, stdio: "pipe", timeout: 10_000 },
+    );
+
+    expect(
+      existsSync(
+        path.join(
+          fixtureDist,
+          "node_modules",
+          "@elizaos",
+          "plugin-wallet",
+          "dist",
+          "diagnostic.js",
+        ),
+      ),
+    ).toBe(true);
   });
 
   it("prunes test snapshots from third-party runtime dependencies", () => {

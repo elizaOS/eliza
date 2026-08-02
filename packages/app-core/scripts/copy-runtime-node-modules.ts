@@ -2526,9 +2526,7 @@ function main(): void {
       if (alwaysBundled.has(packageName)) {
         continue;
       }
-      if (
-        resolvePackage(packageName, null, ROOT, { includeWorkspace: false })
-      ) {
+      if (resolvePackage(packageName, null, ROOT)) {
         alwaysBundled.add(packageName);
       }
     }
