@@ -52,6 +52,7 @@ import {
   navigateToSameTabCloudLogin,
   shouldUseSameTabCloudLogin,
 } from "./cloud-login-launch";
+import { clearCloudPairApiToken } from "./cloud-pair-token";
 import {
   getInjectedEthereumProvider,
   siweLoginWithInjectedWallet,
@@ -1352,6 +1353,11 @@ export function useCloudState({
         // survives at rest / in memory (XSS / same-origin plugin views).
         clearStoredStewardToken();
         scrubPersistedAgentProfileTokens();
+        // The durable cloud-pair API token (localStorage + sessionStorage,
+        // written by CloudPairRelay and re-adopted at every boot) is a third
+        // at-rest credential: without this, a rotated/revoked pair key
+        // survives disconnect and gets re-adopted on the next launch.
+        clearCloudPairApiToken();
         if (wasConnected) {
           setActionNotice("Disconnected from Eliza Cloud.", "success");
         }
