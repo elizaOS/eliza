@@ -1820,18 +1820,26 @@ export class ElizaSandboxService {
     // counted until something proves absence — the retry that completes the
     // teardown, or the orphan reconciler that reaps the container.
     if (containerProvenGone && precheck.nodeId) {
-      const released = await agentSandboxesRepository.tryReleaseDeletionAllocation(
+      const outcome = await agentSandboxesRepository.tryReleaseDeletionAllocation(
         agentId,
         orgId,
         precheck.deletionAttemptId,
         precheck.nodeId,
       );
-      logger.info("[agent-sandbox] Deletion node-slot release", {
-        released,
+      // `not-owned` is the expected retry outcome and stays at info; only a
+      // counter that failed to move while ownership WAS ours is an accounting
+      // problem worth an operator's attention.
+      const context = {
+        outcome,
         agentId,
         nodeId: precheck.nodeId,
         deletionAttemptId: precheck.deletionAttemptId,
-      });
+      };
+      if (outcome === "counter-unchanged") {
+        logger.warn("[agent-sandbox] Deletion node-slot release did not move the counter", context);
+      } else {
+        logger.info("[agent-sandbox] Deletion node-slot release", context);
+      }
     }
 
     // Revoke both credential owners before deleting the row. The source-pool

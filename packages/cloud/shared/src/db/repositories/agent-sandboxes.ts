@@ -311,6 +311,17 @@ export async function prepareAgentBackupInsertData(
   };
 }
 
+/**
+ * Outcome of spending a deletion generation's allocation ownership.
+ *
+ * Three-valued on purpose. A boolean conflates the benign expected case
+ * (`not-owned` — the retry path this feature exists to make safe) with a real
+ * accounting bug (`counter-unchanged` — ownership was ours, but the node
+ * counter did not move), and an operator reading `released: false` could not
+ * tell which they were looking at.
+ */
+export type DeletionAllocationRelease = "released" | "not-owned" | "counter-unchanged";
+
 export class AgentSandboxesRepository {
   // Reads
 
@@ -2187,7 +2198,10 @@ export class AgentSandboxesRepository {
    * "ownership was not ours to spend" and "ownership was spent but the counter
    * did not move" (already 0, or no `docker_nodes` row) — the latter warns.
    */
-  private async spendDeletionAllocation(nodeId: string, claimWhere: SQL): Promise<boolean> {
+  private async spendDeletionAllocation(
+    nodeId: string,
+    claimWhere: SQL,
+  ): Promise<DeletionAllocationRelease> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
       const [claimed] = await tx
@@ -2195,7 +2209,7 @@ export class AgentSandboxesRepository {
         .set({ deletion_allocation_counted: false, updated_at: new Date() })
         .where(and(claimWhere, eq(agentSandboxes.deletion_allocation_counted, true)))
         .returning({ id: agentSandboxes.id });
-      if (!claimed) return false;
+      if (!claimed) return "not-owned";
 
       const decremented = await tx
         .update(dockerNodes)
@@ -2209,8 +2223,9 @@ export class AgentSandboxesRepository {
         logger.warn(
           `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
         );
+        return "counter-unchanged";
       }
-      return decremented.length > 0;
+      return "released";
     });
   }
 
@@ -2228,7 +2243,7 @@ export class AgentSandboxesRepository {
     orgId: string,
     deletionAttemptId: string,
     nodeId: string,
-  ): Promise<boolean> {
+  ): Promise<DeletionAllocationRelease> {
     return this.spendDeletionAllocation(
       nodeId,
       and(
@@ -2256,7 +2271,10 @@ export class AgentSandboxesRepository {
    * flight. The node is still matched, so a row since re-placed elsewhere
    * cannot have the wrong node's capacity released.
    */
-  async releaseDeletionAllocationOnReap(agentId: string, nodeId: string): Promise<boolean> {
+  async releaseDeletionAllocationOnReap(
+    agentId: string,
+    nodeId: string,
+  ): Promise<DeletionAllocationRelease> {
     return this.spendDeletionAllocation(
       nodeId,
       and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,

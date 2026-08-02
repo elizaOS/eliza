@@ -214,7 +214,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           nodeId,
         ),
-      ).toBe(true);
+      ).toBe("released");
       expect(await allocatedCount(nodeId)).toBe(1);
       expect(await ownership(agentId)).toBe(false);
 
@@ -228,7 +228,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(1);
 
       // A third recovery sweep is still a no-op.
@@ -239,7 +239,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(1);
     },
     PGLITE_TIMEOUT,
@@ -268,7 +268,12 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
         ),
       ]);
 
-      expect(results.filter(Boolean)).toHaveLength(1);
+      // Exactly one caller wins the row lock and spends the ownership; the other
+      // re-evaluates against the committed row and finds nothing to claim. Assert
+      // the outcomes by name — every outcome is a truthy string, so a
+      // truthiness count would pass no matter which two came back.
+      expect(results.filter((r) => r === "released")).toHaveLength(1);
+      expect(results.filter((r) => r === "not-owned")).toHaveLength(1);
       expect(await allocatedCount(nodeId)).toBe(1);
     },
     PGLITE_TIMEOUT,
@@ -291,7 +296,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(2);
     },
     PGLITE_TIMEOUT,
@@ -312,7 +317,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           crypto.randomUUID(), // a superseded attempt id
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(2);
       expect(await ownership(agentId)).toBe(true);
     },
@@ -340,7 +345,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           otherNodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(otherNodeId)).toBe(2);
       expect(await allocatedCount(nodeId)).toBe(2);
     },
@@ -362,7 +367,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(2);
     },
     PGLITE_TIMEOUT,
@@ -380,9 +385,9 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
         .set({ allocated_count: 0 })
         .where(eq(dockerNodes.node_id, nodeId));
 
-      // Ownership is still consumed — the claim was real — but the guard blocks
-      // the underflow, and the return value reports that the counter did NOT
-      // move so no caller logs a decrement that never happened.
+      // Ownership IS consumed — the claim was real — but the guard blocks the
+      // underflow. The outcome must say so: `counter-unchanged` is an accounting
+      // mismatch worth a warn, distinct from the benign `not-owned` retry.
       expect(
         await agentSandboxesRepository.tryReleaseDeletionAllocation(
           agentId,
@@ -390,7 +395,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
           deletionAttemptId,
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("counter-unchanged");
       expect(await allocatedCount(nodeId)).toBe(0);
       expect(await ownership(agentId)).toBe(false);
     },
@@ -443,7 +448,7 @@ describe("a deletion continuation never re-derives ownership from its own state"
           attemptId,
           nodeId,
         ),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(2);
     },
     PGLITE_TIMEOUT,
@@ -481,7 +486,7 @@ describe("releaseDeletionAllocationOnReap — absence proven by the orphan reape
       expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, nodeId)).toBe(1);
 
       expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
-        true,
+        "released",
       );
       expect(await allocatedCount(nodeId)).toBe(1);
       expect(await ownership(agentId)).toBe(false);
@@ -501,7 +506,7 @@ describe("releaseDeletionAllocationOnReap — absence proven by the orphan reape
 
       await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId);
       expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
-        false,
+        "not-owned",
       );
       expect(await allocatedCount(nodeId)).toBe(1);
     },
@@ -525,7 +530,7 @@ describe("releaseDeletionAllocationOnReap — absence proven by the orphan reape
 
       expect(
         await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, otherNodeId),
-      ).toBe(false);
+      ).toBe("not-owned");
       expect(await allocatedCount(otherNodeId)).toBe(2);
       expect(await allocatedCount(nodeId)).toBe(2);
     },
@@ -542,7 +547,7 @@ describe("releaseDeletionAllocationOnReap — absence proven by the orphan reape
       });
 
       expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
-        false,
+        "not-owned",
       );
       expect(await allocatedCount(nodeId)).toBe(2);
     },

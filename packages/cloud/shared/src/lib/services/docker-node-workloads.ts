@@ -11,6 +11,7 @@ import { dbRead, dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
+import { logger } from "../utils/logger";
 import {
   countAllocatedWorkloadsOnNodeWithDatabase,
   TERMINAL_SANDBOX_STATUS_SET,
@@ -71,17 +72,47 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
  * `disconnected` is deliberately NOT excluded: it is non-terminal (the
  * container is up but unreachable) and still occupies the slot.
  */
+/** Postgres `undefined_column` — the shape a pre-migration read takes. */
+const UNDEFINED_COLUMN = "42703";
+
+function isUndefinedColumn(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === UNDEFINED_COLUMN
+  );
+}
+
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
-  // This is the placement hot path (`getAvailableNode`, the autoscaler,
-  // `syncAllocatedCounts`), and the query reads ownership columns added after
-  // the base table. The provisioning worker deploys without a `migrate-db`
-  // gate, so on a pre-migration rollout an unguarded read fails closed and NO
-  // agent can be placed. Ensure is memoized per database URL, so the DDL runs
-  // once per isolate; the residual per-call cost is the env lookup, not I/O.
-  // Deliberately on this wrapper rather than the injected-database variant,
-  // which stays hermetic for tests.
-  await ensureAgentSandboxSchema();
-  return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+  // Repair-on-failure rather than prophylactic DDL. This is the placement hot
+  // path (`getAvailableNode`, the autoscaler, `syncAllocatedCounts`, each once
+  // per node per sweep) and it reads ownership columns added after the base
+  // table, which the provisioning worker can reach before its migration has run
+  // — its deploy has no `migrate-db` gate.
+  //
+  // Calling ensure up front would guard that, but at a cost the guard does not
+  // justify: it puts a ~15-statement ALTER/CREATE block on every placement, and
+  // `ensureAgentSandboxSchema` rethrows AND drops its memo on failure, so one
+  // transient DDL failure would fail placement for every agent — a strictly
+  // wider blast radius than the missing column it protects against.
+  //
+  // Instead the query runs unguarded, and only an actual `undefined_column`
+  // triggers the self-heal and one retry. The happy path pays nothing, the
+  // pre-migration path still recovers, and a DDL failure surfaces on a request
+  // that was already failing rather than taking down placement wholesale.
+  try {
+    return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — the retry is the handling; any
+    // other failure, and any failure of the retry itself, propagates with cause.
+    if (!isUndefinedColumn(error)) throw error;
+    logger.warn(
+      "[docker-node-workloads] Workload count hit a missing column; applying agent-sandbox schema ensure and retrying once",
+      { nodeId },
+    );
+    await ensureAgentSandboxSchema();
+    return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
+  }
 }
 
 // ---------------------------------------------------------------------------
