@@ -52,7 +52,6 @@ function makeHarness(opts: HarnessOptions): {
   emit: (sessionId: string, event: string, data: unknown) => void;
   completions: Array<{ status: string; completionSummary: string }>;
   swarmEvents: string[];
-  sendPromptCalls: number;
   counters: { sendPromptCalls: () => number };
   metadataPatches: Array<Record<string, unknown>>;
   stopSessionCalls: string[];
@@ -134,7 +133,6 @@ function makeHarness(opts: HarnessOptions): {
     emit,
     completions,
     swarmEvents,
-    sendPromptCalls,
     counters: { sendPromptCalls: () => sendPromptCalls },
     metadataPatches,
     stopSessionCalls,
@@ -204,7 +202,7 @@ describe("verify-retry delivery tolerates a transient busy session", () => {
 
     h.emit(SESSION, "task_complete", retryTaskCompleteData());
     await flushMicrotasks();
-    // Ride out the whole busy deadline (120s of 1s polls).
+    // Ride out the whole busy deadline.
     await vi.advanceTimersByTimeAsync(305_000);
     await flushMicrotasks();
 

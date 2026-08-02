@@ -481,16 +481,17 @@ async function opCreate(
     );
   }
 
-  const duplicate = existingTasks.find((t) => {
+  // Two duplicate tiers with different evidentiary strength. A dedupeKey
+  // match hashes the FULL request (type, instructions, schedule, workflow),
+  // so it proves the desired state is already true and may mint a replayed
+  // receipt. The legacy fallback matches instructions+type only — it ignores
+  // the schedule, so a stored 8am reminder "matches" a new 9am request; that
+  // is a hint, never proof, and must not become a verified "you're covered".
+  const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
-    if (!cfg?.enabled) return false;
-    if (cfg.dedupeKey) return cfg.dedupeKey === dedupeKey;
-    return (
-      cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
-      cfg.triggerType === triggerType
-    );
+    return Boolean(cfg?.enabled && cfg.dedupeKey === dedupeKey);
   });
-  if (duplicate?.id) {
+  if (exactDuplicate?.id) {
     // Idempotent success: the desired state (an equivalent enabled trigger)
     // is already committed. The replayed no-op receipt lets a truthful
     // "you're already covered" ack pass egress verification.
@@ -500,11 +501,28 @@ async function opCreate(
       // rather than narrating the dedupe machinery ("an equivalent trigger
       // exists" reads as an internal record, not an answer).
       "Already set — you're covered.",
-      triggerReceipt("create", String(duplicate.id), {
+      triggerReceipt("create", String(exactDuplicate.id), {
         key: dedupeKey,
         replayed: true,
       }),
-      { duplicateTaskId: duplicate.id, dedupeKey },
+      { duplicateTaskId: exactDuplicate.id, dedupeKey },
+    );
+  }
+  const legacyDuplicate = existingTasks.find((t) => {
+    const cfg = readTriggerConfig(t);
+    if (!cfg?.enabled || cfg.dedupeKey) return false;
+    return (
+      cfg.instructions.trim().toLowerCase() === instructions.toLowerCase() &&
+      cfg.triggerType === triggerType
+    );
+  });
+  if (legacyDuplicate?.id) {
+    // Un-receipted: the fuzzy match cannot prove the schedule matches, so
+    // this reports the near-duplicate without claiming verified success.
+    return ok(
+      "create",
+      `A similar ${triggerType} trigger already exists ("${readTriggerConfig(legacyDuplicate)?.instructions ?? "unknown"}"). Confirm whether that covers this, or delete it first to create the new one.`,
+      { duplicateTaskId: legacyDuplicate.id, legacyFuzzyMatch: true },
     );
   }
 

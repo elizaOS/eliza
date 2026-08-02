@@ -113,7 +113,7 @@ function createHarness(
 
 	const runtime = createMockRuntime({
 		agentId,
-		character: { name: "Remilio", bio: "test agent" },
+		character: { name: "TestAgent", bio: "test agent" },
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -393,39 +393,26 @@ describe("race-superseded turns keep addressed responses", () => {
 });
 
 describe("resolveSupersededResponseKeepReason policy", () => {
-	it("keeps an explicit REPLY without evaluating the addressed predicate", () => {
-		const addressed = vi.fn(() => false);
-		expect(
-			resolveSupersededResponseKeepReason({ actions: ["REPLY"] }, addressed),
-		).toBe("explicit REPLY for an addressed message");
-		expect(addressed).not.toHaveBeenCalled();
+	it("keeps an explicit REPLY", () => {
+		expect(resolveSupersededResponseKeepReason({ actions: ["REPLY"] })).toBe(
+			"explicit REPLY for an addressed message",
+		);
 	});
 
 	it("keeps RESPOND (the REPLY alias)", () => {
-		expect(
-			resolveSupersededResponseKeepReason(
-				{ actions: ["RESPOND"] },
-				() => false,
-			),
-		).toBe("explicit REPLY for an addressed message");
+		expect(resolveSupersededResponseKeepReason({ actions: ["RESPOND"] })).toBe(
+			"explicit REPLY for an addressed message",
+		);
 	});
 
-	it("keeps an addressed action-mode response without REPLY in its actions (the incident class)", () => {
+	it("discards non-reply shapes — every deliverable constructor sets REPLY", () => {
 		expect(
-			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }, () => true),
-		).toBe("deterministically addressed turn");
-	});
-
-	it("discards an unaddressed non-REPLY response (group-noise silence preserved)", () => {
-		expect(
-			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }, () => false),
+			resolveSupersededResponseKeepReason({ actions: ["TASKS"] }),
 		).toBeNull();
 	});
 
 	it("discards when there is no response content to keep", () => {
-		expect(resolveSupersededResponseKeepReason(null, () => true)).toBeNull();
-		expect(
-			resolveSupersededResponseKeepReason(undefined, () => true),
-		).toBeNull();
+		expect(resolveSupersededResponseKeepReason(null)).toBeNull();
+		expect(resolveSupersededResponseKeepReason(undefined)).toBeNull();
 	});
 });
