@@ -1,6 +1,10 @@
 package ai.eliza.plugins.browsersurface
 
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.webkit.Profile
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
@@ -75,5 +79,18 @@ class BrowserSurfaceIsolationInstrumentedTest {
         // A second read of the default profile sees the shared write.
         val again = store.getOrCreateProfile(Profile.DEFAULT_PROFILE_NAME).cookieManager
         assertEquals(true, again.getCookie(urlShared)?.contains("shared=value"))
+    }
+
+    @Test
+    fun attachmentHostResolvesNearestFrameLayoutAncestorThroughNestedParents() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = FrameLayout(context)
+        val intermediate = LinearLayout(context)
+        val hostWebView = View(context)
+
+        root.addView(intermediate)
+        intermediate.addView(hostWebView)
+
+        assertEquals(root, findNearestFrameLayoutAncestor(hostWebView))
     }
 }
