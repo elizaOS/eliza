@@ -47,6 +47,11 @@ function notFound(kind: "note" | "calendar event", id: string): ElizaError {
 
 export type CalendarEventLookupSelector = "title" | "query";
 
+export interface SimpleViewsCommittedMutation<T> {
+  value: T;
+  snapshot: SimpleViewsSnapshot;
+}
+
 function normalizedLookup(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -186,6 +191,12 @@ export class SimpleViewsService extends Service {
   }
 
   async createNote(inputValue: unknown): Promise<StickyNote> {
+    return (await this.createNoteWithCommit(inputValue)).value;
+  }
+
+  async createNoteWithCommit(
+    inputValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<StickyNote>> {
     const input = parseCreateNoteInput(inputValue);
     const now = this.now().toISOString();
     const id = parseEntityId(this.createId("note"));
@@ -212,10 +223,17 @@ export class SimpleViewsService extends Service {
       return note;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:created");
-    return transaction.value;
+    return transaction;
   }
 
   async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
+    return (await this.updateNoteWithCommit(idValue, patchValue)).value;
+  }
+
+  async updateNoteWithCommit(
+    idValue: unknown,
+    patchValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<StickyNote>> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
     const updatedAt = this.now().toISOString();
@@ -234,10 +252,16 @@ export class SimpleViewsService extends Service {
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
-    return transaction.value;
+    return transaction;
   }
 
   async deleteNote(idValue: unknown): Promise<StickyNote> {
+    return (await this.deleteNoteWithCommit(idValue)).value;
+  }
+
+  async deleteNoteWithCommit(
+    idValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<StickyNote>> {
     const id = parseEntityId(idValue);
     const transaction = await this.store.transact((draft) => {
       const index = draft.notes.findIndex((note) => note.id === id);
@@ -247,17 +271,21 @@ export class SimpleViewsService extends Service {
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
-    return transaction.value;
+    return transaction;
   }
 
   async clearNotes(): Promise<number> {
+    return (await this.clearNotesWithCommit()).value;
+  }
+
+  async clearNotesWithCommit(): Promise<SimpleViewsCommittedMutation<number>> {
     const transaction = await this.store.transact((draft) => {
       const count = draft.notes.length;
       draft.notes = [];
       return count;
     });
     await this.emitStateUpdated(transaction.snapshot, "notes:cleared");
-    return transaction.value;
+    return transaction;
   }
 
   selectedDate(): string {
@@ -265,13 +293,19 @@ export class SimpleViewsService extends Service {
   }
 
   async selectDate(dateValue: unknown): Promise<string> {
+    return (await this.selectDateWithCommit(dateValue)).value;
+  }
+
+  async selectDateWithCommit(
+    dateValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<string>> {
     const date = parseDateKey(dateValue);
     const transaction = await this.store.transact((draft) => {
       draft.selectedDate = date;
       return date;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:date-selected");
-    return transaction.value;
+    return transaction;
   }
 
   listCalendarEvents(dateValue?: unknown): SimpleCalendarEvent[] {
@@ -291,6 +325,12 @@ export class SimpleViewsService extends Service {
   }
 
   async createCalendarEvent(inputValue: unknown): Promise<SimpleCalendarEvent> {
+    return (await this.createCalendarEventWithCommit(inputValue)).value;
+  }
+
+  async createCalendarEventWithCommit(
+    inputValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<SimpleCalendarEvent>> {
     const input = parseCreateCalendarEventInput(
       inputValue,
       this.selectedDate(),
@@ -323,13 +363,21 @@ export class SimpleViewsService extends Service {
       return event;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-created");
-    return transaction.value;
+    return transaction;
   }
 
   async updateCalendarEvent(
     idValue: unknown,
     patchValue: unknown,
   ): Promise<SimpleCalendarEvent> {
+    return (await this.updateCalendarEventWithCommit(idValue, patchValue))
+      .value;
+  }
+
+  async updateCalendarEventWithCommit(
+    idValue: unknown,
+    patchValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<SimpleCalendarEvent>> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateCalendarEventInput(patchValue);
     const updatedAt = this.now().toISOString();
@@ -351,10 +399,16 @@ export class SimpleViewsService extends Service {
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-updated");
-    return transaction.value;
+    return transaction;
   }
 
   async deleteCalendarEvent(idValue: unknown): Promise<SimpleCalendarEvent> {
+    return (await this.deleteCalendarEventWithCommit(idValue)).value;
+  }
+
+  async deleteCalendarEventWithCommit(
+    idValue: unknown,
+  ): Promise<SimpleViewsCommittedMutation<SimpleCalendarEvent>> {
     const id = parseEntityId(idValue);
     const transaction = await this.store.transact((draft) => {
       const index = draft.events.findIndex((event) => event.id === id);
@@ -364,13 +418,21 @@ export class SimpleViewsService extends Service {
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-deleted");
-    return transaction.value;
+    return transaction;
   }
 
   async deleteCalendarEventByLookup(
     selector: CalendarEventLookupSelector,
     value: string,
   ): Promise<SimpleCalendarEvent> {
+    return (await this.deleteCalendarEventByLookupWithCommit(selector, value))
+      .value;
+  }
+
+  async deleteCalendarEventByLookupWithCommit(
+    selector: CalendarEventLookupSelector,
+    value: string,
+  ): Promise<SimpleViewsCommittedMutation<SimpleCalendarEvent>> {
     const lookup = value.trim();
     if (lookup.length === 0) {
       throw new ElizaError(
@@ -397,7 +459,7 @@ export class SimpleViewsService extends Service {
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "calendar:event-deleted");
-    return transaction.value;
+    return transaction;
   }
 
   private async emitStateUpdated(
