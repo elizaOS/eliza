@@ -29,6 +29,7 @@ import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbes
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
+import { reportUserViewSwitch } from "../view-switch-report";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
 import { buildModelChoiceLabels, resolveModelChoices } from "./model-choices";
 import {
@@ -72,40 +73,7 @@ function isModelCatalogProviders(
   );
 }
 
-/**
- * Report a user-initiated view switch to the agent (#8792). Fire-and-forget,
- * fully guarded: a failure here must never break navigation. `source: "user"`
- * makes the server record state + emit VIEW_SWITCHED without echoing
- * shell:navigate:view back to the client. The surface id is any view/tab id
- * (e.g. a view id, a tab id, or "settings") the proactive decider keys off.
- */
-export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
-  try {
-    const base = getElizaApiBase();
-    if (!base || typeof fetch === "undefined") return;
-    const token = getElizaApiToken();
-    void fetch(`${base}/api/views/${encodeURIComponent(viewId)}/navigate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        source: "user",
-        ...(viewPath ? { path: viewPath } : {}),
-      }),
-    }).catch((err) => {
-      // error-policy:J7 telemetry write must not break navigation; warn keeps
-      // a dead reporting endpoint observable in the console.
-      logger.warn(
-        `[useSlashCommandController] view-switch report failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-  } catch {
-    // error-policy:J7 same guard for synchronous setup failures — telemetry
-    // must never break navigation.
-  }
-}
+export { reportUserViewSwitch } from "../view-switch-report";
 
 /**
  * Report a user-fired keyboard / command-palette shortcut to the agent (#8792).
