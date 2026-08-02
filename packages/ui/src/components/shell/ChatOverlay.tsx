@@ -147,6 +147,7 @@ import { Textarea } from "../ui/textarea";
 import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
+  resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
@@ -296,7 +297,6 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 
 type MotionControls = { stop: () => void };
 
-const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
 // Keep the synchronous resize anchor aligned with MessageScroller's own
 // definition of an end-pinned reader.
 const MESSAGE_SCROLLER_END_THRESHOLD_PX = 8;
@@ -316,6 +316,10 @@ const CHAT_CLEARANCE_MAX_PX = 220;
 // floor. That gap is part of the occluded footprint even though it is outside
 // the measured fieldset.
 const CHAT_CLEARANCE_REST_GAP_PX = 8;
+// Single source of truth for the visible gap between the focused composer and
+// the software keyboard. The layout solver consumes the same number it paints,
+// so a native keyboard event cannot leave panel height using stale rest padding.
+const KEYBOARD_COMPOSER_GAP_PX = 12;
 // Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
 // that STARTS within this fraction of the panel height from the top drops
 // full-bleed and tracks the finger. 0.9 = "top 90%" — nearly the whole panel is
@@ -2967,6 +2971,9 @@ export function ChatOverlay({
   // sub-threshold inset a touch page carries at rest.
   const keyboardBlocksMaximize =
     effectiveKeyboardInset >= KEYBOARD_INTRUSION_THRESHOLD_PX;
+  const layoutBottomPad = keyboardLiftActive
+    ? KEYBOARD_COMPOSER_GAP_PX
+    : bottomPad;
 
   // FULL-SCREEN derived gate: maximized only takes effect AT the full detent, so
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
@@ -3056,7 +3063,7 @@ export function ChatOverlay({
   // panel top tracks the pointer all the way to the screen edge.
   const layoutInput = {
     viewportH,
-    bottomPad,
+    bottomPad: layoutBottomPad,
     keyboardInset,
     effectiveKeyboardInset,
     safeAreaTopPx: safeAreaTop,
@@ -3080,7 +3087,13 @@ export function ChatOverlay({
   // the detent target matches the visible height (no dead slack at the top of a
   // pull-down) while the sheet rises all the way to the top.
   const openH = panelMaxH;
-  const halfH = Math.round(viewportH * SHEET_HALF_VH);
+  // The nominal half detent can exceed the entire visible panel when a native
+  // keyboard lifts the overlay without shrinking Chromium's layout viewport
+  // (the LP3 WebView reports 414px while Gboard consumes 223px). A resting
+  // detent may never outrun its current panel ceiling: panelCapH intentionally
+  // follows threadHeight during a live over-pull, so an oversized HALF target
+  // otherwise re-expands the cap and clips the grabber above the screen.
+  const halfH = resolveChatPanelHalfDetentHeight(viewportH, panelMaxH);
   const detentH = !sheetOpen ? 0 : expanded ? openH : halfH;
   // A free-drag rest height wins over the detent until a detent is re-taken.
   const baseH = freeH != null ? Math.min(freeH, panelMaxH) : detentH;
@@ -5476,7 +5489,7 @@ export function ChatOverlay({
         // so the switch is seamless) — at rest it stays the plain calc so the
         // home-indicator clearance contract is exact.
         paddingBottom: keyboardLiftActive
-          ? "0.75rem"
+          ? `${KEYBOARD_COMPOSER_GAP_PX}px`
           : fullBleed || restoreDragging || isDragging
             ? overlayPadBottom
             : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
