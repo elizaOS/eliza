@@ -55,13 +55,15 @@ this section records the resulting production shape.
 Focused verification after the implementation: package-wide Biome and
 TypeScript checks pass; 20 architecture/service suites pass with 95 tests; the
 production build, 977-file dry-run tarball, isolated install/start smoke, and
-Android mobile bundle/load smoke pass. The complete deterministic agent test
-inventory begins green (batch 1: 167 tests), but the repository currently
-contains an unrelated syntax error in the dirty
-`packages/core/src/services/message.ts` (`executeV5PlannedToolCall` is missing
-its function declaration), which prevents subsequent agent test files from
-being transformed. That core file is outside this package refactor and was not
-overwritten.
+Android mobile bundle/load smoke pass. All 37 batches in the complete
+deterministic agent inventory pass (with the suite's three configured skips).
+The full run also retired stale source-shape assertions that still expected
+`server.ts` to own `server.listen`, moved port-gate characterization onto the
+typed `BootPlan`, removed duplicate Agent Skills lifecycle tests from the agent
+plugin after that ownership moved to `plugin-agent-skills`, and brought two
+runtime test doubles into line with core's observable `reportError` contract.
+Generated `dist*` directories were inspected and then removed; the only source
+declaration left is the authored `third-party-modules.d.ts`.
 
 ## Executive summary
 

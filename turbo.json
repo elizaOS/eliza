@@ -203,6 +203,7 @@
         "@elizaos/plugin-agent-skills#build",
         "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-task-coordinator#build"
       ],
@@ -217,6 +218,7 @@
         "@elizaos/plugin-agent-skills#build",
         "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-inbox#build",
+        "@elizaos/plugin-wallet#build",
         "@elizaos/plugin-sql#build",
         "@elizaos/plugin-task-coordinator#build",
         "@elizaos/plugin-video#build"

@@ -163,9 +163,12 @@ export async function embedRecallQuery(
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
-	} catch {
+	} catch (error) {
+		// error-policy:J4 Pre-run callers have no active run and explicitly use
+		// the message-scoped cache key.
 		// No active run yet (a pre-run caller such as document augmentation): fall
 		// back to the messageId turn key below so the vector still caches.
+		runtime.reportError("DocumentRecall.preRunCacheKey", error);
 		runId = "";
 	}
 
@@ -286,9 +289,12 @@ export function aliasRecallQuery(
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
-	} catch {
+	} catch (error) {
+		// error-policy:J4 Pre-run callers have no active run and explicitly use
+		// the message-scoped cache key.
 		// No active run (the pre-run augmentation caller): key by messageId, the
 		// same fallback embedRecallQuery uses, so both resolve one slot.
+		runtime.reportError("DocumentRecall.preRunAliasKey", error);
 		runId = "";
 	}
 	if (runId === "" && options.messageId === undefined) {
@@ -319,8 +325,8 @@ export function aliasRecallQuery(
 			}
 		})
 		.catch(() => {
-			// Swallow: the source caller logs + fails open; an alias-text caller
-			// awaiting this shared promise fails open through its own catch.
+			// error-policy:J5 The source caller observes and reports this same
+			// rejection; this branch only prevents duplicate alias-cache work.
 		})
 		.finally(() => {
 			cache.inFlight.delete(aliasKey);

@@ -57,7 +57,8 @@ export async function recordTrustInteractionHandler(
 	try {
 		parsed = parseJSONObjectFromText(text);
 	} catch {
-		// Not JSON
+		// error-policy:J3 Action text is untrusted dual-format input; invalid JSON is
+		// explicitly interpreted as the documented plain-text form.
 	}
 	const parsedContent = { ...(parsed ?? {}), ...params } as {
 		type?: string;

@@ -261,7 +261,12 @@ export async function runAgentSessionRecovery(
 
     if (res.status === 202) {
       const remainingMs = Math.max(0, deadline - nowFn());
-      await sleepFn(Math.min(retryAfterMs(res, data), remainingMs), signal);
+      const waitMs = Math.min(retryAfterMs(res, data), remainingMs);
+      if (signal) {
+        await sleepFn(waitMs, signal);
+      } else {
+        await sleepFn(waitMs);
+      }
       if (signal?.aborted) return cancelledResult();
       continue;
     }

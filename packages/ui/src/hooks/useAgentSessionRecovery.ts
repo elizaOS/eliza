@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCloudAuthToken } from "../api/client-cloud";
 import { persistCloudPairApiToken } from "../components/auth/CloudPairRelay";
 import { getBootConfig } from "../config/boot-config";
+import { persistActiveServerCredential } from "../state/active-server-credential";
 import {
   type AgentSessionUnauthReason,
   agentSessionRepairNeedsCloudToken,
@@ -32,7 +33,6 @@ import {
   resolveDedicatedAgentId,
 } from "../state/agent-session-recovery";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
-import { persistActiveServerCredential } from "../state/active-server-credential";
 import { clearStalePairCredentialsForAgent } from "../state/cloud-pair-token";
 import { ensureCloudSessionForRepair } from "../state/cloud-session-refresh-for-repair";
 import {
@@ -207,6 +207,10 @@ export function useAgentSessionRecovery(
         showFallback(
           cloudToken.trim() ? "cloud-manage-required" : "cloud-reauth-required",
         );
+        return;
+      }
+      if (!activeServer) {
+        showFallback("cloud-manage-required");
         return;
       }
       attemptedFallbackRef.current = "cloud-retry-required";

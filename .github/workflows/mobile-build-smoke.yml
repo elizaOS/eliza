@@ -58,7 +58,7 @@ jobs:
       - name: Setup Node.js for path gate
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
 
       - name: Determine affected mobile smoke surface
         id: filter
@@ -94,7 +94,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
+          node-version: "24.15.0"
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
@@ -347,7 +347,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
+          node-version: "24.15.0"
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
@@ -630,7 +630,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
+          node-version: "24.15.0"
 
       - name: Run iOS cloud runtime-mode provisioning smoke (#13578)
         # Gating check for the cloud runtime mode. With the seed present this is a
@@ -691,7 +691,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
+          node-version: "24.15.0"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699

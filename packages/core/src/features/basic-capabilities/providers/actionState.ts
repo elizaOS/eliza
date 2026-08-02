@@ -12,6 +12,7 @@
  * "No action state available" rather than throwing.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { stringifyForDiagnostics } from "../../../runtime/json-output.ts";
 import type {
 	ActionResult,
 	IAgentRuntime,
@@ -41,11 +42,7 @@ type WorkingMemoryEntry = {
 };
 
 function formatDataForPrompt(data: unknown): string {
-	try {
-		return JSON.stringify(data, null, 2);
-	} catch {
-		return String(data);
-	}
+	return stringifyForDiagnostics(data);
 }
 
 export const actionStateProvider: Provider = {

@@ -30,6 +30,11 @@ export interface PlannerToolCall {
 export type EvaluatorRoute = EvaluationResult["decision"];
 
 export interface EvaluatorRuntime {
+	reportError?(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
@@ -66,6 +71,11 @@ export type EvaluatorOutput = EvaluationResult & {
 
 export interface PlannerRuntime {
 	getService?(service: string): unknown;
+	reportError?(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {

@@ -137,13 +137,11 @@ export default defineConfig({
   test: {
     testTimeout: 120_000,
     hookTimeout: 120_000,
+    // Keep the PGlite and RS256-heavy suites serial to cap resource pressure.
+    // File isolation prevents mock state from leaking across the package and
+    // avoids shared-module-registry deadlocks under concurrent repository runs.
     maxWorkers: 1,
-    // Bootstrap-token tests spin up a real PGlite database + jose-signed
-    // RS256 key material per test, and have intermittently exited the
-    // vitest worker fork unexpectedly on CI (Worker exited unexpectedly /
-    // Worker forks emitted error). In Vitest 4 the former forks.singleFork
-    // setting is represented by maxWorkers: 1 plus isolate: false.
-    isolate: false,
+    isolate: true,
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [

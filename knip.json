@@ -292,27 +292,16 @@
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
         "test/**/*.{ts,tsx}",
-        "platforms/**/*.{ts,tsx}",
-        "packaging/**/*.{mjs,ts}",
         "vitest.config.ts",
         "vitest.e2e.config.ts",
         "vitest.app-real-e2e.config.ts",
-        "vitest.harvest-live-agent.config.ts",
-        "playwright.config.ts"
+        "vitest.harvest-live-agent.config.ts"
       ],
       "project": [
         "src/**/*.{ts,tsx}",
         "scripts/**/*.{mjs,ts}",
         "test/**/*.{ts,tsx}",
-        "platforms/**/*.{ts,tsx}",
-        "packaging/**/*.{mjs,ts}",
         "*.ts"
-      ],
-      "ignore": [
-        "dist/**",
-        "test/contracts/**",
-        "platforms/**/build/**",
-        "platforms/**/artifacts/**"
       ],
       "ignoreDependencies": [
         "@capacitor/barcode-scanner",
@@ -323,25 +312,11 @@
         "@capacitor/push-notifications",
         "@elizaos/plugin-anthropic",
         "@elizaos/plugin-personal-assistant",
-        "@elizaos/plugin-browser",
-        "@elizaos/plugin-discord",
-        "@elizaos/plugin-local-inference",
         "@elizaos/plugin-openai",
-        "@elizaos/plugin-telegram",
         "@elizaos/plugin-wallet",
         "@elizaos/plugin-wechat",
-        "@elizaos/plugin-workflow",
-        "@types/ws",
-        "discord.js",
         "electrobun",
-        "figlet",
-        "node:sqlite",
-        "node:undici",
-        "nodemailer",
-        "puppeteer-core",
-        "tailwindcss",
-        "undici",
-        "ws"
+        "tailwindcss"
       ],
       "ignoreBinaries": [
         "adb",

@@ -225,6 +225,8 @@ export async function setSecretHandler(
 				logger.info(`[SECRETS:set] Successfully set secret: ${key}`);
 			}
 		} catch (error) {
+			// error-policy:J1 Multi-secret action results expose each failed write
+			// explicitly without fabricating success for that key.
 			const errorMessage =
 				error instanceof Error ? error.message : "Unknown error";
 			results.push({ key, success: false, error: errorMessage });

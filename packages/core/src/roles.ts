@@ -338,10 +338,17 @@ async function getEntityMetadata(
 		const entity = await runtime.getEntityById(entityId as UUID);
 		return asRecord(entity?.metadata);
 	} catch (error) {
+		// error-policy:J2 Entity metadata participates in authorization decisions;
+		// preserve lookup failure rather than treating the entity as metadata-free.
+		runtime.reportError("Roles.getEntityMetadata", error, { entityId });
 		logger.warn(
 			`[roles] Failed to look up entity ${entityId}: ${formatError(error)}`,
 		);
-		return undefined;
+		throw new ElizaError("Failed to load entity metadata for role resolution", {
+			code: "ROLE_ENTITY_LOOKUP_FAILED",
+			cause: error,
+			context: { entityId },
+		});
 	}
 }
 

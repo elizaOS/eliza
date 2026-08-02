@@ -4,7 +4,8 @@ Audit date: 2026-08-02
 
 ## Refactor implementation status
 
-The compatible cleanup and refactor pass is complete. The package remains one
+The initial compatible cleanup and refactor pass is complete, and the remaining
+ratcheted cleanup is in progress. The package remains one
 physical workspace by product decision: API clients, the app shell, cloud UI,
 and primitives stay under `packages/ui`, separated by supported export
 subpaths and enforced import boundaries. No `packages/ui-client`,
@@ -48,20 +49,21 @@ Completed in this refactor:
 - Removed generated reports, screenshots, bundled E2E fixtures, unused source
   modules, and obsolete compatibility surfaces that had no consumers.
 - Removed twelve additional unreachable compatibility/barrel modules exposed by
-  the contracted API. The old `@simplewebauthn/browser` dependency was removed;
-  a concurrent change then introduced version 13 without a source import, which
-  is the one current Knip issue and should be resolved with that change's owner.
+  the contracted API and removed the unused `@simplewebauthn/browser`
+  dependency.
 
-Still staged, with enforcement now in place:
+Remaining enforced work:
 
-- Story completion. Current coverage is 226 of 388 counted visual components
-  (58.2%), with 22 source-level interaction stories. New debt is rejected.
+- Story completion. Current coverage is 236 of 386 counted visual components
+  (61.1%), with 26 source-level interaction stories. Pure provider and context
+  controllers are excluded from the visual-component denominator. New debt is
+  rejected.
 - Thirty-one files retain deliberate color data: syntax-highlighting palettes,
   provider logos, deterministic generated-art palettes, charts, sandbox HTML,
   and standalone voice diagnostics. The scanner now parses TypeScript syntax
   and valid CSS hex lengths, so issue references such as `#8628` no longer
   inflate the result.
-- Existing unit-test console fingerprints remain. Most are missing React
+- Sixty existing unit-test console fingerprints remain. Most are missing React
   `act()` boundaries; the rest are intentional error-boundary exercises or
   absent jsdom media/canvas capabilities that should be locally asserted or
   shimmed.
@@ -105,7 +107,7 @@ scanner `.d.mts` contract remain because they are source, not stray output.
 | Responsive design | 3/4 | Platform policies and gesture seams are independently tested; large shell compositions remain. |
 | Theming | 3/4 | Semantic colors are enforced; 31 specialized palette/data files remain. |
 | Anti-patterns | 3/4 | Exact ambiguous concepts were consolidated and production diagnostics are centralized; intentional domain vocabulary remains. |
-| **Total** | **15/20** | **Good guarded baseline — staged package/API migration remains.** |
+| **Total** | **15/20** | **Good guarded baseline — internal decomposition remains.** |
 
 ### Anti-pattern verdict
 
@@ -125,16 +127,15 @@ Measured from the working tree during this audit:
 - 2,816 TypeScript/TSX source files.
 - Approximately 610,000 TypeScript/TSX lines.
 - 874+ test files and 330+ story modules.
-- 388 components considered by the story-coverage script; 226 have stories
-  (**58.2%** coverage).
+- 386 components considered by the story-coverage script; 236 have stories
+  (**61.1%** coverage).
 - 78 source modules exceed 1,000 lines; 20 exceed 2,000 lines. Extraction adds
   small independently tested modules before it can reduce this count.
 - The built `dist` contains approximately **10.7 MB** of JavaScript.
 - The root barrel exposes the stable primitives plus `cn`; feature consumers
   use explicit package subpaths.
 - The API ratchet records 143 root exports. Knip now uses real entries and
-  reports no orphaned files; the concurrent unused dependency noted above is
-  its only current issue.
+  reports no orphaned files or dependency issues.
 
 Largest production modules:
 
@@ -301,14 +302,14 @@ subpaths and eventually deprecate this alias barrel.
 
 ### P2 — Story and automated accessibility coverage is incomplete
 
-**Status:** gated. Coverage improved to 226 of 388 counted components (58.2%),
+**Status:** gated. Coverage improved to 236 of 386 counted components (61.1%),
 startup stories were expanded, and both story presence and interaction counts
 may no longer regress.
 
 **Location:** `scripts/stories-coverage.mjs`
 
 The initial scan found 210 of 390 counted components with stories (53.8%). The
-revised classifier and added stories now find 226 of 388 (58.2%). Unit tests are
+revised classifier and added stories now find 236 of 386 (61.1%). Unit tests are
 numerous, but a missing story means responsive, theme, hover/focus, and a11y
 review is harder to perform systematically.
 
@@ -341,8 +342,8 @@ the remaining allowlisted values.
 ### P2 — Runtime constants and source aliases are fragile
 
 **Status:** partially completed. Startup timing is centralized and source
-boundary violations are zero; package-export migration follows the package
-split.
+boundary violations are zero; package-export migration continues within the
+retained package and its supported subpaths.
 
 **Locations:** `tsconfig.json:12-116`, startup timing modules, `App.tsx`
 
@@ -412,8 +413,7 @@ warning-count ratchet if converting everything at once is impractical.
 
 ### P3 — File-header compliance is incomplete
 
-**Status:** production completed. Hand-written production gaps are zero; 561
-test gaps remain under a shrinking baseline for comment-only cleanup batches.
+**Status:** completed. Hand-written production and test gaps are both zero.
 
 **Scope:** 623 of 2,785 scanned TS/TSX/MJS files did not start with the required
 prose `/** ... */` header. Most are tests, but several production files are also
@@ -539,29 +539,31 @@ Report-writing commands generate these locally only when explicitly requested;
 
 ## Verification performed
 
-- `bun run --cwd packages/ui lint:check` and `typecheck` — passed across 2,797
+- `bun run --cwd packages/ui lint:check` and `typecheck` — passed across 2,812
   checked files.
 - `bun run --cwd packages/ui build` — passed. The built JavaScript surface is
   10.7 MB; the generated icon registry fell from roughly 925 KB to 4.3 KB plus
   copied image assets.
-- The final four-worker package run found two invalid interaction stories after
-  **880 test files and 9,068 tests passed**. Those stories were converted to
-  deterministic states; their focused chat/settings smoke rerun passed 232/232.
-  A final full rerun follows this report update. Existing harness warnings are
-  recorded separately rather than treated as healthy output.
+- The final four-worker package run passed **883 test files and 9,091 tests**;
+  7 tests were skipped. Its preceding run found two invalid interaction stories
+  after 880 files and 9,068 tests had passed. Those stories were converted to
+  deterministic states and their focused chat/settings smoke rerun passed
+  232/232. Existing harness warnings are recorded separately rather than
+  treated as healthy output.
 - Static ratchets — forbidden cross-layer imports 0, hardcoded
   color files 31, missing production headers 0, missing test headers 0,
-  stories 226/388 (58.2%), interactive `play` story files 22, and root public
-  API exports 143. Dead-code analysis reports no orphan files and one unused
-  dependency introduced concurrently (`@simplewebauthn/browser`).
-- The final Storybook runtime audit completed all 1,538 retained stories:
-  1,482 good, 56 explicitly runtime-dependent, 0 broken, and 0 accessibility
-  violations. It executed 38 prepared interactions against 32 expected stories.
+  stories 236/386 (61.1%), interactive `play` story files 26, and root public
+  API exports 143. Dead-code analysis reports no orphan files or unused
+  dependencies.
+- The final Storybook runtime audit completed all 1,537 retained stories:
+  1,481 good, 56 explicitly runtime-dependent, 0 broken, and 0 accessibility
+  violations. It executed 36 prepared interactions against 30 expected stories.
 - `bun run --cwd packages/app audit:app` — **218/218 captures passed**. Computed
   verdicts were 198 good, 18 needs-eyeball, 0 needs-work, and 0 broken. OCR
   verification covered 216 views with 92 verified, 124 needs-eyeball, and 0
   broken. Desktop, mobile portrait, mobile landscape, and tablet contact sheets
-  were then reviewed manually; no clipping, blank-route, overlay-clearance, or
+  were reviewed manually, including current character, cloud-view, settings,
+  and transcript captures; no clipping, blank-route, overlay-clearance, or
   hierarchy regressions were found.
 - The visual pass exposed and fixed a classic-JSX runtime failure in the wallet
   inventory view and a stale fine-tuning OCR expectation. The wallet's focused

@@ -19,7 +19,14 @@ const captureDirectory = mkdtempSync(join(tmpdir(), "eliza-ui-console-"));
 const capturePrefix = join(captureDirectory, "warnings");
 const result = spawnSync(
   "bunx",
-  ["vitest", "run", "--config", "./vitest.config.ts", "--reporter=dot"],
+  [
+    "vitest",
+    "run",
+    "--config",
+    "./vitest.config.ts",
+    "--reporter=dot",
+    "--maxWorkers=4",
+  ],
   {
     cwd: packageRoot,
     env: {

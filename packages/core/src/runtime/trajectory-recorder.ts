@@ -33,6 +33,7 @@ import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
 import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
+import { stringifyForDiagnostics } from "./json-output";
 import {
 	resolveTraceCorrelationFromEnv,
 	type TraceCorrelation,
@@ -71,7 +72,7 @@ export interface RecordedToolCall {
 export interface RecordedModelCall {
 	modelType: string;
 	modelName?: string;
-	provider: string;
+	provider?: string;
 	prompt?: string;
 	messages?: ChatMessage[] | unknown[];
 	tools?: unknown;
@@ -522,11 +523,7 @@ function formatDuration(ms: number | undefined): string {
 }
 
 function safeStringifyForMarkdown(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+	return stringifyForDiagnostics(value);
 }
 
 function redactMarkdownSecrets(text: string): string {
@@ -624,8 +621,11 @@ function renderTrajectoryMarkdown(trajectory: RecordedTrajectory): string {
 			lines.push(`- parent: \`${stage.parentStageId}\``);
 		}
 		if (stage.model) {
+			const providerLabel = stage.model.provider
+				? ` (${stage.model.provider})`
+				: "";
 			lines.push(
-				`- model: \`${stage.model.modelName ?? stage.model.modelType}\` (${stage.model.provider})`,
+				`- model: \`${stage.model.modelName ?? stage.model.modelType}\`${providerLabel}`,
 			);
 			if (stage.model.usage) {
 				lines.push(
@@ -975,11 +975,13 @@ export function resolveTrajectoryFieldCapBytes(): number {
 export function encodeTrajectoryFieldValue(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (value === undefined || value === null) return "";
-	try {
-		return JSON.stringify(sanitizeForRecord(value));
-	} catch {
-		return String(value);
+	const serialized = JSON.stringify(sanitizeForRecord(value));
+	if (serialized === undefined) {
+		throw new ElizaError("Trajectory field is not JSON-serializable", {
+			code: "TRAJECTORY_FIELD_INVALID",
+		});
 	}
+	return serialized;
 }
 
 /**
@@ -1172,6 +1174,11 @@ export interface CreateJsonFileRecorderOptions {
 	rootDir?: string;
 	logger?: RecorderLogger;
 	enabled?: boolean;
+	reportError?: (
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	) => void;
 }
 
 interface MutableTrajectory extends RecordedTrajectory {}
@@ -1180,6 +1187,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 	private readonly rootDir: string;
 	private readonly markdownDir: string;
 	private readonly logger?: RecorderLogger;
+	private readonly reportError?: CreateJsonFileRecorderOptions["reportError"];
 	private readonly enabled: boolean;
 	private readonly markdownEnabled: boolean;
 	private readonly active = new Map<string, MutableTrajectory>();
@@ -1189,6 +1197,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		this.rootDir = opts.rootDir ?? resolveTrajectoryDir();
 		this.markdownDir = resolveTrajectoryMarkdownDir(this.rootDir);
 		this.logger = opts.logger;
+		this.reportError = opts.reportError;
 		this.enabled =
 			opts.enabled !== undefined
 				? opts.enabled
@@ -1248,9 +1257,13 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		};
 		this.active.set(id, trajectory);
 
-		// Best-effort initial flush so the file exists even if the run crashes
-		// before any stage lands. Errors are logged and swallowed.
+		// The initial flush is diagnostic and detached from message delivery.
 		void this.queueFlushTrajectory(trajectory).catch((err) => {
+			// error-policy:J7 Report a missing initial trajectory artifact without
+			// aborting the message path that started it.
+			this.reportError?.("TrajectoryRecorder.initialFlush", err, {
+				trajectoryId: id,
+			});
 			this.logger?.warn?.(
 				{ err: (err as Error).message, trajectoryId: id },
 				"[TrajectoryRecorder] initial flush failed",
@@ -1469,6 +1482,11 @@ export interface FinalizeTrajectoryRecordingOptions {
 	trajectoryId: string;
 	status: "finished" | "errored";
 	logger?: RecorderLogger;
+	reportError?: (
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	) => void;
 }
 
 /**
@@ -1484,10 +1502,16 @@ export async function finalizeTrajectoryRecording(
 	try {
 		await opts.recorder.endTrajectory(opts.trajectoryId, opts.status);
 	} catch (err) {
+		// error-policy:J7 Finalization is diagnostic and cannot replace the turn;
+		// it must still surface the trajectory left unterminated.
 		opts.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
 			"[TrajectoryRecorder] endTrajectory failed",
 		);
+		opts.reportError?.("TrajectoryRecorder.finalize", err, {
+			trajectoryId: opts.trajectoryId,
+			status: opts.status,
+		});
 	}
 }
 

@@ -58,7 +58,7 @@ permissions:
 
 env:
   BUN_VERSION: "1.3.14"
-  NODE_VERSION: "24"
+  NODE_VERSION: "24.15.0"
   ELIZA_STATE_DIR: ${{ github.workspace }}/.eliza-state
   # Smoke model: small enough to download and run on a CPU runner in seconds.
   SMOKE_MODEL_REPO: "bartowski/SmolLM2-360M-Instruct-GGUF"

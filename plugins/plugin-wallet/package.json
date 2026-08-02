@@ -61,7 +61,8 @@
     }
   },
   "scripts": {
-    "build": "bun run build.ts && bun run build:ui-types && bun run build:views",
+    "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-wallet -- bun run build:unlocked",
+    "build:unlocked": "bun run build.ts && bun run build:ui-types && bun run build:views",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:ui-types": "tsc6 --noCheck -p tsconfig.ui.json",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.ui.json",

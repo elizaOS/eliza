@@ -48,7 +48,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Install validation dependencies
@@ -87,7 +87,7 @@ jobs:
         if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Build
@@ -192,7 +192,7 @@ jobs:
         if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Build and test
@@ -217,7 +217,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Setup Bun
@@ -287,7 +287,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Setup Bun

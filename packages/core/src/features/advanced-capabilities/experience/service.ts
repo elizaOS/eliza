@@ -390,6 +390,8 @@ export class ExperienceService extends Service {
 				text: embeddingText,
 			});
 		} catch (error) {
+			// error-policy:J2 Preserve the model provider cause under a stable service
+			// error code for callers and diagnostics.
 			throw new ElizaError("Experience embedding generation failed", {
 				code: "EXPERIENCE_EMBEDDING_FAILED",
 				cause: error,

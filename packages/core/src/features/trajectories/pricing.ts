@@ -378,6 +378,8 @@ function parseJsonObject(
 			`[pricing] ${envName} must be a JSON object of model-id keys — override ignored`,
 		);
 	} catch (error) {
+		// error-policy:J3 Environment overrides are untrusted operator input; an
+		// invalid document is rejected and the built-in pricing table remains active.
 		logger.warn(
 			{ error: error instanceof Error ? error.message : String(error) },
 			`[pricing] ${envName} is not valid JSON — override ignored`,

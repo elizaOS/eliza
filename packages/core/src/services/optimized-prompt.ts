@@ -89,6 +89,12 @@ export type OptimizedPromptTask =
 	| "screentime_recap"
 	| "creative_draft";
 
+function nodeErrorCode(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null) return undefined;
+	const code = Reflect.get(error, "code");
+	return typeof code === "string" ? code : undefined;
+}
+
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
 	// The context-routing dataset is trained separately from should_respond;
@@ -770,6 +776,8 @@ export class OptimizedPromptService extends Service {
 			// still reference.
 			await pruneOldVersions(dir, allVersions);
 		} catch (err) {
+			// error-policy:J2 Remove incomplete artifact parts before preserving
+			// the atomic publication failure.
 			await Promise.all([
 				removeFileBestEffort(tempPath),
 				removeFileBestEffort(macTemp),
@@ -876,7 +884,9 @@ export class OptimizedPromptService extends Service {
 				) {
 					throw err;
 				}
-				const code = (err as NodeJS.ErrnoException).code;
+				// error-policy:J4 Each optional optimized task independently
+				// degrades to its baseline while the failure is reported.
+				const code = nodeErrorCode(err);
 				logger.warn(
 					{
 						src: "service:optimized_prompt",
@@ -886,6 +896,10 @@ export class OptimizedPromptService extends Service {
 					},
 					"[OptimizedPromptService] Skipping task: artifact store unreadable — falling back to baseline",
 				);
+				this.runtime.reportError("OptimizedPromptService.refreshTask", err, {
+					task,
+					code,
+				});
 			}
 		}
 		this.cache = next;
@@ -1011,7 +1025,9 @@ async function claimNextVersionPath(
 			await writeFile(claimPath, "", { flag: "wx" });
 			return { nextVersion: candidate, finalPath, claimPath };
 		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+			// error-policy:J4 EEXIST is the explicit concurrent-claim signal;
+			// all other filesystem failures propagate.
+			if (nodeErrorCode(err) !== "EEXIST") throw err;
 			// Lost the claim race: re-read the directory and target the next
 			// free version above whatever the winner(s) just wrote.
 			const highest = listClaimedVersionNumbers(dir).at(-1) ?? 0;
@@ -1094,7 +1110,7 @@ async function removeIfExists(path: string): Promise<void> {
 	try {
 		await unlink(path);
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+		if (nodeErrorCode(err) === "ENOENT") {
 			// error-policy:J6 removing an already-absent artifact is idempotent
 			// best-effort teardown.
 			return;
@@ -1133,7 +1149,7 @@ async function readLinkOrNull(path: string): Promise<string | null> {
 	try {
 		return await readlink(path);
 	} catch (err) {
-		const code = (err as NodeJS.ErrnoException).code;
+		const code = nodeErrorCode(err);
 		// ENOENT: path missing. EINVAL: path is a regular file (not a symlink).
 		// Both mean "no symlink target" — callers handle that as null.
 		if (code === "ENOENT" || code === "EINVAL") {
@@ -1158,7 +1174,7 @@ async function loadArtifactFromPath(
 	try {
 		raw = await readFile(path, "utf-8");
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+		if (nodeErrorCode(err) === "ENOENT") {
 			// error-policy:J4 an absent optional optimized-prompt artifact is an
 			// explicit not-found state during version discovery.
 			return null;
@@ -1174,7 +1190,7 @@ async function loadArtifactFromPath(
 	try {
 		macHex = (await readFile(macPath, "utf-8")).trim();
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+		if (nodeErrorCode(err) !== "ENOENT") throw err;
 		// error-policy:J4 the missing sidecar is rendered below as an explicit
 		// integrity rejection, never accepted as an unsigned artifact.
 	}

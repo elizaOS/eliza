@@ -29,6 +29,7 @@ import {
 	type JsonValue,
 	type Trajectory,
 } from "./features/trajectories/types";
+import { stringifyForDiagnostics } from "./runtime/json-output";
 import type { TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution";
 import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker";
 import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types";
@@ -1133,11 +1134,7 @@ export async function recordLlmCall<T>(
 }
 
 function tryStringify(value: unknown): string {
-	try {
-		return JSON.stringify({ response: value });
-	} catch {
-		return String(value);
-	}
+	return stringifyForDiagnostics({ response: value });
 }
 
 function generateChildStepId(prefix: string): string {
@@ -1193,6 +1190,8 @@ async function withChildTrajectoryStep<T>(
 				childStepId = normalizedStartedStepId;
 			}
 		} catch (error) {
+			// error-policy:J7 Child-step recording is diagnostic and cannot block
+			// the operation whose parent trajectory remains active.
 			runtime.reportError("TrajectoryChildStep.start", error, {
 				purpose: options.purpose,
 				actionName: options.actionName,

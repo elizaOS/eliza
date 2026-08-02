@@ -297,15 +297,7 @@ export class SecretSwapSession {
 
 	assertNoUnresolvedPlaceholders(value: unknown): void {
 		const serialized =
-			typeof value === "string"
-				? value
-				: (() => {
-						try {
-							return JSON.stringify(value);
-						} catch {
-							return String(value);
-						}
-					})();
+			typeof value === "string" ? value : JSON.stringify(value);
 		this.placeholderPattern.lastIndex = 0;
 		const placeholders = [
 			...new Set(serialized.match(this.placeholderPattern) ?? []),

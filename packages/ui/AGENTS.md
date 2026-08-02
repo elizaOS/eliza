@@ -20,7 +20,7 @@ widgets, overlay-apps), and the component/primitive exports. React/react-dom are
 
 ```
 src/
-  index.ts                    Main barrel (huge re-export surface; see exports below)
+  index.ts                    Stable primitive root surface; feature APIs are subpath-only
   styles.ts                   Renderer-only CSS entry (@elizaos/ui/styles) — kept
                               separate so Node plugin loaders can import the barrel
                               without evaluating .css
@@ -100,8 +100,8 @@ test/                           Test doubles (top-level, not under src/)
 
 ## Key exports / surface
 
-The root barrel `@elizaos/ui` re-exports nearly everything. Notable subpath
-entries (see `exports` in package.json) so importers avoid the giant barrel:
+The root `@elizaos/ui` export is intentionally limited to stable primitives and
+`cn`. Feature consumers use the subpath entries declared in `package.json`:
 
 - `@elizaos/ui/styles` and `@elizaos/ui/styles/*.css` — CSS (renderer-only)
 - `@elizaos/ui/cloud-ui`, `@elizaos/ui/cloud-ui/index.css` — Cloud console set

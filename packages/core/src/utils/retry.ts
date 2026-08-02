@@ -242,6 +242,8 @@ export async function retryAsync<T>(
 			try {
 				return await fn();
 			} catch (err) {
+				// error-policy:J4 Retry attempts are bounded and the final error
+				// is rethrown after exponential backoff.
 				lastErr = err;
 				if (i === attempts - 1) {
 					break;
@@ -270,6 +272,8 @@ export async function retryAsync<T>(
 		try {
 			return await fn();
 		} catch (err) {
+			// error-policy:J4 Policy-driven retries are bounded and exhaustion
+			// returns an explicit failed RetryResult.
 			lastErr = err;
 			if (attempt >= maxAttempts || !shouldRetry(err, attempt)) {
 				break;

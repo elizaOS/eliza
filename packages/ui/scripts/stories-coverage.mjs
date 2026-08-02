@@ -41,7 +41,9 @@ function* walk(dir) {
       !e.name.endsWith(".test.tsx") &&
       !e.name.endsWith(".spec.tsx") &&
       !e.name.endsWith(".helpers.tsx") &&
-      !e.name.endsWith(".hooks.tsx")
+      !e.name.endsWith(".hooks.tsx") &&
+      !e.name.endsWith("Provider.tsx") &&
+      !e.name.endsWith("Context.tsx")
     )
       yield full;
   }

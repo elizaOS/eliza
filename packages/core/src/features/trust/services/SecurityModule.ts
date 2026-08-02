@@ -482,7 +482,7 @@ export class SecurityModule {
 			},
 		});
 
-		// Best-effort persistence to database
+		// The structured incident table is required for threat-history queries.
 		try {
 			await insertSecurityIncident(getDb(this.runtime), {
 				entityId: event.entityId,
@@ -492,10 +492,17 @@ export class SecurityModule {
 				details: event.details,
 			});
 		} catch (error) {
-			logger.warn(
-				{ error },
-				"[SecurityModule] Failed to persist security incident",
-			);
+			// error-policy:J2 Security incidents are required audit data; surface a
+			// failed database write instead of treating the incident as persisted.
+			this.runtime.reportError("SecurityModule.persistIncident", error, {
+				entityId: event.entityId,
+				type: event.type,
+			});
+			throw new ElizaError("Failed to persist security incident", {
+				code: "SECURITY_INCIDENT_WRITE_FAILED",
+				cause: error,
+				context: { entityId: event.entityId, type: event.type },
+			});
 		}
 	}
 

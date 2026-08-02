@@ -1,3 +1,8 @@
+/**
+ * Protects the stable advisory-check job names and the trust boundaries around
+ * the active deep review and retired automatic security review workflows.
+ */
+
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
@@ -25,23 +30,32 @@ function topLevelJobIds(source) {
   return ids;
 }
 
-describe("disabled advisory workflow stubs", () => {
+describe("advisory workflow contracts", () => {
   it("preserves the required check-producing job IDs", async () => {
     for (const [file, job] of WORKFLOWS) {
       assert.deepEqual(topLevelJobIds(await workflow(file)), [job], file);
     }
   });
 
-  it("does not invoke Anthropic actions or require Anthropic credentials", async () => {
-    for (const [file] of WORKFLOWS) {
-      const source = await workflow(file);
-      assert.doesNotMatch(source, /anthropics\//i, file);
-      assert.doesNotMatch(source, /ANTHROPIC_API_KEY/i, file);
-      assert.doesNotMatch(source, /actions\/checkout/i, file);
-    }
+  it("keeps the active deep review behind its trust boundary", async () => {
+    const source = await workflow("claude-code-review.yml");
+    assert.match(source, /IS_FORK:/);
+    assert.match(source, /IS_DRAFT:/);
+    assert.match(source, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/);
+    assert.match(source, /uses: anthropics\/claude-code-action@[0-9a-f]{40}/);
+    assert.match(source, /ANTHROPIC_API_KEY/);
+    assert.match(source, /continue-on-error: true/);
   });
 
-  it("runs on ready-for-review and updated PR heads", async () => {
+  it("keeps the retired automatic security review inert", async () => {
+    const source = await workflow("claude-security-review.yml");
+    assert.doesNotMatch(source, /anthropics\//i);
+    assert.doesNotMatch(source, /ANTHROPIC_API_KEY/i);
+    assert.doesNotMatch(source, /actions\/checkout/i);
+    assert.match(source, /permissions:\s*\{\}/);
+  });
+
+  it("runs both checks on ready-for-review and updated PR heads", async () => {
     for (const [file] of WORKFLOWS) {
       const source = await workflow(file);
       assert.match(source, /types:\s*\[[^\]]*ready_for_review[^\]]*\]/, file);

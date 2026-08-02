@@ -147,10 +147,14 @@ export class StewardKmsAdapter implements KmsClient {
 			try {
 				parsed = JSON.parse(text);
 			} catch (err) {
+				// error-policy:J2 Invalid KMS responses need endpoint context while
+				// retaining the JSON parser's original failure.
 				throw new KmsError(
 					`Steward KMS ${method} ${path} returned invalid JSON: ${
 						err instanceof Error ? err.message : String(err)
 					}`,
+					undefined,
+					err,
 				);
 			}
 		}

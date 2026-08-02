@@ -64,7 +64,7 @@ inputs:
   node-version:
     description: "Node.js version to set up when setup-node is true"
     required: false
-    default: "24"
+    default: "24.15.0"
 
 runs:
   using: "composite"

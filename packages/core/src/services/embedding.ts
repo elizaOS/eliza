@@ -237,6 +237,11 @@ export class EmbeddingGenerationService extends Service {
 
 			await this.persistEmbedding(item, embedding, duration);
 		} catch (error) {
+			// error-policy:J2 Queue retry policy needs the original failure; report
+			// the memory context here and rethrow unchanged.
+			this.runtime.reportError("EmbeddingService.generate", error, {
+				memoryId: memory.id,
+			});
 			this.runtime.logger.error(
 				{
 					src: "plugin:basic-capabilities:service:embedding",
@@ -368,7 +373,12 @@ export class EmbeddingGenerationService extends Service {
 				await this.persistEmbedding(item, vectors[i], duration);
 				outcomes.push({ item, success: true, retryCount: 0 });
 			} catch (error) {
+				// error-policy:J1 Batch outcomes are the queue boundary's explicit
+				// per-item failure channel; successful siblings remain valid.
 				const err = error instanceof Error ? error : new Error(String(error));
+				this.runtime.reportError("EmbeddingService.persistBatchItem", err, {
+					memoryId: item.memory.id,
+				});
 				this.runtime.logger.error(
 					{
 						src: "plugin:basic-capabilities:service:embedding",

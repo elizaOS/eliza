@@ -11,10 +11,12 @@
  * Consumed by the runtime's getSetting/setSetting path and by world/character
  * setup: saltWorldSettings/unsaltWorldSettings (gated on each setting's `secret`
  * flag) and encryptedCharacter/decryptedCharacter walk their string values,
- * round-tripping non-strings untouched. Decryption fails SAFE — a wrong salt
- * returns the original ciphertext, never a partial plaintext.
+ * round-tripping non-strings untouched. Authenticated decryption fails closed:
+ * callers receive a typed error rather than accidentally consuming ciphertext
+ * as a usable secret.
  */
 import { createUniqueUuid } from "./entities";
+import { ElizaError } from "./errors";
 import { logger } from "./logger";
 import type {
 	Character,
@@ -240,9 +242,13 @@ export function decryptStringValue(value: string, salt: string): string {
 		decrypted += decipher.final("utf8");
 		return decrypted;
 	} catch (error) {
-		logger.error({ src: "core:settings", error }, "Decryption failed");
-		// Return the original value on error
-		return value;
+		// error-policy:J2 Decryption is a required data path; preserve the crypto
+		// cause and prevent ciphertext from masquerading as a usable setting.
+		throw new ElizaError("Failed to decrypt secret setting", {
+			code: "SETTING_DECRYPTION_FAILED",
+			cause: error,
+			severity: "fatal",
+		});
 	}
 }
 

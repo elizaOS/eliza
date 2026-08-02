@@ -163,6 +163,8 @@ export function wrapActionWithLogging(
 				successHandler();
 				return result ?? undefined;
 			} catch (err) {
+				// error-policy:J1 The interceptor converts tool exceptions through the
+				// caller-supplied trajectory error boundary.
 				if (err instanceof Error) {
 					return errorHandler(err);
 				}

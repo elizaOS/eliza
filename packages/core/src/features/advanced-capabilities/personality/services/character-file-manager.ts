@@ -235,6 +235,7 @@ export class CharacterFileManager extends Service {
 			logger.info({ backupPath }, "Character backup created");
 			return backupPath;
 		} catch (error) {
+			// error-policy:J2 Preserve the filesystem cause with character-path context.
 			throw new ElizaError("Failed to create character backup", {
 				code: "CHARACTER_BACKUP_FAILED",
 				cause: error,
@@ -288,7 +289,11 @@ export class CharacterFileManager extends Service {
 			// Schema validation
 			CharacterModificationSchema.parse(modification);
 		} catch (error) {
-			errors.push(`Schema validation failed: ${(error as Error).message}`);
+			// error-policy:J3 Modification input is untrusted and returns an
+			// explicit schema-invalid result.
+			errors.push(
+				`Schema validation failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
 			return { valid: false, errors };
 		}
 
@@ -459,13 +464,17 @@ export class CharacterFileManager extends Service {
 
 			return { success: true };
 		} catch (error) {
+			// error-policy:J1 Character mutation translates failures into its
+			// explicit unsuccessful result shape.
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			logger.error(
 				{ error: error instanceof Error ? error.message : String(error) },
 				"Failed to apply character modification",
 			);
 			return {
 				success: false,
-				error: `Application failed: ${(error as Error).message}`,
+				error: `Application failed: ${errorMessage}`,
 			};
 		}
 	}
@@ -613,13 +622,17 @@ export class CharacterFileManager extends Service {
 
 			return { success: true };
 		} catch (error) {
+			// error-policy:J1 Character restoration translates failures into its
+			// explicit unsuccessful result shape.
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			logger.error(
 				{ error: error instanceof Error ? error.message : String(error) },
 				"Failed to restore from backup",
 			);
 			return {
 				success: false,
-				error: `Restoration failed: ${(error as Error).message}`,
+				error: `Restoration failed: ${errorMessage}`,
 			};
 		}
 	}

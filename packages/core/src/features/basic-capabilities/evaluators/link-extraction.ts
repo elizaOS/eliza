@@ -255,6 +255,8 @@ async function buildLinkRecord(
 			preview.bodyChunk,
 		);
 	} catch (error) {
+		// error-policy:J4 Link enrichment is optional; report the unavailable
+		// summary while preserving the original message.
 		runtime.logger.warn(
 			{
 				src: "evaluator:link-extraction",
@@ -264,6 +266,7 @@ async function buildLinkRecord(
 			},
 			"Link summarization failed",
 		);
+		runtime.reportError("LinkExtraction.summarize", error, { url });
 	}
 	return baseRecord;
 }
@@ -329,6 +332,8 @@ export const linkExtractionEvaluator: Evaluator<
 				links.push(record);
 				await persistLink(runtime, message, record);
 			} catch (error) {
+				// error-policy:J4 Links are independent enrichment items; report
+				// one failed URL while processing the rest.
 				runtime.logger.warn(
 					{
 						src: "evaluator:link-extraction",
@@ -338,6 +343,7 @@ export const linkExtractionEvaluator: Evaluator<
 					},
 					"Link extraction failed",
 				);
+				runtime.reportError("LinkExtraction.extract", error, { url });
 			}
 		}
 

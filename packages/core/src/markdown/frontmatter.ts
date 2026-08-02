@@ -1,10 +1,4 @@
-/**
- * YAML frontmatter parsing for markdown files.
- *
- * Supports both YAML and simple line-based key: value formats.
- *
- * @module markdown/frontmatter
- */
+/** Parses YAML and simple line-based frontmatter into string metadata. */
 
 import YAML from "yaml";
 
@@ -35,11 +29,7 @@ function coerceFrontmatterValue(value: unknown): string | undefined {
 		return String(value);
 	}
 	if (typeof value === "object") {
-		try {
-			return JSON.stringify(value);
-		} catch {
-			return undefined;
-		}
+		return JSON.stringify(value);
 	}
 	return undefined;
 }

@@ -138,6 +138,7 @@ export class EncryptedCachePseudonymMapStore implements PseudonymMapStore {
 			const bytes = decryptAes256Gcm(this.key, iv, ciphertext, tag, aad);
 			plaintext = BufferUtils.bufferToString(bytes, "utf8");
 		} catch (error) {
+			// error-policy:J2 Preserve decryption failure context at the artifact boundary.
 			throw new PseudonymMapStoreError(
 				`decryption failed (wrong SECRET_SALT or tampered artifact): ${
 					error instanceof Error ? error.message : String(error)
@@ -148,6 +149,8 @@ export class EncryptedCachePseudonymMapStore implements PseudonymMapStore {
 		try {
 			parsed = JSON.parse(plaintext);
 		} catch {
+			// error-policy:J3 Decrypted artifact bytes are untrusted persisted
+			// input and produce an explicit invalid-artifact error.
 			throw new PseudonymMapStoreError("decrypted artifact is not valid JSON");
 		}
 		// Structural fail-closed validation: never return a partial map.

@@ -1,9 +1,6 @@
 /**
- * Plugin Activator Service
- *
- * Enables dynamic plugin activation when required secrets become available.
- * Plugins can register for activation with their secret requirements,
- * and will be activated automatically once all secrets are present.
+ * Activates registered plugins when their required secrets become available
+ * and dispatches subsequent secret-change notifications.
  */
 
 import { logger } from "../../../logger.ts";
@@ -177,9 +174,12 @@ export class PluginActivatorService extends Service {
 					return;
 				}
 			} catch (err) {
+				// error-policy:J4 Service-load notification may race startup;
+				// bounded polling remains the explicit degraded path.
 				logger.debug(
 					`[PluginActivator] getServiceLoadPromise failed: ${err instanceof Error ? err.message : err}`,
 				);
+				this.runtime.reportError("PluginActivator.serviceLoadPromise", err);
 			}
 		}
 
@@ -563,10 +563,20 @@ export class PluginActivatorService extends Service {
 					);
 					await plugin.onSecretChanged(key, value, this.runtime);
 				} catch (error) {
+					// error-policy:J4 Secret listeners are isolated so one plugin
+					// cannot suppress updates to the remaining listeners.
 					const errorMessage =
 						error instanceof Error ? error.message : String(error);
 					logger.error(
 						`[PluginActivator] Plugin ${pluginId} onSecretChanged failed: ${errorMessage}`,
+					);
+					this.runtime.reportError(
+						"PluginActivator.pluginSecretChanged",
+						error,
+						{
+							pluginId,
+							key,
+						},
 					);
 				}
 			}
@@ -579,10 +589,18 @@ export class PluginActivatorService extends Service {
 				try {
 					await listener(key, value, this.runtime);
 				} catch (error) {
+					// error-policy:J4 Secret listeners are isolated and reported.
 					const errorMessage =
 						error instanceof Error ? error.message : String(error);
 					logger.error(
 						`[PluginActivator] Secret changed listener failed for ${key}: ${errorMessage}`,
+					);
+					this.runtime.reportError(
+						"PluginActivator.secretChangedListener",
+						error,
+						{
+							key,
+						},
 					);
 				}
 			}
@@ -595,10 +613,18 @@ export class PluginActivatorService extends Service {
 				try {
 					await listener(key, value, this.runtime);
 				} catch (error) {
+					// error-policy:J4 Secret listeners are isolated and reported.
 					const errorMessage =
 						error instanceof Error ? error.message : String(error);
 					logger.error(
 						`[PluginActivator] Global secret changed listener failed for ${key}: ${errorMessage}`,
+					);
+					this.runtime.reportError(
+						"PluginActivator.globalSecretListener",
+						error,
+						{
+							key,
+						},
 					);
 				}
 			}
@@ -745,6 +771,15 @@ export class PluginActivatorService extends Service {
 		// If already activated, call immediately
 		if (this.activatedPlugins.has(pluginId)) {
 			callback(this.runtime).catch((error) => {
+				// error-policy:J7 This immediate listener notification is detached from
+				// registration; report callback failure without creating an unhandled rejection.
+				this.runtime.reportError(
+					"PluginActivator.secretsReadyListener",
+					error,
+					{
+						pluginId,
+					},
+				);
 				const errorMessage =
 					error instanceof Error ? error.message : String(error);
 				logger.error(

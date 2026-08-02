@@ -2678,6 +2678,7 @@ function buildV5PlannerActionSurface(params: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	logger?: IAgentRuntime["logger"];
+	reportError?: IAgentRuntime["reportError"];
 	// Optional locale-aware example swapper. Resolved by the caller (which
 	// has async access to `OwnerFactStore.locale`) and passed through to
 	// `buildActionCatalog` so the planner sees localized `ActionExample`
@@ -2849,6 +2850,11 @@ function buildV5PlannerActionSurface(params: {
 				},
 			})
 			.catch((err) => {
+				// error-policy:J7 Tool-search recording is diagnostic; report the
+				// missing stage without changing the selected action surface.
+				params.reportError?.("MessageService.toolSearchStage", err, {
+					trajectoryId,
+				});
 				params.logger?.warn?.(
 					{ err: (err as Error).message, trajectoryId },
 					"[TrajectoryRecorder] failed to record toolSearch stage",
@@ -6604,6 +6610,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
+				reportError: args.runtime.reportError.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder
@@ -7102,10 +7109,19 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 				.then((result) => ({ startedAt, endedAt: Date.now(), result }))
 				.catch((error) => ({
+					// error-policy:J7 Facts persistence is detached from reply delivery;
+					// its explicit failed outcome is recorded in the trajectory below.
 					startedAt,
 					endedAt: Date.now(),
 					result: null,
-					error,
+					error: (() => {
+						args.runtime.reportError(
+							"MessageService.factsAndRelationships",
+							error,
+							{ roomId: args.message.roomId },
+						);
+						return error;
+					})(),
 				}))
 				.then((outcome) => {
 					settledFactsOutcome = outcome;
@@ -7124,6 +7140,11 @@ export async function runV5MessageRuntimeStage1(args: {
 				message: args.message,
 				addressedTo,
 			}).catch((error) => {
+				// error-policy:J7 Relationship enrichment is a detached data write;
+				// report failure while preserving the already-produced reply.
+				args.runtime.reportError("MessageService.applyAddressedTo", error, {
+					messageId: args.message.id,
+				});
 				args.runtime.logger?.warn?.(
 					{
 						err: error,
@@ -7148,6 +7169,11 @@ export async function runV5MessageRuntimeStage1(args: {
 				void channelTopics
 					.recordTopics(args.message.roomId, topics)
 					.catch((error) => {
+						// error-policy:J7 Channel-topic state is detached enrichment; report
+						// failed persistence without dropping the reply.
+						args.runtime.reportError("MessageService.recordTopics", error, {
+							roomId: args.message.roomId,
+						});
 						args.runtime.logger?.warn?.(
 							{
 								err: error,
@@ -7180,6 +7206,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					},
 				})
 				.catch((error) => {
+					// error-policy:J7 Transcript topic metadata is detached enrichment;
+					// report a failed stamp without changing message delivery.
+					args.runtime.reportError("MessageService.stampTopics", error, {
+						messageId: args.message.id,
+					});
 					args.runtime.logger?.warn?.(
 						{ err: error, messageId: args.message.id },
 						"[message] stamp message topics failed",
@@ -7489,6 +7520,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			recorder,
 			trajectoryId,
 			logger: args.runtime.logger,
+			reportError: args.runtime.reportError.bind(args.runtime),
 			localizedExamples: localizedExamples ?? undefined,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
@@ -8088,6 +8120,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				recorder,
 				trajectoryId,
 				status: endStatus,
+				reportError: args.runtime.reportError.bind(args.runtime),
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
@@ -10269,6 +10302,7 @@ export class DefaultMessageService implements IMessageService {
 							? {
 									onStreamChunk: opts.onStreamChunk,
 									messageId: responseId,
+									reportError: runtime.reportError.bind(runtime),
 									...(opts.abortSignal
 										? { abortSignal: opts.abortSignal }
 										: {}),
@@ -10329,6 +10363,7 @@ export class DefaultMessageService implements IMessageService {
 												onStreamChunk: async () => undefined,
 												messageId: responseId,
 												abortSignal,
+												reportError: runtime.reportError.bind(runtime),
 											}
 										: undefined;
 							return runWithInferenceTiming(inferenceTimer, () =>

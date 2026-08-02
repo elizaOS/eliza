@@ -390,6 +390,8 @@ export async function tryHandleTrajectoryReadRoutes(options: {
 		);
 		return true;
 	} catch (err) {
+		// error-policy:J1 HTTP status and JSON form the trajectory read boundary's
+		// structured failure response.
 		sendJson(res, 500, {
 			error: err instanceof Error ? err.message : "Trajectory read failed",
 		});

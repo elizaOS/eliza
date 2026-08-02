@@ -699,9 +699,14 @@ export class RelationshipsService extends Service {
 					agentId: this.runtime.agentId,
 				} as Parameters<typeof this.runtime.ensureWorldExists>[0]);
 			} catch (err) {
+				// error-policy:J2 The synthetic world is required for component
+				// foreign keys; preserve its provisioning cause.
 				logger.warn(
 					`[RelationshipsService] Failed to ensure relationships world: ${err}`,
 				);
+				throw new Error("Failed to provision relationships world", {
+					cause: err,
+				});
 			}
 		}
 
@@ -717,9 +722,14 @@ export class RelationshipsService extends Service {
 					worldId: relationshipsWorldId,
 				} as Parameters<typeof this.runtime.ensureRoomExists>[0]);
 			} catch (err) {
+				// error-policy:J2 The synthetic room is required for component
+				// foreign keys; preserve its provisioning cause.
 				logger.warn(
 					`[RelationshipsService] Failed to ensure relationships room: ${err}`,
 				);
+				throw new Error("Failed to provision relationships room", {
+					cause: err,
+				});
 			}
 		}
 
@@ -773,22 +783,20 @@ export class RelationshipsService extends Service {
 				);
 				return;
 			} catch (err) {
+				// error-policy:J2 Contact cache loading is a required data path;
+				// never present a query failure as an empty address book.
 				logger.warn(
 					`[RelationshipsService] Failed to query contact components: ${err}`,
 				);
+				throw new Error("Failed to load relationship contact components", {
+					cause: err,
+				});
 			}
 		} else {
-			logger.warn(
-				"[RelationshipsService] runtime.queryEntities is not available; starting with an empty contact cache",
+			throw new Error(
+				"RelationshipsService requires runtime.queryEntities to load contacts",
 			);
 		}
-
-		// Start with an empty cache — contacts will be populated as they are added.
-		// This avoids crashing on fresh databases or adapters without
-		// queryEntities support.
-		logger.info(
-			"[RelationshipsService] Starting with empty contact cache (contacts will load on demand)",
-		);
 	}
 
 	// Contact Management Methods

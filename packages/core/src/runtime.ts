@@ -5894,6 +5894,8 @@ export class AgentRuntime implements IAgentRuntime {
 				},
 			])
 			.catch((error) => {
+				// error-policy:J7 Model-call logs are diagnostic; report failed
+				// persistence without altering the completed model response.
 				this.logger.debug(
 					{
 						src: "agent",
@@ -5903,6 +5905,9 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					"Model call log write failed",
 				);
+				this.reportError("AgentRuntime.modelCallLog", error, {
+					model: modelKey,
+				});
 			});
 	}
 
@@ -8076,15 +8081,25 @@ ${section_end}`;
 								schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
 							})
 							.catch((err) => {
+								// error-policy:J7 Optimization registries are diagnostic.
 								this.logger.warn(
 									{ error: err, src: "dpe" },
 									"Failed to write prompt optimization registry",
+								);
+								this.reportError(
+									"AgentRuntime.promptOptimizationRegistry",
+									err,
+									{ promptKey: tracePromptKey },
 								);
 							});
 						void optimizationHooks
 							.appendBaselineTrace(this, { trace })
 							.catch((err) => {
+								// error-policy:J7 Optimization traces are diagnostic.
 								this.logger.warn("Failed to write optimization trace", err);
+								this.reportError("AgentRuntime.promptOptimizationTrace", err, {
+									promptKey: tracePromptKey,
+								});
 							});
 					} catch (traceErr) {
 						// error-policy:J7 Optimization traces are diagnostic and
@@ -8331,15 +8346,25 @@ ${section_end}`;
 						schema: JSON.parse(JSON.stringify(schema)) as SchemaRow[],
 					})
 					.catch((err) => {
+						// error-policy:J7 Optimization registries are diagnostic.
 						this.logger.warn(
 							{ error: err, src: "dpe" },
 							"Failed to write prompt optimization registry",
 						);
+						this.reportError("AgentRuntime.promptOptimizationRegistry", err, {
+							promptKey: tracePromptKey,
+						});
 					});
 				void optimizationHooks
 					.appendFailureTrace(this, { trace })
 					.catch((err) => {
+						// error-policy:J7 Optimization traces are diagnostic.
 						this.logger.warn("Failed to write failure trace", err);
+						this.reportError(
+							"AgentRuntime.promptOptimizationFailureTrace",
+							err,
+							{ promptKey: tracePromptKey },
+						);
 					});
 			} catch (traceErr) {
 				// error-policy:J7 Failure traces are diagnostic and cannot replace
@@ -9945,6 +9970,8 @@ ${section_end}`;
 			maxRetries: 3,
 			runId: this.getCurrentRunId(),
 		}).catch((error) => {
+			// error-policy:J7 The asynchronous request must surface even though
+			// it cannot block the memory write that scheduled it.
 			this.logger.warn(
 				{
 					src: "runtime",
@@ -9954,6 +9981,10 @@ ${section_end}`;
 				},
 				"Embedding generation request failed",
 			);
+			this.reportError("AgentRuntime.embeddingGenerationRequest", error, {
+				memoryId: memory.id,
+				priority,
+			});
 		});
 	}
 	async getMemories(params: {

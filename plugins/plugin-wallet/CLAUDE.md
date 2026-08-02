@@ -137,7 +137,7 @@ plugins/plugin-wallet/
     register.ts                Renderer boot side-effect entry (elizaos.appRegister:"register");
                                imports ui/register-routes.ts
     ui.ts                      `@elizaos/plugin-wallet/ui` subpath entry (re-exports ui/index.ts)
-    ui/                        Wallet inventory UI surface (formerly @elizaos/plugin-wallet-ui)
+    ui/                        Wallet inventory UI surface
       index.ts                 UI barrel; side-effect imports register-routes.ts
       plugin.ts                walletAppPlugin descriptor (name "@elizaos/plugin-wallet:ui",
                                packageName "@elizaos/plugin-wallet"; shell nav tab /inventory,

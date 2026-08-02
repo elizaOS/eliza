@@ -1,22 +1,7 @@
 /**
- * AgentEventService bridge
- *
- * The runtime emits coarse lifecycle telemetry on the {@link EventType} bus
- * (`RUN_STARTED`, `ACTION_STARTED`, `EVALUATOR_STARTED`, …). Separately,
- * {@link AgentEventService} exposes a fully-typed per-run stream taxonomy
- * (`lifecycle | action | evaluator | tool | provider | …`) that the agent HTTP
- * server broadcasts to WS clients as `agent_event` messages.
- *
- * Historically the `AgentEventService` `action` / `evaluator` / `lifecycle`
- * streams were dead — the `emit*` helpers existed but had no call sites, so the
- * WS channel never carried per-turn phase data. This module is the single
- * bridge that maps the {@link EventType} bus → `AgentEventService` streams
- * (option (b) from issue #8813): one place to wire, every existing event lights
- * up for free, and the streams become reusable beyond the chat indicator.
- *
- * The bridge is intentionally defensive: it resolves `AgentEventService`
- * lazily, no-ops when the service is not hosted (core-only tests, headless
- * tools), and never throws back into the hot message loop.
+ * Maps runtime lifecycle and connector events into typed per-run agent streams
+ * and user notifications. Consumers may omit either optional service; failures
+ * in present observers are reported without interrupting the message loop.
  */
 
 import { logger } from "../logger.ts";
@@ -61,6 +46,25 @@ const CONNECTOR_EVENT_SOURCES: Readonly<Record<string, string>> = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function reportBridgeFailure(
+	runtime: RuntimeServiceHost,
+	scope: string,
+	error: unknown,
+	message: string,
+	context: Record<string, unknown> = {},
+): void {
+	logger.debug(
+		{
+			src: "agent-event-bridge",
+			scope,
+			err: error instanceof Error ? error.message : String(error),
+			...context,
+		},
+		message,
+	);
+	runtime.reportError?.(`AgentEventBridge.${scope}`, error, context);
 }
 
 function readString(value: unknown): string | undefined {
@@ -526,13 +530,13 @@ export async function bridgeConnectorMessageReceivedToStreams(
 		try {
 			agentEvents.emitMessage(runId, messageEventData(message), sessionKey);
 		} catch (err) {
-			logger.debug(
-				{
-					src: "agent-event-bridge",
-					eventType,
-					err: err instanceof Error ? err.message : String(err),
-				},
+			// error-policy:J7 Stream projection is diagnostic and cannot block ingress.
+			reportBridgeFailure(
+				message.runtime,
+				"connectorMessage",
+				err,
 				"Failed to bridge connector message event to AgentEventService",
+				{ eventType },
 			);
 		}
 	}
@@ -558,13 +562,13 @@ export async function bridgeConnectorMessageReceivedToStreams(
 			agentId: message.runtime.agentId,
 		});
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				eventType,
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Notifications are observers and cannot block ingress.
+		reportBridgeFailure(
+			message.runtime,
+			"connectorNotification",
+			err,
 			"Failed to create connector-message notification",
+			{ eventType },
 		);
 	}
 }
@@ -607,11 +611,11 @@ export async function bridgeMessageReceivedToStreams(
 					sessionKey,
 				);
 			} catch (err) {
-				logger.debug(
-					{
-						src: "agent-event-bridge",
-						err: err instanceof Error ? err.message : String(err),
-					},
+				// error-policy:J7 Stream projection is diagnostic and cannot block ingress.
+				reportBridgeFailure(
+					payload.runtime,
+					"messageReceived",
+					err,
 					"Failed to bridge MESSAGE_RECEIVED to AgentEventService",
 				);
 			}
@@ -650,11 +654,11 @@ export async function bridgeMessageReceivedToStreams(
 			agentId: payload.runtime.agentId,
 		});
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Notifications are observers and cannot block ingress.
+		reportBridgeFailure(
+			payload.runtime,
+			"inboundNotification",
+			err,
 			"Failed to create inbound-message notification",
 		);
 	}
@@ -680,11 +684,11 @@ export function bridgeActionStartedToStreams(
 		service.emitActionStart(runId, { actionName });
 		service.emitLifecycle(runId, { type: "action_start", actionName });
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Stream projection is diagnostic and cannot block actions.
+		reportBridgeFailure(
+			runtime,
+			"actionStarted",
+			err,
 			"Failed to bridge ACTION_STARTED to AgentEventService",
 		);
 	}
@@ -715,11 +719,11 @@ export function bridgeActionCompletedToStreams(
 			success,
 		});
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Stream projection is diagnostic and cannot block actions.
+		reportBridgeFailure(
+			runtime,
+			"actionCompleted",
+			err,
 			"Failed to bridge ACTION_COMPLETED to AgentEventService",
 		);
 	}
@@ -741,11 +745,11 @@ export function bridgeRunStartedToStreams(payload: RunEventPayload): void {
 	try {
 		service.emitLifecycle(runId, { type: "run_start" });
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Stream projection is diagnostic and cannot block runs.
+		reportBridgeFailure(
+			runtime,
+			"runStarted",
+			err,
 			"Failed to bridge RUN_STARTED to AgentEventService",
 		);
 	}
@@ -777,11 +781,11 @@ export function bridgeRunEndedToStreams(payload: RunEventPayload): void {
 		// keeps the final `run_end` seq monotonic.
 		service.clearRunContext(runId);
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Stream projection is diagnostic and cannot block runs.
+		reportBridgeFailure(
+			runtime,
+			"runEnded",
+			err,
 			"Failed to bridge RUN_ENDED to AgentEventService",
 		);
 	}
@@ -807,11 +811,11 @@ export function bridgeEvaluatorStartedToStreams(
 			evaluatorName: payload.evaluatorName,
 		});
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Stream projection is diagnostic and cannot block evaluators.
+		reportBridgeFailure(
+			runtime,
+			"evaluatorStarted",
+			err,
 			"Failed to bridge EVALUATOR_STARTED to AgentEventService",
 		);
 	}
@@ -838,11 +842,11 @@ export function bridgeEvaluatorCompletedToStreams(
 			validated: payload.completed === true,
 		});
 	} catch (err) {
-		logger.debug(
-			{
-				src: "agent-event-bridge",
-				err: err instanceof Error ? err.message : String(err),
-			},
+		// error-policy:J7 Stream projection is diagnostic and cannot block evaluators.
+		reportBridgeFailure(
+			runtime,
+			"evaluatorCompleted",
+			err,
 			"Failed to bridge EVALUATOR_COMPLETED to AgentEventService",
 		);
 	}

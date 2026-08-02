@@ -18,7 +18,7 @@ export default defineConfig({
   // automatic runtime so the merged UI-suite `.tsx` files transform correctly.
   esbuild: { jsx: "automatic" },
   resolve: {
-    // Anchored-regex entries (merged from the former plugin-wallet-ui config):
+    // Anchored-regex entries:
     // force a single React/ReactDOM copy across workspace packages, and
     // collapse `@elizaos/ui` plus the mocked subpaths onto the ui package's
     // SOURCE entry so the suite runs before workspace build artifacts exist.

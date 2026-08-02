@@ -2285,6 +2285,8 @@ export function createNativeRelationshipsGraphService(
 					return model;
 				})
 				.catch((err) => {
+					// error-policy:J5 The shared promise is returned to callers, who observe
+					// the rejection; this branch only clears the single-flight slot.
 					modelBuildPromise = null;
 					throw err;
 				});

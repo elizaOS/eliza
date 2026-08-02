@@ -198,12 +198,18 @@ The two tracked `.d.ts` files are not deletion candidates without replacement be
   concurrent edits in `packages/agent` and `plugins/plugin-discord` outside this
   cleanup. Biome lint, Biome format, and `check:source-artifacts` pass. The source
   tree contains exactly two intentional ambient declarations and no compiler debris.
-- The contributor/boot focused suite passes 34/34 tests after importing the new
-  focused module directly.
+- The contributor, runtime-repair, lifecycle, and port-gate focused suite passes
+  48/48 tests against the extracted modules.
 - Package-scoped Knip exits successfully; its only output is the existing `.css` compiled-extension configuration hint.
 - Android native-plugin verification passes 19/19 required compiled plugins. It reports two present-but-undeclared modules that correctly will not ship.
-- The final dry-run package is 11.3 MB compressed, 18.3 MB unpacked, and 1,378 files (initially 34.7 MB, 78.2 MB, and 1,509 files). The file count rose slightly because the new startup/readiness modules emit their own declaration artifacts, while payload size fell substantially.
+- The final dry-run package is 11.3 MB compressed, 18.3 MB unpacked, and 1,386 files (initially 34.7 MB, 78.2 MB, and 1,509 files). The file count rose slightly because the new startup/readiness modules emit their own declaration artifacts, while payload size fell substantially.
+- The final workspace snapshot still contains an ignored 1.9 GB
+  `platforms/electrobun/build` tree because multiple live Playwright desktop
+  stacks are actively consuming it. It is excluded from source control and the
+  npm package; deleting it during those runs would break other active lanes.
 - The iOS asset catalog compiles to `Assets.car` with Apple `actool`. A full simulator link reaches dependency graph construction but this checkout lacks the generated CocoaPods xcconfig, so that broader native build cannot proceed without running pod installation.
-- The default non-isolated Vitest mode completed once with only the three Anthropic clean-checkout failures fixed here, but a subsequent repetition deadlocked in idle coordinator/worker IPC under concurrent repository test load. The isolated run completed cleanly; removing the package's `isolate: false` test coupling remains a test-infrastructure cleanup item.
+- The default isolated Vitest run passes 195 files and 1,576 tests with 15
+  intentional skips. Tests remain serial to cap PGlite and RS256 resource
+  pressure without sharing mock state between files.
 - The updated mobile documentation passes all 23 documentation integrity, navigation, and link tests.
 - No `packages/app` UI code changed, so the app screenshot audit is not applicable to this cleanup.

@@ -181,6 +181,8 @@ export function createTypingCallbacks(
 		try {
 			await params.start();
 		} catch (err) {
+			// error-policy:J1 The caller-provided hook is the explicit boundary for a
+			// channel start failure; it receives the original thrown value.
 			params.onStartError(err);
 		}
 	};
@@ -339,6 +341,8 @@ export function removeAckReactionAfterReply(
 		if (!didAck) {
 			return;
 		}
+		// error-policy:J6 Acknowledgement removal is best-effort UI teardown; the
+		// caller's error hook is its observable failure channel.
 		params.remove().catch((err) => params.onError?.(err));
 	});
 }

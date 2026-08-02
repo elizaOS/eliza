@@ -198,7 +198,8 @@ export function writeJsonResponseSafe(
 	status = 200,
 ): void {
 	void writeJsonResponse(res, body, status).catch((err) => {
-		/* response already committed, log for diagnostics */
+		// error-policy:J1 The response is already committed; logging is the only
+		// remaining observable transport-boundary signal.
 		logger.warn(`[http] JSON response write failed: ${err}`);
 	});
 }
@@ -227,7 +228,8 @@ export function writeJsonErrorSafe(
 	status = 400,
 ): void {
 	void writeJsonError(res, message, status).catch((err) => {
-		/* response already committed, log for diagnostics */
+		// error-policy:J1 The response is already committed; logging is the only
+		// remaining observable transport-boundary signal.
 		logger.warn(`[http] JSON error response write failed: ${err}`);
 	});
 }

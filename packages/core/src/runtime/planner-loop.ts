@@ -837,6 +837,7 @@ async function runPlannerLoopIterations(
 				if (shouldRecordTerminalEvaluation) {
 					const terminalEvalStartedAt = Date.now();
 					await recordGatedEvaluationStage({
+						runtime: params.runtime,
 						recorder: params.recorder,
 						trajectoryId: params.trajectoryId,
 						parentStageId: params.parentStageId,
@@ -1033,6 +1034,7 @@ async function runPlannerLoopIterations(
 		}
 
 		await maybeCompactBeforeNextModelCall({
+			runtime: params.runtime,
 			trajectory,
 			config,
 			tools: params.tools,
@@ -1077,6 +1079,7 @@ async function runPlannerLoopIterations(
 				evaluator: gated,
 			});
 			await recordGatedEvaluationStage({
+				runtime: params.runtime,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -1780,6 +1783,7 @@ async function callPlanner(params: {
 	});
 	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
 		const compacted = await maybeCompactPlannerTrajectory({
+			runtime: params.runtime,
 			trajectory: params.trajectory,
 			budget: modelInputBudget,
 			config: params.config,
@@ -1967,6 +1971,7 @@ async function callPlanner(params: {
 	}
 
 	await recordPlannerStage({
+		runtime: params.runtime,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
@@ -1988,6 +1993,7 @@ async function callPlanner(params: {
 }
 
 async function maybeCompactPlannerTrajectory(args: {
+	runtime?: PlannerRuntime;
 	trajectory: PlannerTrajectory;
 	budget: ModelInputBudget;
 	config: ChainingLoopConfig;
@@ -2055,6 +2061,7 @@ async function maybeCompactPlannerTrajectory(args: {
 	});
 	const endedAt = Date.now();
 	await recordCompactionStage({
+		runtime: args.runtime,
 		recorder: args.recorder,
 		trajectoryId: args.trajectoryId,
 		parentStageId: args.parentStageId,
@@ -2071,6 +2078,7 @@ async function maybeCompactPlannerTrajectory(args: {
 }
 
 async function maybeCompactBeforeNextModelCall(args: {
+	runtime?: PlannerRuntime;
 	trajectory: PlannerTrajectory;
 	config: ChainingLoopConfig;
 	tools?: ToolDefinition[];
@@ -2102,6 +2110,7 @@ async function maybeCompactBeforeNextModelCall(args: {
 		return false;
 	}
 	return maybeCompactPlannerTrajectory({
+		runtime: args.runtime,
 		trajectory: args.trajectory,
 		budget,
 		config: args.config,
@@ -2172,6 +2181,7 @@ function compactText(value: string, maxLength: number): string {
  * thought marker. No `model` block is included because no LLM call happened.
  */
 async function recordGatedEvaluationStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2204,14 +2214,20 @@ async function recordGatedEvaluationStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the planner decision it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record gated evaluation stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordGatedEvaluation", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
 async function recordCompactionStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2254,14 +2270,20 @@ async function recordCompactionStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the compaction decision it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record compaction stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordCompaction", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
 async function recordPlannerStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2309,7 +2331,7 @@ async function recordPlannerStage(args: {
 			model: {
 				modelType: String(args.modelType),
 				modelName,
-				provider: args.provider ?? "default",
+				provider: extractProviderName(args.raw) ?? args.provider ?? "default",
 				messages: args.modelParams.messages,
 				tools: args.modelParams.tools,
 				toolChoice: args.modelParams.toolChoice,
@@ -2333,10 +2355,15 @@ async function recordPlannerStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the planner output it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record planner stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordPlanner", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
@@ -2390,6 +2417,24 @@ function extractModelName(
 		if (typeof direct === "string") return direct;
 		const model = (meta as Record<string, unknown>).model;
 		if (typeof model === "string") return model;
+	}
+	return undefined;
+}
+
+function extractProviderName(
+	raw: string | GenerateTextResult,
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	const meta = raw.providerMetadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) {
+		return undefined;
+	}
+	const record = meta as Record<string, unknown>;
+	for (const key of ["provider", "providerName"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
 	}
 	return undefined;
 }
@@ -2632,6 +2677,8 @@ async function executeQueuedToolCall(params: {
 			iteration: params.iteration,
 		});
 	} catch (error) {
+		// error-policy:J1 Tool execution is the planner action boundary; preserve
+		// the actual error in an explicit failed tool result.
 		result = {
 			success: false,
 			error,
@@ -2707,6 +2754,7 @@ async function executeQueuedToolCall(params: {
 		(tool) => tool.name === params.toolCall.name,
 	);
 	await recordToolStage({
+		runtime: params.params.runtime,
 		recorder: params.params.recorder,
 		trajectoryId: params.params.trajectoryId,
 		parentStageId: params.params.parentStageId,
@@ -2720,6 +2768,7 @@ async function executeQueuedToolCall(params: {
 }
 
 async function recordToolStage(args: {
+	runtime?: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -2760,10 +2809,16 @@ async function recordToolStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Trajectory persistence is diagnostic and cannot alter
+		// the tool result it records.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record tool stage",
 		);
+		args.runtime?.reportError?.("PlannerLoop.recordTool", err, {
+			trajectoryId: args.trajectoryId,
+			tool: args.toolCall.name,
+		});
 	}
 }
 
@@ -2835,6 +2890,8 @@ function parseEmbeddedToolCalls(text: string | undefined): PlannerToolCall[] {
 		try {
 			parsed = JSON.parse(objectText);
 		} catch {
+			// error-policy:J3 Embedded tool envelopes are untrusted model output;
+			// malformed candidates are invalid while later objects remain parseable.
 			continue;
 		}
 		const call = normalizeToolCall(parsed);
@@ -4616,12 +4673,8 @@ export function summarizeActionResultForPlanner(
 	if (result.success !== true || typeof action?.summarize !== "function") {
 		return undefined;
 	}
-	try {
-		const summary = action.summarize(result, params)?.trim();
-		return summary || undefined;
-	} catch {
-		return undefined;
-	}
+	const summary = action.summarize(result, params)?.trim();
+	return summary || undefined;
 }
 
 function getNonEmptyString(value: unknown): string | undefined {
@@ -4649,7 +4702,7 @@ function getNonEmptyString(value: unknown): string | undefined {
 let cachedDiskOptimizedPlannerPrompt: string | null = null;
 let cachedDiskOptimizedPlannerLoaded = false;
 
-function loadOptimizedPlannerFromDisk(): string | null {
+function loadOptimizedPlannerFromDisk(runtime: PlannerRuntime): string | null {
 	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
 	if (!existsSync(dir)) return null;
 
@@ -4671,10 +4724,15 @@ function loadOptimizedPlannerFromDisk(): string | null {
 				return parsed.prompt;
 			}
 		} catch (err) {
+			// error-policy:J4 A malformed optional optimization artifact degrades
+			// to the next candidate while the failure remains observable.
 			logger.warn(
 				{ path: currentPath, err: (err as Error).message },
 				"[PlannerLoop] malformed action_planner 'current' artifact; falling back to mtime scan",
 			);
+			runtime.reportError?.("PlannerLoop.optimizedPromptCurrent", err, {
+				path: currentPath,
+			});
 		}
 	}
 
@@ -4701,10 +4759,15 @@ function loadOptimizedPlannerFromDisk(): string | null {
 				return parsed.prompt;
 			}
 		} catch (err) {
+			// error-policy:J4 A malformed optional optimization artifact degrades
+			// to the next candidate while the failure remains observable.
 			logger.warn(
 				{ path: entry.path, err: (err as Error).message },
 				"[PlannerLoop] malformed action_planner artifact; trying next candidate",
 			);
+			runtime.reportError?.("PlannerLoop.optimizedPromptArtifact", err, {
+				path: entry.path,
+			});
 		}
 	}
 	return null;
@@ -4729,8 +4792,10 @@ function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 	// path that hasn't gotten the service registered yet.
 	if (!cachedDiskOptimizedPlannerLoaded) {
 		try {
-			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk();
+			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk(runtime);
 		} catch (err) {
+			// error-policy:J4 Disk optimization is optional; use the bundled
+			// template and report the unavailable optimization.
 			// readdir/stat failures on the optimized-prompts directory are
 			// non-fatal: we fall back to the bundled `plannerTemplate`. Log so
 			// repeated boot failures show up in operator output rather than
@@ -4739,6 +4804,7 @@ function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 				{ err: (err as Error).message },
 				"[PlannerLoop] optimized planner disk load failed; using bundled template",
 			);
+			runtime.reportError?.("PlannerLoop.optimizedPromptDisk", err);
 			cachedDiskOptimizedPlannerPrompt = null;
 		}
 		cachedDiskOptimizedPlannerLoaded = true;

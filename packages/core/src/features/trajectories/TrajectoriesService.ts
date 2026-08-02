@@ -1,15 +1,11 @@
 /**
- * Trajectory Logger Service
- *
- * A proper @elizaos/core Service that:
- * - Registers as "trajectories" so the runtime can find it
- * - Persists trajectories to the database
- * - Supports both runtime logging AND RL training data collection
- * - Provides API for UI viewing and export
+ * Persists runtime trajectories, step indexes, model calls, and reward metadata
+ * for replay, UI inspection, export, and training-data collection.
  */
 
 import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { serializeTrajectoryExport } from "../../services/trajectory-export";
 import type {
@@ -407,12 +403,14 @@ function isEmbeddingLlmCall(params: TrajectoryRuntimeLlmCallParams): boolean {
 
 function parseJsonCell(cell: SqlCell | undefined): JsonValue | undefined {
 	if (typeof cell === "string") {
-		try {
-			const parsed: unknown = JSON.parse(cell);
-			return isJsonValue(parsed) ? parsed : undefined;
-		} catch {
-			return undefined;
+		const parsed: unknown = JSON.parse(cell);
+		if (!isJsonValue(parsed)) {
+			throw new ElizaError("Trajectory database cell is not valid JSON data", {
+				code: "TRAJECTORY_JSON_CELL_INVALID",
+				context: { valueType: typeof parsed },
+			});
 		}
+		return parsed;
 	}
 	return isJsonValue(cell) ? cell : undefined;
 }
@@ -1125,6 +1123,7 @@ export class TrajectoriesService extends Service {
 
 	private async getTableColumnNames(tableName: string): Promise<Set<string>> {
 		const names = new Set<string>();
+		let postgresError: unknown;
 
 		// PostgreSQL path.
 		try {
@@ -1139,8 +1138,10 @@ export class TrajectoriesService extends Service {
 				if (name) names.add(name);
 			}
 			if (names.size > 0) return names;
-		} catch {
-			// Fall through to SQLite-compatible PRAGMA lookup.
+		} catch (error) {
+			// error-policy:J4 Database dialect discovery falls through from
+			// PostgreSQL metadata to SQLite PRAGMA.
+			postgresError = error;
 		}
 
 		// SQLite / generic fallback.
@@ -1154,8 +1155,20 @@ export class TrajectoriesService extends Service {
 				const name = asString(pickCell(row, "name"));
 				if (name) names.add(name);
 			}
-		} catch {
-			// Ignore lookup failures; callers will perform best-effort migrations.
+		} catch (sqliteError) {
+			// error-policy:J2 Neither dialect could inspect the required schema;
+			// preserve both causes instead of pretending the table has no columns.
+			throw new ElizaError(
+				`Unable to inspect columns for trajectory table ${tableName}`,
+				{
+					code: "TRAJECTORY_SCHEMA_INSPECTION_FAILED",
+					context: { tableName },
+					cause:
+						postgresError === undefined
+							? sqliteError
+							: new AggregateError([postgresError, sqliteError]),
+				},
+			);
 		}
 
 		return names;
@@ -1213,8 +1226,14 @@ export class TrajectoriesService extends Service {
 		]) {
 			try {
 				await this.executeRawSql(statement);
-			} catch {
-				// Non-fatal portability fallback.
+			} catch (error) {
+				// error-policy:J4 BIGINT widening is PostgreSQL-specific; adapters
+				// that reject it remain usable but the skipped migration is reported.
+				this.runtime.reportError(
+					"TrajectoriesService.timestampColumnMigration",
+					error,
+					{ statement },
+				);
 			}
 		}
 	}
@@ -1286,10 +1305,12 @@ export class TrajectoriesService extends Service {
 				`CREATE INDEX IF NOT EXISTS idx_trajectories_is_training ON trajectories(is_training_data)`,
 			);
 		} catch (e) {
-			// Ignore index creation errors (e.g. if they already exist or are being created by another process)
+			// error-policy:J4 Indexes are performance-only; table persistence
+			// remains available while the failed optimization is reported.
 			logger.warn(
 				`[trajectory-logger] Failed to create indexes (non-fatal): ${e instanceof Error ? e.message : String(e)}`,
 			);
+			this.runtime.reportError("TrajectoriesService.createIndexes", e);
 		}
 
 		// Step index keeps step -> trajectory mapping in DB so logs remain routable
@@ -1415,6 +1436,8 @@ export class TrajectoriesService extends Service {
 		const pending = this.writeQueues.get(trajectoryId);
 		if (pending) {
 			await pending.catch((err) => {
+				// error-policy:J2 Flush is an awaited persistence barrier; add trajectory
+				// context and preserve the rejected write for the caller.
 				logger.error(
 					{ err, trajectoryId },
 					"[trajectory-logger] flushWriteQueue: pending trajectory write failed",
@@ -1431,7 +1454,8 @@ export class TrajectoriesService extends Service {
 		const previous = this.writeQueues.get(trajectoryId) ?? Promise.resolve();
 		const next = previous
 			.catch(() => {
-				// Keep queue alive after failures.
+				// error-policy:J5 The prior write's caller observes its rejection; this
+				// sequencing tail only keeps later independent writes from chain-blocking.
 			})
 			.then(task);
 		this.writeQueues.set(trajectoryId, next);
@@ -1450,6 +1474,11 @@ export class TrajectoriesService extends Service {
 		err: unknown,
 	): void {
 		logger.error({ err, ...metadata }, message);
+		this.runtime.reportError(
+			"TrajectoriesService.detachedWrite",
+			err,
+			metadata,
+		);
 	}
 
 	private async getTrajectoryById(
@@ -1578,8 +1607,11 @@ export class TrajectoriesService extends Service {
         WHERE id = ${sqlLiteral(trajectoryId)}
       `);
 		} catch (modernErr) {
+			// error-policy:J4 A legacy schema receives its compatible update
+			// shape; failure of both forms is raised below.
 			// Compatibility fallback for legacy Eliza schema.
-			await this.executeRawSql(`
+			try {
+				await this.executeRawSql(`
         UPDATE trajectories SET
           status = ${sqlLiteral(status)},
           end_time = ${sqlLiteral(persistedEndTime)},
@@ -1596,13 +1628,22 @@ export class TrajectoriesService extends Service {
           metadata = ${sqlLiteral(trajectory.metadata)},
           updated_at = ${sqlLiteral(updatedAtIso)}
         WHERE id = ${sqlLiteral(trajectoryId)}
-      `).catch((legacyErr) => {
+      `);
+			} catch (legacyErr) {
+				// error-policy:J2 Preserve both schema-update failures.
 				logger.warn(
 					{ err: legacyErr, trajectoryId },
 					`[trajectory-logger] Failed to persist trajectory update after compatibility fallback: ${modernErr instanceof Error ? modernErr.message : String(modernErr)}`,
 				);
-				throw legacyErr;
-			});
+				throw new ElizaError(
+					`Failed to persist trajectory update for ${trajectoryId}`,
+					{
+						code: "TRAJECTORY_UPDATE_FAILED",
+						context: { trajectoryId },
+						cause: new AggregateError([modernErr, legacyErr]),
+					},
+				);
+			}
 		}
 	}
 
@@ -1645,6 +1686,8 @@ export class TrajectoriesService extends Service {
 				if (!resolved) return;
 				await this._persistLlmCall(resolved, params);
 			})().catch((err) => {
+				// error-policy:J7 Detached legacy step resolution reports persistence
+				// failure without producing an unhandled rejection.
 				this.reportDetachedWriteFailure(
 					"[trajectory-logger] Failed to persist LLM call (async step resolution)",
 					{ stepId: params.stepId },
@@ -1656,6 +1699,8 @@ export class TrajectoriesService extends Service {
 
 		// Enter the write lock synchronously so flushWriteQueue sees this pending write
 		void this._persistLlmCall(trajectoryId, params).catch((err) => {
+			// error-policy:J7 The public logging hook is synchronous; its detached
+			// persistence failure is reported through the service diagnostic boundary.
 			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist LLM call",
 				{ stepId: params.stepId },
@@ -1909,6 +1954,8 @@ export class TrajectoriesService extends Service {
 				}
 				await this._persistProviderAccess(resolved, params);
 			})().catch((err) => {
+				// error-policy:J7 Detached legacy step resolution reports provider
+				// telemetry failure without producing an unhandled rejection.
 				this.reportDetachedWriteFailure(
 					"[trajectory-logger] Failed to persist provider access (async step resolution)",
 					{ stepId: params.stepId },
@@ -1919,6 +1966,8 @@ export class TrajectoriesService extends Service {
 		}
 
 		void this._persistProviderAccess(trajectoryId, params).catch((err) => {
+			// error-policy:J7 Provider telemetry persistence is detached and reported
+			// without interrupting the provider that already completed.
 			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist provider access",
 				{ stepId: params.stepId },
@@ -2122,9 +2171,15 @@ export class TrajectoriesService extends Service {
         )
       `);
 			persistedStart = true;
-		} catch (_err) {
-			throw new Error(
+		} catch (error) {
+			// error-policy:J2 Preserve the database cause with trajectory identity.
+			throw new ElizaError(
 				`[trajectory-logger] Failed to persist trajectory start for ${trajectoryId}`,
+				{
+					code: "TRAJECTORY_START_PERSIST_FAILED",
+					context: { trajectoryId },
+					cause: error,
+				},
 			);
 		}
 
@@ -2133,9 +2188,16 @@ export class TrajectoriesService extends Service {
 			try {
 				await this.setStepIndex(legacyStepId, trajectoryId, -1, false);
 			} catch (indexErr) {
+				// error-policy:J7 The trajectory start is durable; report its
+				// diagnostic routing-index failure without fabricating success.
 				logger.warn(
 					{ err: indexErr, trajectoryId, stepId: legacyStepId },
 					"[trajectory-logger] Failed to persist step index for trajectory start",
+				);
+				this.runtime.reportError(
+					"TrajectoriesService.persistStartStepIndex",
+					indexErr,
+					{ trajectoryId, stepId: legacyStepId },
 				);
 			}
 		}
@@ -2169,6 +2231,8 @@ export class TrajectoriesService extends Service {
 			await this.setStepIndex(stepId, trajectoryId, step.stepNumber, true);
 			await this.persistTrajectory(trajectoryId, trajectory, "active");
 		}).catch((err) => {
+			// error-policy:J7 startStep has a synchronous id contract; detached
+			// persistence failures are surfaced through runtime diagnostics.
 			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist startStep",
 				{ trajectoryId, stepId },
@@ -2269,6 +2333,8 @@ export class TrajectoriesService extends Service {
 				WHERE id = ${sqlLiteral(trajectoryId)}
 			`);
 		}).catch((err) => {
+			// error-policy:J7 completeStep is a synchronous telemetry hook; detached
+			// persistence failures are surfaced through runtime diagnostics.
 			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to complete step",
 				{ trajectoryId },

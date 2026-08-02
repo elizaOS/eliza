@@ -1,6 +1,6 @@
 # @elizaos/plugin-wallet
 
-Non-custodial wallet plugin for elizaOS agents. Provides EVM and Solana signing, token transfers, swaps, cross-chain bridging, on-chain governance, LP management, and market analytics behind a single unified action+provider surface. Also ships the wallet inventory UI surface — the /inventory shell page, the standalone /wallet GUI view (dist/views/bundle.js), and the wallet.status chat-sidebar widget — under the `@elizaos/plugin-wallet/ui` subpath (merged from the former `@elizaos/plugin-wallet-ui`).
+Non-custodial wallet plugin for elizaOS agents. Provides EVM and Solana signing, token transfers, swaps, cross-chain bridging, on-chain governance, LP management, and market analytics behind a single unified action+provider surface. Also ships the wallet inventory UI surface — the /inventory shell page, the standalone /wallet GUI view (dist/views/bundle.js), and the wallet.status chat-sidebar widget — under the `@elizaos/plugin-wallet/ui` subpath.
 
 Replaces the former fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydium`, `plugin-orca`, `plugin-meteora`, `plugin-jupiter`, `plugin-lp-manager`, and `plugin-clanker`.
 

@@ -470,10 +470,16 @@ export class TrustEngine extends Service {
 				context: (interaction.context ?? {}) as Record<string, unknown>,
 			});
 		} catch (err: unknown) {
+			// error-policy:J2 Trust evidence persistence is authoritative; report
+			// and preserve the database failure.
 			logger.warn(
 				{ error: err },
 				"[TrustEngine] Failed to persist trust evidence to DB",
 			);
+			this.runtime.reportError("TrustEngine.persistEvidence", err, {
+				targetEntityId: interaction.targetEntityId,
+			});
+			throw err;
 		}
 	}
 
@@ -845,10 +851,16 @@ export class TrustEngine extends Service {
 				}
 			}
 		} catch (err: unknown) {
+			// error-policy:J2 Database evidence is required for a complete trust
+			// view; never return a partial cache as healthy.
 			logger.warn(
 				{ error: err },
 				"[TrustEngine] Failed to load trust evidence from DB",
 			);
+			this.runtime.reportError("TrustEngine.loadEvidence", err, {
+				targetEntityId: entityId,
+			});
+			throw err;
 		}
 
 		return evidence.sort((a, b) => b.timestamp - a.timestamp);

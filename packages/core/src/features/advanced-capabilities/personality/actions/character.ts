@@ -1452,20 +1452,11 @@ async function handlePreferenceReset(
 		};
 	}
 
-	let deletedCount = 0;
-	for (const pref of existingPrefs) {
-		if (pref.id) {
-			try {
-				await runtime.deleteMemory(pref.id);
-				deletedCount++;
-			} catch (err) {
-				logger.warn(
-					{ memoryId: pref.id, error: (err as Error).message },
-					"Failed to delete preference memory",
-				);
-			}
-		}
-	}
+	const preferenceIds = existingPrefs.flatMap((pref) =>
+		pref.id ? [pref.id] : [],
+	);
+	await Promise.all(preferenceIds.map((id) => runtime.deleteMemory(id)));
+	const deletedCount = preferenceIds.length;
 
 	const clearedText = `I've cleared ${deletedCount} custom interaction preference(s). I'll go back to my default interaction style with you.`;
 	await callback?.({

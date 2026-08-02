@@ -32,7 +32,11 @@ import { ModelType } from "../../../../types/index.ts";
 import { parseKeyValueXml } from "../../../../utils.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
-import type { DraftRecord, DraftRequest } from "../types.ts";
+import {
+	type DraftRecord,
+	type DraftRequest,
+	NotYetImplementedError,
+} from "../types.ts";
 import {
 	bodyParameter,
 	draftIdParameter,
@@ -324,11 +328,14 @@ export const sendDraftAction: Action = {
 					channelId: draftParsed.channelId,
 				});
 			} catch (error) {
-				const messageText =
-					error instanceof Error ? error.message : String(error);
-				if (!/NotYetImplemented|createDraft/i.test(messageText)) {
+				if (!(error instanceof NotYetImplementedError)) {
 					throw error;
 				}
+				// error-policy:J4 Adapters may explicitly decline remote draft creation;
+				// a `local:` draft is a visibly distinct, sendable confirmation artifact.
+				runtime.reportError("SendDraft.remoteDraftUnavailable", error, {
+					source: draftParsed.source,
+				});
 				record = saveLocalOutboundDraft({
 					service,
 					source: draftParsed.source,

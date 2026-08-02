@@ -62,7 +62,8 @@ export async function requestElevationHandler(
 	try {
 		parsed = parseJSONObjectFromText(text);
 	} catch {
-		// Not JSON
+		// error-policy:J3 Action text is untrusted dual-format input; invalid JSON is
+		// explicitly interpreted as the documented plain-text form.
 	}
 	const requestData = { ...(parsed ?? {}), ...params } as {
 		action?: string;

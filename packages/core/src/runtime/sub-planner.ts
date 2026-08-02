@@ -248,6 +248,7 @@ export async function runSubPlanner(
 
 	// Mark a sub-planner descent so trajectory consumers can render the tree.
 	const subPlannerStageId = await recordSubPlannerStage({
+		runtime: params.runtime,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
@@ -333,6 +334,7 @@ function unionContexts(
 }
 
 async function recordSubPlannerStage(args: {
+	runtime: PlannerRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -366,8 +368,12 @@ async function recordSubPlannerStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 		return stageId;
-	} catch {
-		// Recorder failures must not break the runtime.
+	} catch (error) {
+		// error-policy:J7 Trajectory recording is diagnostic and must not break the
+		// planner, but the failure remains visible to the runtime.
+		args.runtime.reportError?.("SubPlanner.recordStage", error, {
+			actionName: args.actionName,
+		});
 		return undefined;
 	}
 }

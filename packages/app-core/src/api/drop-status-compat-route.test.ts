@@ -6,7 +6,7 @@
  */
 import http from "node:http";
 import { Socket } from "node:net";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   ensureCompatSensitiveRouteAuthorized: vi.fn(),
@@ -53,25 +53,13 @@ function fakeRes(): http.ServerResponse {
   return new http.ServerResponse(fakeReq());
 }
 
-// This suite runs under `isolate: false` (vitest.config.ts), so app-core test
-// files share one module registry and several mock `./auth`. If the route
-// module was first imported under another file's `./auth` mock (e.g.
-// dev-route-catalog's hardcoded `() => true`), its `ensureCompatSensitiveRoute…`
-// binding is frozen to that mock. Reset the registry and re-import the route per
-// test so it binds to THIS file's controllable mock (#9464).
+// Re-import the route per test so every assertion binds to this file's
+// controllable auth mock rather than a cached binding (#9464).
 async function loadRoute() {
   vi.resetModules();
   const mod = await import("./drop-status-compat-route");
   return mod.handleDropStatusCompatRoute;
 }
-
-// Under `isolate: false` all app-core suites share one module registry. This
-// file's `./auth` / `./auth.ts` mocks are re-imported into that shared registry
-// by `loadRoute`; clear it on teardown so the mocked auth gate cannot leak into
-// a later real-module suite that imports the genuine `./auth`.
-afterAll(() => {
-  vi.resetModules();
-});
 
 describe("handleDropStatusCompatRoute", () => {
   beforeEach(() => {

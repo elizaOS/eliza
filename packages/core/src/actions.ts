@@ -565,7 +565,8 @@ function coerceActionParamValue(
 				return parsed.map((entry) => toActionParameterValue(entry));
 			}
 		} catch {
-			// Fall through to the permissive string coercion path below.
+			// error-policy:J3 This field accepts either a JSON array or its documented
+			// delimited-string form; malformed JSON remains untrusted string input.
 		}
 	}
 

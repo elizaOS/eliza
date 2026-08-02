@@ -275,6 +275,8 @@ async function resolveMcpRemoteUrlRejection(
 		const resolved = await dnsLookup(hostname, { all: true });
 		addresses = Array.isArray(resolved) ? resolved : [resolved];
 	} catch {
+		// error-policy:J3 DNS failures become an explicit configuration rejection;
+		// unresolved remote hosts are never treated as safe.
 		return `Could not resolve URL host "${hostname}"`;
 	}
 

@@ -383,6 +383,8 @@ export async function executeChainWithFallback<TResult>(
 			}
 			return result;
 		} catch (err) {
+			// error-policy:J4 Each chain entry is an explicitly configured model
+			// failover; the final failure still propagates after all entries are tried.
 			lastError = err;
 			// Continue to the next step in the chain.
 		}

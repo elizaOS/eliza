@@ -191,6 +191,7 @@ check "Has base" grep -q "^base: core22" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has apps section" grep -q "^apps:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has node part" grep -q "^  node:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has elizaos-app part" grep -q "^  elizaos-app:" "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Workspace filters and toolchain match repository" node "$SCRIPT_DIR/verify-snap-workspace-contract.mjs"
 
 echo ""
 

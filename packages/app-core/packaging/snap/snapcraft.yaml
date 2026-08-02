@@ -143,7 +143,6 @@ parts:
           "plugin-telegram",
           "plugin-video",
           "plugin-wallet",
-          "plugin-wallet-ui",
           "plugin-wechat",
           "plugin-whatsapp",
         ]);
@@ -501,7 +500,6 @@ parts:
         --filter=@elizaos/plugin-telegram \
         --filter=@elizaos/plugin-video \
         --filter=@elizaos/plugin-wallet \
-        --filter=@elizaos/plugin-wallet-ui \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/scenario-runner

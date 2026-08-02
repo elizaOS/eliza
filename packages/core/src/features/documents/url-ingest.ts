@@ -81,6 +81,8 @@ function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
 				}
 				controller.enqueue(nodeReadableChunkToUint8Array(next.value));
 			} catch (error) {
+				// error-policy:J1 Translate the Node stream failure into the Web
+				// stream's explicit error channel.
 				controller.error(error);
 			}
 		},
@@ -199,6 +201,7 @@ async function resolveSafeUrlTarget(url: string): Promise<{
 	try {
 		parsed = new URL(url);
 	} catch {
+		// error-policy:J3 User-supplied URL text becomes an explicit rejection.
 		return { rejection: "Invalid URL format", target: null };
 	}
 
@@ -241,6 +244,8 @@ async function resolveSafeUrlTarget(url: string): Promise<{
 		const resolved = await dnsLookup(hostname, { all: true });
 		addresses = Array.isArray(resolved) ? resolved : [resolved];
 	} catch {
+		// error-policy:J1 DNS resolution is the URL-safety boundary and returns
+		// an explicit rejection rather than an unresolved target.
 		return {
 			rejection: `Could not resolve URL host "${hostname}"`,
 			target: null,
@@ -297,7 +302,10 @@ async function fetchWithSafety(
 		});
 	} catch (error) {
 		if (isAbortError(error)) {
-			throw new Error(`URL fetch timed out after ${timeoutMs}ms`);
+			// error-policy:J2 Preserve the network abort as the timeout cause.
+			throw new Error(`URL fetch timed out after ${timeoutMs}ms`, {
+				cause: error,
+			});
 		}
 		throw error;
 	}
@@ -348,9 +356,12 @@ async function readResponseBodyWithLimit(
 			chunks.push(value);
 		}
 	} catch (err) {
+		// error-policy:J2 Attempt cleanup before preserving the body-read failure.
 		try {
 			await reader.cancel(err);
 		} catch {
+			// error-policy:J6 Reader cancellation is best-effort cleanup; the
+			// original body-read error remains authoritative.
 			// Best effort cleanup; keep the original error.
 		}
 		throw err;
@@ -583,6 +594,8 @@ export async function fetchDocumentFromUrl(
 	try {
 		filename = decodeURIComponent(lastSegment);
 	} catch {
+		// error-policy:J3 A malformed percent escape is untrusted path input;
+		// retain the safe raw segment as the explicit sanitized value.
 		filename = lastSegment;
 	}
 

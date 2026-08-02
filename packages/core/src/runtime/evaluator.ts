@@ -173,6 +173,7 @@ export async function runEvaluator(
 	await applyEvaluatorEffects(output, params.effects);
 
 	await recordEvaluationStage({
+		runtime: params.runtime,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
 		parentStageId: params.parentStageId,
@@ -194,6 +195,7 @@ export async function runEvaluator(
 }
 
 async function recordEvaluationStage(args: {
+	runtime?: EvaluatorRuntime;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	parentStageId?: string;
@@ -231,7 +233,8 @@ async function recordEvaluationStage(args: {
 			model: {
 				modelType: args.modelType,
 				modelName,
-				provider: args.provider ?? "default",
+				provider:
+					extractEvaluatorProviderName(args.raw) ?? args.provider ?? "default",
 				messages: args.messages,
 				tools: [],
 				toolCalls: [],
@@ -257,10 +260,15 @@ async function recordEvaluationStage(args: {
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
 	} catch (err) {
+		// error-policy:J7 Evaluation recording is diagnostic and cannot alter
+		// the evaluator decision it observes.
 		args.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: args.trajectoryId },
 			"[TrajectoryRecorder] failed to record evaluation stage",
 		);
+		args.runtime?.reportError?.("Evaluator.recordStage", err, {
+			trajectoryId: args.trajectoryId,
+		});
 	}
 }
 
@@ -274,6 +282,24 @@ function extractEvaluatorModelName(
 		if (typeof direct === "string") return direct;
 		const model = (meta as Record<string, unknown>).model;
 		if (typeof model === "string") return model;
+	}
+	return undefined;
+}
+
+function extractEvaluatorProviderName(
+	raw: string | { providerMetadata?: unknown },
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	const meta = raw.providerMetadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) {
+		return undefined;
+	}
+	const record = meta as Record<string, unknown>;
+	for (const key of ["provider", "providerName"]) {
+		const value = record[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return value.trim();
+		}
 	}
 	return undefined;
 }
@@ -706,6 +732,8 @@ function stripTrailingEvaluatorEnvelope(text: string): string {
 	try {
 		parsed = JSON.parse(candidate);
 	} catch {
+		// error-policy:J3 A trailing candidate is untrusted model output; a
+		// malformed candidate is not an evaluator envelope.
 		return text;
 	}
 	if (!isEvaluatorEnvelopeObject(parsed)) return text;
@@ -1048,6 +1076,8 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 		}
 		return { object: parsed };
 	} catch {
+		// error-policy:J3 Evaluator output is untrusted model data; repair only
+		// the explicitly supported envelope-then-prose shape below.
 		// Envelope-then-prose repair: a leading fenced evaluator verdict with the
 		// answer following it is a valid response — the envelope is the verdict
 		// and the prose is the user-facing message. The prose must pass the same

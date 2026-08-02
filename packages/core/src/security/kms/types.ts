@@ -77,8 +77,8 @@ export class KmsError extends Error {
 	 */
 	readonly status?: number;
 
-	constructor(message: string, status?: number) {
-		super(message);
+	constructor(message: string, status?: number, cause?: unknown) {
+		super(message, cause !== undefined ? { cause } : undefined);
 		this.name = "KmsError";
 		if (status !== undefined) this.status = status;
 	}

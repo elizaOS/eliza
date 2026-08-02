@@ -579,6 +579,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						`[PluginManagerService] Unloaded dynamic plugin: ${pluginState.name}`,
 					);
 				} catch (error) {
+					// error-policy:J6 Shutdown continues across independent dynamic plugins;
+					// every failed teardown is warned with its plugin identity.
 					logger.warn(
 						{ src: "plugin-manager", error },
 						`[PluginManagerService] Failed to unload ${pluginState.name} during shutdown`,

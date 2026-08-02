@@ -552,6 +552,8 @@ async function prepareReflectionContext(
 	try {
 		return await prepared;
 	} catch (error) {
+		// error-policy:J2 Clear message-scoped evaluator state before preserving the
+		// original failure for the evaluator boundary.
 		reflectionContextByMessage.delete(message);
 		throw error;
 	}

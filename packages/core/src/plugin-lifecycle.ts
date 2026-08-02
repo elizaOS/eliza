@@ -184,6 +184,8 @@ function createAsyncContextStorage<T>(): AsyncContextStorage<T> {
 				},
 			};
 		} catch {
+			// error-policy:J4 AsyncLocalStorage is optional in constrained
+			// runtimes; the scoped stack is the explicit degraded implementation.
 			// AsyncLocalStorage unavailable — fall back to stack storage.
 		}
 	}
@@ -795,6 +797,7 @@ async function teardownPluginOwnership(
 		try {
 			await disposeHook(runtime);
 		} catch (error) {
+			// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 			errors.push(error instanceof Error ? error : new Error(String(error)));
 		}
 	}
@@ -802,12 +805,14 @@ async function teardownPluginOwnership(
 	try {
 		removeOwnedSendHandlers(privateState, ownership);
 	} catch (error) {
+		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 		errors.push(error instanceof Error ? error : new Error(String(error)));
 	}
 
 	try {
 		await stopOwnedServices(privateState, runtime, ownership);
 	} catch (error) {
+		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 		errors.push(error instanceof Error ? error : new Error(String(error)));
 	}
 
@@ -819,6 +824,7 @@ async function teardownPluginOwnership(
 		removeOwnedComponents(runtime, ownership);
 		removeOwnedPlugins(runtime, ownership);
 	} catch (error) {
+		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 		errors.push(error instanceof Error ? error : new Error(String(error)));
 	}
 
@@ -826,6 +832,7 @@ async function teardownPluginOwnership(
 		try {
 			await restoreAdapterIfNeeded(runtime, ownership, options.adapterBefore);
 		} catch (error) {
+			// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 			errors.push(error instanceof Error ? error : new Error(String(error)));
 		}
 	}
@@ -1110,6 +1117,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				);
 			}
 		} catch (error) {
+			// error-policy:J2 Roll back partial plugin ownership before preserving
+			// the original registration failure.
 			trackRoutesAndPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,

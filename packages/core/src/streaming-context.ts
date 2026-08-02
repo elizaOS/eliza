@@ -1,12 +1,6 @@
 /**
- * Streaming context management for automatic streaming in useModel calls.
- *
- * Follows the OpenTelemetry ContextManager pattern:
- * - Interface for context management
- * - Platform-specific implementations (Node.js AsyncLocalStorage, Browser Stack)
- * - Auto-detected at runtime - no separate entry points needed
- *
- * @see https://opentelemetry.io/docs/languages/js/context/
+ * Propagates per-turn stream callbacks and cancellation through model and
+ * action execution, using AsyncLocalStorage when available and a stack elsewhere.
  */
 
 import type { StreamChunkCallback } from "./types/components";
@@ -27,6 +21,11 @@ export interface StreamingContext extends StreamingEventHooks {
 	onStreamChunk: StreamChunkCallback;
 	/** Called when a useModel streaming call completes (allows reset between calls) */
 	onStreamEnd?: () => void;
+	reportError?: (
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	) => void;
 	messageId?: string;
 	/** Optional abort signal to cancel streaming */
 	abortSignal?: AbortSignal;
@@ -57,7 +56,12 @@ export async function emitStreamingHook<K extends keyof StreamingHookPayloads>(
 		await (
 			callback as (value: StreamingHookPayloads[K]) => void | Promise<void>
 		)(payload);
-	} catch {
+	} catch (error) {
+		// error-policy:J7 Streaming observers cannot alter model/action flow;
+		// the owning runtime receives the observer failure when available.
+		context?.reportError?.("StreamingContext.emitHook", error, {
+			hook: String(hook),
+		});
 		// Streaming observers must not break the underlying model/action flow.
 	}
 }
@@ -109,6 +113,8 @@ function initContextManagerSync(): IStreamingContextManager {
 				},
 			} as IStreamingContextManager;
 		} catch {
+			// error-policy:J4 AsyncLocalStorage is optional in constrained
+			// runtimes; the stack manager is the explicit degraded implementation.
 			// AsyncLocalStorage unavailable — fall back to stack
 		}
 	}
@@ -237,6 +243,8 @@ function getModelStreamChunkDeliveryStorage():
 					require("node:async_hooks") as typeof import("node:async_hooks");
 				modelStreamChunkDeliveryDepthStorage = new AsyncLocalStorage();
 			} catch {
+				// error-policy:J4 Stream-deduplication storage is optional outside
+				// Node; null explicitly disables nested-delivery tracking.
 				modelStreamChunkDeliveryDepthStorage = null;
 			}
 		}

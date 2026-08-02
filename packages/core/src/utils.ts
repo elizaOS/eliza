@@ -92,6 +92,7 @@ function isRestrictedCSPEnvironment(): boolean {
 		new Function("return 1");
 		_isRestrictedCSP = false;
 	} catch {
+		// error-policy:J4 Restricted CSP explicitly selects the safe template engine.
 		_isRestrictedCSP = true;
 	}
 
@@ -652,6 +653,8 @@ function parseToonScalar(value: string): unknown {
 		try {
 			return JSON.parse(value);
 		} catch {
+			// error-policy:J3 TOON scalar text is untrusted model output; malformed
+			// JSON remains an explicit string scalar.
 			return value;
 		}
 	}
