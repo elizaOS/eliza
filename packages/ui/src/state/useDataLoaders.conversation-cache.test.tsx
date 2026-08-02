@@ -380,6 +380,60 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ).toEqual(["persisted-1", "server-user", "temp-resp-100"]);
   });
 
+  it("drops an older local-only failure after authoritative history advances to a later turn", async () => {
+    const persisted = { ...userMsg("persisted-1"), timestamp: 1 };
+    const settledUser = {
+      ...userMsg("server-user-old"),
+      text: "create a note",
+      timestamp: 100,
+    };
+    const laterUser = {
+      ...userMsg("server-user-later"),
+      text: "hello",
+      timestamp: 300,
+    };
+    const laterAssistant = {
+      ...assistantMsg("server-assistant-later"),
+      text: "hi",
+      timestamp: 310,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [persisted, settledUser] })
+      .mockResolvedValueOnce({
+        messages: [persisted, settledUser, laterUser, laterAssistant],
+      });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      persisted,
+      settledUser,
+      {
+        ...assistantMsg("temp-resp-old"),
+        text: "something went wrong and i couldn't finish that.",
+        timestamp: 200,
+      },
+    ];
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "persisted-1",
+      "server-user-old",
+      "server-user-later",
+      "server-assistant-later",
+    ]);
+  });
+
   it("keeps a distinct repeated temp user message when only the earlier identical turn is persisted", async () => {
     const firstUser = {
       ...userMsg("server-user-1"),
