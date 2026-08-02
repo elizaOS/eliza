@@ -2382,7 +2382,7 @@ describe("view management actions", () => {
 				action: "interact",
 				view: "notes",
 				capability: "delete-note",
-				params: { id: "6a2b9cc0-cc28-40cd-b099-002473a1ad72" },
+				params: { noteId: "6a2b9cc0-cc28-40cd-b099-002473a1ad72" },
 			},
 			callback,
 		);

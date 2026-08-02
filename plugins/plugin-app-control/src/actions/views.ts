@@ -1070,6 +1070,25 @@ function isCapabilityParamsRecord(
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function resolveCapabilityParamName(
+	name: string,
+	declaredNames: ReadonlySet<string>,
+): string | null {
+	if (declaredNames.has(name)) return name;
+	const normalized = name.replace(/[-_]/g, "").toLowerCase();
+	const normalizedMatch = [...declaredNames].find(
+		(candidate) => candidate.replace(/[-_]/g, "").toLowerCase() === normalized,
+	);
+	if (normalizedMatch) return normalizedMatch;
+	if (
+		declaredNames.has("id") &&
+		["entityid", "eventid", "itemid", "noteid", "recordid"].includes(normalized)
+	) {
+		return "id";
+	}
+	return null;
+}
+
 function validateCapabilityParam(
 	name: string,
 	schema: ViewCapabilityParameter,
@@ -1158,8 +1177,12 @@ function readCapabilityParams(
 				error: `dotted capability parameter "${key}" is not supported; use the params object`,
 			};
 		}
-		if (capabilityParamKeys.has(key)) {
-			params[key] = value;
+		const capabilityParamName = resolveCapabilityParamName(
+			key,
+			capabilityParamKeys,
+		);
+		if (capabilityParamName) {
+			params[capabilityParamName] = value;
 			continue;
 		}
 		if (!capability && !CAPABILITY_PARAM_RESERVED_KEYS.has(key)) {
@@ -1169,17 +1192,22 @@ function readCapabilityParams(
 
 	if (isCapabilityParamsRecord(nested)) {
 		if (capability) {
-			const unknownKey = Object.keys(nested).find(
-				(key) => !capabilityParamKeys.has(key),
-			);
-			if (unknownKey) {
-				return {
-					ok: false,
-					error: `capability "${capability.id}" does not accept parameter "${unknownKey}"`,
-				};
+			for (const [key, value] of Object.entries(nested)) {
+				const capabilityParamName = resolveCapabilityParamName(
+					key,
+					capabilityParamKeys,
+				);
+				if (!capabilityParamName) {
+					return {
+						ok: false,
+						error: `capability "${capability.id}" does not accept parameter "${key}"`,
+					};
+				}
+				params[capabilityParamName] = value;
 			}
+		} else {
+			Object.assign(params, nested);
 		}
-		Object.assign(params, nested);
 	}
 
 	const intent = readStringOption(options, "intent");
