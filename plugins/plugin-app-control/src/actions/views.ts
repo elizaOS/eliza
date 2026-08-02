@@ -30,6 +30,7 @@ import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
+	readViewInteractionEffectContract,
 	readViewInteractionReceipt,
 	type ViewSummary,
 	type ViewsClient,
@@ -2842,6 +2843,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const receipt = interaction.success
 							? readViewInteractionReceipt(interaction.result)
 							: undefined;
+						const effectContract = interaction.success
+							? readViewInteractionEffectContract(interaction.result)
+							: undefined;
 						await callback?.({ text: resultText });
 						return {
 							success: interaction.success,
@@ -2853,6 +2857,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										turnComplete: true,
 									}
 								: {}),
+							...(effectContract ?? {}),
 							values: {
 								mode: "interact",
 								viewId,
