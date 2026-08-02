@@ -404,6 +404,37 @@ const vitestResolveAlias: ModuleAlias[] = [
           ),
         },
         {
+          // Same story for the atomic-json subpath (agent's
+          // app-package-modules imports it directly).
+          find: /^@elizaos\/core\/atomic-json$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "utils/atomic-json.ts"
+              : "utils/atomic-json.js",
+          ),
+        },
+        {
+          find: /^@elizaos\/core\/security\/kms$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "security/kms/index.ts"
+              : "security/kms/index.js",
+          ),
+        },
+        {
+          // Single-file security subpaths (network-policy,
+          // mcp-server-config, …) map 1:1 onto files next to the entry.
+          find: /^@elizaos\/core\/security\/([^/]+)$/,
+          replacement: path.join(
+            path.dirname(elizaCoreEntry),
+            elizaCoreEntry.endsWith(".ts")
+              ? "security/$1.ts"
+              : "security/$1.js",
+          ),
+        },
+        {
           find: "@elizaos/core",
           replacement: elizaCoreEntry,
         },
@@ -470,7 +501,7 @@ export default defineConfig({
       "eliza/packages/app-core/test/live-agent/**/*.test.tsx",
       "eliza/packages/app-core/test/helpers/**/*.test.ts",
       "eliza/packages/scenario-runner/test/mocks/__tests__/**/*.test.ts",
-      // app-core src-colocated tests run here; test/ harness suites run in
+      // app-core src-colocated tests run here; real-runtime suites run in
       // the app-unit config (apps/app/vitest.config.ts) which provides the
       // correct @elizaos/app-core alias resolution. Running both in parallel
       // causes file-system race conditions on shared test fixtures.

@@ -55,7 +55,6 @@ const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
 const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-app-control",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
   "@elizaos/plugin-birdclaw",
@@ -111,23 +110,6 @@ const agentSourceJsToTsPlugin = {
   load(id: string) {
     if (!id.startsWith(optionalCorePluginStubPrefix)) return null;
     const packageName = id.slice(optionalCorePluginStubPrefix.length);
-    if (packageName === "@elizaos/plugin-app-control") {
-      return [
-        "export function parseSettingsRequest(input) { return input ?? {}; }",
-        "export function createSettingsAction() {",
-        "  return {",
-        '    name: "SETTINGS_SECTION_TEST_STUB",',
-        '    description: "Test stub for app-control section settings.",',
-        "    examples: [],",
-        "    validate: async () => true,",
-        "    handler: async () => ({ success: false, text: 'settings stub unavailable' }),",
-        "  };",
-        "}",
-        'const plugin = { name: "plugin-app-control-test-stub", description: "Test stub for @elizaos/plugin-app-control", actions: [], providers: [], evaluators: [], services: [] };',
-        "export { plugin };",
-        "export default plugin;",
-      ].join("\n");
-    }
     const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
     return [
       `const plugin = ${JSON.stringify({
@@ -441,12 +423,19 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The agent's settings action pulls the shared parser from the
-      // `@elizaos/plugin-app-control/actions/settings` subpath (#14804), but
-      // app-control's build bundles only the barrel — there is no per-file
-      // dist and vitest has no eliza-source condition, so the subpath must be
-      // anchored to source (the bare specifier stays stubbed via
-      // optionalCorePluginStubPackages above).
+      // The agent's settings action pulls createSettingsAction +
+      // parseSettingsRequest from the `@elizaos/plugin-app-control` barrel
+      // (#14804), but app-control's build bundles only the barrel — there is
+      // no per-file dist and vitest has no eliza-source condition. Anchor the
+      // bare specifier to the file stub (which re-exports the real settings
+      // module) and subpaths to source. These must be alias entries, not
+      // resolveId stubs: vite:alias runs before user plugins, so baseConfig's
+      // installed-package alias for this plugin would otherwise win and
+      // resolve a stale published dist that lacks the settings exports.
+      {
+        find: /^@elizaos\/plugin-app-control$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-app-control.ts"),
+      },
       {
         find: /^@elizaos\/plugin-app-control\/(.+)$/,
         replacement: path.join(
