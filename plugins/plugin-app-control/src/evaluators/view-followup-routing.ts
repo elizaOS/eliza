@@ -12,6 +12,7 @@ import {
 	createViewsClient,
 	type ViewSummary,
 } from "../actions/views-client.js";
+import { extractDeleteTargetText } from "../capability-intent.js";
 
 type CapabilityFamily = "create" | "delete" | "update";
 
@@ -122,6 +123,27 @@ function resolveFamilyCapability(
 	return scoped.length === 1 ? (scoped[0] ?? null) : null;
 }
 
+function deterministicCapabilityParams(
+	family: CapabilityFamily,
+	capability: ViewCapability,
+	text: string,
+): Record<string, string> | undefined {
+	if (family !== "delete") return undefined;
+	const target = extractDeleteTargetText(text);
+	if (!target) return undefined;
+	const targetTokens = tokenize(target);
+	if (
+		targetTokens.length === 0 ||
+		targetTokens.every((token) => REFERENCE_TOKENS.has(token))
+	) {
+		return undefined;
+	}
+	const selector = ["query", "title", "name"].find(
+		(name) => capability.params?.[name],
+	);
+	return selector ? { [selector]: target } : undefined;
+}
+
 function hasRegisteredViewsAction(context: ResponseHandlerEvaluatorContext) {
 	return (context.runtime.actions ?? []).some(
 		(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
@@ -201,6 +223,11 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		const route = await resolveActiveViewForFamily(family, tokens);
 		if (!route) return undefined;
 		const { view: activeView, capability } = route;
+		const capabilityParams = deterministicCapabilityParams(
+			family,
+			capability,
+			getUserMessageText(context.message),
+		);
 
 		return {
 			requiresTool: true,
@@ -219,6 +246,7 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 					action: "interact",
 					view: activeView.id,
 					capability: capability.id,
+					...(capabilityParams ? { params: capabilityParams } : {}),
 					...(activeView.viewType ? { viewType: activeView.viewType } : {}),
 				},
 			},

@@ -27,6 +27,7 @@ import {
 	AGENT_SURFACE_CAPABILITY_IDS,
 	STANDARD_CAPABILITIES,
 } from "@elizaos/shared";
+import { extractDeleteTargetText } from "../capability-intent.js";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import {
@@ -1345,20 +1346,6 @@ function deriveParamsFromMessageText(
 	}
 
 	return derived;
-}
-
-function extractDeleteTargetText(text: string): string | null {
-	const match =
-		/\b(?:delete|remove|drop|destroy)\s+(?:the\s+)?(.+?)(?:\s+(?:note|notes|event|events|record|records|item|items))?\s*$/i.exec(
-			text,
-		);
-	const target = match?.[1]?.trim();
-	if (!target) return null;
-	const cleaned = target
-		.replace(/\b(?:sticky|calendar)\b/gi, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-	return cleaned.length > 0 ? cleaned : null;
 }
 
 function recoverDeleteTargetFromMessage(
