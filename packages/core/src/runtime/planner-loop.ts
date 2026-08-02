@@ -872,7 +872,21 @@ async function runPlannerLoopIterations(
 								),
 					// STOP/IGNORE-only terminals chose silence; a textless REPLY did
 					// not (the model tried to answer and failed to carry text).
-					...(hasReplyCall ? {} : { endedWithDeliberateSilence: true }),
+					// The silent terminal's name travels with the result so the
+					// message handler can record the turn under the action the
+					// model actually chose (STOP vs IGNORE); NONE folds into
+					// IGNORE — both mean "nothing to say", only STOP carries the
+					// distinct "stand down" semantics.
+					...(hasReplyCall
+						? {}
+						: {
+								endedWithDeliberateSilence: true,
+								silentTerminalAction: plannerOutput.toolCalls.some(
+									(toolCall) => toolCall.name.toUpperCase() === "STOP",
+								)
+									? ("STOP" as const)
+									: ("IGNORE" as const),
+							}),
 				};
 			}
 
