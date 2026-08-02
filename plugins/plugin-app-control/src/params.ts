@@ -7,6 +7,7 @@
  */
 
 import type { Memory } from "@elizaos/core";
+import { getUserMessageText, unwrapUserMessageText } from "@elizaos/core";
 
 const LAUNCH_VERBS = [
 	"launch",
@@ -69,6 +70,54 @@ function extractAfterVerbs(
 		}
 	}
 	return null;
+}
+
+/**
+ * The triggering message's actual words for target/query extraction. On
+ * hardened connectors core wraps `content.text` in the external-content
+ * security envelope, so a raw `content.text` fallback holds ~2KB of
+ * scaffolding whose warning text even contains verbs ("change", …) the
+ * substring extractors match on — and any echo of it shipped the entire
+ * envelope to chat (live leak 2026-08-02, tj-2dc95f75456876). Unwrap the
+ * security envelope first, then let getUserMessageText strip the
+ * document-augmentation envelope and language-instruction suffix.
+ */
+export function userRequestMessageText(message: Memory | undefined): string {
+	if (!message?.content) return "";
+	return getUserMessageText({
+		content: { ...message.content, text: unwrapUserMessageText(message) },
+	});
+}
+
+/**
+ * Render a user-supplied view target or search query for user-facing chat
+ * text. Extraction can fall back to the whole message text and a planner can
+ * hand any blob through an option, so a not-found/ambiguous echo must never
+ * quote the value verbatim unless it is name-shaped. This is a shape
+ * property, not content sniffing: real view names and search queries are
+ * short single-line strings, a rendered prompt or envelope never is. A
+ * name-shaped value (non-empty, single line, ≤64 chars) renders quoted;
+ * anything else renders as the neutral `fallback` noun.
+ */
+export function describeTargetReference(
+	reference: string,
+	fallback = "that view",
+): string {
+	const trimmed = reference.trim();
+	const nameShaped =
+		trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed);
+	return nameShaped ? `"${trimmed}"` : fallback;
+}
+
+/**
+ * Render a target/query for logs and machine-facing action text/data, where
+ * the actual value matters but must still never travel whole: a weak planner
+ * echoes tool text verbatim, and a multi-KB blob bloats context. Collapse
+ * whitespace to one line and clamp to 120 chars with a trailing ellipsis.
+ */
+export function targetReferenceLogView(reference: string): string {
+	const collapsed = reference.replace(/\s+/g, " ").trim();
+	return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
 }
 
 export function normalizeActionOptions(

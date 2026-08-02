@@ -62,6 +62,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
 	};
 });
 

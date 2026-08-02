@@ -79,11 +79,42 @@ vi.mock("@elizaos/core", () => {
 		return out;
 	};
 
+	// Faithful double of core's security-envelope unwrap (incoming-message-security):
+	// returns the payload between the untrusted-content markers for messages
+	// stamped externalContentWrapped, raw trimmed text otherwise.
+	const EXTERNAL_CONTENT_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
+	const EXTERNAL_CONTENT_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+	const unwrapUserMessageText = (message: {
+		content?: { text?: unknown; metadata?: unknown };
+	}): string => {
+		const text =
+			typeof message?.content?.text === "string" ? message.content.text : "";
+		const metadata = message?.content?.metadata as
+			| { externalContentWrapped?: unknown }
+			| undefined;
+		if (metadata?.externalContentWrapped === true) {
+			const start = text.indexOf(EXTERNAL_CONTENT_START);
+			if (start >= 0) {
+				const payloadStart = start + EXTERNAL_CONTENT_START.length;
+				const end = text.indexOf(EXTERNAL_CONTENT_END, payloadStart);
+				if (end >= 0) {
+					const inner = text.slice(payloadStart, end);
+					const separatorIndex = inner.indexOf("\n---\n");
+					return (
+						separatorIndex >= 0 ? inner.slice(separatorIndex + 5) : inner
+					).trim();
+				}
+			}
+		}
+		return text.trim();
+	};
+
 	return {
 		annotateActiveTrajectoryStep: vi.fn(async () => true),
 		getTrajectoryContext: vi.fn(() => undefined),
 		captureSkillInvocationIO,
 		promoteSubactionsToActions: (action: unknown) => [action],
+		unwrapUserMessageText,
 		Service: class {
 			constructor(public runtime?: unknown) {}
 			static serviceType = "mock-service";

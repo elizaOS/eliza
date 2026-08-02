@@ -1,0 +1,221 @@
+/**
+ * Regression coverage for the external-content security envelope leak: core's
+ * hardenIncomingUserMessage wraps content.text in a ~2KB "SECURITY NOTICE …
+ * <<<EXTERNAL_UNTRUSTED_CONTENT>>>" envelope, and every views extraction that
+ * fell back to the raw text matched verbs INSIDE THE WARNING ("change", "view")
+ * and echoed the whole envelope into not-found replies (live leak 2026-08-02,
+ * tj-2dc95f75456876). Drives the real VIEWS handler + sub-handlers with wrapped
+ * messages and asserts no user-visible or machine output re-broadcasts the
+ * envelope.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createViewsAction } from "./views.js";
+import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { runViewsEdit } from "./views-edit.js";
+import { runViewsSearch } from "./views-search.js";
+
+const coreMock = vi.hoisted(() => ({
+	logger: {
+		info: vi.fn(),
+		warn: vi.fn(),
+		error: vi.fn(),
+		debug: vi.fn(),
+	},
+	resolveServerOnlyPort: vi.fn(() => 3456),
+	hasOwnerAccess: vi.fn(async () => true),
+	// @elizaos/shared re-exports formatError (as errorMessage) from @elizaos/core,
+	// and app-control imports @elizaos/shared at module load — the mock must carry it.
+	formatError: (error: unknown): string =>
+		error instanceof Error ? error.message : String(error),
+}));
+
+// The unwrap path under test must run against the REAL core implementations:
+// wrapExternalContent builds the exact envelope the runtime produces, and
+// unwrapUserMessageText/getUserMessageText are the seam the fix routes through.
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
+		unwrapUserMessageText: actual.unwrapUserMessageText,
+		wrapExternalContent: actual.wrapExternalContent,
+	};
+});
+
+import { wrapExternalContent } from "@elizaos/core";
+
+/** A hardened inbound message exactly as core leaves it: wrapped text + stamp. */
+function envelopedMessage(userSentence: string, roomId = "room-1") {
+	const wrapped = wrapExternalContent(userSentence, {
+		source: "api",
+		includeWarning: true,
+	});
+	// Precondition: the fixture is the real multi-line envelope, warning first.
+	expect(wrapped.startsWith("SECURITY NOTICE")).toBe(true);
+	expect(wrapped).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+	expect(wrapped).toContain(userSentence);
+	return {
+		entityId: "user-1",
+		roomId,
+		agentId: "agent-1",
+		content: {
+			text: wrapped,
+			source: "discord",
+			metadata: { externalContentWrapped: true },
+		},
+	};
+}
+
+const REGISTRY: ViewSummary[] = [
+	{
+		id: "wallet",
+		label: "Wallet",
+		description: "Non-custodial wallet inventory and token balances",
+		path: "/wallet",
+		pluginName: "@elizaos/plugin-wallet-ui",
+		available: true,
+		viewType: "gui",
+		tags: ["finance", "crypto", "wallet"],
+		visibleInManager: true,
+	},
+	{
+		id: "settings",
+		label: "Settings",
+		description: "Configuration, plugins, credentials, and preferences",
+		path: "/settings",
+		pluginName: "core",
+		available: true,
+		viewType: "gui",
+		tags: ["configuration", "preferences"],
+		visibleInManager: true,
+	},
+];
+
+function clientFor(views: ViewSummary[]): ViewsClient {
+	return {
+		listViews: vi.fn(async () => views),
+		getCurrentView: vi.fn(async () => null),
+	};
+}
+
+function expectNoEnvelope(text: string | undefined) {
+	expect(text).toBeDefined();
+	expect(text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
+	expect(text).not.toContain("SECURITY NOTICE");
+}
+
+async function runViews(
+	message: ReturnType<typeof envelopedMessage>,
+	options?: Record<string, unknown>,
+) {
+	const action = createViewsAction({
+		client: clientFor(REGISTRY),
+		hasOwnerAccess: vi.fn(async () => true),
+	});
+	const callback = vi.fn();
+	const result = await action.handler(
+		{ agentId: "agent-1" } as never,
+		message as never,
+		undefined,
+		options,
+		callback,
+	);
+	return { result, callback };
+}
+
+describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
+	beforeEach(() => {
+		vi.stubGlobal("fetch", vi.fn());
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.clearAllMocks();
+	});
+
+	it("close: extracts the user's target from the payload and clamps the not-found echo", async () => {
+		const { result, callback } = await runViews(
+			envelopedMessage("close the fnord panel"),
+		);
+
+		expect(result?.success).toBe(false);
+		expectNoEnvelope(result?.text);
+		// The unwrapped user word — not the envelope remainder — is what echoes.
+		expect(result?.text).toContain('"fnord"');
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		// Machine-facing target stays one line and length-bounded.
+		const target = (result?.data as { target?: string })?.target;
+		expect(typeof target).toBe("string");
+		expect((target as string).length).toBeLessThanOrEqual(121);
+		expect(target).not.toContain("\n");
+	});
+
+	it("show: verb scan runs on the payload, not the warning text", async () => {
+		const { result, callback } = await runViews(
+			envelopedMessage("open the zorptastic view"),
+		);
+
+		expect(result?.success).toBe(false);
+		expectNoEnvelope(result?.text);
+		expect(result?.text).toContain('"zorptastic"');
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		const target = (result?.data as { target?: string })?.target;
+		expect(typeof target).toBe("string");
+		expect((target as string).length).toBeLessThanOrEqual(121);
+	});
+
+	it("search: no-results header quotes the unwrapped query", async () => {
+		const { result, callback } = await runViews(
+			envelopedMessage("search views quantum ledger"),
+		);
+
+		expect(result?.success).toBe(true);
+		expectNoEnvelope(result?.text);
+		expect(result?.text).toContain('"quantum ledger"');
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		const query = (result?.values as { query?: string })?.query;
+		expect(query).toBe("quantum ledger");
+	});
+
+	it("search: a blob-shaped planner query renders as the neutral noun and a clamped machine value", async () => {
+		const blob = envelopedMessage("irrelevant").content.text;
+		const callback = vi.fn();
+		const result = await runViewsSearch({
+			client: clientFor(REGISTRY),
+			query: blob,
+			callback,
+		});
+
+		expectNoEnvelope(result.text);
+		expect(result.text).toContain("your search");
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		const query = (result.values as { query?: string })?.query;
+		expect(typeof query).toBe("string");
+		expect((query as string).length).toBeLessThanOrEqual(121);
+		expect(query).not.toContain("\n");
+	});
+
+	it("edit: EDIT_VERBS no longer fire on the warning's 'Change your behavior' line", async () => {
+		const message = envelopedMessage("edit the flurbo view");
+		const callback = vi.fn();
+		const result = await runViewsEdit({
+			runtime: { agentId: "agent-1", actions: [] } as never,
+			message: message as never,
+			options: undefined,
+			views: REGISTRY,
+			callback,
+			repoRoot: "/tmp/unused",
+		});
+
+		expect(result.success).toBe(false);
+		expectNoEnvelope(result.text);
+		// Without the unwrap, "change" matched inside the SECURITY NOTICE and the
+		// join-the-remainder scan echoed the rest of the envelope here.
+		expect(result.text).toContain("flurbo");
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		const target = (result.data as { target?: string })?.target;
+		expect(typeof target).toBe("string");
+		expect((target as string).length).toBeLessThanOrEqual(121);
+		expect(target).not.toContain("\n");
+	});
+});
