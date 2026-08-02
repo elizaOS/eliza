@@ -45,6 +45,8 @@ const EXPECTED_FAILURE_CODES = new Set([
 
 const PLANNER_SUMMARY_ITEM_LIMIT = 20;
 const PLANNER_SUMMARY_EXCERPT_LENGTH = 160;
+const UUID_SUFFIX_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 function paramsRecord(value: unknown): Record<string, unknown> {
   if (value === undefined) return {};
@@ -133,12 +135,35 @@ function normalizedLookup(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function resolveCanonicalDeleteId(
+  entities: ReadonlyArray<{ id: string }>,
+  idValue: string,
+  prefix: "note" | "event",
+): string {
+  const id = idValue.trim();
+  if (entities.some((entity) => entity.id === id)) return id;
+  if (UUID_SUFFIX_PATTERN.test(id)) {
+    const canonicalId = `${prefix}-${id}`;
+    if (entities.some((entity) => entity.id === canonicalId)) {
+      return canonicalId;
+    }
+  }
+  throw new ElizaError(
+    `Simple Views ${prefix === "note" ? "note" : "calendar event"} "${id}" was not found.`,
+    {
+      code: "SIMPLE_VIEWS_NOT_FOUND",
+      context: { kind: prefix, id },
+      severity: "ephemeral",
+    },
+  );
+}
+
 function resolveNoteTarget(
   notes: StickyNote[],
   params: Record<string, unknown>,
 ): string {
   if (typeof params.id === "string" && params.id.trim().length > 0) {
-    return params.id;
+    return resolveCanonicalDeleteId(notes, params.id, "note");
   }
   const targetValue =
     typeof params.title === "string"
@@ -332,7 +357,13 @@ async function dispatchCapability(
     const target = parseCalendarEventTarget(params);
     const event =
       target.selector === "id"
-        ? await service.deleteCalendarEvent(target.value)
+        ? await service.deleteCalendarEvent(
+            resolveCanonicalDeleteId(
+              service.listCalendarEvents(),
+              target.value,
+              "event",
+            ),
+          )
         : await service.deleteCalendarEventByLookup(
             target.selector,
             target.value,

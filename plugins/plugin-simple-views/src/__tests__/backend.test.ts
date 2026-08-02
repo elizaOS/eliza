@@ -102,12 +102,15 @@ async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
   return runtime;
 }
 
-async function serviceFor(filePath: string): Promise<SimpleViewsService> {
+async function serviceFor(
+  filePath: string,
+  createId: (kind: "note" | "event") => string = idFactory(),
+): Promise<SimpleViewsService> {
   const now = clock();
   const service = new SimpleViewsService(undefined, {
     store: new SimpleViewsStore({ filePath, now }),
     now,
-    createId: idFactory(),
+    createId,
   });
   await service.initialize();
   return service;
@@ -548,6 +551,65 @@ describe("Simple Views capabilities", () => {
       interact("delete-calendar-event", { query: "launch notes" }, service),
     ).resolves.toMatchObject({ success: true });
     expect(service.listCalendarEvents()).toEqual([]);
+  });
+
+  it("resolves UUID-only delete ids without weakening canonical reads", async () => {
+    const ids = {
+      note: "note-11111111-1111-4111-8111-111111111111",
+      event: "event-22222222-2222-4222-8222-222222222222",
+    } as const;
+    const service = await serviceFor(
+      await temporaryStateFile(),
+      (kind) => ids[kind],
+    );
+    await interact(
+      "create-note",
+      { title: "UUID note", body: "Delete by suffix" },
+      service,
+    );
+    const noteId = service.listNotes()[0]?.id;
+    const noteUuid = noteId?.replace(/^note-/, "");
+    if (!noteId || !noteUuid) throw new Error("Created note id is required.");
+
+    await expect(
+      interact("get-note", { id: noteUuid }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_VALIDATION_FAILED" },
+    });
+    await expect(
+      interact("delete-note", { id: noteUuid }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { note: { id: noteId, title: "UUID note" } },
+    });
+    expect(service.listNotes()).toEqual([]);
+
+    await interact(
+      "create-calendar-event",
+      { title: "UUID event", date: "2026-08-07", time: "13:00" },
+      service,
+    );
+    const eventId = service.listCalendarEvents()[0]?.id;
+    const eventUuid = eventId?.replace(/^event-/, "");
+    if (!eventId || !eventUuid) {
+      throw new Error("Created calendar event id is required.");
+    }
+    await expect(
+      interact("delete-calendar-event", { id: eventUuid }, service),
+    ).resolves.toMatchObject({
+      success: true,
+      data: { event: { id: eventId, title: "UUID event" } },
+    });
+    expect(service.listCalendarEvents()).toEqual([]);
+
+    const unknownUuid = "00000000-0000-4000-8000-000000000000";
+    await expect(
+      interact("delete-note", { id: unknownUuid }, service),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "SIMPLE_VIEWS_NOT_FOUND" },
+    });
   });
 
   it("fails closed when a calendar delete lookup is missing or ambiguous", async () => {
