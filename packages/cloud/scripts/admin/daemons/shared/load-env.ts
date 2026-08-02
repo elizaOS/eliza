@@ -1,4 +1,9 @@
-// Drives cloud admin cloud admin daemons shared load env automation with explicit environment and CI invariants.
+/**
+ * Minimal .env loader shared by the admin daemons (provisioning-worker,
+ * apps-provisioning-worker, agent-router): reads .env.local then .env from the
+ * cloud package root without overwriting variables already set in the process
+ * environment.
+ */
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";

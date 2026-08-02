@@ -1,4 +1,10 @@
-// Drives cloud admin cloud admin seed local dev automation with explicit environment and CI invariants.
+/**
+ * Seeds a local cloud DB with development fixtures: a test organization with a
+ * large credit balance, test users (dev@local.test plus the developer's own
+ * USER_EMAIL/DEVELOPER_EMAIL when set), the credit-pack catalog with Stripe
+ * test-mode fallbacks, and the default Eliza agent. Idempotent via
+ * on-conflict upserts, so it is safe to re-run.
+ */
 import { sql } from "drizzle-orm";
 import { loadEnvFiles } from "./local-dev-helpers";
 

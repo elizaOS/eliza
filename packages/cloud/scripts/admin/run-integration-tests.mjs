@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-// Drives cloud admin cloud admin run integration tests automation with explicit environment and CI invariants.
+/**
+ * Runs the cloud API e2e suite (packages/cloud/api/test/e2e) — wired as
+ * `test:cloud:integration` at the repo root. Splits test files into db-only
+ * and server-backed lanes, gives known-interfering files isolated bun
+ * invocations, and supplies the local test-auth secrets and port config the
+ * suite expects.
+ */
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";

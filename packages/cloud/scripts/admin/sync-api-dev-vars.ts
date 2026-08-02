@@ -1,5 +1,11 @@
 #!/usr/bin/env bun
-// Drives cloud admin cloud admin sync api dev vars automation with explicit environment and CI invariants.
+/**
+ * Generates packages/cloud/api/.dev.vars for wrangler local dev: merges real
+ * (non-placeholder) values from the cloud .env/.env.local over .env.example
+ * defaults, generates local JWT signing keys and shared secrets when missing,
+ * and pins the PGlite database URL and test-auth settings when
+ * PLAYWRIGHT_TEST_AUTH is enabled. Run via packages/scripts/dev-all.mjs.
+ */
 import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";

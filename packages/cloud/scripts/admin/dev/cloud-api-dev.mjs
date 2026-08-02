@@ -1,5 +1,12 @@
 #!/usr/bin/env node
-// Drives cloud admin cloud admin dev cloud api dev automation with explicit environment and CI invariants.
+/**
+ * Local dev entrypoint for the cloud API Worker (`bun run dev` /
+ * `dev:full` in packages/cloud/api): starts a PGlite TCP bridge when no real
+ * DATABASE_URL is configured, runs db:cloud:migrate, then launches
+ * `wrangler dev` with local-only vars injected via `--var` (wrangler.toml
+ * carries production values). `--with-control-plane` also boots the
+ * container-control-plane service on :8791 so provisioning jobs get picked up.
+ */
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";

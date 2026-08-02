@@ -1,4 +1,9 @@
-// Drives cloud admin cloud admin generate llms txt automation with explicit environment and CI invariants.
+/**
+ * Builds llms.txt (index) and llms-full.txt (concatenated contents) for the
+ * Eliza Cloud docs from the MDX sources under packages/content, writing both
+ * into public/ and apps/frontend/public/ (each with a .well-known/ copy) so
+ * LLM tools like Cursor can ingest the docs site.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 

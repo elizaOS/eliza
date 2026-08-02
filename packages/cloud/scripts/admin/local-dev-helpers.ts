@@ -1,4 +1,8 @@
-// Drives cloud admin cloud admin local dev helpers automation with explicit environment and CI invariants.
+/**
+ * Shared helpers for the cloud local-dev scripts: dotenv loading, .env file
+ * parsing and in-place key updates, placeholder-value detection, and local JWT
+ * signing-key generation. Consumed by sync-api-dev-vars and the seed scripts.
+ */
 import crypto from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";

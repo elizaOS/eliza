@@ -1,4 +1,10 @@
-// Drives cloud admin cloud admin migrate with diagnostics automation with explicit environment and CI invariants.
+/**
+ * Applies the cloud DB's Drizzle SQL migrations (packages/cloud/shared/src/db/
+ * migrations) with per-statement failure diagnostics instead of drizzle-kit's
+ * opaque errors. Invoked as `db:cloud:migrate` at the repo root and
+ * `db:migrate` in packages/cloud/shared, including the deploy pipeline's
+ * migrate-db gate; enforces TLS for remote databases.
+ */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";

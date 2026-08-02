@@ -1,4 +1,10 @@
-// Drives cloud admin cloud admin bootstrap warn missing upstash automation with explicit environment and CI invariants.
+/**
+ * Warns on stderr when the shared Upstash registry credentials
+ * (KV_REST_API_URL/TOKEN or their UPSTASH_REDIS_REST_* aliases) are incomplete.
+ * Extracted from bootstrap-provisioning-worker-host.mjs so host bootstrap can
+ * surface the gap — gateways can't route to sandboxes without them — while
+ * still letting the bootstrap proceed.
+ */
 export function warnMissingUpstash(
   env,
   write = (message) => process.stderr.write(message),

@@ -1,4 +1,9 @@
-// Drives cloud admin cloud admin seed credit packs automation with explicit environment and CI invariants.
+/**
+ * Seeds the cloud billing DB with the default credit-pack catalog
+ * (Small/Medium/Large), wiring each pack to the Stripe price/product ids
+ * provided via STRIPE_*_PACK_* env vars. One-off admin script run manually
+ * with bun against the DATABASE_URL from .env/.env.local.
+ */
 import { loadEnvFiles } from "./local-dev-helpers";
 
 loadEnvFiles([".env", { path: ".env.local", override: true }]);

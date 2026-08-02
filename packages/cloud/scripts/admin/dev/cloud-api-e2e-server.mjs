@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-// Drives cloud admin cloud admin dev cloud api e2e server automation with explicit environment and CI invariants.
+/**
+ * Plain Node HTTP host for the cloud API Worker, spawned by the e2e fixtures
+ * in packages/cloud/e2e: imports the Worker's fetch handler straight from
+ * packages/cloud/api/src, bridges incoming Node requests to it, and stands in
+ * for the Cloudflare runtime with an in-memory R2 bucket and a drainable
+ * execution context.
+ */
 import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";

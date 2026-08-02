@@ -1,4 +1,9 @@
-// Drives cloud admin cloud admin run e2e smoke automation with explicit environment and CI invariants.
+/**
+ * Cloud e2e smoke check: runs the agent-token-flow e2e test through `bun test`
+ * with the shared e2e preload against a locally bootable API server. Skips
+ * gracefully when the e2e harness is absent or the server port is already in
+ * use, unless CLOUD_FULL_SUITE=1 turns those skips into hard failures.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
