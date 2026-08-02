@@ -43,6 +43,8 @@ import {
   dispatchViewActionHandoffDirect,
   findViewActionHandoff,
 } from "../view-action-handoff";
+import { emitViewEvent } from "../views/view-event-bus";
+import { VIEW_EVENTS } from "../views/view-event-types";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
@@ -93,6 +95,23 @@ async function handoffCompletedAction(
   actionResults: ChatActionResultSummary[] | undefined,
   showFailure: (message: string) => void,
 ): Promise<void> {
+  const successfulActions =
+    actionResults?.filter((result) => result.success) ?? [];
+  if (successfulActions.length > 0) {
+    // Cleartext remote runtimes intentionally use REST-only transport inside
+    // the HTTPS native WebView. The completed turn is therefore the reliable
+    // client-side commit edge for mounted views that cannot receive the
+    // runtime's WebSocket invalidation frame.
+    emitViewEvent(
+      VIEW_EVENTS.VIEW_REFRESH,
+      {
+        actionNames: successfulActions.flatMap((result) =>
+          result.actionName ? [result.actionName] : [],
+        ),
+      },
+      "agent",
+    );
+  }
   if (findViewActionHandoff(actionResults)) {
     // Shared/limited cloud agents (Tier-0) serve NO `/api/views/current`
     // endpoint, so the verify-then-dispatch handoff would throw on the missing
