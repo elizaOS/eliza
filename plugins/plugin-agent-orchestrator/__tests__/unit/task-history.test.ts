@@ -211,8 +211,11 @@ describe("TASKS:history", () => {
     );
     expect(taskService.listTasks).not.toHaveBeenCalled();
     expect(result?.success).toBe(true);
+    // Planner-facing no-match text must stay machine-shaped: a first-person
+    // chat sentence here gets echoed verbatim by weak evaluator models after
+    // a protocol-failure replan (tj-f730d907139bb2).
     expect(result?.text).toContain(
-      "I did not find any orchestrator task threads matching session session-missing.",
+      "No task history matched (filters applied; see data.filters). Tell the user in your own words; do not quote this line.",
     );
     expect(result?.data?.count).toBe(0);
     expect(result?.data?.taskIds).toEqual([]);
@@ -243,7 +246,9 @@ describe("TASKS:history", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(result?.text).toContain("I found 2 orchestrator tasks");
+    expect(result?.text).toContain(
+      "Task history matches: 2 (filters applied; see data.filters). Summarize for the user in your own words; do not quote these lines.",
+    );
     expect(result?.text).toContain("Active task [active]");
     expect(result?.text).not.toContain("Open task");
     expect(result?.data?.count).toBe(2);

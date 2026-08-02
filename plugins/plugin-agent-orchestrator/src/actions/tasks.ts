@@ -2648,22 +2648,32 @@ async function runHistory(
       );
       const count = allTasks.length;
       const tasks = allTasks.slice(0, limit);
-      const filterParts = [
-        windowFilters.label ? `window ${windowFilters.label}` : undefined,
-        statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
-        search ? `search "${search}"` : undefined,
-        projectId ? `project ${projectId}` : undefined,
-        sessionId ? `session ${sessionId}` : undefined,
-        includeArchived ? "including archived" : undefined,
-      ].filter((part): part is string => Boolean(part));
-      const filterSuffix =
-        filterParts.length > 0 ? ` matching ${filterParts.join("; ")}` : "";
+      // `text` here is PLANNER-FACING only: this result sets no
+      // userFacingText, and the planner-loop's deterministic relays read only
+      // that opt-in field, so nothing below reaches chat verbatim through the
+      // framework. What DOES leak is a weak evaluator model echoing the tool
+      // text after a protocol-failure replan (tj-f730d907139bb2), and a
+      // first-person chat-shaped sentence invites exactly that echo — so keep
+      // every string machine-shaped guidance that cannot pass as a chat
+      // reply. Still no raw session UUIDs and no verbatim planner-supplied
+      // filter args; the machine-precise filter echo lives in data.filters.
+      const hasFilters = Boolean(
+        windowFilters.label ||
+          statuses.length > 0 ||
+          search ||
+          projectId ||
+          sessionId ||
+          includeArchived,
+      );
+      const filterSuffix = hasFilters
+        ? " (filters applied; see data.filters)"
+        : "";
 
       let responseText = "";
       if (metric === "count") {
-        responseText = `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`;
+        responseText = `Task history count: ${count}${filterSuffix}. Report the count to the user in your own words.`;
       } else if (tasks.length === 0) {
-        responseText = `I did not find any orchestrator task threads${filterSuffix}.`;
+        responseText = `No task history matched${filterSuffix}. Tell the user in your own words; do not quote this line.`;
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [
@@ -2680,7 +2690,7 @@ async function runHistory(
           .join("\n");
       } else {
         responseText = [
-          `I found ${count} orchestrator task${count === 1 ? "" : "s"}${filterSuffix}.`,
+          `Task history matches: ${count}${filterSuffix}. Summarize for the user in your own words; do not quote these lines.`,
           ...tasks.map(renderThreadLine),
         ].join("\n");
       }
@@ -2735,9 +2745,10 @@ async function runHistory(
 
   let responseText = "";
   if (metric === "count") {
-    responseText = `I found ${count} active ACP session${count === 1 ? "" : "s"}.`;
+    responseText = `Active ACP session count: ${count}. Report the count to the user in your own words.`;
   } else if (sessions.length === 0) {
-    responseText = "I did not find any active ACP task-agent sessions.";
+    responseText =
+      "No active ACP task-agent sessions found. Tell the user in your own words; do not quote this line.";
   } else if (metric === "detail" && sessions[0]) {
     const session = sessions[0];
     responseText = [
@@ -2750,7 +2761,7 @@ async function runHistory(
       .join("\n");
   } else {
     responseText = [
-      `I found ${count} active ACP session${count === 1 ? "" : "s"}.`,
+      `Active ACP sessions (${count}). Summarize for the user in your own words; do not quote these lines.`,
       ...sessions.map(
         (session) =>
           `- ${labelFor(session)} [${session.status}] (${dateString(session.lastActivityAt)}): ${session.agentType} in ${session.workdir}`,
