@@ -134,6 +134,16 @@ describe("replyClaimsCompletedSideEffect", () => {
 				"Your study schedule is now set up — three blocks before Thursday.",
 			),
 		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect(
+				'i\'ve created the sticky note "Receipt QA August 1" with content "durable action verified".',
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"I've created the calendar event for Friday.",
+			),
+		).toBe(true);
 	});
 
 	it("does not flag descriptions of existing scheduled state", () => {
