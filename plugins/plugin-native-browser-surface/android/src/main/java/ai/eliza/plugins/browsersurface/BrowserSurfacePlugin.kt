@@ -64,8 +64,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 call.resolve()
                 return@runOnUiThread
             }
-            val host = bridge.webView.parent as? FrameLayout ?: run {
-                call.reject("host webview has no FrameLayout parent to attach the surface to")
+            val host = findNearestFrameLayoutAncestor(bridge.webView) ?: run {
+                call.reject("host webview has no FrameLayout ancestor to attach the surface to")
                 return@runOnUiThread
             }
 
@@ -242,4 +242,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             call.resolve(result)
         }
     }
+}
+
+internal fun findNearestFrameLayoutAncestor(view: View): FrameLayout? {
+    var current = view.parent
+    while (current is View) {
+        if (current is FrameLayout) return current
+        current = current.parent
+    }
+    return null
 }
