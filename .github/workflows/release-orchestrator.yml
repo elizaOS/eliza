@@ -105,7 +105,6 @@ jobs:
       pypi: true
       snap: true
       flatpak: true
-      apt: true
     secrets: inherit
 
   publish-android:

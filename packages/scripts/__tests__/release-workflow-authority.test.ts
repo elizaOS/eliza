@@ -29,7 +29,6 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
-  permissions?: Record<string, string>;
   steps?: WorkflowStep[];
   uses?: string;
   with?: Record<string, boolean | string>;
@@ -38,7 +37,6 @@ interface WorkflowJob {
 interface Workflow {
   jobs?: Record<string, WorkflowJob>;
   on?: WorkflowTriggers;
-  permissions?: Record<string, string>;
 }
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -89,19 +87,6 @@ function localReusableCalls(workflow: Workflow): string[] {
     .sort();
 }
 
-function requestedWritePermissions(workflow: Workflow): Set<string> {
-  const permissions = new Set<string>();
-  for (const [name, access] of Object.entries(workflow.permissions ?? {})) {
-    if (access === "write") permissions.add(name);
-  }
-  for (const job of Object.values(workflow.jobs ?? {})) {
-    for (const [name, access] of Object.entries(job.permissions ?? {})) {
-      if (access === "write") permissions.add(name);
-    }
-  }
-  return permissions;
-}
-
 describe("release workflow authority", () => {
   test("only proven dead competing entry points stay absent", () => {
     for (const workflow of retiredWorkflows) {
@@ -123,7 +108,6 @@ describe("release workflow authority", () => {
     const packageJob = orchestrator.jobs?.["publish-packages"];
     expect(packageJob?.uses).toBe("./.github/workflows/publish-packages.yml");
     expect(packageJob?.with).toMatchObject({
-      apt: true,
       pypi: true,
       snap: true,
     });
@@ -131,13 +115,12 @@ describe("release workflow authority", () => {
     const packageWorkflow = parseWorkflow("publish-packages.yml");
     expect(
       Object.keys(packageWorkflow.on?.workflow_call?.secrets ?? {}).sort(),
-    ).toEqual(["APT_REPO_TOKEN", "PYPI_API_TOKEN", "SNAP_STORE_CREDENTIALS"]);
+    ).toEqual(["PYPI_API_TOKEN", "SNAP_STORE_CREDENTIALS"]);
 
     const standaloneSnap = parseWorkflow("snap-publish.yml");
     expect(
       Object.keys(standaloneSnap.on?.workflow_call?.secrets ?? {}),
     ).toEqual(["SNAPCRAFT_STORE_CREDENTIALS"]);
-
   });
 
   test("workflow and OS documentation do not route to retired authorities", () => {

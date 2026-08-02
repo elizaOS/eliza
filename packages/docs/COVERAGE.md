@@ -6,7 +6,7 @@ This file maps every package under `packages/` to its docs-site coverage. Mainta
 
 | Package                          | Dimension | Primary doc surface                                                  |
 | -------------------------------- | --------- | -------------------------------------------------------------------- |
-| `packages/os/`                   | OS        | `tracks/elizaos/{overview,linux,aosp,install}.mdx`                   |
+| [`elizaOS/os`](https://github.com/elizaOS/os) | OS | `tracks/elizaos/{overview,linux,aosp,install}.mdx` |
 | `packages/core/`                 | Runtime   | `runtime/*.mdx`, `tracks/framework/*.mdx`                            |
 | `packages/agent/`                | Runtime   | `tracks/agent/*.mdx`, `agents/*.mdx`                                 |
 | `packages/elizaos/` (CLI)        | Runtime   | `cli/{overview,create-project,create-plugin}.mdx`                    |
@@ -18,7 +18,7 @@ This file maps every package under `packages/` to its docs-site coverage. Mainta
 | `packages/app-core/`             | App       | `tracks/agent-app/*.mdx`, `apps/dashboard/*`, `guides/first-run-*`  |
 | `packages/ui/`                   | App       | `apps/ui-library.md`                                                 |
 | `packages/homepage/`             | App       | (marketing site; no in-docs coverage by design)                      |
-| `packages/os/homepage/`          | App       | (marketing site; no in-docs coverage by design)                      |
+| [`elizaOS/os/packages/os/homepage`](https://github.com/elizaOS/os/tree/develop/packages/os/homepage) | App | (marketing site; no in-docs coverage by design) |
 | `packages/cloud/api/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |
 | `packages/cloud-frontend/`       | Cloud     | `tracks/cloud/overview.mdx`, `guides/cloud.md`                       |
 | `packages/cloud/sdk/`            | Cloud     | `tracks/cloud/*.mdx`                                                 |

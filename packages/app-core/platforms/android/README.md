@@ -275,9 +275,11 @@ usage stats, MediaProjection/SurfaceControl screen capture, Accessibility
 input control, and the AOSP-only accessibility and notification-listener
 service declarations.
 
-The release APK is staged at
-`<repoRoot>/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk` (or
-the brand-aware vendor dir resolved from `app.config.ts > aosp:`).
+The release APK is staged into the `elizaOS/os` checkout at
+`$ELIZAOS_OS_REPO_ROOT/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk`
+(or the brand-aware vendor dir resolved from `app.config.ts > aosp:`). When the
+environment variable is unset, the build uses a sibling `../os` checkout.
+
 ## Pinned debug signing key
 
 Debug APKs use one repository-managed, non-production signing key so `adb install -r` works across CI and local rebuilds. Debug keystores are public development credentials, not release secrets. The release signing path remains separate and secret-backed.
