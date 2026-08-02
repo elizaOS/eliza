@@ -995,7 +995,6 @@ export function isConnectorConfigured(
   return Boolean(config.enabled === true);
 }
 
-
 export const ContentType = {
   IMAGE: "image",
   VIDEO: "video",
