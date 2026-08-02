@@ -146,6 +146,8 @@ export const OCR_RELIABLE_CONFIDENCE_FLOOR = 0.45;
 export interface EvaluateArgs {
   ocr: OcrResult;
   expectation?: OcrExpectation;
+  /** Durable reason this capture cannot certify the owning view's semantics. */
+  semanticExemptionReason?: string;
   /** TUI terminals and native/canvas overlays legitimately OCR to little/no text. */
   exemptFromBlank?: boolean;
 }
@@ -153,6 +155,7 @@ export interface EvaluateArgs {
 export function evaluateOcrContent({
   ocr,
   expectation,
+  semanticExemptionReason,
   exemptFromBlank = false,
 }: EvaluateArgs): OcrContentFinding {
   const reasons: string[] = [];
@@ -242,6 +245,9 @@ export function evaluateOcrContent({
     forbiddenPresent.length > 0
   ) {
     verdict = "needs-eyeball";
+  } else if (semanticExemptionReason) {
+    verdict = "needs-eyeball";
+    reasons.push(`semantic OCR exemption — ${semanticExemptionReason}`);
   } else if (
     expectation &&
     (expectation.requireAll?.length || expectation.requireAny?.length)

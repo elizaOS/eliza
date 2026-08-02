@@ -94,6 +94,8 @@ describe("Launcher", () => {
     expect(page.className).toContain("scroll-fade-t-[3.5rem]");
     expect(page.className).toContain("[--scroll-fade-reveal:1px]");
     expect(page.className).toContain("scroll-fade-b-");
+    expect(page.className).toContain("mb-[calc(");
+    expect(page.className).toContain("--eliza-chat-clearance");
     const grid = page.querySelector(".grid");
     expect(grid?.className).toContain("grid-cols-3");
     expect(grid?.className).toContain("min-[360px]:grid-cols-4");
@@ -148,6 +150,7 @@ describe("Launcher", () => {
     expect(page.className).toContain("overflow-visible");
     expect(page.className).not.toContain("overflow-y-auto");
     expect(page.className).not.toContain("scroll-fade");
+    expect(page.className).not.toContain("mb-[calc(");
     expect(screen.getByTestId("launcher").className).not.toContain("flex-1");
   });
 

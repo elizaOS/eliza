@@ -22,6 +22,11 @@ import {
   resolveAuditStrictFlags,
 } from "./aesthetic-audit-rules";
 import {
+  type AuditViewCase,
+  BUILTIN_TAB_PATHS,
+  buildAuditViewCases,
+} from "./aesthetic-audit-view-cases";
+import {
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -35,7 +40,6 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
-import { VIEW_CASES } from "./plugin-view-cases";
 import { VIEW_ROUTES } from "./view-routes";
 
 // Strict-gate config (#9304, #10710). The audit was a pure reporter — `broken` /
@@ -109,84 +113,12 @@ const MINIMALISM_BASELINE = parseMinimalismBaseline(
  * `plugin-view-cases.ts` — the union so no view is silently omitted.
  */
 
-// The canonical built-in route table (mirrors @elizaos/ui navigation TAB_PATHS;
-// inlined to avoid importing the UI bundle into the Playwright runner).
-// Full built-in coverage (#8796): mirrors @elizaos/ui navigation TAB_PATHS so the
-// audit walks EVERY built-in view, not a subset. The `builtin coverage matches
-// navigation TAB_PATHS` guard test below fails if this drifts from navigation.
-const BUILTIN_TAB_PATHS: Record<string, string> = {
-  chat: "/chat",
-  phone: "/phone",
-  messages: "/messages",
-  contacts: "/contacts",
-  camera: "/camera",
-  tasks: "/apps/tasks",
-  browser: "/browser",
-  stream: "/stream",
-  "pendant-transcript": "/pendant/transcript",
-  apps: "/apps",
-  views: "/views",
-  character: "/character",
-  "character-select": "/character/select",
-  automations: "/automations",
-  inventory: "/wallet",
-  documents: "/character/documents",
-  "character-skills": "/character/skills",
-  experience: "/character/experience",
-  files: "/apps/files",
-  plugins: "/apps/plugins",
-  skills: "/apps/skills",
-  "fine-tuning": "/apps/fine-tuning",
-  trajectories: "/apps/trajectories",
-  transcripts: "/apps/transcripts",
-  relationships: "/apps/relationships",
-  memories: "/apps/memories",
-  rolodex: "/rolodex",
-  runtime: "/apps/runtime",
-  database: "/apps/database",
-  desktop: "/desktop",
-  settings: "/settings",
-  logs: "/apps/logs",
-  background: "/background",
-};
-
 // ── navigation TAB_PATHS coverage guard (#8796) ──────────────────────────────
 // Parse the canonical TAB_PATHS straight from the @elizaos/ui navigation source
 // (no UI-bundle import) so the guard reads the real table, not a stale copy.
 const NAV_INDEX_PATH = fileURLToPath(
   new URL("../../../ui/src/navigation/index.ts", import.meta.url),
 );
-
-interface AuditCase {
-  id: string;
-  slug: string;
-  path: string;
-  viewType: "gui" | "tui";
-  kind: "builtin" | "plugin";
-}
-
-function buildAuditCases(): AuditCase[] {
-  const cases: AuditCase[] = [];
-  for (const [id, viewPath] of Object.entries(BUILTIN_TAB_PATHS)) {
-    cases.push({
-      id,
-      slug: `builtin-${id}`,
-      path: viewPath,
-      viewType: "gui",
-      kind: "builtin",
-    });
-  }
-  for (const view of VIEW_CASES) {
-    cases.push({
-      id: view.id,
-      slug: `plugin-${view.id}-${view.viewType}`,
-      path: view.path,
-      viewType: view.viewType,
-      kind: "plugin",
-    });
-  }
-  return cases;
-}
 
 // {desktop,mobile} × {landscape,portrait}. "desktop" (landscape) and "mobile"
 // (portrait) keep their original names so existing AESTHETIC_VERDICT_DEBT keys
@@ -1177,7 +1109,7 @@ interface RemoteBundleAuditProof {
 
 async function forceRemoteBundleAuditRoute(
   page: Page,
-  view: AuditCase,
+  view: AuditViewCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
   const registryResponse = await page.request.get("/api/views");
@@ -1328,7 +1260,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).rejects.toThrow(/strict mode violation/);
   });
 
-  for (const view of buildAuditCases()) {
+  for (const view of buildAuditViewCases()) {
     for (const vp of VIEWPORTS) {
       test(`${view.slug} ${vp.name}`, async ({ page }) => {
         const reviewDir = path.join(outputDir, "manual-review");
