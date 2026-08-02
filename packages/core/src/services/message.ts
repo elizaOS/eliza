@@ -8944,35 +8944,29 @@ function hasExplicitReplyIntent(
 }
 
 /**
+ * Race-keep policy for a finished response that a newer same-room message
+ * superseded mid-generation. Returns the human-readable keep reason, or null
+ * when the response should be discarded. Kept only when the planner
+ * deliberately chose to converse (explicit REPLY/RESPOND): every deliverable
+ * response constructor in this pipeline sets `actions:["REPLY"]`, so this is
+ * the complete keep set — a discard is always a non-deliverable shape, and it
+ * ends the run with the observable "replaced" terminal instead of vanishing.
+ */
+export function resolveSupersededResponseKeepReason(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): string | null {
+	if (hasExplicitReplyIntent(responseContent)) {
+		return "explicit REPLY for an addressed message";
+	}
+	return null;
+}
+
+/**
  * Gate for the metadata-rescue path that promotes a passive (REPLY/NONE)
  * response to a privileged action based on keyword overlap. Run only when
  * the planner produced no real action AND no explicit REPLY — i.e. when
  * we genuinely have nothing to say.
  */
-/**
- * Race-keep policy for a finished response that a newer same-room message
- * superseded mid-generation. Returns the human-readable keep reason, or null
- * when the response should be discarded. Kept when the planner deliberately
- * chose to converse (explicit REPLY/RESPOND) — the long-standing exception —
- * or when the turn deterministically addressed the agent even without a REPLY
- * action (action-mode turns finish without REPLY in their actions list; on a
- * slow backend an addressed turn that overlaps the next inbound message must
- * not be silently dropped). `isAddressedTurn` is a thunk so the deterministic
- * shouldRespond evaluation only runs when the REPLY fast-path did not decide.
- */
-export function resolveSupersededResponseKeepReason(
-	responseContent: Pick<Content, "actions"> | null | undefined,
-	isAddressedTurn: () => boolean,
-): string | null {
-	if (hasExplicitReplyIntent(responseContent)) {
-		return "explicit REPLY for an addressed message";
-	}
-	if (responseContent && isAddressedTurn()) {
-		return "deterministically addressed turn";
-	}
-	return null;
-}
-
 export function shouldRunMetadataActionRescue(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -11411,18 +11405,7 @@ export class DefaultMessageService implements IMessageService {
 			// keeping the older response never double-replies to either message.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				const keepReason = resolveSupersededResponseKeepReason(
-					responseContent,
-					() =>
-						this.isDeterministicallyAddressedTurn({
-							runtime,
-							message,
-							room,
-							mentionContext,
-							isAutonomous,
-							hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
-						}).addressed,
-				);
+				const keepReason = resolveSupersededResponseKeepReason(responseContent);
 				if (keepReason) {
 					runtime.logger.info(
 						{

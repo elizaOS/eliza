@@ -311,7 +311,12 @@ export interface RecordedTrajectoryMetrics {
 	toolCallFailures: number;
 	toolSearchCount: number;
 	evaluatorFailures: number;
-	finalDecision?: "FINISH" | "CONTINUE" | "max_iterations" | "error";
+	finalDecision?:
+		| "FINISH"
+		| "CONTINUE"
+		| "max_iterations"
+		| "error"
+		| "terminal:finished";
 }
 
 export interface RecordedTrajectory {
@@ -1321,9 +1326,12 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		// evaluation stage, so nothing above ever set finalDecision. Stamp the
 		// clean terminal here — an absent finalDecision on a finished
 		// trajectory reads as "died mid-turn" and made delivered turns look
-		// like drops.
+		// like drops. Distinct sentinel (not "FINISH"): non-turn trajectories
+		// (goal verifier, discarded turns) must not acquire a fabricated
+		// planner decision — analytics can still distinguish "an evaluator
+		// decided FINISH" from "the run ended cleanly without an evaluator".
 		if (status === "finished" && !trajectory.metrics.finalDecision) {
-			trajectory.metrics.finalDecision = "FINISH";
+			trajectory.metrics.finalDecision = "terminal:finished";
 		}
 
 		try {

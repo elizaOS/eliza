@@ -1730,6 +1730,10 @@ export class SwarmCoordinatorService
       try {
         return await acp.sendPrompt(sessionId, prompt);
       } catch (err) {
+        // error-policy:J2 context-preserving retry boundary — only the
+        // transient busy classification retries within the deadline; every
+        // other error (and deadline expiry) rethrows unchanged into the
+        // caller's escalation path, which is the designed J1 boundary.
         if (isSessionBusyError(err) && Date.now() < deadline) {
           await delay(RETRY_PROMPT_BUSY_POLL_MS);
           continue;
