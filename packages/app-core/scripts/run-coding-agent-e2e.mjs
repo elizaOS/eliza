@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for run coding agent e2e mjs. */
+/**
+ * Runs the focused coding-agent live E2E suite: verifies the required
+ * plugin-task-coordinator live test files exist, then executes them with
+ * ELIZA_LIVE_TEST=1 via run-with-env.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -33,7 +37,7 @@ const result = spawnSync(
     "vitest",
     "run",
     "--config",
-    "eliza/packages/test/vitest/live-e2e.config.ts",
+    "eliza/packages/scripts/vitest/live-e2e.config.ts",
     ...requiredTests,
   ],
   {

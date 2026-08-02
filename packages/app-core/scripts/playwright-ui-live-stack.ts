@@ -1,4 +1,10 @@
-/** Supports app-core build, packaging, or development orchestration for playwright ui live stack ts. */
+/**
+ * Boots the real API + Vite renderer stack for live Playwright UI runs: selects
+ * a live model provider, seeds first-run config, rebuilds the renderer when
+ * stale, proxies HTTP/WebSocket traffic through a local server, and builds
+ * optional live-stack plugins. The live counterpart of
+ * playwright-ui-smoke-api-stub.mjs.
+ */
 import {
   type ChildProcessWithoutNullStreams,
   execFileSync,
@@ -1201,7 +1207,8 @@ async function startRealStack(): Promise<StartedStack> {
       "node",
       [
         path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
-        path.join(REPO_ROOT, "packages/app-core/src/runtime/eliza.ts"),
+        path.join(REPO_ROOT, "packages/app-core/src/entry.ts"),
+        "start",
       ],
       {
         cwd: REPO_ROOT,

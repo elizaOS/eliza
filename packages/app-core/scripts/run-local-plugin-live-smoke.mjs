@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for run local plugin live smoke mjs. */
+/**
+ * Runs the plugin-lifecycle live E2E against the local plugin the caller's cwd
+ * points at: checks plugins.json membership and that prerequisite runtime
+ * packages are built, then invokes vitest with the live-e2e config.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,7 +22,7 @@ const liveTestPath = path.join(
 );
 const vitestConfigPath = path.join(
   repoRoot,
-  "eliza/packages/test/vitest/live-e2e.config.ts",
+  "eliza/packages/scripts/vitest/live-e2e.config.ts",
 );
 const runtimePackageBuildPrerequisites = [
   {
@@ -226,7 +230,7 @@ const result = spawnSync(
     "vitest",
     "run",
     "--config",
-    "eliza/packages/test/vitest/live-e2e.config.ts",
+    "eliza/packages/scripts/vitest/live-e2e.config.ts",
     "eliza/packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
   ],
   {

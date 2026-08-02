@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for setup upstreams mjs. */
+/**
+ * Initializes repo-local upstream checkouts: clones the elizaOS repo when
+ * missing, links workspace packages, and runs the upstream build steps (e.g.
+ * @elizaos/core proto generation) needed before typecheck/tests. Skippable via
+ * ELIZA_SKIP_LOCAL_UPSTREAMS.
+ */
 
 import { spawn, spawnSync } from "node:child_process";
 import {

@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for playwright ui smoke api stub mjs. */
+/**
+ * Deterministic API stand-in for UI-smoke Playwright runs: serves the dashboard
+ * HTTP/WebSocket surface with canned data and real, provenance-tagged view
+ * bundles where they exist; audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1)
+ * turns a missing real bundle into a 424 instead of synthesizing one.
+ */
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -1957,7 +1962,7 @@ function createDemoOrchestratorState() {
     latestSessionId: "session-codex",
     latestSessionLabel: "Codex Builder",
     latestWorkdir: "/tmp/orchestrator-kanban",
-    latestRepo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+    latestRepo: "/workspaces/eliza",
     latestActivityAt: startedAtMs,
     createdAt: startedAt,
     updatedAt: startedAt,
@@ -2012,7 +2017,7 @@ function createDemoOrchestratorState() {
         originalTask:
           "Generate the planner shell and persist card movement locally.",
         workdir: "/tmp/orchestrator-kanban",
-        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        repo: "/workspaces/eliza",
         activeTool: "write",
         decisionCount: 0,
         autoResolvedCount: 0,
@@ -2047,7 +2052,7 @@ function createDemoOrchestratorState() {
         originalTask:
           "Review the planner visual affordances and interaction model.",
         workdir: "/tmp/orchestrator-kanban",
-        repo: "/home/nubs/Git/iqlabs/eliza-labs/eliza",
+        repo: "/workspaces/eliza",
         activeTool: "review",
         decisionCount: 0,
         autoResolvedCount: 0,

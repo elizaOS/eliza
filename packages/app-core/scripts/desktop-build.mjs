@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for desktop build mjs. */
+/**
+ * Drives the Electrobun desktop build for a selected app (--app=<name>): runs
+ * preflight checks (Bun version, electrobun view export), verifies the renderer
+ * was rebuilt, applies the optional-pack build profile, and invokes the
+ * Electrobun packaging pipeline.
+ */
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

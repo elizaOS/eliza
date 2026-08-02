@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for run biome check mjs. */
+/**
+ * Runs Biome over the curated app-core roots (package.json, scripts, test,
+ * apps, eliza, ...), walking directories itself to build the file list while
+ * excluding known Biome-crasher files.
+ */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";

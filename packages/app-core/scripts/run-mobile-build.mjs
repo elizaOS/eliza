@@ -101,6 +101,7 @@ import {
   formatMobileWebDistProblems,
   mobileWebDistReuseStatus,
 } from "./lib/mobile-web-build-reuse.mjs";
+import { normalizeCapacitorSettingsFile } from "./lib/portable-capacitor-settings.mjs";
 import {
   assertStagedRendererMatchesBuild,
   overlayFreshRendererIntoPublic,
@@ -6946,6 +6947,9 @@ export async function runAndroidBuild(
   await ensurePlatform("android");
   await ensureRendererDistMatchesLane(target.webTarget);
   await runCapacitor(["sync", "android"]);
+  normalizeCapacitorSettingsFile(
+    path.join(androidDir, "capacitor.settings.gradle"),
+  );
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
 

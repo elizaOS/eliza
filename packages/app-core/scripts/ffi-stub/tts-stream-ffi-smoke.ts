@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
-/** Supports app-core build, packaging, or development orchestration for tts stream ffi smoke ts. */
+/**
+ * Smoke-drives the local-inference streaming TTS FFI bindings: synthesizes
+ * speech through loadElizaInferenceFfi with configurable chunking flags and
+ * writes the streamed audio artifact for manual listening.
+ */
 import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";

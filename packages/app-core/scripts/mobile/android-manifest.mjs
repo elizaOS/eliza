@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for android manifest mjs. */
+/**
+ * Regex-level AndroidManifest.xml surgery used by the mobile build overlays:
+ * idempotently appends manifest/application blocks and strips
+ * activity/service/receiver components by name or class.
+ */
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

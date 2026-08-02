@@ -1,5 +1,10 @@
 #!/usr/bin/env -S node --import tsx
-/** Supports app-core build, packaging, or development orchestration for copy runtime node modules ts. */
+/**
+ * Copies the runtime dependency closure into a dist/node_modules tree for
+ * packaged builds: walks package.json dependency graphs from the scan dir,
+ * resolves each package's real source, honors per-package os/cpu/libc platform
+ * manifests, and locks the target dir while copying.
+ */
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";

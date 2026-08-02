@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for write homepage release data mjs. */
+/**
+ * Regenerates the homepage's generated release-data.ts from the GitHub releases
+ * of elizaos/eliza and elizaOS/os: resolves per-platform download artifacts, OS
+ * image manifest entries, and install-script URLs for the download surface.
+ */
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";

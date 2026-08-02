@@ -1,5 +1,10 @@
 #!/usr/bin/env -S node --import tsx
-/** Supports app-core build, packaging, or development orchestration for release check ts. */
+/**
+ * Release gate for the packaged app-core artifact: asserts required dist files
+ * exist, runs an `npm pack` dry-run (skippable via the pack-dry-run policy) to
+ * check the file list against forbidden prefixes, validates the static asset
+ * manifest, and audits Apple Store entitlements.
+ */
 
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";

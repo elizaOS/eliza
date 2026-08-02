@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
-/** Supports app-core build, packaging, or development orchestration for asr ffi smoke ts. */
+/**
+ * Smoke-drives the local-inference ASR FFI bindings end to end: decodes a PCM16
+ * mono WAV, runs it through loadElizaInferenceFfi transcription, and writes the
+ * transcript artifact for manual review.
+ */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 

@@ -1,6 +1,6 @@
 /**
  * Hand-maintained declarations for repo-root.mjs so TypeScript consumers
- * (e.g. packages/test/vitest/repo-root.ts) resolve real types instead of
+ * (e.g. packages/scripts/vitest/repo-root.ts) resolve real types instead of
  * implicit any. Keep in sync with the .mjs exports.
  */
 export declare function resolveRepoRoot(startDir?: string): string;

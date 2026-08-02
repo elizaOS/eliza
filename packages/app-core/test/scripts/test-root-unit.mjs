@@ -1,4 +1,8 @@
-/** Supports app-core build, packaging, or development orchestration for test root unit mjs. */
+/**
+ * Collects plain unit tests (*.test.ts(x), excluding live/real/integration/e2e
+ * variants) from the root surfaces and runs them under the managed test-command
+ * lock.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -110,7 +114,6 @@ const workspaceTestFiles = collectTestFiles(
   "src",
   "scripts",
   "apps/chrome-extension",
-  "eliza/test/helpers",
 );
 
 const unitShards = [
@@ -156,7 +159,7 @@ for (const shard of unitShards) {
       "./node_modules/.bin/vitest",
       "run",
       "--config",
-      "eliza/packages/test/vitest/default.config.ts",
+      "eliza/packages/scripts/vitest/default.config.ts",
       "--reporter=dot",
       ...shard.patterns,
     ],

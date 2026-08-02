@@ -1,4 +1,9 @@
-/** Supports app-core build, packaging, or development orchestration for audit live test surface mjs. */
+/**
+ * Audits app-core test surfaces for real-path coverage: walks the tree, flags
+ * roots that lack *.live.* / *.real.* tests or lean on the UI-smoke API stub
+ * and mock fixtures, and reports human-readable or --json (non-zero with
+ * --fail-on-violations).
+ */
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";

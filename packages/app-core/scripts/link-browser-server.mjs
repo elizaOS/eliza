@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for link browser server mjs. */
 import { execFileSync, execSync } from "node:child_process";
 /**
  * Post-install setup for @elizaos/plugin-browser:

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for relink workspace packages to dist mjs. */
+/**
+ * Re-points node_modules symlinks for the named workspace packages at their
+ * built dist trees so consumers resolve compiled output instead of raw
+ * workspace source; fails when a package has no compiled dist/package.json.
+ */
 
 import {
   existsSync,
