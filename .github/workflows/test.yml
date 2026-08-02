@@ -346,7 +346,7 @@ jobs:
 
       - name: Run plugin tests
         # Cap step below the 95m job budget so a flaky plugin
-        # (most recently plugin-shell rust PTY tests in run 25234887145)
+        # (most recently shell rust PTY tests in run 25234887145)
         # fails fast instead of burning the whole job's wall clock.
         timeout-minutes: 85
         run: bun run test:plugins

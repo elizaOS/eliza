@@ -271,46 +271,6 @@ paths = [
   '''(^|/)packages/cloud-frontend/public/(\.well-known/)*llms(-full)?\.txt$''',
 ]
 
-# Benchmark/eval suite fixture DATA (not source). configbench, claw-eval,
-# loca-bench, qwen-claw-bench, nl2repo, openclaw, etc. ship synthetic
-# config/credential data by design — several scenarios specifically exercise
-# secret/config handling, so their JSON/env/yaml fixtures carry fake
-# api_key/token/password values. These are committed test data, not real
-# secrets. Scoped to fixture/data directories under packages/benchmarks; the
-# benchmark *source* (.ts) is still scanned.
-[[allowlists]]
-description = "Benchmark suite fixture data dirs (synthetic test credentials)"
-paths = [
-  '''(^|/)packages/benchmarks/.*/(fixtures|config|configs|data|assets|task-configs|task_configs|test_files|envs|gem)/.*\.(json|env|ya?ml|md|txt|csv)$''',
-]
-
-# The generic-api-key rule treats Python's `max_tokens=<attribute>` argument
-# assignment as a credential pair. Both identifiers configure output length;
-# constrain the exception to the exact assignment in the MMLU runner factory.
-[[allowlists]]
-description = "MMLU max-token runner arguments (program identifiers, not credentials)"
-condition = "AND"
-paths = [
-  '''(^|/)packages/benchmarks/standard/mmlu\.py$''',
-]
-regexTarget = "line"
-regexes = [
-  '''max_tokens=args\.max_tokens,\s*include_edge_scenarios=args\.expand_scenarios''',
-]
-
-# This is the literal name of a benchmark publication warning asserted by the
-# snapshot test. It describes estimated token accounting and contains no value.
-[[allowlists]]
-description = "Benchmark estimated-token publication warning identifier"
-condition = "AND"
-paths = [
-  '''(^|/)packages/benchmarks/orchestrator/tests/test_latest_snapshots\.py$''',
-]
-regexTarget = "line"
-regexes = [
-  '''estimated_token_metrics:prompt_chars_div_4''',
-]
-
 # eliza-1 smoke SFT corpus (~400 rows) is INTENTIONALLY tracked (see the
 # `!data/final-eliza1-smoke/**` re-includes in packages/training/.gitignore) so the
 # e2e SFT pipeline can be smoke-tested from a fresh clone. Its synthetic/captured

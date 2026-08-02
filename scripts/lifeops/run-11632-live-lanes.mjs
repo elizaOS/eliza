@@ -140,7 +140,7 @@ const LANES = [
     n: 2,
     pathId: "google.oauth-owner",
     env: { TEST_LANE: "post-merge", ELIZA_LIVE_TEST: "1" },
-    command: ["bun", "run", "--cwd", "plugins/plugin-google", "test"],
+    command: ["bun", "run", "--cwd", "plugins/plugin-google-workspace", "test"],
     logPath: () => join(STATUS_DIR, "plugin-google-live.txt"),
   },
   {
