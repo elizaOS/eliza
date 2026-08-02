@@ -405,7 +405,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
     );
 
     execFileSync(
-      process.execPath,
+      "node",
       [
         "--import",
         tsxLoader,
