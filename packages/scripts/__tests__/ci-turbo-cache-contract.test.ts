@@ -310,6 +310,8 @@ describe("ci-turbo-cache-contract", () => {
     )?.[0];
     expect(typecheckJob).toMatch(/cache-bun-install:\s*["']false["']/);
     expect(buildJob).toMatch(/cache-bun-install:\s*["']false["']/);
+    // 45m ceiling is deliberate: quality-fork.yml documents the measured cold
+    // build+homepage worst case that the old 32m ceiling kept cancelling.
     expect(buildJob).toMatch(/timeout-minutes:\s*45/);
     expect(buildJob).toMatch(/run:\s*bun run build/);
     expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
