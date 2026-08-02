@@ -106,7 +106,7 @@ jobs:
           TEST_LANE: post-merge
         run: |
           set -euo pipefail
-          bun run --cwd plugins/plugin-google test \
+          bun run --cwd plugins/plugin-google-workspace test \
             2>&1 | tee "$LIFEOPS_EVIDENCE_DIR/plugin-google-live.txt"
 
       - name: Run X live connector suite

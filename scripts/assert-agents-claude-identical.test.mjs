@@ -23,11 +23,5 @@ describe("assert-agents-claude-identical guide filtering", () => {
       ),
       false,
     );
-    assert.equal(
-      shouldCheckGuideFile(
-        "packages/benchmarks/openclaw-benchmark/.archived/opencode_setup/AGENTS.md",
-      ),
-      false,
-    );
   });
 });

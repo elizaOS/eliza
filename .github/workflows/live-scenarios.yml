@@ -279,7 +279,7 @@ jobs:
             plugins/plugin-calendly
             plugins/plugin-discord
             plugins/plugin-elizacloud
-            plugins/plugin-google
+            plugins/plugin-google-workspace
             plugins/plugin-phone
             plugins/plugin-remote-desktop
             plugins/plugin-x

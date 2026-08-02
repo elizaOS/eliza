@@ -107,7 +107,7 @@ The runtime is **model-agnostic** (OpenAI, Anthropic, Gemini, Grok, Llama, local
 - **`@elizaos/app-core`** ([packages/app-core](packages/app-core)) — the API + dashboard host that runs agents.
 - **`elizaos`** ([packages/elizaos](packages/elizaos)) — the CLI: `create`, `info`, `upgrade`.
 
-A **plugin** exports a `Plugin` that registers **actions** (what the agent does), **providers** (prompt context), **services** (long-lived singletons), and **evaluators** (post-response work). Import `@elizaos/core` directly to use the runtime with no CLI or UI — see [`packages/examples`](packages/examples) and the evaluation suites in [`packages/benchmarks`](packages/benchmarks). Full guides: **[docs.elizaos.ai](https://docs.elizaos.ai/)**.
+A **plugin** exports a `Plugin` that registers **actions** (what the agent does), **providers** (prompt context), **services** (long-lived singletons), and **evaluators** (post-response work). Import `@elizaos/core` directly to use the runtime with no CLI or UI — see [`packages/examples`](packages/examples) and the evaluation suites in [elizaOS/benchmarks](https://github.com/elizaOS/benchmarks). Full guides: **[docs.elizaos.ai](https://docs.elizaos.ai/)**.
 
 ## Working in the monorepo
 

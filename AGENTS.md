@@ -107,8 +107,8 @@ locking and linear probing so active lanes do not collide. See
 | `bun run test:lint:test-integrity` | `bun run audit:test-integrity` |
 | `bun run test:lint:test-integrity:self-test` | `bun run audit:test-integrity:self-test` |
 | `bun run verify:smartglasses-software` | `bun run audit:smartglasses-software` |
-| `bun run personality:judge` | `bun run bench:personality` |
-| `bun run personality:bench:calibrate` | `bun run bench:personality:calibrate` |
+| `bun run personality:judge` | moved to https://github.com/elizaOS/benchmarks |
+| `bun run personality:bench:calibrate` | moved to https://github.com/elizaOS/benchmarks |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
 | `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
@@ -142,7 +142,6 @@ packages/        framework, shared libraries, and product surfaces
                  remote plugin manifests, host shims, and worker runtime support
   homepage/ docs/  marketing site and docs site
   examples/      30+ standalone runnable examples (each has its own README)
-  benchmarks/    30+ evaluation suites (each has its own README + harness)
 
 plugins/         runtime plugins and app plugins
   plugin-<model>/      openai, anthropic, google-genai, groq, openrouter, xai, ollama, …

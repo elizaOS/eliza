@@ -14,7 +14,6 @@ const EXCLUDED_PREFIXES = [
   RETIRED_REPO_EVIDENCE_PREFIX,
   "docs/",
   "packages/app-core/",
-  "packages/benchmarks/",
   "packages/cloud/",
   "packages/docs/apps/",
   "packages/docs/build-and-release.md",
