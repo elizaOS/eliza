@@ -249,6 +249,29 @@ describe("free-rest release bands + detent magnetism (matrix: FREE / slow drag r
     expect(variant()).toBe("closed");
   });
 
+  it("keeps a short canceled preview mounted until its return spring reaches INPUT", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const g = grabber();
+    fireEvent.pointerDown(g, { clientY: 760, pointerId: 46 });
+    fireEvent.pointerMove(g, { clientY: 710, pointerId: 46 });
+    await frame();
+    await waitFor(() =>
+      expect(screen.queryByTestId("chat-thread")).toBeTruthy(),
+    );
+
+    fireEvent.pointerCancel(g, { clientY: 710, pointerId: 46 });
+
+    // Pointer termination must not remove the moving body. The return spring
+    // remains visible, then the collapsed-state listener unmounts it at rest.
+    expect(thread()).toBeTruthy();
+    await waitFor(
+      () => expect(screen.queryByTestId("chat-thread")).toBeNull(),
+      {
+        timeout: 4000,
+      },
+    );
+  });
+
   it("snaps to FULL when released within 64px of the top", async () => {
     render(<ChatOverlay controller={makeController()} />);
     // 640 travel lands in the full magnet band (≥ 632) without crossing the
