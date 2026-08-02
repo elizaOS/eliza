@@ -94,7 +94,10 @@ const pluginGitpathologistSrc = path.join(
   monorepoRoot,
   "plugins/plugin-gitpathologist/src",
 );
-const pluginGoogleSrc = path.join(monorepoRoot, "plugins/plugin-google-workspace/src");
+const pluginGoogleSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-google-workspace/src",
+);
 const pluginPtyRoot = path.join(monorepoRoot, "plugins/plugin-pty");
 const pluginVisionSrc = path.join(monorepoRoot, "plugins/plugin-vision/src");
 const pluginWorkflowSrc = path.join(
@@ -256,6 +259,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/core$/,
         replacement: path.join(coreSrc, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/atomic-json$/,
+        replacement: path.join(coreSrc, "utils/atomic-json.ts"),
       },
       { find: /^@elizaos\/core\/(.+)$/, replacement: path.join(coreSrc, "$1") },
       {

@@ -42,6 +42,40 @@ export default defineConfig({
         ),
       },
       {
+        // main.tsx imports "@elizaos/ui/styles"; the ui package otherwise
+        // resolves to its built dist, whose externalized styles.js makes Node
+        // load raw .css. Aliasing to source keeps the stylesheet inside vite's
+        // pipeline, where the test css handling stubs it.
+        find: /^@elizaos\/ui\/styles$/,
+        replacement: path.join(here, "../ui/src/styles.ts"),
+      },
+      {
+        // Dev-gated ui platform helpers (e.g. onboarding-replay) read
+        // `import.meta.env.DEV`, which only exists when the module runs through
+        // vite's pipeline. Resolve ui subpath imports from source so the suite
+        // exercises the same dev semantics the renderer build ships.
+        find: /^@elizaos\/ui\/api$/,
+        replacement: path.join(here, "../ui/src/api/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(here, "../ui/src/$1"),
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.join(here, "../ui/src/index.ts"),
+      },
+      {
+        // Entrypoint tests import the device-bridge types/loader from source;
+        // the package's published exports point at a dist directory this lane
+        // never builds.
+        find: /^@elizaos\/capacitor-llama$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-llama/src/index.ts",
+        ),
+      },
+      {
         // Vite resolves this browser-safe dynamic import from source as well;
         // matching that boundary keeps fresh entrypoint tests independent of
         // plugin-blocker's generated dist directory.
@@ -58,13 +92,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/cloud-ui\/(.+)$/,
         replacement: path.join(here, "../cloud-ui/src/$1"),
-      },
-      {
-        find: /^@elizaos\/app-model-tester$/,
-        replacement: path.join(
-          here,
-          "../../plugins/app-model-tester/src/index.ts",
-        ),
       },
       {
         find: /^@elizaos\/plugin-task-coordinator\/register$/,
