@@ -32,7 +32,6 @@ import ts from "typescript";
  * Do NOT add a view here for a plugin that no longer exists.
  */
 export const smokeViewDeclarations = [
-  ["birdclaw", "Birdclaw", "plugin-birdclaw", "/birdclaw", "BirdclawView"],
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
   [
     "hyperliquid",
@@ -82,15 +81,6 @@ export const smokeViewDeclarations = [
     "plugin-vector-browser",
     "/vector-browser",
     "VectorBrowserView",
-  ],
-  [
-    "feed",
-    "Feed",
-    "plugin-feed",
-    "/feed",
-    "FeedView",
-    "gui",
-    { capabilities: ["agent-surface"] },
   ],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   [

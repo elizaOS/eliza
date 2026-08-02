@@ -68,7 +68,6 @@
         "./plugins/plugin-elizacloud/src/index.ts"
       ],
       "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/src/index.ts"],
-      "@elizaos/plugin-feed": ["./plugins/plugin-feed/src/index.ts"],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
       "@elizaos/plugin-hyperliquid": [
         "./plugins/plugin-hyperliquid/src/index.ts"

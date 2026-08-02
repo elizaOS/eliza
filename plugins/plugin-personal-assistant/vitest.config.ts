@@ -57,7 +57,6 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
-  "@elizaos/plugin-birdclaw",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
   "@elizaos/plugin-vision",

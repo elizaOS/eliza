@@ -3204,25 +3204,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Birdclaw (local birdclaw.sh Twitter/X archive): the zero-key smoke stack
-  // has no local archive, so the honest state is "not installed" — the view
-  // renders its real setup card (BirdclawView never fetches tweets/inbox when
-  // status.installed is false).
-  if (req.method === "GET" && url.pathname === "/api/birdclaw/status") {
-    sendJson(req, res, 200, {
-      status: {
-        installed: false,
-        version: null,
-        home: null,
-        counts: null,
-        transport: null,
-        message:
-          "birdclaw is not installed on this host. Install birdclaw.sh and run a sync to build the local archive.",
-      },
-    });
-    return;
-  }
-
   if (req.method === "GET" && url.pathname === "/api/hyperliquid/status") {
     sendJson(req, res, 200, stubHyperliquidStatus);
     return;

@@ -56,7 +56,6 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "character",
   "documents",
   "memories",
-  "feed",
   "stream",
   "pendant-transcript",
 ];
@@ -80,11 +79,10 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
  * Early-stage surfaces forced to `preview` kind for the launcher regardless of
  * how their views are declared: hidden from the default grid, shown only when
  * the Preview toggle is on. Keeps the out-of-the-box launcher to the everyday
- * core (feed/stream/the pendant transcript are not there yet). Routes stay
+ * core (stream/the pendant transcript are not there yet). Routes stay
  * addressable — this gates the tile, not the view.
  */
 export const LAUNCHER_PREVIEW_IDS: ReadonlySet<string> = new Set([
-  "feed",
   "stream",
   "pendant-transcript",
 ]);

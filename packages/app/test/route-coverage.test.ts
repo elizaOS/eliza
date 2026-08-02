@@ -72,7 +72,6 @@ type PluginViewManifestContract = {
 };
 
 const PLUGIN_VIEW_MANIFESTS = [
-  "plugins/plugin-birdclaw/src/plugin.ts",
   "plugins/plugin-contacts/src/plugin.ts",
   "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
@@ -91,7 +90,6 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-wallet/src/ui/plugin.ts",
   "plugins/plugin-vector-browser/src/plugin.ts",
-  "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-scheduling/src/plugin.ts",
   "plugins/plugin-screenshare/src/index.ts",
@@ -110,8 +108,6 @@ const APP_SHELL_REGISTRATION_SOURCES = [
 ] as const;
 
 const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
-  "plugins/plugin-birdclaw/src/plugin.ts":
-    "Birdclaw is an opt-in agent runtime plugin (local birdclaw.sh archive); its view registers when the agent enables the plugin, not via the app boot loader.",
   "plugins/plugin-app-control/src/index.ts":
     "View manager routes are built into the app shell and tested through /views; this plugin supplies agent actions plus the manager view declaration.",
   "plugins/plugin-blocker/src/plugin.ts":
@@ -148,7 +144,6 @@ const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   // Facewear no longer declares plugin views; the boot module remains for the
   // Settings wearables section.
   "@elizaos/plugin-facewear": null,
-  "@elizaos/plugin-feed": "plugins/plugin-feed/src/index.ts",
   "@elizaos/plugin-hyperliquid": "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
@@ -174,13 +169,6 @@ const SHIPPED_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = ["gui"];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [
-    {
-      manifestPath: "plugins/plugin-feed/src/index.ts",
-      id: "feed",
-      modalities: SHIPPED_MODALITIES,
-      path: "/feed",
-      componentExport: "FeedView",
-    },
     {
       manifestPath: "plugins/plugin-screenshare/src/index.ts",
       id: "screenshare",

@@ -806,13 +806,6 @@ declare module "@elizaos/ui" {
   export type CharacterCatalogData = AnyValue;
   export type CodingAgentTasksPanelProps = AnyValue;
   export type ConversationMessage = AnyValue;
-  export type FeedActivityItem = AnyValue;
-  export type FeedAgentGoal = AnyValue;
-  export type FeedAgentStatus = AnyValue;
-  export type FeedChatMessage = AnyValue;
-  export type FeedPredictionMarket = AnyValue;
-  export type FeedTeamAgent = AnyValue;
-  export type FeedWallet = AnyValue;
   export type FineTuningViewProps = AnyValue;
   export type NetworkStatusChangeDetail = AnyValue;
   export type OverlayApp = AnyValue;

@@ -480,7 +480,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("transcripts", { viewKind: "system" }),
     entry("relationships", { viewKind: "system" }),
     entry("memories", { viewKind: "system" }),
-    entry("feed", { viewKind: "system" }),
     entry("stream"),
     // Builtin tab with no declared kind — curation must still force preview.
     entry("pendant-transcript", { builtin: true, label: "Pendant Transcript" }),
@@ -525,7 +524,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "character",
       "documents",
       "memories",
-      "feed",
       "stream",
       "pendant-transcript",
       "trajectories",
@@ -561,7 +559,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     ]);
   });
 
-  it("forces feed/stream/pendant to preview and fine-tuning + relationships to developer regardless of declared kind", () => {
+  it("forces stream/pendant to preview and fine-tuning + relationships to developer regardless of declared kind", () => {
     // Preview on, developer off: the preview surfaces come back, the training UI
     // and relationships stay hidden (they are developer-gated, not preview).
     const previewOnly = ids(
@@ -571,7 +569,7 @@ describe("curateLauncherPages — full realistic view set", () => {
         cloudActive: true,
       }),
     );
-    for (const id of ["feed", "stream", "pendant-transcript"]) {
+    for (const id of ["stream", "pendant-transcript"]) {
       expect(previewOnly).toContain(id);
     }
     expect(previewOnly).not.toContain("fine-tuning");
@@ -579,7 +577,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     expect(previewOnly).not.toContain("relationships");
 
     // Developer on, preview off: the training UI + relationships show with the
-    // dev tools, the preview surfaces (feed/stream/pendant) stay hidden.
+    // dev tools, the preview surfaces (stream/pendant) stay hidden.
     const developerOnly = ids(
       curateLauncherPages(REAL_VIEWS, {
         isAosp: false,
@@ -590,7 +588,7 @@ describe("curateLauncherPages — full realistic view set", () => {
     expect(developerOnly).toContain("fine-tuning");
     // relationships is a Character section, never a tile — even developer-on.
     expect(developerOnly).not.toContain("relationships");
-    for (const id of ["feed", "stream", "pendant-transcript"]) {
+    for (const id of ["stream", "pendant-transcript"]) {
       expect(developerOnly).not.toContain(id);
     }
   });

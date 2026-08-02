@@ -35,7 +35,6 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/app-model-tester#ui",
   "@elizaos/plugin-contacts#register",
   "@elizaos/plugin-facewear#register",
-  "@elizaos/plugin-feed#register",
   "@elizaos/plugin-hyperliquid#register",
   "@elizaos/plugin-native-settings#register",
   "@elizaos/plugin-notes#register",

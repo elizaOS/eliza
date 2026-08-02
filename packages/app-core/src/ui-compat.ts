@@ -22,13 +22,6 @@ export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
 export type {
   AppRunSummary,
   AppSessionJsonValue,
-  FeedActivityItem,
-  FeedAgentGoal,
-  FeedAgentStatus,
-  FeedChatMessage,
-  FeedPredictionMarket,
-  FeedTeamAgent,
-  FeedWallet,
   SurfaceTone,
 } from "@elizaos/ui";
 export { client } from "@elizaos/ui/api";

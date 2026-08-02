@@ -30,10 +30,6 @@ const LEVELS = [
   // so this source file is guaranteed in the live graph.
   { name: "@elizaos/shared", file: "packages/shared/src/character-presets.ts" },
   {
-    name: "plugin view birdclaw",
-    file: "plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.tsx",
-  },
-  {
     name: "plugin view contacts",
     file: "plugins/plugin-contacts/src/components/ContactsAppView.tsx",
   },
@@ -117,10 +113,6 @@ const LEVELS = [
   {
     name: "plugin view vector-browser",
     file: "plugins/plugin-vector-browser/src/VectorBrowserView.tsx",
-  },
-  {
-    name: "plugin view feed",
-    file: "plugins/plugin-feed/src/components/FeedView.tsx",
   },
   {
     name: "plugin view manager",

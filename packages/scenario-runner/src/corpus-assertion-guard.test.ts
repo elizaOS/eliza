@@ -308,12 +308,6 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "persona.night-owl-anchored-day",
   "persona.night-owl-quiet-hours-sleep-protection",
   "anthropic-proxy.proxy-status",
-  // Per-plugin keyless coverage (#8801, cluster 1 of #15759): keyless scenarios
-  // that spawn a fake birdclaw CLI, mock the Eliza Cloud HTTP API, and drive a
-  // scripted MeetingService so BIRDCLAW / CLOUD_ACCOUNT_STATUS /
-  // GET_MEETING_TRANSCRIPT each get a credential-free e2e. Added here in the same
-  // commit so this toEqual stays green.
-  "birdclaw.search-archive",
   "commands.help-command",
   // LifeOps persona pack D1 (comms-flood-triage, #12774). Convention (G1):
   // pr-deterministic persona scenarios live in

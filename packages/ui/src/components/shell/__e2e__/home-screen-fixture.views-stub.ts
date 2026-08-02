@@ -139,7 +139,6 @@ export function useRoutableViews() {
       builtinView("transcripts", "Transcripts", "/apps/transcripts", "AudioLines", true),
       builtinView("relationships", "Relationships", "/apps/relationships", "Network", true),
       builtinView("memories", "Memories", "/apps/memories", "Brain", true),
-      builtinView("feed", "Feed", "/feed", "Rss", true),
       builtinView("stream", "Stream", "/stream", "Radio", true),
       builtinView("settings", "Settings", "/settings", "Settings", false, heroDataUri(28, "settings")),
       // Page 2 — developer tools.

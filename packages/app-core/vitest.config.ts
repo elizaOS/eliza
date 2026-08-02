@@ -86,10 +86,6 @@ const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
   "plugins/plugin-agent-orchestrator/src",
 );
-const pluginBirdclawSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-birdclaw/src",
-);
 const pluginAppControlSrc = path.join(
   monorepoRoot,
   "plugins/plugin-app-control/src",
@@ -476,14 +472,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-agent-orchestrator$/,
         replacement: path.join(pluginAgentOrchestratorSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-birdclaw$/,
-        replacement: path.join(pluginBirdclawSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-birdclaw\/(.+)$/,
-        replacement: path.join(pluginBirdclawSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-app-control$/,
