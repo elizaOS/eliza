@@ -82,6 +82,22 @@ jobs:
           )"
           printf 'snapshot=%s\n' "$snapshot" >> "$GITHUB_OUTPUT"
 
+      # Diagnostic only (never fails the job): when the credential is broken,
+      # the action's own failure is a cryptic is_error:true, so print the
+      # provider's actual error here. Never prints the key.
+      - name: Preflight Anthropic credential
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          status=$(curl -sS -o /tmp/anthropic.json -w "%{http_code}" https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+            -d '{"model":"claude-opus-4-7","max_tokens":1,"messages":[{"role":"user","content":"ping"}]}')
+          if [ "$status" != "200" ]; then
+            echo "::warning::ANTHROPIC_API_KEY preflight failed (HTTP $status): $(cat /tmp/anthropic.json)"
+          else
+            echo "ANTHROPIC_API_KEY ok"
+          fi
+
       - name: Run Claude Code
         id: claude
         # Don't fail the workflow when the Anthropic API is unavailable
@@ -95,6 +111,8 @@ jobs:
           # reference was never configured, which left every @claude mention
           # silently dead behind continue-on-error.
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Permit the repository's Cursor automation to request a review.
+          allowed_bots: "cursor"
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Signed file operations keep repository mutations inside the
           # action's scoped GitHub MCP instead of injecting shell-based git
