@@ -219,7 +219,16 @@ function installDashboardFallbackSend(
 
   const originalSend = runtime.sendMessageToTarget.bind(runtime);
   const hasRegisteredHandler = (source: string): boolean => {
-    if (typeof runtime.getMessageConnectors !== "function") return false;
+    if (typeof runtime.getMessageConnectors !== "function") {
+      // Connector discovery is unavailable: we cannot tell whether `source` is
+      // a registered connector. Treating it as unregistered and falling back
+      // to the dashboard would hijack delivery for a connector we cannot see —
+      // a broken registry looks like a healthy unregistered source and delivery
+      // is rerouted to the dashboard. Surface the failure instead of guessing.
+      throw new Error(
+        `connector discovery unavailable; refusing dashboard fallback for source: ${source}`,
+      );
+    }
     return runtime
       .getMessageConnectors()
       .some((connector) => connector.source === source);
