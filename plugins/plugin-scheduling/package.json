@@ -54,7 +54,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "^0.45.1",
+    "drizzle-orm": "0.45.2",
     "zod": "^4.4.3"
   },
   "peerDependencies": {

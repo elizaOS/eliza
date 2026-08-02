@@ -451,7 +451,7 @@
         "@fal-ai/server-proxy": "^1.2.1",
         "@upstash/redis": "^1.37.0",
         "ai": "^6.0.170",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "file-type": "^22.0.1",
         "hono": "4.12.27",
         "music-metadata": "^11.12.3",
@@ -680,7 +680,7 @@
         "bs58": "^6.0.0",
         "decimal.js": "^10.6.0",
         "dotenv": "^17.4.2",
-        "drizzle-orm": "^0.45.2",
+        "drizzle-orm": "0.45.2",
         "exceljs": "^4.4.0",
         "expletives": "^0.1.5",
         "gray-matter": "^4.0.3",
@@ -1003,7 +1003,7 @@
         "vitest": "*",
       },
     },
-    "packages/test/cloud-e2e": {
+    "packages/cloud/e2e": {
       "name": "@elizaos/cloud-e2e",
       "version": "0.0.0",
       "dependencies": {
@@ -1019,7 +1019,7 @@
         "typescript": "^5.5.0",
       },
     },
-    "packages/test/cloud-mocks": {
+    "packages/cloud/test-mocks": {
       "name": "@elizaos/cloud-test-mocks",
       "version": "0.0.0",
       "bin": {
@@ -1198,7 +1198,7 @@
         "@octokit/rest": "^22.0.0",
         "@smithers-orchestrator/engine": "0.29.0",
         "coding-agent-adapters": "0.16.3",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "effect": "^3.21.1",
         "universal-user-agent": "^7.0.3",
       },
@@ -1329,7 +1329,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1610,7 +1610,7 @@
         "@sapphire/snowflake": "3.5.5",
         "discord-api-types": "^0.38.0",
         "discord.js": "^14.26.4",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "fast-deep-equal": "3.1.3",
         "fast-levenshtein": "^3.0.0",
         "fluent-ffmpeg": "^2.1.3",
@@ -1743,7 +1743,7 @@
         "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1921,7 +1921,7 @@
         "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2772,7 +2772,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
@@ -2801,7 +2801,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
@@ -2822,7 +2822,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "zod": "^4.4.3",
       },
       "devDependencies": {
@@ -2972,7 +2972,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -3179,7 +3179,7 @@
       "dependencies": {
         "@elizaos/shared": "workspace:*",
         "@smithers-orchestrator/engine": "0.29.0",
-        "drizzle-orm": "^0.45.1",
+        "drizzle-orm": "0.45.2",
         "effect": "^3.21.1",
         "quickjs-emscripten": "0.32.0",
       },
@@ -3782,7 +3782,7 @@
 
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud/api"],
 
-    "@elizaos/cloud-e2e": ["@elizaos/cloud-e2e@workspace:packages/test/cloud-e2e"],
+    "@elizaos/cloud-e2e": ["@elizaos/cloud-e2e@workspace:packages/cloud/e2e"],
 
     "@elizaos/cloud-infra": ["@elizaos/cloud-infra@workspace:packages/cloud/infra"],
 
@@ -3794,7 +3794,7 @@
 
     "@elizaos/cloud-shared": ["@elizaos/cloud-shared@workspace:packages/cloud/shared"],
 
-    "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/test/cloud-mocks"],
+    "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/cloud/test-mocks"],
 
     "@elizaos/coding-remote-runner": ["@elizaos/coding-remote-runner@workspace:packages/cloud/services/coding-remote-runner"],
 
