@@ -123,6 +123,11 @@ async function listDocuments(params: {
     method: "GET",
     pathname: "/api/documents",
     url,
+    accessContext: {
+      authenticated: true,
+      role: params.actorEntityId === OWNER_ENTITY ? "OWNER" : "USER",
+      entityId: params.actorEntityId ?? OWNER_ENTITY,
+    },
     runtime: runtime as never,
     json: (_res: unknown, data: unknown, status = 200) => {
       captured = { status, body: data };

@@ -53,6 +53,11 @@ function buildCtx(args: {
     method: args.method,
     pathname: args.pathname,
     url: new URL(`http://localhost${args.pathname}`),
+    accessContext: {
+      authenticated: true,
+      role: "OWNER",
+      entityId: "owner-id" as never,
+    },
     runtime: {
       agentId: "agent-id",
       getSetting: () => undefined,

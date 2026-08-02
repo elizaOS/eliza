@@ -155,30 +155,52 @@ function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
   return asUuid(runtime.getSetting("ELIZA_ADMIN_ENTITY_ID"));
 }
 
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return firstHeaderValue(value[0]);
-  if (typeof value !== "string") return null;
-  const normalized = value.split(",")[0]?.trim();
-  return normalized ? normalized : null;
-}
-
-function resolveRouteActor(
+export function resolveRouteActor(
   req: DocumentRouteContext["req"],
   agentId: UUID,
   ownerEntityId?: UUID,
-): RouteActor {
-  const headerEntityId =
-    asUuid(firstHeaderValue(req.headers["x-eliza-entity-id"])) ??
-    asUuid(firstHeaderValue(req.headers["x-eliza-actor-entity-id"]));
+  accessContext?: AccessContext,
+): RouteActor | null {
+  const ctx =
+    accessContext ??
+    (req as unknown as { accessContext?: AccessContext }).accessContext;
 
-  const entityId = headerEntityId ?? ownerEntityId ?? agentId;
-  if (headerEntityId === agentId) {
-    return { entityId, role: "AGENT", ownerEntityId };
+  if (ctx) {
+    if (!ctx.authenticated) return null;
+    const role: RouteActorRole = ctx.role ?? "USER";
+    const entityId =
+      ctx.entityId ??
+      (role === "OWNER"
+        ? (ownerEntityId ?? agentId)
+        : role === "AGENT"
+          ? agentId
+          : undefined);
+    if (!entityId) return null;
+    return { entityId, role, ownerEntityId };
   }
-  if (!headerEntityId || (ownerEntityId && headerEntityId === ownerEntityId)) {
-    return { entityId, role: "OWNER", ownerEntityId };
+
+  const reqAuth = req as unknown as {
+    authenticated?: boolean;
+    isAuthorized?: boolean;
+    role?: RouteActorRole;
+    entityId?: UUID;
+  };
+
+  if (reqAuth.authenticated === true || reqAuth.isAuthorized === true) {
+    const role: RouteActorRole = reqAuth.role ?? "OWNER";
+    const entityId =
+      reqAuth.entityId ??
+      (role === "OWNER"
+        ? (ownerEntityId ?? agentId)
+        : role === "AGENT"
+          ? agentId
+          : undefined);
+    if (!entityId) return null;
+    return { entityId, role, ownerEntityId };
   }
-  return { entityId, role: "USER", ownerEntityId };
+
+  // Public request headers alone MUST NOT mint OWNER, AGENT, or USER authority.
+  return null;
 }
 
 function parseSearchMode(value: unknown): DocumentSearchMode | undefined {
@@ -704,9 +726,26 @@ export async function handleDocumentsRoutes(
   }
   const agentId = runtime.agentId as UUID;
   const ownerEntityId = getOwnerEntityId(runtime);
-  const routeActor = resolveRouteActor(req, agentId, ownerEntityId);
+  const routeActor = resolveRouteActor(
+    req,
+    agentId,
+    ownerEntityId,
+    ctx.accessContext,
+  );
+
+  if (!routeActor) {
+    error(res, "Authentication required", 401);
+    return true;
+  }
 
   if (method === "GET" && pathname === "/api/documents/stats") {
+    if (
+      !actorCanManageOwnerDocuments(routeActor) &&
+      !actorCanManageAgentDocuments(routeActor)
+    ) {
+      error(res, "Forbidden: insufficient permissions for document stats", 403);
+      return true;
+    }
     const documentCount = await documentsService.countMemories({
       tableName: DOCUMENTS_TABLE,
       unique: false,
