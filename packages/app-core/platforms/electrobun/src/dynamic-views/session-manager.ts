@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { DynamicViewError } from "./errors";
 import type { DynamicViewRegistry } from "./registry";
 import type {

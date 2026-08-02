@@ -1,5 +1,5 @@
 /** Implements Electrobun desktop types ts behavior for app-core shell integration. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import type { DatabaseSnapshot } from "../database";
 
 export type LaunchPhase =

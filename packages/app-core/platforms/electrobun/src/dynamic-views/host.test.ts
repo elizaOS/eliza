@@ -2,7 +2,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { DynamicViewError } from "./errors";
 import { createDynamicViewHost } from "./host";

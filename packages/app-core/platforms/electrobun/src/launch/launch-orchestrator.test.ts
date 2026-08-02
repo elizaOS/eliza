@@ -1,5 +1,5 @@
 /** Exercises launch orchestrator behavior with deterministic app-core test fixtures. */
-import type { JsonValue } from "@elizaos/plugin-remote-manifest";
+import type { JsonValue } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { createDatabaseSnapshot } from "../database";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
