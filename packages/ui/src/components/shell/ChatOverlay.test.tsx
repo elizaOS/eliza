@@ -1580,6 +1580,8 @@ describe("ChatOverlay", () => {
     expect(viewport.getAttribute("aria-live")).toBeNull();
     expect(content?.getAttribute("role")).toBe("log");
     expect(content?.getAttribute("aria-busy")).toBe("true");
+    expect(content?.className).toContain("justify-end");
+    expect(content?.className).toContain("pb-3");
     expect(row?.parentElement).toBe(content);
     expect(row?.className).toContain("w-full");
   });
@@ -4300,7 +4302,6 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // Keeping the rail mounted prevents message geometry from shifting when it appears.
     const actions = screen.getByTestId("thread-line-actions");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
