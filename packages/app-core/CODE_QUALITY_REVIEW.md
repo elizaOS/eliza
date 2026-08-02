@@ -6,7 +6,7 @@
 
 This pass implemented the highest-risk startup corrections instead of leaving them as recommendations. The global `node:http` monkey-patch is gone; compatibility behavior is explicit middleware on one concrete server. Process signals and exit codes are owned by the CLI boundary. A typed startup state machine now drives lifecycle/status projection. Compatibility state is per-server, startup failures close bound resources, deferred feature failures become an observable degraded phase, and a real reset-route E2E is no longer dark.
 
-This follow-up pass also separated contributor discovery, autonomy, database recovery, model warmup, and post-ready ordering from the runtime host; added structured feature-route readiness; migrated in-repo registry consumers off the compatibility subpath; and consolidated the duplicated iOS splash payload. `runtime/eliza.ts` fell from roughly 2,100 to 800 lines. The major work that remains is broader package decomposition: `api/server.ts` and the build/release entrypoints still span too many concerns, compatibility routes need consumer-led retirement, and native/build/release tooling should become separate workspaces.
+This follow-up pass also separated contributor discovery, autonomy, database recovery, model warmup, post-ready ordering, and the server-only lifecycle from the runtime host; added structured feature-route readiness; migrated in-repo registry consumers off the compatibility subpath; and consolidated the duplicated iOS splash payload. `runtime/eliza.ts` fell from roughly 2,100 to under 500 lines. The major work that remains is broader package decomposition: `api/server.ts` and the build/release entrypoints still span too many concerns, compatibility routes need consumer-led retirement, and native/build/release tooling should become separate workspaces.
 
 ## Cleanup and refactoring completed
 
@@ -54,6 +54,10 @@ This follow-up pass also separated contributor discovery, autonomy, database rec
   deferral/skip policy into `runtime/startup/app-contributors.ts`. The runtime
   host preserves its compatibility re-exports while tests exercise the focused
   module without importing the full agent server graph.
+- Extracted bind-first API startup, onboarding deferral, runtime publication and
+  restart, sandbox registration, and idempotent close into
+  `runtime/startup/server-only-host.ts`. Process signal/exit ownership remains at
+  the CLI boundary.
 - Added an explicit deferred feature-route manifest. Known plugin routes now return structured `503 feature_starting` while the runtime or route tail is pending and `503 feature_unavailable` after a failed tail, instead of a misleading 404.
 - Migrated all in-repository runtime and plugin-registry consumers to `@elizaos/registry/first-party`; the app-core registry subpath now exists only for external backwards compatibility.
 - Consolidated three byte-identical 7.2 MB iOS splash images to one catalog resource. Apple `actool` compiles the resulting catalog successfully, removing about 14.4 MB from source and unpacked package payload.
@@ -95,11 +99,9 @@ Implemented extraction boundaries:
 - `startup/pglite-recovery.ts`: error classification, quarantine, and retry.
 - `startup/local-model-warmup.ts`: embedding and voice policy.
 
-The remaining host is roughly 800 lines. Further extraction should be done in
-these cohesive slices rather than by moving individual helpers:
+The remaining host is under 500 lines. One cohesive runtime slice remains:
 
 - `startup/app-runtime-host.ts`: orchestration and state machine only.
-- `startup/server-only-host.ts`: API bind, runtime swap, restart, and close.
 
 Keep dependency direction one-way: the host composes these modules; helpers do not mutate process state or module-global runtime slots.
 
@@ -170,8 +172,8 @@ The two tracked `.d.ts` files are not deletion candidates without replacement be
 
 ## Recommended remaining implementation order
 
-1. Finish the runtime split with `app-runtime-host.ts` and `server-only-host.ts`,
-   preserving the lifecycle and readiness contracts added in this pass.
+1. Finish the runtime split with `app-runtime-host.ts`, preserving the lifecycle
+   and readiness contracts added in this pass.
 2. Split `api/server.ts`: move the ordered compatibility route manifest into a
    declarative module with method/auth/readiness metadata, then retire entries
    only after their consumers are migrated.
