@@ -18,7 +18,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { interact, serverInteract } from "../interact.js";
+import {
+  interact,
+  type SimpleViewsInteractResult,
+  serverInteract,
+} from "../interact.js";
 import { simpleViewsRoutes } from "../routes.js";
 import { SIMPLE_VIEWS_SERVICE_TYPE, SimpleViewsService } from "../service.js";
 import { SimpleViewsStore, simpleViewsStateFilePath } from "../store.js";
@@ -66,6 +70,31 @@ function clock(start = "2026-07-16T12:00:00.000Z"): () => Date {
 function idFactory(): (kind: "note" | "event") => string {
   let next = 1;
   return (kind) => `${kind}-test-${next++}`;
+}
+
+function expectAppliedMutationReceipt(
+  result: SimpleViewsInteractResult,
+  capability: string,
+  resource: { kind: string; id: string },
+): void {
+  if (!result.state) throw new Error("Mutation result state is required.");
+  expect(result.effectReceipts).toHaveLength(1);
+  const receipt = result.effectReceipts?.[0];
+  if (!receipt) throw new Error("Mutation effect receipt is required.");
+  expect(receipt).toMatchObject({
+    operation: `simple-views.${capability}`,
+    resource: { ...resource, version: String(result.state.revision) },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: `simple-views:revision:${result.state.revision}`,
+    },
+  });
+  expect(Number.isNaN(Date.parse(receipt.observedAt))).toBe(false);
+  expect(receipt.commit.committedAt).toBe(receipt.observedAt);
+  expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
 }
 
 class ConnectorSetupTestService extends Service {
@@ -444,6 +473,10 @@ describe("Simple Views capabilities", () => {
     expect(createdNote).toMatchObject({ success: true });
     const noteId = service.listNotes()[0]?.id;
     if (!noteId) throw new Error("Created note id is required.");
+    expectAppliedMutationReceipt(createdNote, "create-note", {
+      kind: "simple-views.note",
+      id: noteId,
+    });
 
     const updatedNote = await interact(
       "update-note",
@@ -451,16 +484,28 @@ describe("Simple Views capabilities", () => {
       service,
     );
     expect(updatedNote).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(updatedNote, "update-note", {
+      kind: "simple-views.note",
+      id: noteId,
+    });
     expect(service.getNote(noteId)).toMatchObject({
       body: "Polished draft",
       color: "green",
     });
-    await expect(
-      interact("get-note", { id: noteId }, service),
-    ).resolves.toMatchObject({ success: true });
-    await expect(
-      interact("delete-note", { query: "polished" }, service),
-    ).resolves.toMatchObject({ success: true });
+    const readNote = await interact("get-note", { id: noteId }, service);
+    expect(readNote).toMatchObject({ success: true });
+    expect(readNote.effectReceipts).toBeUndefined();
+    expect(readNote.userFacingEffectReceiptIds).toBeUndefined();
+    const deletedNote = await interact(
+      "delete-note",
+      { query: "polished" },
+      service,
+    );
+    expect(deletedNote).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(deletedNote, "delete-note", {
+      kind: "simple-views.note",
+      id: noteId,
+    });
     expect(service.listNotes()).toEqual([]);
 
     await interact(
@@ -473,14 +518,26 @@ describe("Simple Views capabilities", () => {
       { title: "Two", body: "", color: "rose" },
       service,
     );
-    await expect(interact("clear-notes", {}, service)).resolves.toMatchObject({
+    const clearedNotes = await interact("clear-notes", {}, service);
+    expect(clearedNotes).toMatchObject({
       success: true,
       data: { cleared: 2 },
     });
+    expectAppliedMutationReceipt(clearedNotes, "clear-notes", {
+      kind: "simple-views.note-collection",
+      id: "notes",
+    });
 
-    await expect(
-      interact("select-calendar-date", { date: "2026-08-03" }, service),
-    ).resolves.toMatchObject({ success: true });
+    const selectedDate = await interact(
+      "select-calendar-date",
+      { date: "2026-08-03" },
+      service,
+    );
+    expect(selectedDate).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(selectedDate, "select-calendar-date", {
+      kind: "simple-views.calendar-selection",
+      id: "selected-date",
+    });
     const createdEvent = await interact(
       "create-calendar-event",
       {
@@ -494,29 +551,43 @@ describe("Simple Views capabilities", () => {
     expect(createdEvent).toMatchObject({ success: true });
     const eventId = service.listCalendarEvents()[0]?.id;
     if (!eventId) throw new Error("Created calendar event id is required.");
+    expectAppliedMutationReceipt(createdEvent, "create-calendar-event", {
+      kind: "simple-views.calendar-event",
+      id: eventId,
+    });
     expect(service.getCalendarEvent(eventId)).toMatchObject({
       date: "2026-08-03",
     });
 
-    await expect(
-      interact(
-        "update-calendar-event",
-        {
-          id: eventId,
-          date: "2026-08-04",
-          time: "11:45",
-          title: "Updated demo",
-        },
-        service,
-      ),
-    ).resolves.toMatchObject({ success: true });
+    const updatedEvent = await interact(
+      "update-calendar-event",
+      {
+        id: eventId,
+        date: "2026-08-04",
+        time: "11:45",
+        title: "Updated demo",
+      },
+      service,
+    );
+    expect(updatedEvent).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(updatedEvent, "update-calendar-event", {
+      kind: "simple-views.calendar-event",
+      id: eventId,
+    });
     expect(service.selectedDate()).toBe("2026-08-04");
     await expect(
       interact("get-calendar-event", { id: eventId }, service),
     ).resolves.toMatchObject({ success: true });
-    await expect(
-      interact("delete-calendar-event", { id: eventId }, service),
-    ).resolves.toMatchObject({ success: true });
+    const deletedEvent = await interact(
+      "delete-calendar-event",
+      { id: eventId },
+      service,
+    );
+    expect(deletedEvent).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(deletedEvent, "delete-calendar-event", {
+      kind: "simple-views.calendar-event",
+      id: eventId,
+    });
     expect(service.listCalendarEvents()).toEqual([]);
 
     await interact(
