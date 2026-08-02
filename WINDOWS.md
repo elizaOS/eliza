@@ -75,7 +75,6 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `@elizaos/vault` | 185 | 0 fail |
 | `@elizaos/security` | 53 | 0 fail |
 | `@elizaos/registry` | 7 | 0 fail |
-| `@elizaos/contracts` | 9 | 0 fail |
 | `@elizaos/logger` | 4 | 0 fail |
 | `@elizaos/soc2-verify` | 13 | 0 fail |
 | `plugin-elizacloud` | 147 | 0 fail |
@@ -159,20 +158,6 @@ Calling them "not Windows compatible" misframes the situation; they're
 The TypeScript code in `@elizaos/ui`, `@elizaos/app-core`, the API and
 runtime that these shells host all build and test on Windows. Only the
 final OS-image / store-bundle steps require an Apple host.
-
-## RISC-V cross-build
-
-`verify:riscv64`, `build:riscv64-artifacts`,
-`check:riscv64-artifacts` cross-compile native plugins for RISC-V Linux.
-The scripts currently invoke bash + `qemu-riscv64-static` for the
-optional smoke phase, which doesn't have a Windows-native equivalent.
-Run inside WSL 2 (Ubuntu 22.04+) for the smoke step.
-
-The underlying cross-compiler (Zig) does work on Windows, so the
-cross-build phase itself could be ported; the smoke phase is what
-genuinely needs WSL/Linux. On Windows the bash entry points exit
-cleanly with a "Linux-only" message via
-[`packages/scripts/run-bash-linux-only.mjs`](packages/scripts/run-bash-linux-only.mjs).
 
 ## Known Bun-on-Windows issues (upstream)
 
