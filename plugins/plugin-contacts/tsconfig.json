@@ -23,11 +23,6 @@
     "declarationMap": false,
     "sourceMap": false,
     "paths": {
-      "@elizaos/capacitor-contacts": ["../plugin-native-contacts/src/index.ts"],
-      "@elizaos/capacitor-contacts/*": ["../plugin-native-contacts/src/*"],
-      "@elizaos/capacitor-contacts/web": [
-        "../plugin-native-contacts/src/web.ts"
-      ],
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-wallet/ui": [
@@ -43,12 +38,6 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/import-conversations": [
@@ -104,6 +93,17 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "@elizaos/capacitor-contacts": ["../plugin-native-contacts/src/index.ts"],
+      "@elizaos/capacitor-contacts/*": ["../plugin-native-contacts/src/*"],
+      "@elizaos/capacitor-contacts/web": [
+        "../plugin-native-contacts/src/web.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
       ]
     }
   },

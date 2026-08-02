@@ -667,20 +667,6 @@ else
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
-# @elizaos/contracts must be built BEFORE @elizaos/core: core's
-# tsconfig.declarations.json maps `@elizaos/contracts` to
-# `../contracts/dist/index.d.ts`, so the declarations build aborts with
-# TS2307 if dist/ doesn't exist yet.
-if [[ -f packages/contracts/package.json ]] && jq -e '.scripts.build' packages/contracts/package.json >/dev/null; then
-  log "Building @elizaos/contracts (required by core declarations)"
-  pushd packages/contracts >/dev/null
-  "$BUN_BIN" run build
-  popd >/dev/null
-  mkdir -p node_modules/@elizaos
-  "${RM_PATH_RECURSIVE[@]}" node_modules/@elizaos/contracts
-  ln -s ../../packages/contracts node_modules/@elizaos/contracts
-fi
-
 # @elizaos/logger must also be built BEFORE @elizaos/core: core's
 # tsconfig.declarations.json maps `@elizaos/logger` to
 # `../logger/dist/index.d.ts`, so the declarations build aborts with TS2307

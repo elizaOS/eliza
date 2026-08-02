@@ -73,34 +73,6 @@ export default defineConfig({
           "../../plugins/plugin-task-coordinator/src/register.ts",
         ),
       },
-      {
-        find: /^@elizaos\/capacitor-appblocker$/,
-        replacement: path.join(
-          here,
-          "../../plugins/plugin-native-appblocker/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-llama$/,
-        replacement: path.join(
-          here,
-          "../../plugins/plugin-native-llama/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-mobile-agent-bridge$/,
-        replacement: path.join(
-          here,
-          "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-websiteblocker$/,
-        replacement: path.join(
-          here,
-          "../../plugins/plugin-native-websiteblocker/src/index.ts",
-        ),
-      },
       ...(Array.isArray(baseConfig.resolve?.alias)
         ? baseConfig.resolve.alias
         : []),

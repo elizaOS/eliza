@@ -84,7 +84,6 @@ export {
   type RestartHandler,
   requestRestart,
   resolveCloudApiBaseUrl,
-  STREAMING_PLUGINS,
   setRestartHandler,
 } from "@elizaos/shared";
 export {

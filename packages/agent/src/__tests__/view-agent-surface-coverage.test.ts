@@ -15,18 +15,11 @@ const PLUGINS_DIR = path.resolve(here, "../../../../plugins");
 /** Plugins whose view has been wired to the agent surface. */
 const CONVERTED_PLUGINS = [
   "plugin-wallet",
-  "app-model-tester",
   "plugin-app-control",
   "plugin-contacts",
-  "plugin-facewear",
-  "plugin-feed",
-  "plugin-hyperliquid",
   "plugin-messages",
   "plugin-phone",
-  "plugin-polymarket",
-  "plugin-screenshare",
   "plugin-task-coordinator",
-  "plugin-training",
   "plugin-trajectory-logger",
 ] as const;
 

@@ -20,8 +20,6 @@ const REQUIRED_STANDALONE_UI_DIRS = [
   "packages/app",
   "packages/test/cloud-e2e",
   "packages/homepage",
-  "packages/os/homepage",
-  "packages/os/usb-installer",
   "packages/ui",
   "packages/feed/tools/dag-visualizer",
 ];

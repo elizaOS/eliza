@@ -108,7 +108,6 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "coding-tools", desktopOnly: true },
   // Mobile-safe core boot. `plugin-sql` is the required bootstrap dependency.
   { plugin: "@elizaos/plugin-sql", mobileCore: true, requiredBootstrap: true },
-  { plugin: "@elizaos/plugin-background-runner", mobileCore: true },
   { plugin: "@elizaos/plugin-native-filesystem", mobileCore: true },
   { plugin: "@elizaos/plugin-vision", mobileCore: true },
   { plugin: "@elizaos/plugin-scheduling", mobileCore: true },
@@ -169,7 +168,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] =
  *
  * The mobile boot ships only `@elizaos/plugin-sql` (PGlite-backed memory
  * store, required) plus AI provider plugins (`@elizaos/plugin-anthropic`,
- * `@elizaos/plugin-openai`, `@elizaos/plugin-ollama`) which `collectPluginNames`
+ * `@elizaos/plugin-openai`) which `collectPluginNames`
  * adds based on the user's API keys. They are statically imported in the agent
  * runtime so they bundle cleanly without filesystem-based plugin resolution.
  *
@@ -202,7 +201,6 @@ export const MOBILE_CORE_PLUGINS: readonly string[] =
 export const MOBILE_MODEL_PROVIDER_PLUGINS: readonly string[] = [
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
-  "@elizaos/plugin-ollama",
   "@elizaos/plugin-elizacloud",
 ];
 
@@ -421,12 +419,10 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-bluebubbles", // BlueBubbles-backed iMessage integration for macOS
   "@elizaos/plugin-telegram", // Telegram bot integration
   "@elizaos/plugin-signal", // Signal user-account integration
-  "@elizaos/plugin-twitch", // Twitch integration
   "@elizaos/plugin-edge-tts", // text-to-speech (Microsoft Edge TTS)
   "@elizaos/plugin-elevenlabs", // ElevenLabs text-to-speech
   "@elizaos/plugin-music", // Library, playback, and streaming routes.
   "@elizaos/plugin-gitpathologist", // forensic git-history analysis (opt-in via ELIZA_GITPATHOLOGIST, auto-on when .git/ exists)
-  "@elizaos/plugin-birdclaw", // birdclaw.sh local-first Twitter/X archive (auto-on when the birdclaw CLI/data root exists, gate ELIZA_BIRDCLAW)
   // "@elizaos/plugin-directives", // directive processing remains opt-in
   // "@elizaos/plugin-mcp", // MCP protocol support remains opt-in
   // @elizaos/plugin-scheduling is now an always-loaded CORE + MOBILE plugin.

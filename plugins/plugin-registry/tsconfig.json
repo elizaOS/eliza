@@ -44,16 +44,6 @@
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
-      "@elizaos/capacitor-bun-runtime": [
-        "../plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-camera": ["../plugin-native-camera/src/index.ts"],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../plugin-capacitor-bridge/src/*"
-      ],
       "@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
       "@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
       "@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
@@ -76,7 +66,15 @@
       "@elizaos/plugin-health/*": ["../plugin-health/src/*"],
       "@elizaos/plugin-training": [
         "../../packages/ui/src/types/host-external-modules.ts"
-      ]
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": ["../plugin-native-camera/src/index.ts"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": ["../plugin-capacitor-bridge/src/*"]
     }
   },
   "include": [

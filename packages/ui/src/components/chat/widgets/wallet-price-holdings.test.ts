@@ -7,7 +7,7 @@ import type {
   WalletBalancesResponse,
   WalletMarketMover,
   WalletMarketPriceSnapshot,
-} from "@elizaos/contracts";
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_WIDGET_SYMBOLS,

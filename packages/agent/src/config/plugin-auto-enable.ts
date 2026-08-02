@@ -1,6 +1,6 @@
 /**
  * Compat re-export — kept so older bundled callers that wrote
- * `import { CONNECTOR_PLUGINS, STREAMING_PLUGINS } from "@elizaos/agent/config/plugin-auto-enable"`
+ * `import { CONNECTOR_PLUGINS } from "@elizaos/agent/config/plugin-auto-enable"`
  * resolve.
  *
  * The auto-enable surface lives in `@elizaos/shared`. The published
@@ -9,9 +9,4 @@
  * `@elizaos/shared`, this file is the bridge that keeps Linux Electrobun
  * (and any other consumer of the packaged eliza-dist) booting.
  */
-export {
-  CONNECTOR_PLUGINS,
-  isConnectorConfigured,
-  isStreamingDestinationConfigured,
-  STREAMING_PLUGINS,
-} from "@elizaos/shared";
+export { CONNECTOR_PLUGINS, isConnectorConfigured } from "@elizaos/shared";

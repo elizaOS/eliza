@@ -33,11 +33,6 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   // autoEnable). Registers PTY_SERVICE so the web terminal can drive a real
   // interactive CLI (eliza-code on Eliza Cloud/cerebras).
   "@elizaos/plugin-pty",
-  // Auto-on only when the host has the birdclaw CLI or an existing ~/.birdclaw
-  // data root (see birdclawRequested in plugin-collector.ts). Registers
-  // BIRDCLAW_SERVICE + the local Twitter/X archive view/action.
-  "@elizaos/plugin-birdclaw",
-  "@elizaos/plugin-ollama",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-video",
@@ -47,7 +42,6 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   // bundle could never resolve it: the renderer OCR poller polled
   // /api/vision/ocr-requests into a 404 forever (verified on emulator-5554).
   "@elizaos/plugin-vision",
-  "@elizaos/plugin-background-runner",
   // The remaining MOBILE_CORE_PLUGINS + MOBILE_VIEW_PLUGINS entries. The mobile
   // resolver can only load @elizaos plugins that are pre-registered in
   // STATIC_ELIZA_PLUGINS (no node_modules tree ships in the APK), so every

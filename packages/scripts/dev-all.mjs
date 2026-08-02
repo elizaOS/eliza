@@ -45,7 +45,6 @@ const ports = {
   agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
   frontend: envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
   homepage: envDefault("DEV_ALL_HOMEPAGE_PORT", "4444"),
-  osHomepage: envDefault("DEV_ALL_OS_HOMEPAGE_PORT", "4455"),
   cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
   cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
   cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
@@ -55,7 +54,7 @@ const urls = {
   agentApi: `http://127.0.0.1:${ports.agentApi}`,
   frontend: `http://localhost:${ports.frontend}`,
   homepage: `http://localhost:${ports.homepage}`,
-  osHomepage: `http://localhost:${ports.osHomepage}`,
+  osHomepage: envDefault("ELIZA_OS_URL", "https://os.elizaos.ai"),
   cloudWeb: `http://localhost:${ports.cloudWeb}`,
   cloudApi: `http://localhost:${ports.cloudApi}`,
   cloudDb: `postgresql://postgres@127.0.0.1:${ports.cloudDb}/postgres`,
@@ -176,15 +175,6 @@ const homepageEnv = {
   VITE_ELIZA_OS_URL: urls.osHomepage,
   ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
-const osHomepageEnv = {
-  ...commonEnv,
-  PORT: ports.osHomepage,
-  VITE_ELIZACLOUD_API_URL: urls.cloudApi,
-  VITE_ELIZA_APP_URL: urls.homepage,
-  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
-  VITE_ELIZA_OS_URL: urls.osHomepage,
-  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
-};
 const cloudDbEnv = {
   ...cloudSharedEnv,
   PGLITE_PORT: ports.cloudDb,
@@ -274,22 +264,6 @@ const services = [
     ],
     env: homepageEnv,
   },
-  {
-    name: "os-homepage",
-    cwd: "packages/os/homepage",
-    command: [
-      bunBin,
-      "run",
-      "dev",
-      "--",
-      "--host",
-      "0.0.0.0",
-      "--port",
-      ports.osHomepage,
-      "--strictPort",
-    ],
-    env: osHomepageEnv,
-  },
 ].filter(Boolean);
 
 const cloudDevVarsCommand = packagedCloudAvailable
@@ -374,7 +348,7 @@ function printPlan() {
   console.log(`  agent API:  ${urls.agentApi}`);
   console.log(`  frontend:   ${urls.frontend}`);
   console.log(`  app home:   ${urls.homepage}`);
-  console.log(`  OS home:    ${urls.osHomepage}`);
+  console.log(`  OS home:    ${urls.osHomepage} (external)`);
   console.log(`  cloud web:  ${urls.cloudWeb}`);
   console.log(`  cloud API:  ${urls.cloudApi}`);
   console.log(`  cloud src:  ${cloudMode}`);
@@ -430,7 +404,6 @@ async function assertPortsAvailable() {
     ["agent API", "127.0.0.1", ports.agentApi],
     ["frontend", "127.0.0.1", ports.frontend],
     ["app home", "127.0.0.1", ports.homepage],
-    ["OS home", "127.0.0.1", ports.osHomepage],
   ].filter(Boolean);
 
   const occupied = [];

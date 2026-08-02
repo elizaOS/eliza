@@ -77,6 +77,17 @@
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
       "@elizaos/vault/*": ["../../packages/vault/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/import-conversations": [
+        "../../packages/import-conversations/src/index.ts"
+      ],
+      "@elizaos/import-conversations/*": [
+        "../../packages/import-conversations/src/*"
+      ],
+      "@elizaos/import-conversations/browser": [
+        "../../packages/import-conversations/src/browser.ts"
+      ],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"
       ],
@@ -88,17 +99,6 @@
       ],
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
-      ],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/import-conversations": [
-        "../../packages/import-conversations/src/index.ts"
-      ],
-      "@elizaos/import-conversations/*": [
-        "../../packages/import-conversations/src/*"
-      ],
-      "@elizaos/import-conversations/browser": [
-        "../../packages/import-conversations/src/browser.ts"
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"

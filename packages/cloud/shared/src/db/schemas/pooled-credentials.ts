@@ -7,7 +7,7 @@
  * audit log) referenced by `secret_id`. This table stores only the pool
  * metadata the rotation brain (`AccountPool` in @elizaos/app-core) reads and
  * writes — the columns mirror `LinkedAccountConfig` /
- * `LinkedAccountHealthDetail` / `LinkedAccountUsage` from @elizaos/contracts
+ * runtime `LinkedAccountHealthDetail` / `LinkedAccountUsage` contracts
  * 1:1 on purpose so the pool maps rows to accounts without translation.
  *
  * `pooled_credential_usage` — per-member daily rollup (org, credential, user,
@@ -15,7 +15,7 @@
  * answerable. Replaces the self-host JSONL usage log in cloud.
  */
 
-import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/contracts";
+import type { LinkedAccountHealthDetail, LinkedAccountUsage } from "@elizaos/core";
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import {
   boolean,

@@ -11,7 +11,7 @@ running sub-agent vs. let it keep working.
 
 | Layer | Location | Status |
 |---|---|---|
-| Account contracts (`LinkedAccountConfig`, `LinkedAccountUsage`, 12 provider ids) | `packages/contracts/src/service-routing.ts` | ✅ |
+| Account contracts (`LinkedAccountConfig`, `LinkedAccountUsage`, 12 provider ids) | `packages/core/src/contracts/service-routing-types.ts` | ✅ |
 | Credential storage (`<stateDir>/auth/{providerId}/{accountId}.json`) | `packages/agent/src/auth/account-storage.ts` | ✅ |
 | OAuth flows (Anthropic + Codex) + coding-plan keys + API keys | `packages/agent/src/auth/oauth-flow.ts`, `credentials.ts` | ✅ |
 | `AccountPool` — priority / round-robin / **least-used** / quota-aware, affinity, health | `packages/app-core/src/services/account-pool.ts` | ✅ |

@@ -16,33 +16,24 @@ import {
 describe("release plugin policy", () => {
   it("ships runtime support packages without marking them as bundled registry plugins", () => {
     const availableDependencies = [
-      "@elizaos/plugin-remote-manifest",
-      "@elizaos/plugin-worker-runtime",
+      "@elizaos/core",
+      "@elizaos/prompts",
       "@elizaos/plugin-app-manager",
       "@elizaos/plugin-imessage",
-      "@elizaos/plugin-streaming",
       "@elizaos/ui",
-      "@elizaos/app-model-tester",
-      "@elizaos/plugin-training",
       "@elizaos/plugin-openai",
     ];
 
     expect(BASELINE_BUNDLED_RUNTIME_PACKAGES).toEqual(
-      expect.arrayContaining([
-        "@elizaos/plugin-remote-manifest",
-        "@elizaos/plugin-worker-runtime",
-      ]),
+      expect.arrayContaining(["@elizaos/core", "@elizaos/prompts"]),
     );
     expect(getBundledRuntimePackages(availableDependencies)).toEqual(
       expect.arrayContaining([
-        "@elizaos/plugin-remote-manifest",
-        "@elizaos/plugin-worker-runtime",
+        "@elizaos/core",
+        "@elizaos/prompts",
         "@elizaos/plugin-app-manager",
         "@elizaos/plugin-imessage",
-        "@elizaos/plugin-streaming",
         "@elizaos/ui",
-        "@elizaos/app-model-tester",
-        "@elizaos/plugin-training",
         "@elizaos/plugin-openai",
       ]),
     );
@@ -60,8 +51,8 @@ describe("release plugin policy", () => {
     ).toBe("bundled");
     expect(
       classifyRegistryPluginRelease({
-        packageName: "@elizaos/plugin-remote-manifest",
-        bundledPluginIds: new Set(["remote-manifest"]),
+        packageName: "@elizaos/plugin-example-not-bundled",
+        bundledPluginIds: new Set(["example-not-bundled"]),
       }).releaseAvailability,
     ).toBe("post-release");
   });

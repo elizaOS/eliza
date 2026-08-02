@@ -14,7 +14,7 @@ import type {
   WalletMarketMover,
   WalletMarketOverviewSource,
   WalletMarketPriceSnapshot,
-} from "@elizaos/contracts";
+} from "@elizaos/core";
 import { asRecord } from "../type-guards.js";
 
 /** Number of top-market-cap rows requested from CoinGecko. */

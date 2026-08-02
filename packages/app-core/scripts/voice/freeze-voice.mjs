@@ -66,7 +66,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 const { readVoicePresetFile, writeVoicePresetFileV2 } = await import(
-  "../../../../plugins/plugin-local-inference/src/services/voice/voice-preset-format.ts"
+  "@elizaos/plugin-local-inference/services/voice/voice-preset-format"
 );
 
 const DEFAULT_BUNDLE = path.join(
@@ -392,7 +392,7 @@ async function maybeEncodeReference(pcm24k, args) {
     );
   }
   const mod = await import(
-    "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings.ts"
+    "@elizaos/plugin-local-inference/services/voice/ffi-bindings"
   );
   const ffi = mod.loadElizaInferenceFfi(args.dylib);
   if (

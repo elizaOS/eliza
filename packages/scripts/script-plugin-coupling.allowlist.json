@@ -68,7 +68,6 @@
     "file": "packages/scripts/e2e-coverage/manifest.ts",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-birdclaw",
       "plugins/plugin-bluebubbles",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
@@ -76,20 +75,15 @@
       "plugins/plugin-computeruse",
       "plugins/plugin-documents",
       "plugins/plugin-elizacloud",
-      "plugins/plugin-facewear",
       "plugins/plugin-github",
-      "plugins/plugin-hyperliquid",
       "plugins/plugin-imessage",
       "plugins/plugin-inbox",
-      "plugins/plugin-local-inference",
       "plugins/plugin-meetings",
       "plugins/plugin-music",
-      "plugins/plugin-polymarket",
       "plugins/plugin-scheduling",
       "plugins/plugin-signal",
       "plugins/plugin-notes",
       "plugins/plugin-telegram",
-      "plugins/plugin-training",
       "plugins/plugin-wallet",
       "plugins/plugin-whatsapp",
       "plugins/plugin-workflow"
@@ -113,12 +107,10 @@
   {
     "file": "packages/scripts/generate-dist-paths-config.mjs",
     "tokens": [
-      "@elizaos/plugin-facewear",
       "@elizaos/plugin-local-inference",
       "@elizaos/plugin-music-library",
       "@elizaos/plugin-music-player",
       "@elizaos/plugin-xai",
-      "plugins/plugin-facewear",
       "plugins/plugin-local-inference",
       "plugins/plugin-music",
       "plugins/plugin-native-",
@@ -129,32 +121,27 @@
   {
     "file": "packages/scripts/launch-qa/run.mjs",
     "tokens": [
-      "plugins/plugin-personal-assistant",
-      "plugins/plugin-training"
+      "plugins/plugin-personal-assistant"
     ],
-    "reason": "release-readiness QA runs focused vitest suites in the personal-assistant and training plugins"
+    "reason": "release-readiness QA runs focused vitest suites in the personal-assistant plugin"
   },
   {
     "file": "packages/scripts/lib/real-live-suites.mjs",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-anthropic",
-      "plugins/plugin-birdclaw",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
-      "plugins/plugin-calendly",
+      "plugins/plugin-coding-tools",
       "plugins/plugin-computeruse",
       "plugins/plugin-elizacloud",
       "plugins/plugin-form",
       "plugins/plugin-google-genai",
       "plugins/plugin-health",
-      "plugins/plugin-hyperliquid",
-      "plugins/plugin-local-inference",
       "plugins/plugin-ollama",
       "plugins/plugin-openai",
       "plugins/plugin-openrouter",
       "plugins/plugin-personal-assistant",
-      "plugins/plugin-polymarket",
       "plugins/plugin-pty",
       "plugins/plugin-sql",
       "plugins/plugin-vision",
@@ -194,20 +181,6 @@
     "reason": "voice live-matrix cells declare which fused-ASR / native wake-word / transcript plugins each cell exercises"
   },
   {
-    "file": "scripts/cuda-continuity.mjs",
-    "tokens": [
-      "plugins/plugin-local-inference"
-    ],
-    "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
-  },
-  {
-    "file": "scripts/check-even-research-audit.mjs",
-    "tokens": [
-      "plugins/plugin-facewear"
-    ],
-    "reason": "gates that the facewear plugin's research checkouts, docs, and implemented surface files are present"
-  },
-  {
     "file": "scripts/check-markdown-links.mjs",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
@@ -219,13 +192,11 @@
     "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
   },
   {
-    "file": "scripts/check-smartglasses-completion-gate.mjs",
+    "file": "scripts/cuda-continuity.mjs",
     "tokens": [
-      "@elizaos/plugin-facewear",
-      "plugins/plugin-facewear",
-      "plugins/plugin-smartglasses"
+      "plugins/plugin-local-inference"
     ],
-    "reason": "facewear software-readiness gate; also asserts the removed plugin-smartglasses is gone"
+    "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
   },
   {
     "file": "scripts/generate-view-heroes.mjs",
@@ -233,7 +204,6 @@
       "plugins/plugin-app-control",
       "plugins/plugin-blocker",
       "plugins/plugin-calendar",
-      "plugins/plugin-facewear",
       "plugins/plugin-finances",
       "plugins/plugin-goals",
       "plugins/plugin-health",
@@ -241,8 +211,7 @@
       "plugins/plugin-messages",
       "plugins/plugin-native-settings",
       "plugins/plugin-relationships",
-      "plugins/plugin-todos",
-      "plugins/plugin-vector-browser"
+      "plugins/plugin-todos"
     ],
     "reason": "curated fallback-art list for plugins with an elizaos.app surface but no committed hero.svg"
   },
@@ -297,19 +266,5 @@
       "plugins/plugin-personal-assistant"
     ],
     "reason": "MEASURED_EXPANSION embeds per-scenario-dir persona/paraphrase multipliers sampled live, and the CLI-inference provider note names its plugin; SCENARIO_DIRS itself is seam-discovered"
-  },
-  {
-    "file": "scripts/training-harvest/stage3-gepa-sweep.mjs",
-    "tokens": [
-      "plugins/plugin-training"
-    ],
-    "reason": "GEPA sweep maps task types via plugin-training's trajectory-task-datasets and runs its train command"
-  },
-  {
-    "file": "scripts/verify-smartglasses-software.mjs",
-    "tokens": [
-      "plugins/plugin-facewear"
-    ],
-    "reason": "orchestrates the facewear plugin's software-readiness steps (lint/typecheck/test/app-registration)"
   }
 ]

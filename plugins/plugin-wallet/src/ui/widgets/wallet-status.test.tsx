@@ -6,7 +6,7 @@
 // the @elizaos/ui/state useApp hook (aliased to @elizaos/ui by vitest.config.ts).
 // Asserts populated EVM/SOL rows + chain badges, dust-thresholded asset count,
 // formatUsd value, copy buttons, title-click navigation, empty + disabled +
-// auto-load branches. Fixtures use the real @elizaos/contracts shapes.
+// auto-load branches. Fixtures use the real runtime-owned wallet shapes.
 
 import type {
   WalletBalancesResponse,

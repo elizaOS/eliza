@@ -1,7 +1,7 @@
 /**
  * Compile-time parity between the Capacitor bridge's type-only agent shims and
  * the real agent export surfaces (#15850). The bridge package typechecks
- * against `plugins/plugin-capacitor-bridge/src/type-shims/*` (tsconfig paths)
+ * against `/plugin-capacitor-bridge/type-shims/*` (tsconfig paths)
  * and its declaration build runs `--noCheck`, so without this file no compiler
  * verifies that the real `@elizaos/agent{,/api,/runtime}` modules still satisfy
  * what the bridge expects — drift keeps the bridge typecheck green and
@@ -19,20 +19,20 @@ import { describe, expectTypeOf, it } from "vitest";
 import type {
   AndroidCoreRouteDeps,
   AndroidDispatchRoute,
-} from "../../../plugins/plugin-capacitor-bridge/src/android/dispatch.ts";
+} from "@elizaos/plugin-capacitor-bridge/android/dispatch";
 
 type ShimAgentRoot =
-  typeof import("../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-root.ts");
+  typeof import("@elizaos/plugin-capacitor-bridge/type-shims/agent-root");
 type ShimAgentApi =
-  typeof import("../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-api.ts");
+  typeof import("@elizaos/plugin-capacitor-bridge/type-shims/agent-api");
 type ShimAgentRuntime =
-  typeof import("../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-runtime.ts");
+  typeof import("@elizaos/plugin-capacitor-bridge/type-shims/agent-runtime");
 
 type RealAgentRoot = typeof import("./index.ts");
 type RealAgentApi = typeof import("./api/index.ts");
 type RealAgentRuntime = typeof import("./runtime/index.ts");
 type RealLocalInferenceRuntime =
-  typeof import("../../../plugins/plugin-local-inference/src/runtime/index.ts");
+  typeof import("@elizaos/plugin-local-inference/runtime/index");
 
 describe("capacitor-bridge shim parity (#15850)", () => {
   it("keeps real bridge exports assignable to their shim contracts", () => {

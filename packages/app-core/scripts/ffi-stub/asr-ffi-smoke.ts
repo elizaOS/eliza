@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const { loadElizaInferenceFfi } = await import(
-  "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings"
+  "@elizaos/plugin-local-inference/services/voice/ffi-bindings"
 );
 
 function arg(name: string, fallback: string): string {

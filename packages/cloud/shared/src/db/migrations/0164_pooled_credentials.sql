@@ -1,7 +1,7 @@
 -- #11332: team credential pool (Phase 1 — org API-key pool).
 --
 -- `pooled_credentials` holds ONLY pool metadata (columns mirror
--- LinkedAccountConfig/HealthDetail/Usage from @elizaos/contracts); the key
+-- LinkedAccountConfig/HealthDetail/Usage from the runtime contract); the key
 -- material itself is a `secrets` row (AES-256-GCM envelope) referenced by
 -- secret_id. `pooled_credential_usage` is the per-member daily rollup
 -- (org, credential, user, day, calls) for usage attribution.

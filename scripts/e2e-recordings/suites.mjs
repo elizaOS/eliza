@@ -36,22 +36,6 @@ export const UI_E2E_SUITES = [
       "Runs marketing routes, navigation, onboarding controls, contact capture, route coverage, screenshots, traces, and videos.",
   },
   {
-    name: "os-homepage",
-    displayName: "OS homepage",
-    configDir: "packages/os/homepage",
-    script: "test:e2e",
-    coverage:
-      "Runs OS homepage routes, checkout/preorder flows, link resilience, mobile/desktop screenshots, traces, and videos.",
-  },
-  {
-    name: "os-usb-installer",
-    displayName: "OS USB installer",
-    configDir: "packages/os/usb-installer",
-    script: "test:e2e",
-    coverage:
-      "Runs the installer wizard UI, visual pages, mobile/desktop screenshots, traces, and videos against the mocked installer API.",
-  },
-  {
     name: "ui-agent-surface",
     displayName: "Shared UI agent surface",
     configDir: "packages/ui",

@@ -5,7 +5,7 @@
 // the local client.getWalletTradingProfile / getWalletMarketOverview fetches
 // through a vi.hoisted walletClient. Every assertion checks real populated data
 // or drives a control and asserts its effect. Fixtures use the real
-// @elizaos/contracts shapes (WalletBalancesResponse,
+// runtime-owned wallet shapes (WalletBalancesResponse,
 // WalletNftsResponse, WalletTradingProfileResponse with `pnlSeries`,
 // WalletMarketOverviewResponse with movers/prices/sources) so populated
 // assertions reflect the actual API contract.

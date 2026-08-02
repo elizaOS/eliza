@@ -10,7 +10,7 @@ The runtime heart of elizaOS: `AgentRuntime`, the plugin abstractions (actions /
 
 ```
 src/
-  index.ts              Default barrel — re-exports index.node + a few @elizaos/contracts type shims
+  index.ts              Default barrel — re-exports index.node and security helpers
   index.node.ts         Full Node API surface (the real export list — start here)
   index.browser.ts      Browser-safe subset (no fs/process-bound modules)
   index.edge.ts         Edge-runtime subset
@@ -38,7 +38,7 @@ src/
   providers/            First-party providers (setup-progress, skill-eligibility, linked-identities, ...)
   schemas/              Drizzle table schemas + character schema. schemas/index.ts: buildBaseTables, BaseTables
   database/             inMemoryAdapter (IDatabaseAdapter fallback used when ALLOW_NO_DATABASE)
-  contracts/            Re-exports/adapters over @elizaos/contracts (cloud-topology, first-run-options, service-routing, wallet)
+  contracts/            Runtime-owned contracts plus topology, routing, first-run, and wallet adapters
   generated/            Build-time generated action/provider/evaluator docs + spec-helpers (do not hand-edit)
   i18n/                 validation + action-search keyword data (some generated; see prebuild)
   security/             redact, ssrf-adjacent input policy, spawn-env-policy, external-content, incoming-message-security
@@ -98,7 +98,7 @@ bun run --cwd packages/core format        # biome format --write ./src
 bun run --cwd packages/core clean         # remove dist + emitted src artifacts
 ```
 
-`prebuild` builds `@elizaos/contracts` and generates `src/i18n/generated/validation-keyword-data.ts` if missing. Depends on workspace packages `@elizaos/contracts` and `@elizaos/prompts`.
+`prebuild` builds logger and cloud-routing, then generates `src/i18n/generated/validation-keyword-data.ts` if missing. Runtime-owned contracts are compiled with core.
 
 ## Config / env vars
 
@@ -151,14 +151,14 @@ visible.
 ## How to extend
 
 - **Add an action/provider/evaluator/service to the built-in bundle:** implement against the `Action`/`Provider`/`Evaluator`/`Service` types in `types/`, then add it to the relevant array in `src/features/basic-capabilities/index.ts` (`basicActions`, `basicProviders`, `basicEvaluators`, `basicServices`). Most new capabilities should live in their own plugin package instead of here.
-- **Add a runtime type/contract:** define it under `src/types/<area>.ts` and export from `src/types/index.ts`. If it should be shared with non-runtime consumers, prefer `@elizaos/contracts` and re-export via `src/contracts/`.
+- **Add a runtime type/contract:** define it under `src/types/<area>.ts` or the owning `src/contracts/` domain and export it through the narrowest stable subpath. Cross-host contracts that do not belong to the runtime live under `@elizaos/shared/contracts`.
 - **Add a DB table:** extend the schema in `src/schemas/` and wire it into `buildBaseTables` (`schemas/index.ts`); adapters in plugin-sql/localdb materialize it.
 - **Touching the message loop:** the order is provider → model → action → evaluator. Logic lives in `src/runtime/` (`message-handler.ts`, `planner-loop.ts`, `turn-controller.ts`) and `runtime.ts`. Validated model output goes through `runtime/validated-model-call.ts`.
 - **Browser/edge surface:** if your code is Node-only (fs, process, native deps), export it from `index.node.ts` only — never add it to `index.browser.ts` / `index.edge.ts`.
 
 ## Conventions / gotchas
 
-- `index.node.ts` is the source of truth for the public surface; `index.ts` just re-exports it plus a few `@elizaos/contracts` type shims (kept explicit to avoid d.ts ambiguity).
+- `index.node.ts` is the source of truth for the root public surface; narrow contract consumers should prefer `@elizaos/core/contracts/*` subpaths to avoid barrel collisions.
 - Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).

@@ -46,7 +46,7 @@ import type { LocalInferencePriority } from "../types/model";
  * Device RAM class for on-device inference policy. Canonical probe
  * (env `ELIZA_INFERENCE_RAM_CLASS` exported by `ElizaAgentService`, with a
  * `/proc/meminfo` fallback) lives in
- * `plugins/plugin-native-inference/src/inference-memory-policy.ts`
+ * `/plugin-native-inference/inference-memory-policy.ts`
  * (elizaOS/eliza#11760); this type is shared so policy helpers here and the
  * plugin-side probe agree.
  */

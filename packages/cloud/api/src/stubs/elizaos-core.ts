@@ -995,15 +995,6 @@ export function isConnectorConfigured(
   return Boolean(config.enabled === true);
 }
 
-export function isStreamingDestinationConfigured(
-  _destName: string,
-  destConfig: unknown,
-): boolean {
-  if (!destConfig || typeof destConfig !== "object") return false;
-  const config = destConfig as Record<string, unknown>;
-  if (config.enabled === false) return false;
-  return Boolean(config.enabled === true || config.streamKey || config.rtmpUrl);
-}
 
 export const ContentType = {
   IMAGE: "image",

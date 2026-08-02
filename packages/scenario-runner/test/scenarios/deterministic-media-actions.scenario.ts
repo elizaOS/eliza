@@ -9,7 +9,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { generateMediaAction } from "../../../../plugins/plugin-local-inference/src/actions/generate-media.ts";
+import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,

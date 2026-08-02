@@ -357,7 +357,7 @@ async function inspectActiveOptimizations(args) {
   let vadPath = null;
   try {
     const { resolveSileroVadPath } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/vad.ts"
+      "@elizaos/plugin-local-inference/services/voice/vad"
     );
     vadPath = resolveSileroVadPath({
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
@@ -390,7 +390,7 @@ async function inspectActiveOptimizations(args) {
     let recorderName = null;
     try {
       const { resolveDesktopRecorder } = await import(
-        "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+        "@elizaos/plugin-local-inference/services/voice/mic-source"
       );
       const rec = resolveDesktopRecorder(16_000);
       recorderName = rec ? rec.program : null;
@@ -746,7 +746,7 @@ async function inspectHostPeripherals() {
   const out = { recorder: null, player: null };
   try {
     const { resolveDesktopRecorder } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+      "@elizaos/plugin-local-inference/services/voice/mic-source"
     );
     const rec = resolveDesktopRecorder(16_000);
     out.recorder = rec ? rec.program : null;
@@ -755,7 +755,7 @@ async function inspectHostPeripherals() {
   }
   try {
     const { resolveSystemPlayerName } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/system-audio-sink.ts"
+      "@elizaos/plugin-local-inference/services/voice/system-audio-sink"
     );
     out.player = resolveSystemPlayerName(24_000);
   } catch {
@@ -854,7 +854,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
   if (!catalogEntry) return null;
   try {
     const { Downloader } = await import(
-      "../../../plugins/plugin-local-inference/src/services/downloader.ts"
+      "@elizaos/plugin-local-inference/services/downloader"
     );
     const { elizaModelsDir } = await import(
       "../../shared/src/local-inference/paths.ts"
@@ -903,7 +903,7 @@ async function tryAutoDownloadBundle(catalogEntry) {
 async function makeAudioSink(opts) {
   const { sampleRate, noAudio } = opts;
   const { SystemAudioSink, WavFileAudioSink } = await import(
-    "../../../plugins/plugin-local-inference/src/services/voice/system-audio-sink.ts"
+    "@elizaos/plugin-local-inference/services/voice/system-audio-sink"
   );
   if (noAudio) {
     const out = path.resolve(process.cwd(), `out-${Date.now()}.wav`);
@@ -952,14 +952,14 @@ async function makeAudioSink(opts) {
 async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   if (!catalogEntry || !bundleRoot || !existsSync(bundleRoot)) return null;
   const { listInstalledModels } = await import(
-    "../../../plugins/plugin-local-inference/src/services/registry.ts"
+    "@elizaos/plugin-local-inference/services/registry"
   );
   const installed = await listInstalledModels();
   const already = installed.find((m) => m.id === catalogEntry.id);
   if (already?.path && existsSync(already.path)) return already;
 
   const { upsertElizaModel } = await import(
-    "../../../plugins/plugin-local-inference/src/services/registry.ts"
+    "@elizaos/plugin-local-inference/services/registry"
   );
   const manifestPath = path.join(
     bundleRoot,
@@ -1059,7 +1059,7 @@ async function bootStandaloneRuntime({ roomId }) {
   // Register the local-inference model handlers (TEXT_SMALL / TEXT_LARGE /
   // TRANSCRIPTION / TEXT_TO_SPEECH) + prewarmResponseHandler / prewarmSystemPrefix.
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
-    "../../../plugins/plugin-local-inference/src/runtime/ensure-local-inference-handler.ts"
+    "@elizaos/plugin-local-inference/runtime/ensure-local-inference-handler"
   );
   await ensureLocalInferenceHandler(runtime);
 
@@ -1068,7 +1068,7 @@ async function bootStandaloneRuntime({ roomId }) {
   // is installed this throws downstream and the caller reports it.
   try {
     const { setAssignment, readAssignments } = await import(
-      "../../../plugins/plugin-local-inference/src/services/assignments.ts"
+      "@elizaos/plugin-local-inference/services/assignments"
     );
     if (typeof setAssignment === "function") {
       await setAssignment("TEXT_SMALL", "eliza-1-2b");
@@ -1169,7 +1169,7 @@ function fmtMs(v) {
 async function printTurnLatency(_roomId) {
   try {
     const { voiceLatencyTracer } = await import(
-      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+      "@elizaos/plugin-local-inference/services/latency-trace"
     );
     const traces = voiceLatencyTracer.recentTraces(1);
     const t = traces[traces.length - 1];
@@ -1190,7 +1190,7 @@ async function printTurnLatency(_roomId) {
 async function printLatencyHistogram() {
   try {
     const { voiceLatencyTracer } = await import(
-      "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+      "@elizaos/plugin-local-inference/services/latency-trace"
     );
     const summaries =
       typeof voiceLatencyTracer.histogramSummaries === "function"
@@ -1340,14 +1340,14 @@ async function main() {
 
   // ── Engine + voice bridge ──────────────────────────────────────────────
   const { localInferenceEngine } = await import(
-    "../../../plugins/plugin-local-inference/src/services/engine.ts"
+    "@elizaos/plugin-local-inference/services/engine"
   );
   const engine = localInferenceEngine;
 
   // Load the eliza-1-2b model into the engine (this activates the bundle).
   try {
     const { listInstalledModels } = await import(
-      "../../../plugins/plugin-local-inference/src/services/registry.ts"
+      "@elizaos/plugin-local-inference/services/registry"
     );
     const installed = await listInstalledModels();
     const target = installed.find((m) => m.id === "eliza-1-2b");
@@ -1515,7 +1515,7 @@ async function main() {
     try {
       // Mark the latency trace's vad-trigger so the trace has a t0.
       const { markVoiceLatency } = await import(
-        "../../../plugins/plugin-local-inference/src/services/latency-trace.ts"
+        "@elizaos/plugin-local-inference/services/latency-trace"
       );
       markVoiceLatency(args.room, "vad-trigger");
       markVoiceLatency(args.room, "asr-final");
@@ -1559,10 +1559,10 @@ async function main() {
     );
     try {
       const { PushMicSource } = await import(
-        "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+        "@elizaos/plugin-local-inference/services/voice/mic-source"
       );
       const { decodeMonoPcm16Wav } = await import(
-        "../../../plugins/plugin-local-inference/src/services/voice/engine-bridge.ts"
+        "@elizaos/plugin-local-inference/services/voice/engine-bridge"
       );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
@@ -1622,7 +1622,7 @@ async function main() {
   );
   try {
     const { DesktopMicSource } = await import(
-      "../../../plugins/plugin-local-inference/src/services/voice/mic-source.ts"
+      "@elizaos/plugin-local-inference/services/voice/mic-source"
     );
     micSource = new DesktopMicSource();
     // The engine constructs the fused Silero VAD (via the libelizainference

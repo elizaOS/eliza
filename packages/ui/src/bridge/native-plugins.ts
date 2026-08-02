@@ -53,7 +53,7 @@ export interface SwabbleAudioLevelEvent {
  * (`wake-listen-window.ts`) — distinct from the continuous `audioLevel` meter.
  *
  * Field shape mirrors the canonical `SwabbleWakeWordEvent` in
- * `@elizaos/capacitor-swabble` (`plugins/plugin-native-swabble/src/definitions.ts`);
+ * `@elizaos/capacitor-swabble` (`/capacitor-swabble/definitions.ts`);
  * kept as a local copy because the bridge models native plugins structurally
  * rather than importing the Capacitor package.
  */

@@ -57,7 +57,6 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
   it("derives MOBILE_CORE_PLUGINS from the metadata table (unchanged membership)", () => {
     sameMembers(MOBILE_CORE_PLUGINS, [
       "@elizaos/plugin-sql",
-      "@elizaos/plugin-background-runner",
       "@elizaos/plugin-native-filesystem",
       "@elizaos/plugin-vision",
       "@elizaos/plugin-scheduling",
