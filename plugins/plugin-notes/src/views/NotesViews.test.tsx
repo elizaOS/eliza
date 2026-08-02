@@ -42,9 +42,7 @@ function stickyNote(overrides: Partial<StickyNote> = {}): StickyNote {
   };
 }
 
-function hookState(
-  overrides: Partial<NotesState> = {},
-): NotesState {
+function hookState(overrides: Partial<NotesState> = {}): NotesState {
   return {
     snapshot: null,
     loading: false,
@@ -64,7 +62,7 @@ describe("Notes state labels", () => {
     const notesSnapshot = snapshot(4);
     notesSnapshot.notes = [stickyNote()];
     stateHook.mockReturnValue(hookState({ snapshot: notesSnapshot }));
-    const notes = render(<NotesView />);
+    const _notes = render(<NotesView />);
     expect(
       screen.getByRole("main", {
         name: "Notes. 1 note · revision 4",
@@ -121,7 +119,7 @@ describe("Notes state labels", () => {
 
   it("does not report healthy zero counts before the first snapshot", () => {
     stateHook.mockReturnValue(hookState({ loading: true }));
-    const notes = render(<NotesView />);
+    const _notes = render(<NotesView />);
     expect(
       screen.getByRole("main", {
         name: "Notes. Loading shared notes…",
@@ -135,7 +133,7 @@ describe("Notes state labels", () => {
     stateHook.mockReturnValue(
       hookState({ snapshot: snapshot(4), error: "Agent disconnected" }),
     );
-    const notes = render(<NotesView />);
+    const _notes = render(<NotesView />);
     expect(
       screen.getByRole("main", {
         name: "Notes. Sync unavailable · revision 4",
@@ -149,7 +147,7 @@ describe("Notes state labels", () => {
 
   it("reports empty counts only after a successful snapshot", () => {
     stateHook.mockReturnValue(hookState({ snapshot: snapshot(7) }));
-    const notes = render(<NotesView />);
+    const _notes = render(<NotesView />);
     expect(
       screen.getByRole("main", {
         name: "Notes. 0 notes · revision 7",
@@ -227,4 +225,3 @@ describe("Notes direct interactions", () => {
     await waitFor(() => expect(mutate).toHaveBeenCalledWith("clear-notes"));
   });
 });
-

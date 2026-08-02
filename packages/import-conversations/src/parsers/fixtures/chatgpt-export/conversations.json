@@ -1,0 +1,145 @@
+[
+  {
+    "title": "Center a div",
+    "create_time": 1704067200.0,
+    "update_time": 1704067260.5,
+    "conversation_id": "conv-1",
+    "current_node": "a3",
+    "mapping": {
+      "root": {
+        "id": "root",
+        "parent": null,
+        "children": ["u1"],
+        "message": {
+          "id": "m-root",
+          "author": { "role": "system" },
+          "create_time": 1704067200.0,
+          "content": { "content_type": "text", "parts": [""] },
+          "metadata": { "is_visually_hidden_from_conversation": true }
+        }
+      },
+      "u1": {
+        "id": "u1",
+        "parent": "root",
+        "children": ["a1", "a1-alt"],
+        "message": {
+          "id": "m-u1",
+          "author": { "role": "user" },
+          "create_time": 1704067201.0,
+          "content": { "content_type": "text", "parts": ["Hello, how do I center a div?"] },
+          "metadata": {}
+        }
+      },
+      "a1": {
+        "id": "a1",
+        "parent": "u1",
+        "children": ["u2"],
+        "message": {
+          "id": "m-a1",
+          "author": { "role": "assistant" },
+          "create_time": 1704067202.0,
+          "content": { "content_type": "text", "parts": ["You can use flexbox."] },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      },
+      "a1-alt": {
+        "id": "a1-alt",
+        "parent": "u1",
+        "children": [],
+        "message": {
+          "id": "m-a1-alt",
+          "author": { "role": "assistant" },
+          "create_time": 1704067203.0,
+          "content": { "content_type": "text", "parts": ["Regenerated: use CSS grid."] },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      },
+      "u2": {
+        "id": "u2",
+        "parent": "a1",
+        "children": ["a2"],
+        "message": {
+          "id": "m-u2",
+          "author": { "role": "user" },
+          "create_time": 1704067204.0,
+          "content": { "content_type": "text", "parts": ["Show me the CSS."] },
+          "metadata": {}
+        }
+      },
+      "a2": {
+        "id": "a2",
+        "parent": "u2",
+        "children": ["tool1"],
+        "message": {
+          "id": "m-a2",
+          "author": { "role": "assistant" },
+          "create_time": 1704067205.0,
+          "content": { "content_type": "code", "language": "css", "text": ".box { display: flex; }" },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      },
+      "tool1": {
+        "id": "tool1",
+        "parent": "a2",
+        "children": ["a3"],
+        "message": {
+          "id": "m-tool1",
+          "author": { "role": "assistant" },
+          "create_time": 1704067206.0,
+          "recipient": "browser",
+          "content": { "content_type": "text", "parts": ["search(\"center div\")"] },
+          "metadata": {}
+        }
+      },
+      "a3": {
+        "id": "a3",
+        "parent": "tool1",
+        "children": [],
+        "message": {
+          "id": "m-a3",
+          "author": { "role": "assistant" },
+          "create_time": 1704067207.0,
+          "content": {
+            "content_type": "multimodal_text",
+            "parts": [
+              "Here is a diagram:",
+              { "content_type": "image_asset_pointer", "asset_pointer": "file-service://file-abc" }
+            ]
+          },
+          "metadata": { "model_slug": "gpt-4o" }
+        }
+      }
+    }
+  },
+  {
+    "title": "Only tools",
+    "create_time": 1704070000.0,
+    "conversation_id": "conv-2",
+    "current_node": "t1",
+    "mapping": {
+      "sys": {
+        "id": "sys",
+        "parent": null,
+        "children": ["t1"],
+        "message": {
+          "id": "m-sys",
+          "author": { "role": "system" },
+          "content": { "content_type": "text", "parts": [""] },
+          "metadata": { "is_visually_hidden_from_conversation": true }
+        }
+      },
+      "t1": {
+        "id": "t1",
+        "parent": "sys",
+        "children": [],
+        "message": {
+          "id": "m-t1",
+          "author": { "role": "tool" },
+          "create_time": 1704070001.0,
+          "content": { "content_type": "execution_output", "text": "done" },
+          "metadata": {}
+        }
+      }
+    }
+  }
+]

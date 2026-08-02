@@ -41,19 +41,13 @@ afterEach(async () => {
 });
 
 async function temporaryStateDirectory(): Promise<string> {
-  const directory = await fs.mkdtemp(
-    path.join(os.tmpdir(), "notes-backend-"),
-  );
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "notes-backend-"));
   temporaryDirectories.push(directory);
   return directory;
 }
 
 async function temporaryStateFile(): Promise<string> {
-  return path.join(
-    await temporaryStateDirectory(),
-    "notes",
-    "state.json",
-  );
+  return path.join(await temporaryStateDirectory(), "notes", "state.json");
 }
 
 function clock(start = "2026-07-16T12:00:00.000Z"): () => Date {
@@ -224,14 +218,12 @@ describe("NotesStore", () => {
     const first = new NotesService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
-    const duplicate = new NotesService(
-      await defaultStoreRuntime("agent-a"),
-      { stateDir },
-    );
-    const isolated = new NotesService(
-      await defaultStoreRuntime("agent-b"),
-      { stateDir },
-    );
+    const duplicate = new NotesService(await defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    const isolated = new NotesService(await defaultStoreRuntime("agent-b"), {
+      stateDir,
+    });
     await Promise.all([
       first.initialize(),
       duplicate.initialize(),
@@ -267,10 +259,9 @@ describe("NotesStore", () => {
     await duplicate.stop();
     await isolated.stop();
 
-    const restarted = new NotesService(
-      await defaultStoreRuntime("agent-a"),
-      { stateDir },
-    );
+    const restarted = new NotesService(await defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
     await restarted.initialize();
     expect(restarted.snapshot()).toMatchObject({ revision: 24 });
     expect(restarted.listNotes()).toHaveLength(24);
@@ -280,10 +271,7 @@ describe("NotesStore", () => {
   it("keeps unscoped workbench state outside the agent-scoped durable store", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = notesStateFilePath(stateDir);
-    const scopedPath = notesStateFilePath(
-      stateDir,
-      testAgentId("agent-a"),
-    );
+    const scopedPath = notesStateFilePath(stateDir, testAgentId("agent-a"));
     const legacy = await serviceFor(legacyPath);
     await legacy.createNote({ title: "Legacy note", body: "Keep this" });
     await legacy.stop();
@@ -292,10 +280,9 @@ describe("NotesStore", () => {
     const first = new NotesService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
-    const duplicate = new NotesService(
-      await defaultStoreRuntime("agent-a"),
-      { stateDir },
-    );
+    const duplicate = new NotesService(await defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
     await Promise.all([first.initialize(), duplicate.initialize()]);
 
     expect(first.snapshot()).toMatchObject({ revision: 0, notes: [] });
@@ -307,10 +294,9 @@ describe("NotesStore", () => {
     await first.stop();
     await duplicate.stop();
 
-    const restarted = new NotesService(
-      await defaultStoreRuntime("agent-a"),
-      { stateDir },
-    );
+    const restarted = new NotesService(await defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
     await restarted.initialize();
     expect(restarted.listNotes().map((note) => note.title)).toEqual([
       "Scoped note",
@@ -323,10 +309,7 @@ describe("NotesStore", () => {
   it("ignores malformed unscoped workbench state instead of importing it", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = notesStateFilePath(stateDir);
-    const scopedPath = notesStateFilePath(
-      stateDir,
-      testAgentId("agent-a"),
-    );
+    const scopedPath = notesStateFilePath(stateDir, testAgentId("agent-a"));
     await fs.mkdir(path.dirname(legacyPath), { recursive: true });
     await fs.writeFile(
       legacyPath,
@@ -334,10 +317,9 @@ describe("NotesStore", () => {
       "utf8",
     );
 
-    const service = new NotesService(
-      await defaultStoreRuntime("agent-a"),
-      { stateDir },
-    );
+    const service = new NotesService(await defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
     await expect(service.initialize()).resolves.toBeUndefined();
     expect(service.snapshot()).toMatchObject({ revision: 0, notes: [] });
     await fs.access(scopedPath);
@@ -439,7 +421,6 @@ describe("Notes capabilities", () => {
       success: true,
       data: { cleared: 2 },
     });
-
   });
 
   it("returns explicit failures for invalid input and rejects undeclared capabilities", async () => {

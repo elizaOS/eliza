@@ -29,7 +29,8 @@ function createRuntime(service: ShellService | null): IAgentRuntime {
 // the assertions are POSIX-shell-shaped. Skip on Windows; the unit tests
 // in `__tests__/shell.test.ts` cover the same code paths without
 // depending on shell-output formatting.
-const describePosixShell = process.platform === "win32" ? describe.skip : describe;
+const describePosixShell =
+  process.platform === "win32" ? describe.skip : describe;
 
 describePosixShell("shell plugin real local integration", () => {
   let allowedDirectory = "";
@@ -60,14 +61,19 @@ describePosixShell("shell plugin real local integration", () => {
   });
 
   it("executes a real command in the allowed directory and exposes it through the provider", async () => {
-    const result = await service.executeCommand('printf "live-shell" > output.txt', "room-1");
+    const result = await service.executeCommand(
+      'printf "live-shell" > output.txt',
+      "room-1",
+    );
     expect(result.success).toBe(true);
-    expect(readFileSync(path.join(allowedDirectory, "output.txt"), "utf8")).toBe("live-shell");
+    expect(
+      readFileSync(path.join(allowedDirectory, "output.txt"), "utf8"),
+    ).toBe("live-shell");
 
     const provider = await shellHistoryProvider.get(
       runtime,
       { roomId: "room-1", agentId: "agent-1" } as never,
-      {} as never
+      {} as never,
     );
 
     expect(provider.text).toContain("output.txt");
@@ -80,7 +86,7 @@ describePosixShell("shell plugin real local integration", () => {
 
     expect(result.success).toBe(false);
     expect(result.stderr).toMatch(
-      /Cannot navigate outside allowed directory|Command contains forbidden patterns/
+      /Cannot navigate outside allowed directory|Command contains forbidden patterns/,
     );
     expect(service.getCurrentDirectory()).toBe(allowedDirectory);
   });
@@ -115,7 +121,7 @@ describePosixShell("shell plugin real local integration", () => {
     const provider = await shellHistoryProvider.get(
       throwingRuntime,
       { roomId: "room-boom", agentId: "agent-1" } as never,
-      {} as never
+      {} as never,
     );
 
     // Model-visible: not blank, and it names the failure.
@@ -147,7 +153,9 @@ describePosixShell("shell plugin real local integration", () => {
 
     const errorLogs: unknown[] = [];
     const originalError = logger.error;
-    (logger as unknown as { error: (...a: unknown[]) => void }).error = (...args: unknown[]) => {
+    (logger as unknown as { error: (...a: unknown[]) => void }).error = (
+      ...args: unknown[]
+    ) => {
       errorLogs.push(args);
     };
 
@@ -155,12 +163,13 @@ describePosixShell("shell plugin real local integration", () => {
       const provider = await shellHistoryProvider.get(
         legacyRuntime,
         { roomId: "room-legacy", agentId: "agent-1" } as never,
-        {} as never
+        {} as never,
       );
       expect(provider.text).toContain("legacy history failure");
       expect(provider.data?.error).toBe("legacy history failure");
     } finally {
-      (logger as unknown as { error: typeof originalError }).error = originalError;
+      (logger as unknown as { error: typeof originalError }).error =
+        originalError;
     }
 
     expect(errorLogs.length).toBeGreaterThan(0);

@@ -44,9 +44,7 @@ export const notesPlugin: Plugin = {
     },
   ],
   async dispose(runtime) {
-    await runtime
-      .getService<NotesService>(NotesService.serviceType)
-      ?.stop();
+    await runtime.getService<NotesService>(NotesService.serviceType)?.stop();
   },
 };
 

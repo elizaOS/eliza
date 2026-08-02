@@ -15,7 +15,9 @@ function isExplicitTrue(value: string | undefined): boolean {
  * truthy. In the default (passive-connectors-on) posture it never starts, so
  * the passive telegram connector owns the long-poll instead.
  */
-export function shouldStartTelegramStandaloneBot(env: NodeJS.ProcessEnv = process.env): boolean {
+export function shouldStartTelegramStandaloneBot(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
   if (lifeOpsPassiveConnectorsEnabled(null, env)) {
     return false;
   }

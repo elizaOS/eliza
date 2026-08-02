@@ -56,9 +56,7 @@ function jsonResponse(value: unknown, status = 200): Response {
 }
 
 beforeEach(async () => {
-  stateDirectory = await fs.mkdtemp(
-    path.join(os.tmpdir(), "notes-ui-e2e-"),
-  );
+  stateDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "notes-ui-e2e-"));
   let id = 0;
   let timestamp = Date.parse("2026-07-22T12:00:00.000Z");
   service = new NotesService(undefined, {

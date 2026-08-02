@@ -281,7 +281,9 @@ describe("discord local-mode routes (real dispatch)", () => {
 		expect(missingBody.error.code).toBe("bad_request");
 		expect(missingBody.error.message).toContain("guildId");
 
-		const ok = await fetch(`${base}/api/discord/channels?guildId=123456789012345678`);
+		const ok = await fetch(
+			`${base}/api/discord/channels?guildId=123456789012345678`,
+		);
 		expect(ok.status).toBe(200);
 		const okBody = (await ok.json()) as {
 			channels: Array<{ id: string }>;
@@ -296,20 +298,36 @@ describe("discord local-mode routes (real dispatch)", () => {
 		const state = defaultState();
 		const base = await startServer(makeRuntime({ state }));
 		const res = await postJson(base, "/api/discord/subscriptions", {
-			channelIds: ["111111111111111111", "222222222222222222", "111111111111111111", "  ", "333333333333333333"],
+			channelIds: [
+				"111111111111111111",
+				"222222222222222222",
+				"111111111111111111",
+				"  ",
+				"333333333333333333",
+			],
 		});
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { subscribedChannelIds: string[] };
 		// handler dedupes + trims before calling the service.
-		expect(body.subscribedChannelIds).toEqual(["111111111111111111", "222222222222222222", "333333333333333333"]);
-		expect(state.subscribed).toEqual(["111111111111111111", "222222222222222222", "333333333333333333"]);
+		expect(body.subscribedChannelIds).toEqual([
+			"111111111111111111",
+			"222222222222222222",
+			"333333333333333333",
+		]);
+		expect(state.subscribed).toEqual([
+			"111111111111111111",
+			"222222222222222222",
+			"333333333333333333",
+		]);
 	});
 
 	it("rejects non-snowflake guildId (400) and channelIds (400)", async () => {
 		const state = defaultState();
 		const base = await startServer(makeRuntime({ state }));
 
-		const badGuild = await fetch(`${base}/api/discord/channels?guildId=not-a-snowflake`);
+		const badGuild = await fetch(
+			`${base}/api/discord/channels?guildId=not-a-snowflake`,
+		);
 		expect(badGuild.status).toBe(400);
 
 		const badSubs = await postJson(base, "/api/discord/subscriptions", {
@@ -345,7 +363,9 @@ describe("discord local-mode routes (real dispatch)", () => {
 		const guilds = await fetch(`${base}/api/discord/guilds`);
 		expect(guilds.status).toBe(401);
 
-		const channels = await fetch(`${base}/api/discord/channels?guildId=123456789012345678`);
+		const channels = await fetch(
+			`${base}/api/discord/channels?guildId=123456789012345678`,
+		);
 		expect(channels.status).toBe(401);
 
 		const subs = await postJson(base, "/api/discord/subscriptions", {

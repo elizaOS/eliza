@@ -22,4 +22,3 @@ registerAppShellPage({
       default: module.NotesView,
     })),
 });
-

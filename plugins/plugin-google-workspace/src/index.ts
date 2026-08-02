@@ -22,8 +22,6 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 export * from "./auth.js";
 export * from "./calendar.js";
 export * from "./chat/accounts.js";
-export * from "./chat/connector-account-provider.js";
-export * from "./chat/types.js";
 export type {
   GoogleChatAccountConfig,
   GoogleChatActionConfig,
@@ -31,7 +29,8 @@ export type {
   GoogleChatReactionNotificationMode,
   GoogleChatSpaceConfig,
 } from "./chat/config.js";
-export { GoogleChatService, GoogleChatWorkflowCredentialProvider };
+export * from "./chat/connector-account-provider.js";
+export * from "./chat/types.js";
 export * from "./client-factory.js";
 export * from "./connector-account-provider.js";
 export * from "./credential-resolver.js";
@@ -41,7 +40,7 @@ export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./scopes.js";
 export * from "./types.js";
-export { GoogleWorkspaceService };
+export { GoogleChatService, GoogleChatWorkflowCredentialProvider, GoogleWorkspaceService };
 
 export const googlePlugin: Plugin = {
   name: GOOGLE_SERVICE_NAME,
@@ -104,7 +103,9 @@ export const googlePlugin: Plugin = {
         process.env.GOOGLE_CHAT_SERVICE_ACCOUNT_FILE ||
         process.env.GOOGLE_APPLICATION_CREDENTIALS
     );
-    logger.info(`  - Chat service-account credentials configured: ${chatCredentials ? "Yes" : "No"}`);
+    logger.info(
+      `  - Chat service-account credentials configured: ${chatCredentials ? "Yes" : "No"}`
+    );
   },
 };
 

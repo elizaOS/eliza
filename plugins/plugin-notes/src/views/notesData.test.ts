@@ -62,7 +62,6 @@ describe("Notes browser interaction broker", () => {
     );
   });
 
-
   it("rejects unknown capabilities before issuing a request", async () => {
     await expect(interact("invent-note")).rejects.toThrow(
       'Notes does not support capability "invent-note".',

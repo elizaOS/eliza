@@ -24,7 +24,14 @@ export interface CommandHistoryEntry {
   fileOperations?: FileOperation[];
 }
 
-export type FileOperationType = "create" | "write" | "read" | "delete" | "mkdir" | "move" | "copy";
+export type FileOperationType =
+  | "create"
+  | "write"
+  | "read"
+  | "delete"
+  | "mkdir"
+  | "move"
+  | "copy";
 
 export interface FileOperation {
   type: FileOperationType;
@@ -176,5 +183,5 @@ export type PtySpawn = (
     rows?: number;
     cwd?: string;
     env?: Record<string, string>;
-  }
+  },
 ) => PtyHandle;

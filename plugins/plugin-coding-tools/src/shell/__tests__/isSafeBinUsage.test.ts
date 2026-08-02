@@ -9,13 +9,19 @@ import type { CommandResolution } from "../approvals/types";
 
 const res = (
   executableName: string,
-  resolvedPath: string | undefined = `/usr/bin/${executableName}`
-): CommandResolution => ({ rawExecutable: executableName, resolvedPath, executableName });
+  resolvedPath: string | undefined = `/usr/bin/${executableName}`,
+): CommandResolution => ({
+  rawExecutable: executableName,
+  resolvedPath,
+  executableName,
+});
 const noFiles = () => false;
 
 describe("normalizeSafeBins", () => {
   it("trims, lowercases, drops empties, and dedups", () => {
-    expect([...normalizeSafeBins([" LS ", "ls", "", "  ", "Cat"])].sort()).toEqual(["cat", "ls"]);
+    expect(
+      [...normalizeSafeBins([" LS ", "ls", "", "  ", "Cat"])].sort(),
+    ).toEqual(["cat", "ls"]);
   });
   it("returns an empty set for non-array input", () => {
     expect(normalizeSafeBins(undefined).size).toBe(0);
@@ -32,20 +38,33 @@ describe("isSafeBinUsage", () => {
         resolution: res("ls"),
         safeBins: new Set(),
         fileExists: noFiles,
-      })
+      }),
     ).toBe(false);
   });
 
   it("refuses a non-allowlisted executable", () => {
     expect(
-      isSafeBinUsage({ argv: ["rm", "-rf"], resolution: res("rm"), safeBins, fileExists: noFiles })
+      isSafeBinUsage({
+        argv: ["rm", "-rf"],
+        resolution: res("rm"),
+        safeBins,
+        fileExists: noFiles,
+      }),
     ).toBe(false);
   });
 
   it("refuses when the executable has no resolved path", () => {
-    const unresolved: CommandResolution = { rawExecutable: "ls", executableName: "ls" };
+    const unresolved: CommandResolution = {
+      rawExecutable: "ls",
+      executableName: "ls",
+    };
     expect(
-      isSafeBinUsage({ argv: ["ls"], resolution: unresolved, safeBins, fileExists: noFiles })
+      isSafeBinUsage({
+        argv: ["ls"],
+        resolution: unresolved,
+        safeBins,
+        fileExists: noFiles,
+      }),
     ).toBe(false);
   });
 
@@ -56,7 +75,7 @@ describe("isSafeBinUsage", () => {
         resolution: res("ls"),
         safeBins,
         fileExists: noFiles,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -67,7 +86,7 @@ describe("isSafeBinUsage", () => {
         resolution: res("cat"),
         safeBins,
         fileExists: noFiles,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -79,7 +98,7 @@ describe("isSafeBinUsage", () => {
         safeBins,
         cwd: "/work",
         fileExists: () => true,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -90,7 +109,7 @@ describe("isSafeBinUsage", () => {
         resolution: res("ls"),
         safeBins,
         fileExists: noFiles,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -101,7 +120,7 @@ describe("isSafeBinUsage", () => {
         resolution: res("ls"),
         safeBins,
         fileExists: noFiles,
-      })
+      }),
     ).toBe(true);
   });
 });

@@ -25,7 +25,8 @@ export const shellHistoryProvider: Provider = {
   name: spec.name,
   description:
     "Provides recent shell command history, current working directory, and file operations within the restricted environment",
-  descriptionCompressed: "Recent shell history, cwd, and file ops in restricted env.",
+  descriptionCompressed:
+    "Recent shell history, cwd, and file ops in restricted env.",
   position: 99,
   contexts: ["terminal", "code"],
   contextGate: { anyOf: ["terminal", "code"] },
@@ -106,7 +107,8 @@ export const shellHistoryProvider: Provider = {
 
       const recentFileOps = history
         .filter(
-          (entry: CommandHistoryEntry) => entry.fileOperations && entry.fileOperations.length > 0
+          (entry: CommandHistoryEntry) =>
+            entry.fileOperations && entry.fileOperations.length > 0,
         )
         .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? [])
         .slice(-5);
@@ -124,7 +126,7 @@ export const shellHistoryProvider: Provider = {
                 }
                 return `- ${op.type}: ${op.target}`;
               })
-              .join("\n")
+              .join("\n"),
           );
       }
 
@@ -172,7 +174,7 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
       } else {
         logger.error(
           { src: "shellHistoryProvider", error },
-          `[shellHistoryProvider] Failed to build shell history context: ${errMsg}`
+          `[shellHistoryProvider] Failed to build shell history context: ${errMsg}`,
         );
       }
       const statusText = `Shell history is unavailable: ${errMsg}`;

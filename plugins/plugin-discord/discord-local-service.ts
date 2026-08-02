@@ -1262,4 +1262,3 @@ export class DiscordLocalService extends Service {
 		await execFileAsync("/usr/bin/osascript", ["-e", script]);
 	}
 }
-

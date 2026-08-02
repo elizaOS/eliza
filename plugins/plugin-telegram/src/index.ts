@@ -21,8 +21,8 @@ import {
 } from "./owner-pairing-service";
 import { registerTelegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { TelegramService } from "./service";
-import { TelegramStandaloneService } from "./standalone/service";
 import { telegramSetupRoutes } from "./setup-routes";
+import { TelegramStandaloneService } from "./standalone/service";
 import { TelegramTestSuite } from "./tests";
 import { registerTelegramTriageAdapter } from "./triage-adapter";
 

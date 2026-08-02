@@ -43,7 +43,9 @@ export class TelegramStandaloneService extends Service {
 
   private bot: Telegraf<Context> | null = null;
 
-  static async start(runtime: IAgentRuntime): Promise<TelegramStandaloneService> {
+  static async start(
+    runtime: IAgentRuntime,
+  ): Promise<TelegramStandaloneService> {
     const service = new TelegramStandaloneService(runtime);
     if (!shouldStartTelegramStandaloneBot()) {
       return service;
@@ -70,7 +72,8 @@ export class TelegramStandaloneService extends Service {
     if (!botToken) return;
 
     try {
-      const apiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
+      const apiRoot =
+        process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
       const bot = new Telegraf(botToken, { telegram: { apiRoot } });
 
       bot.on("message", async (ctx) => {
@@ -78,7 +81,9 @@ export class TelegramStandaloneService extends Service {
       });
 
       bot.catch((err: unknown) =>
-        logger.warn(`[telegram-standalone] Telegram bot error: ${formatError(err)}`)
+        logger.warn(
+          `[telegram-standalone] Telegram bot error: ${formatError(err)}`,
+        ),
       );
 
       // Fire-and-forget — bot.launch() only resolves on stop().
@@ -88,7 +93,9 @@ export class TelegramStandaloneService extends Service {
           allowedUpdates: ["message", "message_reaction"],
         })
         .catch((err: unknown) =>
-          logger.warn(`[telegram-standalone] Telegram bot launch error: ${formatError(err)}`)
+          logger.warn(
+            `[telegram-standalone] Telegram bot launch error: ${formatError(err)}`,
+          ),
         );
 
       this.bot = bot;
@@ -103,7 +110,9 @@ export class TelegramStandaloneService extends Service {
       await new Promise((r) => setTimeout(r, 500));
       logger.info("[telegram-standalone] Telegram bot polling started");
     } catch (err) {
-      logger.warn(`[telegram-standalone] Telegram bot setup failed: ${formatError(err)}`);
+      logger.warn(
+        `[telegram-standalone] Telegram bot setup failed: ${formatError(err)}`,
+      );
     }
   }
 

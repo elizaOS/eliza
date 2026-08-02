@@ -761,7 +761,10 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-google-workspace$/,
-        replacement: path.join(lifeopsTestStubsRoot, "plugin-google-workspace.ts"),
+        replacement: path.join(
+          lifeopsTestStubsRoot,
+          "plugin-google-workspace.ts",
+        ),
       },
       {
         find: /^@elizaos\/plugin-elizacloud$/,

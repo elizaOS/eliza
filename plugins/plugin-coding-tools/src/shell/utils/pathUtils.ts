@@ -9,7 +9,7 @@ import { logger } from "@elizaos/core";
 export function validatePath(
   commandPath: string,
   allowedDir: string,
-  currentDir: string
+  currentDir: string,
 ): string | null {
   const resolvedPath = path.resolve(currentDir, commandPath);
   const normalizedPath = path.normalize(resolvedPath);
@@ -18,7 +18,7 @@ export function validatePath(
 
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     logger.warn(
-      `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`
+      `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`,
     );
     return null;
   }
@@ -29,7 +29,14 @@ export function validatePath(
 export function isSafeCommand(command: string): boolean {
   const pathTraversalPatterns = [/\.\.\//g, /\.\.\\/g, /\/\.\./g, /\\\.\./g];
 
-  const dangerousPatterns = [/\$\(/g, /`[^']*`/g, /\|\s*sudo/g, /;\s*sudo/g, /&\s*&/g, /\|\s*\|/g];
+  const dangerousPatterns = [
+    /\$\(/g,
+    /`[^']*`/g,
+    /\|\s*sudo/g,
+    /;\s*sudo/g,
+    /&\s*&/g,
+    /\|\s*\|/g,
+  ];
 
   for (const pattern of pathTraversalPatterns) {
     if (pattern.test(command)) {
@@ -59,7 +66,10 @@ export function extractBaseCommand(fullCommand: string): string {
   return parts[0] || "";
 }
 
-export function isForbiddenCommand(command: string, forbiddenCommands: string[]): boolean {
+export function isForbiddenCommand(
+  command: string,
+  forbiddenCommands: string[],
+): boolean {
   const normalizedCommand = command.trim().toLowerCase();
 
   return forbiddenCommands.some((forbidden) => {

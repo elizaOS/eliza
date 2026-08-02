@@ -2494,10 +2494,7 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-polymarket",
           "plugins/plugin-polymarket/src/register.ts",
         ],
-        [
-          "@elizaos/plugin-wallet/ui",
-          "plugins/plugin-wallet/src/ui/index.ts",
-        ],
+        ["@elizaos/plugin-wallet/ui", "plugins/plugin-wallet/src/ui/index.ts"],
         [
           "@elizaos/plugin-wallet/register",
           "plugins/plugin-wallet/src/register.ts",

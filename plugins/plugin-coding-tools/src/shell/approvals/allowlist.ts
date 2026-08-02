@@ -80,7 +80,7 @@ function normalizePattern(value: string | undefined): string | null {
  * Ensure all allowlist entries have IDs
  */
 function ensureAllowlistIds(
-  allowlist: ExecAllowlistEntry[] | undefined
+  allowlist: ExecAllowlistEntry[] | undefined,
 ): ExecAllowlistEntry[] | undefined {
   if (!Array.isArray(allowlist) || allowlist.length === 0) {
     return allowlist;
@@ -101,7 +101,7 @@ function ensureAllowlistIds(
  */
 function mergeLegacyAgent(
   current: ExecApprovalsAgent,
-  legacy: ExecApprovalsAgent
+  legacy: ExecApprovalsAgent,
 ): ExecApprovalsAgent {
   const allowlist: ExecAllowlistEntry[] = [];
   const seen = new Set<string>();
@@ -137,7 +137,9 @@ export function normalizeApprovals(file: ExecApprovalsFile): ExecApprovalsFile {
   const legacyDefault = agents.default;
   if (legacyDefault) {
     const main = agents[DEFAULT_AGENT_ID];
-    agents[DEFAULT_AGENT_ID] = main ? mergeLegacyAgent(main, legacyDefault) : legacyDefault;
+    agents[DEFAULT_AGENT_ID] = main
+      ? mergeLegacyAgent(main, legacyDefault)
+      : legacyDefault;
     delete agents.default;
   }
 
@@ -200,7 +202,7 @@ export function readApprovalsSnapshot(): ExecApprovalsSnapshot {
     // never a fake-valid parse.
     logger.warn(
       { src: "exec-approval", parseError, filePath },
-      "Failed to parse approval config snapshot - file may be corrupted"
+      "Failed to parse approval config snapshot - file may be corrupted",
     );
     parsed = null;
   }
@@ -213,7 +215,7 @@ export function readApprovalsSnapshot(): ExecApprovalsSnapshot {
   if (parsed && parsed.version !== 1) {
     logger.warn(
       { src: "exec-approval", version: parsed.version, filePath },
-      "Approval config snapshot has unexpected version"
+      "Approval config snapshot has unexpected version",
     );
   }
 
@@ -236,7 +238,7 @@ export function loadApprovals(): ExecApprovalsFile {
     if (!fs.existsSync(filePath)) {
       logger.debug(
         { src: "exec-approval", filePath },
-        "Approval config file does not exist, using defaults"
+        "Approval config file does not exist, using defaults",
       );
       return normalizeApprovals({ version: 1, agents: {} });
     }
@@ -252,7 +254,7 @@ export function loadApprovals(): ExecApprovalsFile {
       // fabricated config.
       logger.error(
         { src: "exec-approval", parseError, filePath },
-        "Failed to parse approval config JSON - file may be corrupted. Using defaults."
+        "Failed to parse approval config JSON - file may be corrupted. Using defaults.",
       );
       return normalizeApprovals({ version: 1, agents: {} });
     }
@@ -260,7 +262,7 @@ export function loadApprovals(): ExecApprovalsFile {
     if (parsed.version !== 1) {
       logger.warn(
         { src: "exec-approval", version: parsed.version, filePath },
-        "Approval config has unexpected version, using defaults"
+        "Approval config has unexpected version, using defaults",
       );
       return normalizeApprovals({ version: 1, agents: {} });
     }
@@ -272,7 +274,7 @@ export function loadApprovals(): ExecApprovalsFile {
     // so the permissions problem is visible to the operator.
     logger.error(
       { src: "exec-approval", error, filePath },
-      "Failed to load approval config - using defaults. This may indicate a permissions issue."
+      "Failed to load approval config - using defaults. This may indicate a permissions issue.",
     );
     return normalizeApprovals({ version: 1, agents: {} });
   }
@@ -302,7 +304,7 @@ export function saveApprovals(file: ExecApprovalsFile): void {
     // error preserved for diagnosis.
     logger.error(
       { src: "exec-approval", error, filePath },
-      "Failed to save approval configuration"
+      "Failed to save approval configuration",
     );
     throw new Error(`Failed to save approval configuration to ${filePath}`, {
       cause: error,
@@ -324,7 +326,10 @@ export function ensureApprovals(): ExecApprovalsFile {
   const updated: ExecApprovalsFile = {
     ...next,
     socket: {
-      path: socketPath && socketPath.length > 0 ? socketPath : getApprovalSocketPath(),
+      path:
+        socketPath && socketPath.length > 0
+          ? socketPath
+          : getApprovalSocketPath(),
       token: token && token.length > 0 ? token : generateToken(),
     },
   };
@@ -340,7 +345,7 @@ export function ensureApprovals(): ExecApprovalsFile {
     logger.warn(
       { src: "exec-approval", error },
       "Failed to save approval config during ensureApprovals - " +
-        "returning in-memory config. Changes will not persist."
+        "returning in-memory config. Changes will not persist.",
     );
     throw error;
   }
@@ -351,7 +356,10 @@ export function ensureApprovals(): ExecApprovalsFile {
 /**
  * Normalize security value
  */
-function normalizeSecurity(value: ExecSecurity | undefined, fallback: ExecSecurity): ExecSecurity {
+function normalizeSecurity(
+  value: ExecSecurity | undefined,
+  fallback: ExecSecurity,
+): ExecSecurity {
   if (value === "allowlist" || value === "full" || value === "deny") {
     return value;
   }
@@ -374,7 +382,7 @@ function normalizeAsk(value: ExecAsk | undefined, fallback: ExecAsk): ExecAsk {
  */
 export function resolveApprovals(
   agentId?: string,
-  overrides?: Partial<ExecApprovalsDefaults>
+  overrides?: Partial<ExecApprovalsDefaults>,
 ): ExecApprovalsResolved {
   // Try to ensure approvals exist (may fail if can't write to disk)
   // If it fails, we load what we can and proceed with that
@@ -387,7 +395,7 @@ export function resolveApprovals(
     // non-persistent state is visible. loadApprovals itself fails closed.
     logger.warn(
       { src: "exec-approval", error },
-      "Could not ensure approval config exists - using read-only config"
+      "Could not ensure approval config exists - using read-only config",
     );
     file = loadApprovals();
   }
@@ -419,9 +427,11 @@ export function resolveApprovalsFromFile(params: {
   const agent = file.agents?.[agentKey] ?? {};
   const wildcard = file.agents?.["*"] ?? {};
 
-  const fallbackSecurity = params.overrides?.security ?? EXEC_APPROVAL_DEFAULTS.security;
+  const fallbackSecurity =
+    params.overrides?.security ?? EXEC_APPROVAL_DEFAULTS.security;
   const fallbackAsk = params.overrides?.ask ?? EXEC_APPROVAL_DEFAULTS.ask;
-  const fallbackAskFallback = params.overrides?.askFallback ?? EXEC_APPROVAL_DEFAULTS.askFallback;
+  const fallbackAskFallback =
+    params.overrides?.askFallback ?? EXEC_APPROVAL_DEFAULTS.askFallback;
   const fallbackAutoAllowSkills =
     params.overrides?.autoAllowSkills ?? EXEC_APPROVAL_DEFAULTS.autoAllowSkills;
 
@@ -430,23 +440,30 @@ export function resolveApprovalsFromFile(params: {
     ask: normalizeAsk(defaults.ask, fallbackAsk),
     askFallback: normalizeSecurity(
       defaults.askFallback ?? fallbackAskFallback,
-      fallbackAskFallback
+      fallbackAskFallback,
     ),
-    autoAllowSkills: Boolean(defaults.autoAllowSkills ?? fallbackAutoAllowSkills),
+    autoAllowSkills: Boolean(
+      defaults.autoAllowSkills ?? fallbackAutoAllowSkills,
+    ),
   };
 
   const resolvedAgent: Required<ExecApprovalsDefaults> = {
     security: normalizeSecurity(
       agent.security ?? wildcard.security ?? resolvedDefaults.security,
-      resolvedDefaults.security
+      resolvedDefaults.security,
     ),
-    ask: normalizeAsk(agent.ask ?? wildcard.ask ?? resolvedDefaults.ask, resolvedDefaults.ask),
+    ask: normalizeAsk(
+      agent.ask ?? wildcard.ask ?? resolvedDefaults.ask,
+      resolvedDefaults.ask,
+    ),
     askFallback: normalizeSecurity(
       agent.askFallback ?? wildcard.askFallback ?? resolvedDefaults.askFallback,
-      resolvedDefaults.askFallback
+      resolvedDefaults.askFallback,
     ),
     autoAllowSkills: Boolean(
-      agent.autoAllowSkills ?? wildcard.autoAllowSkills ?? resolvedDefaults.autoAllowSkills
+      agent.autoAllowSkills ??
+        wildcard.autoAllowSkills ??
+        resolvedDefaults.autoAllowSkills,
     ),
   };
 
@@ -457,7 +474,9 @@ export function resolveApprovalsFromFile(params: {
 
   return {
     path: params.path ?? getApprovalFilePath(),
-    socketPath: expandHome(params.socketPath ?? file.socket?.path ?? getApprovalSocketPath()),
+    socketPath: expandHome(
+      params.socketPath ?? file.socket?.path ?? getApprovalSocketPath(),
+    ),
     token: params.token ?? file.socket?.token ?? "",
     defaults: resolvedDefaults,
     agent: resolvedAgent,
@@ -471,7 +490,7 @@ export function resolveApprovalsFromFile(params: {
  */
 export function matchAllowlist(
   entries: ExecAllowlistEntry[],
-  resolution: CommandResolution | null
+  resolution: CommandResolution | null,
 ): ExecAllowlistEntry | null {
   if (!entries.length || !resolution?.resolvedPath) {
     return null;
@@ -483,7 +502,8 @@ export function matchAllowlist(
     const pattern = entry.pattern.trim();
     if (!pattern) continue;
 
-    const hasPath = pattern.includes("/") || pattern.includes("\\") || pattern.includes("~");
+    const hasPath =
+      pattern.includes("/") || pattern.includes("\\") || pattern.includes("~");
     if (!hasPath) continue;
 
     if (matchesPattern(pattern, resolvedPath)) {
@@ -588,7 +608,7 @@ export function recordAllowlistUse(
   agentId: string | undefined,
   entry: ExecAllowlistEntry,
   command: string,
-  resolvedPath?: string
+  resolvedPath?: string,
 ): boolean {
   const target = agentId ?? DEFAULT_AGENT_ID;
   const agents = approvals.agents ?? {};
@@ -604,7 +624,7 @@ export function recordAllowlistUse(
           lastUsedCommand: command,
           lastResolvedPath: resolvedPath,
         }
-      : item
+      : item,
   );
 
   agents[target] = { ...existing, allowlist: nextAllowlist };
@@ -619,7 +639,7 @@ export function recordAllowlistUse(
     // it returns false (not-recorded) after a warn.
     logger.warn(
       { src: "exec-approval", error, pattern: entry.pattern },
-      "Failed to record allowlist usage - continuing without update"
+      "Failed to record allowlist usage - continuing without update",
     );
     return false;
   }
@@ -632,7 +652,7 @@ export function recordAllowlistUse(
 export function addAllowlistEntry(
   approvals: ExecApprovalsFile,
   agentId: string | undefined,
-  pattern: string
+  pattern: string,
 ): boolean {
   const target = agentId ?? DEFAULT_AGENT_ID;
   const agents = approvals.agents ?? {};
@@ -641,12 +661,18 @@ export function addAllowlistEntry(
 
   const trimmed = pattern.trim();
   if (!trimmed) {
-    logger.warn({ src: "exec-approval" }, "Attempted to add empty pattern to allowlist");
+    logger.warn(
+      { src: "exec-approval" },
+      "Attempted to add empty pattern to allowlist",
+    );
     return false;
   }
 
   if (allowlist.some((entry) => entry.pattern === trimmed)) {
-    logger.debug({ src: "exec-approval", pattern: trimmed }, "Pattern already in allowlist");
+    logger.debug(
+      { src: "exec-approval", pattern: trimmed },
+      "Pattern already in allowlist",
+    );
     return false;
   }
 
@@ -663,7 +689,7 @@ export function addAllowlistEntry(
     saveApprovals(approvals);
     logger.info(
       { src: "exec-approval", pattern: trimmed, agentId: target },
-      "Added pattern to allowlist"
+      "Added pattern to allowlist",
     );
     return true;
   } catch (error) {
@@ -672,7 +698,7 @@ export function addAllowlistEntry(
     // false as "not added", never as success.
     logger.error(
       { src: "exec-approval", error, pattern: trimmed },
-      "Failed to save allowlist after adding entry"
+      "Failed to save allowlist after adding entry",
     );
     return false;
   }

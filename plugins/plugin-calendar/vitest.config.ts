@@ -13,7 +13,12 @@ const groundedActionReply = path.join(
   "actions",
   "grounded-action-reply.ts",
 );
-const pluginGoogleSrc = path.join(elizaRoot, "plugins", "plugin-google-workspace", "src");
+const pluginGoogleSrc = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-google-workspace",
+  "src",
+);
 const pluginSqlSrc = path.join(elizaRoot, "plugins", "plugin-sql", "src");
 const pluginSchedulingSrc = path.join(
   elizaRoot,

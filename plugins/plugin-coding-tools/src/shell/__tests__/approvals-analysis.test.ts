@@ -25,7 +25,9 @@ describe("analyzeShellCommand", () => {
   });
 
   it("splits a pipeline into ordered segments", () => {
-    const a = analyzeShellCommand({ command: "cat notes.txt | grep milady | wc -l" });
+    const a = analyzeShellCommand({
+      command: "cat notes.txt | grep milady | wc -l",
+    });
     expect(a.ok).toBe(true);
     expect(a.segments.map((s) => s.argv[0])).toEqual(["cat", "grep", "wc"]);
   });
@@ -59,7 +61,7 @@ describe("evaluateExecAllowlist", () => {
   // the tests deterministic across machines with different bin layouts.
   const entriesFor = (
     analysis: ReturnType<typeof analyzeShellCommand>,
-    bins: string[]
+    bins: string[],
   ): ExecAllowlistEntry[] =>
     analysis.segments
       .filter((seg) => bins.includes(seg.argv[0] ?? ""))
@@ -79,7 +81,9 @@ describe("evaluateExecAllowlist", () => {
   });
 
   it("misses when any segment is not covered", () => {
-    const analysis = analyzeShellCommand({ command: "cat a.txt | curl http://x" });
+    const analysis = analyzeShellCommand({
+      command: "cat a.txt | curl http://x",
+    });
     const res = evaluateExecAllowlist({
       analysis,
       allowlist: entriesFor(analysis, ["cat"]),
@@ -127,7 +131,7 @@ describe("requiresExecApproval matrix", () => {
         security: "full",
         analysisOk: true,
         allowlistSatisfied: true,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -138,7 +142,7 @@ describe("requiresExecApproval matrix", () => {
         security: "allowlist",
         analysisOk: false,
         allowlistSatisfied: false,
-      })
+      }),
     ).toBe(false);
   });
 
@@ -149,7 +153,7 @@ describe("requiresExecApproval matrix", () => {
         security: "allowlist",
         analysisOk: true,
         allowlistSatisfied: false,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -160,7 +164,7 @@ describe("requiresExecApproval matrix", () => {
         security: "allowlist",
         analysisOk: false,
         allowlistSatisfied: true,
-      })
+      }),
     ).toBe(true);
   });
 
@@ -171,7 +175,7 @@ describe("requiresExecApproval matrix", () => {
         security: "allowlist",
         analysisOk: true,
         allowlistSatisfied: true,
-      })
+      }),
     ).toBe(false);
   });
 

@@ -13,7 +13,10 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { resolveExecutable, resolveTerminalShell } from "./terminalCapabilities";
+import {
+  resolveExecutable,
+  resolveTerminalShell,
+} from "./terminalCapabilities";
 
 const CHUNK_LIMIT = 8 * 1024;
 
@@ -28,7 +31,7 @@ function resolvePowerShellPath(): string {
       "System32",
       "WindowsPowerShell",
       "v1.0",
-      "powershell.exe"
+      "powershell.exe",
     );
     if (existsSync(candidate)) {
       return candidate;
@@ -141,7 +144,7 @@ export function killSession(session: {
  * Coerce environment object to Record<string, string>
  */
 export function coerceEnv(
-  env?: NodeJS.ProcessEnv | Record<string, string>
+  env?: NodeJS.ProcessEnv | Record<string, string>,
 ): Record<string, string> {
   const record: Record<string, string> = {};
   if (!env) {
@@ -171,7 +174,9 @@ export function resolveWorkdir(workdir: string, warnings: string[]): string {
     // process cwd/home and the substitution is surfaced to the caller via the
     // `warnings` array below (never silently swapped).
   }
-  warnings.push(`Warning: workdir "${workdir}" is unavailable; using "${fallback}".`);
+  warnings.push(
+    `Warning: workdir "${workdir}" is unavailable; using "${fallback}".`,
+  );
   return fallback;
 }
 
@@ -193,7 +198,7 @@ export function clampNumber(
   value: number | undefined,
   defaultValue: number,
   min: number,
-  max: number
+  max: number,
 ): number {
   if (value === undefined || Number.isNaN(value)) {
     return defaultValue;
@@ -227,7 +232,11 @@ export function chunkString(input: string, limit = CHUNK_LIMIT): string[] {
 /**
  * Safely slice a string respecting UTF-16 surrogate pairs
  */
-export function sliceUtf16Safe(str: string, start: number, end?: number): string {
+export function sliceUtf16Safe(
+  str: string,
+  start: number,
+  end?: number,
+): string {
   const effectiveEnd = end ?? str.length;
   if (start < 0) {
     const adjustedStart = Math.max(0, str.length + start);
@@ -253,7 +262,7 @@ export function truncateMiddle(str: string, max: number): string {
 export function sliceLogLines(
   text: string,
   offset?: number,
-  limit?: number
+  limit?: number,
 ): { slice: string; totalLines: number; totalChars: number } {
   if (!text) {
     return { slice: "", totalLines: 0, totalChars: 0 };
@@ -266,7 +275,9 @@ export function sliceLogLines(
   const totalLines = lines.length;
   const totalChars = text.length;
   let start =
-    typeof offset === "number" && Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+    typeof offset === "number" && Number.isFinite(offset)
+      ? Math.max(0, Math.floor(offset))
+      : 0;
   if (limit !== undefined && offset === undefined) {
     const tailCount = Math.max(0, Math.floor(limit));
     start = Math.max(totalLines - tailCount, 0);
@@ -299,7 +310,8 @@ export function deriveSessionName(command: string): string | undefined {
 }
 
 function tokenizeCommand(command: string): string[] {
-  const matches = command.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
+  const matches =
+    command.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
   return matches.map((token) => stripQuotes(token)).filter(Boolean);
 }
 
@@ -391,14 +403,16 @@ export function formatSpawnError(err: unknown): string {
 
 function shouldRetry(err: unknown, codes: string[]): boolean {
   const code =
-    err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "";
+    err && typeof err === "object" && "code" in err
+      ? String((err as { code?: unknown }).code)
+      : "";
   return code.length > 0 && codes.includes(code);
 }
 
 async function spawnAndWaitForSpawn(
   spawnImpl: typeof spawn,
   argv: string[],
-  options: SpawnOptions
+  options: SpawnOptions,
 ): Promise<ChildProcess> {
   const child = spawnImpl(argv[0], argv.slice(1), options);
 
@@ -442,7 +456,7 @@ async function spawnAndWaitForSpawn(
  * Spawn a process with fallback options on certain error codes
  */
 export async function spawnWithFallback(
-  params: SpawnWithFallbackParams
+  params: SpawnWithFallbackParams,
 ): Promise<SpawnWithFallbackResult> {
   const spawnImpl = params.spawnImpl ?? spawn;
   const retryCodes = params.retryCodes ?? DEFAULT_RETRY_CODES;
@@ -460,7 +474,11 @@ export async function spawnWithFallback(
   for (let index = 0; index < attempts.length; index += 1) {
     const attempt = attempts[index];
     try {
-      const child = await spawnAndWaitForSpawn(spawnImpl, params.argv, attempt.options);
+      const child = await spawnAndWaitForSpawn(
+        spawnImpl,
+        params.argv,
+        attempt.options,
+      );
       return {
         child,
         usedFallback: index > 0,

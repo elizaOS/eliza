@@ -16,12 +16,18 @@ import {
 } from "./specs";
 
 // Build lookup maps for O(1) access
-const coreActionMap = new Map<string, ActionDoc>(coreActionDocs.map((doc) => [doc.name, doc]));
-const allActionMap = new Map<string, ActionDoc>(allActionDocs.map((doc) => [doc.name, doc]));
-const coreProviderMap = new Map<string, ProviderDoc>(
-  coreProviderDocs.map((doc) => [doc.name, doc])
+const coreActionMap = new Map<string, ActionDoc>(
+  coreActionDocs.map((doc) => [doc.name, doc]),
 );
-const allProviderMap = new Map<string, ProviderDoc>(allProviderDocs.map((doc) => [doc.name, doc]));
+const allActionMap = new Map<string, ActionDoc>(
+  allActionDocs.map((doc) => [doc.name, doc]),
+);
+const coreProviderMap = new Map<string, ProviderDoc>(
+  coreProviderDocs.map((doc) => [doc.name, doc]),
+);
+const allProviderMap = new Map<string, ProviderDoc>(
+  allProviderDocs.map((doc) => [doc.name, doc]),
+);
 
 /**
  * Get an action spec by name from the core specs.

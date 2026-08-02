@@ -98,7 +98,6 @@ function summarizeNotes(notes: StickyNote[]): string {
   return visible.join("\n");
 }
 
-
 function normalizedLookup(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -216,14 +215,11 @@ async function dispatchCapability(
     const cleared = await service.clearNotes();
     return success(service, `Cleared ${cleared} sticky note(s).`, { cleared });
   }
-  throw new ElizaError(
-    `Notes does not support capability "${capability}".`,
-    {
-      code: "NOTES_UNKNOWN_CAPABILITY",
-      context: { capability },
-      severity: "ephemeral",
-    },
-  );
+  throw new ElizaError(`Notes does not support capability "${capability}".`, {
+    code: "NOTES_UNKNOWN_CAPABILITY",
+    context: { capability },
+    severity: "ephemeral",
+  });
 }
 
 export async function interact(
