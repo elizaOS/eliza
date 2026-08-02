@@ -3238,8 +3238,22 @@ function isStructuredInteractionPayload(value: string | undefined): boolean {
 
 function plannerToolOperationKey(toolCall: PlannerToolCall): string {
 	// A successful sibling mutation must not erase an authoritative failure for
-	// another entity; key order is irrelevant, but every argument value matters.
-	return `${toolCall.name.toUpperCase()}|${stableJsonStringify(toolCall.params ?? {})}`;
+	// another entity; key order is irrelevant and every OPERATIVE argument
+	// matters. Free-text narration params are excluded: models re-narrate the
+	// same retried operation with different wording, and keying on that text
+	// left logically-resolved failures "unresolved" forever — the failure
+	// authority then replaced the turn's terminal REPLY (e.g. a structured
+	// completion proof) with the generic fallback, failing verifications whose
+	// checks had all passed.
+	const params = { ...(toolCall.params ?? {}) };
+	// SHELL defines description as an execution label; other tools may use the
+	// same field as the payload itself (for example TASKS_CREATE). Keeping this
+	// allow-list tool-specific prevents unrelated mutations from sharing failure
+	// authority merely because their schemas reuse a common field name.
+	if (toolCall.name.toUpperCase() === "SHELL") {
+		delete (params as Record<string, unknown>).description;
+	}
+	return `${toolCall.name.toUpperCase()}|${stableJsonStringify(params)}`;
 }
 
 function handleRequiredToolPlannerMiss(params: {

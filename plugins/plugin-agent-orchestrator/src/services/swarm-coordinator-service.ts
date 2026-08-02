@@ -18,6 +18,7 @@ import type {
 } from "@elizaos/core";
 import {
   ElizaError,
+  FAILED_TOOL_FALLBACK_MESSAGE,
   logger,
   Service,
   SWARM_COORDINATOR_SERVICE_TYPE,
@@ -257,6 +258,11 @@ export class SwarmCoordinatorService
   private swarmCompleteCallback: SwarmCompleteCallback | null = null;
   private readonly inFlightDecisionSessions = new Set<string>();
   private readonly synthesizedCompletionSessions = new Set<string>();
+  // Sessions whose validator PASS (bare or body-carrying) has posted. Unlike
+  // the synthesis dedupe slot this never re-arms on resume: once a create/edit
+  // task has publicly passed, its eventual teardown `stopped` is plumbing and
+  // must not synthesize a false "<label> — stopped before completion."
+  private readonly validatorPassSessions = new Set<string>();
   // Sessions whose latest terminal event was ceded to the sub-agent-router
   // (the router-owned skip in `runSwarmComplete`). The one-shot runners
   // (runPromptAndClose / runPromptViaSmithers in actions/tasks.ts) ALWAYS stop
@@ -379,6 +385,7 @@ export class SwarmCoordinatorService
     this.swarmCompleteCallback = null;
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
+    this.validatorPassSessions.clear();
     this.routerCededTerminalSessions.clear();
     this.terminalCompletionChains.clear();
     this.enrichmentMetadataCache.clear();
@@ -724,8 +731,12 @@ export class SwarmCoordinatorService
       // Session resumed: the ceded-terminal marker belongs to the PREVIOUS
       // turn. A genuine user stop on this new turn — which the router never
       // posts — must synthesize again, so the marker must not outlive the turn
-      // whose teardown it suppresses.
+      // whose teardown it suppresses. Same rule for the validator-pass
+      // markers: a pass suppresses only the teardown stop of the turn it
+      // verified; new work on the reused session re-arms both the stop notice
+      // and the bare-pass feedback.
       this.routerCededTerminalSessions.delete(sessionId);
+      this.validatorPassSessions.delete(sessionId);
     }
 
     const enrichedData = this.shouldEnrichEvent(event)
@@ -949,6 +960,30 @@ export class SwarmCoordinatorService
       return;
     }
 
+    // A verify-retry session reports its outcome under the ORIGINAL session's
+    // validated completion (dispatchCustomValidatorResult runs on the lineage
+    // root, which claims the synthesis slot). The retry session's own teardown
+    // `stopped` is plumbing — synthesizing it posts a false
+    // "<label> — stopped before completion." into a room that already received
+    // the pass verdict. A retry that genuinely dies without ANY lineage
+    // completion still synthesizes: the root never claimed the slot.
+    if (event === "stopped") {
+      if (this.validatorPassSessions.has(sessionId)) {
+        return;
+      }
+      const retryOf = readString(
+        await this.getFreshSessionMetadata(sessionId),
+        "retryOfSessionId",
+      );
+      if (
+        retryOf &&
+        (this.synthesizedCompletionSessions.has(retryOf) ||
+          this.validatorPassSessions.has(retryOf))
+      ) {
+        return;
+      }
+    }
+
     // Ownership rule (issue elizaOS/eliza#11634): the sub-agent-router owns the
     // completion→chat post for origin-routed sessions — it is origin-aware,
     // dedupe-keyed, respawn/retry-suppressing, and feeds the planner's clean
@@ -1078,14 +1113,40 @@ export class SwarmCoordinatorService
     const bodyBudget = validatorVerdict
       ? DEFAULT_MAX_RELAY_CHARS - validatorVerdict.length - 2
       : DEFAULT_MAX_RELAY_CHARS;
-    const sanitizedBody = rawSummary
+    let sanitizedBody = rawSummary
       ? sanitizeCompletionRelay(rawSummary, bodyBudget)
       : "";
+    // A retried lineage can leave the planner's generic failed-tool apology as
+    // the root session's finalText; next to a pass verdict it contradicts the
+    // outcome ("verification passed" + "the runtime step failed"). Identity
+    // match on the exported constant — the same recognition the message
+    // service uses to drop it as redundant.
+    if (validatorVerdict && sanitizedBody === FAILED_TOOL_FALLBACK_MESSAGE) {
+      sanitizedBody = "";
+    }
+    // A PASS verdict never prefixes the deliverable: the body ("live at
+    // <url>") IS the user's proof, and the verifier status line is plumbing.
+    // Fail verdicts keep the explicit verdict text — there the status is the
+    // actionable content.
+    const isPassVerdict =
+      validatorVerdict.length > 0 && terminalStatus === "completed";
     const sanitizedSummary = validatorVerdict
       ? sanitizedBody && sanitizedBody !== validatorVerdict
-        ? `${validatorVerdict}\n\n${sanitizedBody}`
+        ? isPassVerdict
+          ? sanitizedBody
+          : `${validatorVerdict}\n\n${sanitizedBody}`
         : validatorVerdict
       : sanitizedBody;
+    if (validatorVerdict && terminalStatus === "completed") {
+      this.validatorPassSessions.add(sessionId);
+      // A body-less pass is machine plumbing — the user asked for an outcome,
+      // not a verifier status line. The deliverable-carrying completion (the
+      // "live at <url>" summary) is the sole chat post; fail verdicts still
+      // escalate below.
+      if (!sanitizedBody) {
+        return;
+      }
+    }
     const completionSummary =
       sanitizedSummary ||
       (terminalStatus === "completed"
