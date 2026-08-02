@@ -138,7 +138,6 @@ function loadScenarioRunnerIds() {
   return ids;
 }
 
-
 function validateCatalogShape(
   catalog,
   expectedFile,
