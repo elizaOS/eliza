@@ -51,12 +51,9 @@ export function extractBarePackageSpecifiers(source: string): string[] {
 }
 
 export function isRuntimePluginPackage(packageName: string): boolean {
-  if (!packageName) return false;
-  if (packageName.startsWith("plugin-")) return true;
-  if (!packageName.startsWith("@")) return false;
-
-  const [, scopedName] = packageName.split("/");
-  return scopedName.startsWith("plugin-");
+  // Release gating owns elizaOS plugins only. Other ecosystems use
+  // `plugin-*` for mandatory helpers that must remain in dependency closure.
+  return packageName.startsWith("@elizaos/plugin-");
 }
 
 export function shouldBundleDiscoveredPackage(

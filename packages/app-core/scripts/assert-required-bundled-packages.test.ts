@@ -1,14 +1,6 @@
 /**
- * Test for the `assertRequiredBundledPackagesLanded` defense-in-depth check.
- *
- * The function fails the desktop build when any package marked
- * `alwaysBundled` (CORE_PLUGINS / OPTIONAL_CORE_PLUGINS / BASELINE_*) is
- * missing its `package.json`, or a baseline package is missing its declared
- * runtime entrypoint, in `dist/node_modules/` after the copy + prune phases.
- * Companion safety net to the transitive-walk filter introduced with the
- * fresh-clone build fixes — if a future refactor accidentally excludes a
- * required package, the build fails loudly here instead of shipping a broken
- * bundle.
+ * Exercises desktop runtime dependency selection, copying, and post-copy
+ * assertions with deterministic filesystem fixtures.
  */
 
 import { execFileSync } from "node:child_process";
@@ -26,6 +18,10 @@ import {
   shouldCopyWorkspacePublishEntry,
   shouldSkipPackagedDependency,
 } from "./copy-runtime-node-modules";
+import {
+  isRuntimePluginPackage,
+  shouldBundleDiscoveredPackage,
+} from "./runtime-package-manifest";
 
 let tmpDir: string;
 let nodeModulesDir: string;
@@ -332,6 +328,36 @@ describe("assertRequiredBundledPackagesLanded", () => {
         "@elizaos/plugin-agent-orchestrator",
         "@octokit/rest",
       ),
+    ).toBe(false);
+  });
+
+  it("keeps third-party plugin helpers in the transitive runtime closure", () => {
+    const dependencyHelpers = [
+      "@jimp/plugin-resize",
+      "@octokit/plugin-paginate-rest",
+      "@octokit/plugin-request-log",
+      "@octokit/plugin-rest-endpoint-methods",
+      "@solana/plugin-core",
+      "@tsparticles/plugin-rgb-color",
+    ];
+
+    for (const packageName of dependencyHelpers) {
+      expect(isRuntimePluginPackage(packageName)).toBe(false);
+      expect(shouldBundleDiscoveredPackage(packageName, new Set())).toBe(true);
+    }
+
+    expect(isRuntimePluginPackage("@elizaos/plugin-openai")).toBe(true);
+    expect(
+      shouldBundleDiscoveredPackage("@elizaos/plugin-openai", new Set()),
+    ).toBe(false);
+  });
+
+  it("prunes test snapshots from third-party runtime dependencies", () => {
+    const snapshotDir = path.join(tmpDir, "__image_snapshots__");
+    mkdirSync(snapshotDir);
+
+    expect(
+      shouldCopyPackageEntry(snapshotDir, "@jimp/plugin-print", tmpDir),
     ).toBe(false);
   });
 

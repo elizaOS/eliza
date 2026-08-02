@@ -128,6 +128,7 @@ const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   "examples",
   "test",
   "tests",
+  "__image_snapshots__",
   "__tests__",
 ]);
 const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
