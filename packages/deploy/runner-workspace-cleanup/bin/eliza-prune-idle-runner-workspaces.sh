@@ -15,12 +15,8 @@
 #   RUNNER_WORKSPACE_ROOT   runners' work root
 #   PRUNE_MIN_AGE_HOURS     minimum checkout age to prune
 #   BUN_BIN / PRUNE_TOOL    runtime + tool path
-# NO `set -e`: one runner's failure must not stop the sweep. The orphan case
-# this helper exists for — a deregistered runner whose agentName matches no
-# unit — makes `grep` in the unit-resolution pipeline exit 1, and under
-# `set -euo pipefail` that single miss aborted the whole script before the
-# orphaned→prune branch could run. Errors are isolated per runner instead,
-# counted, and surfaced in the exit code at the end.
+# NO `set -e`: one runner's failure must not stop the sweep. Errors are
+# isolated per runner, counted, and surfaced in the exit code at the end.
 set -uo pipefail
 
 ROOT="${RUNNER_WORKSPACE_ROOT:?RUNNER_WORKSPACE_ROOT is required}"
@@ -32,6 +28,7 @@ TOOL="${PRUNE_TOOL:?PRUNE_TOOL is required}"
 
 pruned=0
 skipped_active=0
+skipped_undeterminable=0
 failed=0
 
 for runner_dir in "$ROOT"/*/; do
@@ -39,32 +36,53 @@ for runner_dir in "$ROOT"/*/; do
   [[ -d "${runner_dir}_work" ]] || continue
   name="$(basename "$runner_dir")"
 
-  # Resolve this directory's runner unit. Installations name the unit after the
-  # registered agent (`.runner` -> agentName), which is what systemd knows.
-  # Every stage tolerates a miss: no match means orphaned, not an error.
-  agent_name=""
-  if [[ -r "${runner_dir}.runner" ]]; then
-    agent_name="$(sed -n 's/.*"agentName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${runner_dir}.runner" | head -1 || true)"
-  fi
-
+  # GitHub's service installer records the exact generated unit name here.
+  # Deriving it from agentName is unsafe because service-name normalization and
+  # truncation are not reversible, and suffix searches can select a sibling.
+  service_binding="${runner_dir}.service"
   unit=""
-  if [[ -n "$agent_name" ]]; then
-    match="$(systemctl list-units 'actions.runner.*' --all --no-legend --plain 2>/dev/null \
-      | awk '{print $1}' | sed 's/^actions\.runner\.//' | grep -F -- "$agent_name" | head -1 || true)"
-    [[ -n "$match" ]] && unit="actions.runner.${match}"
+  undeterminable=""
+  if [[ -e "$service_binding" ]]; then
+    if [[ -f "$service_binding" && -r "$service_binding" ]]; then
+      unit="$(<"$service_binding")"
+      if [[ "$unit" != actions.runner.*.service || "$unit" == *[[:space:]]* ]]; then
+        undeterminable="invalid .service binding"
+      fi
+    else
+      undeterminable="unreadable .service binding"
+    fi
+  elif [[ -e "${runner_dir}.runner" ]]; then
+    undeterminable="configured runner has no .service binding"
   fi
 
-  if [[ -n "$unit" ]] && systemctl is-active --quiet "$unit" 2>/dev/null; then
-    # Active runner: the hook owns this one. Skipping is the race-free choice.
-    echo "skip $name — runner unit active ($unit); job-completed hook owns it"
-    skipped_active=$((skipped_active + 1))
+  if [[ -n "$undeterminable" ]]; then
+    echo "skip $name — $undeterminable; cannot prove this runner is idle, refusing to prune"
+    skipped_undeterminable=$((skipped_undeterminable + 1))
     continue
   fi
 
+  if [[ -n "$unit" ]]; then
+    active_state="$(systemctl is-active "$unit" 2>/dev/null || true)"
+    case "$active_state" in
+      active)
+        # Active runner: the hook owns this one. Skipping is the race-free choice.
+        echo "skip $name — runner unit active ($unit); job-completed hook owns it"
+        skipped_active=$((skipped_active + 1))
+        continue
+        ;;
+      inactive) ;;
+      *)
+        echo "skip $name — runner unit state is ${active_state:-unknown} ($unit); refusing to prune"
+        skipped_undeterminable=$((skipped_undeterminable + 1))
+        continue
+        ;;
+    esac
+  fi
+
   if [[ -z "$unit" ]]; then
-    # No resolvable unit: an orphaned/removed runner directory. Safe to reclaim
-    # — nothing can schedule work into it.
-    echo "prune $name — no runner unit resolves to it (orphaned)"
+    # No runner or service configuration remains, so this is a directory left
+    # behind by a removed runner rather than a runnable installation.
+    echo "prune $name — no runner configuration remains (orphaned)"
   else
     echo "prune $name — runner unit inactive ($unit)"
   fi
@@ -86,7 +104,7 @@ for runner_dir in "$ROOT"/*/; do
   fi
 done
 
-echo "idle-prune done: pruned=$pruned skipped_active=$skipped_active failed=$failed"
+echo "idle-prune done: pruned=$pruned skipped_active=$skipped_active skipped_undeterminable=$skipped_undeterminable failed=$failed"
 # Surface degraded sweeps to systemd without having let one bad runner stop
 # the others.
 [[ "$failed" -eq 0 ]] || exit 1

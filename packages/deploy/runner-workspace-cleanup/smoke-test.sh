@@ -184,19 +184,20 @@ EOF_ENV
     || fail "systemd-analyze rejected the rendered units"
 fi
 
-# 10. BEHAVIORAL: the idle helper sweeps EVERY orphaned runner — the exact
-#     #15398 case. A deregistered runner's agentName matches no unit, which
-#     under the old `set -e` aborted the sweep at the FIRST orphan (the grep
-#     miss propagated through the command substitution), so a second orphan was
-#     never processed. Driven through the REAL helper + REAL tool with only
-#     systemctl stubbed to "no units exist".
+# 10. BEHAVIORAL: the idle helper sweeps every directory left behind by a
+#     removed runner. Driven through the real helper and prune tool with only
+#     systemctl stubbed.
 STUB_DIR="$TMP_DIR/stub-bin"
 mkdir -p "$STUB_DIR"
 cat > "$STUB_DIR/systemctl" <<'EOF_STUB'
 #!/usr/bin/env bash
 case "${1:-}" in
   list-units) exit 0 ;;   # no actions.runner.* units: every runner is orphaned
-  is-active)  exit 3 ;;   # inactive
+  is-active)
+    case "${2:-}" in
+      actions.runner.acme-org.failed-state.service) echo failed; exit 3 ;;
+      *) exit 1 ;;
+    esac ;;
   *)          exit 0 ;;
 esac
 EOF_STUB
@@ -206,7 +207,6 @@ SWEEP_ROOT="$TMP_DIR/sweep-root"
 for r in runner-a runner-b; do
   mkdir -p "$SWEEP_ROOT/$r/_work/stale-repo"
   echo payload > "$SWEEP_ROOT/$r/_work/stale-repo/file"
-  printf '{"agentName": "%s"}\n' "$r" > "$SWEEP_ROOT/$r/.runner"
   node -e '
     const fs = require("node:fs");
     const when = new Date(Date.now() - 48 * 3600 * 1000);
@@ -227,5 +227,95 @@ test ! -e "$SWEEP_ROOT/runner-a/_work/stale-repo" \
 test ! -e "$SWEEP_ROOT/runner-b/_work/stale-repo" \
   || fail "second orphaned runner was not pruned — the sweep stopped at the first (set -e regression)"
 grep -q "pruned=2" "$TMP_DIR/sweep.log" || fail "sweep did not report pruned=2: $(cat "$TMP_DIR/sweep.log")"
+
+
+# 11. BEHAVIORAL: configured runners without a trustworthy systemd binding are
+#     undeterminable, not orphaned. The helper passes --allow-active only after
+#     this proof, so ambiguity must never reach the destructive branch.
+FAILOPEN_ROOT="$TMP_DIR/failopen-root"
+for r in missing-binding invalid-binding unknown-state failed-state truly-orphaned; do
+  mkdir -p "$FAILOPEN_ROOT/$r/_work/stale-repo"
+  echo payload > "$FAILOPEN_ROOT/$r/_work/stale-repo/file"
+  node -e '
+    const fs = require("node:fs");
+    const when = new Date(Date.now() - 48 * 3600 * 1000);
+    fs.utimesSync(process.argv[1], when, when);
+  ' "$FAILOPEN_ROOT/$r/_work/stale-repo"
+done
+printf '{"agentName": "missing-binding"}\n' > "$FAILOPEN_ROOT/missing-binding/.runner"
+printf '{"agentName": "invalid-binding"}\n' > "$FAILOPEN_ROOT/invalid-binding/.runner"
+printf 'not-a-runner-unit\n' > "$FAILOPEN_ROOT/invalid-binding/.service"
+printf '{"agentName": "unknown-state"}\n' > "$FAILOPEN_ROOT/unknown-state/.runner"
+printf 'actions.runner.acme-org.unknown-state.service\n' > "$FAILOPEN_ROOT/unknown-state/.service"
+printf '{"agentName": "failed-state"}\n' > "$FAILOPEN_ROOT/failed-state/.runner"
+printf 'actions.runner.acme-org.failed-state.service\n' > "$FAILOPEN_ROOT/failed-state/.service"
+# truly-orphaned deliberately has no .runner at all.
+
+PATH="$STUB_DIR:$PATH" \
+RUNNER_WORKSPACE_ROOT="$FAILOPEN_ROOT" \
+PRUNE_MIN_AGE_HOURS=6 \
+BUN_BIN="$BUN_BIN" \
+PRUNE_TOOL="$TOOL_SRC" \
+  bash "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" >"$TMP_DIR/failopen.log" 2>&1 \
+  || fail "sweep exited nonzero on the undeterminable mix: $(cat "$TMP_DIR/failopen.log")"
+
+test -e "$FAILOPEN_ROOT/missing-binding/_work/stale-repo" \
+  || fail "configured runner without .service binding was pruned"
+test -e "$FAILOPEN_ROOT/invalid-binding/_work/stale-repo" \
+  || fail "runner with invalid .service binding was pruned"
+test -e "$FAILOPEN_ROOT/unknown-state/_work/stale-repo" \
+  || fail "runner whose unit state could not be determined was pruned"
+test -e "$FAILOPEN_ROOT/failed-state/_work/stale-repo" \
+  || fail "failed unit was pruned even though its worker may still be shutting down"
+test ! -e "$FAILOPEN_ROOT/truly-orphaned/_work/stale-repo" \
+  || fail "runner with no .runner at all was NOT pruned — the #15398 orphan case must still work"
+grep -q "skipped_undeterminable=4" "$TMP_DIR/failopen.log" \
+  || fail "sweep did not report skipped_undeterminable=4: $(cat "$TMP_DIR/failopen.log")"
+grep -q "pruned=1" "$TMP_DIR/failopen.log" \
+  || fail "sweep did not prune exactly the one genuine orphan: $(cat "$TMP_DIR/failopen.log")"
+
+# 12. BEHAVIORAL: the exact unit binding written by GitHub's service installer
+#     is authoritative even when agent names overlap or contain dots.
+COLLIDE_STUB="$TMP_DIR/stub-collide"
+mkdir -p "$COLLIDE_STUB"
+cat > "$COLLIDE_STUB/systemctl" <<'EOF_STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  is-active)
+    case "${2:-}" in
+      actions.runner.acme-org.runner.1.service) echo active; exit 0 ;;
+      actions.runner.acme-org.runner-10.service) echo inactive; exit 3 ;;
+      *) echo unknown; exit 4 ;;
+    esac ;;
+  *) exit 0 ;;
+esac
+EOF_STUB
+chmod +x "$COLLIDE_STUB/systemctl"
+
+COLLIDE_ROOT="$TMP_DIR/collide-root"
+for r in runner.1 runner-10; do
+  mkdir -p "$COLLIDE_ROOT/$r/_work/stale-repo"
+  echo payload > "$COLLIDE_ROOT/$r/_work/stale-repo/file"
+  printf '{"agentName": "%s"}\n' "$r" > "$COLLIDE_ROOT/$r/.runner"
+  printf 'actions.runner.acme-org.%s.service\n' "$r" > "$COLLIDE_ROOT/$r/.service"
+  node -e '
+    const fs = require("node:fs");
+    const when = new Date(Date.now() - 48 * 3600 * 1000);
+    fs.utimesSync(process.argv[1], when, when);
+  ' "$COLLIDE_ROOT/$r/_work/stale-repo"
+done
+
+PATH="$COLLIDE_STUB:$PATH" \
+RUNNER_WORKSPACE_ROOT="$COLLIDE_ROOT" \
+PRUNE_MIN_AGE_HOURS=6 \
+BUN_BIN="$BUN_BIN" \
+PRUNE_TOOL="$TOOL_SRC" \
+  bash "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" >"$TMP_DIR/collide.log" 2>&1 \
+  || fail "sweep exited nonzero on the prefix-collision pair: $(cat "$TMP_DIR/collide.log")"
+
+test -e "$COLLIDE_ROOT/runner.1/_work/stale-repo" \
+  || fail "busy runner.1 was pruned instead of using its exact .service binding"
+test ! -e "$COLLIDE_ROOT/runner-10/_work/stale-repo" \
+  || fail "idle runner-10 was not pruned"
 
 echo "runner-workspace-cleanup smoke OK (behavioral)"
