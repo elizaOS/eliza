@@ -20,6 +20,8 @@ import type {
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
+import { onViewEvent } from "../views/view-event-bus";
+import { VIEW_EVENTS } from "../views/view-event-types";
 import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
@@ -769,6 +771,37 @@ describe("useChatSend action handoff", () => {
     });
     expect(deps.setActionNotice).not.toHaveBeenCalled();
     window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("invalidates mounted views after a successful REST-streamed action", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: 'Created sticky note "LP3 Demo Proof".',
+      completed: true,
+      actionResults: [
+        {
+          actionName: "CREATE_NOTE",
+          success: true,
+        },
+      ],
+    });
+    const refreshEvents: Array<Record<string, unknown>> = [];
+    const unsubscribe = onViewEvent(VIEW_EVENTS.VIEW_REFRESH, (event) => {
+      refreshEvents.push(event.payload);
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("create the demo note", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(refreshEvents).toEqual([{ actionNames: ["CREATE_NOTE"] }]);
+    unsubscribe();
   });
 
   it("opens a workflow created by a completed chat action", async () => {
