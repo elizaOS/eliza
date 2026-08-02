@@ -239,7 +239,6 @@
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
         "@elizaos/capacitor-wifi": "workspace:*",
-        "@elizaos/cloud-ui": "workspace:*",
         "@elizaos/evidence": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
@@ -311,7 +310,6 @@
         "@clack/prompts": "^1.0.0",
         "@elizaos/agent": "workspace:*",
         "@elizaos/auth": "workspace:*",
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
@@ -436,22 +434,6 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
-      },
-    },
-    "packages/cloud-ui": {
-      "name": "@elizaos/cloud-ui",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/ui": "workspace:*",
-        "@tanstack/react-query": "^5.90.20",
-        "lucide-react": "^1.0.0",
-      },
-      "devDependencies": {
-        "@typescript/native": "npm:typescript@^7.0.2",
-      },
-      "peerDependencies": {
-        "react": ">=19",
-        "react-dom": ">=19",
       },
     },
     "packages/cloud/api": {
@@ -677,7 +659,6 @@
         "@electric-sql/pglite-socket": "0.1.6",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-sdk": "workspace:*",
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
@@ -739,17 +720,6 @@
         "vitest": "^4.1.4",
       },
     },
-    "packages/contracts": {
-      "name": "@elizaos/contracts",
-      "version": "2.0.3-beta.7",
-      "devDependencies": {
-        "@biomejs/biome": "2.5.6",
-        "@types/node": "^25.1.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.7",
-      },
-    },
     "packages/core": {
       "name": "@elizaos/core",
       "version": "2.0.3-beta.7",
@@ -762,7 +732,6 @@
         "@ai-sdk/provider-utils": "5.0.5",
         "@bufbuild/protobuf": "^2.12.0",
         "@elizaos/cloud-routing": "workspace:*",
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/prompts": "workspace:*",
         "@noble/ciphers": "2.2.0",
@@ -833,14 +802,6 @@
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
         "wrangler": "4.100.0",
-      },
-    },
-    "packages/eliza-hub": {
-      "name": "@elizaos/eliza-hub",
-      "version": "0.1.0",
-      "dependencies": {
-        "jose": "^6.2.3",
-        "pg": "^8.22.0",
       },
     },
     "packages/elizaos": {
@@ -949,125 +910,6 @@
       "name": "@elizaos/ios-native-deps",
       "version": "0.1.0",
     },
-    "packages/os": {
-      "name": "@elizaos/distro-os",
-      "version": "2.0.0-beta.2",
-    },
-    "packages/os/android/system-ui": {
-      "name": "@elizaos/os-android-system-ui",
-      "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/os-shared-system": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-      },
-      "devDependencies": {
-        "@testing-library/react": "^16.3.2",
-        "@types/react": "^18.0.0 || ^19.0.0",
-        "@types/react-dom": "^18.0.0 || ^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "jsdom": "^29.0.0",
-        "typescript": "^5.0.0",
-        "vitest": "^4.0.18",
-      },
-      "peerDependencies": {
-        "react": "^18.0.0 || ^19.0.0",
-        "react-dom": "^18.0.0 || ^19.0.0",
-      },
-    },
-    "packages/os/homepage": {
-      "name": "@elizaos/os-homepage",
-      "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-        "@fontsource/poppins": "^5.2.7",
-        "@stwd/sdk": "^0.10.1",
-        "@tailwindcss/vite": "^4.3.1",
-        "@vitejs/plugin-react": "^6.0.0",
-        "lucide-react": "^1.0.0",
-        "react": "19.2.5",
-        "react-dom": "19.2.7",
-        "tailwindcss": "^4.3.1",
-        "tw-animate-css": "^1.4.0",
-        "vite": "^8.0.0",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "2.5.6",
-        "@testing-library/react": "^16.3.2",
-        "@types/node": "^24.0.0",
-        "@types/react": "^19",
-        "@types/react-dom": "^19",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "jsdom": "^29.0.0",
-        "playwright": "^1.59.1",
-        "rollup-plugin-visualizer": "^7.0.1",
-        "sharp": "^0.35.3",
-        "typescript": "^6.0.3",
-        "viem": "^2.48.8",
-        "vitest": "^4.0.18",
-      },
-    },
-    "packages/os/setup": {
-      "name": "@elizaos/setup",
-      "version": "1.0.0",
-      "dependencies": {
-        "vite": "^8.0.0",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.3.14",
-        "@types/node": "^25.0.0",
-        "@types/react": "^18.0.0 || ^19.0.0",
-        "@types/react-dom": "^18.0.0 || ^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "jsdom": "^29.0.0",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-      "peerDependencies": {
-        "react": "^18.0.0 || ^19.0.0",
-        "react-dom": "^18.0.0 || ^19.0.0",
-      },
-    },
-    "packages/os/shared-system": {
-      "name": "@elizaos/os-shared-system",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/react": "^18.0.0 || ^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^5.0.0",
-      },
-      "peerDependencies": {
-        "react": "^18.0.0 || ^19.0.0",
-      },
-    },
-    "packages/os/usb-installer": {
-      "name": "@elizaos/os-usb-installer",
-      "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/shared": "workspace:*",
-        "vite": "^8.0.0",
-      },
-      "devDependencies": {
-        "@types/bun": "^1.3.14",
-        "@types/node": "^25.0.0",
-        "@types/react": "^18.0.0 || ^19.0.0",
-        "@types/react-dom": "^18.0.0 || ^19.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "jsdom": "^29.0.0",
-        "playwright": "^1.59.1",
-        "react": "^19.0.0",
-        "react-dom": "^19.0.0",
-        "sharp": "^0.35.3",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-      "peerDependencies": {
-        "react": "^18.0.0 || ^19.0.0",
-        "react-dom": "^18.0.0 || ^19.0.0",
-      },
-    },
     "packages/prompts": {
       "name": "@elizaos/prompts",
       "version": "2.0.3-beta.7",
@@ -1151,7 +993,6 @@
       "name": "@elizaos/shared",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/registry": "workspace:*",
         "chalk": "^5.3.0",
@@ -1237,7 +1078,6 @@
         "@capacitor/core": "8.4.0",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/import-conversations": "workspace:*",
         "@elizaos/logger": "workspace:*",
@@ -2843,9 +2683,8 @@
         "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/capacitor-mobile-signals": "workspace:*",
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/macosreminders": "workspace:*",
+        "@elizaos/macosreminders": "2.0.3-beta.7",
         "@elizaos/native-activity-tracker": "workspace:*",
         "@elizaos/plugin-blocker": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
@@ -3018,7 +2857,6 @@
       "name": "@elizaos/plugin-scheduling",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -3998,19 +3836,13 @@
 
     "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/test/cloud-mocks"],
 
-    "@elizaos/cloud-ui": ["@elizaos/cloud-ui@workspace:packages/cloud-ui"],
-
     "@elizaos/coding-remote-runner": ["@elizaos/coding-remote-runner@workspace:packages/cloud/services/coding-remote-runner"],
 
     "@elizaos/config": ["@elizaos/config@1.7.2", "", {}, "sha512-faNs1IcEecGivEmzcr/dKAgfoK//Z1jo+X8Mj9d3qpgx9xBoGII2EZSaRc5qatTQVuZsrJjZL0qxFFJ6ztCWbQ=="],
 
     "@elizaos/container-control-plane": ["@elizaos/container-control-plane@workspace:packages/cloud/services/container-control-plane"],
 
-    "@elizaos/contracts": ["@elizaos/contracts@workspace:packages/contracts"],
-
     "@elizaos/core": ["@elizaos/core@workspace:packages/core"],
-
-    "@elizaos/distro-os": ["@elizaos/distro-os@workspace:packages/os"],
 
     "@elizaos/docs": ["@elizaos/docs@workspace:packages/docs"],
 
@@ -4019,8 +3851,6 @@
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app-core/platforms/electrobun"],
 
     "@elizaos/eliza-computer": ["@elizaos/eliza-computer@workspace:packages/eliza-computer"],
-
-    "@elizaos/eliza-hub": ["@elizaos/eliza-hub@workspace:packages/eliza-hub"],
 
     "@elizaos/evidence": ["@elizaos/evidence@workspace:packages/evidence"],
 
@@ -4043,14 +3873,6 @@
     "@elizaos/native-plugin-shared-types": ["@elizaos/native-plugin-shared-types@workspace:plugins/plugin-native-shared-types"],
 
     "@elizaos/operator": ["@elizaos/operator@workspace:packages/cloud/services/operator"],
-
-    "@elizaos/os-android-system-ui": ["@elizaos/os-android-system-ui@workspace:packages/os/android/system-ui"],
-
-    "@elizaos/os-homepage": ["@elizaos/os-homepage@workspace:packages/os/homepage"],
-
-    "@elizaos/os-shared-system": ["@elizaos/os-shared-system@workspace:packages/os/shared-system"],
-
-    "@elizaos/os-usb-installer": ["@elizaos/os-usb-installer@workspace:packages/os/usb-installer"],
 
     "@elizaos/plugin-agent-orchestrator": ["@elizaos/plugin-agent-orchestrator@workspace:plugins/plugin-agent-orchestrator"],
 
@@ -4199,8 +4021,6 @@
     "@elizaos/scenario-runner": ["@elizaos/scenario-runner@workspace:packages/scenario-runner"],
 
     "@elizaos/security": ["@elizaos/security@workspace:packages/security"],
-
-    "@elizaos/setup": ["@elizaos/setup@workspace:packages/os/setup"],
 
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
 
@@ -10041,10 +9861,6 @@
     "@elizaos/operator/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
     "@elizaos/operator/uuid": ["uuid@14.0.0", "", { "bin": { "uuid": "dist-node/bin/uuid" } }, "sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg=="],
-
-    "@elizaos/os-android-system-ui/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@elizaos/os-shared-system/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@elizaos/plugin-elizacloud/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
 
