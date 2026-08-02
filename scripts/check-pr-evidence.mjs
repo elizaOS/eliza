@@ -349,7 +349,7 @@ function inlineTranscriptMeasurements(text) {
   const blocks = [
     ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
     ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
-    ...source.matchAll(/```[\s\S]*?```/g),
+    ...source.matchAll(/(?:```[\s\S]*?```|~~~[\s\S]*?~~~)/g),
   ].map((match) => match[0]);
 
   return blocks.flatMap((block) => {
@@ -357,7 +357,7 @@ function inlineTranscriptMeasurements(text) {
       // A <summary> is a caption, not evidence — it must not carry the block.
       .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
       .replace(/<[^>]*>/g, " ")
-      .replace(/```/g, " ");
+      .replace(/^\s*(?:`{3,}|~{3,})[^\r\n]*$/gm, " ");
     if (NON_REAL_EVIDENCE_RE.test(content)) return [];
     const lines = content
       .split(/\r?\n/)
@@ -423,6 +423,26 @@ export function describeInlineTranscriptShortfall(text) {
   }
   if (missed.length === 0) return null;
   return `pasted transcript is under the floor (${missed.join("; ")})`;
+}
+
+function fencedBlockDelimiter(line) {
+  const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
+  if (!match) return null;
+  return {
+    character: match[1][0],
+    length: match[1].length,
+    remainder: match[2],
+  };
+}
+
+function closesFencedBlock(line, fence) {
+  const delimiter = fencedBlockDelimiter(line);
+  return (
+    delimiter !== null &&
+    delimiter.character === fence.character &&
+    delimiter.length >= fence.length &&
+    delimiter.remainder.trim() === ""
+  );
 }
 
 function substantiveTrajectoryValue(value, minimumLength) {
@@ -588,39 +608,71 @@ export function boundRowBlock(block) {
   const out = [];
   let started = false;
   let detailsDepth = 0;
+  let fence = null;
+  let fenceStart = -1;
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     if (!started) {
       if (line.trim() === "") continue;
       started = true;
       out.push(line);
+      const delimiter = fencedBlockDelimiter(line);
+      if (delimiter) {
+        fence = delimiter;
+        fenceStart = out.length - 1;
+      }
       continue;
     }
 
     const trimmed = line.trim();
     if (trimmed === "") {
-      if (detailsDepth > 0) {
+      if (detailsDepth > 0 || fence !== null) {
         out.push(line);
         continue;
       }
       const next = lines.slice(index + 1).find((candidate) => candidate.trim());
-      if (next && /^<details\b/i.test(next.trim())) {
+      if (
+        next &&
+        (/^<details\b/i.test(next.trim()) ||
+          fencedBlockDelimiter(next) !== null)
+      ) {
         out.push(line);
         continue;
       }
       break;
     }
-    if (detailsDepth === 0 && /^#/.test(trimmed)) break;
-    if (/<!--\s*evidence-row:/i.test(trimmed)) break;
-    if (detailsDepth === 0 && /^[-*]\s/.test(line) && !/^\s/.test(line)) {
+    if (fence === null && detailsDepth === 0 && /^#/.test(trimmed)) break;
+    if (fence === null && /<!--\s*evidence-row:/i.test(trimmed)) break;
+    if (
+      fence === null &&
+      detailsDepth === 0 &&
+      /^[-*]\s/.test(line) &&
+      !/^\s/.test(line)
+    ) {
       break;
     }
     out.push(line);
+    if (fence !== null) {
+      if (closesFencedBlock(line, fence)) {
+        fence = null;
+        fenceStart = -1;
+      }
+      continue;
+    }
+    const delimiter = fencedBlockDelimiter(line);
+    if (delimiter) {
+      fence = delimiter;
+      fenceStart = out.length - 1;
+      continue;
+    }
     detailsDepth += (line.match(/<details\b/gi) ?? []).length;
     detailsDepth -= (line.match(/<\/details>/gi) ?? []).length;
     detailsDepth = Math.max(0, detailsDepth);
   }
-  return out.join("\n").trim();
+  // An unterminated fence must not absorb headings or links below the row and
+  // accidentally turn unrelated prose into evidence.
+  const bounded = fence === null ? out : out.slice(0, fenceStart);
+  return bounded.join("\n").trim();
 }
 
 export function extractEvidenceRows(body) {
@@ -2795,12 +2847,10 @@ a pasted transcript, or 'N/A - <reason>'. A wholly-new surface may N/A the
 before-screenshots row.
 
 Pasted transcripts must be at least ${INLINE_TRANSCRIPT_MIN_LINES} lines and ${INLINE_TRANSCRIPT_MIN_CHARS} characters, and must stay
-inside the row block. Prefer a <details> block — CONTRIBUTING.md § Evidence
-prescribes it, and it is the only form that survives blank lines: the row ends
-at the first blank line unless a <details> is open. A bare \`\`\` fence therefore
-works only when it starts directly after the row line AND contains no blank
-line; the row is cut at that blank line and the rest of the transcript is
-never seen.
+inside the row block. CONTRIBUTING.md § Evidence prefers a <details> block;
+complete backtick or tilde fences are also supported, including a blank line
+before the fence and blank lines inside it. Unclosed containers fail closed so
+they cannot absorb unrelated prose below the evidence row.
 Worked example: https://github.com/elizaOS/eliza/pull/15171
 Full standard: CONTRIBUTING.md § Evidence.`,
     );
