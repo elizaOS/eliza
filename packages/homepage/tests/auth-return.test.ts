@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for the same-origin post-authentication return contract.
+ */
+
 import { describe, expect, test } from "bun:test";
 import { safeReturnTo } from "../src/lib/auth-return";
 

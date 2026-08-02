@@ -27,7 +27,11 @@ import {
   PhoneNumberInput,
   useCountryOptions,
 } from "@/components/login/phone-number-input";
-import { peekReturnTo, rememberReturnTo } from "@/lib/auth-return";
+import {
+  clearRememberedReturnTo,
+  peekReturnTo,
+  rememberReturnTo,
+} from "@/lib/auth-return";
 import { useT } from "@/providers/I18nProvider";
 
 // Defer the WebGL shader background so the form UI is interactive immediately.
@@ -482,6 +486,7 @@ export default function GetStartedPage() {
       !discordCode &&
       step !== "PROVISIONING_CHAT"
     ) {
+      clearRememberedReturnTo();
       navigate(postAuthDestination, { replace: true });
     }
   }, [
@@ -605,6 +610,7 @@ export default function GetStartedPage() {
     try {
       const result = await loginWithSolana();
       if (result.success) {
+        clearRememberedReturnTo();
         navigate(postAuthDestination, { replace: true });
       } else {
         setSolanaError(
@@ -918,6 +924,7 @@ export default function GetStartedPage() {
   };
 
   const handleContinueToConnected = () => {
+    clearRememberedReturnTo();
     navigate(postAuthDestination);
   };
 
@@ -1367,7 +1374,10 @@ export default function GetStartedPage() {
           {step === "PROVISIONING_CHAT" && (
             <ProvisioningChatStep
               onboardingSessionId={onboardingSessionId}
-              onContinue={() => navigate(postAuthDestination)}
+              onContinue={() => {
+                clearRememberedReturnTo();
+                navigate(postAuthDestination);
+              }}
             />
           )}
 

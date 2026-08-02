@@ -4,7 +4,11 @@
  */
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { rememberReturnTo, safeReturnTo } from "@/lib/auth-return";
+import {
+  clearRememberedReturnTo,
+  rememberReturnTo,
+  safeReturnTo,
+} from "@/lib/auth-return";
 import { useAuth } from "@/lib/context/auth-context";
 import { useT } from "@/providers/I18nProvider";
 
@@ -18,6 +22,7 @@ export default function LoginPage() {
     if (!isLoading) {
       const returnTo = safeReturnTo(searchParams.get("returnTo"));
       if (isAuthenticated) {
+        clearRememberedReturnTo();
         navigate(returnTo ?? "/connected", { replace: true });
       } else {
         rememberReturnTo(returnTo);

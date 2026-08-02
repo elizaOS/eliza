@@ -1,3 +1,10 @@
+/**
+ * Validates public payout addresses and serializes the hidden profile-README
+ * marker consumed by the contributor rewards pipeline.
+ */
+
+import bs58 from "bs58";
+
 export interface WalletAddresses {
   ethereum?: string;
   solana?: string;
@@ -11,7 +18,14 @@ export function isValidEthereumAddress(value: string): boolean {
 }
 
 export function isValidSolanaAddress(value: string): boolean {
-  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value.trim());
+  const normalized = value.trim();
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(normalized)) return false;
+  try {
+    return bs58.decode(normalized).byteLength === 32;
+  } catch {
+    // error-policy:J3 Invalid base58 is an explicit validation failure.
+    return false;
+  }
 }
 
 export function generateWalletReadmeComment(

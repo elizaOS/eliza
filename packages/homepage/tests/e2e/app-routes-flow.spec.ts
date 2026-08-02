@@ -140,8 +140,15 @@ test("profile editor preserves sign-in return path and generates a compatible ma
   await page.goto("/profile/edit");
   await expect(page).toHaveURL(/\/get-started\?returnTo=%2Fprofile%2Fedit$/);
 
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await seedAuthenticatedSession(page);
+  await page.goto("/get-started?returnTo=%2Fprofile%2Fedit");
+  await expect(page).toHaveURL(/\/profile\/edit$/);
+
+  // A completed deep-link login must not redirect unrelated future auth flows.
+  await page.goto("/login");
+  await expect(page).toHaveURL(/\/connected$/);
+
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/profile/edit");
 
   await expect(

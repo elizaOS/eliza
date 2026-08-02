@@ -1,3 +1,7 @@
+/**
+ * Unit coverage for payout-address validation and README marker serialization.
+ */
+
 import { describe, expect, test } from "bun:test";
 import {
   generateWalletReadmeComment,
@@ -12,6 +16,9 @@ describe("wallet linking README marker", () => {
     ).toBe(true);
     expect(isValidEthereumAddress("0xprivate-key")).toBe(false);
     expect(isValidSolanaAddress("11111111111111111111111111111111")).toBe(true);
+    expect(isValidSolanaAddress("22222222222222222222222222222222")).toBe(
+      false,
+    );
     expect(isValidSolanaAddress("contains_underscore")).toBe(false);
   });
 

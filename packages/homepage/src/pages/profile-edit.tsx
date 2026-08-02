@@ -1,3 +1,8 @@
+/**
+ * Authenticated contributor payout editor that produces the profile-README
+ * marker used by the rewards pipeline without collecting wallet secrets.
+ */
+
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { Check, Copy, Loader2, ShieldCheck } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
@@ -53,9 +58,16 @@ export default function ProfileEditPage() {
   }
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(comment);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2_000);
+    try {
+      await navigator.clipboard.writeText(comment);
+      setError("");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      // error-policy:J4 Clipboard denial is surfaced as a visible form error.
+      setCopied(false);
+      setError("Copy failed. Select the marker and copy it manually.");
+    }
   }
 
   if (isLoading || !isAuthenticated) {
