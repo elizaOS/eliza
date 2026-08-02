@@ -3226,9 +3226,10 @@ function appliedEffectReceiptIdsForReply(
 /**
  * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
- * Completion claims require exact action-owned text bound to an active applied
- * receipt from this turn; bare success, previews, no-ops, failures, and
- * rolled-back effects cannot ground them.
+ * Completion claims require exact action-owned text bound to an active
+ * committed receipt from this turn — applied, or a replayed no-op proving the
+ * desired state was already committed; bare success, previews, non-replayed
+ * no-ops, failures, and rolled-back effects cannot ground them.
  */
 export function plannedReplyHasClaimGroundingReceipt(args: {
 	kind: PlannedReplyClaimKind;
@@ -8948,6 +8949,30 @@ function hasExplicitReplyIntent(
  * the planner produced no real action AND no explicit REPLY — i.e. when
  * we genuinely have nothing to say.
  */
+/**
+ * Race-keep policy for a finished response that a newer same-room message
+ * superseded mid-generation. Returns the human-readable keep reason, or null
+ * when the response should be discarded. Kept when the planner deliberately
+ * chose to converse (explicit REPLY/RESPOND) — the long-standing exception —
+ * or when the turn deterministically addressed the agent even without a REPLY
+ * action (action-mode turns finish without REPLY in their actions list; on a
+ * slow backend an addressed turn that overlaps the next inbound message must
+ * not be silently dropped). `isAddressedTurn` is a thunk so the deterministic
+ * shouldRespond evaluation only runs when the REPLY fast-path did not decide.
+ */
+export function resolveSupersededResponseKeepReason(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+	isAddressedTurn: () => boolean,
+): string | null {
+	if (hasExplicitReplyIntent(responseContent)) {
+		return "explicit REPLY for an addressed message";
+	}
+	if (responseContent && isAddressedTurn()) {
+		return "deterministically addressed turn";
+	}
+	return null;
+}
+
 export function shouldRunMetadataActionRescue(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -11184,19 +11209,15 @@ export class DefaultMessageService implements IMessageService {
 				// source, name+tag address), the turn is autonomous, or an early
 				// ack already went out (the user saw the bot engage). Everything
 				// else stays silent, matching the IGNORE it would have gotten.
-				const failureGate = this.shouldRespond(
+				const failureGate = this.isDeterministicallyAddressedTurn({
 					runtime,
 					message,
-					room ?? undefined,
+					room,
 					mentionContext,
-				);
-				const addressedForFailureReply =
-					failureGate.shouldRespond ||
-					mentionContext?.isMention === true ||
-					mentionContext?.isReply === true ||
-					isAutonomous ||
-					earlyReplyMessages.length > 0;
-				if (addressedForFailureReply) {
+					isAutonomous,
+					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
+				});
+				if (failureGate.addressed) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
 					strategyResult = await this.buildStructuredFailureReply(
@@ -11373,23 +11394,43 @@ export class DefaultMessageService implements IMessageService {
 			// generating a response, the default behavior is to drop the older
 			// response so the bot only replies to the freshest input.
 			//
-			// Exception: keep the response when the planner picked an explicit
-			// REPLY/RESPOND action. That's a deliberate conversational signal
-			// (often a direct @-mention) and dropping it leaves the user looking
-			// at silence on a tagged message, which the character contract
-			// treats as a bug. The newer message will get its own turn through
-			// the normal pipeline; sending the older REPLY first does not
-			// duplicate either response.
+			// Exceptions — keep the response when:
+			// 1. The planner picked an explicit REPLY/RESPOND action. That's a
+			//    deliberate conversational signal (often a direct @-mention) and
+			//    dropping it leaves the user looking at silence on a tagged
+			//    message, which the character contract treats as a bug.
+			// 2. The turn deterministically addressed the agent (DM, platform
+			//    mention/reply, autonomous, delivered early ack) even without an
+			//    explicit REPLY action. Action-mode turns finish without REPLY in
+			//    their actions list, so on a slow backend any addressed turn that
+			//    overlapped the next inbound message was silently dropped — and
+			//    connectors treat the resulting non-delivery as a deliberate
+			//    IGNORE, making the silence terminal and unobservable.
+			// Either way the newer message still gets its own turn through the
+			// normal pipeline, so each inbound message is answered at most once —
+			// keeping the older response never double-replies to either message.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				if (hasExplicitReplyIntent(responseContent)) {
+				const keepReason = resolveSupersededResponseKeepReason(
+					responseContent,
+					() =>
+						this.isDeterministicallyAddressedTurn({
+							runtime,
+							message,
+							room,
+							mentionContext,
+							isAutonomous,
+							hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
+						}).addressed,
+				);
+				if (keepReason) {
 					runtime.logger.info(
 						{
 							src: "service:message",
 							agentId: runtime.agentId,
 							roomId: message.roomId,
 						},
-						"Race detected but keeping response (explicit REPLY for an addressed message)",
+						`Race detected but keeping response (${keepReason})`,
 					);
 				} else {
 					runtime.logger.info(
@@ -11399,6 +11440,16 @@ export class DefaultMessageService implements IMessageService {
 							roomId: message.roomId,
 						},
 						"Response discarded - newer message being processed",
+					);
+					// Mirror the ignore-path sibling below: a superseded turn ends
+					// its run as "replaced" so the discard is an observable terminal
+					// outcome instead of an unrecorded nothing.
+					await this.emitRunEnded(
+						runtime,
+						runId,
+						message,
+						startTime,
+						"replaced",
 					);
 					return {
 						didRespond: false,
@@ -11557,19 +11608,25 @@ export class DefaultMessageService implements IMessageService {
 										{ src: "service:message", memoryId: responseMemory.id },
 										"Skipping transient response memory persistence",
 									);
-									continue;
-								}
-								runtime.logger.debug(
-									{ src: "service:message", memoryId: responseMemory.id },
-									"Saving response to memory",
-								);
-								await timeInferenceSpan("message:delivery:persistence", () =>
-									runtime.createMemory(responseMemory, "messages"),
-								);
-								if (responseMemory.id) {
-									persistedResponseMessageIds.add(responseMemory.id);
+								} else {
+									runtime.logger.debug(
+										{ src: "service:message", memoryId: responseMemory.id },
+										"Saving response to memory",
+									);
+									await timeInferenceSpan("message:delivery:persistence", () =>
+										runtime.createMemory(responseMemory, "messages"),
+									);
+									if (responseMemory.id) {
+										persistedResponseMessageIds.add(responseMemory.id);
+									}
 								}
 
+								// MESSAGE_SENT signals delivery, not persistence. It fires
+								// for transient/doNotPersist replies too (structured failure
+								// replies skip the memory write above): the delivery callback
+								// already ran for them, and suppressing the event made those
+								// delivered turns indistinguishable from dropped ones in
+								// logs, activity streams, and trajectory closure.
 								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
 									this.emitMessageSent(
 										runtime,
@@ -11856,6 +11913,41 @@ export class DefaultMessageService implements IMessageService {
 			...(actionResults ? { actionResults } : {}),
 			state,
 			mode,
+		};
+	}
+
+	/**
+	 * Deterministic "this turn addressed the agent" predicate shared by the
+	 * Stage-1 failure catch (failure-reply gating) and the race-discard check.
+	 * Both are silent-exit gates: when they misjudge an addressed turn the user
+	 * sees terminal, unobservable silence — so they must agree on exactly which
+	 * turns owe the user a delivery. Addressed means: a deterministic
+	 * shouldRespond hit (DM/API/SELF channel, whitelisted source), a platform
+	 * mention or reply, an autonomous turn, or a turn where an early ack
+	 * already went out (the user watched the agent engage).
+	 */
+	private isDeterministicallyAddressedTurn(args: {
+		runtime: IAgentRuntime;
+		message: Memory;
+		room: Room | null | undefined;
+		mentionContext: MentionContext | undefined;
+		isAutonomous: boolean;
+		hasDeliveredEarlyReply: boolean;
+	}): { addressed: boolean; reason: string | undefined } {
+		const gate = this.shouldRespond(
+			args.runtime,
+			args.message,
+			args.room ?? undefined,
+			args.mentionContext,
+		);
+		return {
+			addressed:
+				gate.shouldRespond ||
+				args.mentionContext?.isMention === true ||
+				args.mentionContext?.isReply === true ||
+				args.isAutonomous ||
+				args.hasDeliveredEarlyReply,
+			reason: gate.reason,
 		};
 	}
 

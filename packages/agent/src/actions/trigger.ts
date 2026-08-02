@@ -21,6 +21,7 @@ import {
   type ActionExample,
   type ActionResult,
   AUTONOMY_SERVICE_TYPE,
+  type EffectReceipt,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -175,6 +176,69 @@ function ok(
     text,
     values: { op, ...(values ?? {}) },
     data: { actionName: TRIGGER_ACTION, op, ...(data ?? {}) },
+  };
+}
+
+// TRIGGER never emits a mid-turn callback (see the handler note below), so the
+// planner's final message is the only user-facing ack — and the planned-reply
+// egress gate refuses any completion claim not bound to a committed effect
+// receipt with exact action-owned text. Every mutating op therefore returns
+// the full receipt contract; a bare {success,text} result made even a genuine
+// "reminder is set" ack structurally unverifiable, so it was replaced with the
+// unverified-effect fallback at egress.
+//
+// The receiptId carries a random component: the planner can re-dispatch the
+// identical create within one turn (both invocations landing on the dedupe
+// path), and the turn-wide receipt merge rejects a reused ID whose observed
+// timestamp differs.
+function triggerReceipt(
+  op: "create" | "update" | "delete" | "toggle",
+  taskId: string,
+  idempotency: { key: string | null; replayed?: boolean },
+): EffectReceipt {
+  const observedAt = new Date().toISOString();
+  const base = {
+    receiptId: `trigger-${op}:${taskId}:${crypto.randomUUID()}`,
+    operation: `trigger.${op}`,
+    resource: { kind: "trigger.task", id: taskId },
+    artifacts: [],
+    idempotency: {
+      key: idempotency.key,
+      replayed: idempotency.replayed === true,
+    },
+    observedAt,
+  } as const;
+  // A replay means the handler verified an equivalent committed trigger row
+  // already exists — the documented replayed-noop semantics — rather than a
+  // fresh commit of a new row.
+  return idempotency.replayed
+    ? {
+        ...base,
+        outcome: "noop",
+        reason: "An equivalent enabled trigger already exists.",
+      }
+    : {
+        ...base,
+        outcome: "applied",
+        commit: { kind: "durable", id: taskId, committedAt: observedAt },
+      };
+}
+
+// Committed-mutation result: binds the canonical text to its receipt so the
+// egress verifier can ground a completion claim on it.
+function okCommitted(
+  op: TriggerOp,
+  text: string,
+  receipt: EffectReceipt,
+  data?: Record<string, unknown>,
+  values?: Record<string, unknown>,
+): ActionResult {
+  return {
+    ...ok(op, text, data, values),
+    userFacingText: text,
+    verifiedUserFacing: true,
+    effectReceipts: [receipt],
+    userFacingEffectReceiptIds: [receipt.receiptId],
   };
 }
 
@@ -427,10 +491,18 @@ async function opCreate(
     );
   });
   if (duplicate?.id) {
-    return ok("create", "An equivalent trigger already exists.", {
-      duplicateTaskId: duplicate.id,
-      dedupeKey,
-    });
+    // Idempotent success: the desired state (an equivalent enabled trigger)
+    // is already committed. The replayed no-op receipt lets a truthful
+    // "you're already covered" ack pass egress verification.
+    return okCommitted(
+      "create",
+      "An equivalent trigger already exists.",
+      triggerReceipt("create", String(duplicate.id), {
+        key: dedupeKey,
+        replayed: true,
+      }),
+      { duplicateTaskId: duplicate.id, dedupeKey },
+    );
   }
 
   // A trigger with a workflowId dispatches that workflow; without one it is a
@@ -490,9 +562,10 @@ async function opCreate(
     metadata,
   });
 
-  return ok(
+  return okCommitted(
     "create",
     `Created trigger "${displayName}" (${describeSchedule(triggerConfig)}).`,
+    triggerReceipt("create", String(taskId), { key: dedupeKey }),
     {
       triggerId,
       taskId,
@@ -571,10 +644,12 @@ async function opUpdate(
     description: next.displayName,
     metadata,
   });
-  return ok("update", `Updated trigger "${next.displayName}".`, {
-    taskId: String(task.id),
-    triggerId: next.triggerId,
-  });
+  return okCommitted(
+    "update",
+    `Updated trigger "${next.displayName}".`,
+    triggerReceipt("update", String(task.id), { key: null }),
+    { taskId: String(task.id), triggerId: next.triggerId },
+  );
 }
 
 async function opDelete(
@@ -586,9 +661,12 @@ async function opDelete(
   if (!loaded.task.id)
     return failed("delete", "Task missing id.", "TASK_NOT_FOUND");
   await runtime.deleteTask(loaded.task.id);
-  return ok("delete", `Deleted trigger "${loaded.trigger.displayName}".`, {
-    taskId: String(loaded.task.id),
-  });
+  return okCommitted(
+    "delete",
+    `Deleted trigger "${loaded.trigger.displayName}".`,
+    triggerReceipt("delete", String(loaded.task.id), { key: null }),
+    { taskId: String(loaded.task.id) },
+  );
 }
 
 async function opRun(
@@ -641,9 +719,10 @@ async function opToggle(
     );
   }
   await runtime.updateTask(task.id, { metadata });
-  return ok(
+  return okCommitted(
     "toggle",
     `${enabled ? "Enabled" : "Disabled"} trigger "${trigger.displayName}".`,
+    triggerReceipt("toggle", String(task.id), { key: null }),
     { taskId: String(task.id), triggerId: trigger.triggerId, enabled },
   );
 }

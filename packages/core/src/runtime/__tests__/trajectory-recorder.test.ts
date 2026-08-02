@@ -684,6 +684,55 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(trajectory?.metrics.finalDecision).toBe("error");
 	});
 
+	it("stamps finalDecision=FINISH on a finished trajectory with no evaluation stage", async () => {
+		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
+		// fallback, structured failure reply) end a turn without any evaluation
+		// stage. The recorder must still stamp the clean terminal — an absent
+		// finalDecision on a finished trajectory previously read as "died after
+		// planner" and made delivered turns indistinguishable from drops.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-direct-reply",
+			rootMessage: { id: "msg", text: "whats my favorite color?" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-msghandler-1",
+			kind: "messageHandler",
+			startedAt: 1_000,
+			endedAt: 1_200,
+			latencyMs: 200,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				provider: "test",
+				response: "crimson.",
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+		const trajectory = await recorder.load(id);
+		expect(trajectory?.status).toBe("finished");
+		expect(trajectory?.metrics.finalDecision).toBe("FINISH");
+	});
+
+	it("does not overwrite an evaluation-derived finalDecision at finish", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-eval-continue",
+			rootMessage: { id: "msg", text: "x" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-eval-iter-1",
+			kind: "evaluation",
+			iteration: 1,
+			startedAt: 1_000,
+			endedAt: 1_100,
+			latencyMs: 100,
+			evaluation: { success: true, decision: "CONTINUE", thought: "more" },
+		});
+		await recorder.endTrajectory(id, "finished");
+		const trajectory = await recorder.load(id);
+		expect(trajectory?.metrics.finalDecision).toBe("CONTINUE");
+	});
+
 	it("list returns trajectories sorted by startedAt desc and respects filters", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const a = recorder.startTrajectory({

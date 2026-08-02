@@ -5,7 +5,11 @@
  * kind:"prompt", prompt triggers are creatable with the autonomy loop off and
  * land in the originating room — against a minimal in-memory runtime.
  * Also covers the update / delete / toggle lifecycle ops (happy paths and
- * structured not-found failures).
+ * structured not-found failures) and the effect-receipt contract: mutating
+ * ops bind their canonical ack text to committed receipts — an applied
+ * receipt for fresh mutations, a replayed no-op for the idempotent
+ * already-exists path — so the planned-reply egress verifier can ground a
+ * truthful completion claim, while failures stay receipt-less.
  */
 
 import type {
@@ -18,6 +22,7 @@ import type {
 } from "@elizaos/core";
 import {
   AUTONOMY_SERVICE_TYPE,
+  hasAppliedUserFacingEffectProof,
   stringToUuid,
   TRIGGER_SCHEMA_VERSION,
 } from "@elizaos/core";
@@ -520,5 +525,138 @@ describe("TRIGGER update / delete / toggle — lifecycle ops (#16863)", () => {
     expect(result?.data?.enabled).toBe(true);
     expect(updates).toHaveLength(1);
     expect(updates[0].patch.metadata?.trigger?.enabled).toBe(true);
+  });
+});
+
+describe("TRIGGER effect receipts — completion-claim grounding", () => {
+  it("binds a fresh create to an applied receipt with the canonical ack text", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "take vitamins",
+      triggerType: "cron",
+      cronExpression: "0 8 * * *",
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    const receipt = result.effectReceipts?.[0];
+    expect(receipt).toMatchObject({
+      operation: "trigger.create",
+      outcome: "applied",
+      resource: { kind: "trigger.task", id: String(result.data?.taskId) },
+      idempotency: { key: result.data?.dedupeKey, replayed: false },
+    });
+    expect(result.userFacingEffectReceiptIds).toEqual([receipt?.receiptId]);
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("grounds the already-exists dedupe as a replayed no-op — success, not a lie", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    expect(first?.success).toBe(true);
+    const firstTrigger = createdTasks[0].metadata.trigger;
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        id: stringToUuid("existing-task"),
+        name: "TRIGGER_DISPATCH",
+        tags: ["queue", "repeat", "trigger"],
+        metadata: { updatedAt: Date.now(), trigger: firstTrigger },
+      } as unknown as Task,
+    ]);
+    const second = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    if (!second) throw new Error("expected a result");
+    expect(second.success).toBe(true);
+    expect(second.verifiedUserFacing).toBe(true);
+    expect(second.userFacingText).toBe("An equivalent trigger already exists.");
+    expect(second.effectReceipts?.[0]).toMatchObject({
+      operation: "trigger.create",
+      outcome: "noop",
+      resource: {
+        kind: "trigger.task",
+        id: String(second.data?.duplicateTaskId),
+      },
+      idempotency: { key: second.data?.dedupeKey, replayed: true },
+    });
+    // The replayed no-op is committed desired-state proof: the truthful
+    // "already covered" ack passes the planned-reply egress verifier instead
+    // of being swapped for the unverified-effect fallback.
+    expect(hasAppliedUserFacingEffectProof(second)).toBe(true);
+    expect(createdTasks).toHaveLength(1);
+  });
+
+  it("refuses to claim success for a failed create — no receipts, no verified text", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "take vitamins",
+      triggerType: "cron",
+      cronExpression: "not a cron",
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.success).toBe(false);
+    expect(result.effectReceipts).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(false);
+    expect(createdTasks).toHaveLength(0);
+  });
+
+  it("binds delete to an applied receipt for the removed task", async () => {
+    const taskId = stringToUuid("receipt-delete-task");
+    const task = {
+      id: taskId,
+      name: "TRIGGER_DISPATCH",
+      description: "Trigger: water the plants",
+      roomId: CHAT_ROOM_ID,
+      tags: ["queue", "repeat", "trigger"],
+      metadata: {
+        updatedAt: Date.now(),
+        trigger: {
+          version: TRIGGER_SCHEMA_VERSION,
+          triggerId: stringToUuid("receipt-delete-config"),
+          displayName: "Trigger: water the plants",
+          instructions: "water the plants",
+          triggerType: "interval",
+          enabled: true,
+          wakeMode: "inject_now",
+          createdBy: String(USER_ID),
+          runCount: 0,
+          intervalMs: 3_600_000,
+          kind: "prompt",
+        },
+      },
+    } as unknown as Task;
+    const runtime = {
+      agentId: AGENT_ID,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      getSetting: () => undefined,
+      getService: () => null,
+      getTask: async (id: UUID) => (id === taskId ? task : null),
+      getTasks: async () => [task],
+      deleteTask: vi.fn(async () => undefined),
+    } as unknown as IAgentRuntime;
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the plants trigger"),
+      undefined,
+      { parameters: { action: "delete", taskId } },
+    );
+    if (!result) throw new Error("expected a result");
+    expect(result.success).toBe(true);
+    expect(result.userFacingText).toBe(result.text);
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      operation: "trigger.delete",
+      outcome: "applied",
+      resource: { kind: "trigger.task", id: String(taskId) },
+    });
+    expect(hasAppliedUserFacingEffectProof(result)).toBe(true);
   });
 });
