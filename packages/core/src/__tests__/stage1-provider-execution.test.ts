@@ -14,21 +14,27 @@ import { AgentRuntime } from "../runtime";
 import { stage1ResponseStateProviderNames } from "../services/message";
 import type {
 	Character,
+	Content,
 	IAgentRuntime,
 	Memory,
 	Provider,
 	UUID,
 } from "../types";
+import { ChannelType } from "../types";
 
 const ROOM_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY_ID = "22222222-2222-2222-2222-222222222222" as UUID;
 
-function makeMessage(id: string, text = "gm"): Memory {
+function makeMessage(
+	id: string,
+	text = "gm",
+	content: Partial<Content> = {},
+): Memory {
 	return {
 		id: id as UUID,
 		entityId: ENTITY_ID,
 		roomId: ROOM_ID,
-		content: { text },
+		content: { text, ...content },
 	};
 }
 
@@ -165,5 +171,131 @@ describe("stage1ResponseStateProviderNames", () => {
 		expect(plannerState.text).toContain("CURRENT_TIME#1");
 		expect(plannerState.text).toContain("FACTS#1");
 		expect(plannerState.text).toContain("RECENT_MESSAGES#2");
+	});
+});
+
+/**
+ * RECENT_ERRORS is internal diagnostics for turns where the agent is acting or
+ * its operator is engaging. Rendered into an UNADDRESSED group turn it hijacks
+ * routing — a live "available_apps provider timeout" got answered as if it
+ * were a bystander's question (tj-f8249b30e986d6). The exclusion keys off the
+ * structural addressing classifier (channel type + mention/reply/name-drop +
+ * source metadata), never message-text heuristics, and fails OPEN: anything
+ * not positively identified as unaddressed group traffic keeps the provider.
+ */
+describe("RECENT_ERRORS stage-1 exclusion on unaddressed group turns", () => {
+	const AGENT_NAME = "stage1-exec-test";
+
+	function runtimeWithRecentErrors(): IAgentRuntime {
+		return {
+			character: { name: AGENT_NAME },
+			providers: [
+				{
+					name: "RECENT_ERRORS",
+					alwaysInResponseState: true,
+					get: async () => ({}),
+				},
+			],
+		} as unknown as IAgentRuntime;
+	}
+
+	it("excludes RECENT_ERRORS from an unaddressed text-group turn", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc01", "gm", {
+				channelType: ChannelType.GROUP,
+			}),
+		);
+		expect(names).not.toContain("RECENT_ERRORS");
+		// Only the diagnostics block is withheld — routing signals stay intact.
+		expect(names).toContain("CURRENT_TIME");
+		expect(names).toContain("FACTS");
+	});
+
+	it("keeps RECENT_ERRORS on an addressed group turn (platform mention)", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc02", "gm", {
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+		);
+		expect(names).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on a reply-to-agent group turn", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc03", "gm", {
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: false, isReply: true, isThread: false },
+			}),
+		);
+		expect(names).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on a name-drop group turn", () => {
+		const names = stage1ResponseStateProviderNames(
+			runtimeWithRecentErrors(),
+			makeMessage(
+				"cccccccc-cccc-cccc-cccc-cccccccccc04",
+				`hey ${AGENT_NAME}, what broke?`,
+				{ channelType: ChannelType.GROUP },
+			),
+		);
+		expect(names).toContain("RECENT_ERRORS");
+	});
+
+	it("keeps RECENT_ERRORS on DM turns and unknown channel types (fail open)", () => {
+		for (const content of [
+			{ channelType: ChannelType.DM },
+			{}, // missing channel type must fail open
+		]) {
+			const names = stage1ResponseStateProviderNames(
+				runtimeWithRecentErrors(),
+				makeMessage("cccccccc-cccc-cccc-cccc-cccccccccc05", "gm", content),
+			);
+			expect(names).toContain("RECENT_ERRORS");
+		}
+	});
+
+	it("never composes RECENT_ERRORS for an unaddressed group turn, but renders it for an addressed one", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: AGENT_NAME } as Character,
+		});
+		const recentErrors = countingProvider("RECENT_ERRORS");
+		recentErrors.provider.alwaysInResponseState = true;
+		runtime.registerProvider(recentErrors.provider);
+
+		const unaddressed = makeMessage(
+			"dddddddd-dddd-dddd-dddd-dddddddddd01",
+			"is that just the feeless txes stuff?",
+			{ channelType: ChannelType.GROUP },
+		);
+		const unaddressedState = await runtime.composeState(
+			unaddressed,
+			stage1ResponseStateProviderNames(runtime, unaddressed),
+			true,
+			false,
+		);
+		expect(recentErrors.calls()).toBe(0);
+		expect(unaddressedState.text).not.toContain("RECENT_ERRORS#");
+
+		const addressed = makeMessage(
+			"dddddddd-dddd-dddd-dddd-dddddddddd02",
+			"anything failing lately?",
+			{
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			},
+		);
+		const addressedState = await runtime.composeState(
+			addressed,
+			stage1ResponseStateProviderNames(runtime, addressed),
+			true,
+			false,
+		);
+		expect(recentErrors.calls()).toBe(1);
+		expect(addressedState.text).toContain("RECENT_ERRORS#1");
 	});
 });
