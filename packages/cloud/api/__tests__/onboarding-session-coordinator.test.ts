@@ -13,6 +13,16 @@ const noProvisioning = {
   bridgeUrl: null,
   sandbox: null,
 };
+let mirrorFailure: Error | undefined;
+
+mock.module("../../shared/src/lib/cache/client", () => ({
+  cache: {
+    get: mock(async () => null),
+    set: mock(async () => {
+      if (mirrorFailure) throw mirrorFailure;
+    }),
+  },
+}));
 
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
   ensureElizaAppProvisioning: mock(async () => noProvisioning),
@@ -24,6 +34,7 @@ const { OnboardingSessionCoordinator: OnboardingSessionCoordinatorValue } =
 
 class TestStorage {
   private readonly values = new Map<string, unknown>();
+  private alarm: number | null = null;
 
   async get<T>(key: string): Promise<T | undefined> {
     const value = this.values.get(key);
@@ -43,8 +54,35 @@ class TestStorage {
     }
   }
 
-  async delete(key: string): Promise<boolean> {
-    return this.values.delete(key);
+  async delete(key: string | string[]): Promise<boolean> {
+    const keys = typeof key === "string" ? [key] : key;
+    return keys.map((entry) => this.values.delete(entry)).some(Boolean);
+  }
+
+  async list<T>({ prefix }: { prefix: string }): Promise<Map<string, T>> {
+    return new Map(
+      [...this.values.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => [key, structuredClone(value) as T]),
+    );
+  }
+
+  async getAlarm(): Promise<number | null> {
+    return this.alarm;
+  }
+
+  async setAlarm(timestamp: number): Promise<void> {
+    this.alarm = timestamp;
+  }
+
+  async deleteAlarm(): Promise<void> {
+    this.alarm = null;
+  }
+
+  async transaction<T>(
+    operation: (transaction: TestStorage) => Promise<T>,
+  ): Promise<T> {
+    return operation(this);
   }
 }
 
@@ -131,6 +169,46 @@ async function readResult(response: Response): Promise<OnboardingChatResult> {
 }
 
 describe("OnboardingSessionCoordinator", () => {
+  test("keeps a trusted platform session after a rejected account adoption", async () => {
+    const harness = createCoordinatorHarness();
+    await turn(
+      harness.coordinator,
+      harness.sessionId,
+      "My name is Sam",
+      "discord:message-1",
+    );
+    const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
+    const storage = harness.storageFor(harness.sessionId);
+    const storedSession = await storage.get<Record<string, unknown>>(
+      `session:${scope}`,
+    );
+    if (!storedSession) throw new Error("platform session was not stored");
+    await storage.put(`session:${scope}`, {
+      ...storedSession,
+      userId: "user-a",
+      organizationId: "org-a",
+    });
+    await turn(
+      harness.coordinator,
+      harness.sessionId,
+      "Account B",
+      "discord:message-2",
+      { userId: "user-b", organizationId: "org-b" },
+    );
+
+    const resumed = await readResult(
+      await turn(
+        harness.coordinator,
+        harness.sessionId,
+        "Still here",
+        "discord:message-3",
+      ),
+    );
+    expect(resumed.session.history.map((message) => message.content)).toEqual(
+      expect.arrayContaining(["My name is Sam", "Still here"]),
+    );
+  });
+
   test("retains an accepted delivery beyond the former replay window", async () => {
     const { coordinator, sessionId, storageFor } = createCoordinatorHarness();
     let first: OnboardingChatResult | undefined;
@@ -221,6 +299,77 @@ describe("OnboardingSessionCoordinator", () => {
     );
   });
 
+  test("removes expired replay entries when its alarm fires", async () => {
+    const harness = createCoordinatorHarness();
+    await turn(
+      harness.coordinator,
+      harness.sessionId,
+      "My name is Sam",
+      "discord:message-1",
+    );
+    const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
+    const replayKey = `replay:${scope}:${encodeURIComponent("discord:message-1")}`;
+    const storage = harness.storageFor(harness.sessionId);
+    const stored = await storage.get<{ expiresAt: number }>(replayKey);
+    if (!stored) throw new Error("replay entry was not stored");
+    await storage.put(replayKey, { ...stored, expiresAt: Date.now() - 1 });
+
+    await harness.coordinator.alarm();
+
+    expect(await storage.get(replayKey)).toBeUndefined();
+    expect(await storage.getAlarm()).toBeNull();
+  });
+
+  test("fails instead of silently dropping a missing history chunk", async () => {
+    const harness = createCoordinatorHarness();
+    for (let index = 0; index < 6; index += 1) {
+      await turn(
+        harness.coordinator,
+        harness.sessionId,
+        `turn ${index}`,
+        `discord:message-${index}`,
+      );
+    }
+    const scope = `platform:${encodeURIComponent(harness.sessionId)}`;
+    await harness.storageFor(harness.sessionId).delete(`history:${scope}:1`);
+
+    const response = await turn(
+      harness.coordinator,
+      harness.sessionId,
+      "must fail",
+      "discord:message-missing-history",
+    );
+
+    expect(response.status).toBe(500);
+    expect((await response.json()) as unknown).toEqual({
+      error: `onboarding session history is incomplete for ${scope}`,
+    });
+  });
+
+  test("returns the persisted result when cache mirroring fails", async () => {
+    const harness = createCoordinatorHarness();
+    mirrorFailure = new Error("cache unavailable");
+    try {
+      const response = await turn(
+        harness.coordinator,
+        harness.sessionId,
+        "My name is Sam",
+        "discord:message-1",
+      );
+      expect(response.status).toBe(200);
+      const restarted = harness.restart(harness.sessionId);
+      const replay = await turn(
+        restarted,
+        harness.sessionId,
+        "must not execute",
+        "discord:message-1",
+      );
+      expect(replay.status).toBe(200);
+    } finally {
+      mirrorFailure = undefined;
+    }
+  });
+
   test("keeps identical delivery ids isolated by authenticated account", async () => {
     const harness = createCoordinatorHarness();
     const first = await readResult(
@@ -247,6 +396,21 @@ describe("OnboardingSessionCoordinator", () => {
     expect(
       second.session.history.map((message) => message.content),
     ).not.toContain("Hello from account A");
+    const storage = harness.storageFor(harness.sessionId);
+    const accountAScope = "account:org-a:user-a";
+    const accountBScope = "account:org-b:user-b";
+    expect(
+      await storage.get<{ userId: string }>(`session:${accountAScope}`),
+    ).toMatchObject({ userId: "user-a" });
+    expect(
+      await storage.get<{ userId: string }>(`session:${accountBScope}`),
+    ).toMatchObject({ userId: "user-b" });
+    expect(
+      await storage.get(`replay:${accountAScope}:discord%3Amessage-1`),
+    ).toBeDefined();
+    expect(
+      await storage.get(`replay:${accountBScope}:discord%3Amessage-1`),
+    ).toBeDefined();
 
     const replay = await readResult(
       await turn(

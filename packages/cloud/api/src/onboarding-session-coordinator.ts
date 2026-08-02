@@ -82,8 +82,15 @@ async function loadStoredSession(
       storage.get<OnboardingChatMessage[]>(historyStorageKey(scope, index)),
     ),
   );
+  const history: OnboardingChatMessage[] = [];
+  for (const chunk of chunks) {
+    if (!chunk) {
+      throw new Error(`onboarding session history is incomplete for ${scope}`);
+    }
+    history.push(...chunk);
+  }
   const { historyChunkCount: _, ...session } = stored;
-  return { ...session, history: chunks.flatMap((chunk) => chunk ?? []) };
+  return { ...session, history };
 }
 
 function storedSessionEntries(
@@ -111,6 +118,16 @@ function storedSessionEntries(
   return entries;
 }
 
+async function historyStorageKeys(
+  storage: DurableObjectStorage,
+  scope: string,
+): Promise<string[]> {
+  const entries = await storage.list({
+    prefix: `${HISTORY_KEY_PREFIX}${scope}:`,
+  });
+  return [...entries.keys()];
+}
+
 function legacySessionFor(
   ledger: LegacyCoordinatorLedger | undefined,
   input: OnboardingChatInput,
@@ -119,7 +136,9 @@ function legacySessionFor(
   if (!session) return undefined;
 
   const authenticated = input.authenticatedUser;
-  if (!authenticated) return session;
+  if (!authenticated) {
+    return session.userId || session.organizationId ? undefined : session;
+  }
   if (!session.userId && !session.organizationId) return session;
   return session.userId === authenticated.userId &&
     session.organizationId === authenticated.organizationId
@@ -225,20 +244,23 @@ export class OnboardingSessionCoordinator {
     }
   }
 
-  private mirrorSessionBestEffort(session: OnboardingSession): void {
+  private async mirrorSessionBestEffort(
+    session: OnboardingSession,
+  ): Promise<void> {
     // error-policy:J7 cache mirroring is diagnostic/compatibility state. The
     // Durable Object has already persisted the accepted turn, so a mirror
     // outage must not report a successful admission as a failed delivery.
-    void import("@/lib/services/eliza-app/onboarding-chat")
-      .then(({ mirrorOnboardingSessionToCache }) =>
-        mirrorOnboardingSessionToCache(session),
-      )
-      .catch((error: unknown) => {
-        logger.warn("[OnboardingSessionCoordinator] cache mirror failed", {
-          sessionId: session.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    try {
+      const { mirrorOnboardingSessionToCache } = await import(
+        "@/lib/services/eliza-app/onboarding-chat"
+      );
+      await mirrorOnboardingSessionToCache(session);
+    } catch (error) {
+      logger.warn("[OnboardingSessionCoordinator] cache mirror failed", {
+        sessionId: session.id,
+        error: error instanceof Error ? error.message : String(error),
       });
+    }
   }
 
   private async runTurn(
@@ -250,7 +272,6 @@ export class OnboardingSessionCoordinator {
     const { loadCachedOnboardingSession, runOnboardingChatWithStore } =
       await import("@/lib/services/eliza-app/onboarding-chat");
     const scope = scopeFor(request.input, request.sessionId);
-    const sessionKey = sessionStorageKey(scope);
     const platformScope = `platform:${storageComponent(request.sessionId)}`;
     const platformSessionKey = sessionStorageKey(platformScope);
     const legacy =
@@ -265,7 +286,7 @@ export class OnboardingSessionCoordinator {
           const session = await loadStoredSession(this.state.storage, scope);
           if (session) {
             await this.bindContinuation(session);
-            this.mirrorSessionBestEffort(session);
+            await this.mirrorSessionBestEffort(session);
             return replayResult(replay, session);
           }
         }
@@ -276,14 +297,16 @@ export class OnboardingSessionCoordinator {
     // An authenticated continuation may be the first turn after a trusted
     // platform conversation. Read that platform record once, then persist the
     // resulting account-owned session under its tenant scope below.
-    const storedSession =
-      (await loadStoredSession(this.state.storage, scope)) ??
-      (scope !== platformScope
+    const scopedSession = await loadStoredSession(this.state.storage, scope);
+    const platformSession =
+      !scopedSession && scope !== platformScope
         ? await loadStoredSession(this.state.storage, platformScope)
-        : undefined);
+        : undefined;
+    const storedSession = scopedSession ?? platformSession;
+    const legacySession = legacySessionFor(legacy, request.input);
     let nextSession =
       storedSession ??
-      legacySessionFor(legacy, request.input) ??
+      legacySession ??
       (await loadCachedOnboardingSession(request.sessionId));
     const result = await runOnboardingChatWithStore(
       request.input,
@@ -297,20 +320,58 @@ export class OnboardingSessionCoordinator {
     );
 
     const writes = storedSessionEntries(scope, result.session);
-    if (request.input.idempotencyKey) {
-      writes[replayStorageKey(scope, request.input.idempotencyKey)] =
-        storedReplay(request.input.idempotencyKey, result);
+    const replay = request.input.idempotencyKey
+      ? storedReplay(request.input.idempotencyKey, result)
+      : undefined;
+    if (replay) {
+      writes[replayStorageKey(scope, replay.key)] = replay;
     }
-    await this.state.storage.put(writes);
-    if (legacy) {
-      await this.state.storage.delete(LEGACY_LEDGER_KEY);
-    }
-    if (sessionKey !== platformSessionKey) {
-      await this.state.storage.delete(platformSessionKey);
-    }
+    const platformHistoryKeys =
+      platformSession && result.session.id === request.sessionId
+        ? await historyStorageKeys(this.state.storage, platformScope)
+        : [];
+    const currentAlarm = await this.state.storage.getAlarm();
+    await this.state.storage.transaction(async (transaction) => {
+      await transaction.put(writes);
+      if (legacySession) await transaction.delete(LEGACY_LEDGER_KEY);
+      if (platformSession && result.session.id === request.sessionId) {
+        await transaction.delete(platformSessionKey);
+        for (const key of platformHistoryKeys) await transaction.delete(key);
+      }
+      if (
+        replay &&
+        (currentAlarm === null || replay.expiresAt < currentAlarm)
+      ) {
+        await transaction.setAlarm(replay.expiresAt);
+      }
+    });
     await this.bindContinuation(result.session);
-    this.mirrorSessionBestEffort(result.session);
+    await this.mirrorSessionBestEffort(result.session);
     return result;
+  }
+
+  async alarm(): Promise<void> {
+    await this.serialize(async () => {
+      const now = Date.now();
+      const replays = await this.state.storage.list<ReplayEntry>({
+        prefix: REPLAY_KEY_PREFIX,
+      });
+      const expired = [...replays.entries()]
+        .filter(([, replay]) => replay.expiresAt <= now)
+        .map(([key]) => key);
+      const nextExpiry = [...replays.values()]
+        .filter((replay) => replay.expiresAt > now)
+        .reduce<number | undefined>(
+          (earliest, replay) =>
+            Math.min(earliest ?? replay.expiresAt, replay.expiresAt),
+          undefined,
+        );
+      await this.state.storage.transaction(async (transaction) => {
+        for (const key of expired) await transaction.delete(key);
+        if (nextExpiry) await transaction.setAlarm(nextExpiry);
+        else await transaction.deleteAlarm();
+      });
+    });
   }
 
   async fetch(request: Request): Promise<Response> {
