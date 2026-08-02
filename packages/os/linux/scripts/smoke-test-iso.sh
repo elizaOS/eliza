@@ -12,7 +12,7 @@ BOOT_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS:-900}"
 BOOT_MENU_WAIT_SECONDS="${ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS:-10}"
 POLL_SECONDS="${ELIZAOS_ISO_SMOKE_POLL_SECONDS:-2}"
 STOP_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS:-10}"
-DIAGNOSTIC_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_DIAGNOSTIC_TIMEOUT_SECONDS:-15}"
+DIAGNOSTIC_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_DIAGNOSTIC_TIMEOUT_SECONDS:-120}"
 LOG_DIR="${ELIZAOS_ISO_SMOKE_LOG_DIR:-${PWD}/iso-smoke-logs}"
 
 fail() {
@@ -113,9 +113,11 @@ QEMU_PID=""
 SERIAL_READER_PID=""
 MONITOR_READER_PID=""
 REMOTE_SHELL_READER_PID=""
+JOURNAL_READER_PID=""
 SERIAL_FD=""
 MONITOR_FD=""
 REMOTE_SHELL_FD=""
+JOURNAL_FD=""
 CURRENT_FIRMWARE=""
 
 dump_one_log() {
@@ -137,6 +139,7 @@ dump_diagnostics() {
         dump_one_log "${LOG_DIR}/${firmware}.monitor.log"
         dump_one_log "${LOG_DIR}/${firmware}.serial.log"
         dump_one_log "${LOG_DIR}/${firmware}.remote-shell.log"
+        dump_one_log "${LOG_DIR}/${firmware}.journal.log"
     done
 }
 
@@ -188,6 +191,10 @@ close_pipe_fds() {
         exec 7>&-
         REMOTE_SHELL_FD=""
     fi
+    if [ -n "${JOURNAL_FD}" ]; then
+        exec 6>&-
+        JOURNAL_FD=""
+    fi
 }
 
 stop_qemu() {
@@ -198,10 +205,14 @@ stop_qemu() {
     stop_process_bounded \
         "${REMOTE_SHELL_READER_PID}" \
         "${CURRENT_FIRMWARE:-QEMU} remote-shell reader"
+    stop_process_bounded \
+        "${JOURNAL_READER_PID}" \
+        "${CURRENT_FIRMWARE:-QEMU} journal reader"
     QEMU_PID=""
     SERIAL_READER_PID=""
     MONITOR_READER_PID=""
     REMOTE_SHELL_READER_PID=""
+    JOURNAL_READER_PID=""
 }
 
 finish() {
@@ -362,11 +373,29 @@ remote_shell_send() {
     printf '%s\n' "$1" >&"${REMOTE_SHELL_FD}"
 }
 
+queue_remote_prepare_login() {
+    local request_id="$1"
+    local prepare_command
+
+    # `login` bypasses the interactive Welcome Screen. Pin its persistence
+    # choice to the normal unchecked state before releasing GDM so the
+    # unattended smoke does not open a persistence wizard that intentionally
+    # suspends all elizaOS user services.
+    prepare_command="setting=/var/lib/gdm3/settings/transient/tails.create-persistence; install -d -o Debian-gdm -g Debian-gdm -m 0700 \"\$(dirname \"\${setting}\")\"; if [ -r \"\${setting}\" ]; then before=\$(tr '\\n' ' ' <\"\${setting}\"); else before=absent; fi; printf 'CREATE_PERSISTENT_STORAGE=false\\n' >\"\${setting}\"; chown Debian-gdm:Debian-gdm \"\${setting}\"; chmod 0600 \"\${setting}\"; printf 'ELIZAOS_ISO_SMOKE_PRELOGIN persistence_before=%s persistence_forced=false' \"\${before}\""
+    python3 -c \
+        'import json, sys; print(json.dumps([int(sys.argv[1]), "sh_call", "root", {}, sys.argv[2]]))' \
+        "${request_id}" \
+        "${prepare_command}" \
+        >&"${REMOTE_SHELL_FD}"
+}
+
 queue_remote_signal_ready() {
+    local request_id="$1"
+
     # Tails intentionally gates this VM-only virtio channel behind both an
     # explicit kernel option and a matching QEMU device. Acknowledging this
     # request releases GDM and proves that subsequent probes reach the guest.
-    remote_shell_send '[1,"signal_ready"]'
+    remote_shell_send "[${request_id},\"signal_ready\"]"
 }
 
 queue_remote_readiness_probe() {
@@ -426,9 +455,11 @@ launch_firmware_vm() {
     local serial_prefix="${TMP}/${firmware}-serial"
     local monitor_prefix="${TMP}/${firmware}-monitor"
     local remote_shell_prefix="${TMP}/${firmware}-remote-shell"
+    local journal_prefix="${TMP}/${firmware}-journal"
     local serial_log="${LOG_DIR}/${firmware}.serial.log"
     local monitor_log="${LOG_DIR}/${firmware}.monitor.log"
     local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
+    local journal_log="${LOG_DIR}/${firmware}.journal.log"
     local stdout_log="${LOG_DIR}/${firmware}.qemu.stdout"
     local stderr_log="${LOG_DIR}/${firmware}.qemu.stderr"
     local args_log="${LOG_DIR}/${firmware}.qemu.args"
@@ -455,6 +486,8 @@ launch_firmware_vm() {
         -device virtio-serial-pci
         -chardev "pipe,id=remote-shell,path=${remote_shell_prefix}"
         -device "virtserialport,chardev=remote-shell,name=org.tails.remote_shell.0"
+        -chardev "pipe,id=journal-dumper,path=${journal_prefix}"
+        -device "virtserialport,chardev=journal-dumper,name=org.tails.journal_dumper.0"
         -no-reboot
         -snapshot
     )
@@ -463,6 +496,7 @@ launch_firmware_vm() {
     : >"${serial_log}"
     : >"${monitor_log}"
     : >"${remote_shell_log}"
+    : >"${journal_log}"
     : >"${stdout_log}"
     : >"${stderr_log}"
     mkfifo \
@@ -471,19 +505,25 @@ launch_firmware_vm() {
         "${monitor_prefix}.in" \
         "${monitor_prefix}.out" \
         "${remote_shell_prefix}.in" \
-        "${remote_shell_prefix}.out"
+        "${remote_shell_prefix}.out" \
+        "${journal_prefix}.in" \
+        "${journal_prefix}.out"
     exec 8<>"${serial_prefix}.in"
     SERIAL_FD=8
     exec 9<>"${monitor_prefix}.in"
     MONITOR_FD=9
     exec 7<>"${remote_shell_prefix}.in"
     REMOTE_SHELL_FD=7
+    exec 6<>"${journal_prefix}.in"
+    JOURNAL_FD=6
     cat "${serial_prefix}.out" >>"${serial_log}" &
     SERIAL_READER_PID=$!
     cat "${monitor_prefix}.out" >>"${monitor_log}" &
     MONITOR_READER_PID=$!
     cat "${remote_shell_prefix}.out" >>"${remote_shell_log}" &
     REMOTE_SHELL_READER_PID=$!
+    cat "${journal_prefix}.out" >>"${journal_log}" &
+    JOURNAL_READER_PID=$!
 
     if [ "${firmware}" = "uefi" ]; then
         cp "${OVMF_VARS}" "${ovmf_vars_copy}"
@@ -500,7 +540,8 @@ launch_firmware_vm() {
     "${QEMU_BIN}" "${qemu_args[@]}" >"${stdout_log}" 2>"${stderr_log}" &
     QEMU_PID=$!
     boot_selected_entry_with_serial "${firmware}"
-    queue_remote_signal_ready
+    queue_remote_prepare_login 1
+    queue_remote_signal_ready 2
 }
 
 prove_guest_readiness() {
@@ -509,9 +550,10 @@ prove_guest_readiness() {
     local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
     local marker="ELIZAOS_ISO_SMOKE_READY firmware=${firmware} service=active health=ready"
     local start_seconds="${SECONDS}"
+    local preparation_acked=0
     local signal_acked=0
     local probe_in_flight=0
-    local probe_id=1
+    local probe_id=2
     local weak_seen=0
 
     while ((SECONDS - start_seconds < BOOT_TIMEOUT_SECONDS)); do
@@ -524,11 +566,20 @@ prove_guest_readiness() {
             weak_seen=1
         fi
 
-        if [ "${signal_acked}" = "0" ]; then
+        if [ "${preparation_acked}" = "0" ]; then
             if grep -Eq '^\[1, "error"' "${remote_shell_log}" 2>/dev/null; then
-                fail "${firmware} Tails remote shell rejected signal_ready"
+                fail "${firmware} Tails remote shell rejected pre-login setup"
             fi
             if grep -Eq '^\[1, "success"' "${remote_shell_log}" 2>/dev/null; then
+                preparation_acked=1
+            fi
+        fi
+
+        if [ "${preparation_acked}" = "1" ] && [ "${signal_acked}" = "0" ]; then
+            if grep -Eq '^\[2, "error"' "${remote_shell_log}" 2>/dev/null; then
+                fail "${firmware} Tails remote shell rejected signal_ready"
+            fi
+            if grep -Eq '^\[2, "success"' "${remote_shell_log}" 2>/dev/null; then
                 signal_acked=1
             fi
         fi
