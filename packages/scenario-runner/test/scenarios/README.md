@@ -105,10 +105,8 @@ requires a real provider key for live natural-language planner runs.
   unavailable and each final check asserts no `VIEWS`/`agent-*` capability was
   used. Run both with
   `eliza-scenarios run packages/scenario-runner/test/scenarios --lane live-only '**/live-lifeops-task-filter-due-window.scenario.ts' '**/live-plugin-enable-toggle-verb.scenario.ts' --report <out> --run-dir <dir>`.
-  These are live manual evidence assets, not CI gates; the zero-vector embedding
-  fallback occasionally drops the `PLUGIN` verb from the model's tool context for
-  a whole boot (see the plugin scenario header), so re-run if the plugin toggle
-  scenario reports only `REPLY`.
+  These are live manual evidence assets, not CI gates. Simulated scenario runs
+  disable embeddings explicitly; live runs use the configured provider path.
 - The chat-widget round-trip legs (MVP ws2 acceptance, #14322/#16939):
   `live-chat-widgets-form-roundtrip` (FORM emit → `[form:submit …]` re-entry →
   values used), `live-chat-widgets-choice-roundtrip` (a `[CHOICE:app-create …]`

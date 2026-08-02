@@ -1,43 +1,4 @@
-/**
- * @fileoverview elizaOS Integration Testing Infrastructure
- *
- * This module provides REAL integration testing utilities that use:
- * - Real database (PGLite by default, Postgres if configured)
- * - Real inference (Ollama by default, cloud providers if API keys are available)
- *
- * NO MOCKS. Tests must use real infrastructure to provide genuine confidence.
- *
- * @example
- * ```typescript
- * import {
- *   createIntegrationTestRuntime,
- *   withTestRuntime,
- *   requireInferenceProvider,
- * } from '@elizaos/core';
- *
- * describe('My Integration Tests', () => {
- *   it('should process a message with real inference', async () => {
- *     const { runtime, cleanup, inferenceProvider } = await createIntegrationTestRuntime({
- *       databaseAdapter: myAdapter,
- *     });
- *
- *     logger.info({ provider: inferenceProvider?.name }, "Using inference provider");
- *
- *     try {
- *       const memory = await runtime.createMemory({
- *         entityId: runtime.agentId,
- *         roomId: runtime.agentId,
- *         content: { text: 'Hello, world!' },
- *       }, 'messages');
- *
- *       expect(memory).toBeDefined();
- *     } finally {
- *       await cleanup();
- *     }
- *   });
- * });
- * ```
- */
+/** Runtime, provider, connector, and browser utilities for package-owned tests. */
 
 export {
 	ADVERSARIAL_KIND_DESCRIPTIONS,

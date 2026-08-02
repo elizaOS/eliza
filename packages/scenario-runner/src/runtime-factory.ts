@@ -723,38 +723,17 @@ export async function createScenarioRuntime(
     createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
   );
 
-  // Skip @elizaos/plugin-local-inference by default and register a
-  // deterministic zero-vector TEXT_EMBEDDING fallback instead. The bundled
-  // `eliza-1-2b-32k.gguf` is fetched from a gated HuggingFace repo on
-  // first generation; without HF credentials each turn produces a fresh
-  // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
-  // scenario runner doesn't score on semantic retrieval, so a zero vector is
-  // the right deterministic fallback. Match the lifeops-bench server's dimension
-  // (1024 — see https://github.com/elizaOS/benchmarks) so downstream code that
-  // assumes that shape (vector columns sized at boot) still works.
-  // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
+  // Simulated scenarios omit embeddings because their assertions do not score
+  // semantic retrieval. AgentRuntime treats an absent embedding provider as an
+  // explicit disabled capability, avoiding both model downloads and fabricated
+  // vectors. Provider-qualified runs retain the production local provider.
   const skipEmbeddingPlugin =
     executionProfile === "simulated" &&
     (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
-    const EMBEDDING_DIMENSIONS = 1024;
-    const embeddingFallbackPlugin: Plugin = {
-      name: "scenario-runner-embedding-fallback",
-      description:
-        "Scenario-runner zero-vector TEXT_EMBEDDING handler. Replaces " +
-        "@elizaos/plugin-local-inference so we never download the gated " +
-        "HuggingFace GGUF on every turn during scenario runs.",
-      // Higher than local-embedding's priority: 10 so we win unconditionally.
-      priority: 100,
-      models: {
-        TEXT_EMBEDDING: async () =>
-          new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
-      },
-    };
-    await runtime.registerPlugin(embeddingFallbackPlugin);
     logger.info(
-      `[scenario-runner] Registered zero-vector TEXT_EMBEDDING fallback (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference instead.",
+      "[scenario-runner] Embedding generation is disabled for the simulated profile; " +
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-inference.",
     );
   } else {
     const localEmbedding = (await import(

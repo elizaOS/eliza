@@ -120,7 +120,7 @@ same-process observations cannot satisfy these contracts.
 | `LIFEOPS_LIVE_JUDGE_MIN_SCORE` | Minimum judge score threshold (default: `0.8`) |
 | `SKIP_REASON` | Set to allow intentional scenario skips without exit code 2 |
 | `SCENARIO_INCLUDE_PENDING` | `1` = include `status: "pending"` scenarios |
-| `ELIZA_BENCH_SKIP_EMBEDDING` | Default `1`; set to `0` for real local-inference embeddings |
+| `ELIZA_BENCH_SKIP_EMBEDDING` | Simulated runs default to no embedding provider; set to `0` for real local-inference embeddings |
 | `ELIZA_TRAJECTORY_LOGGING` | The `run` command sets this to `1` when the operator has not already set it, so scenario trajectories are recorded even under `NODE_ENV=test` or `NODE_ENV=production`; explicit `0` and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` are respected |
 | `ELIZA_TRAJECTORY_DIR` | Set automatically when `--run-dir` or `--export-native` creates an effective run directory; otherwise the recorder falls back to the state-dir trajectories path |
 

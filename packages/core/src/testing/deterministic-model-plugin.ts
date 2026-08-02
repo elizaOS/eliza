@@ -100,7 +100,6 @@ export interface DeterministicModelPlugin extends Plugin {
 }
 
 export interface DeterministicModelPluginOptions {
-	embeddingDimensions?: number;
 	fixtures?: DeterministicModelFixture[];
 	fixtureRegistry?: DeterministicModelFixtureRegistry;
 	priority?: number;
@@ -130,7 +129,6 @@ class DeterministicModelMatchError extends Error {
 	}
 }
 
-const DEFAULT_EMBEDDING_DIMENSIONS = 384;
 const TEXT_MODEL_TYPES = [
 	ModelType.TEXT_NANO,
 	ModelType.TEXT_SMALL,
@@ -230,8 +228,6 @@ const registryUnmatchedRollbacks = new WeakMap<
 export function createDeterministicModelPlugin(
 	options: DeterministicModelPluginOptions = {},
 ): DeterministicModelPlugin {
-	const embeddingDimensions =
-		options.embeddingDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
 	const fixtures =
 		options.fixtureRegistry ??
 		createDeterministicModelFixtureRegistry(options.fixtures);
@@ -239,10 +235,7 @@ export function createDeterministicModelPlugin(
 		fixtures.register(...options.fixtures);
 	}
 
-	const models: NonNullable<Plugin["models"]> = {
-		[ModelType.TEXT_EMBEDDING]: async () =>
-			new Array<number>(embeddingDimensions).fill(0),
-	};
+	const models: NonNullable<Plugin["models"]> = {};
 	for (const modelType of TEXT_MODEL_TYPES) {
 		models[modelType] = (async (
 			_runtime: IAgentRuntime,

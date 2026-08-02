@@ -49,7 +49,6 @@ describe("scenario runtime deterministic model mode", () => {
     expect(helpers.seedXConnectorGrant).toBeTypeOf("function");
 
     const plugin = createDeterministicModelPlugin({
-      embeddingDimensions: 3,
       fixtures: [
         {
           name: "small",
@@ -67,9 +66,7 @@ describe("scenario runtime deterministic model mode", () => {
         } as never,
       ),
     ).resolves.toBe("declared response");
-    await expect(
-      plugin.models?.[ModelType.TEXT_EMBEDDING]?.({} as never, "hello"),
-    ).resolves.toEqual([0, 0, 0]);
+    expect(plugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
   });
 
   it("recognizes scheduled-dispatch render prompts and returns deterministic owner-facing text", () => {

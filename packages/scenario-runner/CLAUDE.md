@@ -198,7 +198,7 @@ and update the owning pack catalog.
 - **Deterministic mode.** `SCENARIO_USE_DETERMINISTIC_MODEL=1` registers `createDeterministicModelPlugin` from `@elizaos/core/testing`. Every model call must match exactly one registered fixture or an explicit scenario resolver. Action routes use `registerStrictActionRouteFixtures` from `@elizaos/core/testing`; there is no heuristic fallback.
 - **Silent skips fail loudly.** If a scenario skips without `SKIP_REASON` set, the CLI exits 2.
 - **UPDATE_ENTITY is removed** from the runtime's action list during scenario runs. It's too broad and steals action selection from domain-specific actions under test.
-- **Embedding fallback.** By default a zero-vector 1024-dim embedding fallback is registered instead of `@elizaos/plugin-local-inference` (avoids gated HuggingFace downloads). Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use the real plugin.
+- **Embeddings in simulated runs.** No embedding model is registered by default, so the runtime explicitly disables semantic retrieval without fabricating vectors or downloading a model. Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use `@elizaos/plugin-local-inference`.
 - **LLM judge.** Uses Cerebras `gpt-oss-120b` when `isCerebrasEvalEnabled()` returns true; falls back to the runtime's `TEXT_LARGE` model. No heuristic fallbacks — the judge call genuinely fails if neither is available.
 - **Template tokens in turn text.** `{{now}}`, `{{now+1h}}`, `{{now-2d}}`, `{{definitionId:<title>}}`, `{{occurrenceId:<title>}}` are resolved at execution time.
 - **Clock seeding.** `seed` steps of type `advanceClock` shift `ctx.now`; all subsequent template tokens are relative to the shifted clock.

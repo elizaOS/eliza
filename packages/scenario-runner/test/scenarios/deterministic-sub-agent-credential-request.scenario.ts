@@ -172,7 +172,6 @@ function registerOwnerAppSendHandler(runtime: RuntimeWithScenarioRoutes): void {
         agentId: agentRuntime.agentId,
         roomId: (target.roomId ?? ROOM_ID) as UUID,
         content,
-        embedding: new Array(1024).fill(0),
       });
       await agentRuntime.createMemory(memory, "messages");
       return memory;

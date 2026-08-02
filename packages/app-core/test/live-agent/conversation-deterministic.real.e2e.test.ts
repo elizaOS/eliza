@@ -4,10 +4,9 @@
  * Boots a REAL AgentRuntime + the REAL app-core HTTP stack via
  * {@link startLiveRuntimeServer}, registering
  * {@link createDeterministicModelPlugin} (priority 1000) so every model call
- * resolves deterministically with NO provider keys. The proxy supplies
- * TEXT_EMBEDDING (zero-vector, 384 dims to match the PGLite vector column the
- * real runtime configures) and deterministic RESPONSE_HANDLER/ACTION_PLANNER
- * text, so the full chat pipeline runs end-to-end without a network call.
+ * resolves deterministically with NO provider keys. The plugin supplies only
+ * deterministic RESPONSE_HANDLER/ACTION_PLANNER text, so the full chat
+ * pipeline runs end-to-end without a network call or fabricated embeddings.
  *
  * Routes + shapes grounded in packages/agent/src/api/conversation-routes.ts:
  *   - POST /api/conversations                 :1190 → { conversation: { id, ... } }
@@ -43,11 +42,8 @@ describe("conversation deterministic real coverage", () => {
   beforeAll(async () => {
     harness = await startLiveRuntimeServer({
       tempPrefix: "conversation-deterministic-",
-      // Match the 384-dim local embedding column the real runtime configures
-      // for PGLite vector search (real-runtime.ts sets EMBEDDING_DIMENSION=384).
       plugins: [
         createDeterministicModelPlugin({
-          embeddingDimensions: 384,
           fixtures: [
             {
               name: "conversation-reply",

@@ -106,12 +106,8 @@ describe("createDeterministicModelPlugin", () => {
 		]);
 	});
 
-	it("provides deterministic zero embeddings at the requested dimension", async () => {
-		const plugin = createDeterministicModelPlugin({ embeddingDimensions: 3 });
-		const handler = plugin.models?.[ModelType.TEXT_EMBEDDING];
-		if (!handler) throw new Error("missing deterministic embedding handler");
-		await expect(handler(runtime, { text: "hello" })).resolves.toEqual([
-			0, 0, 0,
-		]);
+	it("registers only text-generation models", () => {
+		const plugin = createDeterministicModelPlugin();
+		expect(plugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
 	});
 });
