@@ -4,7 +4,7 @@
  * A curated collection of realistic user intents for the views system.
  * These scenarios are used for:
  *   1. Manual exploratory testing against a running agent.
- *   2. LLM-in-the-loop automated evaluation (see view-llm-eval.test.ts).
+ *   2. LLM-in-the-loop automated evaluation (see view-llm-eval.live.test.ts).
  *   3. Documentation of expected agent behaviors.
  *
  * Each entry is self-contained: it describes the user message, the expected

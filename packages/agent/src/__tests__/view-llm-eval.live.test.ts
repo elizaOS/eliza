@@ -12,11 +12,10 @@
  * Override the model via VIEW_EVAL_MODEL env var.
  *
  * Running the full suite:
- *   CEREBRAS_API_KEY=... bun test packages/agent/src/__tests__/view-llm-eval.test.ts
+ *   CEREBRAS_API_KEY=... bun test packages/agent/src/__tests__/view-llm-eval.live.test.ts
  *
  * This test file is excluded from the standard CI run by the vitest config's
- * `exclude` patterns (*.live.test.ts, *.real.test.ts). Rename with those
- * suffixes to exclude from CI, or run directly when credentials are available.
+ * `exclude` patterns (*.live.test.ts, *.real.test.ts).
  */
 
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
