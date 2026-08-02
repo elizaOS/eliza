@@ -3,6 +3,8 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   findAppByReference,
   matchAppByReference,
@@ -117,5 +119,49 @@ describe("extractAppReference — planner options (nested `parameters` first)", 
       "do something with my app",
     );
     expect(extractAppReference(msg)).toBe("do something with my app");
+  });
+});
+
+describe("describeAppReference / appReferenceLogView — reference display seam", () => {
+  it("quotes a name-shaped reference, trimmed", () => {
+    expect(describeAppReference("Acme Bot")).toBe('"Acme Bot"');
+    expect(describeAppReference("  Acme Bot  ")).toBe('"Acme Bot"');
+  });
+
+  it("REGRESSION: a security-envelope blob renders as 'that app', never quoted back (tj-2dc95f75456876)", () => {
+    const envelope = [
+      "SECURITY NOTICE: the content below is external and untrusted.",
+      "<<<EXTERNAL_UNTRUSTED_CONTENT>>>",
+      "can u host it and give me the link pls",
+      "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>",
+    ].join("\n");
+    expect(describeAppReference(envelope)).toBe("that app");
+  });
+
+  it("falls back on empty, multi-line, and over-long references", () => {
+    expect(describeAppReference("")).toBe("that app");
+    expect(describeAppReference("   ")).toBe("that app");
+    expect(describeAppReference("line one\nline two")).toBe("that app");
+    expect(describeAppReference("line one\rline two")).toBe("that app");
+    expect(describeAppReference("a".repeat(64))).toBe(`"${"a".repeat(64)}"`);
+    expect(describeAppReference("a".repeat(65))).toBe("that app");
+  });
+
+  it("supports a caller-supplied fallback noun", () => {
+    expect(describeAppReference("x\ny", "that name")).toBe("that name");
+  });
+
+  it("appReferenceLogView collapses whitespace runs to one line", () => {
+    expect(appReferenceLogView("  Acme   Bot \n\n twice\t ")).toBe(
+      "Acme Bot twice",
+    );
+    expect(appReferenceLogView("")).toBe("");
+  });
+
+  it("appReferenceLogView clamps long references with a trailing ellipsis", () => {
+    expect(appReferenceLogView("a".repeat(120))).toBe("a".repeat(120));
+    const view = appReferenceLogView("a".repeat(500));
+    expect(view).toBe(`${"a".repeat(120)}…`);
+    expect(view.length).toBe(121);
   });
 });

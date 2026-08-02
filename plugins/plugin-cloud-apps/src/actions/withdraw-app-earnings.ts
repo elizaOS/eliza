@@ -38,6 +38,8 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   plannerOptionSources,
@@ -125,7 +127,7 @@ export function parseWithdrawAmount(
 }
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet.`;
   }
@@ -412,7 +414,7 @@ export const withdrawAppEarningsAction: Action = {
       ({ app, available, ambiguous } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
-        `[WITHDRAW_APP_EARNINGS] Failed to resolve app "${reference}": ${
+        `[WITHDRAW_APP_EARNINGS] Failed to resolve app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -432,18 +434,18 @@ export const withdrawAppEarningsAction: Action = {
     if (!app) {
       const candidates = ambiguous && ambiguous.length > 1 ? ambiguous : null;
       const msg = candidates
-        ? `Which app do you mean? "${reference}" matches ${candidates.length}: ${candidates.join(", ")}. Reply with the exact name so I withdraw from the right one.`
+        ? `Which app do you mean? ${describeAppReference(reference)} matches ${candidates.length}: ${candidates.join(", ")}. Reply with the exact name so I withdraw from the right one.`
         : notFoundMessage(reference, available);
       await callback?.({ text: msg, actions: ["WITHDRAW_APP_EARNINGS"] });
       return {
         success: false,
         text: candidates
-          ? `Ambiguous reference "${reference}" (${candidates.length} matches).`
-          : `No app matched "${reference}".`,
+          ? `Ambiguous reference "${appReferenceLogView(reference)}" (${candidates.length} matches).`
+          : `No app matched "${appReferenceLogView(reference)}".`,
         userFacingText: msg,
         data: {
           reason: candidates ? "ambiguous" : "not_found",
-          reference,
+          reference: appReferenceLogView(reference),
           ...(candidates ? { candidates } : {}),
         },
       };

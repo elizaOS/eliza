@@ -28,6 +28,8 @@ import type {
 import { logger } from "@elizaos/core";
 import { recordAppDeployFact } from "../app-facts.js";
 import {
+  appReferenceLogView,
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   resolveApp,
@@ -49,7 +51,7 @@ const ERROR_MESSAGE =
   "I couldn't start that deploy right now — the Cloud API returned an error. Try again in a moment.";
 
 function notFoundMessage(reference: string, available: string[]): string {
-  const base = `I couldn't find an app matching "${reference}".`;
+  const base = `I couldn't find an app matching ${describeAppReference(reference)}.`;
   if (available.length === 0) {
     return `${base} You don't have any apps on Eliza Cloud yet — ask me to create one first.`;
   }
@@ -134,7 +136,7 @@ export const deployAppAction: Action = {
       ({ app, available } = await resolveApp(client, reference));
     } catch (err) {
       logger.warn(
-        `[DEPLOY_APP] Failed to resolve app "${reference}": ${
+        `[DEPLOY_APP] Failed to resolve app "${appReferenceLogView(reference)}": ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -153,9 +155,12 @@ export const deployAppAction: Action = {
       await callback?.({ text: msg, actions: ["DEPLOY_APP"] });
       return {
         success: false,
-        text: `No app matched "${reference}".`,
+        text: `No app matched "${appReferenceLogView(reference)}".`,
         userFacingText: msg,
-        data: { reason: "not_found", reference },
+        data: {
+          reason: "not_found",
+          reference: appReferenceLogView(reference),
+        },
       };
     }
 

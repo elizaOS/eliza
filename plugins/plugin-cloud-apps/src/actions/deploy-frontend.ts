@@ -29,6 +29,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
+  describeAppReference,
   extractAppReference,
   getCloudClient,
   resolveApp,
@@ -261,7 +262,7 @@ export const deployFrontendAction: Action = {
       const msg =
         available.length === 0
           ? "You don't have any apps on Eliza Cloud yet — ask me to create one first."
-          : `I couldn't find an app matching "${reference}". Your apps are: ${available.join(", ")}.`;
+          : `I couldn't find an app matching ${describeAppReference(reference)}. Your apps are: ${available.join(", ")}.`;
       await callback?.({ text: msg, actions: ["DEPLOY_FRONTEND"] });
       return {
         success: false,
