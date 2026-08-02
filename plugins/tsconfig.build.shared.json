@@ -1,0 +1,59 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "paths": {
+      "@elizaos/core": ["../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../packages/core/dist/*"],
+      "@elizaos/contracts": ["../packages/contracts/dist/index.d.ts"],
+      "@elizaos/contracts/*": ["../packages/contracts/dist/*"],
+      "@elizaos/shared": ["../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../packages/shared/dist/*"],
+      "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/api": ["../packages/ui/dist/api/index.d.ts"],
+      "@elizaos/ui/api/*": ["../packages/ui/dist/api/*"],
+      "@elizaos/ui/components": ["../packages/ui/dist/components/index.d.ts"],
+      "@elizaos/ui/components/*": ["../packages/ui/dist/components/*"],
+      "@elizaos/ui/spatial": ["../packages/ui/dist/spatial/index.d.ts"],
+      "@elizaos/ui/utils": ["../packages/ui/dist/utils/index.d.ts"],
+      "@elizaos/ui/*": ["../packages/ui/dist/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "./plugin-task-coordinator/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-task-coordinator/*": [
+        "./plugin-task-coordinator/dist/*"
+      ],
+      "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
+      "@elizaos/app-core/*": ["../packages/app-core/dist/*"],
+      "@elizaos/agent": [
+        "../packages/agent/dist/packages/agent/src/index.d.ts"
+      ],
+      "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
+      "@elizaos/plugin-discord": ["./plugin-discord/dist/index.d.ts"],
+      "@elizaos/plugin-discord/*": ["./plugin-discord/dist/*"],
+      "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../packages/agent/src/external-modules.d.ts"
+      ],
+      "@elizaos/cloud-sdk": ["../packages/cloud/sdk/dist/index.d.ts"],
+      "@elizaos/scenario-runner": [
+        "../packages/scenario-runner/dist/index.d.ts"
+      ]
+    }
+  }
+}
