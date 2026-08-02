@@ -15,7 +15,10 @@
  *      through the deterministic model provider and the agent's reply matches the fixture.
  */
 import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core";
-import { type ModelProviderTestRuntime, createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
+import {
+  createTestRuntimeWithModelProvider,
+  type ModelProviderTestRuntime,
+} from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openaiPlugin } from "../index.ts";
 

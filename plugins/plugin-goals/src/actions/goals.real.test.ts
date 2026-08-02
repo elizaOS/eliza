@@ -23,7 +23,10 @@ import {
   ModelType,
   parseInteractionBlocks,
 } from "@elizaos/core";
-import { type ModelProviderTestRuntime, createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
+import {
+  createTestRuntimeWithModelProvider,
+  type ModelProviderTestRuntime,
+} from "@elizaos/core/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { executeRawSql } from "../db/sql.ts";
 import { goalsPlugin } from "../plugin.ts";
@@ -37,7 +40,9 @@ import { ownerGoalsAction } from "./goals.ts";
  * just that table (matching the columns the goals repository's INSERT writes) so
  * the full create→reply loop runs without pulling all of PA into the runtime.
  */
-async function provisionAuditTable(harness: ModelProviderTestRuntime): Promise<void> {
+async function provisionAuditTable(
+  harness: ModelProviderTestRuntime,
+): Promise<void> {
   await executeRawSql(
     harness.runtime,
     "CREATE SCHEMA IF NOT EXISTS app_lifeops",

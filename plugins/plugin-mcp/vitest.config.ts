@@ -14,10 +14,7 @@ export default defineConfig({
     alias: [
       {
         find: "@elizaos/core/security/mcp-server-config",
-        replacement: path.resolve(
-          rootDir,
-          "../../packages/core/src/security/mcp-server-config.ts",
-        ),
+        replacement: path.resolve(rootDir, "../../packages/core/src/security/mcp-server-config.ts"),
       },
       {
         find: "@elizaos/core",

@@ -21,7 +21,10 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { type ModelProviderTestRuntime, createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
+import {
+  createTestRuntimeWithModelProvider,
+  type ModelProviderTestRuntime,
+} from "@elizaos/core/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { googleGenAIPlugin } from "../index.ts";
 
