@@ -437,6 +437,27 @@ function getWindowUrlSearchParams(): URLSearchParams {
 
 function applyCloudPairSessionToken(): void {
   if (typeof window === "undefined") return;
+  // Gate 0 — trusted shell. The durable pair credential is adopted only by
+  // the real app shell; an embedded third-party surface (Telegram Mini App /
+  // Discord Activity iframe, #9947) must not read, migrate, or stamp it —
+  // those surfaces get a scoped session from the embed handshake instead.
+  if (isEmbedPath(window.location.pathname)) return;
+  // Gate 1 — resolve the intended target base BEFORE touching storage. The
+  // durable pair credential is only ever adopted toward a dedicated cloud
+  // agent base; a control-plane, shared-adapter, local, or arbitrary origin
+  // must never read, migrate, or stamp it (#16666). Resolving the base first
+  // means a stale token on a non-dedicated origin is simply never adopted
+  // and never mirrored into the active-server/profile stores.
+  const apiBase = isDedicatedCloudAgentBase(window.location.origin)
+    ? window.location.origin
+    : getBootConfig().apiBase?.trim();
+  if (!isDedicatedCloudAgentBase(apiBase)) return;
+  // Gate 2 — the target must resolve to a dedicated agent id. A base that
+  // passes the suffix check but carries no agent label must not adopt the
+  // credential either; an unscoped adopter is the exact unscoped re-adoption
+  // path #16666 is closing.
+  const agentId = dedicatedCloudAgentIdFromBase(apiBase);
+  if (!agentId) return;
   let token: string | null = null;
   try {
     token =
@@ -465,11 +486,6 @@ function applyCloudPairSessionToken(): void {
   }
   if (!token) return;
   client.setToken(token);
-  const apiBase = isDedicatedCloudAgentBase(window.location.origin)
-    ? window.location.origin
-    : getBootConfig().apiBase?.trim();
-  if (!isDedicatedCloudAgentBase(apiBase)) return;
-  const agentId = dedicatedCloudAgentIdFromBase(apiBase);
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     ...(agentId ? { id: `cloud:${agentId}` } : {}),
