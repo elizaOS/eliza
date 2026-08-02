@@ -19,12 +19,22 @@ const NOTES_VIEW = {
 		{
 			id: "create-note",
 			description: "Create a sticky note",
+			effect: "write",
 			params: {
 				title: { type: "string", description: "Optional note title" },
 				body: { type: "string", description: "Note body text" },
 			},
 		},
-		{ id: "delete-note", description: "Delete a sticky note by id or title" },
+		{
+			id: "delete-note",
+			description: "Delete a sticky note by id or title",
+			effect: "write",
+		},
+		{
+			id: "click-element",
+			description: "Click a visible control, including a delete icon",
+			params: { id: { type: "string", description: "Element id" } },
+		},
 	],
 };
 
@@ -196,7 +206,11 @@ describe("viewFollowupRoutingEvaluator", () => {
 			...NOTES_VIEW,
 			capabilities: [
 				...(NOTES_VIEW.capabilities ?? []),
-				{ id: "create-page", description: "Create another page" },
+				{
+					id: "create-page",
+					description: "Create another page",
+					effect: "write",
+				},
 			],
 		};
 		vi.mocked(globalThis.fetch).mockImplementation(async (url) => {
