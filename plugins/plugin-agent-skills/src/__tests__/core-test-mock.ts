@@ -111,6 +111,9 @@ vi.mock("@elizaos/core", () => {
 
 	return {
 		annotateActiveTrajectoryStep: vi.fn(async () => true),
+		// Confirmation double: tests exercising confirm-gated paths get an
+		// immediate "confirmed" so handlers run to completion in one call.
+		requireConfirmation: vi.fn(async () => ({ status: "confirmed" })),
 		getTrajectoryContext: vi.fn(() => undefined),
 		captureSkillInvocationIO,
 		promoteSubactionsToActions: (action: unknown) => [action],

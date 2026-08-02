@@ -3238,7 +3238,7 @@ describe("view management actions", () => {
 		});
 		expect(missingTarget).toMatchObject({
 			success: false,
-			text: 'Cannot find an installed app named "missing".',
+			text: 'Cannot find an installed app matching "missing".',
 		});
 
 		const pendingTasks: RuntimeTask[] = [

@@ -12,7 +12,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createViewsAction } from "./views.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { runViewsCreate } from "./views-create.js";
+import { runViewsDelete } from "./views-delete.js";
 import { runViewsEdit } from "./views-edit.js";
+import { runViewsIcon } from "./views-icon.js";
 import { runViewsSearch } from "./views-search.js";
 
 const coreMock = vi.hoisted(() => ({
@@ -217,5 +220,96 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(typeof target).toBe("string");
 		expect((target as string).length).toBeLessThanOrEqual(121);
 		expect(target).not.toContain("\n");
+	});
+
+	it("icon: noun/verb strip runs on the payload and the not-found echo stays clamped", async () => {
+		const callback = vi.fn();
+		const result = await runViewsIcon({
+			runtime: { agentId: "agent-1" } as never,
+			message: envelopedMessage("regenerate the zorptastic view icon") as never,
+			options: undefined,
+			views: REGISTRY,
+			callback,
+			repoRoot: "/tmp/unused",
+		});
+
+		expect(result.success).toBe(false);
+		expectNoEnvelope(result.text);
+		// Without the unwrap, the strip left the envelope remainder as the target.
+		expect(result.text).toContain('"zorptastic"');
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		const target = (result.data as { target?: string })?.target;
+		expect(typeof target).toBe("string");
+		expect((target as string).length).toBeLessThanOrEqual(121);
+		expect(target).not.toContain("\n");
+	});
+
+	it("delete: a blob-shaped planner target renders as the neutral noun and a clamped machine value", async () => {
+		const blob = envelopedMessage("irrelevant").content.text;
+		const runtime = {
+			agentId: "agent-1",
+			getTasks: vi.fn(async () => []),
+		} as never;
+		const callback = vi.fn();
+		const result = await runViewsDelete({
+			runtime,
+			message: envelopedMessage("delete it") as never,
+			options: { view: blob },
+			views: REGISTRY,
+			callback,
+			repoRoot: "/tmp/unused",
+		});
+
+		expect(result.success).toBe(false);
+		expectNoEnvelope(result.text);
+		expect(result.text).toContain("that view");
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+		const target = (result.data as { target?: string })?.target;
+		expect(typeof target).toBe("string");
+		expect((target as string).length).toBeLessThanOrEqual(121);
+		expect(target).not.toContain("\n");
+	});
+
+	it("create: a blob-shaped editTarget renders as the neutral noun, never verbatim", async () => {
+		const blob = envelopedMessage("irrelevant").content.text;
+		const runtime = {
+			agentId: "agent-1",
+			getTasks: vi.fn(async () => []),
+		} as never;
+		const callback = vi.fn();
+		const result = await runViewsCreate({
+			runtime,
+			message: envelopedMessage("make the layout cooler") as never,
+			options: { editTarget: blob, intent: "make the layout cooler" },
+			views: REGISTRY,
+			callback,
+			repoRoot: "/tmp/unused",
+		});
+
+		expect(result.success).toBe(false);
+		expectNoEnvelope(result.text);
+		expect(result.text).toContain("that view");
+		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
+	});
+
+	it("create: an enveloped 'cancel' reply reads as the user's word, not the envelope", async () => {
+		const runtime = {
+			agentId: "agent-1",
+			getTasks: vi.fn(async () => []),
+		} as never;
+		const callback = vi.fn();
+		const result = await runViewsCreate({
+			runtime,
+			message: envelopedMessage("cancel") as never,
+			options: undefined,
+			views: REGISTRY,
+			callback,
+			repoRoot: "/tmp/unused",
+		});
+
+		// Pre-unwrap, the wrapped text never matched the cancel keyword and the
+		// flow fell through toward a create dispatch carrying the envelope.
+		expect(result.success).toBe(true);
+		expect(result.text).toBe("Canceled. No view changes made.");
 	});
 });

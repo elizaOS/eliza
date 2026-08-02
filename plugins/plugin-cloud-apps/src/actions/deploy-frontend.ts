@@ -214,9 +214,9 @@ export const deployFrontendAction: Action = {
     "HOST_SITE",
   ],
   description:
-    "Publish a static frontend (built site directory or files) to an Eliza Cloud app's managed host, served with SEO + analytics. Use when the user asks to host, publish, or deploy the app's website/frontend.",
+    "Publish a static frontend (built site directory or files) to an EXISTING Eliza Cloud app's managed host, served with SEO + analytics. Use only when an Eliza Cloud app already exists and the user asks to host, publish, or deploy that app's website/frontend. To build AND host something new — a web app/page/site the user wants a live link for — use APP action=create instead.",
   descriptionCompressed:
-    "Publish an app's static frontend to Eliza Cloud managed hosting.",
+    "Publish an EXISTING Cloud app's static frontend to managed hosting; building+hosting something new -> APP action=create.",
   contexts: ["settings", "apps"],
   contextGate: { anyOf: ["settings", "apps"] },
   suppressPostActionContinuation: true,

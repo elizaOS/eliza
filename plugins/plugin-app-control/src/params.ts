@@ -166,7 +166,7 @@ export function extractLaunchTarget(
 	return (
 		readStringOption(options, "app") ??
 		readStringOption(options, "name") ??
-		extractAfterVerbs(message?.content?.text ?? "", LAUNCH_VERBS)
+		extractAfterVerbs(userRequestMessageText(message), LAUNCH_VERBS)
 	);
 }
 
@@ -178,6 +178,6 @@ export function extractCloseTarget(
 	const appName =
 		readStringOption(options, "app") ??
 		readStringOption(options, "name") ??
-		extractAfterVerbs(message?.content?.text ?? "", CLOSE_VERBS);
+		extractAfterVerbs(userRequestMessageText(message), CLOSE_VERBS);
 	return { runId, appName };
 }
