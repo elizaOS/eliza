@@ -3,8 +3,8 @@
  * Build private/internal workspace packages whose `dist/` is referenced by
  * other workspace packages but not produced by any other install step.
  *
- * Why this exists: packages like `@elizaos/logger` and `@elizaos/security`
- * ship dist artifacts that consumers import directly. On a fresh clone
+ * Why this exists: private workspace packages may ship dist artifacts that
+ * consumers import directly. On a fresh clone
  * neither npm fetch nor the workspace symlink step produces those dist files
  * — only the package's own `bun run build` does — and nothing wires that
  * build into install, so `git clone … && bun install && bun run dev` fails

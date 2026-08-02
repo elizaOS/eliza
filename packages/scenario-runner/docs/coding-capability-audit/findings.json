@@ -130,7 +130,7 @@
         "path": "/Users/shawwalters/eliza/packages/scenario-runner/test/scenarios/deterministic-coding-tools-actions.scenario.ts",
         "kind": "scenario",
         "covers": "End-to-end FILE write/read, SHELL run, WORKTREE enter/exit against a real seeded git repo + real SandboxService/SessionCwdService; asserts exact action order, args, filesystem side effects, worktree cleanup. Captures CapturedAction ledger.",
-        "gaps": "Deterministic LLM proxy with strict pre-registered fixtures (registerStrictActionRouteFixtures) — the model never actually chooses tools; no live-model trajectory. No multi-file edit task, no build/test invocation, no error-recovery or rollback turn."
+        "gaps": "Deterministic model provider with strict pre-registered fixtures (registerStrictActionRouteFixtures) — the model never actually chooses tools; no live-model trajectory. No multi-file edit task, no build/test invocation, no error-recovery or rollback turn."
       },
       {
         "path": "/Users/shawwalters/eliza/plugins/plugin-app-control/src/services/__tests__/app-verification.integration.test.ts",
@@ -1132,7 +1132,7 @@
   },
   {
     "domain": "Scenario-runner test harness (packages/scenario-runner) — executor, interceptor, judge, reporter/run-viewer, native-export, final-checks, schema; coding-task/sub-agent capability testing",
-    "summary": "packages/scenario-runner is a mature, well-structured integration harness: it boots a real PGLite-backed AgentRuntime (live or deterministic-LLM-proxy), drives four turn kinds (message/action/api/tick, plus voice), intercepts every action handler into CapturedAction[] (params/result/error/artifacts/state-transitions/connector-dispatches/memory-writes/approvals), runs ~30 typed finalCheck handlers plus an LLM-as-judge (Cerebras gpt-oss-120b or runtime TEXT_LARGE), and emits a JSON aggregate + per-scenario bundle + a self-contained HTML run-viewer + eliza_native_v1 training-corpus JSONL derived from recorded trajectory files. Trajectory capture works (runtime auto-writes per-stage JSON when ELIZA_TRAJECTORY_DIR is set; reporter summarizes stages/tokens/cache/tool calls into the viewer). For CODING capability it is shallow: exactly ONE coding scenario exists (deterministic-coding-tools-actions: FILE/SHELL/WORKTREE direct action handlers in a seeded git repo), and it explicitly does NOT spawn sub-agents. The whole sub-agent/orchestration surface (plugin-agent-orchestrator TASKS spawning claude-code/codex/opencode over PTY, smithers workflows, sweagent) is excluded from the harness by design (LIVE_ONLY_REMAINDER) and only unit-tested. The harness captures NO real screenshots/video/timeline — the \"screenshot\"/\"frontendScreenshot\" artifact fields are just string lengths from mocked computer-use, browser-screenshot scenarios assert a canned string, and real visual capture lives in a separate Playwright lane (packages/app/test/ui-smoke, cloud-frontend e2e) that scenario-pr-workflow.test.ts only checks is wired. No build-validation, no multi-project concurrency, no app-create-and-reload, no rollback, and no multi-model/account-switching scenarios exist.",
+    "summary": "packages/scenario-runner is a mature, well-structured integration harness: it boots a real PGLite-backed AgentRuntime with either a live or deterministic fixture-backed model provider, drives four turn kinds (message/action/api/tick, plus voice), intercepts every action handler into CapturedAction[] (params/result/error/artifacts/state-transitions/connector-dispatches/memory-writes/approvals), runs ~30 typed finalCheck handlers plus an LLM-as-judge (Cerebras gpt-oss-120b or runtime TEXT_LARGE), and emits a JSON aggregate + per-scenario bundle + a self-contained HTML run-viewer + eliza_native_v1 training-corpus JSONL derived from recorded trajectory files. Trajectory capture works (runtime auto-writes per-stage JSON when ELIZA_TRAJECTORY_DIR is set; reporter summarizes stages/tokens/cache/tool calls into the viewer). For CODING capability it is shallow: exactly ONE coding scenario exists (deterministic-coding-tools-actions: FILE/SHELL/WORKTREE direct action handlers in a seeded git repo), and it explicitly does NOT spawn sub-agents. The whole sub-agent/orchestration surface (plugin-agent-orchestrator TASKS spawning claude-code/codex/opencode over PTY, smithers workflows, sweagent) is excluded from the harness by design (LIVE_ONLY_REMAINDER) and only unit-tested. The harness captures NO real screenshots/video/timeline — the \"screenshot\"/\"frontendScreenshot\" artifact fields are just string lengths from mocked computer-use, browser-screenshot scenarios assert a canned string, and real visual capture lives in a separate Playwright lane (packages/app/test/ui-smoke, cloud-frontend e2e) that scenario-pr-workflow.test.ts only checks is wired. No build-validation, no multi-project concurrency, no app-create-and-reload, no rollback, and no multi-model/account-switching scenarios exist.",
     "maturity": "partial",
     "existing": [
       {
@@ -1186,19 +1186,19 @@
       {
         "component": "runtime-factory",
         "path": "/Users/shawwalters/eliza/packages/scenario-runner/src/runtime-factory.ts",
-        "whatItDoes": "createScenarioRuntime boots a PGLite runtime with mocked test environment, deterministic-LLM-proxy or a live provider, embedding fallback, disabled background schedulers. Does NOT itself instantiate a trajectory recorder — that happens in packages/core/src/services/message.ts via ELIZA_TRAJECTORY_DIR.",
+        "whatItDoes": "createScenarioRuntime boots a PGLite runtime with mocked test environment, a deterministic fixture-backed model provider or a live provider, embedding fallback, and disabled background schedulers. Does NOT itself instantiate a trajectory recorder — that happens in packages/core/src/services/message.ts via ELIZA_TRAJECTORY_DIR.",
         "maturity": "solid"
       },
       {
         "component": "deterministic-coding-tools-actions scenario (the ONLY coding scenario in this harness)",
         "path": "/Users/shawwalters/eliza/packages/scenario-runner/test/scenarios/deterministic-coding-tools-actions.scenario.ts",
-        "whatItDoes": "Seeds an isolated git repo, registers plugin-coding-tools, and drives 5 message turns through strict-LLM-proxy fixtures to exercise FILE write/read, SHELL run, WORKTREE enter/exit; asserts exact handler params, success, byte counts, exit codes, and real filesystem side-effects + cleanup. Tests built-in coding TOOLS, not sub-agent orchestration or build validation.",
+        "whatItDoes": "Seeds an isolated git repo, registers plugin-coding-tools, and drives 5 message turns through strict model-provider fixtures to exercise FILE write/read, SHELL run, WORKTREE enter/exit; asserts exact handler params, success, byte counts, exit codes, and real filesystem side-effects + cleanup. Tests built-in coding TOOLS, not sub-agent orchestration or build validation.",
         "maturity": "solid"
       },
       {
         "component": "deterministic-action-coverage gate",
         "path": "/Users/shawwalters/eliza/packages/scenario-runner/src/__tests__/deterministic-action-coverage.test.ts",
-        "whatItDoes": "Ratchets keyless action coverage against live plugin action surfaces; explicitly documents plugin-agent-orchestrator's TASKS (spawns ACP coding sub-agents over PTY) as LIVE_ONLY_REMAINDER excluded from the keyless harness and only unit-covered — the authoritative statement that sub-agent orchestration is not scenario-tested here.",
+        "whatItDoes": "Ratchets keyless action coverage against live plugin action surfaces; explicitly documents plugin-agent-orchestrator's TASKS (spawns ACP coding sub-agents over PTY) as LIVE_ONLY_REMAINDER excluded from the deterministic model-provider runtime and only unit-covered — the authoritative statement that sub-agent orchestration is not scenario-tested here.",
         "maturity": "solid"
       },
       {

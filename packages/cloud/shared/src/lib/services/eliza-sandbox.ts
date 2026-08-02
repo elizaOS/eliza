@@ -896,12 +896,12 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
  * Two shapes qualify:
  *
  * - UNDECRYPTABLE: the AEAD auth tag fails to verify (corruption / wrong key /
- *   wrong AAD, surfaced by `@elizaos/security` as `AeadError`) or the KMS key
+ *   wrong AAD, surfaced by the core KMS as `AeadError`) or the KMS key
  *   version that encrypted it no longer exists (`KeyNotFoundError` — thrown
  *   only by the ephemeral `memory` KMS backend, which derives a fresh
  *   per-process key on every restart and thus orphans everything it previously
  *   encrypted). Matched by error class NAME rather than `instanceof` because
- *   `AeadError` is internal to `@elizaos/security` (not exported) and this code
+ *   `AeadError` is internal to the core KMS submodule (not exported) and this code
  *   runs bundled, where a cross-realm `instanceof` on a dependency's error
  *   class is unreliable.
  * - UNRETRIEVABLE / UNRESTORABLE: the snapshot fetch or restore push was

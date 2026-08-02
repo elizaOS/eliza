@@ -6,7 +6,7 @@
  * `createHealthActionRunner`) that `@elizaos/plugin-personal-assistant` wires
  * into the `OWNER_HEALTH` umbrella action (today | trend | by_metric | status).
  * Exercising plugin-health therefore means routing `OWNER_HEALTH` through the
- * deterministic LLM proxy with zero credentials and asserting the health
+ * deterministic model provider with zero credentials and asserting the health
  * factory's handler runs and succeeds.
  *
  * The `status` op is the keyless-clean path: it reads the local health-backend
@@ -20,11 +20,11 @@
  * existing `deterministic-lifeops-scheduled-tasks` keyless scenario.
  */
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
@@ -43,7 +43,7 @@ export default scenario({
   domain: "health",
   tags: ["smoke", "health", "owner-health"],
   description:
-    "Routes OWNER_HEALTH (status) through the deterministic LLM proxy and verifies the plugin-health action factory runs and succeeds with no connector configured — keyless, no credentials.",
+    "Routes OWNER_HEALTH (status) through the deterministic model provider and verifies the plugin-health action factory runs and succeeds with no connector configured — keyless, no credentials.",
 
   requires: {
     plugins: [
@@ -59,7 +59,7 @@ export default scenario({
       type: "custom",
       name: "register-owner-health-fixtures",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         registerStrictActionRouteFixtures(runtime, [
           {
             actionName: OWNER_HEALTH,

@@ -11,9 +11,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { readJsonFile } from "@elizaos/core/atomic-json";
 import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
+import { readJsonFile } from "@elizaos/core/atomic-json";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,

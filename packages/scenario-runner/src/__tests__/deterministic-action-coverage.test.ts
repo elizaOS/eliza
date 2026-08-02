@@ -305,7 +305,7 @@ const COVERED_FLOOR = COVERED_ACTIONS.length;
 
 /**
  * Plugins whose remaining action surface needs live credentials, a real
- * browser, or a local model. Documented for honesty; the keyless mock LLM
+ * browser, or a local model. Documented for honesty; the keyless deterministic model provider
  * cannot stand in for these without faking the integration. Note that browser
  * (web/JSDOM mode) and lifeops (scheduled tasks) ARE partially keyless-covered
  * — see COVERED_ACTIONS — so the reason describes only the remainder.
@@ -615,7 +615,7 @@ const REQUIRED_APP_CONTROL_NL_TURNS: readonly string[] = [
 
 /**
  * Actions that are currently exercised through real message turns using the
- * strict deterministic LLM proxy. This is intentionally separate from
+ * strict deterministic model provider. This is intentionally separate from
  * COVERED_ACTIONS: most deterministic coverage is still direct handler
  * coverage, which is useful but must not be reported as NL routing coverage.
  */

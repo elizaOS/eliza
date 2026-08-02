@@ -2,12 +2,12 @@
  * Keyless OWNER_GOALS e2e (#8801, gap 5 — per-plugin harness adoption).
  *
  * Drives the goals plugin's primary action (`OWNER_GOALS`) end-to-end through
- * the deterministic mock LLM with `createTestRuntimeWithModelProvider()` and NO API keys. The
+ * the deterministic deterministic model provider with `createTestRuntimeWithModelProvider()` and NO API keys. The
  * action resolves its subaction + params via `resolveActionArgs`, which makes a
  * single `TEXT_LARGE` extraction call answered here by a declared fixture (the
  * JSON envelope `{action, params, missing, confidence}`). The handler's
  * `callback` captures the agent's reply, asserting the natural-language →
- * mock-LLM-extraction → action-dispatch loop closed with zero external cost.
+ * deterministic-model-provider-extraction → action-dispatch loop closed with zero external cost.
  *
  * Two complementary paths, both terminating inside the action's own handler
  * (before the goals back-end touches PA's cross-plugin `app_lifeops` audit
@@ -96,8 +96,8 @@ async function runOwnerGoals(
   return { result, reply };
 }
 
-describe("OWNER_GOALS action (keyless harness)", () => {
-  it("creates a goal from natural language via the mock LLM extraction pass", async () => {
+describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
+  it("creates a goal from natural language via the deterministic model provider extraction pass", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
         plugins: [goalsPlugin],
@@ -129,7 +129,7 @@ describe("OWNER_GOALS action (keyless harness)", () => {
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
-  it("asks for the missing required field the mock LLM could not extract", async () => {
+  it("asks for the missing required field the deterministic model provider could not extract", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
         plugins: [goalsPlugin],
@@ -163,7 +163,7 @@ describe("OWNER_GOALS action (keyless harness)", () => {
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
-  it("degrades to a clarification when the mock LLM extraction is low-confidence", async () => {
+  it("degrades to a clarification when the deterministic model provider extraction is low-confidence", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
         plugins: [goalsPlugin],

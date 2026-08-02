@@ -1,20 +1,19 @@
-name: Keyless Harness E2E
+name: Deterministic Model Provider E2E
 
-# Issue #8801 — zero-cost E2E sweep. Routes the connector / mock-LLM loops
-# through the deterministic in-process LLM proxy + recorded fixtures and runs
+# Issue #8801 — zero-cost E2E sweep. Routes connector model calls through the
+# deterministic in-process model provider and recorded fixtures, and runs
 # the corpus on EVERY pull request with NO API keys and NO secrets.
 #
-# The substrate lives in packages/test/mocks: `createDeterministicModelPlugin`
-# (helpers/llm-proxy-plugin.ts) registers high-priority deterministic text +
-# embedding model handlers, and the payment/connector mocks (scripts/start-mocks.ts)
-# serve recorded fixtures. The harness suite (test/mocks/__tests__/**) exercises
+# `createDeterministicModelPlugin` in `@elizaos/core/testing` registers explicit,
+# fixture-driven text and embedding handlers. The external API mocks in
+# packages/scenario-runner/test/mocks serve recorded provider fixtures. The suites exercise
 # both with zero credentials, so it is required-but-fast and never gated on a
 # secret — every provider key below is explicitly blanked to prove the loops
 # stay green without one.
 #
-# The required PR gate in `.github/workflows/test.yml` owns the central mock-LLM
-# harness plus the first adoption proofs. This standalone lane owns the remaining
-# connector harness proofs so the same command is not run twice on PRs.
+# The required PR gate in `.github/workflows/test.yml` owns core provider tests
+# plus the first adoption proofs. This lane owns the remaining connector proofs
+# so the same command is not run twice on PRs.
 
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
@@ -33,7 +32,7 @@ on:
 # A reusable caller's scope separates it from the standalone ref domain. PRs
 # still supersede obsolete work; exhaustive work always completes.
 concurrency:
-  group: keyless-harness-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
+  group: keyless-model-provider-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -44,8 +43,8 @@ env:
   BUN_VERSION: "canary"
   NODE_VERSION: "24"
   NODE_OPTIONS: "--max-old-space-size=4096"
-  # Keyless guarantee: the deterministic harness must pass with every provider
-  # credential absent. Blanking them here proves the mock-LLM loops never reach
+  # Keyless guarantee: the deterministic runtime must pass with every provider
+  # credential absent. Blanking them here proves the model calls never reach
   # a live provider.
   ELIZA_LIVE_TEST: "0"
   OPENAI_API_KEY: ""
@@ -59,8 +58,8 @@ env:
   ELIZAOS_CLOUD_API_KEY: ""
 
 jobs:
-  keyless-harness:
-    name: Deterministic mock-LLM connector loops (no secret)
+  model-provider-runtime:
+    name: Deterministic model-provider connector loops (no secret)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     steps:
@@ -87,7 +86,7 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Remaining per-plugin keyless harness adoption proofs
+      - name: Remaining per-plugin deterministic model-provider runtime adoption proofs
         run: |
           bun run --cwd plugins/plugin-openai test:real-runtime
           bun run --cwd plugins/plugin-google-genai test:real-runtime

@@ -1,6 +1,6 @@
 /**
  * Verifies the MCP plugin re-runs config security validation at its own boundary:
- * drives the real validateMcpServerConfig from @elizaos/security to confirm unsafe
+ * drives the real core validateMcpServerConfig to confirm unsafe
  * stdio env channels (npm/uv config injection) are rejected before spawn.
  */
 import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";

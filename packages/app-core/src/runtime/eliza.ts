@@ -912,6 +912,7 @@ async function repairRuntimeAfterBoot(
     } catch (error) {
       throw new Error(
         `[eliza] AutonomyService start failed: ${formatError(error)}`,
+        { cause: error },
       );
     }
   }
@@ -928,6 +929,7 @@ async function repairRuntimeAfterBoot(
       } catch (err) {
         throw new Error(
           `[eliza] Failed to enable autonomy loop: ${formatError(err)}`,
+          { cause: err },
         );
       }
     }
@@ -1096,11 +1098,7 @@ const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
 
 async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
   if (_triggerEventBridge) {
-    try {
-      _triggerEventBridge.stop();
-    } catch {
-      /* ignore */
-    }
+    _triggerEventBridge.stop();
     _triggerEventBridge = null;
   }
   try {
@@ -1120,11 +1118,7 @@ async function ensureConnectorTargetCatalog(
   runtime: AgentRuntime,
 ): Promise<void> {
   if (_connectorTargetCatalog) {
-    try {
-      _connectorTargetCatalog.stop();
-    } catch {
-      /* ignore */
-    }
+    _connectorTargetCatalog.stop();
     _connectorTargetCatalog = null;
   }
   try {
@@ -1146,13 +1140,7 @@ async function ensureConnectorTargetCatalog(
     ]);
     _connectorTargetCatalog = {
       stop: () => {
-        try {
-          runtime.services.delete(
-            CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never,
-          );
-        } catch {
-          /* ignore */
-        }
+        runtime.services.delete(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never);
       },
     };
     logger.info("[eliza] connector-target-catalog registered");
@@ -1959,8 +1947,12 @@ export async function startEliza(
       if (_triggerEventBridge) {
         try {
           _triggerEventBridge.stop();
-        } catch {
-          /* ignore */
+        } catch (err) {
+          // error-policy:J6 best-effort teardown — process shutdown continues,
+          // but a failed bridge stop remains observable before exit.
+          logger.warn(
+            `[eliza] Trigger event bridge stop failed during shutdown: ${formatError(err)}`,
+          );
         }
         _triggerEventBridge = null;
       }

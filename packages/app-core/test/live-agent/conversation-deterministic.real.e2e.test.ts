@@ -1,5 +1,5 @@
 /**
- * Keyless real-runtime conversation coverage with a DETERMINISTIC LLM proxy.
+ * Keyless real-runtime conversation coverage with a DETERMINISTIC model provider.
  *
  * Boots a REAL AgentRuntime + the REAL app-core HTTP stack via
  * {@link startLiveRuntimeServer}, registering

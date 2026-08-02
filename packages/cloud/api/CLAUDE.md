@@ -28,7 +28,7 @@ src/
                            route. Re-run `bun run codegen` after adding/removing a route.
   middleware/              auth.ts (global auth gate + public-path allowlist),
                            org-membership.ts.
-  services/                audit-dispatcher-singleton.ts, audit-events.ts (auth_events sink).
+  services/                audit/ (cloud-owned audit contract + dispatcher), audit-events.ts (required auth_events sink).
   queue/                   stripe-event.ts, types.ts (Cloudflare Queue consumers).
   steward/embedded.ts      Embedded Steward (auth provider) handler, mounted at /steward*.
   lib/mcp/                 mcps-transport-gateway.ts (createMcpsTransportApp factory).

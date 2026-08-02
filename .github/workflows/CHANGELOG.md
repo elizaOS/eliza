@@ -91,7 +91,7 @@ do not have to carry CI-only history.
 - `develop-exhaustive.yml` (#12342, epic #12191 phase 5): an un-cancellable
   scheduled orchestrator (06:00/18:00 UTC, dedicated concurrency group) that
   invokes every platform lane test.yml's schedule does not cover — Windows,
-  mobile, scenario, the three UI gates, keyless harness, docker, dev
+  mobile, scenario, the three UI gates, deterministic model-provider runtime, docker, dev
   onboarding, electrobun/desktop — via `workflow_call`, then runs the matrix
   proof. A skipped or failed reusable lane fails the run (a coverage gap is not
   a pass). Added a bare `workflow_call:` trigger to each of those 10 workflows

@@ -1,7 +1,7 @@
 /**
  * Singleton accessor for the KMS client used by cloud-shared crypto helpers.
  *
- * Resolves the backend through `createKmsClient()` from `@elizaos/security`
+ * Resolves the backend through `createKmsClient()` from `@elizaos/core/security/kms`
  * (memory in tests, local in cloud production with `ELIZA_LOCAL_ROOT_KEY`,
  * steward when explicitly configured).
  *

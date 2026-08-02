@@ -408,7 +408,7 @@ const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
 const NO_CLOUD_PACKAGE_DIRS = new Set([
-  path.join("packages", "test", "cloud-e2e"),
+  path.join("packages", "cloud", "e2e"),
 ]);
 
 // Combine --filter, --pattern, --lane, and TEST_PACKAGE_FILTER. All (when set)

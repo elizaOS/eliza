@@ -90,7 +90,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "No delegated mailbox, push-notification, quota, or rate-limit variants",
     ],
     validation: [
-      "test/mocks/__tests__/google-mock-fidelity.test.ts",
+      "test/mocks/__tests__/google-gmail-fault.test.ts",
       "plugins/plugin-personal-assistant/test/lifeops-simulator.test.ts",
       "plugins/plugin-personal-assistant/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
     ],
@@ -522,7 +522,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "No prompt caching or token-budget headers",
     ],
     validation: [
-      "test/harness/__tests__/provider-wire-mock.test.ts",
+      "test/mocks/__tests__/provider-wire-mock.test.ts",
       "../plugins/plugin-anthropic/__tests__/anthropic-drift.real.test.ts",
     ],
   },
@@ -546,7 +546,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "No fine-tuning, moderation, or audio endpoints",
     ],
     validation: [
-      "test/harness/__tests__/provider-wire-mock.test.ts",
+      "test/mocks/__tests__/provider-wire-mock.test.ts",
       "../plugins/plugin-openai/__tests__/openai-drift.real.test.ts",
     ],
   },

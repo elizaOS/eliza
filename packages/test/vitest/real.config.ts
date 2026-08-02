@@ -104,7 +104,9 @@ const ciExcludedRealPaths = [
   elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/transfer.live.test.ts",
   ),
-  elizaWorkspacePattern("plugins/plugin-coding-tools/src/shell/__tests__/shell.real.test.ts"),
+  elizaWorkspacePattern(
+    "plugins/plugin-coding-tools/src/shell/__tests__/shell.real.test.ts",
+  ),
   // plugin-openrouter sdk nested workspace deps don't resolve in this CI lane.
   elizaWorkspacePattern(
     "plugins/plugin-openrouter/__tests__/models.live.test.ts",
@@ -133,7 +135,7 @@ const elizaCoreEntryDir = elizaCoreEntry
   : undefined;
 // Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
 // module graph imports (`./node` from plugin dists, `./testing` from the test
-// harness, `./connectors` from connector plugins). A bare-string
+// runtime tests, `./connectors` from connector plugins). A bare-string
 // "@elizaos/core" alias is prefix-matched by Vite/rollup and rewrites those
 // subpaths into "<core entry file>/<subpath>" (a path under a *file*), which
 // kills any suite whose plugin graph imports them (#11047) — mirror

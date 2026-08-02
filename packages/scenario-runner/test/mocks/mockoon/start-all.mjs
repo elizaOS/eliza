@@ -3,7 +3,7 @@
  * Spawn every Mockoon environment in this directory in parallel.
  *
  * Usage:
- *   node eliza/test/mocks/mockoon/start-all.mjs
+ *   node packages/scenario-runner/test/mocks/mockoon/start-all.mjs
  *   # or, in tests, set LIFEOPS_USE_MOCKOON=1 and import
  *   # `applyMockoonEnvOverrides()` from the redirect helper before
  *   # constructing the runtime.

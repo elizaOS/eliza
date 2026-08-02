@@ -9,7 +9,7 @@
  * `.elizadb` data-dir wipe, nulling `state.current`, clearing the persisted
  * first-run config, and clearing the sealed cloud-secret store.
  *
- * Keyless: the deterministic LLM proxy supplies every model handler, so no
+ * Keyless: the deterministic model provider supplies every model handler, so no
  * provider/cloud key and no native llama are needed.
  *
  * Loopback requests from 127.0.0.1 are trusted by

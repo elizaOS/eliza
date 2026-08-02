@@ -6,7 +6,7 @@
  * Mockoon environment on `http://localhost:<port>`.
  *
  * Port assignments are documented in
- * `eliza/test/mocks/mockoon/INVENTORY.md` and must stay in sync with the
+ * `packages/scenario-runner/test/mocks/mockoon/INVENTORY.md` and must stay in sync with the
  * generated environment files.
  *
  * The helper mutates `process.env` because every connector base-URL resolver

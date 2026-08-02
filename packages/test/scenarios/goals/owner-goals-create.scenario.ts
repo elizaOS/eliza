@@ -3,7 +3,7 @@
  *
  * The goals plugin's primary agent-action surface is `OWNER_GOALS`
  * (create | update | delete | review). This drives the create path end-to-end
- * through the deterministic LLM proxy with zero credentials: routing fixtures
+ * through the deterministic model provider with zero credentials: routing fixtures
  * select the action, a TEXT_LARGE fixture answers the action's own
  * `resolveActionArgs` extraction with a structured `{action, params}` envelope,
  * and the goal is created. The one PA-owned audit table the create path appends
@@ -25,7 +25,7 @@ import { createOwnerGoalsService } from "../../../../plugins/plugin-goals/src/go
 const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
 const OWNER_GOALS = "OWNER_GOALS";
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -137,7 +137,7 @@ export default scenario({
   domain: "goals",
   tags: ["smoke", "goals", "owner-goals"],
   description:
-    "Sends a create-a-goal message and verifies the OWNER_GOALS action is selected and succeeds with action=create via the deterministic LLM proxy — keyless, no credentials.",
+    "Sends a create-a-goal message and verifies the OWNER_GOALS action is selected and succeeds with action=create via the deterministic model provider — keyless, no credentials.",
 
   requires: {
     plugins: ["@elizaos/plugin-goals"],
@@ -149,7 +149,7 @@ export default scenario({
       type: "custom",
       name: "provision-audit-table-and-fixtures",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         await executeRawSql(runtime, "CREATE SCHEMA IF NOT EXISTS app_lifeops");
         await executeRawSql(
           runtime,

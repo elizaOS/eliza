@@ -144,8 +144,8 @@ export interface TrajectoryRollup {
  * Machine-readable live-vs-fabricated grade for a trajectory's evidence,
  * derived from the providers its model stages recorded (#13623):
  * - `live`   — at least one model stage names a real provider (not the
- *              deterministic proxy, not the `"default"` placeholder, not empty).
- * - `proxy`  — every model stage was served by the deterministic LLM proxy.
+ *              deterministic model provider, not the `"default"` placeholder, not empty).
+ * - `proxy`  — every model stage was served by the deterministic model provider.
  * - `mock`   — no model stage names any real provider (all `"default"`/empty) and
  *              no proxy stage either; the trajectory can't prove which model,
  *              if any, answered.
@@ -154,10 +154,10 @@ export interface TrajectoryRollup {
 export type TrajectoryEvidenceGrade = "live" | "proxy" | "mock" | "unknown";
 
 /**
- * Provider name recorded by the scenario-runner's deterministic LLM proxy. A
+ * Provider name recorded by the scenario-runner's deterministic model provider. A
  * trajectory served entirely by it is NOT live evidence.
  */
-export const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
+export const DETERMINISTIC_MODEL_PROVIDER_NAME =
   "deterministic-model-provider" as const;
 
 /**
@@ -169,7 +169,7 @@ function isNonLiveProviderName(provider: unknown): boolean {
   if (typeof provider !== "string") return true;
   const trimmed = provider.trim();
   if (trimmed.length === 0) return true;
-  if (trimmed === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) return true;
+  if (trimmed === DETERMINISTIC_MODEL_PROVIDER_NAME) return true;
   if (trimmed === "default") return true;
   return false;
 }
@@ -199,7 +199,7 @@ export interface ValidateTrajectoryOptions {
   /**
    * Opt-in live-provider gate (#13623). When true, a trajectory whose evidence
    * grade is not `live` — i.e. every model stage was served by the
-   * deterministic proxy, `"default"`, or an empty provider — fails validation
+   * deterministic model provider, `"default"`, or an empty provider — fails validation
    * with an error. Off by default so structural validation is unchanged; the
    * evidence / CI convention turns it on to reject proxy-produced
    * "proof".
@@ -856,7 +856,7 @@ export function deriveTrajectoryEvidenceGrade(
     if (!stage.model) continue;
     modelStages += 1;
     const provider = stage.model.provider;
-    if (provider === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
+    if (provider === DETERMINISTIC_MODEL_PROVIDER_NAME) {
       proxyStages += 1;
     } else if (!isNonLiveProviderName(provider)) {
       liveStages += 1;
@@ -1099,7 +1099,7 @@ export function validateTrajectory(
       issues,
       "error",
       "$.stages[].model.provider",
-      `requireLiveProvider: trajectory evidence grade is "${evidenceGrade}", not "live" — every model stage was served by the deterministic proxy, "default", or an empty provider`,
+      `requireLiveProvider: trajectory evidence grade is "${evidenceGrade}", not "live" — every model stage was served by the deterministic model provider, "default", or an empty provider`,
     );
   }
 

@@ -1,7 +1,7 @@
 /**
  * Keyless coverage of the plugin-gitpathologist GIT_PATHOLOGY action, exercising
  * its `list` op against an isolated empty cache. Runs on the pr-deterministic lane
- * under the LLM proxy.
+ * under the model provider.
  */
 import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
@@ -16,7 +16,7 @@ import gitPathologyPlugin, {
   GIT_PATHOLOGY_SERVICE_NAME,
 } from "../../../../plugins/plugin-gitpathologist/src/index.ts";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
 
@@ -213,7 +213,7 @@ export default scenario({
         process.env.GITPATHOLOGIST_CACHE_DIR = cacheDir;
 
         const runtime = ctx.runtime as
-          | (RuntimeWithScenarioLlmFixtures & {
+          | (RuntimeWithScenarioModelFixtures & {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (
                 plugin: typeof gitPathologyPlugin,

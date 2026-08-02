@@ -13,7 +13,7 @@
  * `admin.action` with `result: "denied"`.
  */
 
-import type { AuditAction } from "@/services/audit";
+import type { AuditAction } from "@/api-app/services/audit";
 import type { Context } from "hono";
 import { ForbiddenError } from "@/lib/api/cloud-worker-errors";
 import { logger } from "@/lib/utils/logger";

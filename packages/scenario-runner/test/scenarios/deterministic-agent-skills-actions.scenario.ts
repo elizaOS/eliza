@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-agent-skills action surface
- * (USE_SKILL and similes). Runs on the pr-deterministic lane under the LLM proxy.
+ * (USE_SKILL and similes). Runs on the pr-deterministic lane under the model provider.
  */
 import type {
   CapturedAction,
@@ -9,7 +9,7 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
 
@@ -549,7 +549,7 @@ export default scenario({
         }
         await seedScenarioSkill(service);
         registerStrictActionRouteFixtures(
-          runtime as RuntimeWithScenarioLlmFixtures,
+          runtime as RuntimeWithScenarioModelFixtures,
           strictAgentSkillRoutes,
         );
         return undefined;

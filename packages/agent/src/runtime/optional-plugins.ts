@@ -190,12 +190,12 @@ export function renderOptionalPluginImportsModule(
       return `${comments}  "${pkg}": () => import("${specifier}"),`;
     })
     .join("\n");
-  return `// GENERATED FILE — DO NOT EDIT BY HAND.
-// Source of truth: ./optional-plugins.ts (OPTIONAL_STATIC_PLUGIN_PACKAGES).
-// Regenerate: bun run --cwd packages/agent gen:optional-plugin-imports
-//
-// Literal \`import()\` specifiers so Bun.build inlines each optional plugin into
-// the mobile bundle. The runtime looks each up by name in loadOptionalPlugin().
+  return `/**
+ * Generated literal import map that lets Bun inline optional mobile plugins.
+ * The source of truth is OPTIONAL_STATIC_PLUGIN_PACKAGES in optional-plugins.ts;
+ * regenerate with \`bun run --cwd packages/agent gen:optional-plugin-imports\`.
+ * Do not edit this output by hand.
+ */
 
 export const OPTIONAL_PLUGIN_IMPORTERS: Record<
   string,

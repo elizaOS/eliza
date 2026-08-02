@@ -6,7 +6,7 @@ Secrets and config vault for Eliza agents — one API for sensitive credentials 
 
 Provides a single storage interface for all sensitive values (API keys, wallet private keys, tokens) and non-sensitive config. Sensitive values are AES-256-GCM encrypted at rest with a master key held in the OS keychain. External password-manager references (`PasswordManagerReference.source` is `1password` | `protonpass`) are first-class: the value lives in the external tool, the vault stores only the pointer. (Bitwarden is supported as a saved-login / detection backend, but not as a reference source.)
 
-**Primary consumers:** `packages/agent` (vault bootstrap, profile resolver, wallet storage, signer backend), `packages/app-core` (secrets-manager routes, inventory routes, vault bootstrap service, vault mirror), `packages/security` (KMS local adapter), `packages/ui` (vault settings tabs).
+**Primary consumers:** `packages/agent` (vault bootstrap, profile resolver, wallet storage, signer backend), `packages/app-core` (secrets-manager routes, inventory routes, vault bootstrap service, vault mirror), `packages/auth` (encrypted account credential envelopes), and `packages/ui` (vault settings tabs).
 
 ## Layout
 

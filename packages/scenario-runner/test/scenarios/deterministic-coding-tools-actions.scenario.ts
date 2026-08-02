@@ -1,6 +1,6 @@
 /**
  * Keyless coverage exercising the coding-tools action execution surface end to
- * end. Runs on the pr-deterministic lane under the LLM proxy.
+ * end. Runs on the pr-deterministic lane under the model provider.
  */
 import { execFile } from "node:child_process";
 import { promises as fs, realpathSync } from "node:fs";
@@ -16,7 +16,7 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
 
@@ -384,7 +384,7 @@ export default scenario({
         process.env.CODING_TOOLS_BLOCKED_PATHS = blockedRoot;
 
         const runtime = ctx.runtime as
-          | (RuntimeWithScenarioLlmFixtures & {
+          | (RuntimeWithScenarioModelFixtures & {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (
                 plugin: typeof codingToolsPlugin,

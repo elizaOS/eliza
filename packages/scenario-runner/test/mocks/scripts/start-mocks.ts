@@ -21,13 +21,6 @@ import {
   lifeOpsSimulatorSummary,
 } from "../../../../../plugins/plugin-personal-assistant/test/support/fixtures/lifeops-simulator.ts";
 import {
-  type CorpusMockOptions,
-  loadCorpusMockFixtures,
-} from "../helpers/corpus-loader.ts";
-
-export type { CorpusMockOptions } from "../helpers/corpus-loader.ts";
-
-import {
   GITHUB_FIXTURE_NOTIFICATIONS,
   GITHUB_FIXTURE_PULLS,
   GITHUB_FIXTURE_SEARCH_ITEMS,
@@ -128,7 +121,6 @@ interface StartedFixtureServer {
 
 interface MockFixtureOptions {
   simulator?: boolean;
-  corpus?: CorpusMockOptions;
 }
 
 export interface MockRequestLedgerEntry {
@@ -3882,19 +3874,10 @@ async function createDynamicProviderState(
   opts?: MockFixtureOptions,
 ): Promise<DynamicProviderState> {
   if (environmentName === "Google APIs") {
-    const corpus = opts?.corpus
-      ? await loadCorpusMockFixtures(opts.corpus)
-      : null;
     return {
       kind: "google",
       state: createGoogleMockState({
         simulator: opts?.simulator,
-        ...(corpus
-          ? {
-              corpusGmailFixtures: corpus.gmailFixtures,
-              corpusGmailFixtureSets: corpus.gmailFixtureSets,
-            }
-          : {}),
       }),
     };
   }
@@ -4595,7 +4578,6 @@ async function startFixtureServer(
 export async function startMocks(opts?: {
   envs?: readonly MockEnvironmentName[];
   simulator?: boolean;
-  corpus?: CorpusMockOptions;
 }): Promise<StartedMocks> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
 
@@ -4611,7 +4593,6 @@ export async function startMocks(opts?: {
       servers.push(
         await startFixtureServer(dataPath, {
           simulator: Boolean(opts?.simulator),
-          ...(opts?.corpus ? { corpus: opts.corpus } : {}),
         }),
       );
     }
@@ -4652,11 +4633,9 @@ export async function startMocks(opts?: {
 function parseCliArgs(argv: readonly string[]): {
   envs: readonly MockEnvironmentName[] | undefined;
   simulator: boolean;
-  corpus: CorpusMockOptions | undefined;
 } {
   let envs: readonly MockEnvironmentName[] | undefined;
   let simulator = false;
-  let corpus: CorpusMockOptions | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--simulator" || arg === "--seed-simulator") {
@@ -4679,20 +4658,9 @@ function parseCliArgs(argv: readonly string[]): {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean) as readonly MockEnvironmentName[];
-      continue;
-    }
-    if (arg === "--corpus-dir") {
-      const value = argv[i + 1];
-      if (!value) throw new Error("--corpus-dir requires a directory");
-      corpus = { dir: value };
-      i++;
-      continue;
-    }
-    if (arg.startsWith("--corpus-dir=")) {
-      corpus = { dir: arg.slice("--corpus-dir=".length) };
     }
   }
-  return { envs, simulator, corpus };
+  return { envs, simulator };
 }
 
 const isCliInvocation =
@@ -4702,8 +4670,8 @@ const isCliInvocation =
   fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
 if (isCliInvocation) {
-  const { envs, simulator, corpus } = parseCliArgs(process.argv.slice(2));
-  startMocks({ envs, simulator, ...(corpus ? { corpus } : {}) })
+  const { envs, simulator } = parseCliArgs(process.argv.slice(2));
+  startMocks({ envs, simulator })
     .then((mocks) => {
       const lines: string[] = [];
       lines.push("Mock servers running. Press Ctrl+C to stop.");

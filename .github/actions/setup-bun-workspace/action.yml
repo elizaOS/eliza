@@ -75,7 +75,7 @@ runs:
     # rely solely on this composite for their toolchain (feed-env-audit and
     # voice-workbench) fail with
     # "node: command not found" on runners missing a system Node. setup-node is
-    # idempotent, so callers that already ran it (keyless-harness, the audits)
+    # idempotent, so callers that already ran it (model-provider-runtime, the audits)
     # just re-select the same version. Toggle off via setup-node: "false".
     - name: Setup Node.js
       if: ${{ inputs.setup-node == 'true' }}

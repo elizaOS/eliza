@@ -19,7 +19,7 @@
  *
  *  2. `KNOWLEDGE_GRAPH` is an op-dispatched action with no declared `parameters`
  *     schema (op/kind/limit are read from `options.parameters` and validated
- *     per-op in the handler). Under the strict LLM proxy the planner tool schema
+ *     per-op in the handler). Under the strict model provider the planner tool schema
  *     is closed, so a tool-call cannot carry the `op` argument. The action is
  *     therefore driven directly via an `action` turn with `options.parameters`,
  *     which runs the real handler against the real KnowledgeGraphService.

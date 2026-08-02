@@ -1,6 +1,6 @@
 /**
  * McpService — owns the lifecycle of every MCP server connection: validates each
- * config through @elizaos/security, builds the stdio or HTTP-SSE transport,
+ * config through the core security boundary, builds the stdio or HTTP-SSE transport,
  * connects the SDK client, and discovers its tools, resources, and resource
  * templates.
  *

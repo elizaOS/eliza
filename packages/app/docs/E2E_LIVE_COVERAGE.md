@@ -88,7 +88,7 @@ not vitest (vitest's aliasing stubs out plugin handlers like edge-tts and breaks
 ## Real local chat in the keyless lane (deterministic model, real pipeline)
 
 Local chat does not need a provider key or llama either: registering the
-deterministic LLM proxy (`packages/test/mocks/helpers/llm-proxy-plugin.ts` — a
+deterministic model provider (`packages/core/src/testing/deterministic-model-plugin.ts` — a
 real `Plugin` with real handlers for every text model + embedding +
 `RESPONSE_HANDLER` + `ACTION_PLANNER`, priority 1000) on a real runtime gives a
 fully chat-capable agent with deterministic output.

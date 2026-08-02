@@ -63,7 +63,12 @@ export const AuditEventSchema = z.object({
   metadata: z
     .record(
       z.string().min(1).max(128),
-      z.union([z.string().max(1024), z.number().finite(), z.boolean(), z.null()]),
+      z.union([
+        z.string().max(1024),
+        z.number().finite(),
+        z.boolean(),
+        z.null(),
+      ]),
     )
     .optional(),
 });

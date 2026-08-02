@@ -96,7 +96,7 @@ A plugin that exposes an agent surface â€” actions and/or a message connector â€
 but ships **zero keyless e2e coverage** is a broken pipeline: a capability users
 reach with no zero-cost regression test. This gate flags exactly that.
 
-"Keyless e2e" = a scenario that runs on a PR under the deterministic LLM proxy
+"Keyless e2e" = a scenario that runs on a PR under the deterministic model provider
 (`SCENARIO_USE_DETERMINISTIC_MODEL=1`) with **no credentials**:
 
 - any scenario in `packages/scenario-runner/test/scenarios` (the deterministic

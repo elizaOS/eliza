@@ -5,7 +5,7 @@
  * A bare-string `resolve.alias` entry is prefix-matched by Vite/rollup
  * (`importee === find || importee.startsWith(find + "/")`), so a string
  * "@elizaos/core" alias rewrote "@elizaos/core/node" (imported by plugin
- * dists), "@elizaos/core/testing" (imported by this harness), and
+ * dists), "@elizaos/core/testing" (imported by real-runtime tests), and
  * "@elizaos/core/connectors" (imported by connector plugins) into
  * "<core entry file>/<subpath>" — a path nested under a *file*, which fails
  * with ENOTDIR and killed every plugins/*\/test integration test in the lane.

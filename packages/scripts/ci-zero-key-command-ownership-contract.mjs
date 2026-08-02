@@ -28,8 +28,8 @@ const OWNED_WORKFLOWS = [
   { file: ".github/workflows/test.yml", owner: "test-orchestrator" },
   { file: ".github/workflows/scenario-pr.yml", owner: "scenario-pr-zero-key" },
   {
-    file: ".github/workflows/keyless-harness-e2e.yml",
-    owner: "keyless-harness",
+    file: ".github/workflows/keyless-model-provider-e2e.yml",
+    owner: "model-provider-runtime",
     includeAllJobs: true,
   },
   {

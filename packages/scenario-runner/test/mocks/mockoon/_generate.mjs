@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Programmatic Mockoon environment generator. Produces lightweight,
 // realistic happy-path bodies + the standard 3 fault rules per route.
-// Run: node eliza/test/mocks/mockoon/_generate.mjs
+// Run: node packages/scenario-runner/test/mocks/mockoon/_generate.mjs
 //
 // gmail.json is hand-authored. Everything else is emitted from this file.
 

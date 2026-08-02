@@ -116,12 +116,6 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
     ],
     minAgentElements: 6,
   },
-  feed: {
-    viewId: "feed",
-    provider: "dynamic",
-    files: ["plugins/plugin-feed/src/components/FeedSpatialView.tsx"],
-    minAgentElements: 2,
-  },
   relationships: {
     viewId: "relationships",
     provider: "shell",

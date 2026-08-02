@@ -7,7 +7,7 @@
  * `OWNER_FINANCES` umbrella in `@elizaos/plugin-personal-assistant`, whose
  * handler (`runMoneyHandler`) delegates straight into `runPaymentsHandler`
  * here. So the scenario loads both plugins and drives the read-only
- * `dashboard` subaction end to end through the deterministic LLM proxy with
+ * `dashboard` subaction end to end through the deterministic model provider with
  * zero credentials: routing fixtures select `OWNER_FINANCES`, the planner
  * calls it with `action: "dashboard"`, and the finances back-end reads the
  * (empty) migrated `app_finances` tables and returns the composite dashboard
@@ -26,7 +26,7 @@ import {
 const FINANCES_INPUT = "Pull up my finances dashboard for the last 30 days.";
 const OWNER_FINANCES = "OWNER_FINANCES";
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -100,7 +100,7 @@ export default scenario({
   domain: "finances",
   tags: ["smoke", "finances", "owner-finances", "payments"],
   description:
-    "Sends a finances-dashboard request and verifies the OWNER_FINANCES action is selected and the plugin-finances back-end returns the dashboard payload via the deterministic LLM proxy — keyless, no credentials.",
+    "Sends a finances-dashboard request and verifies the OWNER_FINANCES action is selected and the plugin-finances back-end returns the dashboard payload via the deterministic model provider — keyless, no credentials.",
 
   requires: {
     plugins: ["@elizaos/plugin-finances", "@elizaos/plugin-personal-assistant"],
@@ -112,7 +112,7 @@ export default scenario({
       type: "custom",
       name: "register-strict-finances-route-fixtures",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         runtime.scenarioModelFixtures?.register(...financesRouteFixtures());
         return undefined;
       },

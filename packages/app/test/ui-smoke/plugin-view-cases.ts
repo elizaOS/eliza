@@ -10,7 +10,7 @@ export type ViewCase = {
   /**
    * Minimum normalized `<main>` innerText length that counts as "loaded".
    * Views whose designed keyless empty state is a single short word (the
-   * focus view renders just "Idle", the feed just "Feed") override the
+   * focus view renders just "Idle") override the
    * default so the load heuristic cannot false-negative on them.
    */
   minVisibleTextLength: number;
@@ -31,7 +31,6 @@ export const VIEW_CASES: ViewCase[] = (
     // Shipped plugin views are GUI-only. The shared viewType contract still
     // accepts future modalities, but this smoke matrix tracks what the app can
     // render today.
-    ["birdclaw", "gui", "/birdclaw"],
     ["cloud", "gui", "/cloud"],
     ["contacts", "gui", "/contacts"],
     ["hyperliquid", "gui", "/hyperliquid"],
@@ -51,7 +50,6 @@ export const VIEW_CASES: ViewCase[] = (
     ["polymarket", "gui", "/polymarket"],
     ["wallet", "gui", "/wallet"],
     ["vector-browser", "gui", "/vector-browser"],
-    ["feed", "gui", "/feed", { minVisibleTextLength: 4 }],
     ["views-manager", "gui", "/views"],
     ["screenshare", "gui", "/screenshare"],
     ["notes", "gui", "/notes"],

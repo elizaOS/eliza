@@ -1,5 +1,5 @@
 /**
- * Keyless Discord connector loop e2e (#8801, gap 5 — per-plugin harness adoption).
+ * Keyless Discord connector loop e2e (#8801, gap 5 — per-plugin provider adoption).
  *
  * This is the Discord plugin's OWN copy of the connector-loop e2e, living in the
  * plugin's test dir and driven by `createTestRuntimeWithModelProvider()` from
@@ -9,7 +9,7 @@
  * formatting, `ensureConnection`, then the REAL
  * `DiscordService.prototype.buildMemoryFromMessage` (constructed via
  * `Object.create(DiscordService.prototype)`, so the inbound→Memory mapping is
- * the product's own), the forced-reply turn through the deterministic mock LLM,
+ * the product's own), the forced-reply turn through the deterministic deterministic model provider,
  * and delivery via the connector's REAL outbound seam (`channel.send`).
  *
  * The ONLY mocks are the external `discord.js` SDK objects (Client, Channel,
@@ -268,7 +268,7 @@ async function driveDiscordTurn(options: {
 	return { sent, channelId };
 }
 
-describe("discord connector loop (keyless harness)", () => {
+describe("discord connector loop (deterministic model-provider runtime)", () => {
 	it("responds when explicitly @mentioned among other users (co-mention, bot not first)", async () => {
 		// Live 2026-07-16: `@ruby @osiris @remilio` in a multi-bot channel was
 		// dropped by the "targets another mentioned user" gate because the bot
@@ -298,7 +298,7 @@ describe("discord connector loop (keyless harness)", () => {
 		expect(sent[0]?.channelId).toBe(channelId);
 	}, 120_000);
 
-	it("drives a synthetic Discord message through the mock LLM to a delivered reply", async () => {
+	it("drives a synthetic Discord message through the deterministic model provider to a delivered reply", async () => {
 		const { sent, channelId } = await driveDiscordTurn({
 			inboundText: "Hello agent, please reply.",
 			fixtures: [

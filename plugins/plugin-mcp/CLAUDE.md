@@ -95,7 +95,7 @@ Transport config shapes (see `src/types.ts`):
 
 The `agentConfig.pluginParameters` in `package.json` declares `PATH` and `mcp` for auto-config tooling.
 
-Security: every server config is validated by `@elizaos/agent/security/mcp-server-config` before connection is attempted. Unsafe or malformed configs are rejected with a log message.
+Security: every server config is validated by `@elizaos/core/security/mcp-server-config` before connection is attempted. Unsafe or malformed configs are rejected with a log message.
 
 ## How to extend
 

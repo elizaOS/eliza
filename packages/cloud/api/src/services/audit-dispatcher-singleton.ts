@@ -10,7 +10,7 @@ import {
   AuditDispatcher,
   type AuditSink,
   ConsoleSink,
-} from "@/services/audit";
+} from "@/api-app/services/audit";
 import { logger } from "@/lib/utils/logger";
 import { auditEventsSink } from "./audit-events";
 

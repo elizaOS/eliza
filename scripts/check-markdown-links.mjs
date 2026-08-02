@@ -26,7 +26,6 @@ const EXCLUDED_PREFIXES = [
   "packages/elizaos/src/commands/",
   "packages/examples/",
   "packages/feed/",
-  "packages/security/docs/",
   "packages/skills/",
   "packages/training/",
   "packages/ui/src/services/local-inference/",

@@ -1,7 +1,7 @@
 /**
  * Keyless scenario asserting the agent-addressable surface of an active view:
  * the agent reaches a scenario ledger view's registered controls and produces a
- * trajectory over them. Runs on the pr-deterministic lane under the LLM proxy.
+ * trajectory over them. Runs on the pr-deterministic lane under the model provider.
  */
 import {
   registerPluginViews,
@@ -32,7 +32,7 @@ import { stage1ResponseHandlerFixture } from "@elizaos/core/testing";
 import type { DeterministicModelCall } from "@elizaos/core/testing";
 import {
   matchesScenarioInput,
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
 } from "@elizaos/core/testing";
 
 const VIEW_ID = "scenario-active-ledger";
@@ -149,7 +149,7 @@ const scenarioViewsRoutePlugin: Plugin = {
   ),
 };
 
-type RuntimeWithScenarioPlugins = RuntimeWithScenarioLlmFixtures & {
+type RuntimeWithScenarioPlugins = RuntimeWithScenarioModelFixtures & {
   plugins?: Array<{ name?: string }>;
   registerPlugin?: (plugin: Plugin) => Promise<void>;
 };

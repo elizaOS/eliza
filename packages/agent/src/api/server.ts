@@ -33,7 +33,6 @@ import {
   type AgentRuntime,
   EventType,
   type IAgentRuntime,
-  type IScreenCaptureService,
   logger,
   NotificationService,
   readJsonBody as parseJsonBody,
@@ -417,7 +416,6 @@ import {
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
-  resolveMirroredAvatarPresetId,
 } from "./server-helpers.ts";
 import { routeAutonomyTextToUser as routeProactiveText } from "./server-helpers-swarm.ts";
 import {
@@ -689,12 +687,6 @@ export type {
   StreamEventType,
 } from "./server-types.ts";
 
-import {
-  fetchWithTimeoutGuard as _fetchWithTimeoutGuard,
-  streamResponseBodyWithByteLimit as _streamResponseBodyWithByteLimit,
-  isAbortError,
-  responseContentLength,
-} from "./server-helpers-fetch.ts";
 import type {
   AgentStartupDiagnostics,
   ServerState,
@@ -705,9 +697,6 @@ export {
   fetchWithTimeoutGuard,
   streamResponseBodyWithByteLimit,
 } from "./server-helpers-fetch.ts";
-
-const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
-const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
 /**
  * Read and parse a JSON request body with size limits and error handling.
@@ -1221,7 +1210,6 @@ import {
   getCloudProviderOptions,
   getProviderOptions,
   isBlockedObjectKey as isBlockedObjectKeyFromConfig,
-  isRedactedSecretValue,
   readUiLanguageHeader,
   redactConfigSecrets,
   redactDeep,

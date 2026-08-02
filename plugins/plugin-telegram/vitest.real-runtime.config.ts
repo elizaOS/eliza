@@ -2,9 +2,9 @@
  * Vitest config for the keyless `createTestRuntimeWithModelProvider()` e2e (#8801, gap 5).
  *
  * Booting a real PGLite-backed AgentRuntime via `@elizaos/core/testing`
- * requires every workspace `@elizaos/*` package resolved to source. The harness
+ * requires every workspace `@elizaos/*` package resolved to source. The shared Vitest configuration
  * owns that alias set (`buildWorkspaceSourceAliases`); this config reuses it so
- * the per-plugin e2e and the harness's own suite never drift.
+ * the per-plugin e2e and the core model-provider suite never drift.
  */
 import { defineConfig } from "vitest/config";
 import { buildWorkspaceSourceAliases } from "../../packages/test/vitest/source-aliases.ts";

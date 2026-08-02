@@ -1,6 +1,6 @@
 /**
  * Fast keyless smoke covering the core scenario surfaces (views, actions, routing)
- * in one pass. Runs on the pr-deterministic lane under the LLM proxy.
+ * in one pass. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType } from "@elizaos/core";
 import type {
@@ -16,7 +16,7 @@ import {
 } from "./_helpers/app-control-http-loopback";
 import { matchesScenarioInput } from "@elizaos/core/testing";
 
-type RuntimeWithScenarioLlmFixtures = {
+type RuntimeWithScenarioModelFixtures = {
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -140,7 +140,7 @@ export default scenario({
       name: "local view loopback API for deterministic shell actions",
       apply: (ctx) => {
         resetAppControlHttpLoopback();
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         runtime.scenarioModelFixtures?.register(
           // The simple-reply path answers straight from the stage-1 router
           // response (`replyText`); no follow-up TEXT_SMALL call fires. The
@@ -152,9 +152,9 @@ export default scenario({
             name: "pr-smoke-deterministic-direct-reply",
             match: {
               modelType: ModelType.TEXT_SMALL,
-              input: "hello deterministic proxy",
+              input: "hello deterministic provider",
             },
-            response: "deterministic-test-response: hello deterministic proxy",
+            response: "deterministic-test-response: hello deterministic provider",
             required: false,
             times: { min: 0, max: 1 },
           },
@@ -162,15 +162,15 @@ export default scenario({
             name: "pr-smoke-deterministic-router-reply",
             match: {
               modelType: ModelType.RESPONSE_HANDLER,
-              input: matchesScenarioInput("hello deterministic proxy"),
+              input: matchesScenarioInput("hello deterministic provider"),
               toolName: "HANDLE_RESPONSE",
             },
             response: {
               shouldRespond: "RESPOND",
               contexts: ["simple"],
-              intents: ["hello deterministic proxy"],
+              intents: ["hello deterministic provider"],
               replyText:
-                "deterministic-test-response: hello deterministic proxy",
+                "deterministic-test-response: hello deterministic provider",
               candidateActionNames: [],
               facts: [],
               relationships: [],
@@ -214,13 +214,13 @@ export default scenario({
     {
       kind: "message",
       name: "deterministic reply",
-      text: "hello deterministic proxy",
+      text: "hello deterministic provider",
       responseIncludesAny: [
-        "deterministic-test-response: hello deterministic proxy",
+        "deterministic-test-response: hello deterministic provider",
       ],
       assertTurn: (execution) =>
         execution.responseText ===
-        "deterministic-test-response: hello deterministic proxy"
+        "deterministic-test-response: hello deterministic provider"
           ? undefined
           : `expected exact deterministic reply, saw ${JSON.stringify(execution.responseText)}`,
     },

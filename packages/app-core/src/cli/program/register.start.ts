@@ -97,37 +97,24 @@ async function startAction() {
 }
 
 export function registerStartCommand(program: Command) {
-  program
-    .command("start")
-    .description("Start the elizaOS agent runtime")
-    .option(
-      "--connection-key [key]",
-      "Set or auto-generate a connection key for remote access",
-    )
-    .addHelpText(
-      "after",
-      () =>
-        `\n${theme.muted("Docs:")} ${formatDocsLink("/getting-started", "docs.eliza.ai/getting-started")}\n`,
-    )
-    .action(async (opts: { connectionKey?: string | boolean }) => {
-      if (typeof opts.connectionKey === "string" && opts.connectionKey) {
-        // Explicit key provided
-        setApiToken(process.env, opts.connectionKey);
-      } else if (opts.connectionKey === true) {
-        // Flag passed without value — auto-generate
-        generateConnectionKey();
-      }
-      await startAction();
-    });
+  const registerCommand = (name: string, description: string): void => {
+    const command = program
+      .command(name)
+      .description(description)
+      .option(
+        "--connection-key [key]",
+        "Set or auto-generate a connection key for remote access",
+      );
 
-  program
-    .command("run")
-    .description("Alias for start")
-    .option(
-      "--connection-key [key]",
-      "Set or auto-generate a connection key for remote access",
-    )
-    .action(async (opts: { connectionKey?: string | boolean }) => {
+    if (name === "start") {
+      command.addHelpText(
+        "after",
+        () =>
+          `\n${theme.muted("Docs:")} ${formatDocsLink("/getting-started", "docs.eliza.ai/getting-started")}\n`,
+      );
+    }
+
+    command.action(async (opts: { connectionKey?: string | boolean }) => {
       if (typeof opts.connectionKey === "string" && opts.connectionKey) {
         setApiToken(process.env, opts.connectionKey);
       } else if (opts.connectionKey === true) {
@@ -135,4 +122,8 @@ export function registerStartCommand(program: Command) {
       }
       await startAction();
     });
+  };
+
+  registerCommand("start", "Start the elizaOS agent runtime");
+  registerCommand("run", "Alias for start");
 }

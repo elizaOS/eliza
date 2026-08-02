@@ -2,20 +2,16 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../../test/vitest/source-aliases.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.resolve(here, "../..");
-const elizaCoreShimPath = path.join(here, "helpers", "elizaos-core-shim.ts");
+const repoRoot = path.resolve(here, "../../../..");
 
 export default defineConfig({
   root: packagesRoot,
   resolve: {
-    alias: [
-      {
-        find: "@elizaos/core",
-        replacement: elizaCoreShimPath,
-      },
-    ],
+    alias: buildWorkspaceSourceAliases(repoRoot),
     dedupe: ["@elizaos/core"],
   },
   test: {

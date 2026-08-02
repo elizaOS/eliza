@@ -188,7 +188,8 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalledWith("old-refresh");
     expect(
-      (await loadAccount("anthropic-subscription", "personal"))?.credentials.refresh,
+      (await loadAccount("anthropic-subscription", "personal"))?.credentials
+        .refresh,
     ).toBe("rotated-refresh");
   });
 
@@ -226,32 +227,32 @@ describe("getAccessToken minRemainingMs (proactive pre-spawn refresh)", () => {
     ).resolves.toBe("still-valid-access");
   });
 
-  it.each([
-    "request deadline expired",
-    "400 malformed refresh request",
-  ])("does not classify a non-auth refresh failure as credential death: %s", async (message) => {
-    useTempElizaHome();
-    const refreshMock = refreshAnthropicToken as unknown as ReturnType<
-      typeof vi.fn
-    >;
-    refreshMock.mockRejectedValue(new Error(message));
-    await saveCredentials(
-      "anthropic-subscription",
-      {
-        access: "still-valid-access",
-        refresh: "still-valid-refresh",
-        expires: Date.now() + 10 * MIN,
-      },
-      "personal",
-    );
+  it.each(["request deadline expired", "400 malformed refresh request"])(
+    "does not classify a non-auth refresh failure as credential death: %s",
+    async (message) => {
+      useTempElizaHome();
+      const refreshMock = refreshAnthropicToken as unknown as ReturnType<
+        typeof vi.fn
+      >;
+      refreshMock.mockRejectedValue(new Error(message));
+      await saveCredentials(
+        "anthropic-subscription",
+        {
+          access: "still-valid-access",
+          refresh: "still-valid-refresh",
+          expires: Date.now() + 10 * MIN,
+        },
+        "personal",
+      );
 
-    await expect(
-      getAccessToken("anthropic-subscription", "personal", {
-        minRemainingMs: 55 * MIN,
-        outcome: true,
-      }),
-    ).resolves.toMatchObject({ ok: false, kind: "transient" });
-  });
+      await expect(
+        getAccessToken("anthropic-subscription", "personal", {
+          minRemainingMs: 55 * MIN,
+          outcome: true,
+        }),
+      ).resolves.toMatchObject({ ok: false, kind: "transient" });
+    },
+  );
 
   it("does NOT refresh when TTL already exceeds minRemainingMs", async () => {
     useTempElizaHome();

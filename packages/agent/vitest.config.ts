@@ -132,6 +132,17 @@ export default defineConfig({
         find: /^@elizaos\/plugin-wallet\/(.+)$/,
         replacement: path.join(monorepoRoot, "plugins/plugin-wallet/src/$1.ts"),
       },
+      {
+        find: /^@elizaos\/core\/atomic-json$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/core/src/utils/atomic-json.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/core\/security\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/security/$1"),
+      },
       ...baseAliases,
       {
         find: /^@elizaos\/vault$/,

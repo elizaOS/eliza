@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-mcp action and route surface. Runs on
- * the pr-deterministic lane under the LLM proxy.
+ * the pr-deterministic lane under the model provider.
  */
 import { readFileSync } from "node:fs";
 import type http from "node:http";
@@ -24,7 +24,7 @@ import {
 } from "../../../../plugins/plugin-mcp/src/types.ts";
 import {
   matchesScenarioInput,
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
 
@@ -143,7 +143,7 @@ function unsupportedMcpEvaluationFixture(input: string, op: string) {
 }
 
 type RuntimeWithMcpScenario = IAgentRuntime &
-  RuntimeWithScenarioLlmFixtures & {
+  RuntimeWithScenarioModelFixtures & {
     plugins?: Plugin[];
     getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
     registerPlugin: (plugin: Plugin) => Promise<void>;

@@ -43,7 +43,7 @@
       "description": "Deterministic scenario-runner coverage."
     },
     {
-      "job": "zero-key-harness-e2e",
+      "job": "zero-key-model-provider-e2e",
       "name": "Zero-Key harness E2E",
       "description": "Keyless harness end-to-end coverage."
     },
@@ -68,7 +68,7 @@
     ],
     "nonEmptyScriptLanes": ["test", "test:e2e", "test:integration"]
   },
-  "$reusableComment": "The platform lanes develop-exhaustive.yml invokes through workflow_call. The proof requires every call to receive exhaustiveConcurrencyScope, every reusable group to consume that exact scope with a standalone fallback, and the orchestrator to retain queue:max plus non-cancelling execution. These are the lanes test.yml's schedule does not cover: Windows, mobile, scenario, UI gates, keyless harness, docker, dev, and desktop/electrobun.",
+  "$reusableComment": "The platform lanes develop-exhaustive.yml invokes through workflow_call. The proof requires every call to receive exhaustiveConcurrencyScope, every reusable group to consume that exact scope with a standalone fallback, and the orchestrator to retain queue:max plus non-cancelling execution. These are the lanes test.yml's schedule does not cover: Windows, mobile, scenario, UI gates, deterministic model-provider runtime, docker, dev, and desktop/electrobun.",
   "exhaustiveOrchestrator": ".github/workflows/develop-exhaustive.yml",
   "exhaustiveConcurrencyScope": "develop-exhaustive",
   "reusableWorkflows": [
@@ -97,7 +97,7 @@
       "name": "UI story gate"
     },
     {
-      "workflow": ".github/workflows/keyless-harness-e2e.yml",
+      "workflow": ".github/workflows/keyless-model-provider-e2e.yml",
       "name": "Keyless harness E2E"
     },
     {

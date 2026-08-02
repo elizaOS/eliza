@@ -1,6 +1,6 @@
 /**
  * Keyless coverage for the plugin-todos action surface and the CURRENT_TODOS
- * provider. Runs on the pr-deterministic lane under the LLM proxy.
+ * provider. Runs on the pr-deterministic lane under the model provider.
  */
 import { ModelType, stringToUuid, type UUID } from "@elizaos/core";
 import type {

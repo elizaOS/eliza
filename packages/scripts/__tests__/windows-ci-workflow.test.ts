@@ -49,7 +49,6 @@ const EXPECTED_COMMANDS = [
   "bun run --cwd packages/cloud/shared test",
   "bun run --cwd packages/scenario-runner test",
   "bun run --cwd packages/vault test",
-  "bun run --cwd packages/security test",
   "bun run --cwd plugins/plugin-coding-tools test",
   "bun run --cwd plugins/plugin-elizacloud test",
   "bun run --cwd plugins/plugin-discord test",

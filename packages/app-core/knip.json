@@ -6,8 +6,7 @@
     "test/**/*.{ts,tsx}",
     "platforms/**/*.{ts,tsx}",
     "packaging/**/*.{mjs,ts}",
-    "vitest.config.ts",
-    "vitest.e2e.config.ts",
+    "vitest*.config.ts",
     "playwright.config.ts"
   ],
   "project": [
@@ -20,6 +19,7 @@
   ],
   "ignore": [
     "dist/**",
+    "scripts/bun-riscv64/**",
     "test/contracts/**",
     "platforms/**/build/**",
     "platforms/**/artifacts/**"

@@ -21,7 +21,7 @@ name: External API Live Drift
 # API. The MTProto/native surfaces (telegram-mtproto, signal,
 # imessage-bluebubbles) have no HTTP drift surface and stay hand-curated
 # mock-only with that caveat documented in
-# packages/test/mocks/helpers/provider-coverage.ts.
+# packages/scenario-runner/test/mocks/helpers/provider-coverage.ts.
 #
 # Nightly + on-demand; never on pull_request.
 

@@ -223,7 +223,10 @@ describe("scenario PR workflow contract", () => {
       "utf8",
     );
     const deterministicModel = readFileSync(deterministicModelPath, "utf8");
-    const deterministicModelTest = readFileSync(deterministicModelTestPath, "utf8");
+    const deterministicModelTest = readFileSync(
+      deterministicModelTestPath,
+      "utf8",
+    );
 
     expect(workflow).toContain("pull_request:");
     expect(workflow).not.toMatch(/\n\s+paths:\s*\n/);
@@ -324,9 +327,7 @@ describe("scenario PR workflow contract", () => {
     expect(prCiWorkflows).toContain(
       "bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts",
     );
-    expect(deterministicModel).toContain(
-      "Unmatched or ambiguous calls fail",
-    );
+    expect(deterministicModel).toContain("Unmatched or ambiguous calls fail");
     expect(deterministicModelTest).toContain(
       "fails unmatched and ambiguous calls instead of inventing a response",
     );
@@ -351,7 +352,7 @@ describe("scenario PR workflow contract", () => {
     );
     expect(deterministicPrScenario).not.toContain("network error.");
     expect(deterministicPrScenario).toContain(
-      "deterministic-test-response: hello deterministic proxy",
+      "deterministic-test-response: hello deterministic provider",
     );
     expect(deterministicPrScenario).toContain(
       "expected exact deterministic reply",
@@ -540,8 +541,6 @@ describe("scenario PR workflow contract", () => {
     );
     expect(deterministicScenarioReadme).toContain("real TodosService DB state");
     expect(deterministicScenarioReadme).toContain("CURRENT_TODOS");
-    expect(deterministicScenarioReadme).toContain("real `STREAM` action");
-    expect(deterministicScenarioReadme).toContain("route handler");
     expect(deterministicScenarioReadme).toContain(
       "committed stdio MCP fixture",
     );
@@ -735,9 +734,9 @@ describe("scenario PR workflow contract", () => {
   it("folds deterministic provider proofs into the required zero-key test status", () => {
     const workflow = readFileSync(testWorkflowPath, "utf8");
 
-    expect(workflow).toContain("zero-key-harness-e2e:");
+    expect(workflow).toContain("zero-key-model-provider-e2e:");
     expect(workflow).toContain(
-      "bun run --cwd packages/scenario-runner test -- test/mocks/__tests__/",
+      "bunx vitest run --config packages/scenario-runner/test/mocks/vitest.config.ts",
     );
     expect(workflow).toContain(
       "bun run --cwd plugins/plugin-anthropic test:real-runtime",
@@ -745,11 +744,11 @@ describe("scenario PR workflow contract", () => {
     expect(workflow).toContain(
       "bun run --cwd plugins/plugin-discord test:real-runtime",
     );
-    expect(workflow).toContain("- zero-key-harness-e2e");
+    expect(workflow).toContain("- zero-key-model-provider-e2e");
     expect(workflow).toContain(
       [
-        '"zero-key-harness-e2e:',
-        '{{ needs.zero-key-harness-e2e.result }}"',
+        '"zero-key-model-provider-e2e:',
+        '{{ needs.zero-key-model-provider-e2e.result }}"',
       ].join("$"),
     );
     expect(workflow).toContain("- zero-key-e2e");

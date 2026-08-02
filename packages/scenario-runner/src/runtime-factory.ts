@@ -19,7 +19,7 @@ import {
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
-	createDeterministicModelPlugin,
+  createDeterministicModelPlugin,
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
@@ -283,11 +283,13 @@ export function providerQualifiedEnvironmentProblems(
     }
   }
   if (envFlag(env.SCENARIO_USE_DETERMINISTIC_MODEL)) {
-    problems.add("SCENARIO_USE_DETERMINISTIC_MODEL enables the deterministic proxy");
+    problems.add(
+      "SCENARIO_USE_DETERMINISTIC_MODEL enables the deterministic provider",
+    );
   }
   if (envFlag(env.ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL)) {
     problems.add(
-      "ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL enables the deterministic proxy",
+      "ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL enables the deterministic provider",
     );
   }
   if (envFlag(env.ELIZA_DISABLE_LIFEOPS_SCHEDULER)) {
@@ -450,7 +452,7 @@ export function deterministicScheduledDispatchTitleText(
   return words.length > 0 ? words.join(" ") : "Reminder";
 }
 
-type ScenarioDeterministicLlmCall = {
+type ScenarioDeterministicModelCall = {
   modelType?: unknown;
   latestUserText?: unknown;
   params?: {
@@ -477,7 +479,7 @@ function chatContentText(content: unknown): string {
 }
 
 function deterministicCallTextCandidates(
-  call: ScenarioDeterministicLlmCall,
+  call: ScenarioDeterministicModelCall,
 ): string[] {
   const candidates: string[] = [];
   if (typeof call.params?.prompt === "string") {
@@ -496,8 +498,8 @@ function deterministicCallTextCandidates(
   return candidates;
 }
 
-export function resolveScenarioDeterministicLlmCall(
-  call: ScenarioDeterministicLlmCall,
+export function resolveScenarioDeterministicModelCall(
+  call: ScenarioDeterministicModelCall,
 ): string | null {
   if (call.modelType !== ModelType.TEXT_LARGE) {
     return null;
@@ -770,10 +772,9 @@ export async function createScenarioRuntime(
         "[scenario-runner] deterministic model provider requested without the simulated test environment",
       );
     }
-    const deterministicModelPlugin =
-      createDeterministicModelPlugin({
-        resolve: resolveScenarioDeterministicLlmCall,
-      });
+    const deterministicModelPlugin = createDeterministicModelPlugin({
+      resolve: resolveScenarioDeterministicModelCall,
+    });
     await runtime.registerPlugin(deterministicModelPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
       scenarioModelFixtures?: unknown;

@@ -14,7 +14,7 @@ import {
   scenario,
 } from "@elizaos/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentReportsPermissionGap(

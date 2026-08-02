@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the browser-workspace action surface against a
- * seeded browser tab. Runs on the pr-deterministic lane under the LLM proxy.
+ * seeded browser tab. Runs on the pr-deterministic lane under the model provider.
  */
 import type {
   CapturedAction,
@@ -14,7 +14,7 @@ import {
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
 
@@ -342,7 +342,7 @@ export default scenario({
           | ({
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: typeof browserPlugin) => Promise<void>;
-            } & RuntimeWithScenarioLlmFixtures)
+            } & RuntimeWithScenarioModelFixtures)
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";

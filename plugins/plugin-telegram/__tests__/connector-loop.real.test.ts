@@ -6,7 +6,7 @@
  * connector's REAL code path: a synthetic inbound Telegram update goes through
  * `MessageManager.handleMessage` (the same entrypoint the long-poll bot calls),
  * which does the real inbound→Memory mapping + `ensureConnection`, routes the
- * forced-reply turn through the deterministic mock LLM, and delivers the agent's
+ * forced-reply turn through the deterministic deterministic model provider, and delivers the agent's
  * reply via the connector's REAL outbound seam (`ctx.telegram.sendMessage` — the
  * exact call `sendMessageInChunks` makes, with markdown conversion + chunking).
  * No bot token, no api.telegram.org, no network: the outbound seam is captured,
@@ -123,7 +123,7 @@ async function driveTelegramTurn(options: {
 }
 
 describe("telegram connector loop (keyless)", () => {
-  it("drives a synthetic Telegram message through the mock LLM to a delivered reply", async () => {
+  it("drives a synthetic Telegram message through the deterministic model provider to a delivered reply", async () => {
     const { delivered, chatId } = await driveTelegramTurn({
       inboundText: "Hello agent, please reply.",
       fixtures: [
@@ -142,7 +142,7 @@ describe("telegram connector loop (keyless)", () => {
 
     // The loop closed end-to-end through the real connector: a non-empty reply
     // was delivered back to the inbound chat, generated entirely by the
-    // deterministic mock LLM with zero external cost.
+    // deterministic deterministic model provider with zero external cost.
     expect(
       delivered.length,
       "the connector delivered at least one outbound reply",

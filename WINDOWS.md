@@ -73,10 +73,8 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `@elizaos/cloud-shared` | 720 | 2 mock-setup fails (cross-platform issue) |
 | `@elizaos/elizaos` (CLI) | 39 | 0 fail |
 | `@elizaos/vault` | 185 | 0 fail |
-| `@elizaos/security` | 53 | 0 fail |
 | `@elizaos/registry` | 7 | 0 fail |
 | `@elizaos/logger` | 4 | 0 fail |
-| `@elizaos/soc2-verify` | 13 | 0 fail |
 | `plugin-elizacloud` | 147 | 0 fail |
 | `plugin-discord` | 87 | 0 fail |
 | `plugin-line` | 87 | 0 fail |

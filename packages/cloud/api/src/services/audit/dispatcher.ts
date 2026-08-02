@@ -2,6 +2,7 @@
  * Audit dispatcher for validating privileged-action events and fanning them out to sinks.
  */
 
+import { logger } from "@/lib/utils/logger";
 import { type AuditAction, isAuditAction } from "./actions.js";
 import type { AuditSink } from "./sink.js";
 import {
@@ -116,9 +117,10 @@ export class AuditDispatcher {
     this.onSinkError =
       opts.onSinkError ??
       ((err) => {
-        process.stderr.write(
-          `[audit] sink ${err.sink} failed: ${err.error.message}\n`,
-        );
+        logger.error("[AuditDispatcher] sink delivery failed", {
+          sink: err.sink,
+          error: err.error.message,
+        });
       });
   }
 
@@ -127,9 +129,9 @@ export class AuditDispatcher {
   }
 
   /**
-   * Build, validate, redact, and fan out an event. One sink failing does NOT
-   * prevent the others from receiving the event; failures are surfaced via
-   * `onSinkError`.
+   * Build, validate, redact, and fan out an event. One sink failure does not
+   * prevent delivery to the others. A required sink failure rejects after
+   * fan-out; optional sink failures remain observable through `onSinkError`.
    */
   async emit(input: EmitInput): Promise<AuditEvent> {
     if (!isAuditAction(input.action)) {
@@ -164,11 +166,9 @@ export class AuditDispatcher {
         try {
           await sink.emit(event);
         } catch (err) {
-          // error-policy:J7 diagnostics-must-not-kill-the-loop — one sink's
-          // delivery failure must not suppress the other sinks or the caller's
-          // privileged action, but a dropped audit event is a compliance
-          // failure, so it is surfaced via onSinkError (never silently
-          // swallowed).
+          // error-policy:J1 boundary translation — finish fan-out so every
+          // sink gets a delivery attempt, then reject if any required sink
+          // failed. Optional failures remain explicit through onSinkError.
           this.onSinkError(
             {
               sink: sink.name,

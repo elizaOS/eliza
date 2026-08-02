@@ -27,7 +27,6 @@ export const REQUIRED_CORE_VIEW_IDS = [
   "browser",
   "files",
   "skills",
-  "feed",
   "relationships",
   "logs",
   "database",
@@ -134,13 +133,6 @@ export const CORE_VIEW_SWITCH_TARGETS: readonly CoreViewSwitchTarget[] = [
     path: "/apps/skills",
     kind: "core-view",
     readySelector: '[data-testid="skills-shell"]',
-  },
-  {
-    id: "feed",
-    label: "Feed",
-    path: "/feed",
-    kind: "core-view",
-    readySelector: 'main:has-text("Spawn agent")',
   },
   {
     id: "relationships",

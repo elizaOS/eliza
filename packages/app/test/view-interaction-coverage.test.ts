@@ -42,27 +42,6 @@ const DECOMPOSED_PA_SPEC =
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
-  birdclaw: [
-    {
-      spec: "plugins/plugin-birdclaw/src/plugin.test.ts",
-      proves:
-        "Locks the Birdclaw view manifest path, bundle, component export, shipped modality, and manager visibility contract.",
-      signals: [
-        "declares the birdclaw view exactly as the bundle build emits it",
-        "BirdclawView",
-      ],
-    },
-    {
-      spec: "plugins/plugin-birdclaw/src/components/birdclaw/BirdclawView.test.tsx",
-      proves:
-        "Exercises tab switching (home/likes/bookmarks/inbox), the sync trigger with in-place reload, sync-failure surfacing, and the setup/error/retry states through the injected fetcher seam.",
-      signals: [
-        "switches tabs: likes uses the liked filter, inbox hits the inbox route",
-        "syncs the active tab's collection and reloads in place",
-        "renders the error state and recovers on retry",
-      ],
-    },
-  ],
   calendar: [
     {
       spec: DECOMPOSED_PA_SPEC,
@@ -235,14 +214,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["vector browser controls", "vector 2D projection"],
     },
   ],
-  feed: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
-      proves:
-        "Exercises feed GUI no-run state through deterministic app routes.",
-      signals: ["feed gui no-run state"],
-    },
-  ],
   "views-manager": [
     // The standalone 'Dynamic view management' form (and its
     // view-manager-actual-flow spec) left with the springboard->launcher
@@ -357,9 +328,7 @@ const INTERACTION_DEBT: Readonly<Record<string, string>> = {
 
 const MAX_INTERACTION_DEBT = 1;
 
-const KEYLESS_INTERACTION_OWNER_DEBT = new Set([
-  "packages/app/test/ui-smoke/apps-personal-assistant-feed-interactions.spec.ts",
-]);
+const KEYLESS_INTERACTION_OWNER_DEBT = new Set<string>([]);
 
 function viewKey(view: Pick<VisualViewCase, "id" | "viewType">) {
   return `${view.id}:${view.viewType}`;
@@ -416,7 +385,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(30);
+    expect(visualCases.length).toBe(27);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

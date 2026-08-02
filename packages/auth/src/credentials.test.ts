@@ -106,7 +106,7 @@ describe("applySubscriptionCredentials", () => {
     expect(statusRows).toEqual(["personal", "work"]);
 
     expect(await deleteProviderCredentials("openai-codex")).toBe(2);
-    expect((await listProviderAccounts("openai-codex"))).toHaveLength(0);
+    expect(await listProviderAccounts("openai-codex")).toHaveLength(0);
   });
 
   it("stores multiple z.ai coding-plan accounts without exposing them as direct API keys", async () => {
@@ -321,7 +321,9 @@ describe("applySubscriptionCredentials", () => {
     expect(tokens).toEqual(["fresh-access", "fresh-access", "fresh-access"]);
     expect(refreshMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalledWith("old-refresh");
-    expect((await loadAccount("openai-codex", "personal"))?.credentials).toMatchObject({
+    expect(
+      (await loadAccount("openai-codex", "personal"))?.credentials,
+    ).toMatchObject({
       access: "fresh-access",
       refresh: "fresh-refresh",
     });
@@ -424,7 +426,7 @@ describe("getSubscriptionStatus drains the subscription-auth registry", () => {
     useTempElizaHome();
     // Seed the built-ins (as a host entry point would), then let a plugin
     // register its own descriptor for a vendor the host never hard-codes.
-    (await getSubscriptionStatus());
+    await getSubscriptionStatus();
     registerSubscriptionAuthProvider({
       id: "zai-coding",
       detectExternalCredentials: () => ({
@@ -471,9 +473,9 @@ describe("saveCredentials id_token preservation across refresh", () => {
       },
       "acct",
     );
-    expect((await loadAccount("openai-codex", "acct"))?.credentials.idToken).toBe(
-      "id-token-login",
-    );
+    expect(
+      (await loadAccount("openai-codex", "acct"))?.credentials.idToken,
+    ).toBe("id-token-login");
 
     // OAuth refresh typically re-issues access/refresh WITHOUT a new id_token.
     await saveCredentials(
@@ -513,8 +515,8 @@ describe("saveCredentials id_token preservation across refresh", () => {
       },
       "acct",
     );
-    expect((await loadAccount("openai-codex", "acct"))?.credentials.idToken).toBe(
-      "id-new",
-    );
+    expect(
+      (await loadAccount("openai-codex", "acct"))?.credentials.idToken,
+    ).toBe("id-new");
   });
 });

@@ -1,6 +1,6 @@
 /**
  * Keyless coverage for the media-generation action surface. Runs on the
- * pr-deterministic lane under the LLM proxy.
+ * pr-deterministic lane under the model provider.
  */
 import { ModelType, type Plugin } from "@elizaos/core";
 import type {
@@ -11,7 +11,7 @@ import type {
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
 import {
-  type RuntimeWithScenarioLlmFixtures,
+  type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
 
@@ -232,7 +232,7 @@ export default scenario({
         modelCalls.length = 0;
 
         const runtime = ctx.runtime as
-          | (RuntimeWithScenarioLlmFixtures & {
+          | (RuntimeWithScenarioModelFixtures & {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (plugin: Plugin) => Promise<void>;
               unregisterAction?: (name: string) => boolean;

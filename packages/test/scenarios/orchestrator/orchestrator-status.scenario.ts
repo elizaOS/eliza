@@ -4,7 +4,7 @@
  * The task-coordinator plugin's only agent-action surface is the view-scoped
  * `/orchestrator-status` slash command (`ORCHESTRATOR_STATUS_COMMAND`, #8790),
  * which the e2e-coverage gate flagged as having no keyless scenario. This drives
- * that command end-to-end through the deterministic LLM proxy with zero
+ * that command end-to-end through the deterministic model provider with zero
  * credentials: the seed registers the universal slash command (exactly as a
  * live runtime does when the orchestrator view mounts), the routing fixtures
  * force action selection, and the action's own deterministic, no-LLM handler
@@ -29,7 +29,7 @@ import {
 
 const COMMAND_TEXT = "/orchestrator-status";
 
-type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
+type RuntimeWithScenarioModelFixtures = AgentRuntime & {
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -104,7 +104,7 @@ export default scenario({
       type: "custom",
       name: "register-orchestrator-command",
       apply: async (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         // Register the view-scoped universal slash command, exactly as a live
         // runtime does when the orchestrator view mounts, so validate() resolves.
         useRuntime(runtime.agentId);

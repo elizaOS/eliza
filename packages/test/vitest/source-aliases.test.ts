@@ -6,7 +6,10 @@
 import path from "node:path";
 import { createServer } from "vite";
 import { describe, expect, test } from "vitest";
-import { buildWorkspaceSourceAliases, workspaceRepoRoot } from "./source-aliases";
+import {
+  buildWorkspaceSourceAliases,
+  workspaceRepoRoot,
+} from "./source-aliases";
 
 describe("workspace source aliases", () => {
   test("resolve file and directory subpaths through Vite", async () => {
@@ -26,11 +29,11 @@ describe("workspace source aliases", () => {
       const cases = [
         {
           specifier: "@elizaos/core/security/mcp-server-config",
-          target: "packages/security/src/mcp-server-config.ts",
+          target: "packages/core/src/security/mcp-server-config.ts",
         },
         {
           specifier: "@elizaos/core/security/kms",
-          target: "packages/security/src/kms/index.ts",
+          target: "packages/core/src/security/kms/index.ts",
         },
       ] as const;
 

@@ -8,17 +8,9 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  ElizaError,
-  logger,
-  resolveStateDir,
-} from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import { writeJsonAtomicSync } from "@elizaos/core/atomic-json";
-import {
-  decrypt,
-  encrypt,
-  loadDefaultMasterKeySync,
-} from "@elizaos/vault";
+import { decrypt, encrypt, loadDefaultMasterKeySync } from "@elizaos/vault";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialProvider,
@@ -251,7 +243,9 @@ function readRecord(
   }
   if (!isEnvelope(parsed)) {
     writeEncrypted(record);
-    logger.info(`[auth] Migrated ${provider} account "${record.id}" to encrypted storage`);
+    logger.info(
+      `[auth] Migrated ${provider} account "${record.id}" to encrypted storage`,
+    );
   }
   return record;
 }

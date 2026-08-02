@@ -1,7 +1,7 @@
 /**
  * Keyless coverage that natural-language requests route to the correct
  * plugin-app-control action against seeded scenario views. Runs on the
- * pr-deterministic lane under the LLM proxy (fixtures pin the routing).
+ * pr-deterministic lane under the model provider (fixtures pin the routing).
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -19,7 +19,7 @@ import {
 } from "./_helpers/app-control-http-loopback";
 import { matchesScenarioInput } from "@elizaos/core/testing";
 
-type RuntimeWithScenarioLlmFixtures = {
+type RuntimeWithScenarioModelFixtures = {
   actions?: Array<{
     name: string;
     validate?: (...args: unknown[]) => Promise<boolean> | boolean;
@@ -293,7 +293,7 @@ export default scenario({
         process.env.ELIZA_REPO_ROOT = repoRoot;
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpLoopback();
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
 
         await fs.rm(path.dirname(appLoadDirectory), {
           force: true,
@@ -547,7 +547,7 @@ export default scenario({
               action: "delete",
               view: "remote-ledger",
               // The VIEWS action declares `confirm` as schema type boolean; the
-              // strict LLM proxy validates fixture toolCalls against that
+              // strict model provider validates fixture toolCalls against that
               // schema, so a string "true" is rejected before the handler runs.
               confirm: true,
             },

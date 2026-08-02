@@ -3,7 +3,7 @@
 Evidence-bundle foundation for the unified evidence harness (epic #14541,
 issue #14552). Read `README.md` for the schema contract, bundle layout, silo
 table, and CLI; read the design doc at
-`packages/docs/ongoing-development/unified-evidence-harness.md` for how the
+`docs/ongoing-development/unified-evidence-harness.md` for how the
 whole pipeline (analyzers → VLM Q&A → certify → CI gate) fits together.
 
 ## Hard rules

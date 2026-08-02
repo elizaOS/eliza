@@ -136,7 +136,7 @@ claiming kanban work. Active MVP work is coordinated on the
 [LifeOps Personal Assistant MVP board](https://github.com/orgs/elizaOS/projects/15)
 and in [Discussions](https://github.com/elizaOS/eliza/discussions); in-flight
 design docs live in
-[`packages/docs/ongoing-development/`](packages/docs/ongoing-development/README.md).
+[`docs/ongoing-development/`](docs/ongoing-development/README.md).
 
 - [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)

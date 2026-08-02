@@ -738,7 +738,7 @@ jobs:
         if: always()
         run: node packages/scripts/rm-path-recursive.mjs reports/scenarios/pr-deterministic reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops reports/scenarios/catalog-inventory packages/app/playwright-report packages/app/test-results
 
-  zero-key-harness-e2e:
+  zero-key-model-provider-e2e:
     name: Zero-Key harness E2E
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true'
@@ -780,9 +780,9 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: External API mock contract coverage
-        run: bun run --cwd packages/scenario-runner test -- test/mocks/__tests__/
+        run: bunx vitest run --config packages/scenario-runner/test/mocks/vitest.config.ts
 
-      - name: Per-plugin keyless harness adoption proofs
+      - name: Per-plugin deterministic model-provider runtime adoption proofs
         run: |
           bun run --cwd plugins/plugin-anthropic test:real-runtime
           bun run --cwd plugins/plugin-discord test:real-runtime
@@ -795,7 +795,7 @@ jobs:
       - zero-key-browser
       - zero-key-diagnostics
       - zero-key-scenario-runner
-      - zero-key-harness-e2e
+      - zero-key-model-provider-e2e
     if: ${{ !cancelled() && always() && (github.event_name != 'pull_request' || needs.changes.outputs.zero_key == 'true') }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
@@ -809,7 +809,7 @@ jobs:
             "zero-key-browser:${{ needs.zero-key-browser.result }}" \
             "zero-key-diagnostics:${{ needs.zero-key-diagnostics.result }}" \
             "zero-key-scenario-runner:${{ needs.zero-key-scenario-runner.result }}" \
-            "zero-key-harness-e2e:${{ needs.zero-key-harness-e2e.result }}"; do
+            "zero-key-model-provider-e2e:${{ needs.zero-key-model-provider-e2e.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
             echo "$name: $result"

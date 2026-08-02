@@ -197,7 +197,7 @@ describe("clearPersistedFirstRunConfig (reset everything)", () => {
 
   it("is a no-op-safe on an already-empty config", async () => {
     const config: Partial<ElizaConfig> = {};
-    await expect(clearPersistedFirstRunConfig(config)).resolves.toBeUndefined();
+    expect(clearPersistedFirstRunConfig(config)).toBeUndefined();
     expect(config.agents).toEqual({ list: [] });
   });
 });

@@ -1,11 +1,11 @@
 /**
- * Keyless model-provider e2e (#8801, gap 5 — per-plugin harness adoption).
+ * Keyless model-provider e2e (#8801, gap 5 — per-plugin provider adoption).
  *
  * The Google GenAI plugin registers model handlers for every text `ModelType`,
  * which in production POST to Google's Generative Language API and require
  * `GOOGLE_GENERATIVE_AI_API_KEY`. This e2e loads the REAL `googleGenAIPlugin`
  * under `createTestRuntimeWithModelProvider()` with NO API key set, and proves the deterministic
- * mock-LLM proxy (registered at `priority: 1000`) wins model dispatch over the
+ * deterministic-model-provider proxy (registered at `priority: 1000`) wins model dispatch over the
  * provider's handlers — so a provider plugin can be driven end-to-end with zero
  * network and zero secrets.
  *
@@ -13,7 +13,7 @@
  *   1. A direct `runtime.useModel(TEXT_LARGE)` returns the declared fixture, not
  *      a Google API result — the proxy substitutes for the provider.
  *   2. A plugin action whose handler calls `runtime.useModel` runs to completion
- *      through the mock LLM and the agent's reply matches the fixture.
+ *      through the deterministic model provider and the agent's reply matches the fixture.
  */
 import {
   type Action,
@@ -64,8 +64,8 @@ afterEach(() => {
   saved.clear();
 });
 
-describe("google-genai provider (keyless harness)", () => {
-  it("lets the mock LLM proxy win model dispatch over the registered Google handlers", async () => {
+describe("google-genai provider (deterministic model-provider runtime)", () => {
+  it("lets the deterministic model provider proxy win model dispatch over the registered Google handlers", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
         plugins: [googleGenAIPlugin],
@@ -84,12 +84,12 @@ describe("google-genai provider (keyless harness)", () => {
       prompt: "hello",
     });
 
-    // The deterministic proxy answered, NOT the Google API handler.
+    // The deterministic provider answered, NOT the Google API handler.
     expect(out).toBe("mock-not-google");
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
-  it("drives a plugin action handler end-to-end through the mock LLM", async () => {
+  it("drives a plugin action handler end-to-end through the deterministic model provider", async () => {
     const replyAction: Action = {
       name: "MOCK_REPLY",
       description: "Generate a reply using the large model.",

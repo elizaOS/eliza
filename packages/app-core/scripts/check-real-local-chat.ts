@@ -3,7 +3,7 @@
  * real chat pipeline: a real AgentRuntime + the real conversation routes + the
  * real message-handling/RESPONSE_HANDLER flow + real history persistence. The
  * only deterministic part is token generation, supplied by the in-process
- * deterministic LLM proxy (a real Plugin with real model handlers) — NOT the
+ * deterministic model provider (a real Plugin with real model handlers) — NOT the
  * ui-smoke api-stub, which fakes the entire conversation endpoint and bypasses
  * the runtime. So this proves the chat machinery works end-to-end, not just that
  * a stub echoes a fixture.

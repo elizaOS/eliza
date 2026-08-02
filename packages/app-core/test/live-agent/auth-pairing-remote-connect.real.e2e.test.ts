@@ -52,7 +52,7 @@
  * and mints NO session, so a green run is non-vacuous proof the real handshake,
  * not a fixture, is under test.
  *
- * Keyless: the deterministic LLM proxy supplies every model handler, so no
+ * Keyless: the deterministic model provider supplies every model handler, so no
  * provider/cloud key and no native llama are needed. Boots a real runtime +
  * HTTP server, so it lives in the nightly `test:app-real-e2e` lane (this file is
  * added to `vitest.app-real-e2e.config.ts` include), NOT the PR unit lane which

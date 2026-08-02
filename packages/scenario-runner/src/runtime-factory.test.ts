@@ -7,7 +7,7 @@ import {
   deterministicScheduledDispatchRenderText,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
-  resolveScenarioDeterministicLlmCall,
+  resolveScenarioDeterministicModelCall,
   resolveScenarioProviderConfig,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
@@ -19,14 +19,14 @@ describe("scenario runtime deterministic model mode", () => {
     ).toBe(true);
   });
 
-  it.each(["SCENARIO_USE_DETERMINISTIC_MODEL", "ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL"])(
-    "can be enabled by %s",
-    (name) => {
-      expect(shouldUseDeterministicModel({}, { [name]: "1" })).toBe(true);
-    },
-  );
+  it.each([
+    "SCENARIO_USE_DETERMINISTIC_MODEL",
+    "ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL",
+  ])("can be enabled by %s", (name) => {
+    expect(shouldUseDeterministicModel({}, { [name]: "1" })).toBe(true);
+  });
 
-  it("resolves a no-key deterministic provider config in proxy mode", () => {
+  it("resolves a no-key deterministic provider config", () => {
     const providerConfig = resolveScenarioProviderConfig(
       { useDeterministicModel: true },
       {},
@@ -50,17 +50,22 @@ describe("scenario runtime deterministic model mode", () => {
 
     const plugin = createDeterministicModelPlugin({
       embeddingDimensions: 3,
-      fixtures: [{
-        name: "small",
-        match: { modelType: ModelType.TEXT_SMALL },
-        response: "declared response",
-      }],
+      fixtures: [
+        {
+          name: "small",
+          match: { modelType: ModelType.TEXT_SMALL },
+          response: "declared response",
+        },
+      ],
     });
     expect(plugin.name).toBe("deterministic-model-provider");
     await expect(
-      plugin.models?.[ModelType.TEXT_SMALL]?.({} as never, {
-        messages: [{ role: "user", content: "open view manager" }],
-      } as never),
+      plugin.models?.[ModelType.TEXT_SMALL]?.(
+        {} as never,
+        {
+          messages: [{ role: "user", content: "open view manager" }],
+        } as never,
+      ),
     ).resolves.toBe("declared response");
     await expect(
       plugin.models?.[ModelType.TEXT_EMBEDDING]?.({} as never, "hello"),
@@ -113,14 +118,14 @@ describe("scenario runtime deterministic model mode", () => {
     ].join("\n");
 
     expect(
-      resolveScenarioDeterministicLlmCall({
+      resolveScenarioDeterministicModelCall({
         modelType: ModelType.TEXT_LARGE,
         params: { prompt },
         latestUserText: "",
       }),
     ).toBe("take a short walk.");
     expect(
-      resolveScenarioDeterministicLlmCall({
+      resolveScenarioDeterministicModelCall({
         modelType: ModelType.TEXT_LARGE,
         params: {
           messages: [
@@ -131,7 +136,7 @@ describe("scenario runtime deterministic model mode", () => {
       }),
     ).toBe("take a short walk.");
     expect(
-      resolveScenarioDeterministicLlmCall({
+      resolveScenarioDeterministicModelCall({
         modelType: ModelType.TEXT_SMALL,
         params: { prompt },
         latestUserText: "",
@@ -159,7 +164,7 @@ describe("clearLlmWireMockEnvForLiveProvider", () => {
     },
   );
 
-  it("keeps the LLM wire mocks for the deterministic proxy lane", () => {
+  it("keeps the LLM wire mocks for the deterministic provider lane", () => {
     const env = mockEnv();
     clearLlmWireMockEnvForLiveProvider("deterministic-model-provider", env);
     expect(env.ELIZA_MOCK_OPENAI_BASE).toBe("http://127.0.0.1:50101/v1");

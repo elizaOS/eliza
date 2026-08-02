@@ -5,7 +5,7 @@
  * read operation. `list_agents` only reads the local ACP session store (no
  * external CLI, no live coding sub-agent, no credentials): with an empty store
  * the action reports "no active task agents" and succeeds — fully deterministic
- * under the strict LLM proxy.
+ * under the strict deterministic model provider.
  *
  * The plugin loads its real ACP service on a direct build with an executable
  * shell (the default on a Linux dev host), so the TASKS parent action is

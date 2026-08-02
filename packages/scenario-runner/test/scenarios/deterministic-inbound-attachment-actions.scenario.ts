@@ -1,6 +1,6 @@
 /**
  * Keyless coverage that an inbound text attachment flows through the message
- * pipeline to a reply. Runs on the pr-deterministic lane under the LLM proxy;
+ * pipeline to a reply. Runs on the pr-deterministic lane under the model provider;
  * live-inbound-attachment proves a real model reads and summarizes it.
  */
 import { ModelType } from "@elizaos/core";
@@ -15,14 +15,14 @@ import { matchesScenarioInput } from "@elizaos/core/testing";
 // deterministic-media-actions.scenario.ts; the agent-facing read tool is
 // the core `ATTACHMENT` action, unit-tested in core.) The attachment is
 // surfaced into the agent's context with its stored-content hint, and the agent
-// replies. Runs keyless + strict under the deterministic LLM proxy.
+// replies. Runs keyless + strict under the deterministic model provider.
 
 const noteText = "Project kickoff is Tuesday at 10am in room 4.";
 const noteDataUrl = `data:text/plain;base64,${Buffer.from(noteText).toString("base64")}`;
 const attachmentInput = "Take a look at the attached note and reply.";
 const replyText = "Thanks — I've got your attached note.";
 
-type RuntimeWithScenarioLlmFixtures = {
+type RuntimeWithScenarioModelFixtures = {
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -41,7 +41,7 @@ export default scenario({
       type: "custom",
       name: "register the deterministic reply for the inbound attachment turn",
       apply: (ctx) => {
-        const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
+        const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
         runtime.scenarioModelFixtures?.register({
           name: "inbound-attachment-stage1-direct-reply",
           match: {

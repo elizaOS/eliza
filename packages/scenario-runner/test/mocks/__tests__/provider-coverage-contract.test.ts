@@ -14,7 +14,7 @@ import {
 import { MOCK_ENVIRONMENTS } from "../scripts/start-mocks.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "../../../..");
+const repoRoot = path.resolve(__dirname, "../../../../..");
 
 const LEGACY_MISSING_VALIDATION_PATHS = new Set([
   "test/mocks/__tests__/google-calendar-mock.test.ts",
@@ -41,10 +41,9 @@ function resolveValidationPath(entry: string): string | null {
   const candidates = [
     path.resolve(repoRoot, entry),
     entry.startsWith("test/")
-      ? path.resolve(repoRoot, "packages", entry)
+      ? path.resolve(repoRoot, "packages", "scenario-runner", entry)
       : null,
     entry.startsWith("../") ? path.resolve(repoRoot, entry.slice(3)) : null,
-    path.resolve(repoRoot, "packages/test", entry),
   ].filter((candidate): candidate is string => Boolean(candidate));
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }

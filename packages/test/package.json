@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Repository-wide scenario definitions and shared Vitest lane configuration.",
   "scripts": {
-    "test": "vitest run --config vitest/unit.config.ts --passWithNoTests",
+    "test": "bun test vitest/*.test.ts",
+    "typecheck": "tsc --noEmit -p vitest/tsconfig.json",
     "format": "bunx @biomejs/biome format --write package.json scenarios vitest",
     "format:check": "bunx @biomejs/biome format package.json scenarios vitest"
   },

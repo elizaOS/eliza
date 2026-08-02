@@ -274,15 +274,12 @@ async function runExclusive<T>(
 // Every artifact written via setPrompt() gets a sibling `.mac` file containing
 // HMAC-SHA256(payload_bytes, key). On load, the MAC is recomputed and a
 // mismatch triggers AUDIT_ACTIONS.optimized_prompt.integrity_failed (emitted
-// via the runtime's structured logger; the audit dispatcher in
-// @elizaos/security picks up the entry through the logger sink).
+// via the runtime's structured logger for downstream audit ingestion).
 //
 // Key source: in this single-user-desktop context the HMAC key is derived
 // from `ELIZA_OPTIMIZED_PROMPT_HMAC_KEY` (a 32-byte hex/base64 secret set at
 // install time). The contract mirrors `KmsClient.hmac(orgKey(orgId,
-// "optimized-prompt-integrity"), bytes)` from `@elizaos/security`; once core
-// can depend on security in the build graph this is swapped for the real KMS
-// adapter without changing the on-disk format.
+// "optimized-prompt-integrity"), bytes)` from the core KMS contract.
 // -----------------------------------------------------------------------------
 
 const OPTIMIZED_PROMPT_MAC_SUFFIX = ".mac";
@@ -337,10 +334,8 @@ function macPathFor(artifactPath: string): string {
 /**
  * Audit-event tag emitted when an optimized-prompt artifact's HMAC fails
  * verification. Mirrors the contract surface
- * `AUDIT_ACTIONS.optimized_prompt.integrity_failed` from
- * `@elizaos/security`; the dispatcher is loaded by the runtime, which
- * means logging this tag from core is sufficient for the audit pipeline
- * to pick it up.
+ * `AUDIT_ACTIONS.optimized_prompt.integrity_failed` consumed by audit log
+ * ingestion.
  */
 export const OPTIMIZED_PROMPT_INTEGRITY_FAILED_AUDIT_ACTION =
 	"optimized_prompt.integrity_failed";

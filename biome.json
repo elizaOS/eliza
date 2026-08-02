@@ -208,7 +208,6 @@
         "!packages/examples/**",
         "!packages/scenario-runner/**",
         "!packages/scripts/**",
-        "!packages/security/**",
         "!packages/test/**",
         "!packages/ui/**"
       ],

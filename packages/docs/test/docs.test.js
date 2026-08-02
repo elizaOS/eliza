@@ -314,6 +314,25 @@ describe("documentation files", () => {
     );
   });
 
+  it("does not contain hidden content pages outside navigation", () => {
+    const config = readDocsConfig();
+    const navigationPages = new Set(
+      collectPages(config.navigation).map(normalizeRoute),
+    );
+    const packageFiles = new Set(["AGENTS", "CLAUDE", "README"]);
+    const hiddenPages = collectMarkdownFiles()
+      .map((file) =>
+        normalizeRoute(relative(DOCS_DIR, file).replaceAll("\\\\", "/")),
+      )
+      .filter((page) => !packageFiles.has(page) && !navigationPages.has(page));
+
+    assert.deepStrictEqual(
+      hiddenPages,
+      [],
+      "Every content page must appear in docs.json navigation",
+    );
+  });
+
   it("documentation directories exist", () => {
     const expectedDirs = ["tracks", "runtime", "plugins", "cli", "connectors"];
     for (const dir of expectedDirs) {

@@ -8,7 +8,7 @@
  * with an EMPTY conversation list.
  *
  * The only deterministic part is token generation, supplied by the in-process
- * deterministic LLM proxy (a real Plugin with real model handlers). Everything
+ * deterministic model provider (a real Plugin with real model handlers). Everything
  * else — runtime, DB, conversation persistence, first-run provisioning, the
  * data-dir wipe — is the real machinery. Because the proxy provides every text
  * model + embedding handler, it needs no provider/cloud key and no llama, so it

@@ -39,7 +39,6 @@ on:
       - "packages/cloud/shared/**"
       - "packages/scenario-runner/**"
       - "packages/vault/**"
-      - "packages/security/**"
       - "packages/scripts/**"
       - "plugins/plugin-coding-tools/**"
       - "plugins/plugin-elizacloud/**"
@@ -65,7 +64,6 @@ on:
       - "packages/cloud/shared/**"
       - "packages/scenario-runner/**"
       - "packages/vault/**"
-      - "packages/security/**"
       - "packages/scripts/**"
       - "plugins/plugin-coding-tools/**"
       - "plugins/plugin-elizacloud/**"
@@ -115,7 +113,6 @@ jobs:
             commands:
               - bun run --cwd packages/scenario-runner test
               - bun run --cwd packages/vault test
-              - bun run --cwd packages/security test
               - bun run --cwd plugins/plugin-coding-tools test
           - lane: plugins
             commands:

@@ -6,9 +6,9 @@
  */
 
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
@@ -460,9 +460,7 @@ export function defaultMasterKey(
  * The function uses the platform keychain or the configured vault passphrase;
  * it never writes a filesystem fallback key.
  */
-export function loadDefaultMasterKeySync(
-  opts: OsKeychainOptions = {},
-): Buffer {
+export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
   const service = opts.service ?? "eliza";
   const account = opts.account ?? "vault.masterKey";
   const passphrase = process.env.ELIZA_VAULT_PASSPHRASE;
@@ -478,17 +476,12 @@ export function loadDefaultMasterKeySync(
       throw new MasterKeyUnavailableError(keychainUnsafeMessage("vault: "));
     }
     return Buffer.from(
-      scryptSync(
-        passphrase,
-        `${service}.vault.masterKey.v1`,
-        KEY_BYTES,
-        {
-          N: DEFAULT_SCRYPT_COST,
-          r: DEFAULT_SCRYPT_BLOCK_SIZE,
-          p: DEFAULT_SCRYPT_PARALLELIZATION,
-          maxmem: 64 * 1024 * 1024,
-        },
-      ),
+      scryptSync(passphrase, `${service}.vault.masterKey.v1`, KEY_BYTES, {
+        N: DEFAULT_SCRYPT_COST,
+        r: DEFAULT_SCRYPT_BLOCK_SIZE,
+        p: DEFAULT_SCRYPT_PARALLELIZATION,
+        maxmem: 64 * 1024 * 1024,
+      }),
     );
   }
 
@@ -519,12 +512,16 @@ export function loadDefaultMasterKeySync(
       execFileSync(
         "/usr/bin/security",
         ["add-generic-password", "-s", service, "-a", account, "-U", "-w"],
-        { input: `${encoded}\n${encoded}\n`, stdio: ["pipe", "ignore", "pipe"] },
+        {
+          input: `${encoded}\n${encoded}\n`,
+          stdio: ["pipe", "ignore", "pipe"],
+        },
       );
       return created;
     }
 
-    const { Entry } = require("@napi-rs/keyring") as typeof import("@napi-rs/keyring");
+    const { Entry } =
+      require("@napi-rs/keyring") as typeof import("@napi-rs/keyring");
     const entry = new Entry(service, account);
     const existing = entry.getPassword();
     if (existing) {
@@ -542,17 +539,12 @@ export function loadDefaultMasterKeySync(
   } catch (keychainError) {
     if (passphrase) {
       return Buffer.from(
-        scryptSync(
-          passphrase,
-          `${service}.vault.masterKey.v1`,
-          KEY_BYTES,
-          {
-            N: DEFAULT_SCRYPT_COST,
-            r: DEFAULT_SCRYPT_BLOCK_SIZE,
-            p: DEFAULT_SCRYPT_PARALLELIZATION,
-            maxmem: 64 * 1024 * 1024,
-          },
-        ),
+        scryptSync(passphrase, `${service}.vault.masterKey.v1`, KEY_BYTES, {
+          N: DEFAULT_SCRYPT_COST,
+          r: DEFAULT_SCRYPT_BLOCK_SIZE,
+          p: DEFAULT_SCRYPT_PARALLELIZATION,
+          maxmem: 64 * 1024 * 1024,
+        }),
       );
     }
     throw new MasterKeyUnavailableError(

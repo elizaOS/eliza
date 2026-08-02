@@ -111,7 +111,7 @@ Append a `TestCase` object to the `pluginTests[0].tests` array in `index.ts`. Te
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
 
 - **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  from a **live** LLM — not the deterministic provider, not a mock: the prompt, the
   providers/context, the raw model output, every tool/action call, and the result. Then **open
   the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
   (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).

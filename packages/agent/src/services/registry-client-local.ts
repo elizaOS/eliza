@@ -10,8 +10,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readJsonFile } from "@elizaos/core/atomic-json";
 import { logger } from "@elizaos/core";
+import { readJsonFile } from "@elizaos/core/atomic-json";
 import { packageNameToAppDisplayName } from "@elizaos/shared";
 import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { resolveStateDir } from "../config/paths.ts";

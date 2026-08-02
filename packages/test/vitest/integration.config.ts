@@ -9,8 +9,8 @@ import {
   getSharedSourceRoot,
   getUiSourceRoot,
 } from "../../core/src/testing/eliza-package-paths";
-import { buildWorkspaceSourceAliases } from "./source-aliases";
 import { repoRoot } from "./repo-root";
+import { buildWorkspaceSourceAliases } from "./source-aliases";
 import {
   getAgentSourceAliases,
   getAppCoreSourceAliases,
@@ -28,8 +28,8 @@ const elizaCoreEntryDir = elizaCoreEntry
   ? path.dirname(elizaCoreEntry)
   : undefined;
 // Exact-match aliases for the `@elizaos/core/<subpath>` exports this lane's
-// module graph imports (`./node` from plugin dists, `./testing` from the test
-// harness, `./connectors` from connector plugins). Each candidate list covers
+// module graph imports (`./node` from plugin dists, `./testing` from test
+// runtimes, `./connectors` from connector plugins). Each candidate list covers
 // the source layout (entry at src/) first, then the built layout (entry at
 // dist/node/), so every subpath resolves inside the same core tree as
 // `elizaCoreEntry` — mixing source and dist would boot two copies of core.

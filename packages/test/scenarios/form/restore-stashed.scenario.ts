@@ -9,7 +9,7 @@
  * stashed `FormSession` straight into plugin-form's component store, then a
  * "resume my form" turn drives the real planner → `FORM` action →
  * `FormService.restore` → component round-trip. Fully keyless: no live model
- * (deterministic LLM proxy fixtures) and no external API.
+ * (deterministic model-provider fixtures) and no external API.
  */
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { ModelType, stringToUuid } from "@elizaos/core";

@@ -276,6 +276,7 @@
             "group": "App developer guides",
             "pages": [
               "guides/sandbox",
+              "development/shared-dev-server",
               "apps/ui-library",
               "apps/desktop-local-development",
               "apps/desktop/native-modules",
@@ -542,7 +543,7 @@
     },
     {
       "source": "/guides/media-generation",
-      "destination": "/cloud/image-generation"
+      "destination": "/cloud/api/images"
     },
     {
       "source": "/guides/themes",

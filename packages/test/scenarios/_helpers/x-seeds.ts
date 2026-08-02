@@ -7,7 +7,7 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import type { LifeOpsXFeedType } from "@elizaos/shared";
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
-import { seedXConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { seedXConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
 
 type SeededXDm = {
   externalDmId: string;

@@ -17,7 +17,7 @@
  *     `responseJudge` / `assertTurn`).
  *  2. `personalityExpect` scenarios must run `live-only`. Their behaviour
  *     (silence / held-style / trait-respected ...) can only be exercised by a
- *     real model - the deterministic proxy always emits a reply, so the
+ *     real model - the deterministic provider always emits a reply, so the
  *     personality judge can never pass under the proxy. They are not valid
  *     deterministic PR coverage and must not claim the pr-deterministic lane.
  */
@@ -275,7 +275,7 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // the active-travel destination while a fixed absolute instant stays
   // invariant, a wall-clock morning window re-anchoring, DST local-time
   // integrity across a fall-back, and a disruption re-time — through the real
-  // scheduler under the deterministic proxy.
+  // scheduler under the deterministic provider.
   "traveler-absolute-vs-wallclock-disambiguation-flight",
   "traveler-disruption-recovery-missed-connection",
   "traveler-dst-boundary-reminder-integrity",
@@ -435,7 +435,7 @@ describe("scenario corpus assertion guard", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("personalityExpect scenarios run live-only (cannot be judged under the deterministic proxy)", () => {
+  it("personalityExpect scenarios run live-only (cannot be judged under the deterministic provider)", () => {
     const misLaned = facts
       .filter((f) => f.hasPersonalityExpect && f.lane !== "live-only")
       .map(rel)

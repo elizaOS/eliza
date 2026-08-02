@@ -12,7 +12,7 @@ The scenario runner is the integration-testing harness for elizaOS plugins and a
 # run a single scenario directory with a live LLM provider key
 OPENAI_API_KEY=sk-... eliza-scenarios run ./test/scenarios --scenario my-scenario-id
 
-# deterministic mode — no LLM key required, uses the fixture-backed LLM proxy
+# deterministic mode — no model key required, uses the fixture-backed model provider
 SCENARIO_USE_DETERMINISTIC_MODEL=1 eliza-scenarios run ./test/scenarios
 
 # list discovered scenarios without running them
@@ -116,7 +116,7 @@ same-process observations cannot satisfy these contracts.
 
 | Variable | Effect |
 |---|---|
-| `SCENARIO_USE_DETERMINISTIC_MODEL=1` | Use deterministic fixture-based LLM proxy (no API key needed) |
+| `SCENARIO_USE_DETERMINISTIC_MODEL=1` | Use the deterministic fixture-based model provider (no API key needed) |
 | `LIFEOPS_LIVE_JUDGE_MIN_SCORE` | Minimum judge score threshold (default: `0.8`) |
 | `SKIP_REASON` | Set to allow intentional scenario skips without exit code 2 |
 | `SCENARIO_INCLUDE_PENDING` | `1` = include `status: "pending"` scenarios |
@@ -124,7 +124,7 @@ same-process observations cannot satisfy these contracts.
 | `ELIZA_TRAJECTORY_LOGGING` | The `run` command sets this to `1` when the operator has not already set it, so scenario trajectories are recorded even under `NODE_ENV=test` or `NODE_ENV=production`; explicit `0` and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` are respected |
 | `ELIZA_TRAJECTORY_DIR` | Set automatically when `--run-dir` or `--export-native` creates an effective run directory; otherwise the recorder falls back to the state-dir trajectories path |
 
-Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `OPENROUTER_API_KEY` satisfies the live-provider requirement when not in proxy mode.
+Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `OPENROUTER_API_KEY` satisfies the live-provider requirement when deterministic mode is disabled.
 
 ## Programmatic use
 

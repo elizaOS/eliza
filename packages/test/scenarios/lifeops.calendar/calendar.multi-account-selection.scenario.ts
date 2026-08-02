@@ -9,7 +9,7 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentAsksWhichAccount(ctx: ScenarioContext): string | undefined {

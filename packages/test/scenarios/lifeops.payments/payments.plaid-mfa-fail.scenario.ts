@@ -16,7 +16,7 @@
  * Cited: 03-coverage-gap-matrix.md row "bank link MFA fail" / NONE in matrix.
  *
  * BLOCKED-ON-MOCKOON: there is no `plaid.json` mockoon environment yet
- * (`test/mocks/environments/` has no plaid file as of 2026-05-09). The
+ * (`packages/scenario-runner/test/mocks/environments/` has no plaid file as of 2026-05-09). The
  * scenario seeds the failure state directly into the lifeops payment_sources
  * table to exercise the agent's read+report path. When the Plaid mockoon
  * lands, the seed should be replaced with an actual mock-server roundtrip.

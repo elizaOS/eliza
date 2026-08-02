@@ -1,5 +1,5 @@
 /**
- * Audit sink implementations for in-memory tests, structured logs, files, and HTTP collectors.
+ * Audit sink implementations for in-memory tests, structured logs, and HTTP collectors.
  */
 
 import type { AuditEvent } from "./types.js";
@@ -36,7 +36,7 @@ export class ConsoleSink implements AuditSink {
 
 export interface HttpSinkOptions {
   endpoint: string;
-  fetch?: typeof fetch;
+  fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   headers?: Record<string, string>;
 }
 
@@ -47,7 +47,10 @@ export interface HttpSinkOptions {
 export class HttpSink implements AuditSink {
   readonly name = "http";
   private readonly endpoint: string;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Promise<Response>;
   private readonly headers: Record<string, string>;
 
   constructor(endpointOrOptions: string | HttpSinkOptions) {

@@ -11,19 +11,23 @@
  *     `reviewState` + bounded `metadata.checkinLog` updated, audit row
  *     written,
  *  4. the OWNER_GOALS `checkin` subaction drives the same path from natural
- *     language via the mock-LLM extraction pass,
+ *     language via the deterministic-model-provider extraction pass,
  *  5. deleting the goal dismisses its live check-in tasks.
  */
 
 import { type HandlerCallback, type Memory, ModelType } from "@elizaos/core";
+import {
+  createTestRuntimeWithModelProvider,
+  type ModelProviderTestRuntime,
+} from "@elizaos/core/testing";
 import {
   getScheduledTaskRunner,
   isScheduledTaskDue,
   OWNER_LOCAL_TZ,
   type ScheduledTask,
   schedulingPlugin,
+  waitForScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
-import { type ModelProviderTestRuntime, createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
 import { afterEach, describe, expect, it } from "vitest";
 import { ownerGoalsAction } from "../actions/goals.ts";
 import { executeRawSql } from "../db/sql.ts";
@@ -43,7 +47,9 @@ const OWNER_TZ = "America/Denver";
  * table (goal writes append there) and `life_task_definitions` (deleteGoal
  * clears its `goal_id` references).
  */
-async function provisionPeerTables(harness: ModelProviderTestRuntime): Promise<void> {
+async function provisionPeerTables(
+  harness: ModelProviderTestRuntime,
+): Promise<void> {
   await executeRawSql(
     harness.runtime,
     "CREATE SCHEMA IF NOT EXISTS app_lifeops",
@@ -88,7 +94,9 @@ function track(harness: ModelProviderTestRuntime): ModelProviderTestRuntime {
 }
 
 async function makeHarness(
-  fixtures: Parameters<typeof createTestRuntimeWithModelProvider>[0]["fixtures"] = [],
+  fixtures: Parameters<
+    typeof createTestRuntimeWithModelProvider
+  >[0]["fixtures"] = [],
 ): Promise<ModelProviderTestRuntime> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
@@ -96,6 +104,7 @@ async function makeHarness(
       fixtures,
     }),
   );
+  await waitForScheduledTaskRunnerService(harness.runtime);
   await provisionPeerTables(harness);
   return harness;
 }
@@ -123,7 +132,7 @@ function denverHourOf(iso: string): string {
   }).format(new Date(iso));
 }
 
-describe("goals check-ins on the scheduling spine (keyless harness)", () => {
+describe("goals check-ins on the scheduling spine (deterministic model-provider runtime)", () => {
   it("creates a check-in task on goal create, fires it at the owner's local hour, and records the response into goal progress", async () => {
     const harness = await makeHarness();
     const goals = createOwnerGoalsService(harness.runtime);
@@ -159,6 +168,30 @@ describe("goals check-ins on the scheduling spine (keyless harness)", () => {
     const occurrenceAtIso = decision.occurrenceAtIso as string;
     expect(denverHourOf(occurrenceAtIso)).toBe("09");
 
+    harness.fixtures.register(
+      {
+        name: "goal-checkin-dispatch-body",
+        match: {
+          modelType: ModelType.TEXT_LARGE,
+          prompt:
+            /A scheduled task just fired[\s\S]*Run a goal check-in for "Run a marathon"/,
+        },
+        response:
+          "How is your marathon training going? Share any wins or blockers.",
+        times: 1,
+      },
+      {
+        name: "goal-checkin-dispatch-title",
+        match: {
+          modelType: ModelType.TEXT_LARGE,
+          prompt:
+            /Write a concise notification title[\s\S]*How is your marathon training going\?/,
+        },
+        response: "Marathon training check-in",
+        times: 1,
+      },
+    );
+
     const firingRunner = getScheduledTaskRunner(harness.runtime, {
       agentId: harness.runtime.agentId,
       now: () => new Date(occurrenceAtIso),
@@ -193,6 +226,7 @@ describe("goals check-ins on the scheduling spine (keyless harness)", () => {
           AND reason = 'goal check-in response recorded'`,
     );
     expect(auditRows).toHaveLength(1);
+    expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
   it("records a check-in response from natural language via the OWNER_GOALS checkin subaction", async () => {

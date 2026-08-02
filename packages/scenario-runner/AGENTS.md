@@ -4,7 +4,7 @@ Lean end-to-end scenario runner for elizaOS agents. Loads `.scenario.ts` files, 
 
 ## Purpose / role
 
-This package is the canonical integration-test harness for elizaOS plugins and agent behaviour. It boots a real `AgentRuntime` (PGLite-backed, no SQL mocks), routes turns through the runtime's action pipeline, and checks assertions at the per-turn and per-scenario level. It is consumed by `packages/test/scenarios/` and plugin-level test suites (e.g. `plugins/plugin-app-control/test/scenarios/`). The schema types it depends on live in `@elizaos/scenario-runner/schema` (exported from the `schema/` directory).
+This package is the canonical integration-test runtime for elizaOS plugins and agent behaviour. It boots a real `AgentRuntime` (PGLite-backed, no SQL mocks), routes turns through the runtime's action pipeline, and checks assertions at the per-turn and per-scenario level. It is consumed by `packages/test/scenarios/` and plugin-level test suites (e.g. `plugins/plugin-app-control/test/scenarios/`). The schema types it depends on live in `@elizaos/scenario-runner/schema` (exported from the `schema/` directory).
 
 ## Layout
 
@@ -94,7 +94,7 @@ Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least
 A scenario declares its CI lane via the optional `lane` field
 (`@elizaos/scenario-runner/schema`):
 
-- `pr-deterministic` — runs on every PR under the deterministic LLM proxy with
+- `pr-deterministic` — runs on every PR under the deterministic model provider with
   zero credentials. Claim this lane **only** if the scenario passes keyless: no
   live external service, no secret, every LLM call either backed by a registered
   proxy fixture or satisfied by the proxy's default reply.
@@ -213,7 +213,7 @@ and update the owning pack catalog.
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
 
 - **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
+  from a **live** LLM — not the deterministic provider, not a mock: the prompt, the
   providers/context, the raw model output, every tool/action call, and the result. Then **open
   the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
   (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).

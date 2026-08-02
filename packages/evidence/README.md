@@ -2,7 +2,7 @@
 
 Evidence-bundle foundation for the unified evidence harness and develop→main
 certification pipeline (epic #14541, design doc:
-`packages/docs/ongoing-development/unified-evidence-harness.md`).
+`docs/ongoing-development/unified-evidence-harness.md`).
 
 One harness run produces one bundle: `evidence/runs/<run-id>/` with a
 `manifest.json` listing every artifact and a `meta.json` recording provenance

@@ -29,7 +29,7 @@ packages/docs/
 ├── cli/               # CLI reference
 ├── connectors/        # Connector pages (Discord, Telegram, iMessage, etc.)
 ├── cloud/             # Eliza Cloud reference
-├── guides/            # How-to guides and tutorials
+├── development/       # Developer workflows shared across packages
 ├── user/              # End-user guides
 ├── test/              # Test suite (nav integrity, broken links)
 └── public/            # Static assets (auto-generated — do not hand-edit)

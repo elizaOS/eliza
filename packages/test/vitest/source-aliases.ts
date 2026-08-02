@@ -1,12 +1,13 @@
 /**
- * Shared Vitest source-alias builder for `createTestRuntimeWithModelProvider()` consumers.
+ * Shared Vitest source-alias builder for real-runtime test consumers.
  *
  * Booting a real PGLite-backed AgentRuntime requires every workspace
  * `@elizaos/*` package to resolve to its TypeScript source (independent of
  * build order), plus the three subpath specials the runtime touches:
- * `@elizaos/core/testing`, `@elizaos/core/node`, and `@elizaos/plugin-sql`
- * (the node entry). The harness's own `vitest.config.ts` needs this, and so
- * does every per-plugin harness config that imports `@elizaos/core/testing`.
+ * `@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/connectors`,
+ * and `@elizaos/plugin-sql`
+ * (the node entry). Shared and per-plugin real-runtime configs need this, and so
+ * does every per-plugin runtime config that imports `@elizaos/core/testing`.
  * Both consume this one builder so the alias set never drifts.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -42,7 +43,7 @@ function getWorkspaceSourceEntry(
     name?: string;
   };
   if (!packageJson.name?.startsWith("@elizaos/")) return undefined;
-  // The harness itself resolves via its package.json exports.
+  // The testing surface resolves through the explicit alias below.
   if (packageJson.name === "@elizaos/core/testing") return undefined;
   const sourceIndex = path.join(packageDir, "src", "index.ts");
   if (existsSync(sourceIndex)) {
@@ -82,11 +83,11 @@ const PRUNE_DIRS = new Set([
  * The eliza monorepo nests published `@elizaos/*` packages several levels deep
  * (e.g. `@elizaos/cloud-routing` at `packages/cloud/routing`, gateways at
  * `packages/cloud/services/*`). A flat `readdirSync(packages)` misses those, so
- * their harness source alias is never emitted and Vite falls back to the
+ * their source alias is never emitted and Vite falls back to the
  * package `exports` -> `dist/index.js`, which does not exist under the keyless
  * `--ignore-scripts` install. That surfaces as
  * `Failed to resolve entry for package "@elizaos/cloud-routing"` in every
- * per-plugin harness proof (core re-exports the cloud routing surface).
+ * per-plugin runtime proof (core re-exports the cloud routing surface).
  *
  * Descend recursively but stop at the first directory that IS a package (a
  * package's own subdirs are not separate workspace packages), and prune known
@@ -117,8 +118,9 @@ function collectWorkspacePackageDirs(root: string, maxDepth = 4): string[] {
 }
 
 /**
- * Build the full alias list for a harness consumer. Explicit entries
- * (`@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/plugin-sql`) are
+ * Build the full alias list for a real-runtime consumer. Explicit entries
+ * (`@elizaos/core/testing`, `@elizaos/core/node`, `@elizaos/core/connectors`,
+ * `@elizaos/plugin-sql`) are
  * placed first so they win over the generic per-package rules (Vite is
  * first-match).
  */
@@ -168,6 +170,17 @@ export function buildWorkspaceSourceAliases(
     {
       find: /^@elizaos\/core\/roles$/,
       replacement: path.join(repoRoot, "packages/core/src/roles.ts"),
+    },
+    {
+      find: /^@elizaos\/core\/connectors$/,
+      replacement: path.join(repoRoot, "packages/core/src/connectors.ts"),
+    },
+    {
+      find: /^@elizaos\/core\/atomic-json$/,
+      replacement: path.join(
+        repoRoot,
+        "packages/core/src/utils/atomic-json.ts",
+      ),
     },
     {
       find: /^@elizaos\/plugin-sql$/,

@@ -1,10 +1,10 @@
 /**
- * Keyless model-provider e2e (#8801, gap 5 — per-plugin harness adoption).
+ * Keyless model-provider e2e (#8801, gap 5 — per-plugin provider adoption).
  *
  * The Anthropic plugin registers model handlers for every text `ModelType`,
  * which in production POST to `api.anthropic.com` and require `ANTHROPIC_API_KEY`.
  * This e2e loads the REAL `anthropicPlugin` under `createTestRuntimeWithModelProvider()` with NO
- * API key set, and proves the deterministic mock-LLM proxy (registered at
+ * API key set, and proves the deterministic deterministic-model-provider proxy (registered at
  * `priority: 1000`) wins model dispatch over the provider's handlers — so a
  * provider plugin can be driven end-to-end with zero network and zero secrets.
  *
@@ -12,7 +12,7 @@
  *   1. A direct `runtime.useModel(TEXT_LARGE)` returns the declared fixture, not
  *      an Anthropic API result — the proxy substitutes for the provider.
  *   2. A plugin action whose handler calls `runtime.useModel` runs to completion
- *      through the mock LLM and the agent's reply matches the fixture.
+ *      through the deterministic model provider and the agent's reply matches the fixture.
  */
 import { type Action, type Memory, ModelType, type Plugin } from "@elizaos/core";
 import { type ModelProviderTestRuntime, createTestRuntimeWithModelProvider } from "@elizaos/core/testing";
@@ -52,8 +52,8 @@ afterEach(() => {
   else process.env.CLAUDE_API_KEY = savedClaudeKey;
 });
 
-describe("anthropic provider (keyless harness)", () => {
-  it("lets the mock LLM proxy win model dispatch over the registered Anthropic handlers", async () => {
+describe("anthropic provider (deterministic model-provider runtime)", () => {
+  it("lets the deterministic model provider proxy win model dispatch over the registered Anthropic handlers", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
         plugins: [anthropicPlugin],
@@ -72,12 +72,12 @@ describe("anthropic provider (keyless harness)", () => {
       prompt: "hello",
     });
 
-    // The deterministic proxy answered, NOT the Anthropic API handler.
+    // The deterministic provider answered, NOT the Anthropic API handler.
     expect(out).toBe("mock-not-anthropic");
     expect(() => harness.assertFixturesConsumed()).not.toThrow();
   });
 
-  it("drives a plugin action handler end-to-end through the mock LLM", async () => {
+  it("drives a plugin action handler end-to-end through the deterministic model provider", async () => {
     const replyAction: Action = {
       name: "MOCK_REPLY",
       description: "Generate a reply using the large model.",

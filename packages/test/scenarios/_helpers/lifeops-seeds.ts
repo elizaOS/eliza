@@ -22,7 +22,7 @@ import {
   executeRawSql,
   sqlQuote,
 } from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
-import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
 
 type CalendarSeedEvent = {
   id: string;

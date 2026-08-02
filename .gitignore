@@ -139,10 +139,6 @@ packages/plugin-worker-runtime/src/**/*.js
 packages/plugin-worker-runtime/src/**/*.js.map
 packages/plugin-worker-runtime/src/**/*.d.ts
 packages/plugin-worker-runtime/src/**/*.d.ts.map
-packages/security/src/**/*.js
-packages/security/src/**/*.js.map
-packages/security/src/**/*.d.ts
-packages/security/src/**/*.d.ts.map
 packages/vault/src/**/*.js
 packages/vault/src/**/*.js.map
 packages/vault/src/**/*.d.ts

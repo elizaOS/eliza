@@ -224,9 +224,9 @@ Current Launch QA routing: Project
 LifeOps Personal Assistant MVP routing: Project
 <https://github.com/orgs/elizaOS/projects/15>. Product scope, the seven
 personas, and the per-workstream acceptance bar live in
-[`packages/docs/ongoing-development/mvp/MVP.md`](packages/docs/ongoing-development/mvp/MVP.md);
+[`docs/ongoing-development/mvp/MVP.md`](docs/ongoing-development/mvp/MVP.md);
 in-flight design docs (per-workstream research + status snapshots) live under
-[`packages/docs/ongoing-development/`](packages/docs/ongoing-development/README.md).
+[`docs/ongoing-development/`](docs/ongoing-development/README.md).
 This folder adds a **design-doc layer** to the workflow above: discussion →
 design doc here → issues on the board → PR with evidence → doc updated on merge.
 

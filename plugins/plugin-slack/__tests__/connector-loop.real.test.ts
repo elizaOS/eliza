@@ -50,7 +50,7 @@ const TEAM_ID = "T09TEAM001";
 const INBOUND_TS = "1746810420.000300";
 
 describe("slack connector loop (keyless)", () => {
-  it("drives a synthetic Slack message through the mock LLM to a delivered reply", async () => {
+  it("drives a synthetic Slack message through the deterministic model provider to a delivered reply", async () => {
     const harness = track(
       await createTestRuntimeWithModelProvider({
         fixtures: [
@@ -171,7 +171,7 @@ describe("slack connector loop (keyless)", () => {
 
     // Invoke the REAL private connector entrypoint — the same method
     // `app.event("message", ...)` dispatches to in production. This runs
-    // buildMemoryFromMessage, ensureRoomExists, processAgentMessage (mock LLM),
+    // buildMemoryFromMessage, ensureRoomExists, processAgentMessage (deterministic model provider),
     // and sendMessage end-to-end.
     await (
       service as unknown as {
@@ -186,7 +186,7 @@ describe("slack connector loop (keyless)", () => {
     // The loop closed end-to-end through the real connector: the inbound Slack
     // event produced a non-empty outbound reply, delivered back to the inbound
     // channel via the captured WebClient, generated entirely by the
-    // deterministic mock LLM with zero external cost.
+    // deterministic deterministic model provider with zero external cost.
     expect(
       delivered.length,
       "the connector delivered at least one outbound chat.postMessage",

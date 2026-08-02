@@ -139,7 +139,6 @@
         "@elizaos/plugin-wifi": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/registry": "workspace:*",
-        "@elizaos/security": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/skills": "workspace:*",
         "@elizaos/vault": "workspace:*",
@@ -428,6 +427,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "@elizaos/vault": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^25.0.0",
@@ -445,7 +445,6 @@
         "@cloudflare/workers-types": "^4.20260429.1",
         "@elevenlabs/elevenlabs-js": "^2.45.0",
         "@elizaos/cloud-shared": "workspace:*",
-        "@elizaos/security": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@fal-ai/server-proxy": "^1.2.1",
@@ -482,6 +481,22 @@
         "@cloudflare/workers-types": "^4.20240909.0",
         "vitest": "^4.0.18",
         "wrangler": "^3.78.0",
+      },
+    },
+    "packages/cloud/e2e": {
+      "name": "@elizaos/cloud-e2e",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/cloud-test-mocks": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+      },
+      "devDependencies": {
+        "@playwright/test": "^1.59.1",
+        "@types/node": "^22.0.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "bun-types": "^1.3.13",
+        "typescript": "^5.5.0",
       },
     },
     "packages/cloud/infra": {
@@ -663,7 +678,6 @@
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
-        "@elizaos/security": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@modelcontextprotocol/sdk": "^1.29.0",
@@ -718,6 +732,21 @@
         "ioredis-mock": "^8.13.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.4",
+      },
+    },
+    "packages/cloud/test-mocks": {
+      "name": "@elizaos/cloud-test-mocks",
+      "version": "0.0.0",
+      "bin": {
+        "hetzner-mock": "./bin/hetzner-mock.ts",
+        "control-plane-mock": "./bin/control-plane-mock.ts",
+      },
+      "dependencies": {
+        "@elizaos/cloud-shared": "workspace:*",
+        "hono": "4.12.27",
+      },
+      "devDependencies": {
+        "bun-types": "*",
       },
     },
     "packages/core": {
@@ -919,35 +948,7 @@
         "ws": "^8.19.0",
       },
       "devDependencies": {
-        "@elizaos/test-harness": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-    },
-    "packages/security": {
-      "name": "@elizaos/security",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@types/node": "^25.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-    },
-    "packages/security/soc2-verify": {
-      "name": "@elizaos/soc2-verify",
-      "version": "0.1.0",
-      "dependencies": {
-        "@elizaos/security": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^25.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "fast-check": "^4.8.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
@@ -991,47 +992,12 @@
       },
     },
     "packages/test": {
-      "name": "@elizaos/test-harness",
+      "name": "@elizaos/test-corpus",
       "version": "0.0.0",
-      "dependencies": {
-        "@capacitor/core": "8.4.0",
+      "devDependencies": {
         "@elizaos/core": "workspace:*",
-        "telegraf": "^4.16.3",
-      },
-      "devDependencies": {
-        "discord.js": "^14.26.4",
+        "@elizaos/scenario-runner": "workspace:*",
         "vitest": "*",
-      },
-    },
-    "packages/cloud/e2e": {
-      "name": "@elizaos/cloud-e2e",
-      "version": "0.0.0",
-      "dependencies": {
-        "@elizaos/cloud-shared": "workspace:*",
-        "@elizaos/cloud-test-mocks": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-      },
-      "devDependencies": {
-        "@playwright/test": "^1.59.1",
-        "@types/node": "^22.0.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "bun-types": "^1.3.13",
-        "typescript": "^5.5.0",
-      },
-    },
-    "packages/cloud/test-mocks": {
-      "name": "@elizaos/cloud-test-mocks",
-      "version": "0.0.0",
-      "bin": {
-        "hetzner-mock": "./bin/hetzner-mock.ts",
-        "control-plane-mock": "./bin/control-plane-mock.ts",
-      },
-      "dependencies": {
-        "@elizaos/cloud-shared": "workspace:*",
-        "hono": "4.12.27",
-      },
-      "devDependencies": {
-        "bun-types": "*",
       },
     },
     "packages/ui": {
@@ -1249,7 +1215,6 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
         "@elizaos/core": "workspace:*",
-        "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "^1.3.14",
@@ -1626,7 +1591,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
-        "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
@@ -1813,7 +1777,6 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
-        "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.6",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
@@ -1840,7 +1803,6 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
         "@elizaos/core": "workspace:*",
-        "@elizaos/test-harness": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "^1.3.12",
@@ -2034,7 +1996,6 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/security": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.7.0",
         "ajv": "^8.17.1",
         "json5": "^2.2.3",
@@ -2606,7 +2567,6 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
         "@elizaos/core": "workspace:*",
-        "@elizaos/test-harness": "workspace:*",
         "@types/bun": "^1.3.8",
         "@types/json-schema": "^7.0.15",
         "@types/node": "^25.0.3",
@@ -2956,7 +2916,6 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
         "@elizaos/config": "latest",
-        "@elizaos/test-harness": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
@@ -3976,15 +3935,11 @@
 
     "@elizaos/scenario-runner": ["@elizaos/scenario-runner@workspace:packages/scenario-runner"],
 
-    "@elizaos/security": ["@elizaos/security@workspace:packages/security"],
-
     "@elizaos/shared": ["@elizaos/shared@workspace:packages/shared"],
 
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
 
-    "@elizaos/soc2-verify": ["@elizaos/soc2-verify@workspace:packages/security/soc2-verify"],
-
-    "@elizaos/test-harness": ["@elizaos/test-harness@workspace:packages/test"],
+    "@elizaos/test-corpus": ["@elizaos/test-corpus@workspace:packages/test"],
 
     "@elizaos/ui": ["@elizaos/ui@workspace:packages/ui"],
 
