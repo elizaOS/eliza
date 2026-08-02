@@ -4,7 +4,15 @@
     "noEmit": true,
     "composite": false,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    "paths": {
+      "@elizaos/scenario-runner/scenario-assertions": [
+        "../../scenario-runner/src/scenario-assertions.ts"
+      ],
+      "@elizaos/scenario-runner/missing-input-terminal-relay": [
+        "../../scenario-runner/src/missing-input-terminal-relay.ts"
+      ]
+    }
   },
   "include": ["./**/*.ts", "./**/*.d.ts"],
   "exclude": [

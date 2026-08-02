@@ -155,6 +155,8 @@ src/
 
   security/
     browser-script-policy.ts GHSA-rcvr-766c-4phv — browser_execute disabled by default
+
+test/scenarios/             Product-owned scenario-runner specs
 ```
 
 ## Commands

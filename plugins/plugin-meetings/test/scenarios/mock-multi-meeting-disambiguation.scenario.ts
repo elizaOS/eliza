@@ -5,9 +5,9 @@
  * sessions stay active (nothing was left).
  */
 
-import type {
-  ScenarioContext,
-  ScenarioDefinition,
+import {
+  scenario,
+  type ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { installMockSeed } from "./_meetings-mock.js";
 
@@ -32,7 +32,7 @@ async function bothStillActive(
   return undefined;
 }
 
-export default {
+export default scenario({
   id: "mock-multi-meeting-disambiguation",
   lane: "pr-deterministic",
   title: "Mocked LEAVE_MEETING asks which meeting when two are active",
@@ -89,4 +89,4 @@ export default {
       predicate: bothStillActive,
     },
   ],
-} satisfies ScenarioDefinition;
+});

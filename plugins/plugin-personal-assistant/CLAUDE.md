@@ -170,12 +170,6 @@ src/
   default-packs/                Default ScheduledTask packs
                                 (daily-rhythm, morning-brief, quiet-user-watcher,
                                  habit-starters, inbox-triage-starter, followup-starter, ...)
-  ../test/scenarios/            Executable LifeOps scenario-runner specs.
-                                Executive-assistant scenarios should cover
-                                chief-of-staff workflows beyond reminders:
-                                schedule, follow-up, briefing, approvals,
-                                messaging handoff, documents, money, and priority triage.
-
   platform/                     Platform detection helpers (isDarwin, etc.)
   routes/                       HTTP route handlers (lifeops, website-blocker, cloud-features, travel-relay)
   types/                        Shared TypeScript types
@@ -183,6 +177,11 @@ src/
   api/                          Client-side API helpers (client-lifeops.ts)
   components/                   React components
   ui.ts                         UI entry (side-effectful)
+
+test/
+  scenarios/                    Executable LifeOps scenario-runner specs.
+    corpus/                     Product-owned domains migrated from the shared corpus.
+  scenario-support/             LifeOps-only seed helpers used by those scenarios.
 ```
 
 ## Commands

@@ -22,7 +22,7 @@
  *     deterministic PR coverage and must not claim the pr-deterministic lane.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import * as ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -35,15 +35,20 @@ const SCENARIO_ROOTS = [
   "plugins/plugin-app-control/test/scenarios",
   "plugins/plugin-health/test/scenarios",
   "plugins/plugin-agent-orchestrator/test/scenarios",
+  "plugins/plugin-commands/test/scenarios",
+  "plugins/plugin-computeruse/test/scenarios",
+  "plugins/plugin-form/test/scenarios",
+  "plugins/plugin-finances/test/scenarios",
+  "plugins/plugin-inbox/test/scenarios",
+  "plugins/plugin-local-inference/test/scenarios",
+  "plugins/plugin-meetings/test/scenarios",
+  "plugins/plugin-relationships/test/scenarios",
+  "plugins/plugin-telegram/test/scenarios",
 ].map((r) => resolve(repoRoot, r));
 
 function walkScenarioFiles(dir: string): string[] {
-  let entries: string[] = [];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return [];
-  }
+  if (!existsSync(dir)) return [];
+  const entries = readdirSync(dir);
   const out: string[] = [];
   for (const entry of entries) {
     if (entry.startsWith("_")) continue; // loader ignores `_`-prefixed entries
@@ -304,10 +309,9 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "approval-queue-pending-visible-to-planner",
   // LifeOps persona pack B1 (night-owl-anchored-day, #12771). Same G1
   // convention as A1: authored under the SCANNED root
-  // packages/test/scenarios/lifeops.personas and added here in the same commit.
+  // plugin-personal-assistant's LifeOps persona corpus and added here in the same commit.
   "persona.night-owl-anchored-day",
   "persona.night-owl-quiet-hours-sleep-protection",
-  "anthropic-proxy.proxy-status",
   "commands.help-command",
   // LifeOps persona pack D1 (comms-flood-triage, #12774). Convention (G1):
   // pr-deterministic persona scenarios live in
@@ -320,7 +324,6 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "convo.echo-self-test",
   "convo.greeting-dynamic",
   "elizacloud.account-status",
-  "facewear.smartglasses-status",
   "finances.owner-finances-dashboard",
   "form.restore-stashed",
   // LifeOps persona pack G1 (overdue-comms-apology, #14783). Keyless
@@ -342,9 +345,7 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "h2-identity-merge-uses-engine",
   "h2-relationship-update-live",
   "health.owner-health-status",
-  "hyperliquid.perpetual-market-status",
   "inbox.summarize-inboxes",
-  "linear.search-issues",
   "local-inference.start-transcription",
   // Transcript permissioning (#14779): keyless proof that SHARE_TRANSCRIPT
   // routes message -> planner -> TranscriptStore and that the disclosure
@@ -352,8 +353,10 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // an admin keeps the untouched original. Added here in the same commit.
   "local-inference.transcript-permissioning",
   "meetings.get-transcript",
-  "music.routing-status",
-  "nostr.search-posts",
+  "mock-join-invalid-url",
+  "mock-join-meeting-happy",
+  "mock-leave-meeting",
+  "mock-multi-meeting-disambiguation",
   // Registered here retroactively: the scenario landed (#13778) without the
   // same-commit guard update this list requires, leaving the guard red.
   // Orchestrator deterministic scenarios from the de-larp sweep (#16256),
@@ -377,7 +380,6 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "reminder.cross-platform.fires-on-mac-and-phone",
   "reminder.escalation.intensity-up",
   "reminder.escalation.silent-dismiss",
-  "remote-desktop.list-sessions",
   // LifeOps persona pack B2 (shift-rotation, marcus_shift, #12772). Convention
   // (G1): pr-deterministic persona scenarios live in
   // plugins/plugin-personal-assistant/test/scenarios — the one root scanned by
@@ -387,11 +389,7 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "shift-rotation-reanchor-protects-new-sleep-window",
   "shift-rotation-sleep-protection-holds-low-priority-nudge",
   "shift-rotation-wake-anchor-follows-shifted-window",
-  "suno.generate-music",
   "task-coordinator.orchestrator-status",
-  "tunnel.status",
-  "vision.set-mode",
-  "wallet.token-info",
 ].sort();
 
 describe("scenario corpus assertion guard", () => {

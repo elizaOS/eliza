@@ -195,7 +195,7 @@ jobs:
         run: bun run build:views
 
       - name: Views system tests
-        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/agent/src/__tests__/plugin-tui-view-coverage.test.ts
+        run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
 
       - name: Remote capability router tests
         run: bun run test:remote-capabilities
@@ -392,7 +392,7 @@ jobs:
           exit 1
 
   # First CI consumer of the repo-level integration lane
-  # (packages/test/vitest/integration.config.ts). The lane was dead in CI:
+  # (packages/scripts/vitest/integration.config.ts). The lane was dead in CI:
   # nothing invoked the config, its @elizaos/core alias broke the /node
   # subpath, and its eliza/-prefixed paths matched zero files in a flat
   # checkout (#11047). Runs plugin-personal-assistant's test:integration —
@@ -427,8 +427,8 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
-      # The personal-assistant barrel imports sibling plugin dists (e.g.
-      # plugin-calendly pulls "@elizaos/core/node") straight from
+      # The personal-assistant barrel imports sibling plugin dists that pull
+      # "@elizaos/core/node" straight from
       # node_modules, so the lane needs the package's workspace dependency
       # graph built. Turbo replays warm runs from cache.
       - name: Build personal-assistant dependency graph

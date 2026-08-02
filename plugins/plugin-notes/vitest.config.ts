@@ -1,6 +1,6 @@
 /** Runs Notes domain tests in Node and component tests in jsdom. */
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../packages/test/vitest/default.config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
 
 export default defineConfig({
   ...baseConfig,

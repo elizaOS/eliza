@@ -74,9 +74,6 @@
       ],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
       "@elizaos/plugin-github": ["../../plugins/plugin-github/src/index.ts"],
-      "@elizaos/plugin-gitpathologist": [
-        "../../plugins/plugin-gitpathologist/src/index.ts"
-      ],
       "@elizaos/plugin-scheduling": [
         "../../plugins/plugin-scheduling/src/index.ts"
       ],

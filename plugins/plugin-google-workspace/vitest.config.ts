@@ -1,17 +1,15 @@
-/** Vitest config: runs this plugin's `src`/`__tests__` suites with the shared provider-SDK aliases (shims googleapis so tests need no real SDK), excluding live/e2e specs. */
+/** Runs Google Workspace source tests against real workspace packages, excluding live/e2e specs. */
 import { defineConfig } from "vitest/config";
-import {
-  providerSdkAliases,
-  providerSdkShimPlugin,
-} from "../../packages/test/vitest/provider-sdk-aliases";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
+
+const workspaceAliases = buildWorkspaceSourceAliases();
 
 export default defineConfig({
-  plugins: [providerSdkShimPlugin()],
   resolve: {
-    alias: providerSdkAliases,
+    alias: workspaceAliases,
   },
   test: {
-    alias: providerSdkAliases,
+    alias: workspaceAliases,
     include: ["src/**/*.test.ts", "__tests__/**/*.test.ts"],
     exclude: ["dist/**", "**/node_modules/**", "**/*.live.test.ts", "**/*.e2e.test.ts"],
   },

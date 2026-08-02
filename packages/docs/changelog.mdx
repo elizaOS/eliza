@@ -1137,7 +1137,7 @@ Docs: [Environment variables](/cli/overview), [TTS plugin](/plugins/overview).
 
 ## Vitest: `packages/app-core/test/**` and `*.test.tsx` under `src/`
 
-Root **`vitest.config.ts`** now includes **`packages/app-core/test/**/*.test.ts(x)`** and **`packages/app-core/src/**/*.test.tsx`**, and excludes **`packages/app-core/test/**/*.e2e.test.*`** from the default unit job (e2e still uses **`test/vitest/e2e.config.ts`**). **Why:** harness tests under `test/state`, `test/runtime`, etc. were skipped; a single explicit `SetupWizard.test.tsx` path was brittle for future colocated TSX tests.
+Root **`vitest.config.ts`** now includes **`packages/app-core/test/**/*.test.ts(x)`** and **`packages/app-core/src/**/*.test.tsx`**, and excludes **`packages/app-core/test/**/*.e2e.test.*`** from the default unit job (e2e still uses **`packages/scripts/vitest/e2e.config.ts`**). **Why:** harness tests under `test/state`, `test/runtime`, etc. were skipped; a single explicit `SetupWizard.test.tsx` path was brittle for future colocated TSX tests.
 
 See [Contributing — Testing](https://github.com/elizaOS/eliza/blob/develop/CONTRIBUTING.md) (subsection *`packages/app-core` in the root Vitest config*).
 

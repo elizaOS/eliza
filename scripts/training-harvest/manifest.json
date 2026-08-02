@@ -1,7 +1,7 @@
 {
   "schema": "gpt55_harvest_manifest",
   "schemaVersion": 1,
-  "generatedAt": "2026-08-02T03:14:44.126Z",
+  "generatedAt": "2026-08-02T16:23:27.984Z",
   "repoRoot": "/Users/shawwalters/eliza-workspace/milady/eliza",
   "goal": "Run every elizaOS scenario+benchmark+e2e through gpt-5.5 (Codex subscription), harvest correct eliza_native_v1 trajectories, GEPA-repair failures, fine-tune on Nebius.",
   "provider": {
@@ -61,9 +61,9 @@
         {
           "id": "packages__scenario-runner__test__scenarios",
           "dir": "packages/scenario-runner/test/scenarios",
-          "scenarioFiles": 58,
-          "baseScenarios": 58,
-          "expandedScenarios": 580,
+          "scenarioFiles": 56,
+          "baseScenarios": 56,
+          "expandedScenarios": 616,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -81,9 +81,9 @@
         {
           "id": "packages__test__scenarios",
           "dir": "packages/test/scenarios",
-          "scenarioFiles": 719,
-          "baseScenarios": 707,
-          "expandedScenarios": 7777,
+          "scenarioFiles": 311,
+          "baseScenarios": 311,
+          "expandedScenarios": 3421,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -101,9 +101,9 @@
         {
           "id": "plugins__plugin-agent-orchestrator__test__scenarios",
           "dir": "plugins/plugin-agent-orchestrator/test/scenarios",
-          "scenarioFiles": 14,
-          "baseScenarios": 8,
-          "expandedScenarios": 88,
+          "scenarioFiles": 17,
+          "baseScenarios": 17,
+          "expandedScenarios": 187,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -122,8 +122,8 @@
           "id": "plugins__plugin-app-control__test__scenarios",
           "dir": "plugins/plugin-app-control/test/scenarios",
           "scenarioFiles": 23,
-          "baseScenarios": 15,
-          "expandedScenarios": 165,
+          "baseScenarios": 23,
+          "expandedScenarios": 253,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -142,8 +142,8 @@
           "id": "plugins__plugin-cloud-apps__test__scenarios",
           "dir": "plugins/plugin-cloud-apps/test/scenarios",
           "scenarioFiles": 2,
-          "baseScenarios": 1,
-          "expandedScenarios": 11,
+          "baseScenarios": 2,
+          "expandedScenarios": 22,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -159,11 +159,51 @@
           }
         },
         {
+          "id": "plugins__plugin-commands__test__scenarios",
+          "dir": "plugins/plugin-commands/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-commands/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-computeruse__test__scenarios",
+          "dir": "plugins/plugin-computeruse/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-computeruse/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
           "id": "plugins__plugin-elizacloud__test__scenarios",
           "dir": "plugins/plugin-elizacloud/test/scenarios",
           "scenarioFiles": 1,
           "baseScenarios": 1,
-          "expandedScenarios": 10,
+          "expandedScenarios": 11,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -179,11 +219,51 @@
           }
         },
         {
+          "id": "plugins__plugin-finances__test__scenarios",
+          "dir": "plugins/plugin-finances/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-finances/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-form__test__scenarios",
+          "dir": "plugins/plugin-form/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-form/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
           "id": "plugins__plugin-health__test__scenarios",
           "dir": "plugins/plugin-health/test/scenarios",
-          "scenarioFiles": 8,
-          "baseScenarios": 8,
-          "expandedScenarios": 88,
+          "scenarioFiles": 9,
+          "baseScenarios": 9,
+          "expandedScenarios": 99,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -199,11 +279,51 @@
           }
         },
         {
+          "id": "plugins__plugin-inbox__test__scenarios",
+          "dir": "plugins/plugin-inbox/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-inbox/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-local-inference__test__scenarios",
+          "dir": "plugins/plugin-local-inference/test/scenarios",
+          "scenarioFiles": 2,
+          "baseScenarios": 2,
+          "expandedScenarios": 22,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-local-inference/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
           "id": "plugins__plugin-meetings__test__scenarios",
           "dir": "plugins/plugin-meetings/test/scenarios",
-          "scenarioFiles": 5,
-          "baseScenarios": 5,
-          "expandedScenarios": 50,
+          "scenarioFiles": 6,
+          "baseScenarios": 6,
+          "expandedScenarios": 66,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -221,9 +341,9 @@
         {
           "id": "plugins__plugin-personal-assistant__test__scenarios",
           "dir": "plugins/plugin-personal-assistant/test/scenarios",
-          "scenarioFiles": 396,
-          "baseScenarios": 197,
-          "expandedScenarios": 2167,
+          "scenarioFiles": 765,
+          "baseScenarios": 765,
+          "expandedScenarios": 8415,
           "discover": {
             "cmd": "bun",
             "args": [
@@ -234,6 +354,46 @@
               "packages/scenario-runner/src/cli.ts",
               "list",
               "plugins/plugin-personal-assistant/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-relationships__test__scenarios",
+          "dir": "plugins/plugin-relationships/test/scenarios",
+          "scenarioFiles": 1,
+          "baseScenarios": 1,
+          "expandedScenarios": 11,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-relationships/test/scenarios"
+            ],
+            "parse": "json-lines-scenario-ids"
+          }
+        },
+        {
+          "id": "plugins__plugin-telegram__test__scenarios",
+          "dir": "plugins/plugin-telegram/test/scenarios",
+          "scenarioFiles": 3,
+          "baseScenarios": 3,
+          "expandedScenarios": 33,
+          "discover": {
+            "cmd": "bun",
+            "args": [
+              "--conditions",
+              "eliza-source",
+              "--tsconfig-override",
+              "<TSCONFIG>",
+              "packages/scenario-runner/src/cli.ts",
+              "list",
+              "plugins/plugin-telegram/test/scenarios"
             ],
             "parse": "json-lines-scenario-ids"
           }

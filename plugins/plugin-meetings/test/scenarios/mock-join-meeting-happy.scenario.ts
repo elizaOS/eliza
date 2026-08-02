@@ -12,9 +12,9 @@
  */
 
 import type { UUID } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioDefinition,
+import {
+  scenario,
+  type ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { installMockSeed } from "./_meetings-mock.js";
 
@@ -58,7 +58,7 @@ async function transcriptHasScriptedText(
   return undefined;
 }
 
-export default {
+export default scenario({
   id: "mock-join-meeting-happy",
   lane: "pr-deterministic",
   title: "Mocked JOIN_MEETING produces a scripted transcript (no browser)",
@@ -120,4 +120,4 @@ export default {
       predicate: transcriptHasScriptedText,
     },
   ],
-} satisfies ScenarioDefinition;
+});

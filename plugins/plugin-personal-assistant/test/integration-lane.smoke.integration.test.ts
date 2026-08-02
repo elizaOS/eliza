@@ -1,7 +1,7 @@
 /**
  * Repo integration-lane smoke — #11047.
  *
- * The repo-level integration lane (packages/test/vitest/integration.config.ts)
+ * The repo-level integration lane (packages/scripts/vitest/integration.config.ts)
  * was dead in flat eliza checkouts for two independent reasons:
  *
  *   1. the `@elizaos/core` string alias prefix-matched subpath imports, so
@@ -17,7 +17,7 @@
  * unconditionally.
  *
  * Run:
- *   bunx vitest run --config packages/test/vitest/integration.config.ts \
+ *   bunx vitest run --config packages/scripts/vitest/integration.config.ts \
  *     plugins/plugin-personal-assistant/test/integration-lane.smoke.integration.test.ts
  */
 import { BaseMessageAdapter } from "@elizaos/core/node";

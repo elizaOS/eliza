@@ -13,7 +13,7 @@ No real cloud credentials are needed; everything runs locally.
 ```
 playwright.config.ts   single chromium project, serial (workers: 1, fullyParallel: false)
 tests/*.spec.ts        one spec per flow (siwe-login, provision, deprovision,
-                       billing-provision, monetized-full-loop, example-*-real-deploy, …)
+                       billing-provision, monetized-full-loop, domain purchase, …)
 src/fixtures/
   stack.ts             startCloudStack() — boots/tears down the whole stack per worker
   env.ts               buildSharedEnv() — test flags/secrets for spawned subprocesses;
@@ -24,8 +24,8 @@ src/helpers/
   test-fixtures.ts     Playwright `test`/`expect` extension; exposes the worker-scoped
                        `stack` fixture and the per-test `seededUser`/`authenticatedPage`
   wallet-login.ts      loginWithTestWallet / loginAsSeededUser — real SIWE handshake
-  provisioning.ts, monetization.ts, seed-pricing.ts, showcase.ts  flow helpers
-docs/                  coverage write-ups (monetized loop, showcase apps)
+  provisioning.ts, monetization.ts, seed-pricing.ts  flow helpers
+docs/                  coverage write-ups and live-operation runbooks
 ```
 
 Specs import `{ test, expect }` from `src/helpers/test-fixtures`, not from

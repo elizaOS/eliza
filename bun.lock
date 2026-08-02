@@ -997,7 +997,6 @@
       "devDependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/scenario-runner": "workspace:*",
-        "vitest": "*",
       },
     },
     "packages/ui": {

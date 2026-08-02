@@ -19,7 +19,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
-} from "../_helpers/effect-assertions.ts";
+} from "@elizaos/scenario-runner/scenario-assertions";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";

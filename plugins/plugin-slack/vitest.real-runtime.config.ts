@@ -1,6 +1,6 @@
 /** Runs Slack connector-loop tests against the real core runtime and deterministic model provider. */
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../../packages/test/vitest/source-aliases.ts";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
 export default defineConfig({
   test: {

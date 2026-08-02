@@ -2,7 +2,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../../../test/vitest/source-aliases.ts";
+import { buildWorkspaceSourceAliases } from "../../../scripts/vitest/source-aliases.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packagesRoot = path.resolve(here, "../..");

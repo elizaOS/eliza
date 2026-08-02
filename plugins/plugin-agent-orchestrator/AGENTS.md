@@ -230,6 +230,7 @@ plugins/plugin-agent-orchestrator/
       route-utils.ts             parseBody, sendJson, sendError, RouteContext
   index.ts                      Re-export barrel (ESM root)
   index.node.ts                 Node-specific entry
+  test/scenarios/corpus/        Product-owned scenario-runner specs
 ```
 
 ## Commands

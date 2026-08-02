@@ -5,9 +5,9 @@
  */
 
 import type { UUID } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioDefinition,
+import {
+  scenario,
+  type ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { installMockSeed } from "./_meetings-mock.js";
 
@@ -55,7 +55,7 @@ async function sessionFinalized(
   return undefined;
 }
 
-export default {
+export default scenario({
   id: "mock-leave-meeting",
   lane: "pr-deterministic",
   title: "Mocked LEAVE_MEETING finalizes an active session (no browser)",
@@ -112,4 +112,4 @@ export default {
       predicate: sessionFinalized,
     },
   ],
-} satisfies ScenarioDefinition;
+});

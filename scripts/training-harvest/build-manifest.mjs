@@ -51,29 +51,6 @@ function countFiles(dir, suffix) {
   return out;
 }
 
-// Measured expansion multipliers (eliza-scenarios list --count-scenarios).
-// `existing` = base scenario count, `total` = with persona/paraphrase expansion.
-// Sampled live this run; embedded so the manifest is self-describing without a
-// slow re-boot of the loader on every rebuild.
-const MEASURED_EXPANSION = {
-  "packages/test/scenarios": { existing: 707, total: 7777 },
-  "plugins/plugin-personal-assistant/test/scenarios": {
-    existing: 197,
-    total: 2167,
-  },
-  "plugins/plugin-app-control/test/scenarios": { existing: 15, total: 165 },
-  "plugins/plugin-health/test/scenarios": { existing: 8, total: 88 },
-  "plugins/plugin-cloud-apps/test/scenarios": { existing: 1, total: 11 },
-  "plugins/plugin-agent-orchestrator/test/scenarios": {
-    existing: 8,
-    total: 88,
-  },
-};
-
-// The test-harness's canonical corpus root. It keeps scenarios directly under
-// `scenarios/` (not `test/scenarios/`), so the per-package convention glob below
-// does not reach it; include it explicitly. This is the scenario-runner's
-// DEFAULT_SCENARIO_ROOT, a well-known path constant — not a plugin coupling.
 const DEFAULT_SCENARIO_ROOT = "packages/test/scenarios";
 
 // Every workspace package's `test/scenarios` dir that exists on disk, discovered
@@ -99,9 +76,9 @@ function scenarioFamily() {
     const dir = path.join(REPO_ROOT, rel);
     const files = countFiles(dir, ".scenario.ts");
     if (files.length === 0) continue;
-    const expansion = MEASURED_EXPANSION[rel] ?? {
+    const expansion = {
       existing: files.length,
-      total: files.length * 10,
+      total: files.length * 11,
     };
     items.push({
       id: rel.replace(/[/]/g, "__"),

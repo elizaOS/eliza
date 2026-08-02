@@ -17,7 +17,7 @@ whose rubric is derived from that scenario's own `personalityExpect` fields
 (bucket, turn indices, style/trait/direction/variant keys, forbidden content,
 format specials). This is what the scenario-runner live matrix enforces —
 without it the corpus ran as 200 no-ops (#9310). The scenarios are
-`live-only`: a deterministic proxy always replies, so persona rubrics can only
+`live-only`: deterministic fixtures cannot evaluate persona quality, so these rubrics only
 be judged against a real model, and the judge itself must be independent
 (`CEREBRAS_API_KEY`; see judge-independence in the scenario-runner).
 
@@ -262,4 +262,3 @@ Every scenario defines a top-level `personalityExpect` object. The W3-3 judge re
 | 38 | `scope_global_vs_user.frank.short_text.038` | 15 | len_13to16 | len_13to16 | frank | short_text |
 | 39 | `scope_global_vs_user.aggressive.list.039` | 20 | len_17to20 | len_17to20 | aggressive | list |
 | 40 | `scope_global_vs_user.hostile.code.040` | 21 | len_21to25 | len_21to25 | hostile | code |
-

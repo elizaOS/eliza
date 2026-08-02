@@ -96,7 +96,7 @@ jobs:
         run: |
           set -euo pipefail
           bunx vitest run \
-            --config packages/test/vitest/integration.config.ts \
+            --config packages/scripts/vitest/integration.config.ts \
             plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts \
             2>&1 | tee "$LIFEOPS_EVIDENCE_DIR/owner-agent-permission-matrix.txt"
 

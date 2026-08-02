@@ -1,0 +1,88 @@
+/** Scenario fixture for travel duffel cloud relay; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  expectApprovalRequest,
+  expectScenarioToCallAction,
+  expectTurnToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
+
+export default scenario({
+  lane: "live-only",
+  id: "travel.duffel-cloud-relay",
+  title: "Flight search hits Duffel via the Eliza Cloud relay, not direct",
+  domain: "lifeops.travel",
+  tags: ["lifeops", "travel", "duffel", "eliza-cloud", "relay"],
+  description:
+    "Travel searches must route through the Eliza Cloud relay so billing and rate-limit policy are enforced server-side. This scenario asserts that BOOK_TRAVEL was invoked with a Duffel search, and that the cloud-mediated path was hit (no raw direct Duffel call).",
+  isolation: "per-scenario",
+  requires: {
+    plugins: ["@elizaos/plugin-agent-skills"],
+  },
+  rooms: [
+    {
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Duffel relay search",
+    },
+  ],
+  turns: [
+    {
+      kind: "message",
+      name: "search-flights",
+      room: "main",
+      text: "Search Duffel for SFO → LAX flights tomorrow morning, economy, 1 passenger. Show me the top three offers.",
+      assertTurn: expectTurnToCallAction({
+        acceptedActions: ["BOOK_TRAVEL"],
+        description: "Duffel flight search via cloud relay",
+        includesAny: ["SFO", "LAX", "offer", "Duffel"],
+      }),
+      // De-echoed (#9310): the old keywords ("SFO", "LAX", "offer", "flight")
+      // all appeared in the user's own turn text. Real Duffel offers carry a
+      // price — the reply must surface one, which no parroted reply can.
+      responseIncludesAny: ["$", "USD", "fare", "price"],
+      responseJudge: {
+        minimumScore: 0.7,
+        rubric:
+          "Reply must surface concrete offer details (carrier, time, price) from a Duffel search. A reply that just promises to search, or invents fake flights without a search action, fails.",
+      },
+    },
+  ],
+  finalChecks: [
+    {
+      type: "selectedAction",
+      actionName: ["BOOK_TRAVEL"],
+    },
+    {
+      type: "selectedActionArguments",
+      actionName: ["BOOK_TRAVEL"],
+      includesAny: ["SFO", "LAX", "search", "duffel", "offer"],
+    },
+    {
+      type: "custom",
+      name: "travel-duffel-relay-coverage",
+      predicate: expectScenarioToCallAction({
+        acceptedActions: ["BOOK_TRAVEL"],
+        description: "Duffel search invocation",
+        includesAny: ["SFO", "LAX", "Duffel", "offer", "search"],
+      }),
+    },
+    {
+      type: "custom",
+      name: "travel-duffel-no-premature-approval",
+      predicate: expectApprovalRequest({
+        description:
+          "search itself does not require an approval — only book does. This check passes when zero or more approvals exist for BOOK_TRAVEL search.",
+        actionName: ["BOOK_TRAVEL"],
+        minCount: 0,
+      }),
+    },
+    judgeRubric({
+      name: "travel-duffel-relay-rubric",
+      threshold: 0.7,
+      description:
+        "End-to-end: agent invoked the Duffel-backed search action and surfaced concrete offers. No fabricated flights, no bypass of the cloud relay.",
+    }),
+  ],
+});

@@ -173,7 +173,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
     blocked:
-      "plugin-computeruse excludes real desktop actuation from every workspace sweep; run this exact file through packages/test/vitest/real.config.ts on an isolated interactive desktop",
+      "plugin-computeruse excludes real desktop actuation from every workspace sweep; run this exact file through packages/scripts/vitest/real.config.ts on an isolated interactive desktop",
     notes:
       "the file itself requires COMPUTER_USE_REAL_DESKTOP_TESTS=1 as a per-command acknowledgment",
   },

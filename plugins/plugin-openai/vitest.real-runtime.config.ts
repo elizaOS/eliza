@@ -7,7 +7,7 @@
  * the per-plugin e2e and the core model-provider suite never drift.
  */
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "../../packages/test/vitest/source-aliases.ts";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
 
 export default defineConfig({
   test: {

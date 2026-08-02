@@ -850,7 +850,7 @@ apt install my-tool   # Linux
 bunx vitest run src/services/skill-marketplace.test.ts src/services/skill-catalog-client.test.ts
 
 # Skill marketplace e2e lifecycle
-bunx vitest run --config test/vitest/e2e.config.ts test/skills-marketplace-api.e2e.test.ts test/skills-marketplace-services.e2e.test.ts
+bunx vitest run --config packages/scripts/vitest/e2e.config.ts test/skills-marketplace-api.e2e.test.ts test/skills-marketplace-services.e2e.test.ts
 
 bun run typecheck
 ```

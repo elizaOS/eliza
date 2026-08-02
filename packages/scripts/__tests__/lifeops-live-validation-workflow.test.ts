@@ -27,7 +27,7 @@ const workflowText = readFileSync(
   "utf8",
 );
 const integrationConfig = readFileSync(
-  new URL("packages/test/vitest/integration.config.ts", repoRoot),
+  new URL("packages/scripts/vitest/integration.config.ts", repoRoot),
   "utf8",
 );
 

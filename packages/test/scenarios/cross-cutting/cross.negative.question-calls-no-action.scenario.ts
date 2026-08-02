@@ -6,7 +6,7 @@
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoActionCalled } from "../_helpers/effect-assertions.ts";
+import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 
 const FORBIDDEN_SIDE_EFFECTS = [
   "MESSAGE",

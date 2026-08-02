@@ -266,7 +266,6 @@ const COVERED_ACTIONS: readonly string[] = [
   "DOCUMENT",
   "FILE",
   "GENERATE_MEDIA",
-  "GIT_PATHOLOGY",
   "GITHUB",
   "GITHUB_ISSUE_ASSIGN",
   "GITHUB_ISSUE_CLOSE",
@@ -641,7 +640,6 @@ const STRICT_LLM_ROUTED_ACTIONS: readonly string[] = [
   "GITHUB_NOTIFICATION_TRIAGE",
   "GITHUB_PR_LIST",
   "GITHUB_PR_REVIEW",
-  "GIT_PATHOLOGY",
   "MCP",
   "MCP_CALL_TOOL",
   "MCP_LIST_CONNECTIONS",
@@ -730,10 +728,6 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
       "GITHUB_PR_REVIEW",
     ],
     minMessageTurns: 11,
-  },
-  "deterministic-gitpathology-actions": {
-    actionNames: ["GIT_PATHOLOGY"],
-    minMessageTurns: 1,
   },
   "deterministic-media-actions": {
     actionNames: ["GENERATE_MEDIA"],

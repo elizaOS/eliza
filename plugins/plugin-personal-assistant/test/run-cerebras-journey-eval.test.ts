@@ -115,7 +115,7 @@ describe("Cerebras journey eval runner", () => {
       "vitest",
       "run",
       "--config",
-      "eliza/packages/test/vitest/live-e2e.config.ts",
+      "eliza/packages/scripts/vitest/live-e2e.config.ts",
       "eliza/plugins/plugin-personal-assistant/test/journey-cerebras-eval.live.e2e.test.ts",
     ]);
     expect(realpathSync(readFileSync(cwdFile, "utf8").trim())).toBe(
@@ -156,7 +156,7 @@ describe("Cerebras journey eval runner", () => {
     expect(invocation.command).toBe("bunx");
     expect(invocation.options.cwd).toBe("/workspace");
     expect(invocation.args).toContain(
-      "eliza/packages/test/vitest/live-e2e.config.ts",
+      "eliza/packages/scripts/vitest/live-e2e.config.ts",
     );
 
     const moduleUrl = new URL("file:///workspace/runner.mjs");

@@ -8,9 +8,9 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
-import type {
-  ScenarioContext,
-  ScenarioDefinition,
+import {
+  scenario,
+  type ScenarioContext,
 } from "@elizaos/scenario-runner/schema";
 import { joinMeetingAction } from "../../src/actions/index.js";
 import { installMockSeed } from "./_meetings-mock.js";
@@ -63,7 +63,7 @@ async function gracefulInvalidUrl(
   return undefined;
 }
 
-export default {
+export default scenario({
   id: "mock-join-invalid-url",
   lane: "pr-deterministic",
   title: "Mocked JOIN_MEETING declines a non-meeting URL gracefully",
@@ -88,4 +88,4 @@ export default {
       predicate: gracefulInvalidUrl,
     },
   ],
-} satisfies ScenarioDefinition;
+});

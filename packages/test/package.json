@@ -3,17 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Repository-wide scenario definitions and shared Vitest lane configuration.",
+  "description": "Repository-wide, cross-package scenario definitions.",
   "scripts": {
-    "test": "bun test vitest/*.test.ts",
-    "typecheck": "tsc --noEmit -p vitest/tsconfig.json",
-    "format": "bunx @biomejs/biome format --write package.json scenarios vitest",
-    "format:check": "bunx @biomejs/biome format package.json scenarios vitest"
+    "test": "bun --conditions eliza-source ../scenario-runner/src/cli.ts list scenarios --validate-scenarios",
+    "typecheck": "tsc --noEmit -p scenarios/tsconfig.json",
+    "format": "bunx @biomejs/biome format --write package.json scenarios",
+    "format:check": "bunx @biomejs/biome format package.json scenarios"
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/scenario-runner": "workspace:*",
-    "vitest": "*"
+    "@elizaos/scenario-runner": "workspace:*"
   },
   "elizaos": {
     "scripts": {
