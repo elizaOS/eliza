@@ -1,5 +1,0 @@
----
-build-target: amd64
-channel: alpha
-initial-install-version: '7.3'
-product-name: Tails

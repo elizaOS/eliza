@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-_Name=elizaOS USB Cloner
-_Comment=Install, clone, upgrade elizaOS
-_Keywords=elizaOS;install;clone;upgrade;USB;
-Icon=elizaos
-Exec=/usr/local/bin/tails-installer
-Terminal=false
-Categories=System;Utility;
