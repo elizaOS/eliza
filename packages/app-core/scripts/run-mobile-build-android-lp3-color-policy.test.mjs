@@ -40,6 +40,10 @@ const debugManifestPath = path.join(
   androidRoot,
   "lp3-color-policy/src/debug/AndroidManifest.xml",
 );
+const usbNetworkSecurityConfigPath = path.join(
+  androidRoot,
+  "lp3-color-policy/src/debug/res/xml/lp3_usb_network_security_config.xml",
+);
 const servicePath = path.join(
   androidRoot,
   "lp3-color-policy/src/debug/java/ai/elizaos/app/Lp3ColorPolicyService.java",
@@ -349,8 +353,30 @@ describe("LP3 direct Cloud build flag", () => {
     );
     expect(gradle).toContain("debug.java.srcDir");
     expect(gradle).toContain("debug.manifest.srcFile");
+    expect(gradle).toContain("debug.res.srcDir");
     expect(gradle).toContain("testRelease.java.srcDir");
     expect(gradle).not.toContain("release.java.srcDir");
+  });
+
+  it("limits direct-debug USB runtime cleartext to loopback", () => {
+    const manifest = fs.readFileSync(debugManifestPath, "utf8");
+    const networkConfig = fs.readFileSync(usbNetworkSecurityConfigPath, "utf8");
+    const platformManifest = fs.readFileSync(manifestPath, "utf8");
+
+    expect(manifest).toContain(
+      'android:networkSecurityConfig="@xml/lp3_usb_network_security_config"',
+    );
+    expect(networkConfig).toContain(
+      '<base-config cleartextTrafficPermitted="false" />',
+    );
+    expect(networkConfig).toContain(
+      '<domain includeSubdomains="false">127.0.0.1</domain>',
+    );
+    expect(networkConfig).toContain(
+      '<domain includeSubdomains="false">localhost</domain>',
+    );
+    expect(networkConfig).not.toContain('includeSubdomains="true"');
+    expect(platformManifest).not.toContain("lp3_usb_network_security_config");
   });
 
   it("keeps runtime opt-in private and writable only through same-UID commands", () => {
