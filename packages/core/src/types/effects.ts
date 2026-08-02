@@ -2,8 +2,10 @@
  * Canonical proof records for externally visible mutations. Action handlers
  * return these after persistence or provider acceptance; the message runtime
  * binds user-facing confirmation text to their stable IDs and never treats a
- * generic action success, preview, no-op, failure, or rollback as proof that a
- * requested change was applied.
+ * generic action success, preview, failure, or rollback as proof that a
+ * requested change was applied. A no-op counts only when it is replayed —
+ * the handler verified this turn that an earlier committed result already
+ * satisfies the request (the idempotent "already exists" outcome).
  */
 
 import { ElizaError } from "../errors";
@@ -101,6 +103,25 @@ export type EffectReceipt =
 	| NoopEffectReceipt
 	| FailedEffectReceipt
 	| RolledBackEffectReceipt;
+
+/**
+ * A no-op that verified and reused an earlier committed result this turn.
+ * Normalization rejects `replayed: true` with a null idempotency key, so a
+ * replayed no-op always names the operation identity whose committed effect it
+ * re-observed — which is why it can serve as desired-state proof below.
+ */
+export type ReplayedNoopEffectReceipt = NoopEffectReceipt & {
+	idempotency: EffectIdempotency & { replayed: true };
+};
+
+/**
+ * Receipts proving the desired state is durably committed: a fresh applied
+ * commit, or a replayed no-op re-observing one (idempotent "already exists").
+ * Previews, failures, rollbacks, and non-replayed no-ops never qualify.
+ */
+export type CommittedEffectReceipt =
+	| AppliedEffectReceipt
+	| ReplayedNoopEffectReceipt;
 
 /**
  * Minimal result shape used by grounding helpers without importing ActionResult
@@ -605,14 +626,29 @@ export function resolveUserFacingEffectReceipts(
 	return Object.freeze(resolved);
 }
 
+// A replayed no-op is proof the desired state is durably committed: the
+// handler verified this turn that an earlier committed result already covers
+// the request. Non-replayed no-ops stay rejected — "nothing changed" without a
+// verified prior commit proves nothing.
+function isCommittedEffectReceipt(
+	receipt: EffectReceipt,
+): receipt is CommittedEffectReceipt {
+	return (
+		receipt.outcome === "applied" ||
+		(receipt.outcome === "noop" && receipt.idempotency.replayed)
+	);
+}
+
 /**
  * Resolve the receipts bound to exact action-owned user-facing text. Every ID
- * must exist, be applied, and remain active after any same-turn rollback.
+ * must exist, prove committed desired state (applied, or a replayed no-op
+ * re-observing an earlier commit), and remain active after any same-turn
+ * rollback.
  */
 export function resolveAppliedUserFacingEffectReceipts(
 	result: EffectBearingResult,
 	allTurnReceipts: readonly EffectReceipt[] = result.effectReceipts ?? [],
-): readonly AppliedEffectReceipt[] | null {
+): readonly CommittedEffectReceipt[] | null {
 	const resolved = resolveUserFacingEffectReceipts(result, allTurnReceipts);
 	if (!resolved) return null;
 	const normalizedReceipts = normalizeEffectReceipts(allTurnReceipts);
@@ -620,15 +656,15 @@ export function resolveAppliedUserFacingEffectReceipts(
 	if (
 		resolved.some(
 			(receipt) =>
-				receipt.outcome !== "applied" || reverted.has(receipt.receiptId),
+				!isCommittedEffectReceipt(receipt) || reverted.has(receipt.receiptId),
 		)
 	) {
 		return null;
 	}
-	return Object.freeze(resolved as AppliedEffectReceipt[]);
+	return Object.freeze(resolved as CommittedEffectReceipt[]);
 }
 
-/** True only when exact verified text is bound to active applied receipts. */
+/** True only when exact verified text is bound to active committed receipts. */
 export function hasAppliedUserFacingEffectProof(
 	result: EffectBearingResult,
 	allTurnReceipts?: readonly EffectReceipt[],

@@ -1316,6 +1316,15 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		if (status === "errored" && !trajectory.metrics.finalDecision) {
 			trajectory.metrics.finalDecision = "error";
 		}
+		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
+		// fallback, structured failure reply) finish a turn without any
+		// evaluation stage, so nothing above ever set finalDecision. Stamp the
+		// clean terminal here — an absent finalDecision on a finished
+		// trajectory reads as "died mid-turn" and made delivered turns look
+		// like drops.
+		if (status === "finished" && !trajectory.metrics.finalDecision) {
+			trajectory.metrics.finalDecision = "FINISH";
+		}
 
 		try {
 			await this.queueFlushTrajectory(trajectory);
