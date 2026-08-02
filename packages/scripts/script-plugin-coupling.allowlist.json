@@ -151,13 +151,6 @@
     "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
   {
-    "file": "packages/scripts/run-cerebras.ts",
-    "tokens": [
-      "plugins/plugin-openai"
-    ],
-    "reason": "invokes plugin-openai pointed at Cerebras to test native tool-calling trajectories"
-  },
-  {
     "file": "packages/scripts/run-eliza-cerebras.ts",
     "tokens": [
       "plugins/plugin-openai"
