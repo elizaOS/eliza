@@ -34,6 +34,8 @@ const FORK_JOB_GUARD =
   "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
 const FORK_CONCURRENCY_GROUP =
   "quality-fork-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}";
+const PY_YAML_313_X64_REQUIREMENT =
+  "PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -257,6 +259,31 @@ export function validateWorkflowSources(sources) {
       `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must run only for workflow_dispatch or fork pull requests`,
     );
   }
+  const forkBuild = qualityFork.jobs.build;
+  invariant(
+    forkBuild && typeof forkBuild === "object" && Array.isArray(forkBuild.steps),
+    `${WORKFLOW_PATHS.qualityFork}: jobs.build must be a job with steps`,
+  );
+  const forkBuildSetup = forkBuild.steps.find(
+    (step) => step?.uses === "./.github/actions/setup-bun-workspace",
+  );
+  const forkSkillDependency = forkBuild.steps.find(
+    (step) => step?.name === "Install pinned skill validator dependency",
+  );
+  const forkBuildCommandIndex = forkBuild.steps.findIndex(
+    (step) => step?.name === "Build",
+  );
+  const forkSkillDependencyIndex = forkBuild.steps.indexOf(forkSkillDependency);
+  invariant(
+    forkBuildSetup?.with?.["python-version"] === "3.13" &&
+      typeof forkSkillDependency?.run === "string" &&
+      forkSkillDependency.run.includes(PY_YAML_313_X64_REQUIREMENT) &&
+      forkSkillDependency.run.includes("--require-hashes") &&
+      forkSkillDependency["continue-on-error"] !== true &&
+      forkSkillDependencyIndex >= 0 &&
+      forkBuildCommandIndex > forkSkillDependencyIndex,
+    `${WORKFLOW_PATHS.qualityFork}: hosted build must install the hash-pinned Python 3.13 skill validator dependency before building`,
+  );
   const forkCliSetupBun = qualityFork.jobs[
     "elizaos-cli-global-smoke"
   ].steps.find((step) => step?.uses?.startsWith("oven-sh/setup-bun@"));

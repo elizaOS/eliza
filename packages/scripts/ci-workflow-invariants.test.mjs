@@ -180,6 +180,29 @@ for (const fixture of [
       /jobs.lint must run only for workflow_dispatch or fork pull requests/,
   },
   {
+    name: "missing hosted-build skill validator dependency",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace(
+        "      - name: Install pinned skill validator dependency\n",
+        "      - name: Omit pinned skill validator dependency\n",
+      ),
+    pattern: /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+  },
+  {
+    name: "unhashed hosted-build skill validator dependency",
+    key: "qualityFork",
+    mutate: (source) => source.replace("            --require-hashes \\\n", ""),
+    pattern: /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+  },
+  {
+    name: "mismatched hosted-build skill validator Python",
+    key: "qualityFork",
+    mutate: (source) =>
+      source.replace('          python-version: "3.13"\n', '          python-version: "3.12"\n'),
+    pattern: /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+  },
+  {
     name: "shared CLI Bun executable installation",
     key: "qualityFork",
     mutate: (source) =>
