@@ -24,7 +24,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
+import { sanitizeCompletionRelay } from "@elizaos/shared";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import type {

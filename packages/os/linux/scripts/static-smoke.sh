@@ -138,6 +138,7 @@ node --check scripts/prepare-elizaos-app-overlay.mjs
 node --check scripts/generate-release-evidence.mjs
 node --check scripts/validate-model-catalog.mjs
 node --check scripts/validate-runtime-overlay.mjs
+grep -q '^export ELIZA_DISABLE_DIRECT_RUN=1$' scripts/runtime-api-smoke.sh
 node --check tails/config/chroot_local-includes/usr/local/lib/elizaos/renderer-server.mjs
 grep -q 'ELIZAOS_APP_ARTIFACT' Justfile
 grep -q 'ensure_plugin_runtime_dist "plugins/plugin-health" package-js' Justfile

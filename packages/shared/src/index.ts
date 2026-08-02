@@ -334,6 +334,7 @@ export * from "./utils/sql-compat.js";
 export * from "./utils/streaming-text.js";
 export * from "./utils/subscription-auth.js";
 export * from "./utils/trajectory-format.js";
+export * from "./utils/transcript-sanitizer.js";
 export * from "./utils/tts-debug.js";
 export * from "./validation-keywords.js";
 export * from "./view-hero-art.js";

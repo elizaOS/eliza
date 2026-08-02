@@ -40,6 +40,9 @@ export XDG_DATA_HOME="${ELIZA_STATE_DIR}/xdg-data"
 export XDG_STATE_HOME="${ELIZA_STATE_DIR}/xdg-state"
 export ELIZAOS_LIVE_EMBEDDING_FALLBACK=1
 export ELIZA_DISABLE_PROACTIVE_AGENT=1
+# Match the systemd launcher so startup exercises the packaged agent server
+# instead of the desktop entrypoint's direct-run path.
+export ELIZA_DISABLE_DIRECT_RUN=1
 export ELIZAOS_LIVE_USB=1
 export ELIZAOS_PRIVACY_MODE=1
 export ELIZA_API_PORT="${PORT}"

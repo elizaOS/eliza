@@ -448,6 +448,41 @@ function validateAgentApiLazyWalletImport() {
   }
 }
 
+function validateAgentRelaySanitizerDependency() {
+  const agentHelperPath = path.join(
+    stage,
+    "Resources/app/eliza-dist/node_modules/@elizaos/agent/src/api/server-helpers-swarm.ts",
+  );
+  assertFile(agentHelperPath, "agent swarm relay helper");
+  const helper = readText(agentHelperPath);
+  if (!helper.includes('from "@elizaos/shared"')) {
+    fail(`${agentHelperPath}: relay sanitizer must come from @elizaos/shared`);
+  }
+  if (helper.includes('from "@elizaos/plugin-agent-orchestrator"')) {
+    fail(
+      `${agentHelperPath}: startup-safe relay sanitation must not depend on the live orchestrator stub`,
+    );
+  }
+
+  const sharedIndexPath = path.join(
+    packageDirectory("@elizaos/shared"),
+    "dist/index.js",
+  );
+  assertContains(
+    sharedIndexPath,
+    "./utils/transcript-sanitizer.js",
+    "shared relay sanitizer barrel export",
+  );
+  assertContains(
+    path.join(
+      packageDirectory("@elizaos/shared"),
+      "dist/utils/transcript-sanitizer.js",
+    ),
+    "sanitizeCompletionRelay",
+    "shared relay sanitizer implementation",
+  );
+}
+
 function validateSymlinks() {
   for (const [relativePath, target] of [
     ["node_modules", "Resources/app/eliza-dist/node_modules"],
@@ -518,6 +553,7 @@ if (manifest) {
   validateBranding();
   validateRuntimeEntry();
   validateAgentApiLazyWalletImport();
+  validateAgentRelaySanitizerDependency();
   validateSymlinks();
   validateRequiredRuntimePackages();
 }
