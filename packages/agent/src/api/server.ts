@@ -4261,7 +4261,6 @@ export async function startApiServer(opts?: {
         );
       }
     }
-
   };
 
   // ── WebSocket Server ─────────────────────────────────────────────────────

@@ -16,8 +16,6 @@ import {
   type Route,
   type RouteResponse,
 } from "@elizaos/core";
-import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
 import {
   dispatchBufferedRequest,
   dispatchStreamingRequest,
@@ -26,6 +24,8 @@ import {
   createStdioBridge,
   type StdioBridgeResponseFrame,
 } from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
+import { Hono } from "hono";
+import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";
 import { mountRoutesOnHono } from "./hono-adapter.ts";
 

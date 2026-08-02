@@ -17,8 +17,8 @@ import {
   type Route,
   type RouteResponse,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
 import { dispatchBufferedRequest } from "@elizaos/plugin-capacitor-bridge/android/dispatch";
+import { describe, expect, it } from "vitest";
 import { dispatchRoute } from "./dispatch-route.ts";
 
 /**
