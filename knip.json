@@ -117,38 +117,6 @@
       "project": ["src/**/*.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/os/homepage": {
-      "entry": [
-        "index.html",
-        "src/main.tsx",
-        "src/index.css",
-        "scripts/**/*.mjs",
-        "tests/**/*.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "project": [
-        "src/**/*.{css,ts,tsx}",
-        "scripts/**/*.mjs",
-        "tests/**/*.ts",
-        "vite.config.ts",
-        "playwright.config.ts"
-      ],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "packages/os/usb-installer": {
-      "entry": [
-        "index.html",
-        "src/index.ts",
-        "src/main.tsx",
-        "src/**/*.test.ts",
-        "src/**/*.test.tsx",
-        "vite.config.ts",
-        "vitest.config.ts"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts", "vitest.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
     "packages/shared": {
       "entry": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
       "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
@@ -378,11 +346,6 @@
         "@elizaos/plugin-workflow"
       ]
     },
-    "packages/contracts": {
-      "entry": ["src/index.ts"],
-      "project": ["src/**/*.ts", "!src/**/*.d.ts"],
-      "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
-    },
     "packages/app-core/platforms/electrobun": {
       "entry": [
         "src/**/*.{ts,tsx,js}",
@@ -398,21 +361,6 @@
       ],
       "ignore": ["build/**", "artifacts/**"],
       "ignoreDependencies": ["bonjour-service", "rcedit"]
-    },
-    "packages/plugin-remote-manifest": {
-      "entry": [
-        "src/**/*.ts",
-        "examples/**/*.test.ts",
-        "examples/**/worker.mjs",
-        "examples/**/plugin.json"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "examples/**/*.test.ts",
-        "examples/**/worker.mjs",
-        "examples/**/plugin.json"
-      ],
-      "ignore": ["dist/**"]
     },
     "packages/browser-extension": {
       "entry": [
@@ -652,11 +600,6 @@
         "src/**/*.d.ts",
         "src/**/*.d.ts.map"
       ]
-    },
-    "packages/os": {
-      "entry": ["package.json"],
-      "project": [],
-      "ignore": ["android/**", "linux/**"]
     },
     "plugins/plugin-tailscale": {
       "entry": ["src/index.ts"],

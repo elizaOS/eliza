@@ -21,10 +21,6 @@
       "@elizaos/plugin-agent-skills": [
         "../../plugins/plugin-agent-skills/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest": [
-        "../plugin-remote-manifest/src/index.ts"
-      ],
-      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
       "@elizaos/plugin-registry": [
         "../../plugins/plugin-registry/src/index.ts"
       ],
@@ -78,18 +74,6 @@
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-discord": ["../../plugins/plugin-discord/index.ts"],
       "@elizaos/plugin-discord/*": ["../../plugins/plugin-discord/*"],
-      "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "../../plugins/plugin-local-inference/src/*"
-      ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../plugins/plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../plugins/plugin-capacitor-bridge/src/*"
-      ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
@@ -97,7 +81,9 @@
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
-      "@elizaos/plugin-google-workspace": ["../../plugins/plugin-google-workspace/src/index.ts"],
+      "@elizaos/plugin-google-workspace": [
+        "../../plugins/plugin-google-workspace/src/index.ts"
+      ],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
@@ -121,6 +107,27 @@
       "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-dev-runtime": [
+        "./node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
       "@elizaos/capacitor-gateway": [
         "../../plugins/plugin-native-gateway/src/index.ts"
       ],
@@ -130,9 +137,6 @@
       "@elizaos/capacitor-canvas": [
         "../../plugins/plugin-native-canvas/src/index.ts"
       ],
-      "@elizaos/core": ["../core/src/index.node.ts"],
-      "@elizaos/contracts": ["../contracts/src/index.ts"],
-      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/capacitor-location": [
         "../../plugins/plugin-native-location/src/index.ts"
       ],
@@ -147,15 +151,7 @@
       ],
       "@elizaos/capacitor-screencapture": [
         "../../plugins/plugin-native-screencapture/src/index.ts"
-      ],
-      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
-      "react": ["./node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
-      "react/jsx-dev-runtime": [
-        "./node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"]
+      ]
     }
   },
   "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],

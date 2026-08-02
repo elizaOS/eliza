@@ -203,7 +203,6 @@ const pluginBrowserBridgeSrcRoot = path.join(
   "plugins/plugin-browser/src",
 );
 const uiPkgRoot = path.join(elizaRoot, "packages/ui");
-const cloudUiPkgRoot = path.join(elizaRoot, "packages/cloud-ui");
 const importConversationsPkgRoot = path.join(
   elizaRoot,
   "packages/import-conversations",
@@ -2504,10 +2503,6 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-contacts/src/register.ts",
         ],
         [
-          "@elizaos/plugin-native-settings/register",
-          "plugins/plugin-native-settings/src/register.ts",
-        ],
-        [
           "@elizaos/plugin-messages/register",
           "plugins/plugin-messages/src/register.ts",
         ],
@@ -2608,21 +2603,6 @@ export const INVALID_TRACER_PROVIDER = {};
             },
           ]
         : []),
-      // @elizaos/cloud-ui — the Eliza Cloud product UI, split out of @elizaos/ui
-      // as a real package (arch #12092 item 23). Resolved to source like every
-      // other linked workspace package. This is a REAL dependency, not a
-      // passthrough stub: cloud-free builds never import it (the app only
-      // imports it inside the `__ELIZA_WEB_SHELL__`-guarded lazy block, which is
-      // statically unreachable when the shell is excluded), so its surface
-      // tree-shakes out with no stub alias.
-      {
-        find: /^@elizaos\/cloud-ui$/,
-        replacement: path.join(cloudUiPkgRoot, "src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/cloud-ui\/(.+)$/,
-        replacement: path.join(cloudUiPkgRoot, "src/$1"),
-      },
       // Force local @elizaos/ui source paths when the app bundles linked
       // @elizaos/app-core sources directly.
       {
@@ -3334,7 +3314,6 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/*.tsbuildinfo",
         "**/packages/**/output/generated-cad/**",
         "**/packages/**/src/i18n/generated/**",
-        "**/packages/os/**",
         "**/packages/training/data/raw/**",
         "**/plugin-local-inference/native/audio-fixtures/**",
         "**/plugin-local-inference/src/services/__tests__/**",
