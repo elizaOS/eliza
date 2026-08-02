@@ -20,7 +20,7 @@ const ORGANIZATION_ID = "00000000-0000-4000-8000-000000002187";
 const OBJECT_SET_ID = "00000000-0000-4000-8000-000000003187";
 const OTHER_OBJECT_SET_ID = "00000000-0000-4000-8000-000000004187";
 const CREATED_AT = "2026-07-26T12:00:00.000Z";
-const migrationUrl = new URL("./migrations/0191_agent_backup_write_epochs.sql", import.meta.url);
+const migrationUrl = new URL("./migrations/0192_agent_backup_write_epochs.sql", import.meta.url);
 
 let dbWrite!: typeof import("./client").dbWrite;
 let closeDb: typeof import("./client").closeDatabaseConnectionsForTests | undefined;
@@ -210,7 +210,7 @@ describe("0191 backup write epochs", () => {
       ),
     ) as { entries: Array<{ tag: string }> };
     expect(
-      journal.entries.filter((entry) => entry.tag === "0191_agent_backup_write_epochs"),
+      journal.entries.filter((entry) => entry.tag === "0192_agent_backup_write_epochs"),
     ).toHaveLength(1);
   });
 

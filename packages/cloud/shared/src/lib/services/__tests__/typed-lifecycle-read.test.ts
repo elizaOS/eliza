@@ -85,7 +85,7 @@ async function seedFreshVerifiedBackup(sandboxRecordId: string): Promise<void> {
 
 async function applyLifecycleRevisionMigration(): Promise<void> {
   const migration = await readFile(
-    join(import.meta.dir, "../../../db/migrations/0192_agent_sandbox_lifecycle_revision.sql"),
+    join(import.meta.dir, "../../../db/migrations/0187_agent_sandbox_lifecycle_revision.sql"),
     "utf8",
   );
   const statements = migration
@@ -359,7 +359,9 @@ describe("typed lifecycle reads and exact sandbox generations", () => {
             .set({
               bridge_url: `http://127.0.0.1:${port}`,
               health_url: `http://127.0.0.1:${port}`,
+              sandbox_id: "agent-sleep-fence",
               node_id: "test-node",
+              container_name: "agent-sleep-fence",
               bridge_port: port,
               headscale_ip: "127.0.0.1",
             })
@@ -398,6 +400,57 @@ describe("typed lifecycle reads and exact sandbox generations", () => {
       const current = await agentSandboxesRepository.findByIdAndOrg(sandbox.id, orgId);
       expect(current?.status).toBe("sleeping");
       expect(current?.lifecycle_revision).toBe(sandbox.lifecycle_revision + 1);
+    },
+    TEST_TIMEOUT,
+  );
+  test(
+    "a raw SQL writer advances the revision, so a CAS holding the pre-write value loses",
+    async () => {
+      const { orgId, userId } = await seedOwner();
+      const sandbox = await seedRunningAgent(orgId, userId);
+      const observed = {
+        organizationId: orgId,
+        environmentRevision: sandbox.environment_revision,
+        sandboxId: sandbox.sandbox_id,
+        nodeId: sandbox.node_id,
+        containerName: sandbox.container_name,
+        lifecycleRevision: sandbox.lifecycle_revision,
+      };
+
+      // Exactly the writer the timestamp fence could not see: a raw statement
+      // that sets updated_at itself, with microsecond precision PGlite's own
+      // NOW() cannot produce. Under the eq() fence the CAS still matched after
+      // this write; the trigger now moves the revision whatever the statement
+      // touches.
+      await dbWrite.execute(
+        sql`UPDATE agent_sandboxes
+            SET updated_at = TIMESTAMP '2026-07-23 11:59:00.123456'
+            WHERE id = ${sandbox.id}`,
+      );
+      const afterRawWrite = await agentSandboxesRepository.findByIdAndOrg(sandbox.id, orgId);
+      if (!afterRawWrite) throw new Error("sandbox disappeared after raw lifecycle write");
+      expect(afterRawWrite?.lifecycle_revision).toBe(sandbox.lifecycle_revision + 1);
+
+      const stale = await agentSandboxesRepository.update(
+        sandbox.id,
+        { status: "sleeping" },
+        observed,
+      );
+
+      expect(stale).toBeUndefined();
+      const unchanged = await agentSandboxesRepository.findByIdAndOrg(sandbox.id, orgId);
+      expect(unchanged?.status).toBe("running");
+
+      // The same call carrying the revision the raw write left behind commits,
+      // so the refusal above is the fence and not an unrelated rejection.
+      const fresh = await agentSandboxesRepository.update(
+        sandbox.id,
+        { status: "sleeping" },
+        { ...observed, lifecycleRevision: afterRawWrite.lifecycle_revision },
+      );
+
+      expect(fresh?.status).toBe("sleeping");
+      expect(fresh?.lifecycle_revision).toBe(sandbox.lifecycle_revision + 2);
     },
     TEST_TIMEOUT,
   );

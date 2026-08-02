@@ -9215,6 +9215,7 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       expect(sql).toContain("deletion_attempt_id");
       expect(sql).toContain("environment_revision");
       expect(sql).toContain("lifecycle_revision");
+      expect(sql).not.toContain("updated_at");
       expect(sql).toContain("claimed_at");
     } finally {
       upgradeTransactionImpl = null;

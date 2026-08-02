@@ -82,7 +82,7 @@ let requestSeq = 0;
 
 async function applyLifecycleRevisionMigration(): Promise<void> {
   const migration = await readFile(
-    join(import.meta.dir, "../../db/migrations/0192_agent_sandbox_lifecycle_revision.sql"),
+    join(import.meta.dir, "../../db/migrations/0187_agent_sandbox_lifecycle_revision.sql"),
     "utf8",
   );
   for (const statement of migration

@@ -24,14 +24,14 @@ const warmFenceMigration = readFileSync(
 );
 const rollbackStandbyMigration = readFileSync(
   new URL(
-    "../../cloud/shared/src/db/migrations/0188_rollback_standby_state.sql",
+    "../../cloud/shared/src/db/migrations/0189_rollback_standby_state.sql",
     import.meta.url,
   ),
   "utf8",
 );
 const restoreValidationMigration = readFileSync(
   new URL(
-    "../../cloud/shared/src/db/migrations/0189_agent_snapshot_restore_validations.sql",
+    "../../cloud/shared/src/db/migrations/0190_agent_snapshot_restore_validations.sql",
     import.meta.url,
   ),
   "utf8",

@@ -1141,9 +1141,10 @@ export class AgentSandboxesRepository {
         sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.sandboxId}`,
         sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expectedRunningGeneration.nodeId}`,
         sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expectedRunningGeneration.containerName}`,
-        // The database-owned generation advances on every write, including
-        // raw SQL writers, so this fence has neither timestamp precision nor
-        // same-millisecond ABA windows.
+        // The database-owned lifecycle_revision subsumes the earlier
+        // ms-windowed updated_at fence (#17284): the trigger advances it on
+        // every write, including raw SQL writers, so no timestamp-precision
+        // or same-millisecond ABA window exists (#17249 fence class).
         eq(agentSandboxes.lifecycle_revision, expectedRunningGeneration.lifecycleRevision),
       );
     }

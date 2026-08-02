@@ -59,7 +59,7 @@ const DDL = `
 `;
 const MIGRATION = readFileSync(
   fileURLToPath(
-    new URL("../../db/migrations/0190_docker_host_port_reservations.sql", import.meta.url),
+    new URL("../../db/migrations/0191_docker_host_port_reservations.sql", import.meta.url),
   ),
   "utf8",
 );

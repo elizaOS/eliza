@@ -4322,6 +4322,8 @@ export class ElizaSandboxService {
           current.warm_claim_key_fingerprint !== persistedFingerprint ||
           current.warm_claim_attested_environment_revision !== current.environment_revision
         ) {
+          // Every raw transition carries the database generation loaded under
+          // the lifecycle lock; the trigger advances the returned generation.
           const rows = await tx.execute<AgentSandbox>(sql`
             UPDATE ${agentSandboxes}
             SET

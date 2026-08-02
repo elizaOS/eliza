@@ -306,6 +306,10 @@ describe("AgentSandboxesRepository", () => {
 
     if (!capturedWhere) throw new Error("update did not build a generation fence");
     const query = new PgDialect().sqlToQuery(capturedWhere);
+    // The predicate set is pinned by the parameters the statement binds, not by
+    // matching column names in its text. That the fence actually REFUSES a
+    // stale revision is proved against real PostgreSQL in
+    // `__tests__/typed-lifecycle-read.test.ts`, which a text match cannot show.
     const sql = query.sql.toLowerCase();
     expect(sql).toContain("organization_id");
     expect(sql).toContain("status");
