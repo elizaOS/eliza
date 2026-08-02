@@ -181,6 +181,33 @@ describe("delayed fork-workflow approval", () => {
     });
   });
 
+  it("fails immediately with the held workflow path when approval is required", async () => {
+    const clock = fakeClock();
+    let checkLoads = 0;
+    let sleeps = 0;
+
+    await assert.rejects(
+      waitForRequiredChecks({
+        loadChecks: async () => {
+          checkLoads += 1;
+          return [];
+        },
+        loadActionRequiredPaths: async () => [".github/workflows/gitleaks.yml"],
+        timeoutMs: 1_200_000,
+        completionGraceMs: 240_000,
+        intervalMs: 30_000,
+        now: clock.now,
+        sleep: async () => {
+          sleeps += 1;
+        },
+      }),
+      /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml/,
+    );
+
+    assert.equal(checkLoads, 0);
+    assert.equal(sleeps, 0);
+  });
+
   it("does not extend the deadline for a missing or unapproved check", async () => {
     const clock = fakeClock();
     await assert.rejects(

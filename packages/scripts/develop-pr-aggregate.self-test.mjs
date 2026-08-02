@@ -22,6 +22,11 @@ import {
   TRUSTED_BASE_REF_LINE,
   validateAggregateWorkflow,
 } from "./develop-pr-aggregate-workflow-contract.mjs";
+import {
+  actionRequiredWorkflowPaths,
+  awaitingApprovalMessage,
+  loadActionRequiredWorkflowPaths,
+} from "./github-actions-approval.mjs";
 
 const NOW_MS = Date.parse("2026-07-14T01:00:00Z");
 const HEAD_SHA = "a".repeat(40);
@@ -73,6 +78,104 @@ const pendingAtDeadline = evaluate(
 );
 assert.equal(pendingAtDeadline.verdict, "failure");
 assert.equal(resultFor(pendingAtDeadline, "gitleaks").code, "pending-timeout");
+
+const heldWorkflowPath = ".github/workflows/gitleaks.yml";
+const heldBeforeDeadline = evaluate(buildCanaryCheckRuns("missing", NOW_MS), {
+  actionRequiredWorkflowPaths: [heldWorkflowPath],
+});
+assert.equal(heldBeforeDeadline.verdict, "failure");
+assert.equal(
+  resultFor(heldBeforeDeadline, "gitleaks").code,
+  "awaiting-approval",
+);
+assert.match(
+  resultFor(heldBeforeDeadline, "gitleaks").detail,
+  /required workflows awaiting maintainer approval: \.github\/workflows\/gitleaks\.yml/,
+);
+
+assert.deepEqual(
+  actionRequiredWorkflowPaths(
+    [
+      {
+        id: 10,
+        path: heldWorkflowPath,
+        event: "pull_request",
+        head_sha: HEAD_SHA,
+        status: "completed",
+        conclusion: "action_required",
+      },
+      {
+        id: 11,
+        path: ".github/workflows/wrong-head.yml",
+        event: "pull_request",
+        head_sha: "b".repeat(40),
+        conclusion: "action_required",
+      },
+      {
+        id: 12,
+        path: ".github/workflows/wrong-event.yml",
+        event: "workflow_dispatch",
+        head_sha: HEAD_SHA,
+        conclusion: "action_required",
+      },
+    ],
+    HEAD_SHA,
+  ),
+  [heldWorkflowPath],
+);
+
+assert.deepEqual(
+  actionRequiredWorkflowPaths(
+    [
+      {
+        id: 20,
+        path: heldWorkflowPath,
+        event: "pull_request",
+        head_sha: HEAD_SHA,
+        conclusion: "action_required",
+      },
+      {
+        id: 21,
+        path: heldWorkflowPath,
+        event: "pull_request",
+        head_sha: HEAD_SHA,
+        status: "completed",
+        conclusion: "success",
+      },
+    ],
+    HEAD_SHA,
+  ),
+  [],
+);
+assert.equal(
+  awaitingApprovalMessage([heldWorkflowPath]),
+  `required workflows awaiting maintainer approval: ${heldWorkflowPath}`,
+);
+
+const approvalPages = [];
+const pagedHeldPaths = await loadActionRequiredWorkflowPaths({
+  repository: "elizaOS/eliza",
+  headSha: HEAD_SHA,
+  requestJson: async (url) => {
+    approvalPages.push(url);
+    return {
+      workflow_runs:
+        approvalPages.length === 1
+          ? [
+              {
+                id: 30,
+                path: heldWorkflowPath,
+                event: "pull_request",
+                head_sha: HEAD_SHA,
+                conclusion: "action_required",
+              },
+            ]
+          : [],
+    };
+  },
+});
+assert.deepEqual(pagedHeldPaths, [heldWorkflowPath]);
+assert.equal(approvalPages.length, 1);
 
 for (const [scenario, code] of [
   ["cancelled", "terminal-cancelled"],
