@@ -2,9 +2,9 @@
 
 Date: 2026-05-20
 
-This report maps current TEE research and implementation options onto the
-local `upstreams/research/chip`, `packages/os`, and `packages/agent` codebase. The target
-product is an Eliza agent running on elizaOS Linux or AOSP, on an eventual
+This report maps current TEE research and implementation options across the
+local `upstreams/research/chip` and `packages/agent` trees plus the standalone
+`elizaOS/os` repository. The target product is an Eliza agent running on elizaOS Linux or AOSP, on an eventual
 Eliza RISC-V chip, with end-to-end attestation and key release. The preferred
 long-term shape is a whole-OS confidential domain: the OS, agent runtime, NPU
 runtime, and local model/data path execute inside the protected domain, while
@@ -52,12 +52,12 @@ NPU, interconnect, and security under `upstreams/research/chip/docs/arch/`, plus
 Buildroot/AOSP/Linux scaffolding and NPU runtime packages under `upstreams/research/chip/sw`
 and `upstreams/research/chip/compiler/runtime`.
 
-### `packages/os`
+### `elizaOS/os`
 
 The OS package is the elizaOS distribution:
 
 - Linux is a Tails-derived live USB path under `linux/variants/eliza-tails/`.
-- AOSP lives under `packages/os/android/`, with Cuttlefish validation, Pixel
+- AOSP lives under `elizaOS/os:packages/os/android/`, with Cuttlefish validation, Pixel
   target support, privileged assistant/system app integration, sepolicy, init
   hooks, product overlays, and release manifests.
 - The Android layer already treats `ai.elizaos.app` as the privileged assistant
@@ -372,10 +372,10 @@ This is the preferred OS target when hardware supports it.
 
 **Implementation**
 
-- Add a measured image manifest to `packages/os/release/` that records kernel,
+- Add a measured image manifest to `elizaOS/os:packages/os/release/` that records kernel,
   initramfs, rootfs, app, policy, and dstack guest digests.
 - Add Linux build hooks to install a dstack guest agent / TEE provider service.
-- Add AOSP product hooks under `packages/os/android/vendor/eliza/` for
+- Add AOSP product hooks under `elizaOS/os:packages/os/android/vendor/eliza/` for
   attestation service, protected-VM policy, and privileged binder permissions.
 - Add release validation that refuses to publish if measurement manifests,
   signatures, rollback indices, and dm-verity evidence are missing.
@@ -408,7 +408,7 @@ This is the practical near-term OS architecture.
 
 **Implementation**
 
-- Add `packages/os/docs/tee-protected-agent-vm.md`.
+- Add `elizaOS/os:packages/os/docs/tee-protected-agent-vm.md`.
 - Package a dstack-compatible guest image for Linux.
 - For AOSP, use AVF/pKVM where available for a protected Linux guest carrying
   the agent, or use a privileged service that brokers to a protected VM.
@@ -446,7 +446,7 @@ This is the best AOSP-specific option.
 **Implementation**
 
 - Add an AVF capability and device-support matrix to
-  `packages/os/android/installer/manifests/`.
+  `elizaOS/os:packages/os/android/installer/manifests/`.
 - Add a protected-agent service to the AOSP vendor tree, with sepolicy scoped
   to binder/vsock access and no broad filesystem access.
 - Include pVM quote evidence in the AOSP boot validator.
@@ -629,7 +629,7 @@ Deliverables:
 
 - `packages/agent/src/services/tee-evidence.ts`
 - `packages/agent/src/services/tee-policy.ts`
-- `packages/os/docs/tee-measured-boot-contract.md`
+- `elizaOS/os:packages/os/docs/tee-measured-boot-contract.md`
 - `upstreams/research/chip/docs/security/confidential-domain.md`
 - Fixed quote/evidence fixtures for tests.
 
@@ -904,16 +904,16 @@ Implemented on macOS:
   `evidence/tee/local-stack-validation-2026-05-20.json` with all macOS-feasible
   checks and the explicit bare-metal gates still deferred.
 - OS measured-boot contract docs in
-  `packages/os/docs/tee-measured-boot-contract.md` and protected-agent VM docs
-  in `packages/os/docs/tee-protected-agent-vm.md`.
-- OS release manifest TEE validation in `packages/os/scripts/os-release-lib.mjs`
-  and `packages/os/release/schema/elizaos-os-release-manifest.schema.json`.
+  `elizaOS/os:packages/os/docs/tee-measured-boot-contract.md` and protected-agent VM docs
+  in `elizaOS/os:packages/os/docs/tee-protected-agent-vm.md`.
+- OS release manifest TEE validation in `elizaOS/os:packages/os/scripts/os-release-lib.mjs`
+  and `elizaOS/os:packages/os/release/schema/elizaos-os-release-manifest.schema.json`.
 - OS TEE measurement generator in
-  `packages/os/scripts/generate-tee-measurements.mjs`, hashing boot, OS, agent,
+  `elizaOS/os:packages/os/scripts/generate-tee-measurements.mjs`, hashing boot, OS, agent,
   policy, container, device, and NPU firmware inputs into release measurements.
 - OS TEE measurement validator in
-  `packages/os/scripts/validate-tee-measurements.mjs`, with example fixture
-  `packages/os/release/schema/tee-measurements.example.json`.
+  `elizaOS/os:packages/os/scripts/validate-tee-measurements.mjs`, with example fixture
+  `elizaOS/os:packages/os/release/schema/tee-measurements.example.json`.
 - Chip confidential-domain contract in
   `upstreams/research/chip/docs/security/confidential-domain.md`, machine-readable spec
   in `upstreams/research/chip/docs/spec-db/tee-confidential-domain-contract.json`, and
@@ -937,8 +937,8 @@ Validation run on macOS:
 - `bunx vitest run --config packages/agent/vitest.config.ts packages/agent/src/services/tee-policy.test.ts packages/agent/src/services/dstack-tee-provider.test.ts packages/agent/src/services/remote-capability-tee-policy.test.ts --coverage.enabled=false`
 - `bun run --cwd packages/agent typecheck`
 - `bunx @biomejs/biome check ...` over the new/changed agent files
-- `node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs`
-- `node packages/os/scripts/validate-tee-measurements.mjs`
+- `node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs` from an `elizaOS/os` checkout
+- `node packages/os/scripts/validate-tee-measurements.mjs` from an `elizaOS/os` checkout
 - `node -e "JSON.parse(...elizaos-os-release-manifest.schema.json...)"`
 - `python3 upstreams/research/chip/scripts/check_tee_confidential_domain_contract.py`
 - `python3 upstreams/research/chip/scripts/check_tee_iopmp_policy.py`

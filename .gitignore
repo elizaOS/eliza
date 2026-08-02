@@ -635,7 +635,6 @@ packages/app-core/collision-report.json
 !/plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.optimized.json
 !/plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.run.log
 /plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
-/packages/os/linux/vm/output/
 
 # Compiler output belongs in each package's dist directory, never beside source.
 /packages/auth/src/atomic-json.d.ts*
@@ -802,20 +801,6 @@ storybook-static
 .env.local.bak
 **/.env.local.bak
 
-# Linux live-build / debootstrap working state — large, root-owned, recreated
-# on every build. Never check in; turbo must not traverse these.
-packages/os/linux/**/chroot/
-packages/os/linux/**/chroot.files
-packages/os/linux/**/.build/
-packages/os/linux/**/cache/
-packages/os/linux/**/binary/
-packages/os/linux/**/local/
-packages/os/linux/**/out/
-
-# riscv64 Bun cross-compile cache + build output (multi-GB, regenerated).
-packages/app-core/scripts/bun-riscv64/dist/
-packages/app-core/scripts/bun-riscv64/build-linux-riscv64-cpu/
-
 # Android packaged runtime artifacts (bundled agent dist + compiled native libs).
 packages/app-core/platforms/android/app/src/main/assets/agent/
 packages/app-core/platforms/android/app/src/main/jniLibs/
@@ -832,14 +817,11 @@ packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames/
 # Zig build cache + compiled output.
 **/.zig-cache/
 **/zig-out/
-packages/os/release/
 waifu.fun/
 
 # --- synced artifacts (stripped for fast clones; pulled on install by
 #     packages/scripts/sync-artifacts.mjs from elizaOS/eliza-archive) ---
 /.eliza-artifacts-version
-/packages/os/linux/elizaos/config/includes.chroot/opt/elizaos-artifacts/elizaos-app/agent-bundle.js
-/packages/os/linux/elizaos/config/includes.chroot/opt/elizaos-artifacts/elizaos-app/musl-runtime/bun
 /packages/research/chip/board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
 /packages/research/chip/board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
 /packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
@@ -872,12 +854,10 @@ waifu.fun/
 /plugins/plugin-companion/public/vrms/eliza-8.vrm.gz
 /packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_SHOULDER_ROLL.STL
 /packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_SHOULDER_ROLL.STL
-/packages/os/setup/public/clouds/clouds_8x_1080p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_8x_1080p.mp4
 /packages/app/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_HQ_1080p.mp4
-/packages/os/homepage/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/shared/assets/background/Clouds_Loop_HQ_1080p.mp4
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/torso_link_rev_1_0.STL
 /plugins/plugin-companion/public/vrms/eliza-6.vrm.gz
@@ -890,8 +870,6 @@ waifu.fun/
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_rubber_hand.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_rubber_hand.STL
 /packages/app/public/brand/concepts/billboard_concept.jpg
-/packages/os/homepage/public/assets/billboard_concept.jpg
-/packages/os/homepage/public/brand/concepts/billboard_concept.jpg
 /packages/shared/assets-classic/concepts/billboard_concept.jpg
 /packages/shared/assets/concepts/billboard_concept.jpg
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_palm_link.STL
@@ -911,11 +889,9 @@ waifu.fun/
 /packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_HIP_YAW.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/pelvis_contour_link.STL
 /packages/research/robot/mechanical/unitree-r1-bodykit/review/visual-concept-orange-android.png
-/packages/os/setup/public/clouds/clouds_4x_1080p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_4x_1080p.mp4
 /packages/research/chip/mechanical/e1-phone/review/local-kicad-cli/routed-drc.json
 /packages/research/chip/board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_3d_stp.stp
-/packages/os/setup/public/clouds/clouds_8x_1080p.webm
 /packages/shared/assets-classic/background/optimized/clouds_8x_1080p.webm
 /packages/cloud-frontend/public/brand/elizaos-phone.png
 /plugins/plugin-companion/public_src/animations/mixamo/Angry.fbx
@@ -943,22 +919,17 @@ waifu.fun/
 /packages/homepage/public/product/elizaos-usb-key-concept.png
 /plugins/plugin-companion/public_src/animations/mixamo/Hip Hop Dancing 2.fbx
 /packages/cloud-frontend/public/product/elizaos-usb-key-concept.png
-/packages/os/homepage/public/assets/elizaos-usb-key-concept.png
 /plugins/plugin-contacts/assets/hero.png
 /plugins/plugin-phone/assets/hero.png
 /plugins/plugin-wifi/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx
 /packages/research/robot/mechanical/unitree-r1-bodykit/review/manufacturing-manifest.json
-/packages/os/setup/public/clouds/clouds_8x_720p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_8x_720p.mp4
 /packages/research/chip/board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
 /plugins/plugin-shopify/assets/hero.png
 /packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.obj
-/packages/os/setup/public/clouds/clouds_4x_1080p.webm
 /packages/shared/assets-classic/background/optimized/clouds_4x_1080p.webm
 /packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.stl
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-mobile-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-mobile-mobile-darwin.png
 /packages/research/robot/examples/robot-mujoco-demo/evidence/live/live_camera_aruco_contact_sheet.png
 /plugins/plugin-companion/public_src/animations/mixamo/Bashful.fbx
 /plugins/plugin-personal-assistant/assets/hero.png
@@ -967,7 +938,6 @@ waifu.fun/
 /packages/docs/images/shakespeare-screenshot.jpeg
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/pelvis.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Bored.fbx
-/packages/os/setup/public/clouds/clouds_8x_720p.webm
 /packages/shared/assets-classic/background/optimized/clouds_8x_720p.webm
 /packages/research/robot/assets/profiles/hiwonder-ainex/meshes/body_link.STL
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2018-10.pdf
@@ -979,7 +949,6 @@ waifu.fun/
 /packages/app/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_Mobile_480p.mp4
-/packages/os/homepage/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/shared/assets/background/Clouds_Loop_Mobile_480p.mp4
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_shoulder_roll_link.stl
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_shoulder_roll_link.stl
@@ -992,7 +961,6 @@ waifu.fun/
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_hip_yaw_link.stl
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_wrist_roll_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_wrist_roll_link.STL
-/packages/os/setup/public/clouds/clouds_4x_720p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_4x_720p.mp4
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_wrist_roll_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_wrist_roll_link.STL
@@ -1004,19 +972,15 @@ waifu.fun/
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_hip_yaw_link.STL
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_yaw_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_hip_yaw_link.STL
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-mobile-mobile-linux.png
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_knee_link.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_knee_link.STL
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-mobile-desktop-linux.png
 /packages/research/robot/assets/profiles/asimov-1/meshes/NECK_PITCH.STL
 /packages/training/datasets/eliza1-sft-0_6b/train.jsonl
-/packages/os/setup/public/clouds/clouds_1x_1080p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_1x_1080p.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Crying.fbx
 /plugins/plugin-companion/public_src/animations/BreathingIdle.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Breathing Idle.fbx
 /packages/app/public/app-heroes/runtime-debugger.png
-/packages/os/setup/public/clouds/clouds_1x_1080p.webm
 /packages/shared/assets-classic/background/optimized/clouds_1x_1080p.webm
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_shoulder_pitch_link.stl
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_shoulder_pitch_link.stl
@@ -1029,8 +993,6 @@ waifu.fun/
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_hip_roll_link.stl
 /packages/research/chip/mechanical/e1-phone/out/orange_side_frame.step
 /packages/app/public/app-heroes/relationship-viewer.png
-/packages/os/linux/tails/wiki/src/install/inc/videos/mac.mp4
-/packages/os/setup/public/clouds/clouds_4x_720p.webm
 /packages/shared/assets-classic/background/optimized/clouds_4x_720p.webm
 /plugins/plugin-companion/public_src/animations/mixamo/Spin In Place.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Surprised.fbx
@@ -1046,8 +1008,6 @@ waifu.fun/
 /packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_SHOULDER_YAW.STL
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/pelvis.stl
 /packages/app/public/brand/concepts/concept_minipc.jpg
-/packages/os/homepage/public/assets/concept_minipc.jpg
-/packages/os/homepage/public/brand/concepts/concept_minipc.jpg
 /packages/shared/assets-classic/concepts/concept_minipc.jpg
 /packages/shared/assets/concepts/concept_minipc.jpg
 /packages/research/chip/board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_3d_stp.stp
@@ -1062,13 +1022,11 @@ waifu.fun/
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_shoulder_yaw_link.STL
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_shoulder_yaw_link.stl
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_shoulder_yaw_link.stl
-/packages/os/linux/tails/wiki/src/lib/SourceSans3-VariableFont_wght.ttf
 /plugins/plugin-companion/public_src/animations/mixamo/Thinking.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Kneeling Idle.fbx
 /packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_ELBOW.STL
 /packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_ELBOW.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/waist_yaw_link_rev_1_0.STL
-/packages/os/setup/public/clouds/clouds_8x_480p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_8x_480p.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Relieved Sigh.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thankful.fbx
@@ -1087,8 +1045,6 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/Idle.fbx
 /packages/research/chip/sw/firemarshal/eliza-e1-linux-smoke/eliza-riscv-hwprobe
 /plugins/plugin-companion/public_src/animations/mixamo/Hip Hop Dancing.fbx
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-desktop-mobile-darwin.png
 /plugins/plugin-companion/public_src/animations/mixamo/Happy Idle.fbx
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_roll_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_shoulder_roll_link.STL
@@ -1101,16 +1057,11 @@ waifu.fun/
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_shoulder_roll_link.STL
 /plugins/plugin-companion/public/animations/mixamo/Angry.fbx.gz
 /packages/app/public/brand/concepts/chibi_usb_concept.jpg
-/packages/os/homepage/public/assets/chibi_usb_concept.jpg
-/packages/os/homepage/public/brand/concepts/chibi_usb_concept.jpg
 /packages/shared/assets-classic/concepts/chibi_usb_concept.jpg
 /packages/shared/assets/concepts/chibi_usb_concept.jpg
 /packages/app/public/brand/concepts/concept_usbdrive.jpg
-/packages/os/homepage/public/assets/concept_usbdrive.jpg
-/packages/os/homepage/public/brand/concepts/concept_usbdrive.jpg
 /packages/shared/assets-classic/concepts/concept_usbdrive.jpg
 /packages/shared/assets/concepts/concept_usbdrive.jpg
-/packages/os/setup/public/clouds/clouds_8x_480p.webm
 /packages/shared/assets-classic/background/optimized/clouds_8x_480p.webm
 /plugins/plugin-companion/public/animations/mixamo/Hip Hop Dancing 2.fbx.gz
 /plugins/plugin-companion/public/animations/mixamo/Happy.fbx.gz
@@ -1135,33 +1086,20 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/33-state-reduced-motion-open.png
 /plugins/plugin-companion/public_src/animations/mixamo/Joyful Jump.fbx
 /plugins/plugin-companion/public/animations/mixamo/Look Around.fbx.gz
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-raspberry-pi-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-raspberry-pi-desktop-mobile-darwin.png
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing 2.fbx
-/packages/os/setup/public/clouds/clouds_1x_720p.webm
 /packages/shared/assets-classic/background/optimized/clouds_1x_720p.webm
-/packages/os/homepage/tests/visual.spec.ts-snapshots/checkout-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/checkout-desktop-mobile-darwin.png
 /packages/research/robot/cad/erobot/visual/parts_grid.png
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-mobile-chromium-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-case-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-case-desktop-mobile-darwin.png
 /packages/cloud-frontend/public/avatars/eliza.png
 /packages/ui/src/components/shell/__e2e__/output/24-state-responding.png
 /packages/ui/src/components/shell/__e2e__/output/31-state-keyboard-full.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-box-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-box-desktop-mobile-darwin.png
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_hip_pitch_link.stl
 /packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_hip_pitch_link.stl
 /packages/ui/src/components/shell/__e2e__/output/25-state-typing-send.png
 /packages/ui/src/components/shell/__e2e__/output/34-state-reduced-motion-open.png
 /packages/ui/src/components/shell/__e2e__/output/29-state-multiline-input.png
 /plugins/plugin-companion/public_src/animations/mixamo/Hard Head Nod.fbx
-/packages/os/homepage/tests/visual.spec.ts-snapshots/checkout-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/checkout-desktop-mobile-linux.png
 /packages/ui/src/components/shell/__e2e__/output/33-state-keyboard-full.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/landing-desktop-mobile-linux.png
 /plugins/plugin-companion/public_src/animations/Standing Greeting.fbx
 /packages/app/public/app-heroes/plugin-viewer.png
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/connected-mobile-chromium-linux.png
@@ -1170,48 +1108,34 @@ waifu.fun/
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/connected-mobile-chromium-darwin.png
 /packages/ui/src/components/shell/__e2e__/output/32-state-no-provider-gate.png
 /packages/ui/src/components/shell/__e2e__/output/26-state-responding.png
-/packages/os/linux/tails/wiki/src/lib/fontawesome/webfonts/fa-solid-900.ttf
 /packages/ui/src/components/shell/__e2e__/output/27-state-typing-send.png
 /packages/ui/src/components/shell/__e2e__/output/31-state-multiline-input.png
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_pitch_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_shoulder_pitch_link.STL
-/packages/os/linux/tails/wiki/src/install/inc/success/start.mp4
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_pitch_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_shoulder_pitch_link.STL
 /plugins/plugin-companion/public_src/animations/emotes/dance-happy.glb
 /packages/ui/src/first-run/__e2e__/output/04-mobile-remote.png
 /packages/ui/src/first-run/__e2e__/output/06-mobile-busy.png
-/packages/os/setup/public/clouds/clouds_4x_480p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_4x_480p.mp4
 /packages/training/data/voice/sam-distill/synthesis_manifest.jsonl
 /packages/ui/src/components/shell/__e2e__/output/34-state-no-provider-gate.png
 /plugins/plugin-companion/public_src/animations/mixamo/Whatever Gesture.fbx
-/packages/os/setup/public/clouds/clouds_1x_720p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_1x_720p.mp4
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_shoulder_roll_link.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_shoulder_roll_link.STL
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2024-10-v5.1.pdf
-/packages/os/linux/tails/wiki/src/lib/SourceSans3-Italic-VariableFont_wght.ttf
 /packages/ui/src/first-run/__e2e__/output/05-mobile-cloud-signin.png
-/packages/os/setup/public/clouds/clouds_8x_360p.mp4
 /packages/shared/assets-classic/background/optimized/clouds_8x_360p.mp4
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-raspberry-pi-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-raspberry-pi-desktop-mobile-linux.png
 /packages/ui/src/first-run/__e2e__/output/02-mobile-choose-no-local-runtime.png
 /plugins/plugin-companion/public_src/animations/mixamo/Fallen Idle.fbx
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-case-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-case-desktop-mobile-linux.png
 /packages/ui/src/first-run/__e2e__/output/01-mobile-choose.png
 /packages/ui/src/first-run/__e2e__/output/03-mobile-choose-cloud-connected.png
 /packages/app-core/platforms/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/elizaos/templates/project/apps/app/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/app/public/brand/concepts/concept_phone.jpg
-/packages/os/homepage/public/assets/concept_phone.jpg
-/packages/os/homepage/public/brand/concepts/concept_phone.jpg
 /packages/shared/assets-classic/concepts/concept_phone.jpg
 /packages/shared/assets/concepts/concept_phone.jpg
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-box-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-box-desktop-mobile-linux.png
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_elbow_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_elbow_link.STL
 /plugins/plugin-companion/public/animations/emotes/dance-popping.glb.gz
@@ -1222,7 +1146,6 @@ waifu.fun/
 /packages/ui/src/components/shell/__screenshots__/slash-commands/01-all-commands--desktop.png
 /packages/cloud-frontend/public/avatars/eliza-default.png
 /plugins/plugin-companion/public/animations/mixamo/Bashful.fbx.gz
-/packages/os/setup/public/clouds/clouds_4x_480p.webm
 /packages/shared/assets-classic/background/optimized/clouds_4x_480p.webm
 /packages/research/robot/assets/profiles/hiwonder-ainex/meshes/l_ank_pitch_link.STL
 /packages/research/robot/assets/profiles/hiwonder-ainex/meshes/l_hip_roll_link.STL
@@ -1235,7 +1158,6 @@ waifu.fun/
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_wrist_roll_link.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Clapping.fbx
 /packages/research/robot/examples/robot-mujoco-demo/evidence/sweep/actions_contact_sheet.png
-/packages/os/setup/public/clouds/clouds_8x_360p.webm
 /packages/shared/assets-classic/background/optimized/clouds_8x_360p.webm
 /packages/ui/src/components/shell/__screenshots__/slash-commands/02-filtered--desktop.png
 /packages/ui/src/components/shell/__e2e__/output/06-desktop-free-rest.png
@@ -1253,8 +1175,6 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/13-mobile-full.png
 /packages/ui/src/components/shell/__e2e__/output/15-mobile-mid-drag-hold.png
 /packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_HIP_ROLL.STL
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-chibi-usb-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-chibi-usb-desktop-mobile-darwin.png
 /packages/research/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png
 /plugins/plugin-companion/public/animations/emotes/dance-happy.glb.gz
 /packages/ui/src/components/shell/__e2e__/output/13-mobile-beyond-full-rubberband.png
@@ -1266,12 +1186,9 @@ waifu.fun/
 /packages/research/robot/assets/profiles/hiwonder-ainex/meshes/r_sho_roll_link.STL
 /packages/ui/src/components/shell/__e2e__/output/17-mobile-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/20-mobile-nudge-snapback.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-chibi-usb-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-chibi-usb-desktop-mobile-linux.png
 /packages/research/robot/assets/profiles/hiwonder-ainex/meshes/l_sho_roll_link.STL
 /packages/research/chip/sw/aosp-device/fixtures/golden-stt.wav
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_wrist_yaw_link.STL
-/packages/os/linux/tails/wiki/src/news/celebrating_10_years/tails-1.0.png
 /packages/cloud-frontend/public/avatars/historyscholar.webp
 /plugins/plugin-companion/public/animations/mixamo/Yawn.fbx.gz
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2026-02-v5.6.pdf
@@ -1279,8 +1196,6 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/08-desktop-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/09-desktop-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/02-desktop-half.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-mini-pc-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-mini-pc-desktop-mobile-darwin.png
 /packages/research/robot/mechanical/unitree-r1-bodykit/review/cad-step-evidence.png
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hip_yaw_link.STL
 /packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hip_yaw_link.STL
@@ -1288,8 +1203,6 @@ waifu.fun/
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2025-07-v5.4.pdf
 /packages/cloud-frontend/public/avatars/amara.webp
 /packages/research/robot/cad/erobot/erobot_views.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-mini-pc-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-mini-pc-desktop-mobile-linux.png
 /packages/ui/src/components/shell/__e2e__/output/10-desktop-nudge-snapback.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-desktop-chromium-desktop-darwin.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-desktop-chromium-mobile-darwin.png
@@ -1298,12 +1211,8 @@ waifu.fun/
 /packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_pitch_link.STL
 /packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/head_pitch_link.STL
 /plugins/plugin-companion/public_src/animations/emotes/fishing.glb
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-desktop-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-mobile-darwin.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-mobile-chromium-desktop-darwin.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-mobile-chromium-mobile-darwin.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-desktop-linux.png
-/packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-mobile-linux.png
 # Local linked worktrees created by developer and agent tooling.
 /.worktrees/
 /.audit-worktrees/

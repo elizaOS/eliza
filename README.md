@@ -73,10 +73,12 @@ elizaOS runs **apps**, not just an agent. An app is a plugin that adds a surface
 
 ## elizaOS — the operating system
 
-[`packages/os`](packages/os) is the real, bootable distribution. Downloads and hardware are at **[os.elizacloud.ai](https://os.elizacloud.ai)**.
+The real, bootable distribution lives in the standalone
+[`elizaOS/os`](https://github.com/elizaOS/os) repository. Downloads and
+hardware are at **[os.elizacloud.ai](https://os.elizacloud.ai)**.
 
-- **Linux** ([`packages/os/linux`](packages/os/linux)) — boots a full desktop with Eliza built in from a USB stick. amd64 · arm64 · riscv64.
-- **Android** ([`packages/os/android`](packages/os/android)) — Eliza is the system launcher and assistant, on Pixel-class devices.
+- **Linux** ([source](https://github.com/elizaOS/os/tree/develop/packages/os/linux)) — boots a full desktop with Eliza built in from a USB stick. amd64 · arm64 · riscv64.
+- **Android** ([source](https://github.com/elizaOS/os/tree/develop/packages/os/android)) — Eliza is the system launcher and assistant, on Pixel-class devices.
 
 The OS is bootable today; full device certification and production update channels are in progress — see the per-target READMEs for status.
 

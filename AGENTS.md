@@ -22,7 +22,7 @@ say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
   `package.json`) on **Node 24** (`engines.node`). ESM only (`"type": "module"`).
 - **Monorepo:** [Turbo](https://turbo.build) drives `build` / `typecheck` /
   `lint` / `test` across workspaces. Workspace globs are in `package.json`
-  (`packages/*`, `plugins/*`, `packages/native/*`, `packages/os/*`,
+  (`packages/*`, `plugins/*`, `packages/native/*`,
   `packages/examples/*`, `packages/cloud/services/*`, …).
 - **Lint/format:** [Biome](https://biomejs.dev) (`biome.json`). Ignore globs in
   `.biomeignore`.
@@ -137,7 +137,7 @@ packages/        framework, shared libraries, and product surfaces
   cloud/sdk/ cloud/routing/ cloud/infra/  cloud client SDK, model routing, IaC
   contracts/     on-chain contracts + ABIs
   security/ security/soc2-verify/ vault/  secrets, key management, compliance tooling
-  os/ robot/                     device/OS images, OS landing, robotics
+  robot/                         robotics
   plugin-remote-manifest/ plugin-worker-runtime/
                  remote plugin manifests, host shims, and worker runtime support
   homepage/ docs/  marketing site and docs site
@@ -154,6 +154,11 @@ plugins/         runtime plugins and app plugins
 scripts/         repo automation        patches/   dependency patches
 turbo.json knip.json  build + dead-code config
 ```
+
+Bootable Linux and AOSP distributions, installers, release manifests, and OS
+toolchains live in the standalone [`elizaOS/os`](https://github.com/elizaOS/os)
+repository. Android and iOS application shells and native runtime bridges stay
+in this monorepo.
 
 Every package and plugin carries its own `CLAUDE.md` / `AGENTS.md` (identical)
 and `README.md`. **Read the package-local doc first** — it lists that package's

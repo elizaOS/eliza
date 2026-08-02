@@ -7,7 +7,7 @@ Upstream: <https://github.com/blackboardsh/electrobun>.
 ## Why we fork
 
 The packaged `elizaos.app` bundle (under
-`packages/os/linux/elizaos/artifacts/amd64/elizaos-app/`) ships
+`elizaOS/os:packages/os/linux/elizaos/artifacts/amd64/elizaos-app/`) ships
 `libNativeWrapper.so` v1.0.2 from this Electrobun release. In every QEMU graphics
 configuration we tested, the serial log stops after:
 
@@ -143,11 +143,12 @@ above is only useful for fast iteration on the wrapper itself.
 
 ```
 cp src/native/build/libNativeWrapper.so \
-   <repo-root>/packages/os/linux/elizaos/artifacts/amd64/elizaos-app/bin/libNativeWrapper.so
+   "$ELIZAOS_OS_REPO_ROOT/packages/os/linux/elizaos/artifacts/amd64/elizaos-app/bin/libNativeWrapper.so"
 ```
 
-Then rebuild the ISO via `packages/os/linux/elizaos/`'s normal pipeline
-(`build.sh` / `Makefile`) so the new wrapper is staged onto the live image.
+Then rebuild the ISO via the `elizaOS/os` repository's
+`packages/os/linux/elizaos/` pipeline (`build.sh` / `Makefile`) so the new
+wrapper is staged onto the live image.
 
 ## riscv64
 
@@ -163,8 +164,9 @@ constraints:
 - **Cross toolchain.** `riscv64-linux-gnu-g++` (cross from amd64 host) plus a
   riscv64 sysroot exported via `--sysroot=…` and
   `PKG_CONFIG_SYSROOT_DIR=… PKG_CONFIG_PATH=…/usr/lib/pkgconfig`.
-- **Reuse `bun-riscv64`.** `packages/app-core/scripts/bun-riscv64/` already
-  cross-builds bun for riscv64 in a Debian-based Dockerfile; the cleanest
+- **Reuse `bun-riscv64`.** The `elizaOS/os` repository's
+  `packages/os/toolchains/bun-riscv64/` cross-builds Bun for riscv64 in a
+  Debian-based Dockerfile; the cleanest
   integration is to add a sibling stage in that same Dockerfile that
   `apt-get install`s `libwebkit2gtk-4.1-dev libgtk-3-dev` and runs the same
   two-step `g++` build above, producing
