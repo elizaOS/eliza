@@ -5429,11 +5429,10 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			responseId: "00000000-0000-0000-0000-0000000000aa" as UUID,
 		});
 
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ content?: string | null }>;
-		};
-		const stage1Content = (params?.messages ?? [])
+		const stage1Call = useModelCalls(runtime)[0]?.[1] as
+			| { messages?: Array<{ content?: string | null }> }
+			| undefined;
+		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
 		expect(stage1Content).toContain("trigger_automation_policy:");
@@ -5457,11 +5456,10 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 			state: makeState(),
 			responseId: "00000000-0000-0000-0000-0000000000ab" as UUID,
 		});
-		const firstCall = useModelCalls(runtime)[0];
-		const params = firstCall?.[1] as {
-			messages?: Array<{ content?: string | null }>;
-		};
-		const stage1Content = (params?.messages ?? [])
+		const stage1Call = useModelCalls(runtime)[0]?.[1] as
+			| { messages?: Array<{ content?: string | null }> }
+			| undefined;
+		const stage1Content = (stage1Call?.messages ?? [])
 			.map((entry) => entry.content ?? "")
 			.join("\n");
 		expect(stage1Content).not.toContain("trigger_automation_policy");
