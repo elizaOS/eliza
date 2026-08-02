@@ -18,11 +18,11 @@ import {
   Service,
   SsrfBlockedError,
 } from "@elizaos/core";
+import type { GoogleCalendarEvent } from "@elizaos/plugin-google";
 import {
-  type GoogleCalendarEvent,
   GoogleCalendarMutationError,
   GoogleCalendarSyncTokenExpiredError,
-} from "@elizaos/plugin-google";
+} from "@elizaos/plugin-google/calendar";
 import type {
   DispatchResult,
   ScheduledTaskDispatchRecord,

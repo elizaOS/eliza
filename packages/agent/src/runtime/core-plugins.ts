@@ -116,6 +116,7 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-task-coordinator", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-app-control", viewEveryPlatform: true },
+  { plugin: "@elizaos/plugin-simple-views", viewEveryPlatform: true },
   // Privileged ElizaOS-Android overlay app plugins (system surfaces).
   { plugin: "@elizaos/plugin-wifi", aospCore: true },
   { plugin: "@elizaos/plugin-contacts", aospCore: true },
@@ -222,6 +223,8 @@ export const MOBILE_MODEL_PROVIDER_PLUGINS: readonly string[] = [
 // - plugin-app-control: provides the VIEWS navigation action + view-switch
 //   evaluators ("open settings" / "go to my calendar"); its view-nav path needs
 //   no services, and the app-launch/worker-host services stay idle on mobile.
+// - plugin-simple-views: owns the durable Notes and Simple Calendar service,
+//   routes, capabilities, and view declarations behind the signed renderers.
 // Derived from CORE_PLUGIN_PROFILE_METADATA (legacy host-owned read surface).
 export const MOBILE_VIEW_PLUGINS: readonly string[] =
   selectCorePluginsByProfile((entry) => entry.viewEveryPlatform);

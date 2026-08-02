@@ -154,12 +154,20 @@ describe("collectPluginNames lean-chat plugin set (#8434)", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
   });
 
-  it("leaves the default (non-lean) desktop set carrying the full surfaces", () => {
-    // No ELIZA_PLUGIN_SET → default CORE_PLUGINS seed on desktop.
+  it("keeps durable Notes and Calendar views in the default desktop set", () => {
+    // Every platform needs the runtime half behind the signed renderer routes.
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-shell")).toBe(true);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
     expect(names.has("@elizaos/plugin-browser")).toBe(true);
-    expect(names.has("@elizaos/plugin-simple-views")).toBe(false);
+    expect(names.has("@elizaos/plugin-simple-views")).toBe(true);
+  });
+
+  it("keeps durable Notes and Calendar views in the stock mobile set", () => {
+    process.env.ELIZA_PLATFORM = "android";
+    const names = collectPluginNames(emptyConfig);
+
+    expect(names.has("@elizaos/plugin-app-control")).toBe(true);
+    expect(names.has("@elizaos/plugin-simple-views")).toBe(true);
   });
 });

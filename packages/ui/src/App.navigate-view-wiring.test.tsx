@@ -57,6 +57,10 @@ const mediaQueryState = vi.hoisted(() => ({
   matches: false,
 }));
 
+const platformGuardState = vi.hoisted(() => ({
+  dynamicViewLoadingAllowed: true,
+}));
+
 const desktopBridgeMock = vi.hoisted(() => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
@@ -165,6 +169,17 @@ const simpleCalendarView = {
   viewType: "gui" as const,
 };
 
+const notesView = {
+  id: "notes",
+  label: "Notes",
+  available: true,
+  pluginName: "@elizaos/plugin-simple-views",
+  path: "/notes",
+  bundleUrl: "/api/views/notes/bundle.js",
+  surface: { header: "fullscreen" as const },
+  viewType: "gui" as const,
+};
+
 const sharedCanvasView = {
   id: "shared-canvas",
   label: "Shared Canvas",
@@ -253,6 +268,16 @@ vi.mock("./platform/init", () => ({
   isStandalonePwa: () => false,
   isWebPlatform: () => true,
 }));
+
+vi.mock("./platform/platform-guards", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./platform/platform-guards")>();
+  return {
+    ...actual,
+    isDynamicViewLoadingAllowed: () =>
+      platformGuardState.dynamicViewLoadingAllowed,
+  };
+});
 
 vi.mock("./hooks/useDesktopTabs", () => ({
   useDesktopTabs: () => ({
@@ -524,6 +549,7 @@ describe("App navigate-view event wiring", () => {
     authStatusMock.phase = "authenticated";
     cloudOriginMock.agentless = false;
     mediaQueryState.matches = false;
+    platformGuardState.dynamicViewLoadingAllowed = true;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
@@ -707,6 +733,26 @@ describe("App navigate-view event wiring", () => {
       getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
     ).toBe(walletMarketView.id);
     expect(queryByTestId("native-wallet-fallback")).toBeNull();
+  });
+
+  it("uses the signed Notes renderer when a restricted client receives a remote bundle URL", async () => {
+    platformGuardState.dynamicViewLoadingAllowed = false;
+    mockAvailableViews.push(notesView);
+    registerAppShellPage({
+      id: notesView.id,
+      pluginId: notesView.pluginName,
+      label: notesView.label,
+      path: notesView.path,
+      surface: notesView.surface,
+      Component: () => <div data-testid="signed-notes-view" />,
+    });
+    appState.tab = "notes";
+    window.history.replaceState(null, "", notesView.path);
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("signed-notes-view"));
+    expect(queryByTestId("dynamic-view-loader")).toBeNull();
   });
 
   it("gives an in-process wallet page a live agent-surface registry", async () => {

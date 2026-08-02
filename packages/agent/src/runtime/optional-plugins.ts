@@ -61,6 +61,7 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-scheduling",
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-app-control",
+  "@elizaos/plugin-simple-views",
   "@elizaos/plugin-anthropic",
   "@elizaos/plugin-openai",
 ];
@@ -157,6 +158,10 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
     suppressTypeResolutionReason:
       "runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.",
   },
+  // The root package exports its runtime plugin today, but the dedicated
+  // subpath is the stable server-only boundary and avoids pulling renderer
+  // registration code into the on-device agent bundle.
+  "@elizaos/plugin-simple-views": { importSubpath: "./plugin" },
   // This plugin is optional and peer-linked for mobile bundleability. Sibling
   // package source typechecks import @elizaos/agent without depending on this
   // package's build task, so its dist declarations can be absent mid-turbo run.

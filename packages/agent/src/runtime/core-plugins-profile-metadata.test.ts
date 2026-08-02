@@ -7,7 +7,7 @@
  * declarative table (`CORE_PLUGIN_PROFILE_METADATA`) and the legacy lists are
  * DERIVED from it via `selectCorePluginsByProfile`. These tests pin:
  *
- *   1. The derived lists still contain exactly the historical membership, so a
+ *   1. The derived lists contain exactly the reviewed product membership, so a
  *      future edit to the table that silently changes a platform load set fails
  *      CI instead of shipping a boot regression.
  *   2. Exactly one plugin is `requiredBootstrap` (plugin-sql), the invariant
@@ -64,11 +64,12 @@ describe("CORE_PLUGIN_PROFILE_METADATA drift guard", () => {
     ]);
   });
 
-  it("derives MOBILE_VIEW_PLUGINS from the metadata table (unchanged membership)", () => {
+  it("derives MOBILE_VIEW_PLUGINS with durable core view providers", () => {
     sameMembers(MOBILE_VIEW_PLUGINS, [
       "@elizaos/plugin-task-coordinator",
       "@elizaos/plugin-inbox",
       "@elizaos/plugin-app-control",
+      "@elizaos/plugin-simple-views",
     ]);
   });
 
