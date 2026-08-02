@@ -62,6 +62,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
+		testSchemaPattern: actual.testSchemaPattern,
 	};
 });
 
@@ -306,6 +307,7 @@ describe("view management actions", () => {
 				{
 					id: "create-note",
 					description: "Create a sticky note",
+					effect: "write",
 					params: {
 						title: { type: "string", description: "Optional note title" },
 						body: { type: "string", description: "Note body text" },
@@ -314,6 +316,7 @@ describe("view management actions", () => {
 				{
 					id: "delete-note",
 					description: "Delete a sticky note by id, title, or query",
+					effect: "write",
 				},
 			],
 		});
@@ -2241,7 +2244,11 @@ describe("view management actions", () => {
 								id: "delete-note",
 								description: "Delete one sticky note by id, title, or query.",
 								params: {
-									id: { type: "string", description: "Note id." },
+									id: {
+										type: "string",
+										description: "Note id.",
+										pattern: "^[a-z][a-z0-9-]{2,127}$",
+									},
 									title: {
 										type: "string",
 										description: "Exact note title.",
@@ -2365,6 +2372,18 @@ describe("view management actions", () => {
 			{ action: "delete" },
 			callback,
 		);
+		const deleteNoteWithMalformedPlannerIdResult = await action.handler(
+			runtime as never,
+			message("delete the Receipt Applied QA note") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "delete-note",
+				params: { id: "6a2b9cc0-cc28-40cd-b099-002473a1ad72" },
+			},
+			callback,
+		);
 		const createNoteFromMessageResult = await action.handler(
 			runtime as never,
 			message(
@@ -2476,6 +2495,12 @@ describe("view management actions", () => {
 			viewId: "notes",
 			capability: "delete-note",
 		});
+		expect(deleteNoteWithMalformedPlannerIdResult?.success).toBe(true);
+		expect(deleteNoteWithMalformedPlannerIdResult?.values).toMatchObject({
+			mode: "interact",
+			viewId: "notes",
+			capability: "delete-note",
+		});
 		expect(createNoteFromMessageResult?.success).toBe(true);
 		expect(createNoteFromMessageResult?.values).toMatchObject({
 			mode: "interact",
@@ -2528,6 +2553,18 @@ describe("view management actions", () => {
 						title: "smoke note",
 						body: "created from routing",
 					},
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "delete-note",
+					params: { query: "Receipt Applied QA" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),

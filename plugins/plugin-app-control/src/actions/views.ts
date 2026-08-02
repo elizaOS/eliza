@@ -1198,6 +1198,7 @@ function readCapabilityParams(
 				params,
 			),
 		);
+		recoverDeleteTargetFromMessage(params, capability, messageText);
 	}
 
 	for (const key of Object.keys(params)) {
@@ -1358,6 +1359,40 @@ function extractDeleteTargetText(text: string): string | null {
 		.replace(/\s+/g, " ")
 		.trim();
 	return cleaned.length > 0 ? cleaned : null;
+}
+
+function recoverDeleteTargetFromMessage(
+	params: Record<string, unknown>,
+	capability: ViewCapability,
+	messageText: string,
+): void {
+	if (operationFamilyForCapability(capability) !== "delete") return;
+	if (params.query || params.title || params.name) return;
+
+	const id = params.id;
+	const idSchema = capability.params?.id;
+	if (
+		typeof id !== "string" ||
+		!idSchema ||
+		validateCapabilityParam("id", idSchema, id) === null
+	) {
+		return;
+	}
+
+	const target = extractDeleteTargetText(messageText);
+	if (!target) return;
+	const targetParam = ["query", "title", "name"].find(
+		(name) => capability.params?.[name],
+	);
+	if (!targetParam) return;
+
+	// A model can copy the UUID portion displayed in context while omitting the
+	// entity-kind prefix required by the capability. The user's explicit named
+	// target remains authoritative when that capability declares a natural-
+	// language selector, so resolve by that selector instead of sending a known-
+	// invalid identifier to the mutation boundary.
+	delete params.id;
+	params[targetParam] = target;
 }
 
 function extractIsoDate(intent: string): string | null {
