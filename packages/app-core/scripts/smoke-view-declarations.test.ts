@@ -57,16 +57,10 @@ describe("smoke view declaration parity (#15791)", () => {
   });
 
   it("fails parity when a live plugin no longer exports the declared component", () => {
-    // polymarket exists, but a bogus export name must be rejected — this is the
+    // notes exists, but a bogus export name must be rejected — this is the
     // "a route cannot pass against the wrong component" guard.
     const wrongComponent = [
-      [
-        "polymarket",
-        "Polymarket",
-        "plugin-polymarket",
-        "/polymarket",
-        "NotARealPolymarketExport",
-      ],
+      ["notes", "Notes", "plugin-notes", "/notes", "NotARealNotesExport"],
     ];
     const { ok, missing } = checkSmokeViewParity(repoRoot, wrongComponent);
     expect(ok).toBe(false);

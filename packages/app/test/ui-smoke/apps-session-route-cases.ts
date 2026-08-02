@@ -72,7 +72,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "fine tuning app window",
     path: "/apps/fine-tuning",
-    selector: '[data-testid="fine-tuning-view"]',
+    readyChecks: [{ text: "Fine-tuning requires the Training plugin." }],
     timeoutMs: 90_000,
   },
   {
@@ -100,16 +100,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "model tester app window",
-    path: "/apps/model-tester",
-    readyChecks: [
-      { selector: '[data-testid="model-tester-shell"]' },
-      { text: "Model Tester" },
-      { text: "Text" },
-    ],
-    timeoutMs: 90_000,
-  },
-  {
     name: "inventory app window",
     path: "/apps/inventory",
     selector: '[data-testid="wallet-shell"]',
@@ -119,24 +109,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     name: "wallet app shell page",
     path: "/inventory",
     selector: '[data-testid="wallet-shell"]',
-    timeoutMs: 90_000,
-  },
-  // Hyperliquid/Polymarket wallet sub-views consolidated onto single adaptive
-  // spatial views — the rich-DOM app shells (and later the visible
-  // "<Name> controls" toolbars, #14596) are gone; the wrapper's remaining
-  // agent controls are aria-hidden and invisible. Each spatial view now stamps
-  // its root Card with a stable data-agent-id, which is the readiness anchor
-  // proving the real view bundle mounted (and not the Launcher fallback).
-  {
-    name: "hyperliquid",
-    path: "/hyperliquid",
-    readyChecks: [{ selector: '[data-agent-id="hyperliquid-root"]' }],
-    timeoutMs: 90_000,
-  },
-  {
-    name: "polymarket",
-    path: "/polymarket",
-    readyChecks: [{ selector: '[data-agent-id="polymarket-root"]' }],
     timeoutMs: 90_000,
   },
   {
@@ -221,20 +193,16 @@ const managerVisibleViewTileCases = [
   { viewId: "health", path: "/health" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
-  { viewId: "model-tester", path: "/model-tester" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },
   { viewId: "relationships", path: "/relationships" },
-  { viewId: "screenshare", path: "/screenshare" },
   { viewId: "notes", path: "/notes" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
-  { viewId: "training", path: "/apps/fine-tuning" },
   { viewId: "trajectory-logger", path: "/trajectory-logger" },
   { viewId: "views-manager", path: "/views" },
   { viewId: "wallet", path: "/wallet" },
-  { viewId: "vector-browser", path: "/vector-browser" },
 ];
 
 /**

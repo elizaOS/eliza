@@ -16,13 +16,6 @@
       ],
       "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["../../plugins/plugin-phone/src/*"],
-      "@elizaos/plugin-vector-browser/register": [
-        "../../plugins/plugin-vector-browser/src/register.ts"
-      ],
-      "@elizaos/plugin-shopify": ["../../plugins/plugin-shopify/src/index.ts"],
-      "@elizaos/plugin-training": [
-        "../../plugins/plugin-training/src/index.ts"
-      ],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],

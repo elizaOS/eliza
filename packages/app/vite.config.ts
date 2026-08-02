@@ -697,12 +697,6 @@ function isKnownToleratedBuildWarning(message: unknown): boolean {
     text.includes("native-stub:node:fs/promises") ||
     text.includes("../ui/src/components/pages/") ||
     text.includes(
-      "../../plugins/plugin-facewear/src/protocol/smartglasses.ts",
-    ) ||
-    text.includes(
-      "../../plugins/app-model-tester/src/ModelTesterAppView.tsx",
-    ) ||
-    text.includes(
       "../../plugins/plugin-browser/src/actions/browser-autofill-login.ts",
     )
   );
@@ -1752,8 +1746,6 @@ function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
     normalizedFile.includes("/.wrangler/") ||
     normalizedFile.includes("/packages/agent/data/") ||
     normalizedFile.includes("/packages/agent/.elizadb/") ||
-    normalizedFile.includes("/packages/examples/") ||
-    normalizedFile.includes("/packages/feed/") ||
     normalizedFile.includes("/output/generated-cad/") ||
     normalizedFile.includes("/src/i18n/generated/") ||
     normalizedFile.endsWith(".d.ts") ||
@@ -2484,15 +2476,6 @@ export const INVALID_TRACER_PROVIDER = {};
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
         ],
-        ["@elizaos/plugin-shopify", "plugins/plugin-shopify/src/register.ts"],
-        [
-          "@elizaos/plugin-hyperliquid",
-          "plugins/plugin-hyperliquid/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-polymarket",
-          "plugins/plugin-polymarket/src/register.ts",
-        ],
         ["@elizaos/plugin-wallet/ui", "plugins/plugin-wallet/src/ui/index.ts"],
         [
           "@elizaos/plugin-wallet/register",
@@ -2517,10 +2500,6 @@ export const INVALID_TRACER_PROVIDER = {};
         [
           "@elizaos/plugin-wifi/register",
           "plugins/plugin-wifi/src/register.ts",
-        ],
-        [
-          "@elizaos/plugin-facewear/register",
-          "plugins/plugin-facewear/src/register.ts",
         ],
         // The browser-safe native-backend registration seam. The bare
         // `@elizaos/plugin-blocker` specifier is aliased (via the dynamic
@@ -2658,15 +2637,6 @@ export const INVALID_TRACER_PROVIDER = {};
       {
         find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
-      },
-      // The training package root exports runtime routes and native backends.
-      // The renderer only needs the fine-tuning UI facade.
-      {
-        find: /^@elizaos\/plugin-training$/,
-        replacement: path.resolve(
-          elizaRoot,
-          "plugins/plugin-training/src/ui/index.ts",
-        ),
       },
       // plugin-health is a backend-only plugin (no `elizaos.app`), so it gets no
       // auto-generated browser alias. Its `ui/` directory ships browser-safe
@@ -3293,8 +3263,6 @@ export const INVALID_TRACER_PROVIDER = {};
       // Benchmark packages are large offline fixture trees; the desktop renderer
       // does not import them, and watching them can exhaust the kernel watcher
       // limit before the desktop renderer is interactive.
-      // OS image trees contain distro fixture files/symlinks that can fail
-      // fs.watch on Linux/Bun and are also not renderer inputs.
       ignored: [
         "**/electrobun/build/**",
         "**/electrobun/artifacts/**",
@@ -3303,8 +3271,6 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/packages/**/.wrangler/**",
         "**/packages/agent/.elizadb/**",
         "**/packages/agent/data/**",
-        "**/packages/examples/**",
-        "**/packages/feed/**",
         "**/packages/**/dist/**",
         "**/packages/**/*.log",
         "**/packages/**/*.md",

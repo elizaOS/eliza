@@ -33,7 +33,6 @@ export const VIEW_CASES: ViewCase[] = (
     // render today.
     ["cloud", "gui", "/cloud"],
     ["contacts", "gui", "/contacts"],
-    ["hyperliquid", "gui", "/hyperliquid"],
     ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
     ["calendar", "gui", "/calendar"],
     ["documents", "gui", "/documents"],
@@ -45,19 +44,14 @@ export const VIEW_CASES: ViewCase[] = (
     ["relationships", "gui", "/relationships"],
     ["todos", "gui", "/todos"],
     ["messages", "gui", "/messages"],
-    ["model-tester", "gui", "/model-tester"],
     ["phone", "gui", "/phone"],
-    ["polymarket", "gui", "/polymarket"],
     ["wallet", "gui", "/wallet"],
-    ["vector-browser", "gui", "/vector-browser"],
     ["views-manager", "gui", "/views"],
-    ["screenshare", "gui", "/screenshare"],
     ["notes", "gui", "/notes"],
     ["task-coordinator", "gui", "/task-coordinator"],
     ["orchestrator", "gui", "/orchestrator"],
     ["cockpit", "gui", "/cockpit"],
     ["trajectory-logger", "gui", "/trajectory-logger"],
-    ["training", "gui", "/apps/fine-tuning"],
   ] satisfies ViewCaseTuple[]
 ).map(([id, viewType, viewPath, options]) => ({
   id,

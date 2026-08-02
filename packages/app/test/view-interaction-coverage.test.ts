@@ -123,17 +123,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
-  hyperliquid: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves: "Verifies markets, positions, and orders.",
-      signals: [
-        "market utility controls show fixture data on load",
-        "market-BTC",
-        "position-BTC",
-      ],
-    },
-  ],
   "lifeops-live-test": [
     {
       spec: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestSpatialView.tsx",
@@ -151,17 +140,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
         "messages deterministic controls",
         "messages-send",
         "messages-body",
-      ],
-    },
-  ],
-  "model-tester": [
-    {
-      spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
-      proves:
-        "Runs deterministic text and image model probes through visible form controls.",
-      signals: [
-        "model tester route runs deterministic visible probes",
-        "run text probe",
       ],
     },
   ],
@@ -184,16 +162,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["phone deterministic controls", "dialpad-", "dialer-call"],
     },
   ],
-  polymarket: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves: "Verifies the Polymarket route shell.",
-      signals: [
-        "market utility controls show fixture data on load",
-        "polymarket-root",
-      ],
-    },
-  ],
   wallet: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
@@ -204,14 +172,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
         "Hide USDC",
         "Open RPC settings",
       ],
-    },
-  ],
-  "vector-browser": [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises vector memory search, list/detail state, and 2D/3D projection mode controls.",
-      signals: ["vector browser controls", "vector 2D projection"],
     },
   ],
   "views-manager": [
@@ -248,14 +208,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["orchestrator-workbench", "orchestrator-add-agent-submit"],
     },
   ],
-  screenshare: [
-    {
-      spec: "packages/app/test/ui-smoke/screenshare-gui-interactions.spec.ts",
-      proves:
-        "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
-      signals: ["host lifecycle", "capability refresh", "screen-token-1"],
-    },
-  ],
   "task-coordinator": [
     {
       spec: "packages/app/test/ui-smoke/task-coordinator-gui-interactions.spec.ts",
@@ -273,30 +225,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
       proves: "Exercises detail selection, stage filtering, and search.",
       signals: ["trajectory viewer route refreshes"],
-    },
-  ],
-  training: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-model-training-interactions.spec.ts",
-      proves:
-        "Exercises trajectory selection, dataset build, training job start, and cancel flow.",
-      signals: ["fine-tuning route selects trajectories", "start training job"],
-    },
-  ],
-  facewear: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
-      proves:
-        "Exercises device status refresh and deterministic manage bridge behavior.",
-      signals: ["facewear device controls", "facewearStatusRequests"],
-    },
-  ],
-  smartglasses: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
-      proves:
-        "Exercises connect headset, display writes, microphone toggles, and Wi-Fi setup bridge calls.",
-      signals: ["smartglasses bridge controls", "Connect"],
     },
   ],
   cockpit: [
@@ -385,7 +313,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(27);
+    expect(visualCases.length).toBe(21);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

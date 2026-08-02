@@ -68,7 +68,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",
-  "plugins/plugin-training",
   "packages/registry",
   "plugins/plugin-edge-tts",
   "plugins/plugin-agent-orchestrator",

@@ -72,9 +72,6 @@ const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
   "builtin-background-mobile-portrait": "needs-work",
   "builtin-fine-tuning-ipad-portrait": "needs-work",
   "builtin-fine-tuning-mobile-portrait": "needs-work",
-  "plugin-model-tester-gui-mobile-landscape": "needs-work",
-  "plugin-training-gui-ipad-portrait": "needs-work",
-  "plugin-training-gui-mobile-portrait": "needs-work",
 };
 
 // "Her"-minimal ratchet baseline (#9950) — the committed per-view record of the

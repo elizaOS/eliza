@@ -32,9 +32,6 @@
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/plugin-training": [
-        "../../plugins/plugin-training/src/index.ts"
-      ],
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
@@ -106,6 +103,7 @@
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../core/src/*"],
       "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],

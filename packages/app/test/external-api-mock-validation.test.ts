@@ -27,26 +27,11 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 const VALIDATED: Readonly<
   Record<string, { contract: string; real: string; fixtures: string }>
 > = {
-  polymarket: {
-    contract: "plugins/plugin-polymarket/src/routes.contract.test.ts",
-    real: "plugins/plugin-polymarket/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-polymarket/src/__fixtures__",
-  },
-  hyperliquid: {
-    contract: "plugins/plugin-hyperliquid/src/routes.contract.test.ts",
-    real: "plugins/plugin-hyperliquid/src/routes.real.test.ts",
-    fixtures: "plugins/plugin-hyperliquid/src/__fixtures__",
-  },
   coingecko: {
     contract:
       "plugins/plugin-wallet/src/routes/wallet-market-overview.contract.test.ts",
     real: "plugins/plugin-wallet/src/routes/wallet-market-overview.real.test.ts",
     fixtures: "plugins/plugin-wallet/src/routes/__fixtures__",
-  },
-  calendly: {
-    contract: "plugins/plugin-calendly/src/calendly-client.contract.test.ts",
-    real: "plugins/plugin-calendly/src/calendly-client.real.test.ts",
-    fixtures: "plugins/plugin-calendly/src/__fixtures__",
   },
   "web-search": {
     contract:

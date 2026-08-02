@@ -164,8 +164,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-fine-tuning": expected({
-    requireAll: ["Fine-Tuning"],
-    requireAny: ["Status", "Trajectories", "RUNTIME", "JOBS"],
+    requireAll: ["Fine-tuning requires the Training plugin"],
   }),
   "builtin-trajectories": expected({
     requireAll: ["Trajectories"],
@@ -248,10 +247,6 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Contacts"],
     requireAny: ["address book", "phone, or email", "search"],
   }),
-  "plugin-hyperliquid-gui": expected({
-    requireAll: ["Hyperliquid"],
-    requireAny: ["read-ready", "Markets", "positions"],
-  }),
   "plugin-focus-gui": expected({
     requireAll: ["Focus", "Idle"],
   }),
@@ -302,36 +297,17 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Messages"],
     requireAny: ["Set default SMS", "bridge-only", "compose"],
   }),
-  "plugin-model-tester-gui": expected({
-    requireAll: ["Model Tester"],
-    requireAny: ["Smoke", "Vision", "probes"],
-  }),
   "plugin-phone-gui": expected({
     requireAll: ["Phone"],
     requireAny: ["call-blocked", "dialer", "recent"],
-  }),
-  "plugin-polymarket-gui": expected({
-    requireAny: ["markets", "reads", "trading", "vol", "liq", "last"],
   }),
   "plugin-wallet-gui": expected({
     requireAll: ["Wallet"],
     requireAny: ["Tokens", "RPC", "ETH", "SOL"],
   }),
-  "plugin-vector-browser-gui": expected({
-    requireAll: ["Vector Browser"],
-    requireAny: ["memories", "search content", "embed"],
-  }),
-  "plugin-feed-gui": expected({
-    requireAll: ["Feed"],
-    requireAny: ["Ready to trade", "Refresh", "Resume"],
-  }),
   "plugin-views-manager-gui": expected({
     requireAll: ["Views", "Refresh"],
     requireAny: ["ready views", "gui ready"],
-  }),
-  "plugin-screenshare-gui": expected({
-    requireAll: ["Screenshare"],
-    requireAny: ["Start host session", "session", "Remote server URL"],
   }),
   "plugin-notes-gui": expected({
     requireAll: ["New note"],
@@ -356,10 +332,6 @@ export const VIEW_OCR_POLICIES = {
   "plugin-trajectory-logger-gui": expected({
     requireAll: ["Trajectory Logger"],
     requireAny: ["Back to apps", "HANDLE", "PLAN"],
-  }),
-  "plugin-training-gui": expected({
-    requireAll: ["Fine Tuning"],
-    requireAny: ["Status", "RUNTIME", "Trajectories"],
   }),
 } as const satisfies Record<string, ViewOcrPolicy>;
 

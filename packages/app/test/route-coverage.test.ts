@@ -73,9 +73,7 @@ type PluginViewManifestContract = {
 
 const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-contacts/src/plugin.ts",
-  "plugins/plugin-hyperliquid/src/plugin.ts",
   "plugins/plugin-messages/src/plugin.ts",
-  "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-blocker/src/plugin.ts",
   "plugins/plugin-calendar/src/plugin.ts",
   "plugins/plugin-documents/src/plugin.ts",
@@ -87,20 +85,15 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-relationships/src/plugin.ts",
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
-  "plugins/plugin-polymarket/src/plugin.ts",
   "plugins/plugin-wallet/src/ui/plugin.ts",
-  "plugins/plugin-vector-browser/src/plugin.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-scheduling/src/plugin.ts",
-  "plugins/plugin-screenshare/src/index.ts",
   "plugins/plugin-notes/src/plugin.ts",
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/plugin.ts",
-  "plugins/plugin-training/src/setup-routes.ts",
 ] as const;
 
 const APP_SHELL_REGISTRATION_SOURCES = [
-  "plugins/plugin-facewear/src/register.ts",
   "plugins/plugin-phone/src/register-companion-page.ts",
   "plugins/plugin-notes/src/register.ts",
   "plugins/plugin-task-coordinator/src/register.ts",
@@ -130,8 +123,6 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Messages is routed by the app shell and discoverable through the View Manager, but its plugin manifest is not imported by the app boot loader.",
   "plugins/plugin-relationships/src/plugin.ts":
     "Relationships is the entity/relationship knowledge-graph viewer; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
-  "plugins/plugin-screenshare/src/index.ts":
-    "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
   "plugins/plugin-scheduling/src/plugin.ts":
     "LifeOps Live Test is a developer/QA validation surface; its route stays reachable for live-test workflows but it is not a launcher or app-boot view.",
   "plugins/plugin-todos/src/index.ts":
@@ -141,41 +132,25 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
   "@elizaos/plugin-native-settings": null,
-  // Facewear no longer declares plugin views; the boot module remains for the
-  // Settings wearables section.
-  "@elizaos/plugin-facewear": null,
-  "@elizaos/plugin-hyperliquid": "plugins/plugin-hyperliquid/src/plugin.ts",
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
   "@elizaos/plugin-personal-assistant": null,
   "@elizaos/plugin-phone": "plugins/plugin-phone/src/plugin.ts",
-  "@elizaos/plugin-polymarket": "plugins/plugin-polymarket/src/plugin.ts",
   "@elizaos/plugin-notes": "plugins/plugin-notes/src/plugin.ts",
   "@elizaos/plugin-task-coordinator":
     "plugins/plugin-task-coordinator/src/index.ts",
   "@elizaos/plugin-task-coordinator/register":
     "plugins/plugin-task-coordinator/src/index.ts",
-  "@elizaos/plugin-training": "plugins/plugin-training/src/setup-routes.ts",
   "@elizaos/plugin-trajectory-logger":
     "plugins/plugin-trajectory-logger/src/plugin.ts",
-  "@elizaos/plugin-vector-browser":
-    "plugins/plugin-vector-browser/src/plugin.ts",
   "@elizaos/plugin-wallet": "plugins/plugin-wallet/src/ui/plugin.ts",
   "@elizaos/plugin-wifi": null,
-  "@elizaos/app-model-tester": "plugins/app-model-tester/src/plugin.ts",
 };
 
 const SHIPPED_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = ["gui"];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [
-    {
-      manifestPath: "plugins/plugin-screenshare/src/index.ts",
-      id: "screenshare",
-      modalities: SHIPPED_MODALITIES,
-      path: "/screenshare",
-      componentExport: "ScreenshareView",
-    },
     {
       manifestPath: "plugins/plugin-notes/src/plugin.ts",
       id: "notes",

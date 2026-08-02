@@ -201,8 +201,6 @@ const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-agent-orchestrator",
 );
-const APP_MODEL_TESTER_PACKAGE_DIR =
-  resolveWorkspacePluginDir("app-model-tester");
 const PLUGIN_LOCAL_INFERENCE_PACKAGE_DIR = resolveWorkspacePluginDir(
   "plugin-local-inference",
 );
@@ -923,10 +921,6 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt(
     "@elizaos/plugin-agent-orchestrator",
     PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR,
-  );
-  ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/app-model-tester",
-    APP_MODEL_TESTER_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/ui", UI_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(

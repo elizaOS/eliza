@@ -33,13 +33,6 @@ import ts from "typescript";
  */
 export const smokeViewDeclarations = [
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
-  [
-    "hyperliquid",
-    "Hyperliquid",
-    "plugin-hyperliquid",
-    "/hyperliquid",
-    "HyperliquidView",
-  ],
   // The decomposed personal-assistant domain views are the real surfaces (the
   // old monolithic `lifeops` overview view was removed). `documents` is
   // intentionally absent — its `/documents` path collides with the built-in
@@ -59,37 +52,9 @@ export const smokeViewDeclarations = [
     "RelationshipsView",
   ],
   ["messages", "Messages", "plugin-messages", "/messages", "MessagesView"],
-  [
-    "model-tester",
-    "Model Tester",
-    "app-model-tester",
-    "/model-tester",
-    "ModelTesterView",
-  ],
   ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
-  [
-    "polymarket",
-    "Polymarket",
-    "plugin-polymarket",
-    "/polymarket",
-    "PolymarketView",
-  ],
   ["wallet", "Wallet", "plugin-wallet", "/wallet", "InventoryView"],
-  [
-    "vector-browser",
-    "Vector Browser",
-    "plugin-vector-browser",
-    "/vector-browser",
-    "VectorBrowserView",
-  ],
   ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
-  [
-    "screenshare",
-    "Screenshare",
-    "plugin-screenshare",
-    "/screenshare",
-    "ScreenshareView",
-  ],
   [
     "task-coordinator",
     "Task Coordinator",
@@ -112,13 +77,6 @@ export const smokeViewDeclarations = [
     "plugin-trajectory-logger",
     "/trajectory-logger",
     "TrajectoryLoggerView",
-  ],
-  [
-    "training",
-    "Fine Tuning",
-    "plugin-training",
-    "/apps/fine-tuning",
-    "FineTuningView",
   ],
 ];
 
