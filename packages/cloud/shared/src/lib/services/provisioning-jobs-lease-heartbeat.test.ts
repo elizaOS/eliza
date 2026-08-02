@@ -109,9 +109,17 @@ describe("execution-lease heartbeat", () => {
     });
 
     const result = await service.processPendingJobs(1, { jobTypes: [JOB_TYPES.AGENT_LOGS] });
-    const renewalsBeforeReturn = renew.mock.calls.length;
-
     expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
+
+    // On Windows the 90 ms execution window may only allow one heartbeat
+    // tick before the execution promise resolves.  Poll until at least
+    // two renewals are observed, with a bounded failure deadline.
+    const deadline = Date.now() + 2_000;
+    while (renew.mock.calls.length < 2 && Date.now() < deadline) {
+      await wait(10);
+    }
+
+    const renewalsBeforeReturn = renew.mock.calls.length;
     expect(renewalsBeforeReturn).toBeGreaterThanOrEqual(2);
     await wait(60);
     expect(renew.mock.calls).toHaveLength(renewalsBeforeReturn);
