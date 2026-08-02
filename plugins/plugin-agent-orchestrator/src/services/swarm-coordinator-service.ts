@@ -25,11 +25,12 @@ import {
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
+import { isSessionBusyError } from "./parent-agent-dispatch.js";
 import {
   DEFAULT_MAX_RELAY_CHARS,
   sanitizeCompletionRelay,
 } from "./transcript-sanitizer.js";
-import { TERMINAL_SESSION_STATUSES } from "./types.js";
+import { type PromptResult, TERMINAL_SESSION_STATUSES } from "./types.js";
 
 export { SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
 
@@ -95,6 +96,27 @@ const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 
 const LEGACY_TASK_EVICTION_GRACE_MS = 60_000;
+
+// Bounded wait-for-idle for the verify-retry prompt. A `task_complete` fans
+// out to several independent consumers of the same event: while the app
+// verifier runs (seconds of lint/typecheck/probe work), another consumer —
+// e.g. the interruption-decider inbox flush delivering a user follow-up that
+// was queued mid-build — can legitimately start a new turn on the now-idle
+// session. The retry prompt then finds the session's single turn slot taken
+// ("ACP session is already busy", a transient claim the transport releases
+// when the occupant turn settles). Delivery therefore polls until idle with a
+// deadline — the same pattern parent-agent-dispatch uses to deliver broker
+// replies — retrying ONLY on the busy classification; every other error is
+// terminal. The deadline must be long enough for a full occupant turn to
+// finish but no shorter than the bound the cited pattern already uses
+// (parent-agent-dispatch's REPLY_DELIVERY_TIMEOUT_MS, 300s): the occupant
+// can run a full prompt turn, and both consumers of isSessionBusyError
+// should wait out the same worst case before declaring the session wedged.
+const RETRY_PROMPT_BUSY_DEADLINE_MS = 300_000;
+const RETRY_PROMPT_BUSY_POLL_MS = 1_000;
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -1200,6 +1222,20 @@ export class SwarmCoordinatorService
     if (event === "task_complete") return "completed";
     if (event === "stopped") return "stopped";
     if (event === "error") return "errored";
+    // A custom-validator FAIL is dispatched as `escalation` (only
+    // dispatchCustomValidatorResult produces this event) and carries the
+    // actionable verdict ("App verification failed: lint") plus the enriched
+    // deliverable. Dropping it here meant origin chat never saw the fail
+    // verdict — only the verification room did (plugin-app-control's
+    // VerificationRoomBridgeService writes its verdict as a room memory, not
+    // a connector send, so origin CHAT still had nothing) — and the teardown
+    // `stopped` then synthesized a false "<label> stopped before completion"
+    // for a task whose deliverable may be registered and live. Treating the
+    // escalation as an errored terminal posts the verdict to origin chat, and
+    // its dedupe-slot claim marks the terminal as delivered — the fail-side
+    // analog of validatorPassSessions — so the trailing teardown `stopped` is
+    // recognized as plumbing and suppressed.
+    if (event === "escalation") return "errored";
     return null;
   }
 
@@ -1606,10 +1642,15 @@ export class SwarmCoordinatorService
     const feedback = JSON.stringify(result, null, 2).slice(0, 12_000);
     try {
       if (typeof acp.updateSessionMetadata === "function") {
+        // The bump must land BEFORE the retry turn starts: the retried turn's
+        // own task_complete re-enters the validator path and reads retryCount
+        // from session metadata, so bumping after the turn would let a
+        // still-failing build retry without bound.
         await acp.updateSessionMetadata(sessionId, { retryCount: nextRetry });
         this.enrichmentMetadataCache.delete(sessionId);
       }
-      const promptResult = await acp.sendPrompt(
+      const promptResult = await this.sendRetryPromptWhenIdle(
+        acp,
         sessionId,
         [
           `Verification failed (retry ${nextRetry}/${maxRetries}).`,
@@ -1638,6 +1679,26 @@ export class SwarmCoordinatorService
     } catch (err) {
       // error-policy:J7 a retry transport failure must not hide the original
       // verification failure; warn and let the caller dispatch escalation.
+      if (
+        isSessionBusyError(err) &&
+        typeof acp.updateSessionMetadata === "function"
+      ) {
+        // Busy through the whole deadline ⇒ the retry turn never started.
+        // Un-record the bump so the session's metadata does not claim a retry
+        // attempt that never ran.
+        try {
+          await acp.updateSessionMetadata(sessionId, { retryCount });
+          this.enrichmentMetadataCache.delete(sessionId);
+        } catch (revertErr) {
+          // error-policy:J6 bookkeeping revert on a session headed for
+          // escalation + teardown; the escalation dispatch is unaffected.
+          logger.warn(
+            `[SwarmCoordinator] failed to revert retryCount after undeliverable retry: ${
+              revertErr instanceof Error ? revertErr.message : String(revertErr)
+            }`,
+          );
+        }
+      }
       logger.warn(
         `[SwarmCoordinator] custom validator retry failed: ${
           err instanceof Error ? err.message : String(err)
@@ -1649,6 +1710,32 @@ export class SwarmCoordinatorService
         maxRetries,
       });
       return false;
+    }
+  }
+
+  /**
+   * Deliver the verify-retry prompt into the session, waiting out a transient
+   * occupant turn (see RETRY_PROMPT_BUSY_DEADLINE_MS). Retries ONLY on the
+   * transport's "already busy" rejection; a deadline expiry re-throws the last
+   * busy error and every other error propagates immediately, so the caller's
+   * escalation path always runs on a terminal failure.
+   */
+  private async sendRetryPromptWhenIdle(
+    acp: AcpService,
+    sessionId: string,
+    prompt: string,
+  ): Promise<PromptResult> {
+    const deadline = Date.now() + RETRY_PROMPT_BUSY_DEADLINE_MS;
+    for (;;) {
+      try {
+        return await acp.sendPrompt(sessionId, prompt);
+      } catch (err) {
+        if (isSessionBusyError(err) && Date.now() < deadline) {
+          await delay(RETRY_PROMPT_BUSY_POLL_MS);
+          continue;
+        }
+        throw err;
+      }
     }
   }
 
