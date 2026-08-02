@@ -122,12 +122,11 @@ jobs:
 
       - name: Build ISO (amd64)
         working-directory: ${{ env.LINUX_DIR }}
-        # ELIZAOS_BUILD_APP=1 lets `just elizaos-app` (the dependency of
-        # `just build`) compile the Electrobun desktop artifact in-CI when
-        # no pre-staged ${ELIZAOS_APP_ARTIFACT} is provided. Without this
-        # flag the recipe exits before staging, so the chroot hook fails
-        # with "ERROR: /opt/elizaos-artifacts missing" — the root cause
-        # of 8+ days of nightly red on this workflow.
+        # ELIZAOS_BUILD_APP=1 lets `just elizaos-app` compile the Electrobun
+        # desktop artifact in CI when no pre-staged ${ELIZAOS_APP_ARTIFACT} is
+        # provided. The host smoke starts that exact staged runtime before the
+        # long live-build phase, retaining actionable startup output and
+        # preventing an unstartable application from being sealed into an ISO.
         #
         # NODE_OPTIONS lifts the V8 heap so the Vite renderer build can
         # bundle the full elizaOS plugin graph; the default 4 GB heap
@@ -139,6 +138,8 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=12288
         run: |
           set -euo pipefail
+          just elizaos-app
+          just runtime-smoke
           just build
           git diff --exit-code -- package.json bun.lock
         timeout-minutes: 180

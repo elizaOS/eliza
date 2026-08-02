@@ -120,6 +120,14 @@ for (const fixture of [
     pattern: /must remain a source-only static contract/,
   },
   {
+    name: "an ISO build without a staged runtime health check",
+    mutate: (job) => {
+      const step = stepNamed(job, "Build ISO (amd64)");
+      step.run = step.run.replace("just runtime-smoke\n", "");
+    },
+    pattern: /must start and health-check the staged runtime/,
+  },
+  {
     name: "a floating third-party action reference",
     mutate: (job) => {
       stepNamed(job, "Checkout").uses = "actions/checkout@v7";

@@ -215,6 +215,15 @@ export function validateLinuxIsoWorkflow(workflow) {
     String(build.step.env?.ELIZAOS_BUILD_APP) === "1",
     "canonical ISO build must stage the application",
   );
+  const appStageIndex = build.step.run.indexOf("just elizaos-app");
+  const runtimeSmokeIndex = build.step.run.indexOf("just runtime-smoke");
+  const isoBuildIndex = build.step.run.indexOf("just build");
+  invariant(
+    appStageIndex >= 0 &&
+      runtimeSmokeIndex > appStageIndex &&
+      isoBuildIndex > runtimeSmokeIndex,
+    "canonical ISO build must start and health-check the staged runtime before image construction",
+  );
   requireOrdered(
     staticContracts,
     build,
