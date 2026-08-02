@@ -3377,7 +3377,11 @@ export function ChatOverlay({
   // open) so a half-finished pill drag springs cleanly back to the capsule.
   const settleDrag = React.useCallback(() => {
     draggingRef.current = false;
-    setDragPreviewMounted(false);
+    // Keep a collapsed-state drag preview mounted until the return spring
+    // actually reaches zero. Unmounting it at pointer-up removes the moving
+    // body one frame before the glass settles, which reads as a flash/snap on a
+    // short pull or a canceled pointer. The threadHeight listener owns the
+    // eventual unmount; committed open destinations clear the preview below.
     // Settle toward the LIVE resting pose (modeRef/freeHRef), not the render
     // closure: a mid-drag commit flips mode in the same event as the release,
     // and the stale closure here sprang the sheet back toward the PRE-commit
@@ -3423,7 +3427,6 @@ export function ChatOverlay({
     animateOpenProgress,
     settleFullBleed,
     overpullCapT,
-    setDragPreviewMounted,
   ]);
   // Keep the ref the (earlier-declared) viewport-resize effect calls pointing at
   // the latest settleDrag, so a rotation re-settles with current geometry.
@@ -5122,7 +5125,6 @@ export function ChatOverlay({
     // to a detent — drag the sheet to any size and it stays.
     onSettleFree: (direction) => {
       draggingRef.current = false;
-      setDragPreviewMounted(false);
       // Onboarding: a released drag always springs back to the pinned FULL.
       if (pinnedOpen) return settleDrag();
       // Include a same-event mid-drag pill commit (see onPullUp).
@@ -5162,7 +5164,10 @@ export function ChatOverlay({
       // peak raw pull (maxPullRawRef) carries the intent. Downward restore drags
       // must not re-enter full-bleed, even if a previous upward peak was visible
       // before the release settled.
-      if (direction === "up" && maybeMaximizeOnRelease()) return;
+      if (direction === "up" && maybeMaximizeOnRelease()) {
+        setDragPreviewMounted(false);
+        return;
+      }
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
       // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
       // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
@@ -5176,8 +5181,10 @@ export function ChatOverlay({
       }
       focusThreadRef.current = true;
       if (h >= openH - SHEET_DETENT_MAGNET) {
+        setDragPreviewMounted(false);
         goToDetent("full");
       } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+        setDragPreviewMounted(false);
         goToDetent("half");
       } else {
         // In a gap between detents → rest exactly where released. `half` is the
@@ -5185,6 +5192,7 @@ export function ChatOverlay({
         // left. This leaves FULL without goToDetent, so drop full-bleed here
         // too — only the FULL detent may stay maximized (a stale flag would
         // re-maximize the next return to full).
+        setDragPreviewMounted(false);
         setFreeH(h);
         setMode("half");
         setMaximized(false);
