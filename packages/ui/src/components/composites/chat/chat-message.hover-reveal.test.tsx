@@ -136,8 +136,12 @@ describe("ChatMessage desktop hover chrome", () => {
     const content = actions.parentElement;
     const restingContentClass = content?.className;
     expect(message.className).toContain("mb-0");
+    // Fine-pointer hover keeps its compact lane permanently reserved, so a
+    // hover/focus reveal never reflows mid-thread. The 48px touch lane is now a
+    // coarse-pointer, revealed-only state rather than static responsive CSS.
     expect(content?.className).toContain("pb-6");
-    expect(content?.className).toContain("pointer-coarse:pb-12");
+    expect(content?.className).not.toContain("pb-12");
+    expect(content?.className).not.toContain("pointer-coarse:pb-12");
     expect(actions.className).toContain("bottom-0");
     expect(actions.className).toContain("absolute");
     expect(actions.getAttribute("aria-hidden")).toBe("true");

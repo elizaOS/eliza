@@ -1135,11 +1135,20 @@ export const ChatMessage = memo(function ChatMessage({
         <MessageRowContent
           className={cn(
             "relative flex flex-col",
-            // Reserve the action lane before reveal so hover, focus, and touch
-            // never reflow nearby messages. The extra four pixels keep the rail
-            // visibly outside outlined bubbles without letting it protrude past
-            // the row and get clipped by the transcript viewport.
-            hasActionLane && "pb-6 pointer-coarse:pb-12",
+            // Fine pointers reserve the compact action lane before hover/focus,
+            // preserving the no-reflow desktop interaction contract. Coarse
+            // pointers must NOT reserve the 48px touch lane while it is hidden:
+            // on the LP3's 414px-tall WebView that consumed ~12% of the screen
+            // below every message and read as a giant blank gap. Expand the
+            // touch lane only for the explicitly revealed accessory, then
+            // collapse it again when dismissed. Padding transitions so the
+            // intentional tap-driven reflow is legible rather than a jump.
+            hasActionLane &&
+              (supportsHover
+                ? "pb-6"
+                : accessoryVisible
+                  ? "pb-12 transition-[padding-bottom] duration-200"
+                  : "transition-[padding-bottom] duration-200"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser

@@ -125,13 +125,27 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
       name: "Show message actions",
     });
     const rail = screen.getByTestId("thread-line-actions");
+    const rowContent = rail.parentElement;
+
+    // The hidden 48px touch action lane must not be reserved below EVERY
+    // message on a coarse-pointer phone. On the LP3 (414px viewport) the old
+    // pointer-coarse:pb-12 consumed ~12% of the screen per message.
+    expect(rowContent?.className).not.toContain("pb-12");
 
     // Mobile browsers focus the bubble before dispatching their synthesized
     // click. Focus alone must not pre-toggle the rail or that click hides it.
     act(() => bubble.focus());
     expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rowContent?.className).not.toContain("pb-12");
     fireEvent.click(bubble);
     expect(rail.getAttribute("aria-hidden")).toBe("false");
+    // Once the user explicitly reveals the touch controls, expand the lane so
+    // the absolute rail does not cover the message bubble.
+    expect(rowContent?.className).toContain("pb-12");
+
+    fireEvent.click(bubble);
+    expect(rail.getAttribute("aria-hidden")).toBe("true");
+    expect(rowContent?.className).not.toContain("pb-12");
   });
 
   it("a scroll-like touch (travel past the slop) does NOT toggle the rail", () => {
