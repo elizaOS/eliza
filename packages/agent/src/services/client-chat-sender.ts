@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import {
   type Content,
   createMessageMemory,
+  ElizaError,
   type IAgentRuntime,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
@@ -220,13 +221,15 @@ function installDashboardFallbackSend(
   const originalSend = runtime.sendMessageToTarget.bind(runtime);
   const hasRegisteredHandler = (source: string): boolean => {
     if (typeof runtime.getMessageConnectors !== "function") {
-      // Connector discovery is unavailable: we cannot tell whether `source` is
-      // a registered connector. Treating it as unregistered and falling back
-      // to the dashboard would hijack delivery for a connector we cannot see —
-      // a broken registry looks like a healthy unregistered source and delivery
-      // is rerouted to the dashboard. Surface the failure instead of guessing.
-      throw new Error(
+      // Failing closed preserves transport ownership when a runtime violates
+      // the connector-discovery contract.
+      throw new ElizaError(
         `connector discovery unavailable; refusing dashboard fallback for source: ${source}`,
+        {
+          code: "CONNECTOR_DISCOVERY_UNAVAILABLE",
+          context: { source },
+          severity: "fatal",
+        },
       );
     }
     return runtime

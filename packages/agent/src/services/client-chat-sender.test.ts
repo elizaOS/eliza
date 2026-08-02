@@ -347,24 +347,23 @@ describe("registerClientChatSendHandler — cross-conversation safety", () => {
 
 describe("registerClientChatSendHandler — connector discovery failure is observable", () => {
   it("surfaces a missing connector-discovery API instead of falling back to the dashboard", async () => {
-    // A runtime whose registry is broken: getMessageConnectors is absent, so
-    // the fallback cannot prove whether `my_custom_source` is a registered
-    // connector. Falling back would hijack a possibly-registered connector's
-    // delivery; the failure must surface instead.
     const { runtime, created } = makeRuntime();
     delete (runtime as { getMessageConnectors?: unknown }).getMessageConnectors;
     const { state, broadcastWs } = makeState([conv("c1", "room-1")]);
     registerClientChatSendHandler(runtime as unknown as IAgentRuntime, state);
 
-    await expect(
-      runtime.sendMessageToTarget(
-        { source: "my_custom_source", roomId: "room-1" as UUID },
-        { text: "relayed result" },
-      ),
-    ).rejects.toThrow(/connector discovery unavailable/);
+    const result = runtime.sendMessageToTarget(
+      { source: "my_custom_source", roomId: "room-1" as UUID },
+      { text: "relayed result" },
+    );
+    await expect(result).rejects.toMatchObject({
+      name: "ElizaError",
+      message: expect.stringMatching(/connector discovery unavailable/),
+      code: "CONNECTOR_DISCOVERY_UNAVAILABLE",
+      context: { source: "my_custom_source" },
+      severity: "fatal",
+    });
 
-    // Nothing was delivered to the dashboard, and no WS event fired: a broken
-    // registry must not look like a healthy unregistered source.
     expect(created).toHaveLength(0);
     expect(broadcastWs).not.toHaveBeenCalled();
   });
