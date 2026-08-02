@@ -65,8 +65,9 @@ describe("detectPlaceholderLeaks", () => {
 });
 
 describe("normalize", () => {
-  it("lowercases and collapses whitespace", () => {
+  it("lowercases and canonicalizes punctuation and whitespace", () => {
     expect(normalize("  Ask   Eliza\n\n")).toBe("ask eliza");
+    expect(normalize("Fine-Tuning")).toBe("fine tuning");
   });
 });
 
@@ -181,6 +182,22 @@ describe("evaluateOcrContent", () => {
     expect(f.missingRequired).toHaveLength(0);
   });
 
+  it("tolerates OCR punctuation and word-join segmentation without fuzzy spelling", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("Fine Tuning\nNewnote"),
+      expectation: { requireAll: ["Fine-Tuning", "New note"] },
+    });
+    expect(f.verdict).toBe("verified");
+    expect(f.missingRequired).toHaveLength(0);
+
+    const misspelled = evaluateOcrContent({
+      ocr: ocr("Fine Tunning\nNew not"),
+      expectation: { requireAll: ["Fine-Tuning", "New note"] },
+    });
+    expect(misspelled.verdict).toBe("broken");
+    expect(misspelled.missingRequired).toEqual(["Fine-Tuning", "New note"]);
+  });
+
   it("breaks a view missing a label it exists to show", () => {
     const f = evaluateOcrContent({
       ocr: ocr("Good evening\nWeather"),
@@ -251,6 +268,28 @@ describe("evaluateOcrContent", () => {
       "< Live meeting\nPaste a Meet, Teams, or Zoom link\not namo (option)\n(©)\n+ AskEiza [UR",
     ],
   ])("verifies current CI OCR text for %s", (slug, text) => {
+    const f = evaluateOcrContent({
+      ocr: ocr(text),
+      expectation: expectationFor(slug),
+    });
+    expect(f.verdict).toBe("verified");
+    expect(f.missingRequired).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "builtin-browser",
+      "< Browser\n@Notab © + OX EnteralRL Go\nAgent Browser Bridge\n+ Ask",
+    ],
+    [
+      "builtin-fine-tuning",
+      "< Fine Tuning\nStatus\nRUNTIME\noffline\nRUNNING JOBS\n0\nTrajectories",
+    ],
+    [
+      "plugin-notes-gui",
+      "Newnote Clear\nCreate a note from here or through chat\nTitle\nDetails\n+ Add note",
+    ],
+  ])("verifies current macOS OCR segmentation for %s", (slug, text) => {
     const f = evaluateOcrContent({
       ocr: ocr(text),
       expectation: expectationFor(slug),

@@ -81,7 +81,7 @@ export const VIEW_OCR_POLICIES = {
       "Enter a URL",
       "Open a website",
       "No browser tabs yet",
-      "Browser Bridge Available",
+      "Browser Bridge",
       "Summarize a page",
       "Search the web",
     ],
