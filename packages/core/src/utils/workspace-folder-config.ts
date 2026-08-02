@@ -23,6 +23,14 @@ export interface WorkspaceFolderConfig {
 	updatedAt: string;
 }
 
+function isMissingFileError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
+}
+
 function isWorkspaceFolderConfig(
 	value: unknown,
 ): value is WorkspaceFolderConfig {
@@ -47,13 +55,20 @@ export function readWorkspaceFolderConfig(
 	let raw: string;
 	try {
 		raw = readFileSync(filePath, "utf8");
-	} catch {
-		return null;
+	} catch (error) {
+		if (isMissingFileError(error)) {
+			// error-policy:J4 an absent workspace selection is an expected,
+			// explicitly unavailable state during first-run boot.
+			return null;
+		}
+		throw error;
 	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
+		// error-policy:J3 persisted config is untrusted input; malformed JSON is
+		// an explicit invalid configuration.
 		return null;
 	}
 	return isWorkspaceFolderConfig(parsed) ? parsed : null;
@@ -79,7 +94,12 @@ export function clearWorkspaceFolderConfig(
 ): void {
 	try {
 		unlinkSync(workspaceFolderConfigPath(env));
-	} catch {
-		// Already absent — nothing to do.
+	} catch (error) {
+		if (isMissingFileError(error)) {
+			// error-policy:J6 clearing an already-absent optional selection is an
+			// idempotent teardown operation.
+			return;
+		}
+		throw error;
 	}
 }

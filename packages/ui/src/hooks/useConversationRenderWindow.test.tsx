@@ -1,3 +1,4 @@
+/** Verifies useConversationRenderWindow (#15281) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for the bounded render-window engine (#15281): reveal-before-

@@ -196,7 +196,7 @@ export interface MiscRouteContext {
     runtime: AgentRuntime | null;
     agentState: string;
     agentName: string;
-    shellEnabled: boolean | undefined;
+    shellEnabled?: boolean | undefined;
     broadcastWs?: ((data: object) => void) | null;
     broadcastWsToClientId?: (clientId: string, data: object) => void;
     nextEventId: number;

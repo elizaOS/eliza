@@ -1,3 +1,4 @@
+/** Verifies pill collapse hard-shrink scale (pillMorphScale) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Regression suite for the chat-widget polish pass: the pill hard-shrink scale

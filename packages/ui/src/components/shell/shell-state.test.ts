@@ -1,3 +1,4 @@
+/** Verifies selectVisibleShellMessages (#9141 gap 4 windowing) through the package's configured test harness. */
 // Unit coverage for selectVisibleShellMessages — the pure selector that windows
 // the rendered shell transcript (dropping empty turns except an in-flight
 // assistant turn while responding, capped at MAX_RENDERED_SHELL_MESSAGES).

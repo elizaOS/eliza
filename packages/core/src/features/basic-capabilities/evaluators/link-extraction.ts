@@ -201,6 +201,8 @@ async function fetchLinkPreview(
 		const bodyChunk = stripTags(html).slice(0, SUMMARY_MAX_INPUT_CHARS);
 		return { title, bodyChunk };
 	} catch {
+		// error-policy:J4 link previews are optional enrichments; blocked,
+		// unreachable, or invalid external URLs produce no preview.
 		return null;
 	} finally {
 		await release?.();

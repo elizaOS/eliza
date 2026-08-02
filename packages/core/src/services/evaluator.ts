@@ -44,6 +44,8 @@ function stringifyForPrompt(value: unknown): string {
 	try {
 		return JSON.stringify(value, null, 2);
 	} catch {
+		// error-policy:J3 evaluator context may contain non-JSON runtime values;
+		// String provides an explicit diagnostic representation for the prompt.
 		return String(value);
 	}
 }
@@ -55,6 +57,8 @@ function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
 		const parsed = JSON.parse(raw);
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// error-policy:J3 evaluator model output is untrusted input; malformed
+		// JSON is an explicit invalid result.
 		return null;
 	}
 }
@@ -1046,14 +1050,11 @@ export async function runPostTurnEvaluators(
 			phase: options.phase ?? "post_turn",
 		});
 	} catch (error) {
-		logger.debug(
-			{
-				src: "service:evaluator",
-				agentId: runtime.agentId,
-				err: error instanceof Error ? error.message : String(error),
-			},
-			"Post-turn evaluator service unavailable",
-		);
+		// error-policy:J4 post-turn evaluation is optional, but initialization
+		// failure is surfaced to the agent before evaluation becomes unavailable.
+		runtime.reportError("EvaluatorService.postTurn", error, {
+			agentId: runtime.agentId,
+		});
 		return null;
 	}
 }

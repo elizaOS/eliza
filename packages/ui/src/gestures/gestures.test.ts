@@ -1,3 +1,4 @@
+/** Verifies resolvePull through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit suite for the shared gesture core (#12349): the pure recognizers

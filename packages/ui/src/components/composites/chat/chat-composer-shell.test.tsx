@@ -1,3 +1,4 @@
+/** Verifies ChatComposerShell through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ChatComposerShell in jsdom to lock its flex layout: the default

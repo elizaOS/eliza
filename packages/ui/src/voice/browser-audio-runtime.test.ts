@@ -1,3 +1,4 @@
+/** Verifies browser audio runtime boundaries through the package's configured test harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

@@ -1,3 +1,4 @@
+/** Verifies free-rest release bands + detent magnetism (matrix: FREE / slow drag rows) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // State-matrix gap coverage for the continuous chat sheet — the rows of

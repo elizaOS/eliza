@@ -8,7 +8,7 @@ view instrumentation, GenUI, voice, and platform/bridge glue.
 
 A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
-shell), `@elizaos/app-core`, `@elizaos/cloud-frontend`, the `eliza-app`
+shell), `@elizaos/app-core`, the Cloud surfaces in `@elizaos/app`, the `eliza-app`
 homepage, and many plugin UI packages (`plugin-wallet`,
 `plugin-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
@@ -104,7 +104,7 @@ The root barrel `@elizaos/ui` re-exports nearly everything. Notable subpath
 entries (see `exports` in package.json) so importers avoid the giant barrel:
 
 - `@elizaos/ui/styles` and `@elizaos/ui/styles/*.css` — CSS (renderer-only)
-- `@elizaos/ui/cloud-ui`, `@elizaos/ui/cloud-ui/index.css` — cloud-frontend set
+- `@elizaos/ui/cloud-ui`, `@elizaos/ui/cloud-ui/index.css` — Cloud console set
 - `@elizaos/ui/api`, `@elizaos/ui/api/*` — typed client (`ElizaClient`)
 - `@elizaos/ui/bridge`, `@elizaos/ui/state`, `@elizaos/ui/state/*`
 - `@elizaos/ui/components`, `@elizaos/ui/components/*`, `@elizaos/ui/config`
@@ -129,7 +129,7 @@ This is a library — no dev server (use the host app's). Scripts from package.j
 
 ```bash
 bun run --cwd packages/ui build               # build:dist → dist/ (locked tsc + asset copy)
-bun run --cwd packages/ui typecheck           # tsgo --noEmit
+bun run --cwd packages/ui typecheck           # tsc --noEmit
 bun run --cwd packages/ui test                # vitest (vitest.config.ts)
 bun run --cwd packages/ui test:e2e            # slow suite (vitest.e2e.config.ts)
 bun run --cwd packages/ui test:agent-surface-e2e   # agent-surface __e2e__ runner
@@ -186,7 +186,7 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
 Every new story automatically gains story-gate coverage; a new interactive
 component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
-(`audit:app`) and `packages/cloud-frontend` (`audit:cloud`).
+(`audit:app` and `audit:cloud` in `packages/app`).
 
 ### Scroll + tap-target certification (`src/testing/scroll-cert.ts`, #14380)
 
@@ -264,7 +264,7 @@ This package mostly reads config injected by the host, not raw env vars:
   `src/testing/builtin-view-action-ratchet.ts` covers local handler growth per
   view. Prefer adding or extending the semantic action; the generic
   `useAgentElement` bridge is for third-party plugin views only.
-- **Add a cloud-frontend component:** add under `cloud-ui/components/` and export
+- **Add a Cloud console component:** add under `cloud-ui/components/` and export
   from `cloud-ui/index.ts`; it ships under the `@elizaos/ui/cloud-ui` subpath.
   Import primitives from `../../components/ui/*` — do not create re-export shims
   or local copies of base elements inside `cloud-ui/`.
@@ -321,44 +321,10 @@ This package mostly reads config injected by the host, not raw env vars:
 - Build/test conventions and the repo-wide architecture rules live in the root
   AGENTS.md — don't restate them; follow them.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — UI surface:**
-- Before/after **full-page** screenshots — desktop **and** mobile, portrait **and** landscape, rest **and** hover (`bun run --cwd packages/app audit:app` where applicable) — not desktop-only-happy-path (see #9950).
-- A **video walkthrough** of the whole view/flow, plus browser console + network logs showing the real request/response and state change.
-- Empty, loading, error, and permission-denied states — and fill the per-view manual-review verdict (`good`/`needs-work`/`needs-eyeball`/`broken`); no page ships `needs-work`/`broken`.
-- The backend trajectory/logs behind anything the UI triggered.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

@@ -1,3 +1,4 @@
+/** Verifies UiRenderer tap-target floor — standalone button-family controls through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Tap-target floor guard for the agent-emitted UiRenderer control family

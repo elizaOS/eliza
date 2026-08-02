@@ -2,8 +2,8 @@
  * Runs the PlanningService for the advanced-planning capability: the long-lived
  * service that turns goals into action plans and executes them. `createSimplePlan`
  * wraps a model's chosen actions into a sequential plan; `createComprehensivePlan`
- * prompts a TEXT_LARGE model to decompose a goal, then parses and enhances the
- * result (unknown actions fall back to REPLY, missing retry policies are filled in).
+ * prompts a TEXT_LARGE model to decompose a goal, then validates and enhances the
+ * result (unknown actions and malformed output fail before execution).
  * `executePlan` runs a plan's steps in sequential, parallel, or DAG order
  * (topological, via a min-heap ready queue) with per-step retry/backoff, an
  * in-memory PlanWorkingMemory, and abort-based cancellation tracked in
@@ -14,7 +14,7 @@
  * disposed by createAdvancedPlanningPlugin.
  */
 import { v4 as uuidv4 } from "uuid";
-import { isElizaError } from "../../../errors.ts";
+import { ElizaError, isElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import { settleActionHandler } from "../../../runtime/action-handler-settlement.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
@@ -60,15 +60,24 @@ interface ActionStep {
 }
 
 function formatPromptData(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
+	const formatted = JSON.stringify(value, null, 2);
+	if (formatted === undefined) {
+		throw new ElizaError("Planning prompt data is not JSON-serializable", {
+			code: "PLANNING_PROMPT_DATA_INVALID",
+			context: { valueType: typeof value },
+		});
 	}
+	return formatted;
 }
 
 function parseJsonRecord(response: string): Record<string, unknown> {
-	return parseJsonObject<Record<string, unknown>>(response) ?? {};
+	const parsed = parseJsonObject<Record<string, unknown>>(response);
+	if (!parsed) {
+		throw new ElizaError("Planning model returned invalid JSON", {
+			code: "PLANNING_MODEL_OUTPUT_INVALID",
+		});
+	}
+	return parsed;
 }
 
 interface PlanState {
@@ -105,6 +114,10 @@ type WorkingMemory = Record<string, JsonValue>;
 type RuntimeAction = IAgentRuntime["actions"][number];
 
 function normalizeActionParameters(value: unknown): ActionParameters {
+	if (value === undefined || value === null) {
+		return {};
+	}
+
 	if (isRecord(value)) {
 		return value as ActionParameters;
 	}
@@ -115,35 +128,141 @@ function normalizeActionParameters(value: unknown): ActionParameters {
 			if (isRecord(parsed)) {
 				return parsed as ActionParameters;
 			}
-		} catch {
-			// ignore
+		} catch (error) {
+			// error-policy:J3 model-supplied parameter JSON is an untrusted input boundary
+			throw new ElizaError("Action parameters contain invalid JSON", {
+				code: "PLANNING_ACTION_PARAMETERS_INVALID",
+				cause: error,
+			});
 		}
 	}
 
-	return {};
+	throw new ElizaError("Action parameters must be a JSON object", {
+		code: "PLANNING_ACTION_PARAMETERS_INVALID",
+		context: { valueType: typeof value },
+	});
 }
 
 function normalizeDependencyStrings(value: unknown): string[] {
+	if (value === undefined || value === null) {
+		return [];
+	}
+
 	if (Array.isArray(value)) {
-		return value
-			.map((entry) => String(entry).trim())
-			.filter((entry) => entry.length > 0);
+		if (!value.every((entry) => typeof entry === "string")) {
+			throw new ElizaError("Plan dependencies must contain only strings", {
+				code: "PLANNING_DEPENDENCIES_INVALID",
+			});
+		}
+		return value.map((entry) => entry.trim()).filter(Boolean);
 	}
 
 	if (typeof value === "string" && value.trim().length > 0) {
-		try {
-			const parsed = JSON.parse(value) as unknown;
-			if (Array.isArray(parsed)) {
-				return parsed
-					.map((entry) => String(entry).trim())
-					.filter((entry) => entry.length > 0);
+		const trimmed = value.trim();
+		if (trimmed.startsWith("[")) {
+			try {
+				const parsed = JSON.parse(trimmed) as unknown;
+				if (
+					Array.isArray(parsed) &&
+					parsed.every((entry) => typeof entry === "string")
+				) {
+					return parsed.map((entry) => entry.trim()).filter(Boolean);
+				}
+			} catch (error) {
+				// error-policy:J3 model-supplied dependency JSON is an untrusted input boundary
+				throw new ElizaError("Plan dependencies contain invalid JSON", {
+					code: "PLANNING_DEPENDENCIES_INVALID",
+					cause: error,
+				});
 			}
-		} catch {
-			return [value.trim()];
+			throw new ElizaError("Plan dependencies must be a string array", {
+				code: "PLANNING_DEPENDENCIES_INVALID",
+			});
 		}
+		return [trimmed];
 	}
 
-	return [];
+	throw new ElizaError("Plan dependencies must be a string or string array", {
+		code: "PLANNING_DEPENDENCIES_INVALID",
+		context: { valueType: typeof value },
+	});
+}
+
+function parseModelSteps(value: unknown): ActionStep[] {
+	if (!Array.isArray(value)) {
+		throw new ElizaError("Planning model steps must be an array", {
+			code: "PLANNING_STEPS_INVALID",
+		});
+	}
+
+	const steps: ActionStep[] = [];
+	const stepIdMap = new Map<string, UUID>();
+	for (const [index, candidate] of value.entries()) {
+		if (!isRecord(candidate)) {
+			throw new ElizaError("Planning model returned a malformed step", {
+				code: "PLANNING_STEP_INVALID",
+				context: { stepIndex: index },
+			});
+		}
+
+		const actionName =
+			typeof candidate.action === "string"
+				? candidate.action.trim()
+				: typeof candidate.actionName === "string"
+					? candidate.actionName.trim()
+					: "";
+		if (!actionName) {
+			throw new ElizaError("Planning step is missing an action name", {
+				code: "PLANNING_STEP_ACTION_MISSING",
+				context: { stepIndex: index },
+			});
+		}
+
+		const originalId =
+			typeof candidate.id === "string" && candidate.id.trim().length > 0
+				? candidate.id.trim()
+				: `step_${index + 1}`;
+		if (stepIdMap.has(originalId)) {
+			throw new ElizaError("Planning model returned duplicate step IDs", {
+				code: "PLANNING_STEP_ID_DUPLICATE",
+				context: { stepId: originalId },
+			});
+		}
+
+		const actualId = asUUID(uuidv4());
+		stepIdMap.set(originalId, actualId);
+		steps.push({
+			id: actualId,
+			actionName,
+			parameters: normalizeActionParameters(candidate.parameters),
+			dependencies: [],
+			_dependencyStrings: normalizeDependencyStrings(candidate.dependencies),
+		});
+	}
+
+	if (steps.length === 0) {
+		throw new ElizaError("Planning model returned no executable steps", {
+			code: "PLANNING_STEPS_MISSING",
+		});
+	}
+
+	for (const step of steps) {
+		const dependencies: UUID[] = [];
+		for (const dependency of step._dependencyStrings ?? []) {
+			const resolvedId = stepIdMap.get(dependency);
+			if (!resolvedId) {
+				throw new ElizaError("Planning step references an unknown dependency", {
+					code: "PLANNING_DEPENDENCY_UNKNOWN",
+					context: { dependency },
+				});
+			}
+			dependencies.push(resolvedId);
+		}
+		step.dependencies = dependencies;
+		delete step._dependencyStrings;
+	}
+
+	return steps;
 }
 
 class PlanWorkingMemory {
@@ -205,64 +324,53 @@ export class PlanningService extends Service {
 		message: Memory,
 		_state: State,
 		responseContent?: Content,
-	): Promise<ActionPlan | null> {
-		try {
-			// Action selection comes from the model's decision (the `<response>`
-			// actions field), never from keyword-matching the user's text. When
-			// the model chose no actions, the documented model-output contract
-			// treats the turn as a plain REPLY. Keyword routing (e.g.
-			// `text.includes("email"|"search"|"analyze")`) is avoided because it
-			// is brittle, English-only, and runs actions the model never decided
-			// to run (#10470, #10424).
-			const actions =
-				responseContent?.actions && responseContent.actions.length > 0
-					? responseContent.actions
-					: ["REPLY"];
+	): Promise<ActionPlan> {
+		// Action selection comes from the model's decision (the `<response>`
+		// actions field), never from keyword-matching the user's text. When
+		// the model chose no actions, the documented model-output contract
+		// treats the turn as a plain REPLY. Keyword routing (e.g.
+		// `text.includes("email"|"search"|"analyze")`) is avoided because it
+		// is brittle, English-only, and runs actions the model never decided
+		// to run (#10470, #10424).
+		const actions =
+			responseContent?.actions && responseContent.actions.length > 0
+				? responseContent.actions
+				: ["REPLY"];
 
-			const planId = asUUID(uuidv4());
-			const stepIds: UUID[] = [];
-			const steps: ActionStep[] = actions.map((actionName, index) => {
-				const stepId = asUUID(uuidv4());
-				stepIds.push(stepId);
-				return {
-					id: stepId,
-					actionName,
-					parameters: {
-						message: responseContent?.text || message.content.text || "",
-						thought: responseContent?.thought || "",
-						providers: responseContent?.providers || [],
-					} satisfies ActionParameters,
-					dependencies: index > 0 ? [stepIds[index - 1]] : [],
-				};
-			});
-
-			const plan: ActionPlan = {
-				id: planId,
-				goal: responseContent?.text || `Execute actions: ${actions.join(", ")}`,
-				thought:
-					responseContent?.thought || `Executing ${actions.length} action(s)`,
-				totalSteps: steps.length,
-				currentStep: 0,
-				steps,
-				executionModel: "sequential",
-				state: { status: "pending" },
-				metadata: {
-					createdAt: Date.now(),
-					estimatedDuration: steps.length * 5000,
-					priority: 1,
-					tags: ["simple", "message-handling"],
-				},
+		const planId = asUUID(uuidv4());
+		const stepIds: UUID[] = [];
+		const steps: ActionStep[] = actions.map((actionName, index) => {
+			const stepId = asUUID(uuidv4());
+			stepIds.push(stepId);
+			return {
+				id: stepId,
+				actionName,
+				parameters: {
+					message: responseContent?.text || message.content.text || "",
+					thought: responseContent?.thought || "",
+					providers: responseContent?.providers || [],
+				} satisfies ActionParameters,
+				dependencies: index > 0 ? [stepIds[index - 1]] : [],
 			};
+		});
 
-			return plan;
-		} catch (error) {
-			const err = error instanceof Error ? error.message : String(error);
-			logger.error(
-				{ src: "service:planning", err },
-				"Error creating simple plan",
-			);
-			return null;
-		}
+		return {
+			id: planId,
+			goal: responseContent?.text || `Execute actions: ${actions.join(", ")}`,
+			thought:
+				responseContent?.thought || `Executing ${actions.length} action(s)`,
+			totalSteps: steps.length,
+			currentStep: 0,
+			steps,
+			executionModel: "sequential",
+			state: { status: "pending" },
+			metadata: {
+				createdAt: Date.now(),
+				estimatedDuration: steps.length * 5000,
+				priority: 1,
+				tags: ["simple", "message-handling"],
+			},
+		};
 	}
 
 	async createComprehensivePlan(
@@ -274,13 +382,22 @@ export class PlanningService extends Service {
 		if (context.goal.trim() === "") {
 			throw new Error("Planning context must have a non-empty goal");
 		}
-		if (!Array.isArray(context.constraints)) {
+		if (
+			context.constraints !== undefined &&
+			!Array.isArray(context.constraints)
+		) {
 			throw new Error("Planning context constraints must be an array");
 		}
-		if (!Array.isArray(context.availableActions)) {
+		if (
+			context.availableActions !== undefined &&
+			!Array.isArray(context.availableActions)
+		) {
 			throw new Error("Planning context availableActions must be an array");
 		}
-		if (!context.preferences || typeof context.preferences !== "object") {
+		if (
+			context.preferences !== undefined &&
+			typeof context.preferences !== "object"
+		) {
 			throw new Error("Planning context preferences must be an object");
 		}
 
@@ -390,6 +507,7 @@ export class PlanningService extends Service {
 				duration: Date.now() - startTime,
 			};
 		} catch (error) {
+			// error-policy:J1 plan execution translates step failures into one structured result
 			executionState.status = "failed";
 			executionState.endTime = Date.now();
 			executionState.error =
@@ -489,7 +607,7 @@ export class PlanningService extends Service {
 			plan,
 			currentStepIndex,
 		);
-		return adaptedPlan;
+		return this.enhancePlan(runtime, adaptedPlan);
 	}
 
 	async getPlanStatus(planId: UUID): Promise<PlanState | null> {
@@ -577,72 +695,52 @@ Focus on:
 			const parsedResponse = parseJsonRecord(response);
 
 			const planId = asUUID(uuidv4());
-			const steps: ActionStep[] = [];
 
 			const goal =
 				(typeof parsedResponse.goal === "string"
 					? parsedResponse.goal
 					: null) || context.goal;
-			const executionModel =
+			const executionModelValue =
 				(typeof parsedResponse.execution_model === "string"
 					? parsedResponse.execution_model
 					: null) ||
 				context.preferences?.executionModel ||
 				"sequential";
+			if (
+				executionModelValue !== "sequential" &&
+				executionModelValue !== "parallel" &&
+				executionModelValue !== "dag"
+			) {
+				throw new ElizaError(
+					"Planning model returned an invalid execution model",
+					{
+						code: "PLANNING_EXECUTION_MODEL_INVALID",
+						context: { executionModel: executionModelValue },
+					},
+				);
+			}
 
 			const estimatedDurationRaw = parsedResponse.estimated_duration;
 			const estimatedDuration =
-				typeof estimatedDurationRaw === "number"
-					? estimatedDurationRaw
-					: Number.parseInt(String(estimatedDurationRaw ?? "30000"), 10) ||
-						30000;
-
-			const stepIdMap = new Map<string, UUID>();
-			const parsedSteps = Array.isArray(parsedResponse.steps)
-				? parsedResponse.steps.filter(isRecord)
-				: [];
-
-			for (const step of parsedSteps) {
-				const actionName =
-					typeof step.action === "string"
-						? step.action.trim()
-						: typeof step.actionName === "string"
-							? step.actionName.trim()
-							: "";
-				if (!actionName) {
-					continue;
-				}
-
-				const originalId =
-					typeof step.id === "string" && step.id.trim().length > 0
-						? step.id.trim()
-						: `step_${steps.length + 1}`;
-				const actualId = asUUID(uuidv4());
-				stepIdMap.set(originalId, actualId);
-
-				steps.push({
-					id: actualId,
-					actionName,
-					parameters: normalizeActionParameters(step.parameters),
-					dependencies: [],
-					_dependencyStrings: normalizeDependencyStrings(step.dependencies),
-				});
+				estimatedDurationRaw === undefined
+					? 30000
+					: typeof estimatedDurationRaw === "number"
+						? estimatedDurationRaw
+						: typeof estimatedDurationRaw === "string" &&
+								estimatedDurationRaw.trim() !== ""
+							? Number(estimatedDurationRaw)
+							: Number.NaN;
+			if (!Number.isFinite(estimatedDuration) || estimatedDuration < 0) {
+				throw new ElizaError(
+					"Planning model returned an invalid estimated duration",
+					{
+						code: "PLANNING_ESTIMATED_DURATION_INVALID",
+						context: { estimatedDuration: estimatedDurationRaw },
+					},
+				);
 			}
 
-			for (const step of steps) {
-				const dependencyStrings = step._dependencyStrings || [];
-				const dependencies: UUID[] = [];
-
-				for (const depString of dependencyStrings) {
-					const resolvedId = stepIdMap.get(depString);
-					if (resolvedId) {
-						dependencies.push(resolvedId);
-					}
-				}
-
-				step.dependencies = dependencies;
-				delete step._dependencyStrings;
-			}
+			const steps = parseModelSteps(parsedResponse.steps);
 
 			return {
 				id: planId,
@@ -651,7 +749,7 @@ Focus on:
 				totalSteps: steps.length,
 				currentStep: 0,
 				steps,
-				executionModel: executionModel as "sequential" | "parallel" | "dag",
+				executionModel: executionModelValue,
 				state: { status: "pending" },
 				metadata: {
 					createdAt: Date.now(),
@@ -661,9 +759,11 @@ Focus on:
 				},
 			};
 		} catch (error) {
-			throw new Error(
-				`Failed to build action plan: ${error instanceof Error ? error.message : String(error)}`,
-			);
+			// error-policy:J2 add plan-construction context while preserving the model-output failure
+			throw new ElizaError("Failed to build action plan", {
+				code: "ACTION_PLAN_BUILD_FAILED",
+				cause: error,
+			});
 		}
 	}
 
@@ -684,9 +784,10 @@ Focus on:
 				return nameMatch || simileMatch;
 			});
 			if (!action) {
-				const missing = step.actionName ?? "";
-				step.actionName = "REPLY";
-				step.parameters = { text: `Unable to find action: ${missing}` };
+				throw new ElizaError("Plan references an unavailable action", {
+					code: "PLANNING_ACTION_UNAVAILABLE",
+					context: { actionName: step.actionName },
+				});
 			}
 		}
 
@@ -741,6 +842,7 @@ Focus on:
 					}
 				}
 			} catch (error) {
+				// error-policy:J1 each plan step applies its declared abort/continue policy
 				const err = error instanceof Error ? error : new Error(String(error));
 				errors.push(err);
 
@@ -777,6 +879,7 @@ Focus on:
 				);
 				return { result, error: null as Error | null };
 			} catch (e) {
+				// error-policy:J1 parallel fan-out settles each step into the aggregate plan result
 				return {
 					result: null as ActionResult | null,
 					error: e instanceof Error ? e : new Error(String(e)),
@@ -833,6 +936,7 @@ Focus on:
 				);
 				results.push(result);
 			} catch (e) {
+				// error-policy:J1 DAG execution aggregates independent step failures for the plan boundary
 				errors.push(e instanceof Error ? e : new Error(String(e)));
 			}
 		}
@@ -919,6 +1023,7 @@ Focus on:
 					},
 				};
 			} catch (error) {
+				// error-policy:J1 action invocation enforces the step's bounded retry contract
 				if (
 					isElizaError(error) &&
 					error.code === "ACTION_RESULT_INVALID_AFTER_HANDLER"
@@ -1111,37 +1216,8 @@ Return the adapted plan as JSON only, with the same shape as the original planni
 		currentStepIndex: number,
 	): ActionPlan {
 		try {
-			const adaptedSteps: ActionStep[] = [];
 			const parsedResponse = parseJsonRecord(response);
-			const parsedSteps = Array.isArray(parsedResponse.steps)
-				? parsedResponse.steps.filter(isRecord)
-				: [];
-
-			for (const step of parsedSteps) {
-				const actionName =
-					typeof step.action === "string"
-						? step.action.trim()
-						: typeof step.actionName === "string"
-							? step.actionName.trim()
-							: "";
-				if (!actionName) continue;
-
-				adaptedSteps.push({
-					id: asUUID(uuidv4()),
-					actionName,
-					parameters: normalizeActionParameters(step.parameters),
-					dependencies: [],
-				});
-			}
-
-			if (adaptedSteps.length === 0) {
-				adaptedSteps.push({
-					id: asUUID(uuidv4()),
-					actionName: "REPLY",
-					parameters: { text: "Plan adaptation completed successfully" },
-					dependencies: [],
-				});
-			}
+			const adaptedSteps = parseModelSteps(parsedResponse.steps);
 
 			const prevMeta = originalPlan.metadata ?? {};
 			const prevAdaptations = (prevMeta.adaptations ?? []) as JsonValue;
@@ -1161,20 +1237,13 @@ Return the adapted plan as JSON only, with the same shape as the original planni
 					adaptations: nextAdaptations,
 				},
 			};
-		} catch {
-			return {
-				...originalPlan,
-				id: asUUID(uuidv4()),
-				steps: [
-					...originalPlan.steps.slice(0, currentStepIndex),
-					{
-						id: asUUID(uuidv4()),
-						actionName: "REPLY",
-						parameters: { text: "Plan adaptation completed successfully" },
-						dependencies: [],
-					},
-				],
-			};
+		} catch (error) {
+			// error-policy:J2 preserve malformed adaptation output for the caller to handle
+			throw new ElizaError("Failed to adapt action plan", {
+				code: "PLAN_ADAPTATION_FAILED",
+				cause: error,
+				context: { currentStepIndex },
+			});
 		}
 	}
 }

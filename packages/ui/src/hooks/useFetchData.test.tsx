@@ -1,3 +1,4 @@
+/** Verifies useFetchData through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from "@testing-library/react";

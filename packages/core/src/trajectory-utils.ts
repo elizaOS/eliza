@@ -1328,7 +1328,13 @@ export async function spawnWithTrajectoryLink<T>(
 					stepId: handle.parentStepId,
 					appendChildSteps: [childStepId.trim()],
 				});
-			} catch {
+			} catch (error) {
+				// error-policy:J7 trajectory linkage diagnostics must not fail the
+				// action path; report the write failure and return the failed signal.
+				runtime.reportError("Trajectory.linkChild", error, {
+					parentStepId: handle.parentStepId,
+					childStepId,
+				});
 				return false;
 			}
 		},

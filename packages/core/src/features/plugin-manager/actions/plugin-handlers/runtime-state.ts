@@ -316,6 +316,8 @@ async function setPluginEnabled({
 		await callback?.({
 			text: `I couldn't ${enabled ? "enable" : "disable"} the ${state.name} plugin — something went wrong on my end.`,
 		});
+		// error-policy:J1 the action boundary returns an explicit unsuccessful
+		// result after presenting the failure to the user.
 		return {
 			success: false,
 			text: `Failed to ${enabled ? "enable" : "disable"} ${state.name}: ${message}`,

@@ -299,6 +299,7 @@
     "directory": "dist"
   },
   "devDependencies": {
+    "@elizaos/plugin-app-control": "workspace:*",
     "@playwright/test": "^1.59.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

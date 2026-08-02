@@ -1,3 +1,4 @@
+/** Verifies useWebPush through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Hook-level tests for `useWebPush` — proves it probes state on mount, exposes

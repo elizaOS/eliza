@@ -1,3 +1,4 @@
+/** Verifies useRenderGuard through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { render } from "@testing-library/react";

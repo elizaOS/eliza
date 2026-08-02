@@ -141,7 +141,7 @@ Dockerfile), and why mobile is unsupported — is in
 ```bash
 bun run --cwd plugins/plugin-meetings build       # tsup + declarations
 bun run --cwd plugins/plugin-meetings test        # vitest run
-bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-meetings typecheck   # tsc --noEmit
 ```
 
 ## Conventions / gotchas
@@ -159,11 +159,11 @@ bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
 - Sessions hang off one reused "Meetings" world; each meeting gets its own
   room with `source` = platform. Roster participants are wired to entities via
   `createUniqueUuid(runtime, "meeting-participant:<platform>:<name>")`.
-- See the root `AGENTS.md` for repo-wide rules (ESM, logger-only, evidence).
+- See the root `CLAUDE.md` for repo-wide rules (ESM, logger-only, evidence).
 
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
+> The binding, repo-wide standard is **[CLAUDE.md](../../CLAUDE.md)**. Read it.
 > Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
 > works **without reading the code**, from the artifacts you attach. This applies to **every**
 > feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.

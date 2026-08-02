@@ -245,12 +245,17 @@ export const skillEligibilityProvider: Provider = {
 					truncated: ineligible.length > MAX_SKILL_INELIGIBLE_LIST,
 				},
 			};
-		} catch (_error) {
-			// Service might not support eligibility checking
+		} catch (error) {
+			// error-policy:J4 skill eligibility becomes an explicit unavailable
+			// state and the service failure remains observable to the agent.
+			runtime.reportError("SkillEligibilityProvider.get", error);
 			return {
-				text: "",
-				values: { eligibleCount: 0, ineligibleCount: 0 },
-				data: { eligible: [], ineligible: [] },
+				text: "Skill eligibility is unavailable.",
+				values: { skillEligibilityAvailable: false },
+				data: {
+					available: false,
+					error: error instanceof Error ? error.message : String(error),
+				},
 			};
 		}
 	},
@@ -325,12 +330,14 @@ export const skillEligibilityCompactProvider: Provider = {
 				},
 			};
 		} catch (error) {
+			// error-policy:J4 compact eligibility becomes an explicit unavailable
+			// state and the service failure remains observable to the agent.
+			runtime.reportError("SkillEligibilityCompactProvider.get", error);
 			return {
-				text: "",
-				values: { ineligibleCount: 0 },
+				text: "Skill eligibility is unavailable.",
+				values: { skillEligibilityAvailable: false },
 				data: {
-					ineligible: [],
-					missingBins: [],
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
 			};

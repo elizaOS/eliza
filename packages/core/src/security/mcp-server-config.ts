@@ -243,6 +243,8 @@ async function resolveMcpRemoteUrlRejection(
 	try {
 		parsed = new URL(rawUrl);
 	} catch {
+		// error-policy:J3 MCP URLs are untrusted configuration; constructor
+		// failure becomes an explicit validation rejection.
 		return "URL must be a valid absolute URL";
 	}
 

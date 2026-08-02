@@ -3,24 +3,19 @@
  * process funnels through. Wraps `@elizaos/agent`'s startEliza / bootElizaRuntime
  * with app-shell concerns — installs the agent host bridge (vault, account pool,
  * wallet-key hydration, cloud-pair route), syncs brand env aliases, binds the
- * API server (bind-first, then background runtime boot), and runs the post-ready
- * boot tail: local-inference boot hooks, autonomy service + bootstrap context,
- * app-route plugins and registry runtime-hooks (drained
- * concurrently with per-loader failure isolation), sensitive-request + sub-agent
- * credential adapters, the trigger event bridge, connector-target catalog, and
- * background embedding + voice model warmup.
+ * API server (bind-first, then background runtime boot), repairs the runtime,
+ * and composes the focused startup modules that own autonomy, PGlite recovery,
+ * local-model warmup, and post-ready contributor ordering.
  *
- * Also owns PGlite startup-error normalization + auto-reset (quarantine a
- * corrupt `.elizadb` and retry once), the ELIZA_SKIP_APP_ROUTE_PLUGINS /
- * ELIZA_DEFER_APP_ROUTES boot knobs (the tail defers by default;
+ * It retains contributor discovery, the ELIZA_SKIP_APP_ROUTE_PLUGINS /
+ * ELIZA_DEFER_APP_ROUTES policy (the tail defers by default;
  * ELIZA_DEFER_APP_ROUTES=0 opts back into the inline pre-ready tail), the
  * local-agent IPC port gate (#12180). Mobile platforms take a trimmed boot
- * path. The post-ready coordinator is scoped to one host so embedded runtimes
- * cannot supersede or tear down each other's services.
+ * path. Boot resources are scoped to one runtime so embedded hosts cannot
+ * supersede or tear down each other's services.
  */
 import "@elizaos/shared";
 import { existsSync } from "node:fs";
-import { rename } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
@@ -28,17 +23,13 @@ import { pathToFileURL } from "node:url";
 import {
   type BootElizaRuntimeOptions,
   CUSTOM_PLUGINS_DIRNAME,
-  getLastFailedPluginNames,
   loadElizaConfig,
-  resolveDefaultAgentWorkspaceDir,
   resolvePackageEntry,
-  resolveUserPath,
   type StartElizaOptions,
   scanDropInPlugins,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
   collectPluginNames as upstreamCollectPluginNames,
-  configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
@@ -51,21 +42,19 @@ export { CUSTOM_PLUGINS_DIRNAME, resolvePackageEntry, scanDropInPlugins };
 
 import {
   type AgentRuntime,
-  AUTONOMY_SERVICE_TYPE,
-  AutonomyService,
-  ChannelType,
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
   ElizaError,
   isOptionalAppRoutePluginUnavailableError,
-  isTruthyEnvValue,
   logger,
-  ModelType,
   OptionalAppRoutePluginUnavailableError,
   type Plugin,
-  stringToUuid,
   type TargetSource,
 } from "@elizaos/core";
-import { PGLITE_ERROR_CODES } from "@elizaos/plugin-sql";
+import {
+  getApps,
+  getPlugins,
+  loadRegistry,
+} from "@elizaos/registry/first-party";
 import {
   ensureRuntimeSqlCompatibility,
   formatError,
@@ -77,7 +66,7 @@ import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared";
-import { getApps, getPlugins, loadRegistry } from "../registry";
+import { startApiServer } from "../api/server.js";
 import { registerSubAgentCredentialBridgeAdapter } from "../services/credential-tunnel-service";
 import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
 import {
@@ -86,29 +75,13 @@ import {
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 import { ensureBundledFusedLibDir } from "./bundled-fused-lib.js";
-import { resetPluginSqlPgliteSingleton } from "./pglite-auto-reset.js";
+import { configureAutonomy } from "./startup/autonomy.js";
+import {
+  attemptPgliteAutoReset,
+  getPgliteRecoveryRetrySkipPlugins,
+  normalizePgliteStartupError,
+} from "./startup/pglite-recovery.js";
 import { registerSubAgentCredentialBridge } from "./sub-agent-credential-bridge-wiring.js";
-import { shouldWarmupVoice, warmVoiceModels } from "./voice-warmup";
-
-type EmbeddingProgressCallback = (
-  phase: EmbeddingWarmupPhase,
-  detail?: string,
-) => void;
-
-// plugin-local-inference loaded lazily to avoid static plugin boundary violations.
-let _localInferenceRuntime:
-  | typeof import("@elizaos/plugin-local-inference/runtime")
-  | undefined;
-async function _localInference() {
-  if (!_localInferenceRuntime) {
-    _localInferenceRuntime = await import(
-      "@elizaos/plugin-local-inference/runtime"
-    );
-  }
-  return _localInferenceRuntime;
-}
-
-import { startApiServer } from "../api/server.js";
 
 const _require = createRequire(import.meta.url);
 
@@ -122,102 +95,22 @@ import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
-  type EmbeddingWarmupPhase,
-  updateStartupEmbeddingProgress,
-} from "./startup-overlay.js";
+  type EmbeddingProgressCallback,
+  ensureDefaultEmbeddingDimension,
+  prepareLocalEmbeddingWarmup,
+  startDeferredLocalEmbeddingWarmup,
+  startDeferredVoiceWarmup,
+} from "./startup/local-model-warmup.js";
+import {
+  createRuntimeBootResources,
+  type PostReadyBootSteps,
+  type RuntimeBootResources,
+  runPostReadyBootTail,
+} from "./startup/post-ready.js";
 import {
   type AppStartupPhase,
   AppStartupStateMachine,
 } from "./startup-state.js";
-
-const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
-const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
-const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
-
-type ErrorWithCause = Error & {
-  cause?: unknown;
-  code?: unknown;
-  dataDir?: unknown;
-};
-
-type AutonomyServiceLike = {
-  enableAutonomy(): Promise<void>;
-};
-
-function isAutonomyService(value: unknown): value is AutonomyServiceLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "enableAutonomy" in value &&
-    typeof value.enableAutonomy === "function"
-  );
-}
-
-interface EntityLike {
-  id: string;
-  agentId?: string;
-  names?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-interface RuntimeAutonomyCompat {
-  getEntityById?: (id: string) => Promise<EntityLike | null>;
-  createEntity?: (entity: {
-    id: string;
-    names: string[];
-    agentId: string;
-    metadata?: Record<string, unknown>;
-  }) => Promise<boolean>;
-  updateEntity?: (entity: EntityLike & { agentId: string }) => Promise<boolean>;
-  ensureWorldExists?: (world: {
-    id: string;
-    name: string;
-    agentId: string;
-    messageServerId?: string;
-    metadata?: Record<string, unknown>;
-  }) => Promise<unknown>;
-  ensureRoomExists?: (room: {
-    id: string;
-    name: string;
-    worldId: string;
-    source: string;
-    type: ChannelType;
-    metadata?: Record<string, unknown>;
-  }) => Promise<unknown>;
-  ensureParticipantInRoom?: (
-    entityId: string,
-    roomId: string,
-  ) => Promise<unknown>;
-  addParticipant?: (entityId: string, roomId: string) => Promise<unknown>;
-}
-
-interface RuntimeAdapterAutonomyCompat {
-  upsertEntities?: (
-    entities: Array<{
-      id: string;
-      names: string[];
-      agentId: string;
-      metadata?: Record<string, unknown>;
-    }>,
-  ) => Promise<unknown>;
-}
-
-function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
-  const svc =
-    runtime.getService(AUTONOMY_SERVICE_TYPE) ?? runtime.getService("autonomy"); // Legacy lowercase serviceType fallback.
-  if (isAutonomyService(svc)) {
-    return svc;
-  }
-  return null;
-}
-
-async function startAndRegisterAutonomyService(
-  runtime: AgentRuntime,
-): Promise<AutonomyServiceLike> {
-  const service = await AutonomyService.start(runtime);
-  runtime.services.set(AUTONOMY_SERVICE_TYPE as never, [service as never]);
-  return service;
-}
 
 export function collectPluginNames(
   ...args: Parameters<typeof upstreamCollectPluginNames>
@@ -229,95 +122,6 @@ export function applyCloudConfigToEnv(
   ...args: Parameters<typeof upstreamApplyCloudConfigToEnv>
 ): ReturnType<typeof upstreamApplyCloudConfigToEnv> {
   return upstreamApplyCloudConfigToEnv(...args);
-}
-
-async function ensureAutonomyBootstrapContext(
-  runtime: AgentRuntime,
-): Promise<void> {
-  const runtimeWithCompat = runtime as AgentRuntime & RuntimeAutonomyCompat;
-  const adapter = runtime.adapter as RuntimeAdapterAutonomyCompat | undefined;
-  const autonomousRoomId = stringToUuid(`autonomy-room-${runtime.agentId}`);
-
-  await runtimeWithCompat.ensureWorldExists({
-    id: AUTONOMY_WORLD_ID,
-    name: "Autonomy World",
-    agentId: runtime.agentId,
-    messageServerId: AUTONOMY_MESSAGE_SERVER_ID,
-    metadata: {
-      type: "autonomy",
-      description: "World for autonomous agent thinking",
-    },
-  });
-
-  await runtimeWithCompat.ensureRoomExists({
-    id: autonomousRoomId,
-    name: "Autonomous Thoughts",
-    worldId: AUTONOMY_WORLD_ID,
-    source: "autonomy-service",
-    type: ChannelType.SELF,
-    metadata: {
-      source: "autonomy-service",
-      description: "Room for autonomous agent thinking",
-    },
-  });
-
-  const autonomyEntity = {
-    id: AUTONOMY_ENTITY_ID,
-    names: ["Autonomy"],
-    agentId: runtime.agentId,
-    metadata: {
-      type: "autonomy",
-      description: "Dedicated entity for autonomy service prompts",
-    },
-  };
-  const existingEntity =
-    (await runtimeWithCompat.getEntityById(AUTONOMY_ENTITY_ID)) ?? null;
-
-  if (!existingEntity) {
-    const created = await runtimeWithCompat.createEntity(autonomyEntity);
-    if (!created && adapter?.upsertEntities) {
-      await adapter.upsertEntities([autonomyEntity]);
-    }
-  } else if (existingEntity.agentId !== runtime.agentId) {
-    if (runtimeWithCompat.updateEntity) {
-      await runtimeWithCompat.updateEntity({
-        ...existingEntity,
-        agentId: runtime.agentId,
-      });
-    } else if (adapter?.upsertEntities) {
-      await adapter.upsertEntities([
-        {
-          id: existingEntity.id ?? AUTONOMY_ENTITY_ID,
-          names:
-            existingEntity.names && existingEntity.names.length > 0
-              ? existingEntity.names
-              : autonomyEntity.names,
-          agentId: runtime.agentId,
-          metadata: {
-            ...autonomyEntity.metadata,
-            ...(existingEntity.metadata ?? {}),
-          },
-        },
-      ]);
-    }
-  }
-
-  if (runtimeWithCompat.ensureParticipantInRoom) {
-    await runtimeWithCompat.ensureParticipantInRoom(
-      runtime.agentId,
-      autonomousRoomId,
-    );
-    await runtimeWithCompat.ensureParticipantInRoom(
-      AUTONOMY_ENTITY_ID,
-      autonomousRoomId,
-    );
-  } else if (runtimeWithCompat.addParticipant) {
-    await runtimeWithCompat.addParticipant(runtime.agentId, autonomousRoomId);
-    await runtimeWithCompat.addParticipant(
-      AUTONOMY_ENTITY_ID,
-      autonomousRoomId,
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -845,25 +649,7 @@ async function runBootHooks(runtime: AgentRuntime): Promise<void> {
   await drainBootHookContributors(runtime, getBootHookContributors());
 }
 
-interface StoppableRuntimeResource {
-  stop(): void;
-}
-
-export interface RuntimeBootResources {
-  tailRuntime: AgentRuntime | null;
-  triggerEventBridge: StoppableRuntimeResource | null;
-  connectorTargetCatalog: StoppableRuntimeResource | null;
-}
-
 const runtimeBootResources = new WeakMap<AgentRuntime, RuntimeBootResources>();
-
-export function createRuntimeBootResources(): RuntimeBootResources {
-  return {
-    tailRuntime: null,
-    triggerEventBridge: null,
-    connectorTargetCatalog: null,
-  };
-}
 
 async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
@@ -911,52 +697,7 @@ async function repairRuntimeAfterBoot(
     return runtime;
   }
 
-  const autonomyLoopEnabled = isRuntimeAutonomyEnabled(process.env);
-  if (autonomyLoopEnabled) {
-    await ensureAutonomyBootstrapContext(runtime);
-  } else {
-    logger.info(
-      "[eliza] Autonomy bootstrap deferred — autonomous loop disabled",
-    );
-  }
-
-  if (!runtime.getService(AUTONOMY_SERVICE_TYPE)) {
-    try {
-      await startAndRegisterAutonomyService(runtime);
-      logger.info("[eliza] AutonomyService started and waiting");
-    } catch (error) {
-      // error-policy:J2 context-adding rethrow — identify the boot subsystem
-      // while preserving the service error as the cause.
-      throw new Error(
-        `[eliza] AutonomyService start failed: ${formatError(error)}`,
-        { cause: error },
-      );
-    }
-  }
-
-  // Enable the continuous autonomy loop only when explicitly requested.
-  if (autonomyLoopEnabled) {
-    const autonomySvc = getAutonomyService(runtime);
-    if (autonomySvc) {
-      try {
-        await autonomySvc.enableAutonomy();
-        logger.info(
-          "[eliza] AutonomyService enabled — trigger instructions will be processed",
-        );
-      } catch (err) {
-        // error-policy:J2 context-adding rethrow — identify autonomy enablement
-        // while preserving the service error as the cause.
-        throw new Error(
-          `[eliza] Failed to enable autonomy loop: ${formatError(err)}`,
-          { cause: err },
-        );
-      }
-    }
-  } else {
-    logger.info(
-      "[eliza] AutonomyService waiting — set ENABLE_AUTONOMY=true to start autonomous loop",
-    );
-  }
+  await configureAutonomy(runtime, isRuntimeAutonomyEnabled(process.env));
 
   // Post-ready tail: feature-route plugins, training hooks, sensitive-request
   // adapters, telegram polling, the trigger bridge, the connector catalog, and
@@ -1017,17 +758,6 @@ async function repairRuntimeAfterBoot(
  * assert ordering / deferral / liveness / error-isolation without loading the
  * full runtime. Production passes {@link DEFAULT_POST_READY_BOOT_STEPS}.
  */
-export interface PostReadyBootSteps {
-  registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
-  registerRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
-  registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
-  registerSubAgentCredentialBridge: (runtime: AgentRuntime) => Promise<void>;
-  registerSubAgentCredentialBridgeAdapter: (runtime: AgentRuntime) => boolean;
-  ensureTriggerEventBridge: (runtime: AgentRuntime) => Promise<void>;
-  ensureConnectorTargetCatalog: (runtime: AgentRuntime) => Promise<void>;
-  startDeferredVoiceWarmup: (runtime: AgentRuntime) => void;
-}
-
 function createPostReadyBootSteps(
   resources: RuntimeBootResources,
 ): PostReadyBootSteps {
@@ -1045,70 +775,12 @@ function createPostReadyBootSteps(
   };
 }
 
-/**
- * Post-ready boot steps split out of {@link repairRuntimeAfterBoot}. Each step
- * has no wrapping try/catch: optional absent plugins are handled by their
- * registry loaders, while actual initialization failures propagate to the
- * deferred-tail boundary and mark startup degraded.
- *
- * Injected steps keep the phase split unit-testable without introducing
- * process-global ownership.
- */
-export async function runPostReadyBootTail(
-  runtime: AgentRuntime,
-  steps: PostReadyBootSteps,
-  resources: RuntimeBootResources,
-): Promise<void> {
-  // Liveness guard: a hot-restart can swap runtimes mid-tail. If a newer boot
-  // has already claimed the tail slot, this runtime is superseded — bail before
-  // the first mutation so we never register routes/services onto a torn-down
-  // runtime. (In the default inline-await path the tail completes before the
-  // next repair call reassigns the slot, so this never trips.)
-  if (resources.tailRuntime !== runtime) {
-    logger.info("[eliza] post-ready boot tail skipped — runtime superseded");
-    return;
-  }
-
-  // ── Register app-specific route plugins ─────────────────────────────
-  // The registry and explicit registration API own the package bindings; the
-  // runtime only consumes app route plugin loaders.
-  await steps.registerAppRoutePlugins(runtime);
-
-  // Drain runtime-hook contributors: apps that declare a `runtimeHook` in the
-  // registry wire runtime-only concerns (services, crons, background bootstraps)
-  // that never reach the route table. Generic + data-driven — no feature plugin
-  // is named here. An uninstalled optional plugin is skipped gracefully.
-  await steps.registerRuntimeHooks(runtime);
-
-  // Register first-party sensitive-request delivery adapters with the
-  // dispatch registry (no-op when the registry service isn't present).
-  steps.registerCoreSensitiveRequestAdapters(runtime);
-  steps.registerSubAgentCredentialBridgeAdapter(runtime);
-
-  // Wire the sub-agent credential bridge (#10317) onto parent runtimes that can
-  // host coding sub-agents. No-op on child/sandboxed runtimes.
-  await steps.registerSubAgentCredentialBridge(runtime);
-
-  // Subscribe the trigger event bridge to the runtime event bus so
-  // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
-  // etc. emissions. plugin-workflow registers WORKFLOW_DISPATCH in its `init`
-  // so by the time the bridge starts, workflow-kind event triggers already
-  // have a dispatcher to call.
-  await steps.ensureTriggerEventBridge(runtime);
-
-  await steps.ensureConnectorTargetCatalog(runtime);
-
-  // Warm local voice models (Whisper STT + Kokoro TTS) in the background now
-  // that the runtime is ready. repairRuntimeAfterBoot is the single chokepoint
-  // every boot path funnels through (bootElizaRuntime AND startEliza's
-  // server-only + restart paths), so the warmup fires regardless of entry
-  // point. Fire-and-forget; gated + non-fatal inside startDeferredVoiceWarmup.
-  void steps.startDeferredVoiceWarmup(runtime);
-
-  // Marked here — not at the dispatch site — so a superseded tail (early
-  // return above) never stamps `complete` over the newer boot's `pending`.
-  markDeferredBootPhase("app-route-tail", "complete");
-}
+export {
+  createRuntimeBootResources,
+  type PostReadyBootSteps,
+  type RuntimeBootResources,
+  runPostReadyBootTail,
+};
 
 const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
 
@@ -1225,200 +897,7 @@ async function failRuntimeRepair(
   });
 }
 
-/**
- * Eagerly download the embedding model file if not already present.
- * This ensures the GGUF is on disk before the runtime's first
- * generateEmbedding() call, avoiding a silent stall on first use.
- *
- * Uses the same env resolution as `configureLocalEmbeddingPlugin` (eliza.json
- * `embedding` + hardware tier). Warmup previously always used tier-only presets,
- * so a custom `embedding.model` caused a first download here and a *second*
- * download when the plugin looked for a different filename — nothing deleted
- * the first file; it was simply the wrong path/name.
- *
- * If the configured GGUF is **not** on disk but another known embedding file
- * already exists in `MODELS_DIR`, we align `LOCAL_EMBEDDING_*` with that file
- * so we do not re-download multi‑GB models. Opt out:
- * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
- */
-// In-flight promise cache so concurrent callers (bootElizaRuntime +
-// startEliza both run on agent boot) share a single download. Without this,
-// two `fs.createWriteStream(dest)` open the same GGUF target concurrently,
-// and the first to fail calls `safeUnlink(dest)` — which deletes the file
-// out from under the second's pending write. Downstream `llama.loadModel`
-// then opens the now-missing file and throws ENOENT, which surfaces as an
-// uncaughtException and kills the agent.
-let warmupInFlight: Promise<void> | null = null;
-
-// Deferred by DEFAULT: the process-entry warmup fired a GGUF download +
-// hardware probe before the readiness gate on every CLI/server boot, while
-// the agent's deferred wave (startEmbeddingWarmup in @elizaos/agent) and the
-// dev-server ready hook already warm the same model after ready — and the
-// warmup self-skips when cloud embeddings are active. Only an explicit
-// falsy ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP (0/false/no/off) restores the
-// eager process-entry fire (benchmarks that want the download on the boot
-// path). ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP still skips warmup entirely
-// (checked inside the warmup policy).
-function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
-  const raw =
-    process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP?.trim().toLowerCase();
-  return !(raw === "0" || raw === "false" || raw === "no" || raw === "off");
-}
-
-function startLocalEmbeddingWarmup(
-  onProgress?: EmbeddingProgressCallback,
-): void {
-  void warmupEmbeddingModel(onProgress);
-}
-
-export function startDeferredLocalEmbeddingWarmup(
-  onProgress?: EmbeddingProgressCallback,
-): boolean {
-  if (!isLocalEmbeddingWarmupDeferredByEnv()) return false;
-  logger.info("[eliza] Starting deferred local embedding warmup");
-  startLocalEmbeddingWarmup(onProgress);
-  return true;
-}
-
-async function warmupEmbeddingModel(
-  onProgress?: EmbeddingProgressCallback,
-): Promise<void> {
-  if (warmupInFlight) return warmupInFlight;
-  warmupInFlight = warmupEmbeddingModelImpl(onProgress).finally(() => {
-    warmupInFlight = null;
-  });
-  return warmupInFlight;
-}
-
-async function warmupEmbeddingModelImpl(
-  onProgress?: EmbeddingProgressCallback,
-): Promise<void> {
-  // Mobile bundle does not ship `node-llama-cpp` (no Android prebuild) and
-  // pulling a multi-GB GGUF over a phone's data plan is not acceptable. The
-  // mobile path uses `@elizaos/plugin-elizacloud` or a remote provider for
-  // embeddings until `llama-cpp-capacitor` is wired in (separate task).
-  if (isMobilePlatform()) {
-    logger.info(
-      "[eliza] Skipping local embedding warmup — running on mobile (ELIZA_PLATFORM=android|ios)",
-    );
-    return;
-  }
-
-  const li = await _localInference();
-  if (!li.shouldWarmupLocalEmbeddingModel()) {
-    logger.info(
-      "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (e.g. Eliza Cloud embeddings, or local embeddings disabled).",
-    );
-    return;
-  }
-
-  const config = loadElizaConfig();
-  await upstreamConfigureLocalEmbeddingPlugin({} as Plugin, config);
-
-  const preset = li.detectEmbeddingPreset();
-  const modelsDir = process.env.MODELS_DIR ?? li.DEFAULT_MODELS_DIR;
-  let model = process.env.LOCAL_EMBEDDING_MODEL?.trim() || preset.model;
-  let modelRepo =
-    process.env.LOCAL_EMBEDDING_MODEL_REPO?.trim() || preset.modelRepo;
-
-  if (
-    !li.isEmbeddingWarmupReuseDisabled() &&
-    !li.embeddingGgufFilePresent(modelsDir, model)
-  ) {
-    const reuse = li.findExistingEmbeddingModelForWarmupReuse(modelsDir);
-    if (reuse) {
-      logger.info(
-        `[eliza] Embedding warmup: configured file "${model}" not found in MODELS_DIR — reusing existing ${reuse.model} to avoid a large re-download. ` +
-          "Set LOCAL_EMBEDDING_MODEL or ELIZA_EMBEDDING_WARMUP_NO_REUSE=1 to force the configured model.",
-      );
-      process.env.LOCAL_EMBEDDING_MODEL = reuse.model;
-      process.env.LOCAL_EMBEDDING_MODEL_REPO = reuse.modelRepo;
-      process.env.LOCAL_EMBEDDING_DIMENSIONS = String(reuse.dimensions);
-      process.env.LOCAL_EMBEDDING_CONTEXT_SIZE = String(reuse.contextSize);
-      process.env.LOCAL_EMBEDDING_GPU_LAYERS = reuse.gpuLayers;
-      process.env.LOCAL_EMBEDDING_USE_MMAP =
-        reuse.gpuLayers === "auto" ? "false" : "true";
-      model = reuse.model;
-      modelRepo = reuse.modelRepo;
-    }
-  }
-
-  logger.info(
-    `[eliza] Local embedding warmup: ${model} (hardware tier preset: ${preset.label}). ` +
-      "This file is for TEXT_EMBEDDING / memory only (not your conversation model).",
-  );
-
-  const progressCb: EmbeddingProgressCallback = (phase, detail) => {
-    updateStartupEmbeddingProgress(
-      phase as Parameters<typeof updateStartupEmbeddingProgress>[0],
-      typeof detail === "string" ? detail : undefined,
-    );
-    // Always log to stdout for server/container monitoring
-    if (phase === "downloading") {
-      logger.info(`[eliza] Embedding model: ${detail ?? "downloading..."}`);
-    } else if (phase === "loading") {
-      logger.info(`[eliza] Embedding model: loading ${detail ?? ""}`);
-    } else if (phase === "ready") {
-      logger.info(`[eliza] Embedding model: ready (${detail ?? ""})`);
-    }
-    // Forward to caller's callback (e.g. for TUI loading screen)
-    onProgress?.(phase, detail);
-  };
-
-  try {
-    await li.ensureModel(modelsDir, modelRepo, model, false, progressCb);
-  } catch (err) {
-    // error-policy:J4 the eager warmup is an optimization; the model plugin
-    // exposes the real load failure on first use and can retry the download.
-    logger.warn(
-      `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
-    );
-  }
-}
-
-function isExplicitDesktopCloudOnlyRuntime(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  const runtimeMode = env.ELIZA_DESKTOP_RUNTIME_MODE?.trim().toLowerCase();
-  return (
-    runtimeMode === "cloud" ||
-    runtimeMode === "elizacloud" ||
-    isTruthyEnvValue(env.ELIZA_DESKTOP_CLOUD_ONLY)
-  );
-}
-
-/**
- * Warm local voice models (Whisper STT + Kokoro TTS) in the background AFTER
- * the runtime is ready, by firing one tiny useModel request at each. Voice
- * models only load through the live runtime (the Kokoro bridge auto-starts on
- * the first TEXT_TO_SPEECH call), so unlike embedding — which warms pre-boot
- * via a runtime-free facade — this runs post-ready. Fire-and-forget; gated to
- * the local-inference path so cloud-only setups never make a paid TTS/STT call.
- */
-async function startDeferredVoiceWarmup(runtime: AgentRuntime): Promise<void> {
-  if (
-    !shouldWarmupVoice({
-      mobile: isMobilePlatform(),
-      skipEnv: isTruthyEnvValue(process.env.ELIZA_SKIP_LOCAL_VOICE_WARMUP),
-      cloudOnly: isExplicitDesktopCloudOnlyRuntime(),
-      hotReload: isTruthyEnvValue(process.env.ELIZA_DEV_IS_HOT_RELOAD),
-    })
-  ) {
-    return;
-  }
-  logger.info("[eliza] Starting deferred voice warmup");
-  await warmVoiceModels(
-    runtime as Parameters<typeof warmVoiceModels>[0],
-    {
-      ttsType: ModelType.TEXT_TO_SPEECH,
-      transcriptionType: ModelType.TRANSCRIPTION,
-    },
-    {
-      info: (m: string) => logger.info(m),
-      warn: (m: string) => logger.warn(m),
-    },
-  );
-}
+export { startDeferredLocalEmbeddingWarmup };
 
 export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
   /** Optional callback for embedding model download/init progress. */
@@ -1438,12 +917,8 @@ export async function bootElizaRuntime(
   // HF 401 → multi-URL fallback chains with no overall deadline; the API
   // port never bound and dev-ui.mjs's 300s watchdog tore the stack down
   // (W-016). Voiding lets bootstrap proceed; the renderer's startup overlay
-  // still surfaces progress via updateStartupEmbeddingProgress.
-  if (isLocalEmbeddingWarmupDeferredByEnv()) {
-    logger.info("[eliza] Deferring local embedding warmup until runtime ready");
-  } else {
-    startLocalEmbeddingWarmup(opts.onEmbeddingProgress);
-  }
+  // still surfaces progress through the startup overlay.
+  prepareLocalEmbeddingWarmup(opts.onEmbeddingProgress);
 
   // Default the embedding-vector dimension plugin-sql provisions to 384 when
   // unset: that is the compact SQL-safe column and the native width of the
@@ -1452,9 +927,7 @@ export async function bootElizaRuntime(
   // provisioning). An explicit EMBEDDING_DIMENSION — a different local model,
   // the desktop Eliza-1 sidecar's Matryoshka width, or cloud embeddings —
   // still wins.
-  if (!process.env.EMBEDDING_DIMENSION) {
-    process.env.EMBEDDING_DIMENSION = "384";
-  }
+  ensureDefaultEmbeddingDimension();
 
   const runtime = await upstreamBootElizaRuntime(opts);
   // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
@@ -1488,208 +961,6 @@ export interface StartElizaOptionsExt extends StartElizaOptions {
   ) => void;
 }
 
-function collectErrorObjects(err: unknown): ErrorWithCause[] {
-  const chain: ErrorWithCause[] = [];
-  const seen = new Set<unknown>();
-  let current: unknown = err;
-
-  while (current && !seen.has(current)) {
-    seen.add(current);
-    if (current instanceof Error) {
-      chain.push(current as ErrorWithCause);
-      current = (current as ErrorWithCause).cause;
-      continue;
-    }
-    if (typeof current === "object" && current !== null) {
-      const candidate = current as ErrorWithCause;
-      chain.push(candidate);
-      current = candidate.cause;
-      continue;
-    }
-    break;
-  }
-
-  return chain;
-}
-
-function getPgliteErrorCode(err: unknown): string | null {
-  for (const current of collectErrorObjects(err)) {
-    if (typeof current.code === "string" && current.code) {
-      return current.code;
-    }
-  }
-  return null;
-}
-
-function collectErrorMessages(err: unknown): string[] {
-  const messages: string[] = [];
-
-  for (const current of collectErrorObjects(err)) {
-    if (typeof current.message === "string" && current.message) {
-      messages.push(current.message);
-    }
-  }
-
-  return messages;
-}
-
-function hasLegacyManualResetPgliteMessage(err: unknown): boolean {
-  // Legacy fallback for pre-contract plugin-sql errors and raw WASM aborts that
-  // do not carry PGLITE_ERROR_CODES yet. The structured code path above owns
-  // current plugin-sql recovery.
-  return collectErrorMessages(err).some((message) => {
-    const normalized = message.toLowerCase();
-    if (
-      normalized.includes(
-        "rename or delete only this directory before retrying",
-      )
-    ) {
-      return true;
-    }
-
-    if (
-      normalized.includes("@elizaos/plugin-sql") &&
-      normalized.includes("migrations._migrations")
-    ) {
-      return true;
-    }
-
-    // PGlite is an Emscripten/WASM build of Postgres. When the embedded
-    // postmaster hits an unrecoverable internal state — most commonly a
-    // corrupt on-disk pgdata directory from a previous crash, an
-    // unsupported syscall, or pg_logical/WAL replay failure — Emscripten
-    // calls `abort()` and surfaces it as an Error whose message starts
-    // with `Aborted(). Build with -sASSERTIONS for more info.` That bare
-    // string carries no PGlite-specific marker, so the older heuristics
-    // above never matched and the dev-server retried forever against the
-    // same poisoned data dir. Treat it as a recoverable corruption signal:
-    // the auto-reset path quarantines the .elizadb dir and retries once.
-    if (normalized.includes("aborted()")) {
-      return true;
-    }
-
-    return false;
-  });
-}
-
-function isManualResetPgliteError(err: unknown): boolean {
-  const code = getPgliteErrorCode(err);
-  if (
-    code === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED ||
-    code === PGLITE_ERROR_CODES.CORRUPT_DATA
-  ) {
-    return true;
-  }
-
-  return hasLegacyManualResetPgliteMessage(err);
-}
-
-function getPgliteDataDirFromError(err: unknown): string | null {
-  for (const current of collectErrorObjects(err)) {
-    if (typeof current.dataDir === "string" && current.dataDir.trim()) {
-      return current.dataDir;
-    }
-  }
-
-  for (const rawMessage of collectErrorMessages(err)) {
-    const message =
-      rawMessage.length > 4096 ? rawMessage.slice(0, 4096) : rawMessage;
-    const retryPathMatch = message.match(
-      /before retrying:[ \t]{0,16}([^\n]{1,1024}?)(?:[ \t]*$|\.)/,
-    );
-    if (retryPathMatch?.[1]) {
-      return retryPathMatch[1].trim();
-    }
-
-    const initPathMatch = message.match(
-      /PGlite initialization failed for ([^:\n]{1,1024}):/i,
-    );
-    if (initPathMatch?.[1]) {
-      return initPathMatch[1].trim();
-    }
-  }
-
-  return null;
-}
-
-function resolveManagedPgliteDataDir(): string | null {
-  const envDataDir = process.env.PGLITE_DATA_DIR?.trim();
-  if (envDataDir) {
-    return resolveUserPath(envDataDir);
-  }
-
-  const config = loadElizaConfig();
-  if ((config.database?.provider ?? "pglite") === "postgres") {
-    return null;
-  }
-
-  const configuredDataDir = config.database?.pglite?.dataDir?.trim();
-  if (configuredDataDir) {
-    return resolveUserPath(configuredDataDir);
-  }
-
-  const workspaceDir =
-    config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".elizadb");
-}
-
-function isAutoResettablePgliteDir(dataDir: string | null): dataDir is string {
-  return typeof dataDir === "string" && path.basename(dataDir) === ".elizadb";
-}
-
-async function quarantinePgliteDataDir(
-  dataDir: string,
-): Promise<string | null> {
-  if (!existsSync(dataDir)) {
-    return null;
-  }
-
-  const parentDir = path.dirname(dataDir);
-  const baseName = path.basename(dataDir);
-  let attempt = 0;
-
-  while (attempt < 1000) {
-    const suffix = attempt === 0 ? `${Date.now()}` : `${Date.now()}-${attempt}`;
-    const backupDir = path.join(parentDir, `${baseName}.corrupt-${suffix}`);
-    if (existsSync(backupDir)) {
-      attempt += 1;
-      continue;
-    }
-    await rename(dataDir, backupDir);
-    return backupDir;
-  }
-
-  throw new Error(`Could not allocate a backup path for ${dataDir}`);
-}
-
-function normalizePgliteStartupError(err: unknown): unknown {
-  if (!isManualResetPgliteError(err)) {
-    return err;
-  }
-
-  if (
-    err instanceof Error &&
-    getPgliteErrorCode(err) === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED
-  ) {
-    return err;
-  }
-
-  const dataDir =
-    getPgliteDataDirFromError(err) ?? resolveManagedPgliteDataDir();
-  const detail = collectErrorMessages(err)[0] ?? formatError(err);
-  const wrapped = new Error(
-    dataDir
-      ? `PGlite initialization failed for ${dataDir}: ${detail}. Stop the app, then rename or delete only this directory before retrying: ${dataDir}`
-      : `PGlite initialization failed: ${detail}. Stop the app, then rename or delete only the managed PGlite data directory before retrying.`,
-    { cause: err },
-  ) as ErrorWithCause;
-  wrapped.code = PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED;
-  if (dataDir) {
-    wrapped.dataDir = dataDir;
-  }
-  return wrapped;
-}
-
 async function upstreamStartElizaWithPgliteCompat(
   options?: StartElizaOptions,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
@@ -1708,37 +979,7 @@ async function upstreamStartElizaWithPgliteCompat(
   }
 }
 
-export async function attemptPgliteAutoReset(
-  err: unknown,
-): Promise<string | null> {
-  if (!isManualResetPgliteError(err)) {
-    return null;
-  }
-
-  const dataDir =
-    getPgliteDataDirFromError(err) ?? resolveManagedPgliteDataDir();
-  if (!isAutoResettablePgliteDir(dataDir)) {
-    return null;
-  }
-
-  logger.warn(
-    `[eliza] PGlite startup failed for ${dataDir}. Quarantining the local database before retrying.`,
-  );
-
-  await resetPluginSqlPgliteSingleton("PGlite auto-reset");
-  const backupDir = await quarantinePgliteDataDir(dataDir);
-
-  if (backupDir) {
-    logger.warn(`[eliza] Moved the previous PGlite data dir to ${backupDir}`);
-  }
-
-  await resetPluginSqlPgliteSingleton("PGlite auto-reset retry");
-  return backupDir;
-}
-
-export function getPgliteRecoveryRetrySkipPlugins(): string[] {
-  return getLastFailedPluginNames();
-}
+export { attemptPgliteAutoReset, getPgliteRecoveryRetrySkipPlugins };
 
 export async function startEliza(
   options?: StartElizaOptionsExt,
@@ -1754,16 +995,10 @@ export async function startEliza(
   // Fire-and-forget — see comment at the matching call in bootElizaRuntime
   // (W-016): awaiting parks bootstrap; voiding lets the API port bind on
   // time while the warmup runs alongside.
-  if (isLocalEmbeddingWarmupDeferredByEnv()) {
-    logger.info("[eliza] Deferring local embedding warmup until runtime ready");
-  } else {
-    startLocalEmbeddingWarmup(options?.onEmbeddingProgress);
-  }
+  prepareLocalEmbeddingWarmup(options?.onEmbeddingProgress);
 
   // Cap embedding dimension to 384 — see comment in bootElizaRuntime.
-  if (!process.env.EMBEDDING_DIMENSION) {
-    process.env.EMBEDDING_DIMENSION = "384";
-  }
+  ensureDefaultEmbeddingDimension();
 
   if (options?.serverOnly) {
     bootLap("startEliza:serverOnly entry");

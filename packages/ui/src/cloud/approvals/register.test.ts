@@ -1,3 +1,4 @@
+/** Verifies approvals cloud-route registration through the package's configured test harness. */
 import { describe, expect, it } from "vitest";
 import { registerAllCloudSurfaces } from "../register-all";
 import { listCloudRoutes } from "../shell/cloud-route-registry";

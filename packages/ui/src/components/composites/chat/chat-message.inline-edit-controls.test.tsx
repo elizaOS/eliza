@@ -1,3 +1,4 @@
+/** Verifies ChatMessage glass inline edit controls through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

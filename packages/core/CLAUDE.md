@@ -14,7 +14,7 @@ src/
   index.node.ts         Full Node API surface (the real export list — start here)
   index.browser.ts      Browser-safe subset (no fs/process-bound modules)
   index.edge.ts         Edge-runtime subset
-  runtime.ts            AgentRuntime class (~9000 lines, `class AgentRuntime implements IAgentRuntime` at L718); the central orchestrator
+  runtime.ts            AgentRuntime class and lifecycle orchestration; navigate by symbol
   runtime-composition.ts  loadCharacters / createRuntimes / settings merge (Node-only boot helpers)
   runtime-env.ts        Runtime environment + state resolution
   plugin.ts             Plugin load/validate/resolve: loadPlugin, resolvePlugins, validatePlugin, resolvePluginDependencies
@@ -76,7 +76,11 @@ From `@elizaos/core` (`index.node.ts`):
 - Boot/composition (Node): `loadCharacters`, `createRuntimes`, `buildBaseTables`, `InMemoryDatabaseAdapter`.
 - Prompt + model helpers: `composePromptFromState`, `parseKeyValueXml`, `callModelWithValidation`, `parseAndValidate`.
 
-Subpath entries (see `package.json` `exports`): `@elizaos/core/node`, `@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`, `@elizaos/core/network`, `@elizaos/core/security/mcp-server-config`, `@elizaos/core/security/kms`, `@elizaos/core/security/spawn-policy`, and `@elizaos/core/services/*`.
+Subpath entries (see `package.json` `exports`): `@elizaos/core/node`,
+`@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`,
+`@elizaos/core/network`, `@elizaos/core/atomic-json`,
+`@elizaos/core/security/mcp-server-config`, `@elizaos/core/security/kms`,
+`@elizaos/core/security/spawn-env-policy`, and `@elizaos/core/services/*`.
 
 This package does NOT export a `corePlugin` singleton — the foundational actions/providers/evaluators/services live in `features/basic-capabilities` and are exported as the `basic*` bundles above.
 
@@ -91,7 +95,7 @@ bun run --cwd packages/core test:watch    # vitest watch
 bun run --cwd packages/core test:coverage # vitest with v8 coverage
 bun run --cwd packages/core test:e2e      # Playwright (playwright.config.ts)
 bun run --cwd packages/core test:e2e:smoke
-bun run --cwd packages/core typecheck     # tsgo --noEmit -p ./tsconfig.json
+bun run --cwd packages/core typecheck     # generate keywords, then tsc --noEmit
 bun run --cwd packages/core lint          # biome check --write ./src
 bun run --cwd packages/core format        # biome format --write ./src
 bun run --cwd packages/core clean         # remove dist + emitted src artifacts
@@ -162,48 +166,21 @@ visible.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
-- `runtime.ts` is very large (~9000 lines / ~259 KB) — navigate by symbol, not by reading top-to-bottom.
+- `runtime.ts` is intentionally large and load-bearing; navigate by symbol and
+  ownership boundary rather than reading it top to bottom or adding another
+  unrelated responsibility.
 - `src/generated/` and parts of `src/i18n/generated/` are build artifacts; regenerate via prebuild rather than editing.
-- Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../AGENTS.md) — not restated here.
+- Repository-wide rules and evidence requirements are inherited from the root
+  [`CLAUDE.md`](../../CLAUDE.md).
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Package completion evidence
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+Follow the repository-wide definition of done in the root guide. For core
+changes, additionally capture and inspect:
 
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — runtime / framework:**
-- A **live-LLM** scenario trajectory for the runtime path you touched — provider → model → action → evaluator — with the raw `<response>` XML and every tool/action call visible and **read**.
-- Backend `[ClassName]` logs proving the message loop, task scheduler, or service actually fired end to end.
-- The memory/state artifacts produced — rows written, embeddings, room/world/entity records, scheduled-task rows — inspected, not assumed.
-- For shared modules: `build:node` vs full `build` so the browser/edge bundles still compile.
-<!-- END: evidence-and-e2e-mandate -->
+- a live-model trajectory for any changed provider → model → action → evaluator
+  path, including raw model output and every tool result;
+- structured logs and the resulting memory, entity, relationship, task,
+  trajectory, or database artifacts; and
+- both the Node-only build and the full multi-target build whenever a shared
+  export or runtime dependency changes.

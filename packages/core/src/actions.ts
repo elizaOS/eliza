@@ -455,6 +455,8 @@ function parseActionParamsJson(input: string): Record<string, unknown> | null {
 			? (parsed as Record<string, unknown>)
 			: null;
 	} catch {
+		// error-policy:J3 action parameters cross an untrusted model boundary;
+		// malformed JSON is an explicit invalid result.
 		return null;
 	}
 }

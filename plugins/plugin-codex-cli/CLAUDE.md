@@ -56,7 +56,7 @@ bun run --cwd plugins/plugin-codex-cli test         # vitest run
 bun run --cwd plugins/plugin-codex-cli lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-codex-cli lint:check   # biome check (no write)
 bun run --cwd plugins/plugin-codex-cli format       # biome format --write
-bun run --cwd plugins/plugin-codex-cli typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-codex-cli typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-codex-cli clean        # rm -rf dist .turbo
 ```
 
@@ -101,46 +101,12 @@ No auto-enable env var trigger exists. Auto-enable logic lives in `auto-enable.t
 - **Per-call model override.** Text handlers honor `params.model` before `CODEX_MODEL`. Workflow generation uses this for isolated Codex model tests without changing every Codex CLI text call.
 - **Auth file lock.** `codex-auth.ts` uses a `.lock` file alongside `auth.json` (30 s stale timeout, 30 retries at 100 ms). Stale locks are cleaned up automatically.
 - **Supported models:** `gpt-5`, `gpt-5-codex`, `gpt-5.4`, `gpt-5.5`, `gpt-5.5-pro`. Setting `CODEX_MODEL` to anything else will be sent as-is; the backend may reject it.
-- See the root `AGENTS.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
+- See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — CLI / tooling:**
-- The real command/flow invocation transcript (args in, stdout/stderr, exit code) and the artifacts it generated (files, scaffolds, manifests, screenshots/recordings).
-- Failure paths: bad args, missing deps, partial state, permission/network errors.
-- A recording/log of the actual run end to end — not a unit test of one helper.
-- Any model interaction captured as a live trajectory and reviewed.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

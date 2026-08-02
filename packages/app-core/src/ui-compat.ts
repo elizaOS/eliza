@@ -23,8 +23,8 @@ export type {
   AppRunSummary,
   AppSessionJsonValue,
 } from "@elizaos/shared/contracts/apps";
-export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export { client } from "@elizaos/ui/api";
+export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export {
   SurfaceBadge,
   SurfaceCard,

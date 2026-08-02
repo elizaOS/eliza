@@ -13,7 +13,7 @@
  * `fetchStatus` / `releaseBlock` so they stay offline.
  */
 
-import { client } from "@elizaos/ui/api/client";
+import { client } from "@elizaos/ui/api";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SelfControlStatus } from "../../services/website-blocker/index.ts";

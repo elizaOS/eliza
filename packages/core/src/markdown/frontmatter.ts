@@ -66,6 +66,8 @@ function parseYamlFrontmatter(block: string): ParsedFrontmatter | null {
 		}
 		return result;
 	} catch {
+		// error-policy:J3 frontmatter is untrusted document input; invalid YAML
+		// is represented as an explicit parse miss.
 		return null;
 	}
 }

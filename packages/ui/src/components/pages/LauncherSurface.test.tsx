@@ -1,3 +1,4 @@
+/** Verifies LauncherSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Renders the real LauncherSurface with mocked view/platform hooks to cover

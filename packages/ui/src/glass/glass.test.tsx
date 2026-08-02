@@ -1,3 +1,4 @@
+/** Verifies glass tokens through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Contract tests for the unified glass system: recipe integrity (every variant

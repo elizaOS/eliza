@@ -1,3 +1,4 @@
+/** Verifies layout-shift-intent marker (#15257) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Adversarial MOUSE-DRAG suite for the chat sheet's follow-the-finger contract,

@@ -17,6 +17,7 @@
  * persistCharacterPatch helper, and both global paths land in the
  * character-persistence service.
  */
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess } from "../../../../roles.ts";
 import type { Character } from "../../../../types/agent.ts";
@@ -769,15 +770,11 @@ async function runModify(
 				"modifications",
 			);
 		} catch (memoryError) {
-			logger.warn(
-				{
-					error:
-						memoryError instanceof Error
-							? memoryError.message
-							: String(memoryError),
-				},
-				"Character modification success log failed",
-			);
+			// error-policy:J7 audit persistence must not turn an applied character
+			// change into a failed action; report the diagnostic failure.
+			runtime.reportError("Character.modificationAudit", memoryError, {
+				roomId: message.roomId,
+			});
 		}
 
 		return {
@@ -805,6 +802,8 @@ async function runModify(
 			success: true,
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates modification failure into
+		// an explicit unsuccessful result visible to the model.
 		logger.error(
 			{ error: error instanceof Error ? error.message : String(error) },
 			"Error in CHARACTER.modify",
@@ -832,6 +831,8 @@ function parseStructuredRecord(
 		const parsed = JSON.parse(response.trim()) as unknown;
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// error-policy:J3 character model output is untrusted input; malformed
+		// JSON is an explicit invalid response.
 		return null;
 	}
 }
@@ -840,6 +841,8 @@ function formatPromptData(value: unknown): string {
 	try {
 		return JSON.stringify(value, null, 2);
 	} catch {
+		// error-policy:J3 prompt context can contain non-JSON runtime values;
+		// String supplies an explicit diagnostic representation.
 		return String(value);
 	}
 }
@@ -1054,25 +1057,39 @@ Example:
 			maxTokens: 150,
 		});
 		const raw = parseStructuredRecord(response);
-		if (!raw) return heuristic.intent;
+		if (!raw) {
+			throw new ElizaError("Character intent model returned invalid JSON", {
+				code: "CHARACTER_INTENT_INVALID",
+			});
+		}
 
-		const confidence = normalizeNumber(raw.confidence) ?? 0;
+		const confidence = normalizeNumber(raw.confidence);
+		const isModificationRequest = normalizeBoolean(raw.isModificationRequest);
+		const requestType = raw.requestType;
+		if (
+			confidence === undefined ||
+			isModificationRequest === undefined ||
+			(requestType !== "explicit" &&
+				requestType !== "suggestion" &&
+				requestType !== "none")
+		) {
+			throw new ElizaError("Character intent model returned invalid fields", {
+				code: "CHARACTER_INTENT_INVALID",
+			});
+		}
 		const llmResult = {
-			isModificationRequest:
-				(normalizeBoolean(raw.isModificationRequest) ?? false) &&
-				confidence > 0.5,
-			requestType: (typeof raw.requestType === "string"
-				? raw.requestType
-				: "none") as "explicit" | "suggestion" | "none",
+			isModificationRequest: isModificationRequest && confidence > 0.5,
+			requestType: requestType as "explicit" | "suggestion" | "none",
 			confidence,
 		};
-		return llmResult.isModificationRequest ? llmResult : heuristic.intent;
+		return llmResult;
 	} catch (error) {
-		logger.debug(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Intent detection failed, using heuristic fallback",
-		);
-		return heuristic.intent;
+		// error-policy:J2 preserve the model failure while identifying the intent
+		// classification boundary; an inconclusive rule result is not fabricated.
+		throw new ElizaError("Failed to classify character modification intent", {
+			code: "CHARACTER_INTENT_CLASSIFICATION_FAILED",
+			cause: error,
+		});
 	}
 }
 
@@ -1104,10 +1121,11 @@ async function buildRecentConversationContext(
 			})
 			.join("\n");
 	} catch (error) {
-		logger.debug(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Failed to load recent conversation context",
-		);
+		// error-policy:J4 recent context is optional for character edits, but the
+		// failed memory read remains observable to the agent.
+		runtime.reportError("Character.buildRecentConversationContext", error, {
+			roomId: message.roomId,
+		});
 		return "";
 	}
 }
@@ -1200,11 +1218,12 @@ style_post: array of post style items`;
 		if (!parsed) return null;
 		return sanitizeParsedModification(messageText, parsed);
 	} catch (error) {
-		logger.warn(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Failed to parse user modification request",
-		);
-		return null;
+		// error-policy:J2 preserve the model failure while identifying the
+		// character-modification parse boundary.
+		throw new ElizaError("Failed to parse character modification request", {
+			code: "CHARACTER_MODIFICATION_PARSE_FAILED",
+			cause: error,
+		});
 	}
 }
 
@@ -1269,10 +1288,9 @@ acceptable_style_post: array of post style items`;
 			buildModificationFromStructuredRecord(raw, "acceptable_") ?? undefined;
 		return { isAppropriate, concerns, reasoning, acceptableChanges };
 	} catch (error) {
-		logger.warn(
-			{ error: error instanceof Error ? error.message : String(error) },
-			"Failed to evaluate modification safety",
-		);
+		// error-policy:J4 safety failure fails closed with an explicit unavailable
+		// explanation and remains observable to the agent.
+		runtime.reportError("Character.evaluateModificationSafety", error);
 		return {
 			isAppropriate: false,
 			concerns: ["Safety evaluation unavailable"],
@@ -1337,6 +1355,8 @@ function parseEvolutionData(
 			? (parsed as Record<string, unknown>)
 			: null;
 	} catch {
+		// error-policy:J3 evolution memories are untrusted persisted input;
+		// malformed JSON is an explicit invalid record.
 		return null;
 	}
 }
@@ -1401,8 +1421,13 @@ Set action: none only if the request truly does not specify any interaction pref
 				? raw.category.trim()
 				: "other";
 		return { text, category, action };
-	} catch {
-		return null;
+	} catch (error) {
+		// error-policy:J2 preserve the model failure while identifying the
+		// user-preference parse boundary.
+		throw new ElizaError("Failed to parse character preference request", {
+			code: "CHARACTER_PREFERENCE_PARSE_FAILED",
+			cause: error,
+		});
 	}
 }
 
@@ -1577,6 +1602,8 @@ async function handleUserPreference(
 			},
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates preference persistence
+		// failure into an explicit unsuccessful result visible to the model.
 		logger.error(
 			{ error: error instanceof Error ? error.message : String(error) },
 			"Error storing user preference",

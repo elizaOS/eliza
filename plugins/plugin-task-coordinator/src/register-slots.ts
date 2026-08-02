@@ -13,13 +13,13 @@
  */
 
 import { registerTaskWidget } from "@elizaos/ui/components/chat/widgets/task-widget";
-import { registerTaskCoordinatorSlots } from "@elizaos/ui/slots/task-coordinator-slots.helpers";
 import type {
   TaskCoordinatorCodingAgentControlChipProps,
   TaskCoordinatorCodingAgentSettingsSectionProps,
   TaskCoordinatorCodingAgentTasksPanelProps,
   TaskCoordinatorPtyConsoleBaseProps,
 } from "@elizaos/ui/slots/task-coordinator-slots";
+import { registerTaskCoordinatorSlots } from "@elizaos/ui/slots/task-coordinator-slots.helpers";
 import {
   type ComponentType,
   createElement,

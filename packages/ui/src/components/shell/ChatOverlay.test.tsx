@@ -1,3 +1,4 @@
+/** Verifies ChatOverlay through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Core behavior of the floating chat overlay: the mic ↔ send composer swap,

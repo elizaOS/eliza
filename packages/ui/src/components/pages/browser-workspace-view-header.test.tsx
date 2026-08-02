@@ -1,3 +1,4 @@
+/** Verifies BrowserWorkspaceView uniform header (#13596) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -1,3 +1,4 @@
+/** Verifies primeAuthStatusProbe + activation reuse through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Startup priming of the /api/auth/me probe (primeAuthStatusProbe): the

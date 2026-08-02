@@ -328,6 +328,8 @@ function asUuidOrNull(value: unknown): UUID | null {
 	try {
 		return asUUID(value.trim());
 	} catch {
+		// error-policy:J3 reflection metadata is untrusted persisted input; an
+		// invalid UUID is an explicit parse miss.
 		return null;
 	}
 }

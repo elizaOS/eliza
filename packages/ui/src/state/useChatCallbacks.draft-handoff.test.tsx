@@ -1,3 +1,4 @@
+/** Verifies composer draft handoff on conversation switch (#FIX2) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Per-conversation composer draft handoff on switch (`useChatCallbacks`).

@@ -1,3 +1,4 @@
+/** Verifies WS event parsers — fuzz through the package's configured test harness. */
 // Fuzz / hardening pass for the untrusted-input parsers in state/parsers.ts.
 // These decode raw WebSocket payloads and raw chat input, so the invariant is:
 // never throw on arbitrary input, and either reject (null) or return a value

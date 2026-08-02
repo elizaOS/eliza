@@ -1,3 +1,4 @@
+/** Verifies HomeScreen through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // HomeScreen composition: the unified home WidgetHost, the pinned dashboard

@@ -1,3 +1,4 @@
+/** Verifies CockpitNewSessionForm through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Interaction tests for CockpitNewSessionForm: submit stays disabled until a

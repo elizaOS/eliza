@@ -153,6 +153,8 @@ function parsePattern(raw: string): RegExp | null {
 		}
 		return new RegExp(raw, "gi");
 	} catch {
+		// error-policy:J3 custom patterns are untrusted configuration; an invalid
+		// expression is excluded from the compiled detector set.
 		return null;
 	}
 }

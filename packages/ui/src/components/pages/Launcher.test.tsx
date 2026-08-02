@@ -1,3 +1,4 @@
+/** Verifies Launcher through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Renders the real Launcher over deterministic mock ViewEntry catalogs to prove

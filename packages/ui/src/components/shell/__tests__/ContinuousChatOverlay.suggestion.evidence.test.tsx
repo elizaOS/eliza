@@ -1,3 +1,4 @@
+/** Verifies evidence: proactive suggestion bubble rendered DOM (#11387) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Evidence generator for #11387: dumps the ACTUAL rendered DOM of the proactive

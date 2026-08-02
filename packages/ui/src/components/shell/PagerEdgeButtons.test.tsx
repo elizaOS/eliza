@@ -1,3 +1,4 @@
+/** Verifies PagerEdgeButtons (#10717) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // #10717: the web/desktop `< >` pager edge buttons — desktop-width and

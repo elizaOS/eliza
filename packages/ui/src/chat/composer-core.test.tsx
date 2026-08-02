@@ -1,3 +1,4 @@
+/** Verifies useComposerKeydown through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Contract tests for the shared composer core (keydown + paste) — the one

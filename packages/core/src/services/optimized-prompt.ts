@@ -1094,7 +1094,11 @@ async function removeIfExists(path: string): Promise<void> {
 	try {
 		await unlink(path);
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			// error-policy:J6 removing an already-absent artifact is idempotent
+			// best-effort teardown.
+			return;
+		}
 		throw err;
 	}
 }
@@ -1102,8 +1106,13 @@ async function removeIfExists(path: string): Promise<void> {
 async function removeFileBestEffort(path: string): Promise<void> {
 	try {
 		await rm(path, { force: true });
-	} catch {
-		// Cleanup must not mask the original write failure.
+	} catch (error) {
+		// error-policy:J6 temporary-file cleanup must not mask the original write
+		// failure, but the teardown failure remains visible in diagnostics.
+		logger.warn(
+			{ src: "service:optimized_prompt", path, error },
+			"Failed to remove temporary optimized-prompt artifact",
+		);
 	}
 }
 
@@ -1127,7 +1136,11 @@ async function readLinkOrNull(path: string): Promise<string | null> {
 		const code = (err as NodeJS.ErrnoException).code;
 		// ENOENT: path missing. EINVAL: path is a regular file (not a symlink).
 		// Both mean "no symlink target" — callers handle that as null.
-		if (code === "ENOENT" || code === "EINVAL") return null;
+		if (code === "ENOENT" || code === "EINVAL") {
+			// error-policy:J4 a missing path or regular file explicitly has no
+			// symlink target; other filesystem failures propagate.
+			return null;
+		}
 		throw err;
 	}
 }
@@ -1145,7 +1158,11 @@ async function loadArtifactFromPath(
 	try {
 		raw = await readFile(path, "utf-8");
 	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			// error-policy:J4 an absent optional optimized-prompt artifact is an
+			// explicit not-found state during version discovery.
+			return null;
+		}
 		throw err;
 	}
 	// SOC2 CC6.8: verify HMAC sidecar before parsing. A `.mac` next to the
@@ -1158,6 +1175,8 @@ async function loadArtifactFromPath(
 		macHex = (await readFile(macPath, "utf-8")).trim();
 	} catch (err) {
 		if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+		// error-policy:J4 the missing sidecar is rendered below as an explicit
+		// integrity rejection, never accepted as an unsigned artifact.
 	}
 	if (macHex === null) {
 		logger.warn(
@@ -1191,6 +1210,8 @@ async function loadArtifactFromPath(
 	try {
 		parsedJson = JSON.parse(raw);
 	} catch {
+		// error-policy:J3 optimized-prompt artifacts are persisted input;
+		// malformed JSON is explicitly rejected and logged.
 		logger.warn(
 			{ src: "service:optimized_prompt", task, path },
 			"Optimized prompt artifact is not valid JSON — skipping",

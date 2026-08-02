@@ -1,3 +1,4 @@
+/** Verifies ChatSurface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // ChatSurface presentation + send wiring: renders the greeting on an empty

@@ -1,3 +1,4 @@
+/** Verifies CapabilitiesSection proactive-suggestions control through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

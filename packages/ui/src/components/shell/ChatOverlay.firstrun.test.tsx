@@ -1,3 +1,4 @@
+/** Verifies ChatOverlay first-run gating through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):

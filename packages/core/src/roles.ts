@@ -27,6 +27,7 @@ import {
 	normalizeConnectorSource,
 } from "./connectors.ts";
 import { createUniqueUuid } from "./entities";
+import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
 import {
@@ -202,10 +203,12 @@ function parseOwnerContactEntityIds(raw: string | undefined): string[] {
 			)
 			.filter((entityId) => entityId.length > 0);
 	} catch (error) {
-		logger.warn(
-			`[roles] Failed to parse owner contacts from runtime settings: ${formatError(error)}`,
-		);
-		return [];
+		// error-policy:J2 owner contacts participate in authorization; preserve
+		// the invalid setting rather than treating it as no configured owners.
+		throw new ElizaError("Failed to parse configured owner contacts", {
+			code: "OWNER_CONTACTS_INVALID",
+			cause: error,
+		});
 	}
 }
 
@@ -506,10 +509,13 @@ async function getConfirmedLinkedEntityIds(
 
 		return [...linkedIds];
 	} catch (error) {
-		logger.warn(
-			`[roles] Failed to load identity links for ${entityId}: ${formatError(error)}`,
-		);
-		return [];
+		// error-policy:J2 identity links participate in authorization; preserve
+		// lookup context instead of treating a failed read as no links.
+		throw new ElizaError("Failed to load confirmed identity links", {
+			code: "IDENTITY_LINK_QUERY_FAILED",
+			cause: error,
+			context: { entityId },
+		});
 	}
 }
 
@@ -606,10 +612,13 @@ export function getConnectorAdminWhitelist(
 		const parsed = JSON.parse(raw) as Record<string, unknown>;
 		return normalizeConnectorAdminWhitelist(parsed);
 	} catch (error) {
-		logger.warn(
-			`[roles] Failed to parse ${CONNECTOR_ADMINS_SETTING_KEY}: ${formatError(error)}`,
-		);
-		return {};
+		// error-policy:J2 connector-admin settings participate in authorization;
+		// malformed persisted data must not become an empty whitelist.
+		throw new ElizaError("Failed to parse connector administrator whitelist", {
+			code: "CONNECTOR_ADMINS_INVALID",
+			cause: error,
+			context: { setting: CONNECTOR_ADMINS_SETTING_KEY },
+		});
 	}
 }
 
@@ -1035,7 +1044,13 @@ async function isCanonicalOwner(
 	try {
 		const ownerId = await resolveFn(runtime, message);
 		return typeof ownerId === "string" && ownerId === message.entityId;
-	} catch {
+	} catch (error) {
+		// error-policy:J1 authorization fails closed while reporting the owner
+		// resolution failure to the agent and operators.
+		runtime.reportError("RoleAccess.resolveCanonicalOwner", error, {
+			entityId: message.entityId,
+			roomId: message.roomId,
+		});
 		return false;
 	}
 }
@@ -1092,7 +1107,14 @@ export async function hasRoleAccess(
 		const senderRank = ROLE_RANK[result.role] ?? 0;
 		const requiredRank = ROLE_RANK[requiredRole] ?? 0;
 		return senderRank >= requiredRank;
-	} catch {
+	} catch (error) {
+		// error-policy:J1 authorization fails closed while reporting the role
+		// resolution failure to the agent and operators.
+		context.runtime.reportError("RoleAccess.checkSenderRole", error, {
+			entityId: context.message.entityId,
+			roomId: context.message.roomId,
+			requiredRole,
+		});
 		return false;
 	}
 }

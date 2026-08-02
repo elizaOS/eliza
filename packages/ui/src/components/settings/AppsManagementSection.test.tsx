@@ -1,3 +1,4 @@
+/** Verifies AppsManagementSection failure states through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import {

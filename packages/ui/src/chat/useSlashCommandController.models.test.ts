@@ -1,3 +1,4 @@
+/** Verifies useSlashCommandController — models choice source through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

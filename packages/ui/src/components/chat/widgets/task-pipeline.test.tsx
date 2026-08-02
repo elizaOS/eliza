@@ -1,3 +1,4 @@
+/** Verifies PlanChecklist through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Pipeline presentational pieces: the live PlanChecklist (three distinguishable

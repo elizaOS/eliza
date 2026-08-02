@@ -1,3 +1,4 @@
+/** Verifies CharacterHubView (Personality-only collapse) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Guards the collapse of CharacterHubView to the Personality section only

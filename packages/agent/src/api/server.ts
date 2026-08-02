@@ -50,7 +50,6 @@ import type {
   AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
-import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import { readAliasedEnv } from "@elizaos/shared";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
@@ -486,14 +485,6 @@ import {
 } from "./ws-event-replay.ts";
 import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
-type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
-type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
-type PermissionsExtraRouteArg = Parameters<
-  typeof handlePermissionsExtraRoutes
->[0];
-type WorkbenchRouteArg = Parameters<typeof handleWorkbenchRoutes>[0];
-type MiscRouteArg = Parameters<typeof handleMiscRoutes>[0];
-
 export {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
@@ -688,11 +679,16 @@ export type {
   StreamEventType,
 } from "./server-types.ts";
 
+import type { AwarenessRegistryLike } from "./agent-status-routes.ts";
+import { createApiEventHub } from "./event-hub.ts";
+import { listenHttpServer } from "./http-listener.ts";
+import { createRouteKernel } from "./route-kernel.ts";
+import { createServerResources } from "./server-resources.ts";
+import { createServerState } from "./server-state.ts";
 import type {
   AgentStartupDiagnostics,
   LogEntry,
   ServerState,
-  StreamEventEnvelope,
 } from "./server-types.ts";
 
 export {
@@ -1142,13 +1138,8 @@ import {
   serveStaticUi,
 } from "./static-file-server.ts";
 
-export { injectApiBaseIntoHtml };
-
-function coerce<T>(value: unknown): T {
-  return value as T;
-}
-
 export type { ChatAttachmentWithData } from "./server-types.ts";
+export { injectApiBaseIntoHtml };
 
 function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
   return parseClampedInteger(rawLimit, {
@@ -1292,7 +1283,7 @@ function _isAgentAutomationRequest(req: http.IncomingMessage): boolean {
 }
 
 function persistAgentAutomationMode(
-  state: ServerState,
+  state: Pick<ServerState, "config" | "agentAutomationMode">,
   mode: AgentAutomationMode,
 ): void {
   state.agentAutomationMode = mode;
@@ -1358,6 +1349,10 @@ const resolvePluginConfigMutationRejections =
 interface RequestContext {
   onRestart: (() => Promise<AgentRuntime | null>) | null;
   onRuntimeSwapped?: () => void;
+  onRuntimeActivated?: (
+    previousRuntime: AgentRuntime | null,
+    activeRuntime: AgentRuntime,
+  ) => void | Promise<void>;
   getAppManager?: () => Promise<AppManagerLike>;
 }
 
@@ -1760,6 +1755,7 @@ async function handleRequest(
     state.broadcastStatus?.();
 
     try {
+      const previousRuntime = state.runtime;
       const newRuntime = await ctx.onRestart();
       if (!newRuntime) {
         state.agentState = previousState;
@@ -1777,6 +1773,16 @@ async function handleRequest(
       state.startedAt = Date.now();
       state.pendingRestartReasons = [];
       ctx.onRuntimeSwapped?.();
+      try {
+        await ctx.onRuntimeActivated?.(previousRuntime, newRuntime);
+      } catch (err) {
+        // error-policy:J6 the replacement is already active; host cleanup must
+        // be observable without reverting a healthy runtime.
+        newRuntime.reportError("api.restart.activateRuntime", err);
+        logger.warn(
+          `[eliza-api] Post-swap runtime cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       state.broadcastStatus?.();
       return true;
     } catch (err) {
@@ -2213,7 +2219,7 @@ async function handleRequest(
       method,
       pathname,
       url,
-      state: coerce<FirstRunRouteArg["state"]>(state),
+      state,
       json,
       error,
       readJsonBody,
@@ -2222,37 +2228,21 @@ async function handleRequest(
       ensureWalletKeysInEnvAndConfig,
       getWalletAddresses:
         pathname === "/api/wallet/keys"
-          ? coerce<FirstRunRouteArg["getWalletAddresses"]>(
-              (await getCoreWalletApi()).getWalletAddresses,
-            )
-          : coerce<FirstRunRouteArg["getWalletAddresses"]>(() => ({
+          ? (await getCoreWalletApi()).getWalletAddresses
+          : () => ({
               evmAddress: null,
               solanaAddress: null,
-            })),
+            }),
       pickRandomNames,
-      getStylePresets:
-        coerce<FirstRunRouteArg["getStylePresets"]>(getStylePresets),
-      getProviderOptions:
-        coerce<FirstRunRouteArg["getProviderOptions"]>(getProviderOptions),
-      getCloudProviderOptions: coerce<
-        FirstRunRouteArg["getCloudProviderOptions"]
-      >(getCloudProviderOptions),
-      getModelOptions:
-        coerce<FirstRunRouteArg["getModelOptions"]>(getModelOptions),
-      getInventoryProviderOptions: coerce<
-        FirstRunRouteArg["getInventoryProviderOptions"]
-      >(getInventoryProviderOptions),
-      resolveConfiguredCharacterLanguage: coerce<
-        FirstRunRouteArg["resolveConfiguredCharacterLanguage"]
-      >(resolveConfiguredCharacterLanguage),
-      normalizeCharacterLanguage: coerce<
-        FirstRunRouteArg["normalizeCharacterLanguage"]
-      >(normalizeCharacterLanguage),
-      readUiLanguageHeader:
-        coerce<FirstRunRouteArg["readUiLanguageHeader"]>(readUiLanguageHeader),
-      applyFirstRunVoicePreset: coerce<
-        FirstRunRouteArg["applyFirstRunVoicePreset"]
-      >(applyFirstRunVoicePreset),
+      getStylePresets,
+      getProviderOptions,
+      getCloudProviderOptions,
+      getModelOptions,
+      getInventoryProviderOptions,
+      resolveConfiguredCharacterLanguage,
+      normalizeCharacterLanguage,
+      readUiLanguageHeader,
+      applyFirstRunVoicePreset,
       saveElizaConfig,
     })
   ) {
@@ -2276,6 +2266,7 @@ async function handleRequest(
       // the reported state to "running" with nothing behind it.
       onRestart: ctx?.onRestart ?? undefined,
       onRuntimeSwapped: ctx?.onRuntimeSwapped,
+      onRuntimeActivated: ctx?.onRuntimeActivated,
     })
   ) {
     return;
@@ -2350,6 +2341,7 @@ async function handleRequest(
       state,
       onRestart: ctx?.onRestart ?? undefined,
       onRuntimeSwapped: ctx?.onRuntimeSwapped,
+      onRuntimeActivated: ctx?.onRuntimeActivated,
       json,
       error,
       resolveStateDir,
@@ -2789,31 +2781,19 @@ async function handleRequest(
           generateWalletForChain,
           deriveSolanaAddress,
           setSolanaWalletEnv,
-          resolveWalletRpcReadiness: coerce<
-            WalletRouteDependencies["resolveWalletRpcReadiness"]
-          >(resolveWalletRpcReadiness),
-          resolveWalletNetworkMode: coerce<
-            WalletRouteDependencies["resolveWalletNetworkMode"]
-          >(resolveWalletNetworkMode),
-          getStoredWalletRpcSelections: coerce<
-            WalletRouteDependencies["getStoredWalletRpcSelections"]
-          >(getStoredWalletRpcSelections),
-          applyWalletRpcConfigUpdate: coerce<
-            WalletRouteDependencies["applyWalletRpcConfigUpdate"]
-          >(applyWalletRpcConfigUpdate),
-          resolveWalletCapabilityStatus: coerce<
-            WalletRouteDependencies["resolveWalletCapabilityStatus"]
-          >((args: { config: ElizaConfig; runtime: AgentRuntime | null }) =>
-            resolveWalletCapabilityStatus({
+          resolveWalletRpcReadiness,
+          resolveWalletNetworkMode,
+          getStoredWalletRpcSelections,
+          applyWalletRpcConfigUpdate,
+          resolveWalletCapabilityStatus: (args) => ({
+            ...resolveWalletCapabilityStatus({
               config: args.config,
               runtime: args.runtime,
             }),
-          ),
+          }),
           isCloudWalletEnabled,
           persistConfigEnv,
-          createIntegrationTelemetrySpan: coerce<
-            WalletRouteDependencies["createIntegrationTelemetrySpan"]
-          >(createIntegrationTelemetrySpan),
+          createIntegrationTelemetrySpan,
         },
         runtime: state.runtime ?? null,
       })
@@ -2836,7 +2816,7 @@ async function handleRequest(
         method,
         pathname,
         url,
-        state: coerce<AgentStatusRouteArg["state"]>(state),
+        state,
         json,
         error,
         readJsonBody,
@@ -2845,24 +2825,23 @@ async function handleRequest(
             pathname === "/api/agent/self-status"
               ? (await getCoreWalletApi()).getWalletAddresses
               : () => ({ evmAddress: null, solanaAddress: null }),
-          resolveWalletCapabilityStatus: coerce<
-            AgentStatusRouteArg["deps"]["resolveWalletCapabilityStatus"]
-          >(resolveWalletCapabilityStatus),
-          resolveWalletRpcReadiness: coerce<
-            AgentStatusRouteArg["deps"]["resolveWalletRpcReadiness"]
-          >(resolveWalletRpcReadiness),
+          resolveWalletCapabilityStatus,
+          resolveWalletRpcReadiness,
           resolveTradePermissionMode,
-          canUseLocalTradeExecution: coerce<
-            AgentStatusRouteArg["deps"]["canUseLocalTradeExecution"]
-          >(canUseLocalTradeExecution),
-          detectRuntimeModel:
-            coerce<AgentStatusRouteArg["deps"]["detectRuntimeModel"]>(
-              detectRuntimeModel,
-            ),
+          canUseLocalTradeExecution,
+          detectRuntimeModel,
           resolveProviderFromModel,
-          getAwarenessRegistry: coerce<
-            AgentStatusRouteArg["deps"]["getAwarenessRegistry"]
-          >(() => state.runtime?.getService("AWARENESS_REGISTRY") ?? null),
+          getAwarenessRegistry: (): AwarenessRegistryLike | null => {
+            const service = state.runtime?.getService("AWARENESS_REGISTRY");
+            if (!service || typeof service !== "object") return null;
+            const composeSummary = (service as { composeSummary?: unknown })
+              .composeSummary;
+            if (typeof composeSummary !== "function") return null;
+            return {
+              composeSummary: (activeRuntime) =>
+                Promise.resolve(composeSummary.call(service, activeRuntime)),
+            };
+          },
           RegistryService,
         },
       });
@@ -2999,21 +2978,15 @@ async function handleRequest(
       res,
       method,
       pathname,
-      state: coerce<PermissionsExtraRouteArg["state"]>(state),
+      state,
       json,
       error,
       readJsonBody,
       saveElizaConfig,
-      resolveTradePermissionMode: coerce<
-        PermissionsExtraRouteArg["resolveTradePermissionMode"]
-      >(resolveTradePermissionMode),
-      canUseLocalTradeExecution: coerce<
-        PermissionsExtraRouteArg["canUseLocalTradeExecution"]
-      >(canUseLocalTradeExecution),
+      resolveTradePermissionMode,
+      canUseLocalTradeExecution,
       parseAgentAutomationMode,
-      persistAgentAutomationMode: coerce<
-        PermissionsExtraRouteArg["persistAgentAutomationMode"]
-      >(persistAgentAutomationMode),
+      persistAgentAutomationMode,
     })
   ) {
     return;
@@ -3350,24 +3323,19 @@ async function handleRequest(
         method,
         pathname,
         url,
-        state: coerce<WorkbenchRouteArg["state"]>(state),
+        state,
         json,
         error,
         readJsonBody,
-        toWorkbenchTodo:
-          coerce<WorkbenchRouteArg["toWorkbenchTodo"]>(toWorkbenchTodo),
+        toWorkbenchTodo,
         normalizeTags,
         readTaskMetadata,
         readTaskCompleted,
         parseNullableNumber,
         asObject,
         decodePathComponent,
-        taskToTriggerSummary:
-          coerce<WorkbenchRouteArg["taskToTriggerSummary"]>(
-            taskToTriggerSummary,
-          ),
-        listTriggerTasks:
-          coerce<WorkbenchRouteArg["listTriggerTasks"]>(listTriggerTasks),
+        taskToTriggerSummary,
+        listTriggerTasks,
       })
     ) {
       return;
@@ -3414,7 +3382,7 @@ async function handleRequest(
       method,
       pathname,
       url,
-      state: coerce<MiscRouteArg["state"]>(state),
+      state,
       json,
       error,
       readJsonBody,
@@ -3604,6 +3572,11 @@ export async function startApiServer(opts?: {
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
   onRestart?: () => Promise<AgentRuntime | null>;
+  /** Runs after the server atomically publishes the replacement runtime. */
+  onRuntimeActivated?: (
+    previousRuntime: AgentRuntime | null,
+    activeRuntime: AgentRuntime,
+  ) => void | Promise<void>;
   /**
    * Runs at the HTTP boundary before the built-in route dispatcher. Hosts use
    * this to add product-specific routes without mutating Node's global HTTP
@@ -3748,67 +3721,17 @@ export async function startApiServer(opts?: {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
 
-  const hasRuntime = opts?.runtime != null;
-  const initialAgentState = hasRuntime
-    ? "running"
-    : (opts?.initialAgentState ?? "not_started");
-  const initialStartup: AgentStartupDiagnostics =
-    initialAgentState === "running"
-      ? { phase: "running", attempt: 0 }
-      : initialAgentState === "starting"
-        ? { phase: "starting", attempt: 0 }
-        : { phase: "idle", attempt: 0 };
-  const agentName = hasRuntime
-    ? (opts.runtime?.character.name ?? resolveDefaultAgentName(config))
-    : resolveDefaultAgentName(config);
-
-  const deletedConversationIds = readDeletedConversationIdsFromState();
-
-  const state: ServerState = {
-    runtime: opts?.runtime ?? null,
+  const state = createServerState({
     config,
-    agentState: initialAgentState,
-    agentName,
-    model: hasRuntime
-      ? detectRuntimeModel(opts.runtime ?? null, config)
-      : undefined,
-    startedAt:
-      hasRuntime || initialAgentState === "starting" ? Date.now() : undefined,
-    startup: initialStartup,
+    runtime: opts?.runtime,
+    initialAgentState: opts?.initialAgentState,
     plugins,
-    // Filled asynchronously after server start to keep startup latency low.
-    skills: [],
-    logBuffer: [],
-    eventBuffer: [],
-    nextEventId: 1,
-    chatRoomId: null,
-    chatUserId: null,
-    chatConnectionReady: null,
-    chatConnectionPromise: null,
-    adminEntityId: null,
-    conversations: new Map(),
-    activeChatTurnCount: 0,
-    conversationRestorePromise: null,
-    deletedConversationIds,
-    cloudManager: null,
-    sandboxManager: null,
-    appManager: null,
-    trainingService: null,
-    shareIngestQueue: [],
-    broadcastStatus: null,
-    broadcastWs: null,
-    broadcastWsToClientId: null,
-    broadcastWsToConversation: null,
-    activeConversationId: null,
-    permissionStates: {},
-    shellEnabled: config.features?.shellEnabled !== false,
-    agentAutomationMode: resolveAgentAutomationModeFromConfig(config),
-    tradePermissionMode: resolveTradePermissionMode(config),
-    pendingRestartReasons: [],
-    connectorRouteHandlers: [],
-    connectorHealthMonitor: null,
-    whatsappPairingSessions: new Map(),
-  };
+    deletedConversationIds: readDeletedConversationIdsFromState(),
+    resolveAgentName: resolveDefaultAgentName,
+    detectRuntimeModel,
+    resolveAgentAutomationMode: resolveAgentAutomationModeFromConfig,
+    resolveTradePermissionMode,
+  });
   const ensureAppManager = async (): Promise<AppManagerLike> => {
     if (state.appManager) {
       return state.appManager as AppManagerLike;
@@ -3908,16 +3831,18 @@ export async function startApiServer(opts?: {
 
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
+  const onRuntimeActivated = opts?.onRuntimeActivated;
 
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
-  const server = http.createServer(async (req, res) => {
-    try {
+  const routeKernel = createRouteKernel({
+    dispatch: async (req, res) => {
       const dispatch = () =>
         handleRequest(req, res, state, {
           onRestart,
+          onRuntimeActivated,
           onRuntimeSwapped: () => {
             bindRuntimeStreams(state.runtime);
             wireModelRegistrationBroadcast(state.runtime);
@@ -3937,13 +3862,15 @@ export async function startApiServer(opts?: {
       } else {
         await dispatch();
       }
-    } catch (err) {
+    },
+    translateFailure: (err, _req, res) => {
       const msg = err instanceof Error ? err.message : "internal error";
       logger.error({ err }, `[eliza-api] Request handler failed: ${msg}`);
       addLog("error", msg, "api", ["server", "api"]);
       error(res, msg, 500);
-    }
+    },
   });
+  const server = http.createServer((req, res) => routeKernel.handle(req, res));
   await opts?.configureServer?.(server);
   if (
     isMobilePlatform() ||
@@ -3986,38 +3913,22 @@ export async function startApiServer(opts?: {
     "[eliza-api] Server lifecycle: requestTimeout=300000ms, idleTimeout=disabled, headersTimeout=60000ms, keepAliveTimeout=60000ms",
   );
 
-  const broadcastWs = (payload: unknown): void => {
-    const message = JSON.stringify(payload);
-    for (const client of wsClients) {
-      if (client.readyState === 1) {
-        try {
-          client.send(message);
-        } catch (err) {
-          logger.error(
-            `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
-          );
-        }
-      }
-    }
-  };
-
-  const pushEvent = (
-    event: Omit<StreamEventEnvelope, "eventId" | "version" | "bufferSeq">,
-  ) => {
-    const seq = state.nextEventId;
-    const envelope: StreamEventEnvelope = {
-      ...event,
-      eventId: `evt-${seq}`,
-      bufferSeq: seq,
-      version: 1,
-    };
-    state.nextEventId += 1;
-    state.eventBuffer.push(envelope);
-    if (state.eventBuffer.length > 1500) {
-      state.eventBuffer.splice(0, state.eventBuffer.length - 1500);
-    }
-    broadcastWs(envelope);
-  };
+  const wsClients = new Set<WebSocket>();
+  const wsClientIds = new WeakMap<WebSocket, string>();
+  const wsActiveConversations = new WeakMap<WebSocket, string>();
+  const eventHub = createApiEventHub({
+    state,
+    clients: wsClients,
+    clientIds: wsClientIds,
+    activeConversations: wsActiveConversations,
+    reportSendError: (err) => {
+      logger.error(
+        `[eliza-api] WebSocket send error: ${err instanceof Error ? err.message : err}`,
+      );
+    },
+  });
+  const broadcastWs = eventHub.broadcast;
+  const pushEvent = eventHub.publish;
 
   let detachRuntimeStreams: (() => void) | null = null;
   let detachTrainingStream: (() => void) | null = null;
@@ -4191,8 +4102,6 @@ export async function startApiServer(opts?: {
       `[eliza-api] WebSocketServer error: ${err instanceof Error ? err.message : err}`,
     );
   });
-  const wsClients = new Set<WebSocket>();
-  const wsClientIds = new WeakMap<WebSocket, string>();
   /**
    * Per-connection active conversation. Each browser window/client owns its own
    * active conversation, so two windows no longer fight over a single global.
@@ -4200,7 +4109,6 @@ export async function startApiServer(opts?: {
    * default for code paths that legitimately need *any* active conversation
    * (autonomy routing, swarm synthesis) and don't target a specific client.
    */
-  const wsActiveConversations = new WeakMap<WebSocket, string>();
   /** Per-WS-client PTY output subscriptions: sessionId → unsubscribe */
   const wsClientPtySubscriptions = new WeakMap<
     WebSocket,
@@ -4723,25 +4631,10 @@ export async function startApiServer(opts?: {
   };
   wireModelRegistrationBroadcast(state.runtime);
 
-  // Generic broadcast — sends an arbitrary JSON payload to all WS clients.
-  state.broadcastWs = (data: object) => {
-    const message = JSON.stringify(data);
-    for (const client of wsClients) {
-      if (client.readyState === 1) {
-        try {
-          client.send(message);
-        } catch (err) {
-          logger.error(
-            `[eliza-api] WebSocket broadcast error: ${err instanceof Error ? err.message : err}`,
-          );
-        }
-      }
-    }
-  };
+  state.broadcastWs = (data: object) => eventHub.broadcast(data);
 
-  // Give the views module a process-level broadcaster so the view-scoped action
-  // handler (which fires from the planner loop, outside any HTTP request) can
-  // drive a mounted shell through the same `view:interact` path the route uses.
+  // View interactions originate outside HTTP requests and share the same event
+  // hub as route and runtime events.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
       setViewsBroadcastWs(state.broadcastWs ?? null);
@@ -4752,43 +4645,10 @@ export async function startApiServer(opts?: {
       );
     });
 
-  state.broadcastWsToClientId = (clientId: string, data: object) => {
-    const message = JSON.stringify(data);
-    let delivered = 0;
-    for (const client of wsClients) {
-      if (client.readyState !== 1) continue;
-      if (wsClientIds.get(client) !== clientId) continue;
-      try {
-        client.send(message);
-        delivered += 1;
-      } catch (err) {
-        logger.error(
-          `[eliza-api] WebSocket targeted send error: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-    }
-    return delivered;
-  };
-
-  // Conversation-scoped push: only clients with this conversation active.
-  state.broadcastWsToConversation = (conversationId: string, data: object) => {
-    const message = JSON.stringify(data);
-    let delivered = 0;
-    for (const client of wsClients) {
-      if (client.readyState !== 1) continue;
-      if (wsActiveConversations.get(client) !== conversationId) continue;
-      try {
-        client.send(message);
-        delivered += 1;
-      } catch (err) {
-        logger.error(
-          `[eliza-api] WebSocket conversation send error: ${err instanceof Error ? err.message : err}`,
-        );
-      }
-    }
-    return delivered;
-  };
-
+  state.broadcastWsToClientId = (clientId: string, data: object) =>
+    eventHub.sendToClient(clientId, data);
+  state.broadcastWsToConversation = (conversationId: string, data: object) =>
+    eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins
   // (Signal, WhatsApp) can broadcast pairing events via the service.
   if (state.runtime) {
@@ -5050,69 +4910,99 @@ export async function startApiServer(opts?: {
     ["system", "agent"],
   );
 
-  // Shared teardown for connectors/streams/websockets that runs regardless of
-  // whether a TCP listener was bound. Kept as a closure so the skip-listen path
-  // and the listening path perform identical cleanup minus the socket close.
-  const stopServerSideResources = (): void => {
-    clearInterval(statusInterval);
-    detachApiLogListener?.();
-    detachApiLogListener = null;
-    if (state.connectorHealthMonitor) {
-      state.connectorHealthMonitor.stop();
-      state.connectorHealthMonitor = null;
-    }
-    if (detachRuntimeStreams) {
-      detachRuntimeStreams();
-      detachRuntimeStreams = null;
-    }
-    if (detachTrainingStream) {
-      detachTrainingStream();
-      detachTrainingStream = null;
-    }
-    for (const ws of wsClients) {
-      if (ws.readyState === 1 || ws.readyState === 0) {
-        if ("terminate" in ws && typeof ws.terminate === "function") {
-          ws.terminate();
-        } else {
-          ws.close();
+  const serverResources = createServerResources((resource, error) => {
+    // error-policy:J6 every teardown is attempted and awaited; one failure is
+    // reported without abandoning the remaining resources.
+    logger.warn({ error, resource }, `[eliza-api] Failed to close ${resource}`);
+  });
+  for (const resource of [
+    {
+      name: "status interval",
+      dispose: () => clearInterval(statusInterval),
+    },
+    {
+      name: "API log listener",
+      dispose: () => {
+        detachApiLogListener?.();
+        detachApiLogListener = null;
+      },
+    },
+    {
+      name: "connector health monitor",
+      dispose: () => {
+        state.connectorHealthMonitor?.stop();
+        state.connectorHealthMonitor = null;
+      },
+    },
+    {
+      name: "runtime event streams",
+      dispose: () => {
+        detachRuntimeStreams?.();
+        detachRuntimeStreams = null;
+      },
+    },
+    {
+      name: "training event stream",
+      dispose: () => {
+        detachTrainingStream?.();
+        detachTrainingStream = null;
+      },
+    },
+    {
+      name: "WebSocket clients",
+      dispose: () => {
+        for (const ws of wsClients) {
+          if (ws.readyState !== 1 && ws.readyState !== 0) continue;
+          if ("terminate" in ws && typeof ws.terminate === "function") {
+            ws.terminate();
+          } else {
+            ws.close();
+          }
         }
-      }
-    }
-    wsClients.clear();
-    if (state.whatsappPairingSessions) {
-      for (const s of state.whatsappPairingSessions.values()) {
-        try {
-          s.stop();
-        } catch (error) {
-          // error-policy:J6 one failed connector teardown must not block the rest.
-          logger.debug({ error }, "[eliza-api] WhatsApp session stop failed");
-        }
-      }
-      state.whatsappPairingSessions.clear();
-    }
-    if (state.signalPairingSessions) {
-      for (const s of state.signalPairingSessions.values()) {
-        try {
-          s.stop();
-        } catch (error) {
-          // error-policy:J6 one failed connector teardown must not block the rest.
-          logger.debug({ error }, "[eliza-api] Signal session stop failed");
-        }
-      }
-      state.signalPairingSessions.clear();
-    }
-    if (state.telegramAccountAuthSession) {
-      void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(
-        (error) => {
-          // error-policy:J6 teardown is observed without blocking server close.
-          logger.debug({ error }, "[eliza-api] Telegram session stop failed");
-        },
-      );
-      state.telegramAccountAuthSession = null;
-    }
-    wss.close();
-  };
-
+        wsClients.clear();
+      },
+    },
+    {
+      name: "WhatsApp pairing sessions",
+      dispose: async () => {
+        const sessions = [...(state.whatsappPairingSessions?.values() ?? [])];
+        state.whatsappPairingSessions?.clear();
+        await Promise.all(sessions.map((session) => session.stop()));
+      },
+    },
+    {
+      name: "Signal pairing sessions",
+      dispose: async () => {
+        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
+        state.signalPairingSessions?.clear();
+        await Promise.all(sessions.map((session) => session.stop()));
+      },
+    },
+    {
+      name: "Telegram account session",
+      dispose: async () => {
+        const session = state.telegramAccountAuthSession;
+        state.telegramAccountAuthSession = null;
+        await session?.stop();
+      },
+    },
+    {
+      name: "WebSocket server",
+      dispose: () =>
+        new Promise<void>((resolve) => {
+          try {
+            wss.close(() => resolve());
+          } catch {
+            // A no-server WebSocketServer that never accepted a connection
+            // has no asynchronous close work.
+            resolve();
+          }
+        }),
+    },
+  ]) {
+    serverResources.add(resource);
+  }
+  const stopServerSideResources = (): Promise<void> => serverResources.close();
   // Local-agent IPC mode: skip binding a TCP listener entirely. Routes and the
   // in-process dispatchRoute kernel are already wired (server built above), so
   // an IPC transport (stdio bridge / Capacitor / Electrobun RPC) can drive them
@@ -5133,58 +5023,43 @@ export async function startApiServer(opts?: {
     }
     return {
       port,
-      close: () =>
-        new Promise<void>((r) => {
-          void Promise.resolve().then(() => {
-            stopServerSideResources();
-            r();
-          });
-        }),
+      close: stopServerSideResources,
       updateRuntime,
       updateStartup,
     };
   }
 
-  return new Promise((resolve, reject) => {
-    let currentPort = port;
-    const strictPortBinding = strictPortBindingEnabled();
-
-    server.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE") {
-        logger.warn(
-          `[eliza-api] Port ${currentPort} is already in use. Checking fallback...`,
-        );
-        if (currentPort !== 0 && !strictPortBinding) {
-          logger.warn(`[eliza-api] Retrying with dynamic port (0)...`);
-          currentPort = 0;
-          server.listen(0, host);
-          return;
-        }
-        if (strictPortBinding) {
-          logger.error(
-            `[eliza-api] Strict port binding is enabled; refusing dynamic fallback from ${currentPort}.`,
-          );
-        }
+  const listener = await listenHttpServer({
+    server,
+    host,
+    port,
+    strictPortBinding: strictPortBindingEnabled(),
+    closeResources: stopServerSideResources,
+    onBeforeListen: () => apiLap("before server.listen"),
+    onPortInUse: (occupiedPort, willFallback) => {
+      logger.warn(
+        `[eliza-api] Port ${occupiedPort} is already in use. Checking fallback...`,
+      );
+      if (willFallback) {
+        logger.warn("[eliza-api] Retrying with dynamic port (0)...");
       } else {
+        logger.error(
+          `[eliza-api] Strict port binding is enabled; refusing dynamic fallback from ${occupiedPort}.`,
+        );
+      }
+    },
+    onServerError: (err) => {
+      if (err.code !== "EADDRINUSE") {
         logger.error(
           `[eliza-api] Server error: ${err.message} (code: ${err.code})`,
         );
       }
-      stopServerSideResources();
-      reject(err);
-    });
-
-    apiLap("before server.listen");
-    server.listen(port, host, () => {
+    },
+    onListening: (displayHost, actualPort) => {
       apiLap("LISTENING (API bound)");
       logger.debug(
         `[eliza-api] server.listen callback fired (${Date.now() - apiStartTime}ms)`,
       );
-      const addr = server.address();
-      const actualPort =
-        typeof addr === "object" && addr ? addr.port : currentPort;
-      const displayHost =
-        typeof addr === "object" && addr ? addr.address : host;
       addLog(
         "info",
         `API server listening on http://${displayHost}:${actualPort}`,
@@ -5203,56 +5078,15 @@ export async function startApiServer(opts?: {
       if (!opts?.skipDeferredStartupWork) {
         void startDeferredStartupWork();
       }
-      resolve({
-        port: actualPort,
-        close: () =>
-          new Promise<void>((r) => {
-            void Promise.resolve().then(() => {
-              const closeAllConnections = (
-                server as { closeAllConnections?: () => void }
-              ).closeAllConnections;
-              const closeIdleConnections = (
-                server as { closeIdleConnections?: () => void }
-              ).closeIdleConnections;
-
-              stopServerSideResources();
-              const closeTimeout = setTimeout(() => r(), 5_000);
-              const resolved = { done: false };
-              const finalize = () => {
-                if (!resolved.done) {
-                  resolved.done = true;
-                  clearTimeout(closeTimeout);
-                  r();
-                }
-              };
-              if (typeof closeAllConnections === "function") {
-                try {
-                  closeAllConnections();
-                } catch (error) {
-                  // error-policy:J6 Bun/Node server internals vary by runtime.
-                  logger.debug(
-                    { error },
-                    "[eliza-api] closeAllConnections failed",
-                  );
-                }
-              }
-              if (typeof closeIdleConnections === "function") {
-                try {
-                  closeIdleConnections();
-                } catch (error) {
-                  // error-policy:J6 Bun/Node server internals vary by runtime.
-                  logger.debug(
-                    { error },
-                    "[eliza-api] closeIdleConnections failed",
-                  );
-                }
-              }
-              server.close(finalize);
-            });
-          }),
-        updateRuntime,
-        updateStartup,
-      });
-    });
+    },
+    onCloseHelperError: (helper, error) => {
+      logger.debug({ error, helper }, `[eliza-api] ${helper} failed`);
+    },
   });
+  return {
+    port: listener.port,
+    close: listener.close,
+    updateRuntime,
+    updateStartup,
+  };
 }

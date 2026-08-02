@@ -1,3 +1,4 @@
+/** Verifies BrandButton primary disabled state (#13406 finding 3) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

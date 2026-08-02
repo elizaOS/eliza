@@ -1,3 +1,4 @@
+/** Verifies HealthSleepWidget (#9143) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // HealthSleepWidget: one high-priority datum (latest sleep duration) on a

@@ -413,6 +413,8 @@ export class CoreManagerService extends Service {
 					upstreamCommit: commitHash,
 				};
 			} catch (err) {
+				// error-policy:J1 the core-ejection service boundary cleans partial
+				// output and returns a structured failure to its caller.
 				logger.error(`Failed to eject core: ${err}`);
 				await fs.remove(monorepoDir);
 				await fs.remove(this.upstreamFilePath());
@@ -518,6 +520,8 @@ export class CoreManagerService extends Service {
 						.split("\n")
 						.map((l) => l.trim())
 						.filter(Boolean);
+					// error-policy:J1 merge conflicts are a structured sync failure with
+					// the conflicting paths preserved for the caller.
 					return {
 						success: false,
 						ejectedPath: monorepoDir,
@@ -534,6 +538,8 @@ export class CoreManagerService extends Service {
 				await this.runCoreInstallAndBuild(monorepoDir);
 				await this.writeTsconfigCorePaths(this.coreDistDir());
 			} catch (err) {
+				// error-policy:J1 install/build is the outer sync boundary; return an
+				// explicit failed result with the upstream state already gathered.
 				return {
 					success: false,
 					ejectedPath: monorepoDir,

@@ -194,6 +194,8 @@ export {
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
+export * from "./cockpit";
+export * from "./composites/code";
 export { SidebarContent } from "./composites/sidebar/sidebar-content";
 export { SidebarPanel } from "./composites/sidebar/sidebar-panel";
 export { SidebarScrollRegion } from "./composites/sidebar/sidebar-scroll-region";

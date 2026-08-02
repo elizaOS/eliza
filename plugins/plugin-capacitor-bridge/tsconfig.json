@@ -37,9 +37,6 @@
 			"@elizaos/app-core/api/response": [
 				"../../packages/app-core/src/api/response.ts"
 			],
-			"@elizaos/app-core/registry": [
-				"../../packages/app-core/src/registry/index.ts"
-			],
 			"@elizaos/app-core/services/vault-mirror": [
 				"../../packages/app-core/src/services/vault-mirror.ts"
 			],

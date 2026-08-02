@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const sourceRoot = join(packageRoot, "src");
@@ -22,7 +23,38 @@ const baselinePath = join(
   "scripts",
   "hardcoded-color-baseline.json",
 );
-const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b/g;
+// CSS hexadecimal colors have exactly 3, 4, 6, or 8 digits. Restricting the
+// shape avoids treating issue references such as `#13531` as colors.
+const COLOR_LITERAL =
+  /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?![0-9a-fA-F])/g;
+
+const COLOR_BEARING_SYNTAX = new Set([
+  ts.SyntaxKind.StringLiteral,
+  ts.SyntaxKind.NoSubstitutionTemplateLiteral,
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+  ts.SyntaxKind.JsxText,
+]);
+
+function countColorLiterals(file, source) {
+  const syntaxTree = ts.createSourceFile(
+    file,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  let count = 0;
+  function visit(node) {
+    if (COLOR_BEARING_SYNTAX.has(node.kind)) {
+      count += node.getText(syntaxTree).match(COLOR_LITERAL)?.length ?? 0;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(syntaxTree);
+  return count;
+}
 
 function isPolicyExcluded(file) {
   const normalized = file.replaceAll("\\", "/");
@@ -54,7 +86,7 @@ function sourceFiles(directory, output = []) {
 function inventory() {
   const counts = {};
   for (const file of sourceFiles(sourceRoot)) {
-    const count = readFileSync(file, "utf8").match(COLOR_LITERAL)?.length ?? 0;
+    const count = countColorLiterals(file, readFileSync(file, "utf8"));
     if (count > 0)
       counts[relative(packageRoot, file).replaceAll("\\", "/")] = count;
   }

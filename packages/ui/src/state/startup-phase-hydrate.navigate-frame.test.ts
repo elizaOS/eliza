@@ -1,3 +1,4 @@
+/** Verifies agent view-switch raw WS frame to DOM navigate event through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import {

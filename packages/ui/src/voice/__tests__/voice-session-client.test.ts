@@ -1,3 +1,4 @@
+/** Verifies voice-session client (real framing/state/barge-in/reconnect) through the package's configured test harness. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

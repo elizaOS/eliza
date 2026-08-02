@@ -9,7 +9,7 @@
  * without rendering the full workbench view.
  */
 
-import { client } from "@elizaos/ui/api/client";
+import { client } from "@elizaos/ui/api";
 import type {
   CodingAgentOrchestratorStatus,
   CodingAgentTaskEventRecord,

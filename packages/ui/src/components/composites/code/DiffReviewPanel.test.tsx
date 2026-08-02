@@ -1,3 +1,4 @@
+/** Verifies DiffReviewPanel through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders DiffReviewPanel in jsdom over ChangeSetData fixtures to cover empty

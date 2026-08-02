@@ -158,6 +158,8 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 			},
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates evaluation failure into
+		// an explicit unsuccessful tool result visible to the model.
 		logger.error(
 			{ error },
 			"[RequestElevation] Error processing elevation request:",

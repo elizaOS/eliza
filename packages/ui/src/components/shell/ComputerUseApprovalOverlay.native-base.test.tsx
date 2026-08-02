@@ -1,3 +1,4 @@
+/** Verifies ComputerUseApprovalOverlay on native IPC base (Android WebView URL parser) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Android WebView / WebKit throw "Failed to construct 'URL': Invalid URL" when

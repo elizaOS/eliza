@@ -1,3 +1,4 @@
+/** Verifies ViewIcon image sources through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // ViewIcon resolution paths: image sources render an <img>; known lucide names

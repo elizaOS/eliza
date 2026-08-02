@@ -1,3 +1,4 @@
+/** Verifies ChatComposer through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders ChatComposer in jsdom (real component, mocked voice state) to cover

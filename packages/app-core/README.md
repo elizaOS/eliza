@@ -23,7 +23,7 @@ Shared application core for elizaOS agent app shells (desktop, mobile, web). It 
 import { startApiServer, loadRegistry, getPlugins } from "@elizaos/app-core";
 
 // Targeted subpaths (see package.json exports for the full list)
-import { loadRegistry } from "@elizaos/app-core/registry";
+import { loadRegistry } from "@elizaos/registry/first-party";
 import { ensureRouteAuthorized } from "@elizaos/app-core/api/auth";
 import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 ```

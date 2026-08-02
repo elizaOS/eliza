@@ -389,6 +389,11 @@ export class PluginActivatorService extends Service {
 						logger.error(
 							`[PluginActivator] onSecretsReady listener failed for ${pluginId}: ${errorMessage}`,
 						);
+						// error-policy:J7 listener diagnostics must not undo an activated
+						// plugin; report the listener failure to the agent.
+						this.runtime.reportError("PluginActivator.secretsReady", error, {
+							pluginId,
+						});
 					}
 				}
 			}
@@ -400,6 +405,9 @@ export class PluginActivatorService extends Service {
 			logger.error(
 				`[PluginActivator] Failed to activate plugin ${pluginId}: ${errorMessage}`,
 			);
+			// error-policy:J1 activation returns an explicit failed signal and
+			// reports the underlying service failure to the agent.
+			this.runtime.reportError("PluginActivator.activate", error, { pluginId });
 			return false;
 		}
 	}

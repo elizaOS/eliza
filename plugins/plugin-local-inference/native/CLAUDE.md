@@ -687,7 +687,7 @@ backend nightly.
   from the in-repo `plugins/plugin-local-inference/native/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
-- the repo-root `AGENTS.md` — repo-wide cleanup mandate and conventions
+- the repo-root `CLAUDE.md` — repo-wide cleanup mandate and conventions
   (port handling, scope discipline, elizaOS naming). The non-negotiable
   architecture rules apply here too: dependencies point inward, no
   polymorphism for runtime branching in code (kernels are a registry,

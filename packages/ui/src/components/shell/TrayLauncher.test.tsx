@@ -1,3 +1,4 @@
+/** Verifies TrayLauncher through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // TrayLauncher: one row per desktop launcher entry, and a click dispatches

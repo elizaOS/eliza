@@ -750,6 +750,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					installedVersion = "git-clone";
 				} catch (err) {
 					await fs.remove(targetDir);
+					// error-policy:J1 local-clone installation is a service boundary that
+					// returns an explicit failed install after cleaning partial output.
 					return {
 						success: false,
 						pluginName: canonicalName,
@@ -771,31 +773,17 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					);
 					installed = true;
 				} catch (err) {
-					logger.warn(`npm install failed, falling back to clone: ${err}`);
-					if (!shouldClone) {
-						try {
-							await fs.remove(targetDir);
-							await this.installFromGit(
-								info.gitUrl,
-								info.git.v2Branch || "main",
-								targetDir,
-								info.directory,
-								onProgress,
-							);
-							installed = true;
-							installedVersion = "git-fallback";
-						} catch (gitErr) {
-							await fs.remove(targetDir);
-							return {
-								success: false,
-								pluginName: canonicalName,
-								version: "",
-								installPath: targetDir,
-								requiresRestart: false,
-								error: `Installation failed: ${gitErr instanceof Error ? gitErr.message : String(gitErr)}`,
-							};
-						}
-					}
+					await fs.remove(targetDir);
+					// error-policy:J1 npm installation is the selected service boundary;
+					// preserve its failure instead of masking it with a different source.
+					return {
+						success: false,
+						pluginName: canonicalName,
+						version: "",
+						installPath: targetDir,
+						requiresRestart: false,
+						error: `Installation failed: ${err instanceof Error ? err.message : String(err)}`,
+					};
 				}
 			}
 
@@ -868,57 +856,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			phase: "installing-deps",
 			message: `${pm} install complete.`,
 		});
-	}
-
-	private async installFromGit(
-		gitUrl: string,
-		branch: string,
-		targetDir: string,
-		directory?: string | null,
-		onProgress?: (progress: InstallProgress) => void,
-	): Promise<void> {
-		assertSafeForShell(gitUrl, "git URL", VALID_GIT_URL);
-		assertSafeForShell(branch, "branch", VALID_BRANCH);
-
-		const tempDir = path.join(path.dirname(targetDir), `temp-${Date.now()}`);
-		await fs.ensureDir(tempDir);
-
-		try {
-			onProgress?.({
-				phase: "downloading",
-				message: `Cloning ${gitUrl}#${branch}...`,
-			});
-			await execAsync(
-				`git clone --branch "${branch}" --single-branch --depth 1 "${gitUrl}" "${tempDir}"`,
-			);
-
-			onProgress?.({
-				phase: "installing-deps",
-				message: "Installing dependencies...",
-			});
-			const pm = await detectPackageManager();
-			await execAsync(`${pm} install`, { cwd: tempDir });
-
-			const registrySourceDir = this.resolveRegistrySourceDir(
-				tempDir,
-				directory,
-			);
-			if (registrySourceDir !== tempDir) {
-				await execAsync(`${pm} run build`, { cwd: registrySourceDir });
-				await fs.copy(registrySourceDir, targetDir);
-				return;
-			}
-
-			const tsDir = path.join(tempDir, "typescript");
-			if (await fs.pathExists(tsDir)) {
-				await execAsync(`${pm} run build`, { cwd: tsDir });
-				await fs.copy(tsDir, targetDir);
-			} else {
-				await fs.copy(tempDir, targetDir);
-			}
-		} finally {
-			await fs.remove(tempDir);
-		}
 	}
 
 	private resolveRegistrySourceDir(
@@ -1063,6 +1000,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					requiresRestart: true,
 				};
 			} catch (err) {
+				// error-policy:J1 uninstall is a service boundary that returns a
+				// structured failed result while preserving the filesystem error.
 				return {
 					success: false,
 					pluginName,
@@ -1221,6 +1160,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				};
 			} catch (err) {
 				await fs.remove(targetDir);
+				// error-policy:J1 plugin ejection cleans partial output and returns a
+				// structured failure to its caller.
 				return {
 					success: false,
 					pluginName: canonicalName,
@@ -1326,6 +1267,8 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					requiresRestart: count > 0,
 				};
 			} catch (err) {
+				// error-policy:J1 plugin sync returns a structured failure with the
+				// target path and sync state visible to its caller.
 				return {
 					success: false,
 					pluginName: pluginId,

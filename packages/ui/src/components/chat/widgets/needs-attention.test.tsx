@@ -1,3 +1,4 @@
+/** Verifies NeedsAttentionWidget (#9449) through the package's configured test harness. */
 // @vitest-environment jsdom
 import type { PendingUserAction } from "@elizaos/core";
 import {

@@ -1,3 +1,4 @@
+/** Verifies useNavigationPathSync — app-shell registry reactivity through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

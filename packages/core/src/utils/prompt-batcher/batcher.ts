@@ -1220,6 +1220,11 @@ export class PromptBatcher {
 				},
 				"Prompt batcher validate threw",
 			);
+			// error-policy:J3 plugin validation is an extension boundary; a thrown
+			// validator makes this section explicitly invalid.
+			this.runtime.reportError("PromptBatcher.validate", error, {
+				sectionId: section.id,
+			});
 			return null;
 		}
 	}

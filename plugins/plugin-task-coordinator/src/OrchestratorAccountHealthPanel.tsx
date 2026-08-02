@@ -14,7 +14,7 @@
  * availability, assignments) — the panel displays, it does not compute.
  */
 
-import { client } from "@elizaos/ui/api/client";
+import { client } from "@elizaos/ui/api";
 import { OrchestratorAccountsView } from "@elizaos/ui/components";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { type ComponentProps, useCallback, useEffect, useState } from "react";

@@ -21,7 +21,13 @@ import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
+import {
+  type BootContext,
+  type BootPhaseName,
+  createBootContext,
+  type ElizaBootResult,
+  resolveBootPlan,
+} from "./boot-pipeline.ts";
 // ---------------------------------------------------------------------------
 // Extracted modules — re-exported for backward compatibility
 // ---------------------------------------------------------------------------
@@ -59,6 +65,11 @@ import {
   type ResolvedPlugin as RuntimeResolvedPlugin,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import {
+  type AgentProcessLifecycle,
+  createAgentProcessLifecycle,
+  installProcessSignalHandlers,
+} from "./process-lifecycle.ts";
 import {
   applyProviderModelEnvDefaults,
   isLikelyOpenAiTextModel,
@@ -146,7 +157,6 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   readAliasedEnv,
-  resolveApiExposePort,
   resolveDeploymentTargetInConfig,
   resolveDesktopApiPort,
   resolveElizaCloudTopology,
@@ -828,79 +838,6 @@ export async function ensureCoreStaticPluginsRegistered(
   } else {
     logger.info("[boot] deferred plugin imports scheduled after readiness");
   }
-}
-
-type SignalShutdownContext = {
-  getRuntime: () => AgentRuntime;
-  getSandboxManager: () => SandboxManager | null;
-  beforeShutdown?: () => void | Promise<void>;
-};
-
-let activeSignalShutdownContext: SignalShutdownContext | null = null;
-let signalHandlersRegistered = false;
-let signalShutdownPromise: Promise<void> | null = null;
-
-function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
-  activeSignalShutdownContext = context;
-  if (signalHandlersRegistered) {
-    return;
-  }
-
-  const shutdown = async (): Promise<void> => {
-    if (signalShutdownPromise) {
-      await signalShutdownPromise;
-      return;
-    }
-
-    signalShutdownPromise = (async () => {
-      const current = activeSignalShutdownContext;
-      if (!current) {
-        process.exit(0);
-      }
-
-      try {
-        await current?.beforeShutdown?.();
-      } catch (err) {
-        logger.warn(`[eliza] Pre-shutdown cleanup error: ${formatError(err)}`);
-      }
-
-      try {
-        const sandboxManager = current?.getSandboxManager();
-        if (sandboxManager) {
-          try {
-            await sandboxManager.stop();
-            logger.info("[eliza] Sandbox manager stopped");
-          } catch (err) {
-            logger.warn(
-              `[eliza] Sandbox stop error: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          }
-        }
-      } catch (err) {
-        logger.warn(`[eliza] Sandbox shutdown error: ${formatError(err)}`);
-      }
-
-      try {
-        const runtime = current?.getRuntime();
-        if (runtime) {
-          // SIGINT/SIGTERM is an interactive/dev teardown — use the capped fast
-          // path so the process exits promptly instead of waiting on in-flight
-          // deferred service starts or an embedding-queue flush (#9605).
-          await shutdownRuntime(runtime, "signal shutdown", { fast: true });
-        }
-      } catch (err) {
-        logger.warn(`[eliza] Error during shutdown: ${formatError(err)}`);
-      }
-
-      process.exit(0);
-    })();
-
-    await signalShutdownPromise;
-  };
-
-  process.on("SIGINT", () => void shutdown());
-  process.on("SIGTERM", () => void shutdown());
-  signalHandlersRegistered = true;
 }
 
 /**
@@ -1847,12 +1784,10 @@ async function installPromptOptimizationLayer(
  * collection read. Without the bridge the core service captures LLM calls
  * only into its own trajectory_step_index store, so every platform without
  * the plugin-training log-backfill (mobile, cloud) shows a trajectory with
- * zero recorded LLM calls. Split out of {@link
- * prepareRuntimeForTrajectoryCapture} so the first boot can start it in the
- * background (joined by the deferred wave) instead of blocking
- * initializeCoreRuntime on the service wait; capture of any LLM call that
- * lands before this settles may be lost — the accepted trade for the faster
- * readiness gate.
+ * zero recorded LLM calls. It starts in the background and is joined by the
+ * deferred wave instead of blocking runtime readiness; capture of an LLM call
+ * that lands before this settles may be lost, which is the accepted latency
+ * tradeoff.
  */
 async function wireTrajectoryCaptureService(
   runtime: AgentRuntime,
@@ -1869,17 +1804,6 @@ async function wireTrajectoryCaptureService(
       `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
     );
   }
-}
-
-async function prepareRuntimeForTrajectoryCapture(
-  runtime: AgentRuntime,
-  context: string,
-  config?: ElizaConfig,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  await wireTrajectoryCaptureService(runtime, context, abortSignal);
-  abortSignal?.throwIfAborted();
-  await installPromptOptimizationLayer(runtime, context, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -2112,6 +2036,7 @@ export async function resolveConnectorSecretsOverlayForBoot(
 /** @internal Exported for testing. */
 export async function autoResolveDiscordAppId(
   tokenOverride?: string,
+  timeoutMs = 3_000,
 ): Promise<void> {
   if (process.env.DISCORD_APPLICATION_ID) return;
 
@@ -2126,7 +2051,7 @@ export async function autoResolveDiscordAppId(
       "https://discord.com/api/v10/oauth2/applications/@me",
       {
         headers: { Authorization: `Bot ${discordToken}` },
-        signal: AbortSignal.timeout(3_000),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
 
@@ -2161,6 +2086,7 @@ export async function autoResolveDiscordAppId(
 /** @internal Exported for testing. */
 export async function autoFetchCloudGithubToken(
   agentId?: string,
+  timeoutMs = 3_000,
 ): Promise<void> {
   // Skip if a local token is already configured
   if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return;
@@ -2181,7 +2107,7 @@ export async function autoFetchCloudGithubToken(
         Authorization: `Bearer ${cloudApiKey}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(3_000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
 
     if (!res.ok) {
@@ -3583,6 +3509,19 @@ export interface StartElizaOptions {
   abortSignal?: AbortSignal;
   /** Receives the runtime as soon as it exists so a cancelled boot can stop it. */
   onRuntimeCreated?: (runtime: AgentRuntime) => void;
+  /** Emits each typed boot phase as it begins for hosts and characterization tests. */
+  onBootPhase?: (phase: BootPhaseName) => void;
+  /**
+   * Supplies an already-loaded config for an in-process replacement runtime.
+   * The value is cloned because boot normalizes its private config instance.
+   */
+  configOverride?: ElizaConfig;
+  /** Reuses a caller-owned context across an extracted boot composition. */
+  bootContext?: BootContext;
+  /** Receives the connected thin-client proxy when boot resolves to cloud mode. */
+  onCloudProxyCreated?: (proxy: CloudRuntimeProxyLike) => void;
+  /** Publishes idempotent teardown without installing process handlers. */
+  onLifecycleReady?: (lifecycle: AgentProcessLifecycle) => void;
   /**
    * When true, skip the interactive CLI chat loop and return the
    * initialised {@link AgentRuntime} so it can be wired into the API
@@ -3623,6 +3562,93 @@ export interface BootElizaRuntimeOptions {
   onRuntimeCreated?: (runtime: AgentRuntime) => void;
 }
 
+export interface BuildInitializedRuntimeOptions {
+  config: ElizaConfig;
+  abortSignal?: AbortSignal;
+  localAgentMode?: boolean;
+  onBootPhase?: (phase: BootPhaseName) => void;
+  onRuntimeCreated?: (runtime: AgentRuntime) => void;
+}
+
+/**
+ * Boots a headless agent and preserves the intentional local/cloud distinction.
+ * Hosts that require a local runtime can reject cloud mode explicitly instead
+ * of interpreting an ambiguous `undefined` value as generic boot failure.
+ */
+export async function bootEliza(
+  opts: StartElizaOptions = {},
+): Promise<ElizaBootResult<AgentRuntime, CloudRuntimeProxyLike>> {
+  let cloudProxy: CloudRuntimeProxyLike | undefined;
+  const runtime = await startEliza({
+    ...opts,
+    headless: true,
+    onCloudProxyCreated: (proxy) => {
+      cloudProxy = proxy;
+      opts.onCloudProxyCreated?.(proxy);
+    },
+  });
+  if (runtime) {
+    return { mode: "local", runtime };
+  }
+  if (cloudProxy) {
+    return { mode: "cloud", proxy: cloudProxy };
+  }
+  throw new ElizaError(
+    "Boot completed without a local runtime or cloud proxy",
+    {
+      code: "AGENT_BOOT_RESULT_MISSING",
+      severity: "fatal",
+    },
+  );
+}
+
+/** Builds the same initialized local runtime used by cold boot for replacement. */
+export async function buildInitializedRuntime(
+  options: BuildInitializedRuntimeOptions,
+): Promise<AgentRuntime> {
+  const result = await bootEliza({
+    headless: true,
+    configOverride: options.config,
+    abortSignal: options.abortSignal,
+    localAgentMode: options.localAgentMode,
+    onBootPhase: options.onBootPhase,
+    onRuntimeCreated: options.onRuntimeCreated,
+  });
+  if (result.mode === "cloud") {
+    throw new ElizaError(
+      "A local runtime replacement cannot switch to cloud thin-client mode",
+      {
+        code: "LOCAL_RUNTIME_REPLACEMENT_RESOLVED_TO_CLOUD",
+        severity: "fatal",
+      },
+    );
+  }
+  return result.runtime;
+}
+
+/** Starts an agent at a process boundary and owns SIGINT/SIGTERM translation. */
+export async function startElizaProcess(
+  opts: StartElizaOptions = {},
+): Promise<AgentRuntime | undefined> {
+  let lifecycle: AgentProcessLifecycle | undefined;
+  const runtime = await startEliza({
+    ...opts,
+    onLifecycleReady: (readyLifecycle) => {
+      lifecycle = readyLifecycle;
+      opts.onLifecycleReady?.(readyLifecycle);
+    },
+  });
+  if (lifecycle) {
+    installProcessSignalHandlers({
+      lifecycle,
+      onError: (error) => {
+        logger.error(`[eliza] Signal shutdown failed: ${formatError(error)}`);
+      },
+    });
+  }
+  return runtime;
+}
+
 /**
  * Boot the elizaOS runtime without starting the readline chat loop.
  *
@@ -3639,8 +3665,7 @@ export async function bootElizaRuntime(
   }
 
   let createdRuntime: AgentRuntime | undefined;
-  const boot = startEliza({
-    headless: true,
+  const boot = bootEliza({
     abortSignal: opts.abortSignal,
     onRuntimeCreated: (runtime) => {
       createdRuntime = runtime;
@@ -3648,11 +3673,17 @@ export async function bootElizaRuntime(
     },
   });
   try {
-    const runtime = await awaitOwnedPromise(boot, opts.abortSignal);
-    if (!runtime) {
-      throw new Error("Failed to boot runtime");
+    const result = await awaitOwnedPromise(boot, opts.abortSignal);
+    if (result.mode === "cloud") {
+      throw new ElizaError(
+        "bootElizaRuntime requires a local runtime but configuration selected cloud mode",
+        {
+          code: "LOCAL_RUNTIME_REQUIRED",
+          severity: "fatal",
+        },
+      );
     }
-    return runtime;
+    return result.runtime;
   } catch (bootError) {
     if (createdRuntime) {
       try {
@@ -3729,6 +3760,14 @@ export const logToChatListener = (entry: LogEntry) => {
   }
 };
 
+let chatLogListenerAttached = false;
+
+function ensureChatLogListenerAttached(): void {
+  if (chatLogListenerAttached) return;
+  addLogListener(logToChatListener);
+  chatLogListenerAttached = true;
+}
+
 /**
  * Start the elizaOS runtime with Eliza's configuration.
  *
@@ -3739,6 +3778,8 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   opts?.abortSignal?.throwIfAborted();
+  const bootContext =
+    opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
   const bootTimer = new BootTimer("[eliza-boot]");
   // Record the (re)start at the START of boot so a restart storm — where boots
   // never complete — is still countable via /api/dev/boot-history. void: never
@@ -3762,20 +3803,23 @@ export async function startEliza(
   captureEarlyLogs();
 
   // Register log listener for chat mirroring
-  addLogListener(logToChatListener);
+  ensureChatLogListenerAttached();
 
   // 1. Load Eliza config from the resolved state dir.
+  bootContext.enterPhase("load-config");
   let config: ElizaConfig;
-  try {
-    config = loadElizaConfig();
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      logger.warn("[eliza] No config found, using defaults");
-      // All ElizaConfig fields are optional, so an empty object is
-      // structurally valid. The `as` cast is safe here.
-      config = {} as ElizaConfig;
-    } else {
-      throw err;
+  if (opts?.configOverride) {
+    config = structuredClone(opts.configOverride);
+  } else {
+    try {
+      config = loadElizaConfig();
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        logger.warn("[eliza] No config found, using defaults");
+        config = {};
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -3786,6 +3830,7 @@ export async function startEliza(
   if (!opts?.headless) {
     config = await runFirstTimeSetup(config);
   }
+  bootContext.enterPhase("resolve-settings");
 
   // 1c. Apply logging level from config to process.env so the global
   //     @elizaos/core logger (used by plugins) respects it.
@@ -3839,9 +3884,11 @@ export async function startEliza(
     await resolveConnectorSecretsOverlayForBoot(config);
   const discordAppIdPromise = autoResolveDiscordAppId(
     connectorSecretsOverlay.DISCORD_API_TOKEN,
+    bootContext.policy.providerProbeTimeoutMs,
   );
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
     config.cloud?.agentId?.trim(),
+    bootContext.policy.providerProbeTimeoutMs,
   );
 
   // 2c. Propagate x402 config into process.env
@@ -3967,12 +4014,11 @@ export async function startEliza(
     );
   }
 
-  // 2d-ii. Allow destructive migrations (e.g. dropping tables removed between
-  //        plugin versions) so the runtime doesn't silently stall.  Without this
-  //        the migration system throws an error that gets swallowed, leaving the
-  //        app hanging indefinitely with no output.
-  if (!process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS) {
-    process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS = "true";
+  // Destructive schema changes require an explicit operator decision. The
+  // runtime and migration layer read the same captured policy through the
+  // compatibility environment adapter until their typed settings land.
+  if (bootContext.policy.allowDestructiveMigrations) {
+    logger.warn("[eliza] Destructive database migrations are enabled");
   }
 
   // 2e-ii. SECRET_SALT must be stable across boots — multiple consumers key
@@ -4008,26 +4054,6 @@ export async function startEliza(
       );
     }
     process.env.SECRET_SALT = salt;
-  }
-
-  // 2e-iii. Pre-flight validation for Google AI API keys.  If the key looks
-  //         obviously invalid (too short, placeholder, wrong prefix), clear it
-  //         to prevent plugin-google-genai from making a failing API call.
-  for (const gkey of [
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-  ] as const) {
-    const val = process.env[gkey]?.trim();
-    if (
-      val &&
-      (val.length < 20 || val === "your-key-here" || val.startsWith("sk-"))
-    ) {
-      logger.warn(
-        `[eliza] ${gkey} appears invalid (length/format), clearing to skip Google AI plugin`,
-      );
-      delete process.env[gkey];
-    }
   }
 
   // 2f. Install the multi-account pool shims and apply selected direct API
@@ -4100,6 +4126,17 @@ export async function startEliza(
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
+  const thinClientCloudAgentId = shouldStartElizaCloudThinClient(config)
+    ? config.cloud?.agentId?.trim()
+    : undefined;
+  const bootPlan = resolveBootPlan({
+    headless: opts?.headless,
+    serverOnly: opts?.serverOnly,
+    localAgentMode: opts?.localAgentMode,
+    configured: Boolean(config.agents),
+    cloudThinClient: Boolean(thinClientCloudAgentId),
+    apiExposePort: bootContext.policy.apiExposePort,
+  });
 
   // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
   // policy is incompatible with running an embedded local AgentRuntime, so
@@ -4134,10 +4171,7 @@ export async function startEliza(
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
 
-  const thinClientCloudAgentId = shouldStartElizaCloudThinClient(config)
-    ? config.cloud?.agentId?.trim()
-    : undefined;
-  if (thinClientCloudAgentId) {
+  if (bootPlan.runtimeMode === "cloud" && thinClientCloudAgentId) {
     return startInCloudMode(config, thinClientCloudAgentId, opts);
   }
 
@@ -4267,8 +4301,9 @@ export async function startEliza(
   // In headless (GUI) mode before first-run setup, the user hasn't configured a
   // provider yet.  Downgrade diagnostics so the expected "no AI provider"
   // state doesn't appear as a scary Error in the terminal.
-  const preOnboarding = opts?.headless && !config.agents;
-  const blockDeferredPluginImports = shouldBlockDeferredPluginImports();
+  const preOnboarding = bootPlan.hostMode === "headless" && bootPlan.firstRun;
+  const blockDeferredPluginImports =
+    bootContext.policy.blockDeferredPluginImports;
   const initialPluginResolutionPhase: PluginResolutionPhase =
     blockDeferredPluginImports ? "all" : "blocking";
   // Model-provider plugins load in the BLOCKING phase (see the phase filter in
@@ -4295,6 +4330,7 @@ export async function startEliza(
     opts?.abortSignal,
   );
   opts?.abortSignal?.throwIfAborted();
+  bootContext.enterPhase("resolve-plugin-plan");
   const resolvedPlugins = await resolvePlugins(config, {
     quiet: preOnboarding,
     phase: initialPluginResolutionPhase,
@@ -4488,7 +4524,9 @@ export async function startEliza(
   if (preferredProviderPluginName) {
     for (const plugin of pluginsForRuntime) {
       if (plugin.name === preferredProviderPluginName) {
-        plugin.priority = (plugin.priority ?? 0) + 10;
+        plugin.priority =
+          (plugin.priority ?? 0) +
+          bootContext.policy.preferredProviderPriorityBoost;
         logger.info(
           `[eliza] Boosted plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
         );
@@ -4531,6 +4569,7 @@ export async function startEliza(
   // before construction prevents cancellation during plugin/config resolution
   // from creating an unowned runtime after bootElizaRuntime returns.
   opts?.abortSignal?.throwIfAborted();
+  bootContext.enterPhase("construct-runtime");
   let runtime = new AgentRuntime({
     character,
     // advancedCapabilities: true,
@@ -5220,7 +5259,9 @@ export async function startEliza(
     if (preferredProviderPluginName) {
       for (const plugin of deferredPluginsForRuntime) {
         if (plugin.name === preferredProviderPluginName) {
-          plugin.priority = (plugin.priority ?? 0) + 10;
+          plugin.priority =
+            (plugin.priority ?? 0) +
+            bootContext.policy.preferredProviderPriorityBoost;
           logger.info(
             `[eliza] Boosted deferred plugin "${plugin.name}" priority to ${plugin.priority} (preferred provider: ${preferredProviderId ?? "unknown"})`,
           );
@@ -5548,6 +5589,7 @@ export async function startEliza(
     // svc:pre-init (issue #9565): on a bundled mobile runtime the three hooks
     // below are each fast/no-op, yet svc:pre-init was ~15s of a 16s cold boot.
     bootTimer.lap("svc:boot-prep");
+    bootContext.enterPhase("initialize-runtime");
     await initializeRuntimeServices();
   } catch (err) {
     const pgliteDataDir = resolveActivePgliteDataDir(config);
@@ -5582,13 +5624,30 @@ export async function startEliza(
 
     return await startEliza({
       ...opts,
+      bootContext: undefined,
+      configOverride: config,
       pgliteRecoveryAttempted: true,
     });
   }
 
+  bootContext.enterPhase("attach-host");
+  const processLifecycle = createAgentProcessLifecycle({
+    disposeRuntime: (reason) =>
+      shutdownRuntime(runtime, reason, {
+        fast: true,
+      }),
+    disposeSandbox: sandboxManager
+      ? async () => {
+          await sandboxManager?.stop();
+        }
+      : undefined,
+  });
+  opts?.onLifecycleReady?.(processLifecycle);
   bootTimer.summary();
   void recordBootTelemetry(bootTimer.getSummary());
-  startMemorySampler({ intervalMs: 30_000 });
+  startMemorySampler({
+    intervalMs: bootContext.policy.memorySampleIntervalMs,
+  });
   // Proactively bounce the runtime before an OOM kill when RSS climbs past the
   // configured threshold (opt-in via ELIZA_MEMORY_WATCHDOG). Restarts cleanly
   // through requestRestart()/the supervisor — never a silent process.exit.
@@ -5605,6 +5664,7 @@ export async function startEliza(
   // returns — not inside the (setImmediate-delayed) kickoff, so a health
   // probe racing the kickoff can never read a stale `settled:true` from a
   // previous boot while this boot's wave hasn't announced itself yet.
+  bootContext.enterPhase("start-deferred-capabilities");
   markDeferredBootPhase("agent-deferred-boot", "pending");
   let deferredBootStarted = false;
   const kickoffDeferredBoot = (): void => {
@@ -5637,17 +5697,10 @@ export async function startEliza(
     });
   };
 
-  // 9. Graceful shutdown handler
-  //
-  // In headless mode the caller (dev-server / desktop shell) owns the process
-  // lifecycle, so we must NOT register signal handlers here — they would
-  // stack on every hot-restart, close over stale runtime references, and
-  // race with bun --watch's own process teardown.
+  // Process handlers belong to CLI/direct-run hosts. Library callers receive
+  // the lifecycle above and can integrate it with their own supervisor.
   if (!opts?.headless) {
-    registerSignalShutdownHandlers({
-      getRuntime: () => runtime,
-      getSandboxManager: () => sandboxManager,
-    });
+    bootContext.enterPhase("register-process-lifecycle");
   }
 
   const loadHooksSystem = async (abortSignal?: AbortSignal): Promise<void> => {
@@ -5737,281 +5790,42 @@ export async function startEliza(
     // caller explicitly opts back in via ELIZA_API_EXPOSE_PORT (dev tooling, LAN
     // access, e2e harnesses). Every non-local boot leaves localAgentMode unset,
     // so skipApiListen is false and the port binds exactly as before.
-    const skipApiListen =
-      opts?.localAgentMode === true &&
-      resolveApiExposePort(process.env) !== true;
+    const skipApiListen = !bootPlan.bindApiListener;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
       skipListen: skipApiListen,
       onRestart: async () => {
-        logger.info("[eliza] Hot-reload: Restarting runtime...");
+        logger.info("[eliza] Hot-reload: building replacement runtime...");
         try {
-          await shutdownRuntime(runtime, "hot-reload cleanup", {
-            fast: true,
+          const replacement = await buildInitializedRuntime({
+            config: loadElizaConfig(),
+            localAgentMode: opts?.localAgentMode,
           });
-
-          // Reload config from disk (updated by API)
-          const freshConfig = loadElizaConfig();
-
-          // Propagate secrets & cloud config into process.env so plugins
-          // (especially plugin-elizacloud) can discover them.  The initial
-          // startup does this in startEliza(); the hot-reload must repeat it
-          // because the config may have changed (e.g. cloud enabled during
-          // first-run setup).
-          applyConnectorSecretsToEnv(freshConfig);
-          const freshConnectorSecretsOverlay =
-            await resolveConnectorSecretsOverlayForBoot(freshConfig);
-          await autoResolveDiscordAppId(
-            freshConnectorSecretsOverlay.DISCORD_API_TOKEN,
-          );
-          applyCloudConfigToEnv(freshConfig);
-          applyX402ConfigToEnv(freshConfig);
-          applyDatabaseConfigToEnv(freshConfig);
-          await autoFetchCloudGithubToken(
-            freshConfig.cloud?.agentId?.trim() || agentId,
-          );
-
-          try {
-            const accountPool = await importAppCoreRuntime();
-            accountPool.getDefaultAccountPool();
-            await accountPool.applyAccountPoolApiCredentials({
-              activeBackend: resolveServiceRoutingInConfig(
-                freshConfig as Record<string, unknown>,
-              )?.llmText?.backend,
-              accountStrategies: (
-                freshConfig as Record<string, unknown> & {
-                  accountStrategies?: Record<string, unknown>;
-                }
-              ).accountStrategies,
-              serviceRouting: resolveServiceRoutingInConfig(
-                freshConfig as Record<string, unknown>,
-              ),
-            });
-            accountPool.startAccountPoolKeepAlive();
-          } catch (poolErr) {
-            logger.debug(
-              `[eliza] Hot-reload: account pool bootstrap skipped: ${formatError(poolErr)}`,
-            );
-          }
-
-          // Apply subscription-based credentials (Claude Max, Codex Max)
-          // that may have been set up during first-run setup.
-          try {
-            const { applySubscriptionCredentials } = await import(
-              "@elizaos/auth"
-            );
-            await applySubscriptionCredentials(freshConfig);
-          } catch (subErr) {
-            logger.warn(
-              `[eliza] Hot-reload: subscription credentials: ${formatError(subErr)}`,
-            );
-          }
-
-          // Resolve plugins using same function as startup
-          const resolvedPlugins = await resolvePlugins(freshConfig);
-
-          // Rebuild character from the fresh config so first-run changes
-          // (name, bio, style, etc.) are picked up on restart.
-          const freshCharacter = buildCharacterFromConfig(freshConfig);
-
-          const freshWorkspaceDir =
-            freshConfig.agents?.defaults?.workspace ?? workspaceDir;
-          const freshWorkspaceSkillsDir = freshWorkspaceDir
-            ? `${freshWorkspaceDir}/skills`
-            : null;
-
-          // Recreate Eliza plugin with fresh workspace
-          const freshElizaPlugin = createElizaPlugin({
-            workspaceDir: freshWorkspaceDir,
-
-            agentId:
-              freshCharacter.name?.toLowerCase().replace(/\s+/g, "-") ?? "main",
-          });
-
-          // Create new runtime with updated plugins.
-          // Filter out pre-registered plugins so they aren't double-loaded
-          // inside initialize()'s Promise.all — same pattern as the initial
-          // startup to avoid the TEXT_EMBEDDING race condition.
-          const freshPreferredProviderId =
-            resolvePreferredProviderId(freshConfig);
-          const freshPreferredProviderPluginName =
-            resolvePreferredProviderPluginName(freshConfig);
-          const freshOtherPlugins = resolvedPlugins.filter(
-            (p) => !PREREGISTER_PLUGINS.has(p.name),
-          );
-          // Boost the preferred provider plugin priority (same as initial startup)
-          const freshPluginsForRuntime = freshOtherPlugins.map((p) => p.plugin);
-          const freshVisionModeSetting = resolveVisionModeSetting(freshConfig);
-          if (freshPreferredProviderPluginName) {
-            for (const plugin of freshPluginsForRuntime) {
-              if (plugin.name === freshPreferredProviderPluginName) {
-                plugin.priority = (plugin.priority ?? 0) + 10;
-                break;
-              }
-            }
-          }
-          deduplicatePluginActions([
-            ...subAgentCredentialPlugins,
-            freshElizaPlugin,
-            ...freshPluginsForRuntime,
-          ]);
-          const newRuntime = new AgentRuntime({
-            character: freshCharacter,
-            enableSecretsManager: true,
-            plugins: [
-              ...subAgentCredentialPlugins,
-              freshElizaPlugin,
-              ...freshPluginsForRuntime,
-            ],
-            ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
-            settings: buildRuntimeSettings(freshConfig, {
-              preferredProviderId: freshPreferredProviderId,
-              visionModeSetting: freshVisionModeSetting,
-              managedSkillsDir,
-              bundledSkillsDir,
-              workspaceSkillsDir: freshWorkspaceSkillsDir,
-              connectorSecretsOverlay: freshConnectorSecretsOverlay,
-            }),
-          });
-          installRuntimeMethodBindings(newRuntime);
-
-          // Pre-register plugin-sql before initialize() so the adapter is ready,
-          // matching initial startup. local-inference wires its handlers via the
-          // runtime hooks like every other plugin.
-          // Re-derive from freshly resolved plugins (not outer closure) so
-          // hot-reload picks up any plugin updates.
-          const freshSqlPlugin = resolvedPlugins.find(
-            (p) => p.name === "@elizaos/plugin-sql",
-          );
-          if (freshSqlPlugin) {
-            await registerSqlPluginWithRecovery(
-              newRuntime,
-              freshSqlPlugin,
-              freshConfig,
-            );
-          }
-
-          // Pre-register remaining core plugins sequentially (same as startup)
-          {
-            await newRuntime.registerPlugin(rolesPlugin);
-
-            const alreadyPreRegistered = new Set<string>([
-              "@elizaos/plugin-sql",
-              "@elizaos/plugin-local-inference",
-            ]);
-            await preregisterCorePluginsInDependencyWaves({
-              runtime: newRuntime,
-              resolvedPlugins,
-              alreadyPreRegistered,
-              label: "Hot-reload",
-            });
-          }
-
-          assertPersistentDatabaseRequired(newRuntime);
-          try {
-            const { ConnectorSetupService: CSSReload } = await import(
-              "../services/connector-setup-service.ts"
-            );
-            await newRuntime.registerService(CSSReload);
-          } catch (err) {
-            // error-policy:J4 connector setup is an optional operator surface;
-            // report the unavailable capability instead of hiding the failure.
-            newRuntime.reportError("eliza.hotReload.connectorSetup", err);
-            logger.warn(
-              `[eliza] Hot-reload connector setup unavailable: ${formatError(err)}`,
-            );
-          }
-          if (
-            !isBundledMobileRuntime() &&
-            shouldLoadRemoteCodingRunnerForBoot(newRuntime)
-          ) {
-            try {
-              const { registerE2BRemoteCapabilityRouterIfEnabled } =
-                await loadE2BCapabilityRouterModule();
-              const result =
-                await registerE2BRemoteCapabilityRouterIfEnabled(newRuntime);
-              if (result.registered && result.provider === "e2b") {
-                await registerE2BSandboxFactoryService(newRuntime);
-              }
-            } catch (err) {
-              // error-policy:J4 local coding remains available when the optional
-              // remote runner cannot load, but the degraded route must be visible.
-              newRuntime.reportError("eliza.hotReload.remoteCodingRunner", err);
-              logger.warn(
-                `[eliza] Hot-reload remote coding runner unavailable: ${formatError(err)}`,
-              );
-            }
-          }
-          assertPersistentDatabaseRequired(newRuntime);
-          await newRuntime.initialize();
-          await runRuntimeStartupMaintenance(newRuntime);
-          const trajectoryTask = trackDeferredBootTask(newRuntime, (signal) =>
-            prepareRuntimeForTrajectoryCapture(
-              newRuntime,
-              "hot-reload runtime.initialize()",
-              freshConfig,
-              signal,
-            ),
-          );
-          void trajectoryTask.catch((err) => {
-            // error-policy:J7 hot reload stays usable without trajectory
-            // persistence, while the failure remains agent/operator-visible.
-            newRuntime.reportError("eliza.hotReload.trajectoryWiring", err);
-            logger.warn(
-              `[eliza] Hot-reload trajectory wiring failed: ${formatError(err)}`,
-            );
-          });
-
-          try {
-            // Belt-and-suspenders full-graph sweep; the registerPlugin wrapper
-            // (installed on newRuntime via installRuntimeMethodBindings above)
-            // is the durable enforcement point and already gated each plugin at
-            // registration time. This re-gate is idempotent.
-            applyPluginRoleGating(newRuntime.plugins ?? []);
-          } catch (err) {
-            // Never silently disable redaction — report loudly at ERROR.
-            logger.error(
-              `[eliza] Hot-reload plugin provider role gating sweep failed: ${formatError(err)}`,
-            );
-          }
-
-          // Ensure AutonomyService survives hot-reload; the loop remains opt-in.
-          const hotReloadAutonomyLoopEnabled = isAutonomyEnabled();
-
-          if (!newRuntime.getService(AUTONOMY_SERVICE_TYPE)) {
-            try {
-              await startAndRegisterAutonomyService(newRuntime);
-            } catch (err) {
-              logger.warn(
-                `[eliza] AutonomyService failed to start after hot-reload: ${formatError(err)}`,
-              );
-            }
-          }
-
-          // Enable the autonomy loop after hot-reload only when explicitly requested.
-          if (hotReloadAutonomyLoopEnabled) {
-            const svc = getAutonomyService(newRuntime);
-            if (svc) {
-              try {
-                await svc.enableAutonomy();
-              } catch (err) {
-                logger.warn(
-                  `[eliza] Failed to enable autonomy after hot-reload: ${formatError(err)}`,
-                );
-              }
-            }
-          }
-
-          // shutdownRuntime flushes and detaches the process sampler with the old
-          // runtime. Resume it only after the replacement has fully initialized.
-          startMemorySampler({ intervalMs: 30_000 });
-          runtime = newRuntime;
-          logger.info("[eliza] Hot-reload: Runtime restarted successfully");
-          return newRuntime;
+          logger.info("[eliza] Hot-reload: replacement runtime is ready");
+          return replacement;
         } catch (err) {
+          runtime.reportError("eliza.hotReload.buildReplacement", err);
           logger.error(`[eliza] Hot-reload failed: ${formatError(err)}`);
           return null;
+        }
+      },
+      onRuntimeActivated: async (previousRuntime, activeRuntime) => {
+        runtime = activeRuntime;
+        if (!previousRuntime || previousRuntime === activeRuntime) {
+          return;
+        }
+        try {
+          await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
+            fast: true,
+          });
+        } catch (err) {
+          // error-policy:J6 the replacement is already active; failed old-runtime
+          // teardown is observable but must not roll back the healthy swap.
+          activeRuntime.reportError("eliza.hotReload.disposePrevious", err);
+          logger.warn(
+            `[eliza] Previous runtime cleanup failed after swap: ${formatError(err)}`,
+          );
         }
       },
     });
@@ -6070,28 +5884,24 @@ export async function startEliza(
           `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next hb_signal succeeds): ${formatError(err)}`,
         );
       }
-      sandboxRegistry.startHeartbeat(30_000);
+      sandboxRegistry.startHeartbeat(
+        bootContext.policy.sandboxHeartbeatIntervalMs,
+      );
     }
 
-    // Keep process alive — the API server handles all interaction
-    const keepAlive = setInterval(() => {}, 1 << 30); // ~12 days
-
-    registerSignalShutdownHandlers({
-      getRuntime: () => runtime,
-      getSandboxManager: () => sandboxManager,
-      beforeShutdown: async () => {
-        clearInterval(keepAlive);
-        if (sandboxRegistry) {
-          sandboxRegistry.stopHeartbeat();
-          try {
-            await sandboxRegistry.unregister();
-          } catch (err) {
-            logger.warn(
-              `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
-            );
-          }
+    processLifecycle.addTeardown(async () => {
+      if (sandboxRegistry) {
+        sandboxRegistry.stopHeartbeat();
+        try {
+          await sandboxRegistry.unregister();
+        } catch (err) {
+          // error-policy:J6 registry keys expire through their TTL if teardown
+          // cannot explicitly unregister this server.
+          logger.warn(
+            `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
+          );
         }
-      },
+      }
     });
 
     return runtime;
@@ -6208,7 +6018,7 @@ export async function startEliza(
         console.log("\nGoodbye!");
         rl.close();
         try {
-          await shutdownRuntime(runtime, "cli shutdown");
+          await processLifecycle.dispose("cli shutdown");
         } catch (err) {
           logger.warn(`[eliza] Error stopping runtime: ${formatError(err)}`);
         }
@@ -6322,6 +6132,7 @@ export async function startInCloudMode(
   try {
     await manager.init();
     const proxy = (await manager.connect(agentId)) as CloudRuntimeProxyLike;
+    opts?.onCloudProxyCreated?.(proxy);
 
     if (opts?.headless || opts?.serverOnly) {
       // In headless/server mode, start the API server with the cloud proxy.
@@ -6421,7 +6232,7 @@ const isDirectRun = (() => {
 })();
 
 if (isDirectRun) {
-  startEliza().catch((err) => {
+  startElizaProcess().catch((err) => {
     console.error(
       "[eliza] Fatal error:",
       err instanceof Error ? (err.stack ?? err.message) : err,

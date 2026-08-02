@@ -292,24 +292,18 @@ export const actionStateProvider: Provider = {
 				text: allText || "No action state available",
 			};
 		} catch (error) {
+			// error-policy:J4 action state becomes explicitly unavailable; a failed
+			// load is not a valid no-plan/no-results state.
+			runtime.reportError("ActionStateProvider.get", error, {
+				roomId: message.roomId,
+			});
 			return {
 				data: {
-					actionResults: [],
-					actionPlan: null,
-					workingMemory: null,
-					recentActionMemories: [],
+					available: false,
 					error: error instanceof Error ? error.message : String(error),
 				},
-				values: {
-					hasActionResults: false,
-					hasActionPlan: false,
-					currentActionStep: 0,
-					totalActionSteps: 0,
-					actionResults: "",
-					completedActions: 0,
-					failedActions: 0,
-				},
-				text: "No action state available",
+				values: { actionStateAvailable: false },
+				text: "Action state is unavailable.",
 			};
 		}
 	},

@@ -814,6 +814,8 @@ function safeJsonPreview(value: unknown, maxLength: number): string | null {
 	try {
 		return normalizePlaintext(JSON.stringify(value), maxLength) || null;
 	} catch {
+		// error-policy:J3 activity payloads can contain non-JSON runtime values;
+		// String supplies an explicit bounded diagnostic representation.
 		return normalizePlaintext(String(value), maxLength) || null;
 	}
 }
@@ -830,15 +832,22 @@ function trajectoryRecordFromInput(
 		: record;
 }
 
-function parseTrajectoryStepsJson(value: unknown): TrajectoryStepRecord[] {
+function parseTrajectoryStepsJson(value: unknown): {
+	steps: TrajectoryStepRecord[];
+	invalid: boolean;
+} {
 	if (typeof value !== "string" || value.trim().length === 0) {
-		return [];
+		return { steps: [], invalid: false };
 	}
 	try {
 		const parsed = JSON.parse(value) as unknown;
-		return Array.isArray(parsed) ? (parsed as TrajectoryStepRecord[]) : [];
+		return Array.isArray(parsed)
+			? { steps: parsed as TrajectoryStepRecord[], invalid: false }
+			: { steps: [], invalid: true };
 	} catch {
-		return [];
+		// error-policy:J4 plaintext rendering remains available for a corrupt
+		// trajectory, but the output explicitly marks its steps unavailable.
+		return { steps: [], invalid: true };
 	}
 }
 
@@ -854,7 +863,7 @@ function collectTrajectorySteps(
 		record !== input && Array.isArray(record.steps)
 			? (record.steps as TrajectoryStepRecord[])
 			: [];
-	const jsonSteps = parseTrajectoryStepsJson(record.stepsJson);
+	const jsonSteps = parseTrajectoryStepsJson(record.stepsJson).steps;
 	return [...directSteps, ...nestedSteps, ...jsonSteps];
 }
 
@@ -990,6 +999,9 @@ export function trajectoryToPlaintext(
 	const completionTokens = readFiniteNumber(trajectory.totalCompletionTokens);
 
 	const lines = [`Trajectory ${id} (${status})`];
+	if (parseTrajectoryStepsJson(trajectory.stepsJson).invalid) {
+		lines.push("Trajectory steps unavailable: persisted data is malformed.");
+	}
 	const meta: string[] = [];
 	if (source) meta.push(`source: ${source}`);
 	if (duration) meta.push(`duration: ${duration}`);

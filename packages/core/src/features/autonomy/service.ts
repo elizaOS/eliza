@@ -8,6 +8,7 @@
  */
 
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../../errors.ts";
 import {
 	autonomyContinuousContinueTemplate,
 	autonomyContinuousFirstTemplate,
@@ -96,8 +97,14 @@ export class AutonomyService extends Service {
 		if (typeof raw !== "string" || raw.trim().length === 0) return null;
 		try {
 			return stringToUuid(raw.trim());
-		} catch {
-			return null;
+		} catch (error) {
+			// error-policy:J2 invalid autonomy configuration must not be treated as
+			// an absent target room; preserve the configured value and cause.
+			throw new ElizaError("Autonomy target room is not a valid UUID", {
+				code: "AUTONOMY_TARGET_ROOM_INVALID",
+				cause: error,
+				context: { value: raw.trim() },
+			});
 		}
 	}
 
@@ -1203,10 +1210,11 @@ export class AutonomyService extends Service {
 			await this.performAutonomousThink();
 			return true;
 		} catch (error) {
-			this.runtime.logger.error(
-				{ src: "autonomy", agentId: this.runtime.agentId, error },
-				"Error during manually triggered autonomous think",
-			);
+			// error-policy:J1 the manual-trigger boundary returns a failed trigger
+			// signal and reports the underlying autonomous-loop failure.
+			this.runtime.reportError("AutonomyService.triggerManualThink", error, {
+				agentId: this.runtime.agentId,
+			});
 			return false;
 		} finally {
 			this.isThinking = false;

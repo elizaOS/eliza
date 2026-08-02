@@ -75,8 +75,8 @@ export async function runAutonomousCli(
       const { installProcessCrashGuards } = await import("@elizaos/shared");
       installProcessCrashGuards({ onUncaughtException: "restart" });
     }
-    const { startEliza } = await import("../runtime/index.ts");
-    const runtime = await startEliza({ serverOnly: true });
+    const { startElizaProcess } = await import("../runtime/index.ts");
+    const runtime = await startElizaProcess({ serverOnly: true });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
     // `@elizaos/app-core` runtime wrapper, which the mobile agent

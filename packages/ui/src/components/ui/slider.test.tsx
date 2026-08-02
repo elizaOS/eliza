@@ -1,3 +1,4 @@
+/** Verifies Slider through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

@@ -1,3 +1,4 @@
+/** Verifies App in-process host-realm mutation isolation (#14179) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

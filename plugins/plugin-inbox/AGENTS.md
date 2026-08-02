@@ -6,7 +6,7 @@ Unified cross-channel inbox triage with unresolved-item tracking, snooze, archiv
 
 Adds the inbox-zero workflow to an agent: a single `INBOX` umbrella action (op-based dispatch), `INBOX_TRIAGE` + `CROSS_CHANNEL_CONTEXT` providers that surface unresolved threads to the planner each turn, and a registered `/inbox` view for human review. Aggregates threads across email, Discord, Telegram, WhatsApp, Slack, X, Farcaster, iMessage, and similar non-SMS channels. Android SMS stays in `@elizaos/plugin-messages`.
 
-This package owns the triage domain carved out of `plugin-lifeops`: the persisted queue, queue operations, providers, schema, migration, and terminal/app view registration. It also owns the cross-channel **aggregation domain** (`src/inbox/aggregate.ts`: channel normalization, `buildInbox` thread grouping, `resolveInboxRequest`, LLM priority orchestration, and the cached read-through `InboxDomain`) plus the LLM priority scorer (`src/inbox/priority-scoring.ts`). `@elizaos/plugin-personal-assistant` keeps the transport route (`GET /api/lifeops/inbox`), the `life_inbox_messages` cache tables in `app_lifeops`, and the Gmail/X connector projections — it composes the `InboxDomain` by injecting those through the typed seams (`InboxMessageCache`, `PriorityScoringSettingsLoader`, `GmailInboxSource`/`XDmInboxSource`) and keeps behavior-identical re-export shims at the old import paths.
+This package owns the triage domain carved out of `plugin-personal-assistant`: the persisted queue, queue operations, providers, schema, migration, and terminal/app view registration. It also owns the cross-channel **aggregation domain** (`src/inbox/aggregate.ts`: channel normalization, `buildInbox` thread grouping, `resolveInboxRequest`, LLM priority orchestration, and the cached read-through `InboxDomain`) plus the LLM priority scorer (`src/inbox/priority-scoring.ts`). `@elizaos/plugin-personal-assistant` keeps the transport route (`GET /api/lifeops/inbox`), the `life_inbox_messages` cache tables in `app_lifeops`, and the Gmail/X connector projections — it composes the `InboxDomain` by injecting those through the typed seams (`InboxMessageCache`, `PriorityScoringSettingsLoader`, `GmailInboxSource`/`XDmInboxSource`) and keeps behavior-identical re-export shims at the old import paths.
 
 ## Plugin surface
 
@@ -118,46 +118,14 @@ None. Channel credentials are read from each provider plugin (`plugin-discord`, 
 - **Snooze is additive.** `snoozed_until` is append-only schema growth on `life_inbox_triage_entries`; migration repairs old targets and maps old `app_lifeops` rows with `NULL AS snoozed_until`.
 - **Two build steps.** The JS/types build (tsup + tsc) and the Vite views build are separate. The views bundle (`dist/views/bundle.js`) is what the view registration's `bundlePath` points to. Both must be run for a complete build.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
-- See the root `AGENTS.md` for repo-wide architecture rules, logger requirements, ESM/module standards, and the cloud-frontend visual-review gate (if any of this plugin's UI ends up in `cloud-frontend`).
+- See the root `CLAUDE.md` for repo-wide architecture rules, logger requirements,
+  ESM/module standards, and the `packages/app` visual-review gate when this
+  plugin changes UI rendered by the app.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Verification
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
-
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — platform connector:**
-- A real (or sandbox-account) round-trip on the platform: inbound message → agent → outbound reply, captured as logs **and** a screenshot/recording of the actual conversation.
-- The raw inbound event/webhook payload and the outbound API request/response, with IDs mapped correctly (`stringToUuid` / `createUniqueUuid`).
-- Attachments, threads/replies, edits, multi-account, and rate-limit/error paths — not just a single text ping.
-- The agent trajectory for the turn the connector drove.
-<!-- END: evidence-and-e2e-mandate -->
+Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
+the package's relevant build, typecheck, lint, and test commands, then exercise
+the real integration boundary changed by the work. Inspect the produced domain
+artifacts and failure behavior; do not substitute mocked success for the system
+under test.

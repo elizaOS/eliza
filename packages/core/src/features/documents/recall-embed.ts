@@ -56,7 +56,6 @@
  */
 
 import { recordInferenceSpan } from "../../inference-timing";
-import { logger } from "../../logger";
 import { getStreamingContext } from "../../streaming-context";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
@@ -211,13 +210,11 @@ export async function embedRecallQuery(
 			if (signal?.aborted) {
 				throw signal.reason ?? error;
 			}
-			logger.debug(
-				{
-					src: "core:documents:recall-embed",
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Recall-query embed threw synchronously; failing open to keyword recall",
-			);
+			// error-policy:J4 semantic recall explicitly degrades to keyword recall;
+			// surface the embedding failure before returning the unavailable signal.
+			runtime.reportError("DocumentRecall.embedding", error, {
+				phase: "synchronous",
+			});
 			return null;
 		}
 		cache?.inFlight.set(normalized, pending);
@@ -231,8 +228,8 @@ export async function embedRecallQuery(
 				}
 			})
 			.catch(() => {
-				// Swallow: the awaiting caller below logs + fails open. Avoids an
-				// unhandled rejection from the detached cache-population branch.
+				// error-policy:J5 the awaiting caller below observes and reports the
+				// same rejection; this detached cache branch only suppresses duplication.
 			})
 			.finally(() => {
 				cache?.inFlight.delete(normalized);
@@ -248,13 +245,11 @@ export async function embedRecallQuery(
 		if (signal?.aborted) {
 			throw signal.reason ?? error;
 		}
-		logger.debug(
-			{
-				src: "core:documents:recall-embed",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Recall-query embed failed; failing open to keyword recall",
-		);
+		// error-policy:J4 semantic recall explicitly degrades to keyword recall;
+		// surface the embedding failure before returning the unavailable signal.
+		runtime.reportError("DocumentRecall.embedding", error, {
+			phase: "asynchronous",
+		});
 		return null;
 	}
 }

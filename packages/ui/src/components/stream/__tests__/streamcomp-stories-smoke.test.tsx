@@ -1,3 +1,4 @@
+/** Verifies streamcomp stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the stream surface. Composes every stream

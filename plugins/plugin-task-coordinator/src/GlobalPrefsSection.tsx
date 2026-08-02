@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
-import { useAppSelector } from "@elizaos/ui/state/app-store";
+import { useAppSelector } from "@elizaos/ui/state";
 import { useState } from "react";
 import {
   type AgentSelectionStrategy,

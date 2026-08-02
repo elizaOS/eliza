@@ -1,10 +1,9 @@
-// @vitest-environment jsdom
-
 /**
  * jsdom tests for `WorkflowEditor` over a mocked `client` API: renders the graph,
  * runs a saved workflow and shows node output, keeps the editor open after a new
  * save, and restores a selected version from history.
  */
+// @vitest-environment jsdom
 
 import {
   cleanup,
@@ -225,9 +224,7 @@ describe("WorkflowEditor", () => {
       editPrefill as EventListener,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /run workflow now/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /run workflow now/i }));
 
     await waitFor(() => {
       expect(clientMock.runWorkflowDefinition).toHaveBeenCalledWith(

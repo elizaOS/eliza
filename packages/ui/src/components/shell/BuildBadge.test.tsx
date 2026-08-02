@@ -1,3 +1,4 @@
+/** Verifies BuildBadge through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // BuildBadge — renders the label from /build-info.json, hides on tap for

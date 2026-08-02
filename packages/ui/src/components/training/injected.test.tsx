@@ -1,3 +1,4 @@
+/** Verifies trunk FineTuningView wrapper through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Behaviour coverage for the injected FineTuningView: renders the host-supplied

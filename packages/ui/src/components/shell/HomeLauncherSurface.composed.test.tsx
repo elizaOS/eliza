@@ -1,3 +1,4 @@
+/** Verifies Home ↔ Launcher composed surface through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // COMPOSED screen-state test — the gap the audit flagged. Every prior test

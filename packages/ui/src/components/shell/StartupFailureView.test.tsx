@@ -1,3 +1,4 @@
+/** Verifies StartupFailureView through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // StartupFailureView recovery affordances per failure reason (e.g. an

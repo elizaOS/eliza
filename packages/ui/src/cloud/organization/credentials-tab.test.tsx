@@ -1,3 +1,4 @@
+/** Verifies CredentialsTab — masked rows through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

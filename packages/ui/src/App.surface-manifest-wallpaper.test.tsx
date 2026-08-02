@@ -1,3 +1,4 @@
+/** Verifies App wallpaper-grant invariant — manifest gates the wallpaper (#13452) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

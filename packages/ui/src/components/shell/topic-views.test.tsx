@@ -1,3 +1,4 @@
+/** Verifies TopicChipsBar through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Rendering + interaction for the topic UI (#8928): TopicChipsBar renders a chip

@@ -1,3 +1,4 @@
+/** Verifies selectPricedHoldings through the package's configured test harness. */
 // `selectPricedHoldings` selection logic: empty on missing balances, price-only
 // rows with no amount/holding value leaked, dust (<$1) skipped, capped at the top
 // 3 by holding value, only priced symbols included, same symbol aggregated across

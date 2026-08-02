@@ -1,3 +1,4 @@
+/** Verifies isAgentGreetingMessage through the package's configured test harness. */
 import { MESSAGE_SOURCE_AGENT_GREETING } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { ConversationMessage } from "../api";

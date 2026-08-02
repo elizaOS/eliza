@@ -1,3 +1,4 @@
+/** Verifies settings-sections registration (lazy boot seam) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 import { existsSync, readFileSync } from "node:fs";

@@ -110,12 +110,8 @@ console.log(
 );
 
 // Load .env files for parity with CLI mode (which loads via run-main.ts).
-try {
-  const { config } = await import("dotenv");
-  config();
-} catch {
-  // dotenv not installed or .env not found — non-fatal.
-}
+const { config: loadDotenv } = await import("dotenv");
+loadDotenv();
 
 console.log(
   `${getLogPrefix()} dotenv loaded (${elapsedSinceStartupTimingStart()}ms since ${STARTUP_TIMING_SOURCE}; module body ${elapsedSinceModuleBodyStart()}ms)`,
@@ -227,6 +223,8 @@ async function bootstrapRuntime(reason: string): Promise<void> {
         );
       }
     } catch (err) {
+      // error-policy:J4 saved GitHub credentials are an optional convenience;
+      // the warning makes the unavailable integration explicit to the owner.
       logger.warn(
         `${getLogPrefix()} Failed to apply saved GitHub token (runtime continues without it): ${formatError(err)}`,
       );
@@ -242,8 +240,12 @@ async function bootstrapRuntime(reason: string): Promise<void> {
       try {
         const { shutdownRuntime } = await loadElizaRuntimeModule();
         await shutdownRuntime(rt, "dev-server shutdown race");
-      } catch {
-        // Best effort during shutdown race.
+      } catch (error) {
+        // error-policy:J6 shutdown won the startup race; teardown failure is
+        // warned here but must not republish `rt`.
+        logger.warn(
+          `${getLogPrefix()} Runtime teardown failed during shutdown race: ${formatError(error)}`,
+        );
       }
       return;
     }
@@ -304,6 +306,8 @@ async function bootstrapRuntime(reason: string): Promise<void> {
           return;
         }
       } catch (recoveryErr) {
+        // error-policy:J4 automatic quarantine is an optional recovery path;
+        // failure falls through to the normal observable startup backoff.
         logger.error(
           `${getLogPrefix()} PGlite auto-reset failed (${formatError(recoveryErr)})`,
         );
@@ -351,13 +355,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
 async function createRuntime(): Promise<AgentRuntime> {
   const { shutdownRuntime, startEliza } = await loadElizaRuntimeModule();
   if (currentRuntime) {
-    try {
-      await shutdownRuntime(currentRuntime, "dev-server createRuntime");
-    } catch (err) {
-      logger.warn(
-        `${getLogPrefix()} Error stopping old runtime: ${formatError(err)}`,
-      );
-    }
+    await shutdownRuntime(currentRuntime, "dev-server createRuntime");
     currentRuntime = null;
   }
 
@@ -452,6 +450,8 @@ async function shutdown(): Promise<void> {
       const { shutdownRuntime } = await loadElizaRuntimeModule();
       await shutdownRuntime(currentRuntime, "dev-server shutdown");
     } catch (err) {
+      // error-policy:J6 the process boundary is already shutting down and a
+      // forced-exit timer guarantees completion after this warning.
       logger.warn(
         `${getLogPrefix()} Error stopping runtime during shutdown: ${formatError(err)}`,
       );
@@ -525,15 +525,8 @@ async function main() {
   scheduleRuntimeBootstrap(0, "startup");
 
   // Invalidate cached CORS port set so the new port is allowed.
-  // Dynamic import may be unavailable in non-server build targets (mobile); ignore.
-  try {
-    const { invalidateCorsAllowedPorts } = await import(
-      "../api/server-cors.js"
-    );
-    invalidateCorsAllowedPorts();
-  } catch {
-    // server-cors not available in this build target — CORS cache stays stale until restart
-  }
+  const { invalidateCorsAllowedPorts } = await import("../api/server-cors.js");
+  invalidateCorsAllowedPorts();
   // Use console.log for startup timing to bypass logger filtering
   console.log(
     `${getLogPrefix()} API server ready on port ${actualPort} (${apiReady - apiStart}ms)`,

@@ -13,12 +13,11 @@
  * client method.
  */
 
-import { client } from "@elizaos/ui/api/client";
+import { ApiError, client } from "@elizaos/ui/api";
 import type {
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
 } from "@elizaos/ui/api/client-types-cloud";
-import { ApiError } from "@elizaos/ui/api/client-types-core";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

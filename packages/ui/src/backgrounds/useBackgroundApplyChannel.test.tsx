@@ -1,3 +1,4 @@
+/** Verifies useBackgroundApplyChannel — raw GLSL source is not a sink (#11088) through the package's configured test harness. */
 // @vitest-environment jsdom
 import { BACKGROUND_APPLY_EVENT as SHARED_BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { act, cleanup, render } from "@testing-library/react";

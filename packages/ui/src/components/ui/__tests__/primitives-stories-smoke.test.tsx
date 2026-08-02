@@ -1,3 +1,4 @@
+/** Verifies primitives stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the primitive layer (components/ui/*).

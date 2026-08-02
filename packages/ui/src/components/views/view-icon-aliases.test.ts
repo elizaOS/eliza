@@ -1,3 +1,4 @@
+/** Verifies resolveViewIconId through the package's configured test harness. */
 // resolveViewIconId maps plugin/builtin view ids onto their nearest baked icon,
 // passes through ids that resolve directly, and every alias target is verified
 // against the real generated VIEW_ICONS map so no alias points at a missing icon.

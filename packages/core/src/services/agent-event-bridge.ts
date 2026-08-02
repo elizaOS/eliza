@@ -42,6 +42,7 @@ interface RuntimeServiceHost {
 	agentId: IAgentRuntime["agentId"];
 	getService: IAgentRuntime["getService"];
 	getCurrentRunId?: IAgentRuntime["getCurrentRunId"];
+	reportError?: IAgentRuntime["reportError"];
 }
 
 export const CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES = [
@@ -92,6 +93,18 @@ function readRuntime(value: unknown): RuntimeServiceHost | null {
 	return isRuntimeServiceHost(value) ? value : null;
 }
 
+function reportBridgeError(
+	runtime: RuntimeServiceHost,
+	scope: string,
+	error: unknown,
+): void {
+	if (runtime.reportError) {
+		runtime.reportError(scope, error);
+		return;
+	}
+	logger.warn({ src: "agent-event-bridge", scope, error }, "Bridge error");
+}
+
 function firstString(...values: unknown[]): string | undefined {
 	for (const value of values) {
 		const string = readString(value);
@@ -126,8 +139,14 @@ function resolveAgentEventService(
 		) {
 			return service as AgentEventService;
 		}
-	} catch {
-		// getService may throw on partially-initialized runtimes; treat as absent.
+	} catch (error) {
+		// error-policy:J4 event streaming is optional, but a failed service lookup
+		// remains observable before the bridge becomes unavailable.
+		reportBridgeError(
+			runtime,
+			"AgentEventBridge.resolveAgentEventService",
+			error,
+		);
 	}
 	return null;
 }
@@ -141,8 +160,14 @@ function resolveNotificationService(
 		if (candidate && typeof candidate.notify === "function") {
 			return candidate as NotificationServiceLike;
 		}
-	} catch {
-		// getService may throw on partially-initialized runtimes; treat as absent.
+	} catch (error) {
+		// error-policy:J4 notifications are optional, but a failed service lookup
+		// remains observable before notification delivery becomes unavailable.
+		reportBridgeError(
+			runtime,
+			"AgentEventBridge.resolveNotificationService",
+			error,
+		);
 	}
 	return null;
 }
@@ -160,7 +185,10 @@ function resolveRunId(
 	}
 	try {
 		return runtime.getCurrentRunId?.() ?? null;
-	} catch {
+	} catch (error) {
+		// error-policy:J7 correlation diagnostics must not interrupt event
+		// delivery; report the failed lookup and omit only the run id.
+		reportBridgeError(runtime, "AgentEventBridge.resolveRunId", error);
 		return null;
 	}
 }

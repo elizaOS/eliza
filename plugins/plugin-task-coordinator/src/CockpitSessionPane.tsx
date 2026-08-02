@@ -23,15 +23,15 @@
  * taskId and passes `onBack` to return to the deck.
  */
 
-import { client } from "@elizaos/ui/api/client";
+import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import {
+  CockpitTierToggle,
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
-} from "@elizaos/ui/components/cockpit/cockpit-modes";
-import { CockpitTierToggle } from "@elizaos/ui/components/cockpit/CockpitTierToggle";
-import { useRegisterViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
+} from "@elizaos/ui/components";
 import { Button } from "@elizaos/ui/components/ui/button";
+import { useRegisterViewChatBinding } from "@elizaos/ui/state";
 import {
   ArrowLeft,
   PanelRight,

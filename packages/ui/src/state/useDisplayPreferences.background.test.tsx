@@ -1,3 +1,4 @@
+/** Verifies useDisplayPreferences — background history + undo through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Background config + undo/redo history in `useDisplayPreferences`: the

@@ -118,7 +118,7 @@ test/
 ```bash
 bun run --cwd plugins/plugin-pty build      # tsup ESM + declarations
 bun run --cwd plugins/plugin-pty test       # vitest unit suite
-bun run --cwd plugins/plugin-pty typecheck  # tsgo --noEmit
+bun run --cwd plugins/plugin-pty typecheck  # tsc --noEmit
 bun run --cwd plugins/plugin-pty lint
 ```
 
@@ -164,11 +164,11 @@ from loading the orchestrator and recursively spawning sub-agents.
 - Never log the spawn request body — it can carry an API key.
 - PTY child processes do **not** inherit the full server `process.env`; only a
   small runtime allowlist plus explicit eliza-code spec env is passed through.
-- See the root `AGENTS.md` for repo-wide conventions.
+- See the root `CLAUDE.md` for repo-wide conventions.
 
 ## ⛔ NON-NEGOTIABLE — evidence & real end-to-end tests
 
-The binding standard is **[AGENTS.md](../../AGENTS.md)**. The unit suite
+The binding standard is **[CLAUDE.md](../../CLAUDE.md)**. The unit suite
 proves the store/bridge/routing/spec logic against an injected PTY; the gated
 `pty.real.test.ts` (and the manual real-runtime checks) prove the actual
 node-pty / Bun-truePty path spawns real processes, streams output, round-trips

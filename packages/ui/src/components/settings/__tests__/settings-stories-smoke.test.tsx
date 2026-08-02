@@ -1,3 +1,4 @@
+/** Verifies settings stories smoke through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Portable-stories smoke test for the settings surface. Composes every

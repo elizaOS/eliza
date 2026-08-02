@@ -17,6 +17,7 @@
  * `SecurityModuleServiceWrapper`.
  */
 
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime, UUID } from "../../../types/index.ts";
 import {
@@ -424,11 +425,13 @@ export class SecurityModule {
 					}) as SecurityEvent,
 			);
 		} catch (error) {
-			logger.warn(
-				{ error },
-				"[SecurityModule] Failed to fetch recent incidents",
-			);
-			return [];
+			// error-policy:J2 incident history is required for threat scoring; attach
+			// the query window without turning a failed read into zero incidents.
+			throw new ElizaError("Failed to fetch recent security incidents", {
+				code: "SECURITY_INCIDENT_QUERY_FAILED",
+				cause: error,
+				context: { roomId: _roomId, hours },
+			});
 		}
 	}
 

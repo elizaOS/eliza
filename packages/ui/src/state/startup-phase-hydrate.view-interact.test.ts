@@ -1,3 +1,4 @@
+/** Verifies bindReadyPhase pty hydration readiness gate through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

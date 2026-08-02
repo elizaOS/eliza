@@ -588,6 +588,8 @@ function parseInlinePlannerParams(
 		const parsed = JSON.parse(value);
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// error-policy:J3 inline planner parameters are untrusted model input;
+		// malformed JSON is an explicit invalid result.
 		return null;
 	}
 }
@@ -2443,14 +2445,15 @@ async function collectV5PlannerCandidateActions(args: {
 			selectedActions.push(action);
 			return true;
 		} catch (error) {
-			args.runtime.logger.warn(
+			// error-policy:J1 planner exposure fails closed for the affected action
+			// while reporting the validation failure to the agent.
+			args.runtime.reportError(
+				"MessageService.plannerActionValidation",
+				error,
 				{
-					src: "service:message",
 					action: action.name,
 					parentAction: parentActionName,
-					error,
 				},
-				"Skipping action that cannot be exposed to the v5 planner",
 			);
 			return false;
 		}
@@ -4139,7 +4142,8 @@ function parseToolArgumentsString(
 			? (parsed as Record<string, unknown>)
 			: null;
 	} catch {
-		// Continue to the duplicated-streaming recovery below.
+		// error-policy:J3 planner output is untrusted model input; a single-object
+		// parse miss continues to the explicit duplicated-stream recovery below.
 	}
 
 	const objects = extractJsonObjects(trimmed);
@@ -4160,6 +4164,8 @@ function parseToolArgumentsString(
 				? (parsed as Record<string, unknown>)
 				: null;
 		} catch {
+			// error-policy:J3 each recovered fragment is untrusted model input; one
+			// malformed object invalidates the duplicated-stream recovery.
 			return null;
 		}
 	});
@@ -5684,6 +5690,8 @@ function extractJsonStringField(
 			try {
 				return JSON.parse(`"${text.slice(valueStart, i)}"`) as string;
 			} catch {
+				// error-policy:J3 partial planner text is untrusted model input;
+				// malformed string escapes make this field explicitly unavailable.
 				return null;
 			}
 		}
@@ -5707,6 +5715,8 @@ function extractJsonStringArrayField(
 		try {
 			values.push(JSON.parse(`"${item[1]}"`) as string);
 		} catch {
+			// error-policy:J3 partial planner text is untrusted model input; a
+			// malformed element invalidates the recovered array.
 			return [];
 		}
 	}

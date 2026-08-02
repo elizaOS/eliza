@@ -268,6 +268,8 @@ export async function readJsonBody<T = Record<string, unknown>>(
 		}
 		raw = body;
 	} catch {
+		// error-policy:J1 the HTTP boundary translates body-read failures into a
+		// structured client response.
 		await writeJsonError(res, readErrorMessage, readErrorStatus);
 		return null;
 	}
@@ -285,6 +287,8 @@ export async function readJsonBody<T = Record<string, unknown>>(
 		cachedRequest.body = parsed;
 		return parsed as T;
 	} catch {
+		// error-policy:J1 the HTTP boundary translates malformed JSON into a
+		// structured client response.
 		await writeJsonError(res, parseErrorMessage, parseErrorStatus);
 		return null;
 	}

@@ -1,3 +1,4 @@
+/** Verifies BackgroundSettingsControls undo/redo through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders the BackgroundSettingsControls wallpaper gallery against a seeded

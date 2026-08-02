@@ -1,3 +1,4 @@
+/** Verifies ChatSurface composer (shared core) through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * ChatSurface composer contract: the glass mini-chat consumes the shared

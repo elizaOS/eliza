@@ -1,6 +1,5 @@
-// Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
-// browser barrel, which doesn't reliably re-export this newer component.
-import { client } from "@elizaos/ui/api/client";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
 import type {
   ChangeSetData,
   CodingAgentAddAgentInput,
@@ -16,8 +15,6 @@ import type {
   CodingAgentTaskThreadDetail,
   CodingAgentTaskUsageSummary,
 } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/button";
-import { DiffReviewPanel } from "@elizaos/ui/components/composites/code/DiffReviewPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,9 +25,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@elizaos/ui/components/ui/alert-dialog";
-import { useAppSelectorShallow } from "@elizaos/ui/state/app-store";
-import { useAgentElement } from "@elizaos/ui/agent-surface";
+  DiffReviewPanel,
+} from "@elizaos/ui/components";
+import { Button } from "@elizaos/ui/components/ui/button";
 import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Select,
@@ -40,6 +37,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { Textarea } from "@elizaos/ui/components/ui/textarea";
+import { useAppSelectorShallow } from "@elizaos/ui/state";
 import {
   Archive,
   ArrowDownToLine,

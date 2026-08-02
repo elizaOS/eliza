@@ -170,6 +170,8 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 			},
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates evaluation failure into
+		// an explicit unsuccessful tool result visible to the model.
 		logger.error({ error }, "[EvaluateTrust] Error evaluating trust:");
 		return {
 			success: false,

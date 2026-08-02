@@ -1,3 +1,4 @@
+/** Verifies useVoiceSettingsApplyChannel through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * jsdom coverage for the chat-to-voice view event bridge. The hook runs against

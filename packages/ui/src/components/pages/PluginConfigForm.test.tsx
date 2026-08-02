@@ -1,3 +1,4 @@
+/** Verifies PluginConfigForm modeToggle configUiHint through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real PluginConfigForm to cover the modeToggle `configUiHint`:

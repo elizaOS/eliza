@@ -148,13 +148,11 @@ export async function describeImageCached(
 			stream: false,
 		});
 	} catch (error) {
-		runtime.logger.warn(
-			{
-				src: "media:image-description-cache",
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Image description model call failed",
-		);
+		// error-policy:J4 callers explicitly render image-description
+		// unavailability; report the model failure before returning that state.
+		runtime.reportError("ImageDescriptionCache.describe", error, {
+			imageUrl: url,
+		});
 		return null;
 	}
 

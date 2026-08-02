@@ -208,6 +208,8 @@ function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
 		runtime.getSearchCategory(category, { includeDisabled: true });
 		return true;
 	} catch {
+		// error-policy:J4 getSearchCategory uses a throw to signal an absent
+		// optional registry entry; callers register it on this explicit miss.
 		return false;
 	}
 }

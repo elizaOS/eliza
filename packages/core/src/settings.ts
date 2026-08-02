@@ -69,6 +69,8 @@ function isEncryptedV1(value: string): boolean {
 		const iv = BufferUtils.fromHex(parts[0]);
 		return iv.length === 16;
 	} catch {
+		// error-policy:J3 settings are persisted input; malformed hexadecimal
+		// content makes this an invalid v1 ciphertext.
 		return false;
 	}
 }
@@ -82,6 +84,8 @@ function isEncryptedV2(value: string): boolean {
 		const tag = BufferUtils.fromHex(parts[3]);
 		return iv.length === 12 && tag.length === 16;
 	} catch {
+		// error-policy:J3 settings are persisted input; malformed hexadecimal
+		// content makes this an invalid v2 ciphertext.
 		return false;
 	}
 }

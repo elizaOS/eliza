@@ -1,10 +1,13 @@
-# @elizaos/evidence — agent guide
+# `@elizaos/evidence`
 
-Evidence-bundle foundation for the unified evidence harness (epic #14541,
-issue #14552). Read `README.md` for the schema contract, bundle layout, silo
-table, and CLI; read the design doc at
-`docs/ongoing-development/unified-evidence-harness.md` for how the
-whole pipeline (analyzers → VLM Q&A → certify → CI gate) fits together.
+Evidence-bundle, analysis, visual-QA, GPU-queue, video, and certification
+foundation for the repository evidence harness. Read `README.md` for the
+frozen schema, bundle layout, ingestors, and CLI. The current pipeline is
+defined by this package's source and tests; the earlier ongoing-development
+design document has been retired.
+
+Repository-wide engineering and evidence requirements are inherited from the
+root [`CLAUDE.md`](../../CLAUDE.md).
 
 ## Hard rules
 
@@ -97,7 +100,7 @@ flag.
 
 ```bash
 bun run --cwd packages/evidence test         # vitest suite
-bun run --cwd packages/evidence typecheck    # tsgo --noEmit
+bun run --cwd packages/evidence typecheck    # tsc --noEmit
 bun run --cwd packages/evidence lint         # biome
 bun run --cwd packages/evidence bundle:create -- --tier cpu
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>
@@ -110,6 +113,8 @@ bun run --cwd packages/evidence certify:verify -- --cert <file> --bundle <dir> -
 # each MP4 with keyframe analysis, or ingest a pre-recorded video directly.
 bun run --cwd packages/evidence video:walkthrough -- --def all --bundle <dir>
 bun run --cwd packages/evidence video:ingest -- --file x.webm --granularity feature --slug send-message --bundle <dir>
+bun run --cwd packages/evidence vision-qa -- --help
+bun run --cwd packages/evidence evidence:gpu-queue -- --help
 ```
 
 Test-lane membership is declared via `elizaos.scripts.testLanes: ["server"]`
@@ -125,13 +130,17 @@ src/provenance.ts   git facts (fail loud), runner kind, env fingerprint allowlis
 src/ingest.ts       silo definitions + ingestAllSilos / ingestNamedSilo
 src/cli.ts          thin argv/formatting layer over the lib (J1 boundary)
 src/errors.ts       EvidenceError / EvidenceValidationError
+src/analyzers/     ARIA, brand, color, diff, OCR, pHash, and keyframe analysis
 src/certify/
   schema.ts         strict certification contract + tier ordering
   keys.ts           Ed25519 keygen/fingerprint/ingress (never writes/logs keys)
   rollup.ts         mechanical draft verdicts (honest-skip semantics)
+  orchestrate.ts    bundle/certification orchestration
   sign.ts           signCertification / verifyCertification (typed failure codes)
   cli.ts            certify:keygen|rollup|sign|verify (J1 boundary)
 src/ffmpeg-binaries.ts  ffmpeg/ffprobe resolver: env → PATH → installed static packages
+src/queue/          durable file-backed GPU analysis queue and result merge
+src/vision-qa/      backend selection, caching, batched visual questions, QA records
 src/video/          video evidence lanes (#14545, stacked on the #14542 analyzers)
   normalize.ts        webm/mov→MP4 (h264 + faststart); ffprobe-gated
   ingest.ts           ingestVideo: place at video/<granularity>s/<slug>.mp4 +

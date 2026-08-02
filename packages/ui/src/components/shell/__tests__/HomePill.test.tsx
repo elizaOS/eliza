@@ -1,3 +1,4 @@
+/** Verifies HomePill through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // HomePill rendering + phase→interaction wiring (label, mark, open/close on

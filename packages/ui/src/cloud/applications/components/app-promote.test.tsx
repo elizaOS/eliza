@@ -1,3 +1,4 @@
+/** Verifies AppPromote — asset generation error surfacing (#9323) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

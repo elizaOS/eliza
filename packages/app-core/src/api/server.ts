@@ -1,8 +1,8 @@
 /**
  * app-core wrapper around `@elizaos/agent`'s dashboard HTTP API. Every request
- * first runs the compat pipeline — CORS for
- * local renderers (Vite/WKWebView), env aliases, header
- * mirroring, and `/api/status` body rewriting — then dispatches app-core compat
+ * first runs the compat pipeline — CORS for local renderers (Vite/WKWebView),
+ * env aliases, header mirroring, and `/api/status` body rewriting — then
+ * dispatches app-core compat
  * routes (auth/session/pairing, cloud proxy + billing, secrets, sensitive
  * requests, first-run, plugins, catalog, local-inference, agent reset) before
  * delegating to the upstream listener. The wrapper keeps compat state scoped to
@@ -43,6 +43,7 @@ import {
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
 } from "@elizaos/agent";
+import { getDeferredBootStatus } from "@elizaos/agent/runtime/deferred-boot-status";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger } from "@elizaos/core";
@@ -153,6 +154,7 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleDropStatusCompatRoute } from "./drop-status-compat-route";
 import { handleEmbedAuthRoutes } from "./embed-auth-routes";
+import { resolveFeatureRouteReadinessFailure } from "./feature-route-readiness.js";
 import { handleFirstRunRoute } from "./first-run-routes";
 import { handleI18nLocaleRoute } from "./i18n-locale-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
@@ -1039,6 +1041,19 @@ async function runCompatRequestPipeline(
       }
       return;
     }
+  }
+
+  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const deferredBoot = getDeferredBootStatus();
+  const readinessFailure = resolveFeatureRouteReadinessFailure(
+    pathname,
+    state.current !== null,
+    deferredBoot.phases["app-route-tail"],
+  );
+  if (readinessFailure) {
+    res.setHeader("Retry-After", "1");
+    sendJsonResponse(res, 503, readinessFailure);
+    return;
   }
 
   await next();

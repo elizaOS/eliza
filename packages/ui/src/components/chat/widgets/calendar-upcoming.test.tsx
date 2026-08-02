@@ -1,3 +1,4 @@
+/** Verifies CalendarUpcomingWidget through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // CalendarUpcomingWidget self-hide rules: renders nothing (and skips full-shell

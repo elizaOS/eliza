@@ -523,7 +523,9 @@ describe("documentation files", () => {
           sourcePath.includes("/dist-") ||
           sourcePath.includes("/node_modules/") ||
           sourcePath.endsWith("/node_modules") ||
-          sourcePath.startsWith("packages/app-core/platforms/electrobun/artifacts/");
+          sourcePath.startsWith(
+            "packages/app-core/platforms/electrobun/artifacts/",
+          );
         const externalOsPath = sourcePath.startsWith("packages/os/");
         const illustrativePath = /[{}*?<>]/.test(sourcePath);
 

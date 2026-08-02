@@ -2,6 +2,10 @@
 
 Cross-platform Eliza agent application — the shipped web/desktop/mobile UI shell for elizaOS.
 
+Repository-wide engineering and evidence requirements are inherited from the
+root [`CLAUDE.md`](../../CLAUDE.md). This package's visual-review rules are
+additional and remain mandatory for UI changes.
+
 ## Purpose / role
 
 This package is the top-level Vite application that renders the Eliza agent interface across web browsers, Electrobun desktop (macOS/Windows/Linux), and Capacitor-wrapped iOS and Android apps. It is **private** (not published to npm) and is the composition root: it wires all `@elizaos/*` plugins and UI packages together into a bootable app, then hands off to `@elizaos/ui` for actual rendering.
@@ -18,7 +22,7 @@ packages/app/
   vite-dev-origin.ts         Vite dev server origin/port helpers
   index.html                 HTML shell (tokens replaced at build by appShellMetadataPlugin)
   src/
-    main.tsx                 React boot: platform init, plugin loading, root render
+    main.tsx                 Renderer composition root: trusted launch, plugin boot, bridges, mount, platform init
     app-config.ts            Exports APP_CONFIG, APP_BRANDING_BASE, APP_LOG_PREFIX, APP_NAMESPACE, APP_URL_SCHEME
     brand-env.ts             buildBrandEnvAliases(): maps `<envPrefix>_*` vars to canonical `ELIZA_*` (e.g. <PREFIX>_API_PORT → ELIZA_API_PORT)
     character-catalog.ts     Default character catalog (calls buildElizaCharacterCatalog from @elizaos/shared)
@@ -59,18 +63,27 @@ packages/app/
 
 - `app.config.ts` (package root) — single source of truth for app identity. `appId: "ai.elizaos.app"`, `cliName: "eliza"`, `envPrefix: "ELIZA"`, desktop `urlScheme: "elizaos"`. `src/app-config.ts` re-exports it as `APP_CONFIG` plus derived `APP_BRANDING_BASE`/`APP_LOG_PREFIX`/`APP_NAMESPACE`/`APP_URL_SCHEME`. Copy `app.config.ts` to white-label a new app.
 - `src/plugin-registrations.ts` — `SIDE_EFFECT_APP_MODULE_LOADERS`: plugins imported for their self-registration side effects, not for exported components.
-- `src/main.tsx` — React entry point. Owns `initializeAppModules()` + `buildAppBootConfig()` inline (assembles `AppBootConfig` synchronously; plugin modules ride the deferred idle loaders), then mounts React, then `initializePlatform()` (storage bridge, Capacitor listeners, desktop shell) concurrently after mount.
+- `src/main.tsx` — renderer composition root. It assembles `AppBootConfig`,
+  resolves trusted launch state, handles special window/device lanes, hydrates
+  native storage before the normal first render, mounts React, schedules
+  deferred plugin loading, and then finishes platform initialization.
 
 ## Boot sequence
 
-1. `src/main.tsx` runs before React mounts.
-2. `initializeAppModules()` — assembles `AppBootConfig` and calls `setBootConfig()` synchronously (`@elizaos/app-core` is already evaluated via this module's static imports); `@elizaos/plugin-*` modules load later on the deferred idle path.
-3. React `createRoot` renders `<AppProvider><App /></AppProvider>` from `@elizaos/ui`.
-4. `initializePlatform()` — per-platform init: storage bridge, keyboard, lifecycle, network, mobile device bridge, desktop shell. Runs concurrently after mount (not before).
+1. `main()` resolves embed, smoke-test, managed-launch, popout, and detached-window
+   paths before the normal application path.
+2. `initializeAppModules()` assembles `AppBootConfig` and calls `setBootConfig()`;
+   feature modules not needed for first paint remain on the deferred idle path.
+3. The normal native path hydrates the storage bridge before rendering because
+   session, first-run, and theme state must exist on the first React read.
+4. Platform-specific request, fetch, vision, voice, and desktop bridges are
+   installed in their required order.
+5. React mounts the `@elizaos/ui` application, deferred modules are scheduled,
+   and `initializePlatform()` completes the remaining lifecycle integration.
 
 ## Commands
 
-All scripts from this package's `package.json`:
+Common scripts from this package's `package.json`:
 
 ```bash
 bun run --cwd packages/app dev                        # Vite dev server (renderer only; UI port from ELIZA_UI_PORT, default 2138)
@@ -280,49 +293,20 @@ bun run --cwd packages/app test:e2e
 - **Vite config aliases.** `vite.config.ts` builds workspace package aliases dynamically from `packages/` and `plugins/` directories. Native Capacitor plugins (`@elizaos/capacitor-*`) are aliased from `plugins/plugin-native-*/src/index.ts`. Plugins with `elizaos.app` in their `package.json` are included; others are excluded from the browser bundle.
 - **Lucide tree-shaking.** The Vite config includes a custom plugin that rewrites `import { X } from "lucide-react"` to per-icon deep imports, reducing the icon bundle from ~600KB to only used icons (~130).
 - **`AsyncLocalStorage` patch.** A `renderChunk` plugin patches the `AsyncLocalStorage` browser replacement in mobile WebView bundles so `new undefined` never happens. Do not remove this plugin.
-- **Onboarding QA query params.** `?onboarding-replay=1` (dev builds only) re-runs onboarding as a **non-destructive** client overlay on the same agent — no reset endpoint, no active-server clear, no storage wipe; `?reset` clears the persisted client session for a genuinely fresh first run. Both are wired in `src/first-run-boot-patches.ts` (the arm-before-patch order there is load-bearing — see its header) and regression-locked by `test/first-run-boot-patches.test.ts`. Full replay/reset steps: `docs/testing/hitl-inventory.md` (#14382).
+- **Onboarding QA query params.** `?onboarding-replay=1` (dev builds only) re-runs onboarding as a **non-destructive** client overlay on the same agent — no reset endpoint, no active-server clear, no storage wipe; `?reset` clears the persisted client session for a genuinely fresh first run. Both are wired in `src/first-run-boot-patches.ts` (the arm-before-patch order there is load-bearing — see its header) and regression-locked by `test/first-run-boot-patches.test.ts`. Use the committed replay evidence script and tests rather than relying on the deleted historical HITL inventory.
 - **iOS full-Bun smoke.** When the `eliza:ios-full-bun-smoke:request` key is set through local storage or native Preferences, `main.tsx` calls app-core's shared `runIosFullBunSmokeIfRequested()` probe, which writes strict backend/model results to Preferences. This is a QA/CI gate; do not inline a second implementation or remove the call.
 - **`predev` / `prebuild` hooks.** Both run `sync-to-public.mjs` to copy shared brand assets (logos, favicons, concepts, banners, backgrounds) into `public/` before Vite starts. Do not delete assets from `public/` manually; re-run the hook instead.
-- See root `AGENTS.md` for architecture rules, naming conventions, and commit workflow.
+- See the root guide for architecture, naming, git workflow, and evidence rules.
 
-<!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
-## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
+## Package completion evidence
 
-> The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)**. Read it.
-> Nothing in this package is *done* until it is *proven* done — a reviewer must confirm it
-> works **without reading the code**, from the artifacts you attach. This applies to **every**
-> feature, fix, refactor, and chore here. "Tests pass" is not proof; "CI is green" is not proof.
+Follow the repository-wide definition of done in the root guide. For UI work in
+this package, also:
 
-- **Record AND read model trajectories.** Capture the *actual* inputs and outputs of the model
-  from a **live** LLM — not the deterministic proxy, not a mock: the prompt, the
-  providers/context, the raw model output, every tool/action call, and the result. Then **open
-  the trajectory and review it by hand.** A captured-but-unread trajectory is not evidence
-  (`packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>`).
-- **Real, full-featured E2E — no larp.** Every feature ships detailed end-to-end tests that
-  drive the *real* path end to end. Not the happy "front door" only: cover error paths,
-  edge/empty/invalid input, concurrency, roles/permissions, and adversarial input. A test that
-  asserts against a mock/stub/fixture standing in for the thing under test **does not count**.
-  If the real model/device/chain/connector/account is hard to reach, **make it reachable — that
-  is the work**, not an excuse to mock. If the existing tests here are shallow or mocked, fixing
-  them is part of your change.
-- **Screenshots + logs at every phase**, plus a **complete walkthrough video/run-through** of
-  the entire feature or view, start to finish (`bun run test:e2e:record`).
-- **Manually review every artifact the change touches** — never just the green check: client
-  logs (console + network), server logs (`[ClassName] …`), the model trajectories in and out,
-  before/after full-page screenshots, **and the domain artifacts listed below for this package.**
-- **No residuals. No shortcuts.** The goal is not "done" — it is *everything* done. Clear every
-  blocker by the **hard path**: build the real architecture, stand up the real
-  model/device/service, actually test it. Never leave a TODO, a stub, a stepping-stone, or a
-  "follow-up." When unsure, research thoroughly, weigh the options, and ship the best,
-  highest-effort, production-ready version. Keep going until every possibility is exhausted.
-
-Artifacts → attached inline in the PR (MP4 video, JPG screenshots, logs in `<details>`); attach each evidence type **or**
-explicitly mark it N/A with a reason — never leave it blank. If `develop` moved and changed
-behavior, **re-capture** evidence; stale proof is worse than none.
-
-**Capture & manually review for this package — UI surface:**
-- Before/after **full-page** screenshots — desktop **and** mobile, portrait **and** landscape, rest **and** hover (`bun run --cwd packages/app audit:app` where applicable) — not desktop-only-happy-path (see #9950).
-- A **video walkthrough** of the whole view/flow, plus browser console + network logs showing the real request/response and state change.
-- Empty, loading, error, and permission-denied states — review the per-view manual-review notes (`good`/`needs-work`/`needs-eyeball`/`broken` guidance); no computed page verdict ships `needs-work`/`broken`.
-- The backend trajectory/logs behind anything the UI triggered.
-<!-- END: evidence-and-e2e-mandate -->
+- run `bun run --cwd packages/app audit:app` and manually inspect every affected
+  full-page desktop and mobile capture, including rest and hover states;
+- record the complete interaction as MP4 with console, network, and backend
+  logs;
+- inspect loading, designed-empty, error, and permission-denied states; and
+- include the backend trajectory and domain artifacts for actions triggered by
+  the UI.

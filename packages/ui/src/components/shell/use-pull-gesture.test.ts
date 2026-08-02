@@ -1,3 +1,4 @@
+/** Verifies resolvePull through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // SCOPE (honest labelling, #10722): this is a LOGIC-ONLY unit suite, not

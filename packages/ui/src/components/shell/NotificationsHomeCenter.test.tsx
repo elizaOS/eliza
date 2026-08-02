@@ -1,3 +1,4 @@
+/** Verifies orderDashboardNotifications through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Dashboard notification center behavior against the real notification store

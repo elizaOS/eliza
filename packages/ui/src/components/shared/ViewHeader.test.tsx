@@ -1,3 +1,4 @@
+/** Verifies ViewHeader — standardized normal-view header (#13451) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

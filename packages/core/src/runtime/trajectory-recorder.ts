@@ -24,6 +24,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveAliasedEnvValue } from "../boot-env";
+import { ElizaError } from "../errors";
 import {
 	computeCallCostUsd,
 	PRICE_TABLE_ID,
@@ -575,6 +576,7 @@ function summarizeEmbeddingResponse(response: string): string | null {
 			.join(", ");
 		return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
 	} catch {
+		// error-policy:J7 malformed embedding previews must not break trajectory rendering
 		return null;
 	}
 }
@@ -1313,53 +1315,48 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		const inMem = this.active.get(trajectoryId);
 		if (inMem) return inMem;
 
+		const files = await this.collectAllFiles();
+		const match = files.find((f) => f.id === trajectoryId);
+		if (!match) return null;
 		try {
-			const files = await this.collectAllFiles();
-			const match = files.find((f) => f.id === trajectoryId);
-			if (!match) return null;
 			const raw = await fs.readFile(match.filePath, "utf8");
 			return JSON.parse(raw) as RecordedTrajectory;
-		} catch (err) {
-			this.logger?.warn?.(
-				{ err: (err as Error).message, trajectoryId },
-				"[TrajectoryRecorder] load failed",
-			);
-			return null;
+		} catch (error) {
+			// error-policy:J2 preserve the storage failure while identifying the trajectory
+			throw new ElizaError("Failed to load recorded trajectory", {
+				code: "TRAJECTORY_LOAD_FAILED",
+				cause: error,
+				context: { trajectoryId, filePath: match.filePath },
+			});
 		}
 	}
 
 	async list(
 		opts: ListTrajectoriesOptions = {},
 	): Promise<RecordedTrajectory[]> {
-		try {
-			const files = await this.collectAllFiles();
-			const out: RecordedTrajectory[] = [];
-			for (const file of files) {
-				try {
-					const raw = await fs.readFile(file.filePath, "utf8");
-					const trajectory = JSON.parse(raw) as RecordedTrajectory;
-					if (opts.agentId && trajectory.agentId !== opts.agentId) continue;
-					if (opts.since && trajectory.startedAt < opts.since) continue;
-					out.push(trajectory);
-				} catch (err) {
-					this.logger?.warn?.(
-						{ err: (err as Error).message, filePath: file.filePath },
-						"[TrajectoryRecorder] list: skipping unreadable trajectory file",
-					);
-				}
+		const files = await this.collectAllFiles();
+		const out: RecordedTrajectory[] = [];
+		for (const file of files) {
+			try {
+				const raw = await fs.readFile(file.filePath, "utf8");
+				const trajectory = JSON.parse(raw) as RecordedTrajectory;
+				if (opts.agentId && trajectory.agentId !== opts.agentId) continue;
+				if (opts.since && trajectory.startedAt < opts.since) continue;
+				out.push(trajectory);
+			} catch (error) {
+				// error-policy:J2 identify the corrupt artifact instead of hiding it from list results
+				throw new ElizaError("Failed to read recorded trajectory", {
+					code: "TRAJECTORY_LIST_ENTRY_FAILED",
+					cause: error,
+					context: { trajectoryId: file.id, filePath: file.filePath },
+				});
 			}
-			out.sort((a, b) => b.startedAt - a.startedAt);
-			if (opts.limit && out.length > opts.limit) {
-				return out.slice(0, opts.limit);
-			}
-			return out;
-		} catch (err) {
-			this.logger?.warn?.(
-				{ err: (err as Error).message },
-				"[TrajectoryRecorder] list failed",
-			);
-			return [];
 		}
+		out.sort((a, b) => b.startedAt - a.startedAt);
+		if (opts.limit && out.length > opts.limit) {
+			return out.slice(0, opts.limit);
+		}
+		return out;
 	}
 
 	private queueFlushTrajectory(trajectory: MutableTrajectory): Promise<void> {
@@ -1411,8 +1408,10 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		const stack: string[] = [this.rootDir];
 		try {
 			await fs.access(this.rootDir);
-		} catch {
-			return out;
+		} catch (error) {
+			// error-policy:J4 a recorder with no storage directory has no trajectories yet
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return out;
+			throw error;
 		}
 
 		while (stack.length > 0) {
@@ -1423,8 +1422,13 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 				entries = (await fs.readdir(dir, {
 					withFileTypes: true,
 				})) as import("node:fs").Dirent[];
-			} catch {
-				continue;
+			} catch (error) {
+				// error-policy:J2 preserve directory traversal failures with their path
+				throw new ElizaError("Failed to scan trajectory storage", {
+					code: "TRAJECTORY_DIRECTORY_READ_FAILED",
+					cause: error,
+					context: { directory: dir },
+				});
 			}
 			for (const entry of entries) {
 				const full = path.join(dir, entry.name);

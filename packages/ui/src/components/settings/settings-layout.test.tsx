@@ -1,3 +1,4 @@
+/** Verifies SettingsRow through the package's configured test harness. */
 // @vitest-environment jsdom
 /**
  * Renders the settings-layout primitives (SettingsRow/Group/Stack) and the

@@ -709,6 +709,24 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(onlyA[0]?.trajectoryId).toBe(a);
 	});
 
+	it("surfaces corrupt trajectory artifacts instead of treating them as absent", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const agentDir = path.join(tmpDir, "agent-corrupt");
+		await fs.mkdir(agentDir, { recursive: true });
+		await fs.writeFile(
+			path.join(agentDir, "bad-record.json"),
+			"{broken",
+			"utf8",
+		);
+
+		await expect(recorder.load("bad-record")).rejects.toMatchObject({
+			code: "TRAJECTORY_LOAD_FAILED",
+		});
+		await expect(recorder.list()).rejects.toMatchObject({
+			code: "TRAJECTORY_LIST_ENTRY_FAILED",
+		});
+	});
+
 	it("persists runId/scenarioId passed at the call site (message.ts wiring)", async () => {
 		// message.ts reads ELIZA_LIFEOPS_RUN_ID/SCENARIO_ID and passes them into
 		// startTrajectory; the recorder must round-trip them onto the file so the

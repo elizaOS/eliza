@@ -1,3 +1,4 @@
+/** Verifies SettingsView through the package's configured test harness. */
 // @vitest-environment jsdom
 
 // Renders the real SettingsView against mocked state + stub sections to cover

@@ -1,3 +1,4 @@
+/** Verifies App screen-background fuzz — color invariant across view switching through the package's configured test harness. */
 // @vitest-environment jsdom
 // Companion route-matrix coverage for App's full-shell path. The focused
 // notification ingress assertion lives in App.chat-overlay-first-run.test.tsx.

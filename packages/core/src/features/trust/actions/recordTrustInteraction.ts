@@ -146,6 +146,8 @@ export async function recordTrustInteractionHandler(
 			},
 		};
 	} catch (error) {
+		// error-policy:J1 the action boundary translates persistence failure into
+		// an explicit unsuccessful tool result visible to the model.
 		logger.error(
 			{ error },
 			"[RecordTrustInteraction] Error recording interaction:",

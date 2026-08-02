@@ -1,3 +1,4 @@
+/** Verifies #10700 shell send() → new-chat routing race through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // #10700 — interleaved send-text / send-voice / new-chat lifecycle.

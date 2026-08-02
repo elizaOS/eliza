@@ -141,7 +141,11 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
 		const raw = await fsp.readFile(filePath, "utf-8");
 		return JSON.parse(raw) as T;
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			// error-policy:J4 an absent optional JSON file is an explicit not-found
+			// state; parse and other filesystem failures still propagate.
+			return null;
+		}
 		throw error;
 	}
 }

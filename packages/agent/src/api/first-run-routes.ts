@@ -16,7 +16,12 @@
  * character + voice presets so the frontend hydrates correctly.
  */
 import type http from "node:http";
-import { logger, stringToUuid, type UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
@@ -224,8 +229,8 @@ export interface FirstRunRouteContext {
   hasPersistedFirstRunState: (config: ElizaConfig) => boolean;
   ensureWalletKeysInEnvAndConfig: (config: ElizaConfig) => boolean;
   getWalletAddresses: () => {
-    evmAddress?: string;
-    solanaAddress?: string;
+    evmAddress?: string | null;
+    solanaAddress?: string | null;
   };
   pickRandomNames: (count: number) => string[];
   getStylePresets: (lang: string) => unknown[];
@@ -238,7 +243,9 @@ export interface FirstRunRouteContext {
     req: http.IncomingMessage,
   ) => string;
   normalizeCharacterLanguage: (lang: string | undefined) => string;
-  readUiLanguageHeader: (req: http.IncomingMessage) => string | null;
+  readUiLanguageHeader: (
+    req: http.IncomingMessage,
+  ) => string | null | undefined;
   applyFirstRunVoicePreset: (
     config: ElizaConfig,
     body: Record<string, unknown>,
@@ -249,11 +256,7 @@ export interface FirstRunRouteContext {
 
 export interface FirstRunServerState {
   config: ElizaConfig;
-  runtime: {
-    agentId: string;
-    character: Record<string, unknown> & { name: string };
-    updateAgent: (...args: unknown[]) => Promise<unknown>;
-  } | null;
+  runtime: AgentRuntime | null;
   agentName: string;
   adminEntityId: UUID | null;
   chatUserId: UUID | null;

@@ -9,7 +9,7 @@ earnings, rotate keys, buy + manage custom domains, and the growth surfaces
 context provider.
 
 It is a **client of `@elizaos/cloud-sdk`** (`ElizaCloudClient`), not of the
-cloud backend directly. Read the root `AGENTS.md` for repo-wide rules; this doc
+cloud backend directly. Read the root `CLAUDE.md` for repo-wide rules; this doc
 is specific to the plugin.
 
 ## Auth
@@ -101,7 +101,7 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
 
 ```bash
 bun run --cwd plugins/plugin-cloud-apps test        # bun test __tests__ (SDK boundary faked)
-bun run --cwd plugins/plugin-cloud-apps typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-cloud-apps typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-cloud-apps lint        # biome check --write
 bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
 ```
@@ -147,7 +147,7 @@ bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
 
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests
 
-The binding, repo-wide standard is **[AGENTS.md](../../AGENTS.md)** — read
+The binding, repo-wide standard is **[CLAUDE.md](../../CLAUDE.md)** — read
 it. Nothing here is *done* until a reviewer can confirm it works **without reading
 the code**, from the artifacts you attach: real-LLM trajectories for
 action/prompt changes (`packages/scenario-runner/bin/eliza-scenarios run …`

@@ -1,3 +1,4 @@
+/** Verifies useSlashCommandController — catalog load (#11112) through the package's configured test harness. */
 // @vitest-environment jsdom
 
 /**

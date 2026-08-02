@@ -1,3 +1,4 @@
+/** Verifies useLoadOlderOnScroll — prefetch trigger (#13532) through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Unit coverage for the infinite upward scroll engine (#13532): scroll-anchor

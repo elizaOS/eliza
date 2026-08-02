@@ -96,8 +96,13 @@ export async function migrateStateDir(
 	try {
 		const srcStat = await stat(fromPath);
 		if (!srcStat.isDirectory()) return { migrated: false };
-	} catch {
-		return { migrated: false };
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			// error-policy:J4 an absent source directory is an explicit no-migration
+			// state; other filesystem failures must remain visible.
+			return { migrated: false };
+		}
+		throw error;
 	}
 	await mkdir(toPath, { recursive: true });
 	await cp(fromPath, toPath, {

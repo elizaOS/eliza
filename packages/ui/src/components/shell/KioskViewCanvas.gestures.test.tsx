@@ -1,3 +1,4 @@
+/** Verifies KioskViewCanvas floating-window drag through the package's configured test harness. */
 // @vitest-environment jsdom
 //
 // Drag-gesture contract for the kiosk floating view window (dragging layers).
