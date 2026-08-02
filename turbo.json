@@ -58,7 +58,11 @@
       ]
     },
     "@elizaos/app#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build:i18n",
+        "^build"
+      ],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -187,7 +191,8 @@
       "dependsOn": [
         "@elizaos/contracts#build",
         "@elizaos/logger#build",
-        "@elizaos/cloud-routing#build"
+        "@elizaos/cloud-routing#build",
+        "@elizaos/shared#build:i18n"
       ],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**", "src/i18n/generated/**"],
@@ -491,6 +496,10 @@
     },
     "clean": {
       "cache": false
+    },
+    "@elizaos/shared#build:i18n": {
+      "outputs": ["src/i18n/generated/**"],
+      "inputs": ["src/i18n/keywords/*.keywords.json", "scripts/generate-keywords.mjs"]
     }
   }
 }
