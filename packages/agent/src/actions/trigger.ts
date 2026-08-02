@@ -496,7 +496,10 @@ async function opCreate(
     // "you're already covered" ack pass egress verification.
     return okCommitted(
       "create",
-      "An equivalent trigger already exists.",
+      // Human phrasing: the user's goal is already true, so say that plainly
+      // rather than narrating the dedupe machinery ("an equivalent trigger
+      // exists" reads as an internal record, not an answer).
+      "Already set — you're covered.",
       triggerReceipt("create", String(duplicate.id), {
         key: dedupeKey,
         replayed: true,
