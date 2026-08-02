@@ -3,7 +3,6 @@
   "files": [
     "packages/ui/src/components/chat/InlinePluginConfig.stories.tsx",
     "packages/ui/src/components/chat/MessageContent.stories.tsx",
-    "packages/ui/src/components/chat/ThinkingBlock.stories.tsx",
     "packages/ui/src/components/chat/widgets/ChoiceWidget.stories.tsx",
     "packages/ui/src/components/chat/widgets/agent-provisioning.stories.tsx",
     "packages/ui/src/components/chat/widgets/calendar-upcoming.stories.tsx",
@@ -17,7 +16,6 @@
     "packages/ui/src/components/composites/chat/chat-message-actions.stories.tsx",
     "packages/ui/src/components/composites/chat/chat-reply-pill.stories.tsx",
     "packages/ui/src/components/pages/Launcher.stories.tsx",
-    "packages/ui/src/components/settings/settings-control-primitives.stories.tsx",
     "packages/ui/src/components/shared/SectionNav.stories.tsx",
     "packages/ui/src/components/shared/ViewHeader.stories.tsx",
     "packages/ui/src/components/shared/ViewHeaderSidebarTrigger.stories.tsx",

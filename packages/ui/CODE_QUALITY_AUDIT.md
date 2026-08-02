@@ -48,12 +48,14 @@ Completed in this refactor:
 - Removed generated reports, screenshots, bundled E2E fixtures, unused source
   modules, and obsolete compatibility surfaces that had no consumers.
 - Removed twelve additional unreachable compatibility/barrel modules exposed by
-  the contracted API and the unused `@simplewebauthn/browser` dependency.
+  the contracted API. The old `@simplewebauthn/browser` dependency was removed;
+  a concurrent change then introduced version 13 without a source import, which
+  is the one current Knip issue and should be resolved with that change's owner.
 
 Still staged, with enforcement now in place:
 
 - Story completion. Current coverage is 226 of 388 counted visual components
-  (58.2%), with 24 source-level interaction stories. New debt is rejected.
+  (58.2%), with 22 source-level interaction stories. New debt is rejected.
 - Thirty-one files retain deliberate color data: syntax-highlighting palettes,
   provider logos, deterministic generated-art palettes, charts, sandbox HTML,
   and standalone voice diagnostics. The scanner now parses TypeScript syntax
@@ -131,7 +133,8 @@ Measured from the working tree during this audit:
 - The root barrel exposes the stable primitives plus `cn`; feature consumers
   use explicit package subpaths.
 - The API ratchet records 143 root exports. Knip now uses real entries and
-  reports zero orphaned files or dependency issues.
+  reports no orphaned files; the concurrent unused dependency noted above is
+  its only current issue.
 
 Largest production modules:
 
@@ -298,12 +301,14 @@ subpaths and eventually deprecate this alias barrel.
 
 ### P2 — Story and automated accessibility coverage is incomplete
 
-**Status:** gated. Coverage improved to 54.3%, startup stories were expanded,
-and both story presence and interaction counts may no longer regress.
+**Status:** gated. Coverage improved to 226 of 388 counted components (58.2%),
+startup stories were expanded, and both story presence and interaction counts
+may no longer regress.
 
 **Location:** `scripts/stories-coverage.mjs`
 
-Only 210 of 390 counted components have stories (53.8%). Unit tests are
+The initial scan found 210 of 390 counted components with stories (53.8%). The
+revised classifier and added stories now find 226 of 388 (58.2%). Unit tests are
 numerous, but a missing story means responsive, theme, hover/focus, and a11y
 review is harder to perform systematically.
 
@@ -316,11 +321,12 @@ play interaction where applicable.
 ### P2 — Hard-coded presentation values remain widespread
 
 **Status:** gated. Startup values moved to host-overridable tokens and a
-407-file allowlist rejects new production color debt.
+31-file allowlist rejects new production color debt.
 
-**Locations:** 407 production TS/TSX files contain hex colors after excluding
-tests, stories, generated modules, E2E, and testing helpers. Examples include
-`components/shell/StartupShell.tsx:14-29,123` and cloud brand compositions.
+**Locations:** the original text scanner reported 407 files, including false
+positives such as issue references. The syntax-aware scanner now finds 31
+production TS/TSX files containing deliberate color data after excluding tests,
+stories, generated modules, E2E, and testing helpers.
 
 Not every literal is wrong—canvas shaders, protocol colors, and external brand
 marks legitimately need fixed values—but the count is too high to review by
@@ -515,7 +521,7 @@ Report-writing commands generate these locally only when explicitly requested;
    transport, or presentation unit from each large composition file; retain
    behavioral tests at the old seam.
 2. **Raise visual coverage.** Add stories for the 162 uncovered visual
-   components and interactions beyond the current 24, lowering both baselines
+   components and interactions beyond the current 22, lowering both baselines
    after every batch.
 3. **Eliminate console-warning debt.** Add missing React `act()` boundaries,
    locally assert intentional error-boundary output, and provide scoped jsdom
@@ -538,16 +544,16 @@ Report-writing commands generate these locally only when explicitly requested;
 - `bun run --cwd packages/ui build` — passed. The built JavaScript surface is
   10.7 MB; the generated icon registry fell from roughly 925 KB to 4.3 KB plus
   copied image assets.
-- Strict full package suite with four workers — **877 test files passed; 9,026
-  tests passed and 7 skipped**. A separate baseline-capture run produced the
-  same result and reduced the console-warning baseline to 61 exact
-  fingerprints. The default high-concurrency strict run reached 8,602 passing
-  tests before host worker exhaustion; the bounded rerun proves the package
-  itself is green.
-- Static ratchets — dead code 0, forbidden cross-layer imports 0, hardcoded
+- The final four-worker package run found two invalid interaction stories after
+  **880 test files and 9,068 tests passed**. Those stories were converted to
+  deterministic states; their focused chat/settings smoke rerun passed 232/232.
+  A final full rerun follows this report update. Existing harness warnings are
+  recorded separately rather than treated as healthy output.
+- Static ratchets — forbidden cross-layer imports 0, hardcoded
   color files 31, missing production headers 0, missing test headers 0,
-  stories 226/388 (58.2%), interactive `play` story files 24, and root public
-  API exports 143.
+  stories 226/388 (58.2%), interactive `play` story files 22, and root public
+  API exports 143. Dead-code analysis reports no orphan files and one unused
+  dependency introduced concurrently (`@simplewebauthn/browser`).
 - The final Storybook runtime audit completed all 1,538 retained stories:
   1,482 good, 56 explicitly runtime-dependent, 0 broken, and 0 accessibility
   violations. It executed 38 prepared interactions against 32 expected stories.

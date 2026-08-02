@@ -27,7 +27,6 @@ import {
 } from "../api/ios-local-agent-transport";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
-import { getBootConfig } from "../config/boot-config";
 import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   isMobileLocalAgentIpcBase,
@@ -46,9 +45,6 @@ import {
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
-import { resolveAgentSessionRecovery } from "./agent-session-recovery";
-import { runAgentSessionRecovery } from "./agent-session-recovery-runner";
-import { clearStalePairCredentialsForAgent } from "./cloud-pair-token";
 import {
   asApiLikeError,
   deriveFirstRunResumeFieldsFromConfig,
@@ -416,7 +412,6 @@ export async function runPollingBackend(
   // Guards a one-shot recovery: if the saved server is unreachable we clear it
   // and re-point the client at the local origin exactly once, never in a loop.
   let fellBackToLocal = false;
-  let attemptedCloudAgentSessionRecovery = false;
   // Capacitor-native bounded boot (issue #11030): timestamp of the FIRST
   // failure in the current unbroken failure streak. Reset to null by any
   // successful probe; when the streak outlives the native budget the poll
@@ -532,69 +527,30 @@ export async function runPollingBackend(
     dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
   };
 
-  const tryRecoverStaleCloudAgentSession = async (
-    why: string,
-  ): Promise<boolean> => {
-    if (attemptedCloudAgentSessionRecovery) return false;
+  const advanceManagedCloudAuthRejection = (why: string): boolean => {
     if (!client.hasToken()) return false;
-
     const activeServer =
       ctx?.persistedActiveServer ?? ctx?.restoredActiveServer ?? null;
     if (activeServer?.kind !== "cloud") return false;
 
-    const cloudToken = getCloudAuthToken(client);
-    if (!cloudToken) {
-      attemptedCloudAgentSessionRecovery = true;
-      recoverToAgentSelection(
-        `${why}; no valid Eliza Cloud session token is available`,
-      );
-      return true;
-    }
-
-    const decision = resolveAgentSessionRecovery({
-      reason: "remote_auth_required",
-      activeServer,
-      cloudToken,
-      cloudApiBase:
-        getBootConfig().cloudApiBase?.trim() || "https://elizacloud.ai",
-      alreadyAttempted: false,
-    });
-    if (decision.action !== "re-pair") return false;
-
-    attemptedCloudAgentSessionRecovery = true;
+    // Startup only classifies the rejected adopted bearer and advances far
+    // enough for useAuthStatus to publish `remote_auth_required`. The top-level
+    // useAgentSessionRecovery hook is the single owner of Cloud session
+    // refresh, pairing-token mint, native exchange, persistence, and re-probe.
+    // Running that transaction here as well races the hook and, on native,
+    // could resolve in-process without dispatching any startup transition.
     logger.warn(
       {
         staleBase: client.getBaseUrl(),
-        agentId: decision.agentId,
+        agentId: dedicatedCloudAgentIdFromBase(activeServer.apiBase),
         reason: why,
       },
-      "[startup-phase-poll] saved cloud agent credential was rejected; refreshing it via cloud pairing",
+      "[startup-phase-poll] saved Cloud agent credential was rejected; advancing to the auth recovery gate",
     );
-
-    const result = await runAgentSessionRecovery({
-      cloudApiBase: decision.cloudApiBase,
-      agentId: decision.agentId,
-      cloudToken,
-      consumeRedirectInProcess: isCapacitorNative(),
-      // This path runs only after the saved cloud agent credential was
-      // rejected (`why` above), so a mint refusal on top of that proves the
-      // adopted bearer dead — purge that one agent's persisted credentials so
-      // the next boot cannot re-adopt it (#16666).
-      clearStalePairCredentials: () =>
-        clearStalePairCredentialsForAgent(decision.agentId),
-      onPairedInProcess: (apiToken) => {
-        client.setToken(apiToken);
-      },
-      navigate: (url) => {
-        if (typeof window !== "undefined") {
-          window.location.assign(url);
-        }
-      },
-    });
-
-    if (result.ok) return true;
-
-    recoverToAgentSelection(`${why}; re-pair failed: ${result.message}`);
+    deps.setAuthRequired(false);
+    deps.setFirstRunComplete(true);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
     return true;
   };
 
@@ -820,8 +776,8 @@ export async function runPollingBackend(
       // in startup because every first-run/runtime endpoint returns 401.
       if (auth.required && !auth.authenticated && client.hasToken()) {
         if (
-          await tryRecoverStaleCloudAgentSession(
-            "auth status rejected the saved cloud agent credential",
+          advanceManagedCloudAuthRejection(
+            "auth status rejected the saved Cloud agent credential",
           )
         ) {
           return;
@@ -925,8 +881,8 @@ export async function runPollingBackend(
             const ae = asApiLikeError(err);
             if (ae?.status === 401 && client.hasToken()) {
               if (
-                await tryRecoverStaleCloudAgentSession(
-                  "first-run setup routes rejected the saved cloud agent credential",
+                advanceManagedCloudAuthRejection(
+                  "first-run setup routes rejected the saved Cloud agent credential",
                 )
               ) {
                 return;
@@ -1090,9 +1046,9 @@ export async function runPollingBackend(
       if (
         ae?.status === 401 &&
         client.hasToken() &&
-        (await tryRecoverStaleCloudAgentSession(
-          "backend poll rejected the saved cloud agent credential",
-        ))
+        advanceManagedCloudAuthRejection(
+          "backend poll rejected the saved Cloud agent credential",
+        )
       ) {
         return;
       }
@@ -1130,9 +1086,9 @@ export async function runPollingBackend(
       ) {
         if (
           ae.status === 401 &&
-          (await tryRecoverStaleCloudAgentSession(
-            "runtime routes rejected the saved cloud agent credential",
-          ))
+          advanceManagedCloudAuthRejection(
+            "runtime routes rejected the saved Cloud agent credential",
+          )
         ) {
           return;
         }

@@ -2,6 +2,67 @@
 
 Date: 2026-08-02
 
+## Architecture implementation closeout
+
+The architectural sequence recommended by this audit is now implemented. The
+original findings below are retained as the baseline that motivated the work;
+this section records the resulting production shape.
+
+- `runtime/boot-pipeline.ts` owns the immutable `AgentEnvironment`, validated
+  `BootPolicy`, ordered boot phases, boot-plan characterization, and
+  discriminated local/cloud result. Startup records the phase sequence for
+  first-run, headless, server-only, local-agent, and cloud plans.
+- `runtime/eliza.ts` exposes one `buildInitializedRuntime` construction path for
+  cold boot and restart. Restart constructs the replacement before the state
+  swap, leaves the active runtime intact on construction failure, swaps once,
+  and only then disposes the replaced runtime.
+- `runtime/process-lifecycle.ts` owns idempotent teardown aggregation. Signal
+  installation is an explicit process-boundary adapter used by the CLI through
+  `startElizaProcess`; library startup does not install signals or exit its
+  caller.
+- Startup mechanism reads named policy from the captured environment and no
+  longer enables destructive migrations, clears provider credentials through a
+  heuristic, creates a synthetic server-only keepalive, or hides port exposure,
+  deferred-import, timeout, sampler, and sandbox-heartbeat decisions in local
+  constants. Environment mirroring remains an explicit compatibility adapter
+  for plugins that still consume settings through `process.env`.
+- API hosting is composed from `createServerState`, `createRouteKernel`,
+  `createApiEventHub`, `createServerResources`, and `listenHttpServer`.
+  Resources close idempotently and await their teardown; failed socket binding
+  uses the same cleanup path. Listener fallback has a real TCP collision test.
+- Conversation message deletion/truncation and chat-request idempotency now live
+  in `services/conversation-message-service.ts` and
+  `services/chat-idempotency-service.ts`. Route modules validate/translate the
+  transport contract and no longer carry duplicate implementations of those
+  stateful operations.
+- The unsafe generic route-state `coerce<T>` adapter is gone. `ServerState` is
+  structurally checked against the narrow chat and conversation route contracts
+  by TypeScript at the call sites.
+- Internal ambient workspace declarations and the redundant `Action`
+  augmentation are retired. `third-party-modules.d.ts` contains only genuinely
+  untyped third-party declarations, while the dormant x402 surface is an owned
+  local contract. x402 and E2B are explicit optional peers.
+- Trajectory schema initialization and storage no longer translate database
+  failures into empty/zero/null healthy results. Plugin resolution preserves
+  causes at initialization boundaries and annotates its intentional malformed-
+  input, optional-plugin, and staging-cleanup paths.
+- `smoke:isolated` builds and packs the publishable artifact, resolves the local
+  production workspace dependency closure, installs into a fresh consumer,
+  imports the published `@elizaos/agent/api/server` subpath, starts it without a
+  listener, and closes it. It is usable before workspace packages are published
+  to npm and catches source-only export leaks.
+
+Focused verification after the implementation: package-wide Biome and
+TypeScript checks pass; 20 architecture/service suites pass with 95 tests; the
+production build, 977-file dry-run tarball, isolated install/start smoke, and
+Android mobile bundle/load smoke pass. The complete deterministic agent test
+inventory begins green (batch 1: 167 tests), but the repository currently
+contains an unrelated syntax error in the dirty
+`packages/core/src/services/message.ts` (`executeV5PlannedToolCall` is missing
+its function declaration), which prevents subsequent agent test files from
+being transformed. That core file is outside this package refactor and was not
+overwritten.
+
 ## Executive summary
 
 `@elizaos/agent` typechecks and passes a full-source Biome check, but it has

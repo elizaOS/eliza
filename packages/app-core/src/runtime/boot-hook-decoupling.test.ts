@@ -14,12 +14,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const ELIZA_TS = join(HERE, "eliza.ts");
 const APP_CONTRIBUTORS_TS = join(HERE, "startup", "app-contributors.ts");
-
-function readElizaSource(): string {
-  return readFileSync(ELIZA_TS, "utf8");
-}
+const APP_RUNTIME_HOST_TS = join(HERE, "startup", "app-runtime-host.ts");
 
 /**
  * The body of `repairRuntimeAfterBoot`, where the local-inference boot handler
@@ -39,7 +35,9 @@ function repairRuntimeAfterBootBody(source: string): string {
 
 describe("boot-tail local-inference decoupling (arch-audit #12089 item 18)", () => {
   it("repairRuntimeAfterBoot drains the generic boot-hook channel instead of naming local-inference internals", () => {
-    const body = repairRuntimeAfterBootBody(readElizaSource());
+    const body = repairRuntimeAfterBootBody(
+      readFileSync(APP_RUNTIME_HOST_TS, "utf8"),
+    );
 
     // The migration: the boot tail now drains registry-declared boot hooks.
     expect(body).toContain("runBootHooks(runtime)");

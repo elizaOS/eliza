@@ -1,68 +1,51 @@
 # `polarquant-cpu`
 
-Standalone C library for **PolarQuant Q4** (`block_q4_polar`,
-fork-side `GGML_TYPE_Q4_POLAR=47`). Used as both the Q4 weight quant
-and the V-cache quant in the >8k-context default cache layout.
-Sibling of `qjl-cpu` (K-cache) and `turboquant-cpu` (TBQ V-cache /
-W-cache).
+Standalone C reference and SIMD library for the Q4 PolarQuant block format.
 
-The combined fork that ships QJL + Q4_POLAR + TBQ is
-**`elizaOS/llama.cpp @ v0.1.0-eliza`**, vendored at
-`plugins/plugin-local-inference/native/llama.cpp/`. See `README.md`
-for the algorithm, block format, and SIMD parity numbers.
+## Role
 
-## Source of truth
+This package owns user-space PolarQuant encoding, decoding, dot products, pre-Hadamard-query scoring, optional QJL residual handling, runtime CPU dispatch, and GGUF conversion. It stays independent of the full ggml runtime so parity harnesses and converters can link it directly.
 
-| File | Contains |
-|---|---|
-| `plugins/plugin-local-inference/native/llama.cpp/ggml/include/ggml.h`              | `GGML_TYPE_Q4_POLAR=47` |
-| `plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-common.h`           | `block_q4_polar` (82 B) |
-| `plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu/quants.{c,h}`   | fork CPU implementation |
-| `plugins/plugin-local-inference/native/reference/qjl_polar_ref.{c,h}`              | bit-exact CPU reference |
+PolarQuant is not the shipping Gemma KV-cache default. Current Gemma bundles use stock Q8_0/F16 KV; PolarQuant results apply to explicitly selected or legacy/non-Gemma routes. Backend readiness and allowed scope are defined in `plugins/plugin-local-inference/native/verify/kernel-contract.json`.
 
-This standalone library is the user-space mirror; the GGUF converter
-at `scripts/polarquant_to_gguf.py` packs PolarQuant safetensors
-sidecars into Q4_POLAR=47 GGUF files using the same block layout.
+## Layout
 
-## Current tier coverage (W3 quant-matrix — 2026-05-14)
+```
+include/polarquant/             public block/API contracts
+src/polar_quantize_ref.c       scalar encoder
+src/polar_dequantize_*.c       scalar, AVX2, NEON, and RVV decoders
+src/polar_dot_*.c              scalar and SIMD dot products
+src/polar_dot_preht_*.c        pre-Hadamard-query paths
+src/polar_hadamard.c           Walsh-Hadamard transform
+src/polar_qjl.c                optional residual sign sequence
+src/polar_dispatch.c           runtime feature selection
+scripts/polarquant_to_gguf.py  GGUF converter
+scripts/test_converter.py      converter round trip
+test/                          numerical and SIMD parity
+fork-integration/              reference integration patches
+```
 
-PolarQuant Q4 is the **V-cache default for every shipping Eliza-1
-tier at >8k context** — see
-`packages/shared/src/local-inference/CONTEXT_SCALING.md` table on
-`qjl1_256` K + `q4_polar` V being the shipping default. The
-TurboQuant TBQ3_0 V is the ≤8k-context fallback.
+The packed block size/layout, centroid table, transform normalization, sign seed, and residual semantics are ABI. Change them only with coordinated converter, fork, GPU shader, fixture, and manifest updates.
 
-| Tier              | Q4_POLAR V-cache (default >8k ctx) | Q4_POLAR weights (Q4 path) |
-|-------------------|-----------------------------------:|---------------------------:|
-| eliza-1-2b        | shipped | buildable via `polarquant_apply.py` |
-| eliza-1-4b        | shipped | buildable |
-| eliza-1-9b        | shipped | buildable |
-| eliza-1-27b       | shipped | buildable |
-| eliza-1-27b-256k  | shipped | buildable |
+## Build and verification
 
-The full tier × quant-type matrix (rows = tier, columns = QJL-K +
-PolarQuant-V + TurboQuant-W variants) lives at
-the current artifacts under `packages/training/reports/`.
+```bash
+cmake -B packages/native/plugins/polarquant-cpu/build -S packages/native/plugins/polarquant-cpu
+cmake --build packages/native/plugins/polarquant-cpu/build -j
+ctest --test-dir packages/native/plugins/polarquant-cpu/build --output-on-failure
+python3 packages/native/plugins/polarquant-cpu/scripts/test_converter.py
+make -C plugins/plugin-local-inference/native/verify kernel-contract
+make -C plugins/plugin-local-inference/native/verify reference-test
+```
 
-## Tests + parity
+Use `polar_bench` for throughput diagnosis. Standalone parity does not prove a backend graph route; run the relevant built-fork smoke on real hardware.
 
-- `polar_roundtrip_test` — round-trip a float[128] vs the Python
-  reference's measured per-block error (~9–10%).
-- `polar_dot_test` — dot product against an unquantized fp32 reference.
-- `polar_simd_parity_test` — AVX2 vs scalar over 100 random blocks
-  (max-abs ≤ 5e-7 dequant; rel-err ≤ 2e-7 dot).
-- `polar_preht_*` — pre-Hadamard variants the fused-attn path needs.
-- `make -C plugins/plugin-local-inference/native/verify kernel-contract`
-  lists `polarquant` in `manifestKernelNames` /
-  `requiredRuntimeCapabilityKeys` and reads the JSON fixture this
-  library generates.
-- `scripts/test_converter.py` — synthesise a 128×128 fp32 linear,
-  encode + GGUF-write, read back via `gguf.GGUFReader`.
+## Constraints
 
-## Verification
+- Scalar math is the reference; every SIMD path must preserve its tolerance.
+- Runtime dispatch must never execute unsupported instructions.
+- Malformed blocks and converter metadata are errors, never zero-filled output.
+- Keep the library independent of ggml and keep fork patches narrowly reviewable.
+- Do not make tier-readiness claims here; use the kernel contract and actual artifact manifest.
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../../CLAUDE.md). Run
-the package's relevant build, typecheck, lint, and test commands, then exercise
-the real integration boundary changed by the work. Inspect the produced domain
-artifacts and failure behavior; do not substitute mocked success for the system
-under test.
+Follow the repository-wide verification standard in the [root CLAUDE.md](../../../../CLAUDE.md). Review encoded bytes, round-trip error, dot-product diffs, dispatch selection, and hardware graph evidence.

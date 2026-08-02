@@ -70,7 +70,7 @@ describe("server-only host source wiring (#12180)", () => {
   it("computes skipApiListen from localAgentMode + resolveApiExposePort", () => {
     expect(SERVER_ONLY_HOST_SRC).toContain("resolveApiExposePort");
     expect(SERVER_ONLY_HOST_SRC).toMatch(
-      /const skipApiListen\s*=\s*[\s\S]*options\?\.localAgentMode === true/,
+      /const skipApiListen\s*=\s*[\s\S]*options\.localAgentMode === true/,
     );
     expect(SERVER_ONLY_HOST_SRC).toMatch(
       /resolveApiExposePort\(process\.env\) !== true/,

@@ -1,130 +1,58 @@
-# `doctr-cpp` native runtime
+# `doctr-cpp` native reference runtime
 
-Standalone C library that ports mindee/docTR detection and recognition
-heads to a native CPU reference runtime, replacing plugin-vision's
-transitional `RapidOcrCoordAdapter` with a native hierarchical OCR
-provider once production parity rollout completes.
+Standalone C reference implementation of docTR detection and recognition heads over GGUF artifacts.
 
-This document is the contract the runtime must satisfy. The public ABI
-in `include/doctr/doctr.h` is implemented by `src/doctr_runtime.c`,
-which loads a docTR GGUF and dispatches to pure-C detector and
-recognizer reference forwards. Backend upgrades must stay behind the
-same ABI.
+## Scope and status
 
-## Why this lives here
+This package defines a stable detector/recognizer C ABI and scalar reference runtime. It is not the library currently loaded by `@elizaos/plugin-vision`: that plugin's `src/native/doctr-ffi.ts` targets `plugins/plugin-vision/native/doctr.cpp`. Keep these build paths distinct unless they are intentionally consolidated.
 
-- `plugins/plugin-vision/src/ocr-with-coords.ts` declares the
-  `OcrWithCoordsService` interface that plugin-computeruse consumes via
-  the `registerCoordOcrProvider` slot in
-  `plugins/plugin-computeruse/src/mobile/ocr-provider.ts`.
-- The transitional adapter wraps `RapidOCRService` (PP-OCRv5 over
-  onnxruntime-node). The native docTR runtime keeps OCR on the local
-  inference fabric.
-- docTR's two heads fit the local runtime shape: `db_resnet50` is a
-  fully convolutional DBNet detector, and `crnn_vgg16_bn` is a VGG +
-  BiLSTM + CTC recognizer.
+The package is useful for deterministic converter, loader, ABI, and numerical work. Promotion into plugin-vision requires real document parity and an explicit binding change; the presence of `libdoctr.a` alone is not production readiness.
 
-## Upstream Pin
+## Model and ABI
 
-- Repo: https://github.com/mindee/doctr
-- Pin: `python-doctr==1.0.1`, recorded in
-  `scripts/doctr_to_gguf.py` and the GGUF metadata key
-  `doctr.upstream_pin`.
-- Detection: `db_resnet50`, letterbox input size 1024.
-- Recognition: `crnn_vgg16_bn`, RGB word crops at height 32.
+`scripts/doctr_to_gguf.py` targets docTR `python-doctr==1.0.1`, with `db_resnet50` detection and `crnn_vgg16_bn` recognition. It records and validates the upstream pin and fixed input metadata.
 
-## C ABI
+`include/doctr/doctr.h` defines:
 
-The native CPU runtime implements the ABI in `include/doctr/doctr.h`:
+- session open/close
+- source-image detection boxes
+- word-crop recognition with caller-owned UTF-8/confidence output
+- backend diagnostics
 
-- `doctr_open(const char *gguf_path, doctr_session **out)` loads a GGUF
-  produced by `scripts/doctr_to_gguf.py`, validates
-  `doctr.detector`, `doctr.recognizer`, `doctr.detector_input_size`,
-  `doctr.recognizer_input_h`, and stores the CTC vocab.
-- `doctr_close(doctr_session *)` releases the session and is NULL-safe.
-- `doctr_detect(session, image, out, max_detections, *out_count)` runs
-  db_resnet50 and DBNet postprocess. `-ENOSPC` plus filled
-  `*out_count` means the caller should retry with a larger buffer.
-- `doctr_recognize_word(session, crop, *out)` runs crnn_vgg16_bn and
-  greedy CTC decode into caller-owned UTF-8 and confidence buffers.
-- `doctr_active_backend()` returns `"cpu-ref"` for this scalar runtime;
-  dispatcher-backed builds can report `"ggml-cpu"`, `"ggml-metal"`, or
-  another bound backend name.
+Errors are negative errno-style values. `-ENOSPC` returns the required detection count; missing or invalid models do not become empty OCR.
 
-Coordinates are source-image absolute `{x, y, width, height}` pixels.
-Threading is reentrant across distinct sessions; sharing one session
-across threads is the caller's mutex problem.
-
-Error codes are negative errno-style values: `-ENOENT` for missing
-GGUF, `-EINVAL` for shape or argument mismatch, `-ENOSPC` for
-caller-buffer overflow, and `-ENOMEM` for allocation failure. There are
-no silent fallbacks.
-
-## GGUF Conversion
-
-`scripts/doctr_to_gguf.py` mirrors the layering in
-`packages/native/plugins/polarquant-cpu/scripts/polarquant_to_gguf.py`:
-
-- one writer, written-once metadata block, all tensors packed in a
-  single deterministic pass;
-- locked block-format constants (`DETECTOR_INPUT_SIZE = 1024`,
-  `RECOGNIZER_INPUT_HEIGHT = 32`);
-- pinned upstream package recorded in code and metadata;
-- strict state-dict shape validation so an unsupported upstream rename
-  cannot pass for a working artifact.
-
-Tensors are emitted as fp32. Quantized builds can later layer Q4_POLAR
-or TurboQuant on the recognizer CTC weights and detector 3x3 convs
-without changing the public ABI.
-
-## Runtime Internals
-
-- `src/doctr_runtime.c` owns session lifecycle and ABI dispatch.
-- `src/doctr_gguf.c` is the in-house GGUF v3 reader for fp32 tensors
-  and string/uint32 metadata.
-- `src/doctr_image.c` handles letterbox and crop resize/normalization.
-- `src/doctr_kernels.c` contains scalar Conv2D, BN affine, pooling,
-  transpose-conv, LSTM, linear, sigmoid, and softmax helpers.
-- `src/doctr_detector_ref.c` runs the db_resnet50 + FPN + DBNet
-  probability head and calls `src/doctr_polygon.c` for postprocess.
-- `src/doctr_recognizer_ref.c` runs crnn_vgg16_bn and calls
-  `src/doctr_ctc.c` for greedy decode.
-
-The current runtime is intentionally scalar and reference-oriented.
-ggml/SIMD dispatch can replace internal kernels behind the same
-session and ABI contracts.
-
-## Replacement Of RapidOcrCoordAdapter
-
-Once GGUF fixtures and parity evidence are staged, plugin-vision can
-replace `RapidOcrCoordAdapter` with a `DoctrCoordOcrService` that calls
-this library. The `OcrWithCoordsService` interface, semantic-position
-rule, and registry slot stay unchanged.
-
-## Build
+## Layout
 
 ```
-cmake -B build -S packages/native/plugins/doctr-cpp
-cmake --build build -j
-ctest --test-dir build --output-on-failure
+include/doctr/doctr.h       stable public ABI
+src/doctr_runtime.c         session and dispatch
+src/doctr_gguf.c            GGUF loading and validation
+src/doctr_image.c           image normalization and resizing
+src/doctr_detector_ref.c    DBNet detector reference
+src/doctr_recognizer_ref.c  CRNN/CTC recognizer reference
+src/doctr_polygon.c         detector post-processing
+src/doctr_ctc.c             greedy CTC decoding
+src/doctr_kernels.c         scalar kernels
+scripts/doctr_to_gguf.py    pinned converter
+test/doctr_abi_smoke.c      ABI and error-path smoke
 ```
 
-Output: `libdoctr.a` plus `doctr_abi_smoke`, which verifies public ABI
-linking and error contracts.
+## Build and verification
 
-## Remaining Rollout Work
+```bash
+cmake -B packages/native/plugins/doctr-cpp/build -S packages/native/plugins/doctr-cpp
+cmake --build packages/native/plugins/doctr-cpp/build -j
+ctest --test-dir packages/native/plugins/doctr-cpp/build --output-on-failure
+```
 
-- Add parity fixtures: run the docTR Python reference and this library
-  over real document crops, then assert per-bbox IoU and per-word edit
-  distance thresholds.
-- Stage production GGUF artifacts and wire plugin-vision to the
-  `DoctrCoordOcrService` binding.
-- Add optional ggml / SIMD dispatch behind the same public ABI.
+ABI smoke is necessary but not sufficient. Converter or inference changes require real document/page crops, box IoU comparison, word-level accuracy/edit distance, multilingual and rotated text, malformed images, and missing-model failure checks. If integrating with plugin-vision, run its actual coordinate-OCR and computer-use bridge.
 
-## Verification
+## Constraints
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../../../CLAUDE.md). Run
-the package's relevant build, typecheck, lint, and test commands, then exercise
-the real integration boundary changed by the work. Inspect the produced domain
-artifacts and failure behavior; do not substitute mocked success for the system
-under test.
+- Coordinates are absolute source-image pixels.
+- Distinct sessions are reentrant; shared sessions require caller synchronization.
+- Preserve detector/recognizer metadata and vocabulary ordering across converter and runtime.
+- Backend acceleration remains behind the public ABI.
+- Do not claim replacement of the plugin-vision runtime until its binding and real-artifact tests use this library.
+
+Follow the repository-wide verification standard in the [root CLAUDE.md](../../../../CLAUDE.md). Review recognized text, boxes, confidence, latency, memory, and unavailable states.

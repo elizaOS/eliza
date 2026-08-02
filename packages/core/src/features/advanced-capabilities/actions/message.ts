@@ -726,9 +726,18 @@ async function resolveOptionalTarget(
 				};
 			}
 		} catch (error) {
+			// error-policy:J1 Target resolution is an action boundary; return an
+			// explicit failure instead of sending to the unresolved query.
 			logger.warn(
 				`[MESSAGE/${op}] resolveTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.resolveOptionalTarget", error, {
+				op,
+				source: connector.source,
+			});
+			return {
+				error: opErrorWrap(op, error),
+			};
 		}
 	}
 	return { target: explicit.target };
@@ -1122,6 +1131,7 @@ function normalizeHookCandidate(
 }
 
 async function collectHookTargets(
+	runtime: IAgentRuntime,
 	connector: ConnectorWithHooks,
 	query: string | undefined,
 	context: MessageConnectorQueryContext,
@@ -1130,6 +1140,7 @@ async function collectHookTargets(
 	accountId?: string,
 ): Promise<SendCandidate[]> {
 	const candidates: SendCandidate[] = [];
+	let firstFailure: unknown;
 
 	if (query && connector.resolveTargets) {
 		try {
@@ -1148,9 +1159,15 @@ async function collectHookTargets(
 				if (candidate) candidates.push(candidate);
 			}
 		} catch (error) {
+			// error-policy:J4 Other connector discovery hooks may still resolve
+			// the target; report this unavailable capability before continuing.
+			firstFailure ??= error;
 			logger.warn(
 				`[MESSAGE/send] resolveTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.resolveTargets", error, {
+				source: connector.source,
+			});
 		}
 	}
 
@@ -1171,9 +1188,15 @@ async function collectHookTargets(
 				if (candidate) candidates.push(candidate);
 			}
 		} catch (error) {
+			// error-policy:J4 Other connector discovery hooks may still resolve
+			// the target; report this unavailable capability before continuing.
+			firstFailure ??= error;
 			logger.warn(
 				`[MESSAGE/send] listRecentTargets failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.listRecentTargets", error, {
+				source: connector.source,
+			});
 		}
 	}
 
@@ -1200,12 +1223,21 @@ async function collectHookTargets(
 				if (candidate) candidates.push(candidate);
 			}
 		} catch (error) {
+			// error-policy:J4 Other connector discovery hooks may still resolve
+			// the target; report this unavailable capability before continuing.
+			firstFailure ??= error;
 			logger.warn(
 				`[MESSAGE/send] listRooms failed for ${connector.source}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.listRooms", error, {
+				source: connector.source,
+			});
 		}
 	}
 
+	if (candidates.length === 0 && firstFailure !== undefined) {
+		throw firstFailure;
+	}
 	return candidates;
 }
 
@@ -1548,6 +1580,7 @@ async function resolveSendTarget(
 		);
 		candidates.push(
 			...(await collectHookTargets(
+				runtime,
 				connector,
 				params.target,
 				context,
@@ -1987,10 +2020,16 @@ async function ensureSendAccountAllowed(
 	try {
 		account = await manager.getAccount(source, accountId);
 	} catch (error) {
+		// error-policy:J4 Account-policy resolution fails closed and returns a
+		// distinct refusal rather than allowing an unverified owner send.
 		// Fail CLOSED: a lookup failure must never silently bypass the gate. If we
 		// cannot resolve the account, we cannot prove it is a frictionless
 		// agent/`open` account, so we refuse the "act as the user" send rather than
 		// risk firing it ungated on what may be an unverified owner account.
+		runtime.reportError("MESSAGE.ensureSendAccountAllowed", error, {
+			source,
+			accountId,
+		});
 		return opFailure(
 			"send",
 			"OWNER_BINDING_REQUIRED",
@@ -2488,6 +2527,7 @@ async function handleReadChannel(
 				{ source: selectedConnector.source, memories },
 			);
 		} catch (error) {
+			// error-policy:J1 Connector failures become structured action failures.
 			return opErrorWrap("read_channel", error);
 		}
 	}
@@ -2603,6 +2643,7 @@ async function handleReadChannel(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("read_channel", error);
 	}
 }
@@ -2706,6 +2747,7 @@ async function handleReadWithContact(
 			person = candidates[0] ?? null;
 		}
 	} catch (error) {
+		// error-policy:J1 Relationship lookup failures become structured action failures.
 		return opErrorWrap("read_with_contact", error);
 	}
 
@@ -2730,6 +2772,7 @@ async function handleReadWithContact(
 		lastMessageAt: string | null;
 	}> = [];
 	let totalMessages = 0;
+	let scanFailures = 0;
 
 	for (const id of entityIds) {
 		try {
@@ -2762,9 +2805,13 @@ async function handleReadWithContact(
 				totalMessages += memories.length;
 			}
 		} catch (error) {
+			// error-policy:J4 Other linked identities remain independently
+			// searchable; expose this response as partial and report the failure.
+			scanFailures++;
 			logger.debug(
 				`[MESSAGE/read_with_contact] room scan failed for entity ${id}: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.readWithContact", error, { entityId: id });
 		}
 	}
 
@@ -2777,12 +2824,16 @@ async function handleReadWithContact(
 
 	return opSuccess(
 		"read_with_contact",
-		`Conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages.`,
+		scanFailures > 0
+			? `Partial conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages; ${scanFailures} linked identity scan(s) failed.`
+			: `Conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages.`,
 		{
 			personName: person.displayName,
 			primaryEntityId: person.primaryEntityId,
 			conversations,
 			totalMessages,
+			availability: scanFailures > 0 ? "partial" : "complete",
+			scanFailures,
 			platforms: [...new Set(conversations.map((c) => c.platform))],
 		},
 	);
@@ -2823,11 +2874,12 @@ const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
 };
 
 function ensureConversationSearchCategory(runtime: IAgentRuntime): void {
-	try {
-		runtime.getSearchCategory(CONVERSATION_SEARCH_CATEGORY.category, {
-			includeDisabled: true,
-		});
-	} catch {
+	const registered = runtime
+		.getSearchCategories({ includeDisabled: true })
+		.some(
+			(category) => category.category === CONVERSATION_SEARCH_CATEGORY.category,
+		);
+	if (!registered) {
 		runtime.registerSearchCategory(CONVERSATION_SEARCH_CATEGORY);
 	}
 }
@@ -2932,6 +2984,7 @@ async function handleSearch(
 					{ source: connector.source, query, memories, mode: "connector" },
 				);
 			} catch (error) {
+				// error-policy:J1 Connector failures become structured action failures.
 				return opErrorWrap("search", error);
 			}
 		}
@@ -2958,11 +3011,15 @@ async function handleSearch(
 		try {
 			requester = await buildAccessContext(runtime, message);
 		} catch (error) {
+			// error-policy:J4 Access lookup fails closed to requester-only scope.
 			// Role/world lookup failure degrades to requester-only access, which
 			// denies elevated scopes instead of widening recall.
 			logger.warn(
 				`[MESSAGE/search] access context resolution failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
+			runtime.reportError("MESSAGE.searchAccessContext", error, {
+				entityId: message.entityId,
+			});
 			requester = {
 				requesterEntityId: message.entityId,
 				source:
@@ -3008,6 +3065,7 @@ async function handleSearch(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Search failures become structured action failures.
 		return opErrorWrap("search", error);
 	}
 }
@@ -3083,6 +3141,7 @@ async function handleListChannels(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("list_channels", error);
 	}
 }
@@ -3142,6 +3201,7 @@ async function handleListServers(
 			},
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("list_servers", error);
 	}
 }
@@ -3300,6 +3360,7 @@ async function handleJoinLeave(
 			source: connector.source,
 		});
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap(op, error);
 	}
 }
@@ -3436,6 +3497,7 @@ async function handleMessageMutation(
 			target,
 		});
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap(op, error);
 	}
 }
@@ -3492,6 +3554,7 @@ async function handleGetUser(
 			{ source: connector.source, user },
 		);
 	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("get_user", error);
 	}
 }
