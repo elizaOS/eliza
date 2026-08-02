@@ -3234,6 +3234,109 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
+	it("renders the ambient-turn policy in the planner prompt on an unaddressed group turn and records planner IGNORE as a terminal decision", async () => {
+		// Live incident tj-f637475edcb7bd: an unaddressed group message ("what
+		// was it for?" — humans talking to each other) reached the planner,
+		// which produced no tool activity and shipped the filler completion "I
+		// handled the available step." as the terminal REPLY. The ambient-turn
+		// policy is conditional on the structural classifier only (channel type
+		// + addressing + source metadata, never message text) and instructs the
+		// planner to end an empty ambient turn with IGNORE. A planner IGNORE on
+		// such a turn must then surface as a terminal decision (mirroring how a
+		// Stage-1 IGNORE records) rather than an unrecorded mode-"none" result.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ambient chatter, but check whether tools have anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{
+				text: "",
+				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000008" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		const stage1Params = calls[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const plannerParams = calls[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		const plannerContent = (plannerParams.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(plannerContent).toContain("ambient_turn_policy:");
+		expect(plannerContent).toContain("end the turn by calling the IGNORE tool");
+		expect(plannerContent).toContain(
+			"Never send a status update, a progress note, or a description of your own process",
+		);
+		// The policy is planner-scoped: Stage 1 already has the group-triage
+		// tier for ambient turns and its prompt stays byte-identical.
+		expect(stage1Content).not.toContain("ambient_turn_policy");
+		// Deliberate planner silence records as a terminal IGNORE — the same
+		// observable outcome a Stage-1 IGNORE gets — not a silent drop.
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
+		// Addressed branch pin (same pattern as the memory-surface branch
+		// tests): a platform mention makes the turn addressed, so the
+		// ambient-turn policy must not render and a planner IGNORE keeps
+		// today's planned-reply "none" outcome instead of the ambient terminal
+		// conversion.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Addressed follow-up; see if the planner has anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{
+				text: "",
+				toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000009" as UUID,
+		});
+
+		const calls = useModelCalls(runtime);
+		const plannerParams = calls[1]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const plannerContent = (plannerParams.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(plannerContent).not.toContain("ambient_turn_policy");
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+			expect(result.result.mode).toBe("none");
+		}
+	});
+
 	it("current_turn_boundary answers facts stated in the current message itself", async () => {
 		// Live regression: on 2026-05-28 the bot was asked "i told you my
 		// favorite color is teal, whats my favorite color?" and replied "I
