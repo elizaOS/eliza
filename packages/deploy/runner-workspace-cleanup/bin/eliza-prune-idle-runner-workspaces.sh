@@ -32,6 +32,7 @@ TOOL="${PRUNE_TOOL:?PRUNE_TOOL is required}"
 
 pruned=0
 skipped_active=0
+skipped_undeterminable=0
 failed=0
 
 for runner_dir in "$ROOT"/*/; do
@@ -41,17 +42,40 @@ for runner_dir in "$ROOT"/*/; do
 
   # Resolve this directory's runner unit. Installations name the unit after the
   # registered agent (`.runner` -> agentName), which is what systemd knows.
-  # Every stage tolerates a miss: no match means orphaned, not an error.
+  #
+  # A miss is tolerated, but "this runner does not exist" and "I could not tell
+  # what this runner is" are NOT the same answer, and only the first one may
+  # reach a delete. `.runner` present-but-unreadable, a truncated write during
+  # registration or self-update, or a schema change to agentName all yield an
+  # empty agent_name; treating that as orphaned prunes a possibly-busy runner
+  # with --allow-active, which is how a live job loses its workspace mid-step.
+  # Absent => orphaned (prunable). Unparseable => undeterminable (never pruned).
   agent_name=""
-  if [[ -r "${runner_dir}.runner" ]]; then
-    agent_name="$(sed -n 's/.*"agentName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${runner_dir}.runner" | head -1 || true)"
+  undeterminable=""
+  if [[ -e "${runner_dir}.runner" ]]; then
+    if [[ -r "${runner_dir}.runner" ]]; then
+      agent_name="$(sed -n 's/.*"agentName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "${runner_dir}.runner" | head -1 || true)"
+      [[ -n "$agent_name" ]] || undeterminable="unparseable .runner (no agentName)"
+    else
+      undeterminable="unreadable .runner"
+    fi
   fi
 
+  if [[ -n "$undeterminable" ]]; then
+    echo "skip $name — $undeterminable; cannot prove this runner is idle, refusing to prune"
+    skipped_undeterminable=$((skipped_undeterminable + 1))
+    continue
+  fi
+
+  # Exact match on the unit suffix. A substring match resolves agent `runner-1`
+  # to unit `...runner-10` (list-units order, head -1), so the is-active check
+  # below would consult the WRONG runner and prune a busy one as idle.
   unit=""
   if [[ -n "$agent_name" ]]; then
     match="$(systemctl list-units 'actions.runner.*' --all --no-legend --plain 2>/dev/null \
-      | awk '{print $1}' | sed 's/^actions\.runner\.//' | grep -F -- "$agent_name" | head -1 || true)"
-    [[ -n "$match" ]] && unit="actions.runner.${match}"
+      | awk '{print $1}' | sed -e 's/^actions\.runner\.//' -e 's/\.service$//' \
+      | awk -v want="$agent_name" -F. '$NF == want {print; exit}' || true)"
+    [[ -n "$match" ]] && unit="actions.runner.${match}.service"
   fi
 
   if [[ -n "$unit" ]] && systemctl is-active --quiet "$unit" 2>/dev/null; then
@@ -62,8 +86,9 @@ for runner_dir in "$ROOT"/*/; do
   fi
 
   if [[ -z "$unit" ]]; then
-    # No resolvable unit: an orphaned/removed runner directory. Safe to reclaim
-    # — nothing can schedule work into it.
+    # No `.runner` at all, or a registered agent no unit answers to: an
+    # orphaned/removed runner directory. Safe to reclaim — nothing can schedule
+    # work into it.
     echo "prune $name — no runner unit resolves to it (orphaned)"
   else
     echo "prune $name — runner unit inactive ($unit)"
@@ -86,7 +111,7 @@ for runner_dir in "$ROOT"/*/; do
   fi
 done
 
-echo "idle-prune done: pruned=$pruned skipped_active=$skipped_active failed=$failed"
+echo "idle-prune done: pruned=$pruned skipped_active=$skipped_active skipped_undeterminable=$skipped_undeterminable failed=$failed"
 # Surface degraded sweeps to systemd without having let one bad runner stop
 # the others.
 [[ "$failed" -eq 0 ]] || exit 1

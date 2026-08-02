@@ -228,4 +228,94 @@ test ! -e "$SWEEP_ROOT/runner-b/_work/stale-repo" \
   || fail "second orphaned runner was not pruned — the sweep stopped at the first (set -e regression)"
 grep -q "pruned=2" "$TMP_DIR/sweep.log" || fail "sweep did not report pruned=2: $(cat "$TMP_DIR/sweep.log")"
 
+
+# 11. BEHAVIORAL: a runner whose `.runner` exists but cannot be parsed is
+#     UNDETERMINABLE, not orphaned. The helper passes --allow-active on the
+#     prune path, so classifying "I could not tell" as "nothing can be running
+#     here" is what lets a live job lose its workspace mid-step. Absent
+#     `.runner` must still prune (the #15398 orphan case) in the same sweep, so
+#     one run proves both halves.
+FAILOPEN_ROOT="$TMP_DIR/failopen-root"
+for r in unreadable-runner unparseable-runner truly-orphaned; do
+  mkdir -p "$FAILOPEN_ROOT/$r/_work/stale-repo"
+  echo payload > "$FAILOPEN_ROOT/$r/_work/stale-repo/file"
+  node -e '
+    const fs = require("node:fs");
+    const when = new Date(Date.now() - 48 * 3600 * 1000);
+    fs.utimesSync(process.argv[1], when, when);
+  ' "$FAILOPEN_ROOT/$r/_work/stale-repo"
+done
+printf '{"agentName": "unreadable-runner"}\n' > "$FAILOPEN_ROOT/unreadable-runner/.runner"
+chmod 000 "$FAILOPEN_ROOT/unreadable-runner/.runner"
+printf '{"poolId": 3}\n' > "$FAILOPEN_ROOT/unparseable-runner/.runner"
+# truly-orphaned deliberately has no .runner at all.
+
+PATH="$STUB_DIR:$PATH" \
+RUNNER_WORKSPACE_ROOT="$FAILOPEN_ROOT" \
+PRUNE_MIN_AGE_HOURS=6 \
+BUN_BIN="$BUN_BIN" \
+PRUNE_TOOL="$TOOL_SRC" \
+  bash "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" >"$TMP_DIR/failopen.log" 2>&1 \
+  || fail "sweep exited nonzero on the undeterminable mix: $(cat "$TMP_DIR/failopen.log")"
+chmod 644 "$FAILOPEN_ROOT/unreadable-runner/.runner"
+
+test -e "$FAILOPEN_ROOT/unreadable-runner/_work/stale-repo" \
+  || fail "unreadable .runner was pruned — the helper cannot prove that runner is idle and must refuse"
+test -e "$FAILOPEN_ROOT/unparseable-runner/_work/stale-repo" \
+  || fail "unparseable .runner (no agentName) was pruned — same fail-open path"
+test ! -e "$FAILOPEN_ROOT/truly-orphaned/_work/stale-repo" \
+  || fail "runner with no .runner at all was NOT pruned — the #15398 orphan case must still work"
+grep -q "skipped_undeterminable=2" "$TMP_DIR/failopen.log" \
+  || fail "sweep did not report skipped_undeterminable=2: $(cat "$TMP_DIR/failopen.log")"
+grep -q "pruned=1" "$TMP_DIR/failopen.log" \
+  || fail "sweep did not prune exactly the one genuine orphan: $(cat "$TMP_DIR/failopen.log")"
+
+# 12. BEHAVIORAL: unit resolution must match the agent name exactly. With a
+#     substring match, agent `runner-1` resolves to unit `...runner-10` first
+#     (list-units order + head -1), so the is-active probe reads the WRONG
+#     runner: an idle runner-10 makes a BUSY runner-1 look prunable.
+COLLIDE_STUB="$TMP_DIR/stub-collide"
+mkdir -p "$COLLIDE_STUB"
+cat > "$COLLIDE_STUB/systemctl" <<'EOF_STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-units)
+    # runner-10 first on purpose: a substring match takes it for `runner-1`.
+    echo "actions.runner.acme-org.runner-10.service loaded active running"
+    echo "actions.runner.acme-org.runner-1.service loaded active running"
+    exit 0 ;;
+  is-active)
+    # Only runner-1 is busy; runner-10 is idle.
+    [[ "${3:-}" == *".runner-1.service" ]] && exit 0
+    exit 3 ;;
+  *) exit 0 ;;
+esac
+EOF_STUB
+chmod +x "$COLLIDE_STUB/systemctl"
+
+COLLIDE_ROOT="$TMP_DIR/collide-root"
+for r in runner-1 runner-10; do
+  mkdir -p "$COLLIDE_ROOT/$r/_work/stale-repo"
+  echo payload > "$COLLIDE_ROOT/$r/_work/stale-repo/file"
+  printf '{"agentName": "%s"}\n' "$r" > "$COLLIDE_ROOT/$r/.runner"
+  node -e '
+    const fs = require("node:fs");
+    const when = new Date(Date.now() - 48 * 3600 * 1000);
+    fs.utimesSync(process.argv[1], when, when);
+  ' "$COLLIDE_ROOT/$r/_work/stale-repo"
+done
+
+PATH="$COLLIDE_STUB:$PATH" \
+RUNNER_WORKSPACE_ROOT="$COLLIDE_ROOT" \
+PRUNE_MIN_AGE_HOURS=6 \
+BUN_BIN="$BUN_BIN" \
+PRUNE_TOOL="$TOOL_SRC" \
+  bash "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" >"$TMP_DIR/collide.log" 2>&1 \
+  || fail "sweep exited nonzero on the prefix-collision pair: $(cat "$TMP_DIR/collide.log")"
+
+test -e "$COLLIDE_ROOT/runner-1/_work/stale-repo" \
+  || fail "BUSY runner-1 was pruned — its unit resolved to the idle runner-10 by substring match"
+test ! -e "$COLLIDE_ROOT/runner-10/_work/stale-repo" \
+  || fail "idle runner-10 was not pruned"
+
 echo "runner-workspace-cleanup smoke OK (behavioral)"
