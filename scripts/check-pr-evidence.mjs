@@ -325,14 +325,12 @@ export function hasEvidenceFileReference(text) {
   return trustedArtifacts(text).some(artifactCanBeEvidenceFile);
 }
 
-// `\b` matches after a hyphen and a slash, so a marker welded into an
-// identifier — `audit:test-integrity:no-vi-mocks`, `fixtures/setup.ts` — used to
-// void an otherwise genuine transcript and push real evidence out of the PR.
-// Requiring the marker to stand alone keeps the intent (evidence produced by a
-// mocked or placeholder run is still rejected) without punishing output that
-// merely names such a command or path.
+// `\b` treats punctuation inside commands, paths, and member names as a word
+// boundary. A marker must therefore be separated from an identifier on both
+// sides; a dot only joins the following token when it actually starts an
+// extension/member, so sentence-ending punctuation remains detectable.
 const NON_REAL_EVIDENCE_RE =
-  /(?<![\w\/-])(?:placeholder|example output|logs? here|todo|tbd|fabricated|invented|fake|mocks?|fixtures?|synthetic|dummy)(?![\w\/-])/i;
+  /(?<![\w/\\@:.-])(?:placeholder|example output|logs? here|todo|tbd|fabricated|invented|fake|mocks?|fixtures?|synthetic|dummy)(?![\w/\\@-]|:[\w-]|\.[\w-])/i;
 
 function hasSubstantiveInlineLog(text) {
   const source = String(text ?? "");
@@ -2442,6 +2440,8 @@ export function runSelfTest() {
       "$ bun run audit:test-integrity:no-vi-mocks",
       "packages/scripts/lint-no-vi-mocks.mjs:12: const json = vi.fn();",
       "running fixtures/setup.ts against the real adapter",
+      "loaded fixture.json through object.mock and test:mocks",
+      String.raw`opened C:\fixtures\setup.ts and todo.md`,
       "exit 0 after 41s",
       "```",
     ].join("\n");
@@ -2459,6 +2459,7 @@ export function runSelfTest() {
       "this run uses mocks instead of the real service",
       "TODO: logs here",
       "the remaining output is a placeholder pending a real capture run",
+      "the artifact is fake.",
       "```",
     ].join("\n");
     const fabricated = evaluatePrEvidence(
