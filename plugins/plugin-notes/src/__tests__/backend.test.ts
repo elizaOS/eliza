@@ -18,7 +18,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { interact, serverInteract } from "../interact.js";
+import {
+  interact,
+  type NotesInteractResult,
+  serverInteract,
+} from "../interact.js";
 import { notesRoutes } from "../routes.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
 import { NotesStore, notesStateFilePath } from "../store.js";
@@ -59,6 +63,31 @@ function clock(start = "2026-07-16T12:00:00.000Z"): () => Date {
 function idFactory(): () => string {
   let next = 1;
   return () => `note-test-${next++}`;
+}
+
+function expectAppliedMutationReceipt(
+  result: NotesInteractResult,
+  capability: string,
+  resource: { kind: string; id: string },
+): void {
+  if (!result.state) throw new Error("Mutation result state is required.");
+  expect(result.effectReceipts).toHaveLength(1);
+  const receipt = result.effectReceipts?.[0];
+  if (!receipt) throw new Error("Mutation effect receipt is required.");
+  expect(receipt).toMatchObject({
+    operation: `notes.${capability}`,
+    resource: { ...resource, version: String(result.state.revision) },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: `notes:revision:${result.state.revision}`,
+    },
+  });
+  expect(Number.isNaN(Date.parse(receipt.observedAt))).toBe(false);
+  expect(receipt.commit.committedAt).toBe(receipt.observedAt);
+  expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
 }
 
 class ConnectorSetupTestService extends Service {
@@ -388,6 +417,10 @@ describe("Notes capabilities", () => {
     expect(createdNote).toMatchObject({ success: true });
     const noteId = service.listNotes()[0]?.id;
     if (!noteId) throw new Error("Created note id is required.");
+    expectAppliedMutationReceipt(createdNote, "create-note", {
+      kind: "notes.note",
+      id: noteId,
+    });
 
     const updatedNote = await interact(
       "update-note",
@@ -395,16 +428,28 @@ describe("Notes capabilities", () => {
       service,
     );
     expect(updatedNote).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(updatedNote, "update-note", {
+      kind: "notes.note",
+      id: noteId,
+    });
     expect(service.getNote(noteId)).toMatchObject({
       body: "Polished draft",
       color: "green",
     });
-    await expect(
-      interact("get-note", { id: noteId }, service),
-    ).resolves.toMatchObject({ success: true });
-    await expect(
-      interact("delete-note", { query: "polished" }, service),
-    ).resolves.toMatchObject({ success: true });
+    const readNote = await interact("get-note", { id: noteId }, service);
+    expect(readNote).toMatchObject({ success: true });
+    expect(readNote.effectReceipts).toBeUndefined();
+    expect(readNote.userFacingEffectReceiptIds).toBeUndefined();
+    const deletedNote = await interact(
+      "delete-note",
+      { query: "polished" },
+      service,
+    );
+    expect(deletedNote).toMatchObject({ success: true });
+    expectAppliedMutationReceipt(deletedNote, "delete-note", {
+      kind: "notes.note",
+      id: noteId,
+    });
     expect(service.listNotes()).toEqual([]);
 
     await interact(
@@ -417,9 +462,14 @@ describe("Notes capabilities", () => {
       { title: "Two", body: "", color: "rose" },
       service,
     );
-    await expect(interact("clear-notes", {}, service)).resolves.toMatchObject({
+    const clearedNotes = await interact("clear-notes", {}, service);
+    expect(clearedNotes).toMatchObject({
       success: true,
       data: { cleared: 2 },
+    });
+    expectAppliedMutationReceipt(clearedNotes, "clear-notes", {
+      kind: "notes.note-collection",
+      id: "notes",
     });
   });
 
