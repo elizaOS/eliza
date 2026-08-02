@@ -373,22 +373,6 @@ remote_shell_send() {
     printf '%s\n' "$1" >&"${REMOTE_SHELL_FD}"
 }
 
-queue_remote_prepare_login() {
-    local request_id="$1"
-    local prepare_command
-
-    # `login` bypasses the interactive Welcome Screen. Pin its persistence
-    # choice to the normal unchecked state before releasing GDM so the
-    # unattended smoke does not open a persistence wizard that intentionally
-    # suspends all elizaOS user services.
-    prepare_command="setting=/var/lib/gdm3/settings/transient/tails.create-persistence; install -d -o Debian-gdm -g Debian-gdm -m 0700 \"\$(dirname \"\${setting}\")\"; if [ -r \"\${setting}\" ]; then before=\$(tr '\\n' ' ' <\"\${setting}\"); else before=absent; fi; printf 'CREATE_PERSISTENT_STORAGE=false\\n' >\"\${setting}\"; chown Debian-gdm:Debian-gdm \"\${setting}\"; chmod 0600 \"\${setting}\"; printf 'ELIZAOS_ISO_SMOKE_PRELOGIN persistence_before=%s persistence_forced=false' \"\${before}\""
-    python3 -c \
-        'import json, sys; print(json.dumps([int(sys.argv[1]), "sh_call", "root", {}, sys.argv[2]]))' \
-        "${request_id}" \
-        "${prepare_command}" \
-        >&"${REMOTE_SHELL_FD}"
-}
-
 queue_remote_signal_ready() {
     local request_id="$1"
 
@@ -480,7 +464,10 @@ launch_firmware_vm() {
         -nic "user,model=virtio-net-pci"
         -device virtio-rng-pci
         -display none
-        -vga std
+        # Tails' automated-test domain uses virtio video. The legacy std VGA
+        # device forces GNOME onto the bochs/llvmpipe path, which is unstable
+        # under QEMU's software-emulation fallback.
+        -device virtio-vga
         -serial "pipe:${serial_prefix}"
         -monitor "pipe:${monitor_prefix}"
         -device virtio-serial-pci
@@ -540,8 +527,7 @@ launch_firmware_vm() {
     "${QEMU_BIN}" "${qemu_args[@]}" >"${stdout_log}" 2>"${stderr_log}" &
     QEMU_PID=$!
     boot_selected_entry_with_serial "${firmware}"
-    queue_remote_prepare_login 1
-    queue_remote_signal_ready 2
+    queue_remote_signal_ready 1
 }
 
 prove_guest_readiness() {
@@ -550,10 +536,9 @@ prove_guest_readiness() {
     local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
     local marker="ELIZAOS_ISO_SMOKE_READY firmware=${firmware} service=active health=ready"
     local start_seconds="${SECONDS}"
-    local preparation_acked=0
     local signal_acked=0
     local probe_in_flight=0
-    local probe_id=2
+    local probe_id=1
     local weak_seen=0
 
     while ((SECONDS - start_seconds < BOOT_TIMEOUT_SECONDS)); do
@@ -566,20 +551,11 @@ prove_guest_readiness() {
             weak_seen=1
         fi
 
-        if [ "${preparation_acked}" = "0" ]; then
+        if [ "${signal_acked}" = "0" ]; then
             if grep -Eq '^\[1, "error"' "${remote_shell_log}" 2>/dev/null; then
-                fail "${firmware} Tails remote shell rejected pre-login setup"
-            fi
-            if grep -Eq '^\[1, "success"' "${remote_shell_log}" 2>/dev/null; then
-                preparation_acked=1
-            fi
-        fi
-
-        if [ "${preparation_acked}" = "1" ] && [ "${signal_acked}" = "0" ]; then
-            if grep -Eq '^\[2, "error"' "${remote_shell_log}" 2>/dev/null; then
                 fail "${firmware} Tails remote shell rejected signal_ready"
             fi
-            if grep -Eq '^\[2, "success"' "${remote_shell_log}" 2>/dev/null; then
+            if grep -Eq '^\[1, "success"' "${remote_shell_log}" 2>/dev/null; then
                 signal_acked=1
             fi
         fi

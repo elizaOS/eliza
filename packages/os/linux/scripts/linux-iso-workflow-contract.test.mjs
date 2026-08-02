@@ -65,6 +65,15 @@ test("probes the canonical first-run API from the staged runtime", () => {
   assert.doesNotMatch(runtimeSmokeSource, /\/api\/onboarding\//);
 });
 
+test("enables hardware virtualization for the real ISO boot when available", () => {
+  const workflow = parseLinuxIsoWorkflow(workflowSource);
+  const smoke = stepNamed(
+    buildJob(workflow),
+    "Smoke test ISO through SeaBIOS and OVMF",
+  );
+  assert.match(smoke.run, /sudo chmod 0666 \/dev\/kvm/);
+});
+
 test("rejects an unreachable ISO workflow contract", () => {
   const source = validationWorkflowSource.replace(
     '      - ".github/workflows/build-linux-iso.yml"\n',

@@ -187,6 +187,11 @@ jobs:
           set -euo pipefail
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends ovmf qemu-system-x86 seabios xorriso
+          # Hosted runners expose KVM root-only; hardware acceleration avoids
+          # TCG-specific graphics failures while retaining QEMU's TCG fallback.
+          if [ -e /dev/kvm ]; then
+            sudo chmod 0666 /dev/kvm
+          fi
           bash "${LINUX_DIR}/scripts/smoke-test-iso.sh" "${{ steps.iso.outputs.path }}"
 
       - name: Upload ISO boot diagnostics

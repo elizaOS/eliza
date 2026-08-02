@@ -95,13 +95,9 @@ case "${FAKE_QEMU_MODE:-ready}" in
         exec 5>"${journal_prefix}.out"
         printf 'Linux version fixture\namnesia login: ' >&7
         printf 'fixture journal for %s\n' "${firmware}" >&5
-        IFS= read -r prepare_request <"${remote_shell_prefix}.in"
-        [[ "${prepare_request}" == *'"sh_call", "root"'* ]] || exit 65
-        [[ "${prepare_request}" == *"CREATE_PERSISTENT_STORAGE=false"* ]] || exit 66
-        printf '[1, "success", 0, "ELIZAOS_ISO_SMOKE_PRELOGIN persistence_before=absent persistence_forced=false", ""]\n' >&6
         IFS= read -r signal_request <"${remote_shell_prefix}.in"
-        [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 67
-        printf '[2, "success"]\n' >&6
+        [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 65
+        printf '[1, "success"]\n' >&6
         probe_number=0
         while true; do
             IFS= read -r probe <"${remote_shell_prefix}.in"
@@ -112,13 +108,13 @@ case "${FAKE_QEMU_MODE:-ready}" in
             fi
             if [[ "${probe}" == *"ELIZAOS_ISO_SMOKE_READY"* ]]; then
                 echo "host command contained the complete readiness marker" >&2
-                exit 68
+                exit 66
             fi
-            [[ "${probe}" == *'"sh_call", "amnesia"'* ]] || exit 69
+            [[ "${probe}" == *'"sh_call", "amnesia"'* ]] || exit 67
             [[ "${probe}" == *"systemctl --user is-active elizaos-agent.service"* ]] ||
-                exit 70
-            [[ "${probe}" == *"http://127.0.0.1:31337/api/health"* ]] || exit 71
-            request_id=$((probe_number + 2))
+                exit 68
+            [[ "${probe}" == *"http://127.0.0.1:31337/api/health"* ]] || exit 69
+            request_id=$((probe_number + 1))
             if [ "${FAKE_QEMU_MODE}" = "ready-after-retry" ] &&
                 [ "${probe_number}" -eq 1 ]; then
                 printf '[%s, "success", 0, "ELIZAOS_ISO_SMOKE_WAIT bus=ready service=activating service_rc=3 health=not-attempted health_rc=125 body=", ""]\n' "${request_id}" >&6
@@ -149,12 +145,9 @@ case "${FAKE_QEMU_MODE:-ready}" in
         exec 5>"${journal_prefix}.out"
         printf 'Linux version fixture\n' >&7
         printf 'fixture journal for %s\n' "${firmware}" >&5
-        IFS= read -r prepare_request <"${remote_shell_prefix}.in"
-        [[ "${prepare_request}" == *'"sh_call", "root"'* ]] || exit 65
-        printf '[1, "success", 0, "ELIZAOS_ISO_SMOKE_PRELOGIN persistence_before=absent persistence_forced=false", ""]\n' >&6
         IFS= read -r signal_request <"${remote_shell_prefix}.in"
-        [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 66
-        printf '[2, "error", "fixture remote-shell failure"]\n' >&6
+        [[ "${signal_request}" == *'"signal_ready"'* ]] || exit 65
+        printf '[1, "error", "fixture remote-shell failure"]\n' >&6
         trap 'exit 0' TERM
         while true; do sleep 1; done
         ;;
@@ -266,6 +259,7 @@ grep -Fxq -- "-drive" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fxq -- "-bios" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fq "media=cdrom" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fq "if=pflash" "${FAKE_QEMU_ARGS_LOG}"
+grep -Fxq -- "virtio-vga" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fq "org.tails.remote_shell.0" "${FAKE_QEMU_ARGS_LOG}"
 grep -Fq "org.tails.journal_dumper.0" "${FAKE_QEMU_ARGS_LOG}"
 if grep -Eq '^-kernel$|^-initrd$' "${FAKE_QEMU_ARGS_LOG}"; then
