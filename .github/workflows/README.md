@@ -122,8 +122,9 @@ fallback for outages. Pull-request lint, format, typecheck, build, and secret
 checks are the only quality checks for the proposed change; the post-merge
 workflow concentrates on running the broader test surface.
 
-GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
-separate purpose-built fleet and are unaffected by this policy.
+GPU and macOS jobs (labels `gpu-cuda-12.6` and `eliza-e2e-macos`) are a separate
+purpose-built fleet and are unaffected by this policy. OS-image KVM runners are
+owned by the standalone `elizaOS/os` repository.
 
 The retired `gpu-bench-nightly.yml` scaffold never ran substantive work on its
 schedule: both jobs required an opt-in manual dispatch and invoked removed
