@@ -16,6 +16,7 @@ import {
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -161,6 +162,7 @@ import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { openExternalUrl } from "./utils/openExternalUrl";
+import { synchronizeUserViewSwitch } from "./view-switch-report";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -1082,6 +1084,45 @@ function resolveActiveViewSurface({
   }
 
   return { manifest: resolveSurfaceManifest(null), viewId: tab };
+}
+
+interface ReportableViewRoute {
+  viewId: string;
+  viewPath: string;
+}
+
+function resolveReportableViewRoute({
+  tab,
+  navigationPath,
+  availableViews,
+  viewLayout,
+}: {
+  tab: string;
+  navigationPath: string;
+  availableViews: ViewRegistryEntry[];
+  viewLayout: ActiveViewLayout | null;
+}): ReportableViewRoute | null {
+  if (viewLayout) return null;
+  const viewPath = trimmedNavigationPath(navigationPath);
+  const registeredView = availableViews.find(
+    (view) => trimmedNavigationPath(view.path ?? "") === viewPath,
+  );
+  if (registeredView) return { viewId: registeredView.id, viewPath };
+
+  const shellPage = findAppShellPageForRoute(viewPath);
+  if (shellPage) return { viewId: shellPage.id, viewPath };
+
+  // A non-catalog path resolves through the generic Views/Apps shell while its
+  // registration is loading. Reporting that shell id would briefly replace the
+  // real view identity; wait for the catalog to supply the exact owner.
+  if (
+    (tab === "views" || tab === "apps") &&
+    viewPath !== "/views" &&
+    viewPath !== "/apps"
+  ) {
+    return null;
+  }
+  return { viewId: tab, viewPath };
 }
 
 function useActiveViewSurface({
@@ -2447,6 +2488,39 @@ function AppContent() {
     availableViews: availableViewsForDesktopTabs,
     viewLayout,
   });
+  const reportableViewRoute = useMemo(
+    () =>
+      resolveReportableViewRoute({
+        tab,
+        navigationPath,
+        availableViews: availableViewsForDesktopTabs,
+        viewLayout,
+      }),
+    [availableViewsForDesktopTabs, navigationPath, tab, viewLayout],
+  );
+  useEffect(() => {
+    if (!isCoordinatorReady || backendConnection?.state !== "connected") return;
+    if (!reportableViewRoute) return;
+    const abortController = new AbortController();
+    void synchronizeUserViewSwitch(
+      reportableViewRoute.viewId,
+      reportableViewRoute.viewPath,
+      { signal: abortController.signal },
+    ).catch((error) => {
+      if (abortController.signal.aborted) return;
+      // error-policy:J4 the visible route remains authoritative and usable;
+      // later navigation or reconnect retries the failed state convergence.
+      logger.warn(
+        {
+          error,
+          viewId: reportableViewRoute.viewId,
+          viewPath: reportableViewRoute.viewPath,
+        },
+        "[App] current-view route convergence failed",
+      );
+    });
+    return () => abortController.abort();
+  }, [backendConnection?.state, isCoordinatorReady, reportableViewRoute]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const scope = new SurfaceRealmScope(

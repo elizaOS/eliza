@@ -803,6 +803,53 @@ describe("App navigate-view event wiring", () => {
     ).toBe("0px");
   });
 
+  it("restores runtime current-view state from a cold plugin deep link", async () => {
+    mockAvailableViews.push(simpleCalendarView);
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/simple-calendar");
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, apiBase: "http://agent.local" });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "http://agent.local/api/views/current") {
+          return new Response(
+            JSON.stringify({ currentView: null, justSwitched: false }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        if (url === "http://agent.local/api/views/simple-calendar/navigate") {
+          expect(init).toMatchObject({
+            method: "POST",
+            body: JSON.stringify({
+              source: "user",
+              path: "/simple-calendar",
+            }),
+          });
+          return new Response(null, { status: 200 });
+        }
+        if (url.includes("/api/commands")) {
+          return new Response(JSON.stringify({ commands: [] }), {
+            status: 200,
+          });
+        }
+        if (url.includes("/api/custom-actions")) {
+          return new Response(JSON.stringify({ actions: [] }), { status: 200 });
+        }
+        return new Response("{}", { status: 200 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://agent.local/api/views/simple-calendar/navigate",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
   it("routes frame-only sandboxed views through DynamicViewLoader with frameUrl", async () => {
     mockAvailableViews.push(sandboxedFrameView);
     appState.tab = "apps";
