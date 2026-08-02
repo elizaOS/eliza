@@ -382,6 +382,56 @@ export function hasInlineTranscriptEvidence(text) {
   });
 }
 
+/**
+ * Explain a pasted transcript that just missed the floor.
+ *
+ * A row holding a real code block is a different author mistake from an empty
+ * one: they followed CONTRIBUTING.md § Evidence and landed under a threshold.
+ * Reporting a bare `blank` there sends them to upload an artifact instead of
+ * pasting four more lines. Returns null when no block is present, so a genuinely
+ * empty row keeps its plain `blank`.
+ */
+export function describeInlineTranscriptShortfall(text) {
+  const source = String(text ?? "");
+  const blocks = [
+    ...source.matchAll(/<details[\s\S]*?<\/details>/gi),
+    ...source.matchAll(/<pre[\s\S]*?<\/pre>/gi),
+    ...source.matchAll(/```[\s\S]*?```/g),
+  ].map((match) => match[0]);
+  if (blocks.length === 0) return null;
+
+  let best = null;
+  for (const block of blocks) {
+    const content = block
+      .replace(/<summary[\s\S]*?<\/summary>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/```/g, " ");
+    if (NON_REAL_EVIDENCE_RE.test(content)) continue;
+    const lines = content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    const chars = lines.join("").length;
+    // Report the closest attempt rather than the first.
+    if (best === null || lines.length + chars > best.lines + best.chars) {
+      best = { lines: lines.length, chars };
+    }
+  }
+  if (best === null) return null;
+
+  const missed = [];
+  if (best.lines < INLINE_TRANSCRIPT_MIN_LINES) {
+    missed.push(`${best.lines} line(s), needs ${INLINE_TRANSCRIPT_MIN_LINES}`);
+  }
+  if (best.chars < INLINE_TRANSCRIPT_MIN_CHARS) {
+    missed.push(
+      `${best.chars} character(s), needs ${INLINE_TRANSCRIPT_MIN_CHARS}`,
+    );
+  }
+  if (missed.length === 0) return null;
+  return `pasted transcript is under the floor (${missed.join("; ")})`;
+}
+
 function substantiveTrajectoryValue(value, minimumLength) {
   const serialized =
     typeof value === "string" ? value.trim() : JSON.stringify(value);
@@ -709,14 +759,13 @@ export function evaluatePrEvidence(
     ) {
       return { id, label, status: "artifact-required" };
     }
-    return {
-      id,
-      label,
-      status:
-        artifactRequired || isEvidenceRowSatisfied(id, rowText)
-          ? "ok"
-          : "blank",
-    };
+    if (artifactRequired || isEvidenceRowSatisfied(id, rowText)) {
+      return { id, label, status: "ok" };
+    }
+    const shortfall = describeInlineTranscriptShortfall(rowText);
+    return shortfall
+      ? { id, label, status: "blank", detail: shortfall }
+      : { id, label, status: "blank" };
   });
   if (surfaceArtifactsRequired) {
     const { id, label } = SURFACE_OCR_EVIDENCE_ROW;
@@ -2323,6 +2372,83 @@ export function runSelfTest() {
     if (blank?.status !== "blank") {
       failures.push("blank row should be reported blank");
     }
+    if (blank?.detail) {
+      failures.push("an empty row must not claim a transcript shortfall");
+    }
+  }
+
+  {
+    // Pins the documented forms to the implemented ones: the failure help
+    // advertises a pasted transcript, so a compliant one must satisfy the gate.
+    // Without this, the help and `hasInlineTranscriptEvidence` can drift apart
+    // and outside contributors — who cannot upload release assets — are told
+    // their only options are a link or `N/A`.
+    const transcript = [
+      "- [x] Backend logs:",
+      "```",
+      "[develop-pr-gate] poll 1: passed=0 waiting=3 failed=0",
+      "[develop-pr-gate] poll 2: passed=2 waiting=1 failed=0",
+      "[develop-pr-gate] poll 3: passed=3 waiting=0 failed=0",
+      "[develop-pr-gate] all required checks green after 92s",
+      "```",
+    ].join("\n");
+    const { ok, findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": transcript }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (!ok || row?.status !== "ok") {
+      failures.push(
+        "a pasted transcript meeting the documented floor should satisfy the gate",
+      );
+    }
+  }
+
+  {
+    // The help tells authors to prefer <details> because it is the only form
+    // that survives a blank line. Pin that promise.
+    const withBlankLines = [
+      "- [x] Backend logs:",
+      "",
+      "<details><summary>gate output</summary>",
+      "",
+      "```",
+      "[develop-pr-gate] poll 1: passed=0 waiting=3 failed=0",
+      "",
+      "[develop-pr-gate] poll 2: passed=2 waiting=1 failed=0",
+      "[develop-pr-gate] all required checks green after 92s",
+      "```",
+      "",
+      "</details>",
+    ].join("\n");
+    const { findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": withBlankLines }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (row?.status !== "ok") {
+      failures.push(
+        "a <details> transcript containing blank lines should satisfy the gate",
+      );
+    }
+  }
+
+  {
+    // A transcript that just misses the floor is a different mistake from an
+    // empty row, and must say which threshold it missed.
+    const short = ["- [x] Backend logs:", "```", "poll 1: ok", "```"].join(
+      "\n",
+    );
+    const { findings } = evaluatePrEvidence(
+      buildFixtureBody({ "backend-logs": short }),
+    );
+    const row = findings.find((finding) => finding.id === "backend-logs");
+    if (row?.status !== "blank") {
+      failures.push("an under-floor transcript should still fail");
+    }
+    if (!row?.detail?.includes("under the floor")) {
+      failures.push(
+        "an under-floor transcript should report which threshold it missed",
+      );
+    }
   }
 
   {
@@ -2671,8 +2797,17 @@ How to fix (fastest path):
      (uploads to the pr-evidence release and verifies this gate locally)
 
 Rules: visual rows on UI-touching PRs need REAL media (an uploaded image/video,
-not a link to the PR or /checks page); every other row needs an artifact link
-or 'N/A - <reason>'. A wholly-new surface may N/A the before-screenshots row.
+not a link to the PR or /checks page); every other row needs an artifact link,
+a pasted transcript, or 'N/A - <reason>'. A wholly-new surface may N/A the
+before-screenshots row.
+
+Pasted transcripts must be at least ${INLINE_TRANSCRIPT_MIN_LINES} lines and ${INLINE_TRANSCRIPT_MIN_CHARS} characters, and must stay
+inside the row block. Prefer a <details> block — CONTRIBUTING.md § Evidence
+prescribes it, and it is the only form that survives blank lines: the row ends
+at the first blank line unless a <details> is open. A bare \`\`\` fence therefore
+works only when it starts directly after the row line AND contains no blank
+line; the row is cut at that blank line and the rest of the transcript is
+never seen.
 Worked example: https://github.com/elizaOS/eliza/pull/15171
 Full standard: CONTRIBUTING.md § Evidence.`,
     );
