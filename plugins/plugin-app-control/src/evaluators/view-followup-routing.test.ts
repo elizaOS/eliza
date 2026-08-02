@@ -29,6 +29,16 @@ const NOTES_VIEW = {
 			id: "delete-note",
 			description: "Delete a sticky note by id or title",
 			effect: "write",
+			params: {
+				id: { type: "string", description: "Stable note id" },
+				title: { type: "string", description: "Exact note title" },
+				query: { type: "string", description: "Unique note query" },
+			},
+		},
+		{
+			id: "clear-notes",
+			description: "Delete every sticky note",
+			effect: "write",
 		},
 		{
 			id: "click-element",
@@ -196,6 +206,21 @@ describe("viewFollowupRoutingEvaluator", () => {
 			deterministicToolCall: {
 				name: "VIEWS",
 				params: { capability: "delete-note" },
+			},
+		});
+	});
+
+	it("routes a bulk delete to the capability without an item selector", async () => {
+		mockLoopback({ viewId: "notes" });
+		const ctx = context("delete all of them");
+		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(true);
+		await expect(
+			viewFollowupRoutingEvaluator.evaluate(ctx),
+		).resolves.toMatchObject({
+			addCandidateActions: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { capability: "clear-notes" },
 			},
 		});
 	});

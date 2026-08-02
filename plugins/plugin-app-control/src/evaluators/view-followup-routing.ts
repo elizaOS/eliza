@@ -20,6 +20,8 @@ const GENERAL_CONTEXT = "general";
 
 const CREATE_TOKENS = new Set(["ADD", "CREATE", "MAKE", "NEW", "PUT", "WRITE"]);
 const DELETE_TOKENS = new Set(["DELETE", "REMOVE", "CLEAR"]);
+const BULK_DELETE_TOKENS = new Set(["ALL", "EVERY", "EVERYTHING"]);
+const TARGET_SELECTOR_PARAMS = new Set(["id", "name", "query", "title"]);
 const UPDATE_TOKENS = new Set([
 	"CHANGE",
 	"EDIT",
@@ -102,6 +104,24 @@ function capabilityFamily(capability: ViewCapability): CapabilityFamily | null {
 	return null;
 }
 
+function resolveFamilyCapability(
+	family: CapabilityFamily,
+	tokens: readonly string[],
+	capabilities: readonly ViewCapability[],
+): ViewCapability | null {
+	if (capabilities.length === 1) return capabilities[0] ?? null;
+	if (family !== "delete") return null;
+
+	const wantsBulkDelete = hasAny(tokens, BULK_DELETE_TOKENS);
+	const scoped = capabilities.filter((capability) => {
+		const acceptsTarget = Object.keys(capability.params ?? {}).some((name) =>
+			TARGET_SELECTOR_PARAMS.has(name),
+		);
+		return wantsBulkDelete ? !acceptsTarget : acceptsTarget;
+	});
+	return scoped.length === 1 ? (scoped[0] ?? null) : null;
+}
+
 function hasRegisteredViewsAction(context: ResponseHandlerEvaluatorContext) {
 	return (context.runtime.actions ?? []).some(
 		(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
@@ -130,6 +150,7 @@ function shouldConsiderViewFollowup(
 
 async function resolveActiveViewForFamily(
 	family: CapabilityFamily,
+	tokens: readonly string[],
 ): Promise<{ view: ViewSummary; capability: ViewCapability } | null> {
 	// The intent gate (family verb + reference token, plus a content marker for
 	// create/update) is enforced in shouldConsiderViewFollowup. Here we only need
@@ -149,10 +170,12 @@ async function resolveActiveViewForFamily(
 				capability.effect === "write" &&
 				capabilityFamily(capability) === family,
 		);
-		if (matchingCapabilities.length !== 1 || !matchingCapabilities[0]) {
-			return null;
-		}
-		return { view: activeView, capability: matchingCapabilities[0] };
+		const capability = resolveFamilyCapability(
+			family,
+			tokens,
+			matchingCapabilities,
+		);
+		return capability ? { view: activeView, capability } : null;
 	} catch {
 		// error-policy:J4 loopback confirm failed -> can't route; the agent's normal
 		// reply stands (designed degrade, per the block comment above).
@@ -174,7 +197,8 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		const family = shouldConsiderViewFollowup(context);
 		if (!family) return undefined;
 
-		const route = await resolveActiveViewForFamily(family);
+		const tokens = tokenize(getUserMessageText(context.message));
+		const route = await resolveActiveViewForFamily(family, tokens);
 		if (!route) return undefined;
 		const { view: activeView, capability } = route;
 
