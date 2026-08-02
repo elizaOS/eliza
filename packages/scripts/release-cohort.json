@@ -34,7 +34,6 @@
     "@elizaos/cloud-shared",
     "@elizaos/core",
     "@elizaos/electrobun",
-    "@elizaos/import-conversations",
     "@elizaos/logger",
     "@elizaos/macosalarm",
     "@elizaos/macosreminders",

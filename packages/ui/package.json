@@ -392,7 +392,6 @@
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/import-conversations": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
