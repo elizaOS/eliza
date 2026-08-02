@@ -26,7 +26,7 @@
  *   - (a) orphan: the root package.json scripts block (the dumping ground).
  *   - (b) no-op: first-party shipping packages — root + packages/, plugins/,
  *     apps/ — minus the vendored/demo/scaffold subtrees packages/examples/**,
- *     packages/feed/** and packages/elizaos/templates/**,
+ *     package-owned nested workspaces and packages/elizaos/templates/**,
  *     which legitimately ship `echo "no toolchain; skipping"` placeholders.
  *   - (c) broken refs: the root scripts block only. Sub-package script paths are
  *     out of scope — the tree holds scaffolding templates and optional nested
@@ -119,6 +119,7 @@ const ALLOWED_EXACT = new Set([
   "evidence:pr",
   "evidence:open",
   "evidence:review:no-open",
+  "evidence:certify",
   "seed:messages",
 ]);
 
@@ -139,10 +140,6 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
   [
     "audit-bin-export-subpaths.mjs",
     "static guard for the #8000 bin/exports bug class; run by hand during release review",
-  ],
-  [
-    "benchmark-to-training-dataset.mjs",
-    "one-shot benchmark→training-dataset converter, invoked manually with explicit paths",
   ],
   [
     "audit-turbo-build-deps.self-test.mjs",
@@ -232,7 +229,6 @@ const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 // or reference paths that only exist after scaffolding. Out of the no-op gate.
 const EXCLUDED_SUBTREES = [
   "packages/examples",
-  "packages/feed",
   "packages/elizaos/templates",
 ];
 const SKIP_DIRS = new Set([

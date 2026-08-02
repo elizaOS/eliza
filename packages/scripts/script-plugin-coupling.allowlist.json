@@ -1,5 +1,13 @@
 [
   {
+    "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
+    "tokens": [
+      "@elizaos/plugin-elizacloud",
+      "@elizaos/plugin-sql"
+    ],
+    "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
+  },
+  {
     "file": "packages/scripts/audit-build-typecheck.mjs",
     "tokens": [
       "plugins/plugin-app-manager",
@@ -42,14 +50,6 @@
     "reason": "path-gate rules map changes in these critical plugins to the scenario-pr test lane"
   },
   {
-    "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
-    "tokens": [
-      "@elizaos/plugin-elizacloud",
-      "@elizaos/plugin-sql"
-    ],
-    "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
-  },
-  {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
     "tokens": [
       "@elizaos/plugin-discord",
@@ -72,7 +72,6 @@
       "plugins/plugin-imessage",
       "plugins/plugin-inbox",
       "plugins/plugin-meetings",
-      "plugins/plugin-music",
       "plugins/plugin-scheduling",
       "plugins/plugin-signal",
       "plugins/plugin-notes",
@@ -101,15 +100,10 @@
     "file": "packages/scripts/generate-dist-paths-config.mjs",
     "tokens": [
       "@elizaos/plugin-local-inference",
-      "@elizaos/plugin-music-library",
-      "@elizaos/plugin-music-player",
-      "@elizaos/plugin-xai",
       "plugins/plugin-local-inference",
-      "plugins/plugin-music",
-      "plugins/plugin-native-",
-      "plugins/plugin-xai"
+      "plugins/plugin-native-"
     ],
-    "reason": "explicit tsconfig dist-path aliases for non-standard export names (music-library/-player -> music, xai wildcard) and source-condition subpaths that a normal exports map cannot reflect"
+    "reason": "explicit tsconfig dist-path aliases for source-condition subpaths that a normal exports map cannot reflect"
   },
   {
     "file": "packages/scripts/launch-qa/run.mjs",
@@ -131,9 +125,8 @@
       "plugins/plugin-form",
       "plugins/plugin-google-genai",
       "plugins/plugin-health",
-      "plugins/plugin-ollama",
+      "plugins/plugin-local-inference",
       "plugins/plugin-openai",
-      "plugins/plugin-openrouter",
       "plugins/plugin-personal-assistant",
       "plugins/plugin-pty",
       "plugins/plugin-sql",
@@ -151,13 +144,92 @@
     "reason": "boots a real runtime with plugin-openai wired to Cerebras to validate the runtime message stage"
   },
   {
+    "file": "packages/scripts/run-scenario-benchmark.mjs",
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
+  },
+  {
+    "file": "packages/scripts/vitest/default.config.ts",
+    "tokens": [
+      "@elizaos/plugin-telegram",
+      "plugins/plugin-browser",
+      "plugins/plugin-finances",
+      "plugins/plugin-health",
+      "plugins/plugin-inbox",
+      "plugins/plugin-sql"
+    ],
+    "reason": "shared default vitest config carries per-plugin source aliases and exclude rules that cannot be derived from package metadata"
+  },
+  {
+    "file": "packages/scripts/vitest/e2e.config.ts",
+    "tokens": [
+      "plugins/plugin-documents",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-task-coordinator",
+      "plugins/plugin-workflow"
+    ],
+    "reason": "e2e-lane vitest config enumerates the plugin suites that ship browser-driven e2e specs"
+  },
+  {
+    "file": "packages/scripts/vitest/integration.config.ts",
+    "tokens": [
+      "@elizaos/plugin-personal-assistant",
+      "@elizaos/plugin-signal",
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-whatsapp",
+      "plugins/plugin-personal-assistant"
+    ],
+    "reason": "integration-lane vitest config aliases connector plugins whose integration suites resolve source-condition subpaths"
+  },
+  {
+    "file": "packages/scripts/vitest/real.config.ts",
+    "tokens": [
+      "@elizaos/plugin-agent-orchestrator",
+      "@elizaos/plugin-agent-skills",
+      "@elizaos/plugin-anthropic",
+      "@elizaos/plugin-commands",
+      "@elizaos/plugin-discord",
+      "@elizaos/plugin-elizacloud",
+      "@elizaos/plugin-form",
+      "@elizaos/plugin-google-genai",
+      "@elizaos/plugin-local-inference",
+      "@elizaos/plugin-openai",
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-telegram",
+      "@elizaos/plugin-wallet",
+      "plugins/plugin-coding-tools",
+      "plugins/plugin-computeruse",
+      "plugins/plugin-form",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-wallet"
+    ],
+    "reason": "shared real-lane vitest config must alias each live-capable plugin package to its source entry so real suites resolve workspace plugins without a build step"
+  },
+  {
+    "file": "packages/scripts/vitest/source-aliases.ts",
+    "tokens": [
+      "@elizaos/plugin-sql",
+      "plugins/plugin-sql"
+    ],
+    "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
+  },
+  {
+    "file": "packages/scripts/vitest/unit.config.ts",
+    "tokens": [
+      "@elizaos/plugin-anthropic",
+      "@elizaos/plugin-cli"
+    ],
+    "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
+  },
+  {
     "file": "scripts/check-markdown-links.mjs",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-computeruse",
       "plugins/plugin-local-inference",
-      "plugins/plugin-wallet",
-      "plugins/plugin-xai"
+      "plugins/plugin-wallet"
     ],
     "reason": "Markdown link hygiene excludes stale/prototype documentation subtrees by concrete path prefix so maintained contributor-facing docs can remain hard-gated"
   },
