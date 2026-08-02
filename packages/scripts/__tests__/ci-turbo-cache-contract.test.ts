@@ -237,7 +237,7 @@ describe("ci-turbo-cache-contract", () => {
     )?.[0];
     expect(typecheckJob).toMatch(/cache-bun-install:\s*["']false["']/);
     expect(buildJob).toMatch(/cache-bun-install:\s*["']false["']/);
-    expect(buildJob).toMatch(/timeout-minutes:\s*32/);
+    expect(buildJob).toMatch(/timeout-minutes:\s*45/);
     expect(buildJob).toMatch(/run:\s*bun run build/);
     expect(buildJob).toMatch(/run:\s*bun run test:e2e --workers=2/);
     expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
