@@ -89,6 +89,15 @@ interface DragState {
   hadButtons: boolean;
 }
 
+function resolveGestureAxis(dx: number, dy: number): DragState["axis"] {
+  const ax = Math.abs(dx);
+  const ay = Math.abs(dy);
+  if (Math.max(ax, ay) < AXIS_COMMIT_SLOP) return "pending";
+  if (ax > ay * AXIS_DOMINANCE_RATIO) return "horizontal";
+  if (ay > ax * AXIS_DOMINANCE_RATIO) return "vertical";
+  return "pending";
+}
+
 export interface UseHorizontalPagerOptions {
   page: number;
   pageCount: number;
@@ -357,6 +366,7 @@ export function useHorizontalPager<
     writeOffset(offset, null),
   );
   const scheduleOffset = railWrite.schedule;
+  const flushScheduledOffset = railWrite.flush;
   const cancelScheduledOffset = railWrite.cancel;
 
   const canMove = React.useCallback((state: DragState, dx: number) => {
@@ -493,7 +503,28 @@ export function useHorizontalPager<
     (event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
       const state = dragRef.current;
       if (!state || state.pointerId !== event.pointerId) return;
-      cancelScheduledOffset();
+      const dx = event.clientX - state.startX;
+      const dy = event.clientY - state.startY;
+      // Some touch stacks coalesce a very fast down→up flick without delivering
+      // an intermediate pointermove. Resolve that final displacement here so a
+      // genuine horizontal flick does not remain `pending` and snap back.
+      const releaseAxis =
+        !cancelled && state.axis === "pending"
+          ? resolveGestureAxis(dx, dy)
+          : state.axis;
+
+      // A release must paint the latest rAF-coalesced drag value before the
+      // settle duration is derived. Cancelling it made the math assume the rail
+      // had reached the finger while the pixels were still one frame behind,
+      // producing the short jump users saw on fast swipes. Cancellation paths
+      // intentionally discard that queued value and return from the last frame
+      // that was actually shown.
+      if (!cancelled && releaseAxis === "horizontal") {
+        flushScheduledOffset();
+      } else {
+        cancelScheduledOffset();
+      }
+      const lastVisual = lastWrittenOffsetRef.current;
       dragRef.current = null;
       releaseCapture(state);
 
@@ -502,8 +533,6 @@ export function useHorizontalPager<
       // threshold reflects the geometry the gesture was actually performed under.
       const width = measureWidth();
       const base = pageOffset(state.page, width);
-      const dx = event.clientX - state.startX;
-      const dy = event.clientY - state.startY;
       const endT = now();
       const elapsed = Math.max(1, endT - state.startTime);
       // Whole-gesture average (fallback for a tap-flick with no samples).
@@ -517,12 +546,6 @@ export function useHorizontalPager<
         endT,
         avgVelocity,
       );
-      // Where the rail physically sits at release (incl. edge rubber-band), so
-      // the momentum settle covers the ACTUAL remaining distance to the target.
-      const lastVisual =
-        state.axis === "horizontal"
-          ? state.baseOffset + visualDragOffset(state, dx)
-          : state.baseOffset;
       // Velocity-aware momentum: settle duration scales with how fast the finger
       // left, not a fixed rate — a flick lands quick, a slow drag eases in.
       const settleTo = (offset: number) => {
@@ -540,7 +563,7 @@ export function useHorizontalPager<
 
       // A page only advances for a committed horizontal drag that can actually
       // move in the drag direction; anything else settles back.
-      if (cancelled || state.axis !== "horizontal" || !canMove(state, dx)) {
+      if (cancelled || releaseAxis !== "horizontal" || !canMove(state, dx)) {
         settleTo(base);
         return;
       }
@@ -594,9 +617,9 @@ export function useHorizontalPager<
       cancelScheduledOffset,
       clickSuppression,
       dropRailPromotion,
+      flushScheduledOffset,
       measureWidth,
       releaseCapture,
-      visualDragOffset,
       writeOffset,
     ],
   );
@@ -698,20 +721,12 @@ export function useHorizontalPager<
       const dx = event.clientX - state.startX;
       const dy = event.clientY - state.startY;
       if (state.axis === "pending") {
-        const ax = Math.abs(dx);
-        const ay = Math.abs(dy);
-        if (Math.max(ax, ay) < AXIS_COMMIT_SLOP) return;
         // A human finger rarely starts on a mathematically straight line. Keep
         // an ambiguous diagonal pending until one axis actually dominates;
         // treating every non-horizontal first sample as vertical permanently
         // cancelled otherwise-valid swipes after only a few pixels of jitter.
-        if (ax > ay * AXIS_DOMINANCE_RATIO) {
-          state.axis = "horizontal";
-        } else if (ay > ax * AXIS_DOMINANCE_RATIO) {
-          state.axis = "vertical";
-        } else {
-          return;
-        }
+        state.axis = resolveGestureAxis(dx, dy);
+        if (state.axis === "pending") return;
         // The promotion was armed at pointerdown (so the compositor had the
         // slop window to build the layer before the first tracked frame). A
         // gesture that commits VERTICAL is the home widget list scrolling, not
