@@ -796,6 +796,8 @@ export interface ViewCapability {
 	id: string;
 	/** Human-readable description surfaced to the planner. */
 	description: string;
+	/** Whether invoking this capability only reads state or durably changes it. */
+	effect?: "read" | "write";
 	/** JSON Schema for any parameters this capability accepts. */
 	params?: Record<string, ViewCapabilityParameter>;
 }

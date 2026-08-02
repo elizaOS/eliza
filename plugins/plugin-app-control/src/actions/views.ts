@@ -8,6 +8,7 @@ import path from "node:path";
 import type {
 	Action,
 	ActionResult,
+	EffectReceipt,
 	HandlerCallback,
 	IAgentRuntime,
 	Memory,
@@ -19,6 +20,7 @@ import type {
 import {
 	hasOwnerAccess as defaultOwnerAccessFn,
 	logger,
+	normalizeEffectReceipt,
 	testSchemaPattern,
 } from "@elizaos/core";
 import {
@@ -2041,6 +2043,40 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 	};
 }
 
+function appliedViewInteractionEffect(args: {
+	viewId: string;
+	capability: ViewCapability | null | undefined;
+	receipt: ReturnType<typeof readViewInteractionReceipt>;
+}): EffectReceipt | null {
+	if (args.capability?.effect !== "write") return null;
+	if (!args.receipt?.requestId || args.receipt.revision === undefined) {
+		return null;
+	}
+
+	const observedAt = new Date().toISOString();
+	const version = String(args.receipt.revision);
+	return normalizeEffectReceipt({
+		receiptId: args.receipt.requestId,
+		operation: `view.${args.viewId}.${args.capability.id}`,
+		resource: args.receipt.entity
+			? {
+					kind: `view.${args.viewId}.${args.receipt.entity.kind}`,
+					id: args.receipt.entity.id,
+					version,
+				}
+			: { kind: `view.${args.viewId}`, id: args.viewId, version },
+		artifacts: [],
+		idempotency: { key: null, replayed: false },
+		observedAt,
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: `${args.receipt.requestId}:${version}`,
+			committedAt: observedAt,
+		},
+	});
+}
+
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	const clientFactory = () => deps.client ?? createViewsClient();
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
@@ -2842,6 +2878,38 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const receipt = interaction.success
 							? readViewInteractionReceipt(interaction.result)
 							: undefined;
+						const effectReceipt = interaction.success
+							? appliedViewInteractionEffect({
+									viewId,
+									capability: resolvedCapability?.capability,
+									receipt,
+								})
+							: null;
+						if (
+							interaction.success &&
+							resolvedCapability?.capability.effect === "write" &&
+							!effectReceipt
+						) {
+							const reply = `View "${viewId}" returned an unverified write result for capability "${capability}". Check the view before retrying.`;
+							await callback?.({ text: reply });
+							return {
+								success: false,
+								text: reply,
+								values: {
+									mode: "interact",
+									viewId,
+									viewType: resolvedViewType ?? "gui",
+									capability,
+								},
+								data: {
+									viewId,
+									viewType: resolvedViewType ?? "gui",
+									capability,
+									params,
+									verification: "missing-durable-receipt",
+								},
+							};
+						}
 						await callback?.({ text: resultText });
 						return {
 							success: interaction.success,
@@ -2851,6 +2919,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										userFacingText: resultText,
 										verifiedUserFacing: true,
 										turnComplete: true,
+										...(effectReceipt
+											? {
+													effectReceipts: [effectReceipt],
+													userFacingEffectReceiptIds: [effectReceipt.receiptId],
+												}
+											: {}),
 									}
 								: {}),
 							values: {

@@ -112,6 +112,7 @@ describe("views client", () => {
 							{
 								name: "fill-input",
 								description: "Fill a named input in the view.",
+								effect: "write",
 								inputSchema: {
 									type: "object",
 									properties: {
@@ -139,6 +140,7 @@ describe("views client", () => {
 					{
 						id: "fill-input",
 						description: "Fill a named input in the view.",
+						effect: "write",
 						params: {
 							name: {
 								type: "string",

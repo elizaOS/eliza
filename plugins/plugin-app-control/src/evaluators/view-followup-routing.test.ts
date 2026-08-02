@@ -105,8 +105,13 @@ describe("viewFollowupRoutingEvaluator", () => {
 			addCandidateActions: ["VIEWS"],
 			deterministicToolCall: {
 				name: "VIEWS",
-				params: { action: "interact", view: "notes" },
+				params: {
+					action: "interact",
+					view: "notes",
+					capability: "create-note",
+				},
 			},
+			addContextSlices: [expect.stringContaining('capability="create-note"')],
 		});
 	});
 
@@ -128,7 +133,7 @@ describe("viewFollowupRoutingEvaluator", () => {
 			viewFollowupRoutingEvaluator.evaluate(ctx),
 		).resolves.toMatchObject({
 			debug: [
-				"active view notes supports create; forcing sole deterministic VIEWS owner",
+				"active view notes uniquely routes create to create-note; forcing sole deterministic VIEWS owner",
 			],
 		});
 	});
@@ -151,7 +156,11 @@ describe("viewFollowupRoutingEvaluator", () => {
 			addParentActionHints: ["VIEWS"],
 			deterministicToolCall: {
 				name: "VIEWS",
-				params: { action: "interact", view: "notes" },
+				params: {
+					action: "interact",
+					view: "notes",
+					capability: "create-note",
+				},
 			},
 		});
 	});
@@ -172,7 +181,52 @@ describe("viewFollowupRoutingEvaluator", () => {
 		expect(await viewFollowupRoutingEvaluator.shouldRun(ctx)).toBe(true);
 		await expect(
 			viewFollowupRoutingEvaluator.evaluate(ctx),
-		).resolves.toMatchObject({ addCandidateActions: ["VIEWS"] });
+		).resolves.toMatchObject({
+			addCandidateActions: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { capability: "delete-note" },
+			},
+		});
+	});
+
+	it("fails open when a focused view declares multiple capabilities for one family", async () => {
+		mockLoopback({ viewId: "notes" });
+		const duplicate = {
+			...NOTES_VIEW,
+			capabilities: [
+				...(NOTES_VIEW.capabilities ?? []),
+				{ id: "create-page", description: "Create another page" },
+			],
+		};
+		vi.mocked(globalThis.fetch).mockImplementation(async (url) => {
+			if (String(url).endsWith("/api/views/current")) {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({
+						currentView: {
+							viewId: "notes",
+							viewPath: "/notes",
+							viewLabel: "Notes",
+							viewType: "gui",
+							updatedAt: "2026-06-08T00:00:00.000Z",
+						},
+					}),
+				} as Response;
+			}
+			return {
+				ok: true,
+				status: 200,
+				json: async () => ({ views: [duplicate] }),
+			} as Response;
+		});
+
+		await expect(
+			viewFollowupRoutingEvaluator.evaluate(
+				context("make another one saying hello"),
+			),
+		).resolves.toBeUndefined();
 	});
 
 	it("does NOT hijack 'set it up with them' (bare 'with' is not a content marker)", async () => {

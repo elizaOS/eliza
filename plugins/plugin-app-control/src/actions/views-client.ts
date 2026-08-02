@@ -253,6 +253,9 @@ function parseViewCapability(entry: unknown): ViewCapability | null {
 	return {
 		id: rawId.trim(),
 		description: typeof entry.description === "string" ? entry.description : "",
+		...(entry.effect === "read" || entry.effect === "write"
+			? { effect: entry.effect }
+			: {}),
 		...(params ? { params } : {}),
 	};
 }
