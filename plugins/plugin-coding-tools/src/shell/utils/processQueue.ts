@@ -64,7 +64,11 @@ function resolveCommandStdio(params: {
   hasInput: boolean;
   preferInherit: boolean;
 }): ["pipe" | "inherit" | "ignore", "pipe", "pipe"] {
-  const stdin = params.hasInput ? "pipe" : params.preferInherit ? "inherit" : "pipe";
+  const stdin = params.hasInput
+    ? "pipe"
+    : params.preferInherit
+      ? "inherit"
+      : "pipe";
   return [stdin, "pipe", "pipe"];
 }
 
@@ -79,7 +83,7 @@ function resolveCommandStdio(params: {
 export async function runExec(
   command: string,
   args: string[],
-  opts: number | { timeoutMs?: number; maxBuffer?: number } = 10_000
+  opts: number | { timeoutMs?: number; maxBuffer?: number } = 10_000,
 ): Promise<{ stdout: string; stderr: string }> {
   const options =
     typeof opts === "number"
@@ -89,7 +93,11 @@ export async function runExec(
           maxBuffer: opts.maxBuffer,
           encoding: "utf8" as const,
         };
-  const { stdout, stderr } = await execFileAsync(resolveCommand(command), args, options);
+  const { stdout, stderr } = await execFileAsync(
+    resolveCommand(command),
+    args,
+    options,
+  );
   return { stdout, stderr };
 }
 
@@ -124,7 +132,7 @@ export type CommandOptions = {
  */
 export async function runCommandWithTimeout(
   argv: string[],
-  optionsOrTimeout: number | CommandOptions
+  optionsOrTimeout: number | CommandOptions,
 ): Promise<SpawnResult> {
   const mode = resolveRuntimeExecutionMode();
   if (mode === "cloud") {
@@ -132,12 +140,14 @@ export async function runCommandWithTimeout(
   }
   if (mode === "local-safe") {
     throw new Error(
-      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action."
+      "[shell] runCommandWithTimeout cannot route through SandboxManager from this code path; use the runtime-aware shell action.",
     );
   }
 
   const options: CommandOptions =
-    typeof optionsOrTimeout === "number" ? { timeoutMs: optionsOrTimeout } : optionsOrTimeout;
+    typeof optionsOrTimeout === "number"
+      ? { timeoutMs: optionsOrTimeout }
+      : optionsOrTimeout;
   const { timeoutMs, cwd, input, env } = options;
   const { windowsVerbatimArguments } = options;
   const hasInput = input !== undefined;
@@ -155,7 +165,10 @@ export async function runCommandWithTimeout(
   })();
 
   const merged = env ? { ...process.env, ...env } : { ...process.env };
-  const resolvedEnv = sanitizeSpawnEnv(merged) as Record<string, string | undefined>;
+  const resolvedEnv = sanitizeSpawnEnv(merged) as Record<
+    string,
+    string | undefined
+  >;
   if (shouldSuppressNpmFund) {
     if (resolvedEnv.NPM_CONFIG_FUND == null) {
       resolvedEnv.NPM_CONFIG_FUND = "false";
@@ -316,7 +329,7 @@ export function enqueueCommandInLane<T>(
   opts?: {
     warnAfterMs?: number;
     onWait?: (waitMs: number, queuedAhead: number) => void;
-  }
+  },
 ): Promise<T> {
   const cleaned = lane.trim() || CommandLane.Main;
   const warnAfterMs = opts?.warnAfterMs ?? 2_000;
@@ -346,7 +359,7 @@ export function enqueueCommand<T>(
   opts?: {
     warnAfterMs?: number;
     onWait?: (waitMs: number, queuedAhead: number) => void;
-  }
+  },
 ): Promise<T> {
   return enqueueCommandInLane(CommandLane.Main, task, opts);
 }
@@ -424,7 +437,7 @@ const defaultSignals: NodeJS.Signals[] =
  */
 export function attachChildProcessBridge(
   child: ChildProcess,
-  { signals = defaultSignals, onSignal }: ChildProcessBridgeOptions = {}
+  { signals = defaultSignals, onSignal }: ChildProcessBridgeOptions = {},
 ): { detach: () => void } {
   const listeners = new Map<NodeJS.Signals, () => void>();
   for (const signal of signals) {

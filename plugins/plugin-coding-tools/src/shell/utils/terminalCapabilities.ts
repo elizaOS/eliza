@@ -6,6 +6,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { readAliasedEnv } from "@elizaos/shared";
+
 export const TERMINAL_TOOL_NAMES = [
   "sh",
   "git",
@@ -49,13 +51,13 @@ const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
 
 export function isAndroidRuntime(): boolean {
   return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
+    readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() === "android" ||
     Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
   );
 }
 
 function isIosRuntime(): boolean {
-  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
+  return readAliasedEnv("ELIZA_PLATFORM")?.trim().toLowerCase() === "ios";
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
@@ -142,7 +144,8 @@ export function resolveTerminalShell(): ShellResolution {
         shell: resolved,
         args: ["-c"],
         available: true,
-        source: key === "CODING_TOOLS_SHELL" ? "env:CODING_TOOLS_SHELL" : "env:SHELL",
+        source:
+          key === "CODING_TOOLS_SHELL" ? "env:CODING_TOOLS_SHELL" : "env:SHELL",
       };
     }
   }
@@ -190,19 +193,23 @@ export function detectTerminalCapabilities(): ToolCapability[] {
   });
 }
 
-export function formatTerminalCapabilities(capabilities = detectTerminalCapabilities()): string {
+export function formatTerminalCapabilities(
+  capabilities = detectTerminalCapabilities(),
+): string {
   return capabilities
     .map((capability) =>
       capability.available
         ? `${capability.name}=ok(${capability.path})`
-        : `${capability.name}=missing`
+        : `${capability.name}=missing`,
     )
     .join(" ");
 }
 
 export function missingToolMessage(tool: TerminalToolName): string {
   if (tool === "sh") {
-    return resolveTerminalShell().warning ?? "No executable shell was detected.";
+    return (
+      resolveTerminalShell().warning ?? "No executable shell was detected."
+    );
   }
   const suffix = isAndroidRuntime()
     ? " On Android direct/AOSP builds, ensure the binary is staged into the agent image and PATH includes /system/bin or the tool's install directory."
@@ -210,7 +217,9 @@ export function missingToolMessage(tool: TerminalToolName): string {
   return `${tool} CLI is not available in PATH.${suffix}`;
 }
 
-export function missingTerminalToolForCommand(command: string): TerminalToolName | undefined {
+export function missingTerminalToolForCommand(
+  command: string,
+): TerminalToolName | undefined {
   const tokens = command.trim().split(/\s+/).filter(Boolean);
   let index = 0;
   while (tokens[index] && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[index])) {
@@ -219,7 +228,10 @@ export function missingTerminalToolForCommand(command: string): TerminalToolName
   const first = tokens[index]?.replace(/^["']|["']$/g, "");
   if (!first) return undefined;
   const name = path.basename(first) as TerminalToolName;
-  if (!(TERMINAL_TOOL_NAMES as readonly string[]).includes(name) || name === "sh") {
+  if (
+    !(TERMINAL_TOOL_NAMES as readonly string[]).includes(name) ||
+    name === "sh"
+  ) {
     return undefined;
   }
   return resolveExecutable(first) ? undefined : name;

@@ -115,7 +115,6 @@ const ALLOWED_EXACT = new Set([
   "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",
   "audit:alias-read-guard:self-test",
-  "check:loadperf-bundle:json",
   "check:pr-evidence",
   "evidence:pr",
   "evidence:open",
@@ -133,6 +132,10 @@ const ALLOWED_EXACT = new Set([
  * by hand and need no automated caller. Each entry carries a written reason.
  */
 const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
+  [
+    "run-scenario-benchmark.mjs",
+    "scenario-runner weekly report harness invoked by packages/training/scripts/collect_trajectories.py; its CI workflow moved to https://github.com/elizaOS/benchmarks",
+  ],
   [
     "audit-bin-export-subpaths.mjs",
     "static guard for the #8000 bin/exports bug class; run by hand during release review",

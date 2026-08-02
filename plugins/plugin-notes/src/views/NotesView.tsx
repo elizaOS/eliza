@@ -157,8 +157,7 @@ function NoteCard({
 }
 
 export function NotesView() {
-  const { snapshot, loading, busy, error, refresh, mutate } =
-    useNotesState();
+  const { snapshot, loading, busy, error, refresh, mutate } = useNotesState();
   const notes = snapshot?.notes ?? [];
   const headerDetail = error
     ? snapshot

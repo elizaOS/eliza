@@ -49,7 +49,7 @@ describe("shouldStartTelegramStandaloneBot (gate truth table)", () => {
     expect(
       shouldStartTelegramStandaloneBot({
         ELIZA_TELEGRAM_STANDALONE_BOT: "1",
-      } as NodeJS.ProcessEnv)
+      } as NodeJS.ProcessEnv),
     ).toBe(false);
   });
 
@@ -57,7 +57,7 @@ describe("shouldStartTelegramStandaloneBot (gate truth table)", () => {
     expect(
       shouldStartTelegramStandaloneBot({
         ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
-      } as NodeJS.ProcessEnv)
+      } as NodeJS.ProcessEnv),
     ).toBe(false);
   });
 
@@ -66,7 +66,7 @@ describe("shouldStartTelegramStandaloneBot (gate truth table)", () => {
       shouldStartTelegramStandaloneBot({
         ELIZA_LIFEOPS_PASSIVE_CONNECTORS: "false",
         ELIZA_TELEGRAM_STANDALONE_BOT: "true",
-      } as NodeJS.ProcessEnv)
+      } as NodeJS.ProcessEnv),
     ).toBe(true);
   });
 });

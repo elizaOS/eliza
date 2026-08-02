@@ -32,14 +32,11 @@ export function notesStateFilePath(
 ): string {
   const scope = agentId?.trim();
   if (scope && !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(scope)) {
-    throw new ElizaError(
-      "Notes agent id cannot be used as a state scope.",
-      {
-        code: "NOTES_INVALID_AGENT_SCOPE",
-        context: { agentId },
-        severity: "fatal",
-      },
-    );
+    throw new ElizaError("Notes agent id cannot be used as a state scope.", {
+      code: "NOTES_INVALID_AGENT_SCOPE",
+      context: { agentId },
+      severity: "fatal",
+    });
   }
   return path.join(
     stateDir,
@@ -333,9 +330,7 @@ export class NotesStore {
     }
   }
 
-  private async writeAtomicIfAbsent(
-    document: NotesDocument,
-  ): Promise<boolean> {
+  private async writeAtomicIfAbsent(document: NotesDocument): Promise<boolean> {
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await this.writeTemporaryDocument(temporaryPath, document);

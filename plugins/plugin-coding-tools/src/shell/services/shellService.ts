@@ -11,7 +11,10 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { isCloudExecutionMode, shouldUseSandboxExecution } from "@elizaos/shared";
+import {
+  isCloudExecutionMode,
+  shouldUseSandboxExecution,
+} from "@elizaos/shared";
 import spawn from "cross-spawn";
 import type {
   CommandHistoryEntry,
@@ -27,7 +30,12 @@ import type {
   PtySpawn,
   ShellConfig,
 } from "../types";
-import { isForbiddenCommand, isSafeCommand, loadShellConfig, validatePath } from "../utils";
+import {
+  isForbiddenCommand,
+  isSafeCommand,
+  loadShellConfig,
+  validatePath,
+} from "../utils";
 import {
   buildCursorPositionResponse,
   encodeKeySequence,
@@ -105,7 +113,9 @@ export class ShellService extends Service {
 
   static async start(runtime: IAgentRuntime): Promise<ShellService> {
     const instance = new ShellService(runtime);
-    logger.info("Shell service initialized with PTY, background execution, and history tracking");
+    logger.info(
+      "Shell service initialized with PTY, background execution, and history tracking",
+    );
     return instance;
   }
 
@@ -126,7 +136,9 @@ export class ShellService extends Service {
     // Clear command history
     this.commandHistory.clear();
 
-    logger.info(`Shell service stopped, cleaned up ${runningSessions.length} running sessions`);
+    logger.info(
+      `Shell service stopped, cleaned up ${runningSessions.length} running sessions`,
+    );
   }
 
   get capabilityDescription(): string {
@@ -155,11 +167,13 @@ export class ShellService extends Service {
     command: string,
     workdir: string,
     timeoutMs: number,
-    env?: Record<string, string>
+    env?: Record<string, string>,
   ): Promise<CommandResult> {
     const sandboxManager = this.getSandboxManager();
     if (!sandboxManager) {
-      logger.error("[shell:sandbox] local-safe denied: SandboxManager unavailable");
+      logger.error(
+        "[shell:sandbox] local-safe denied: SandboxManager unavailable",
+      );
       return {
         success: false,
         stdout: "",
@@ -183,7 +197,9 @@ export class ShellService extends Service {
       };
     }
 
-    logger.info(`[shell:sandbox] routing exec via SandboxManager: ${command.substring(0, 100)}`);
+    logger.info(
+      `[shell:sandbox] routing exec via SandboxManager: ${command.substring(0, 100)}`,
+    );
     const result = await sandboxManager.exec({
       command,
       workdir: sandboxWorkdir,
@@ -191,7 +207,7 @@ export class ShellService extends Service {
       env,
     });
     logger.info(
-      `[shell:sandbox] exec completed: exit=${result.exitCode} duration=${result.durationMs}ms executedInSandbox=${result.executedInSandbox}`
+      `[shell:sandbox] exec completed: exit=${result.exitCode} duration=${result.durationMs}ms executedInSandbox=${result.executedInSandbox}`,
     );
     return {
       success: result.exitCode === 0,
@@ -219,7 +235,10 @@ export class ShellService extends Service {
   /**
    * Simple command execution (original API for backward compatibility)
    */
-  async executeCommand(command: string, conversationId?: string): Promise<CommandResult> {
+  async executeCommand(
+    command: string,
+    conversationId?: string,
+  ): Promise<CommandResult> {
     if (!command || typeof command !== "string") {
       return {
         success: false,
@@ -267,7 +286,9 @@ export class ShellService extends Service {
         (this.runtime.getSetting("SANDBOX_HOST_API_URL") as string | null) ??
         "http://localhost:2138";
       const runtimeFetch = this.runtime.fetch ?? globalThis.fetch;
-      logger.info(`[shell:sandbox] routing exec to ${hostApiUrl}: ${command.substring(0, 100)}`);
+      logger.info(
+        `[shell:sandbox] routing exec to ${hostApiUrl}: ${command.substring(0, 100)}`,
+      );
       try {
         const response = await runtimeFetch(`${hostApiUrl}/api/sandbox/exec`, {
           method: "POST",
@@ -286,7 +307,7 @@ export class ShellService extends Service {
           executedInSandbox: boolean;
         };
         logger.info(
-          `[shell:sandbox] exec completed: exit=${result.exitCode} duration=${result.durationMs}ms`
+          `[shell:sandbox] exec completed: exit=${result.exitCode} duration=${result.durationMs}ms`,
         );
         return {
           success: result.exitCode === 0,
@@ -338,7 +359,9 @@ export class ShellService extends Service {
       };
     }
 
-    if (isForbiddenCommand(trimmedCommand, this.shellConfig.forbiddenCommands)) {
+    if (
+      isForbiddenCommand(trimmedCommand, this.shellConfig.forbiddenCommands)
+    ) {
       return {
         success: false,
         stdout: "",
@@ -356,11 +379,18 @@ export class ShellService extends Service {
     }
 
     const result = shouldUseSandboxExecution(this.runtime)
-      ? await this.runSandboxCommand(trimmedCommand, this.currentDirectory, 30_000)
+      ? await this.runSandboxCommand(
+          trimmedCommand,
+          this.currentDirectory,
+          30_000,
+        )
       : await this.runCommandSimple(trimmedCommand);
 
     if (result.success) {
-      const fileOps = this.detectFileOperations(trimmedCommand, this.currentDirectory);
+      const fileOps = this.detectFileOperations(
+        trimmedCommand,
+        this.currentDirectory,
+      );
       if (fileOps && conversationId) {
         this.addToHistory(conversationId, trimmedCommand, result, fileOps);
       } else {
@@ -377,7 +407,10 @@ export class ShellService extends Service {
    * Enhanced command execution with PTY, background support, and session management
    * This is the main execution method that supports all advanced features
    */
-  async exec(command: string, options: ExecuteOptions = {}): Promise<ExecResult> {
+  async exec(
+    command: string,
+    options: ExecuteOptions = {},
+  ): Promise<ExecResult> {
     if (!command || typeof command !== "string") {
       return {
         status: "failed",
@@ -435,7 +468,9 @@ export class ShellService extends Service {
       };
     }
 
-    if (isForbiddenCommand(trimmedCommand, this.shellConfig.forbiddenCommands)) {
+    if (
+      isForbiddenCommand(trimmedCommand, this.shellConfig.forbiddenCommands)
+    ) {
       return {
         status: "failed",
         exitCode: 1,
@@ -455,21 +490,29 @@ export class ShellService extends Service {
     const backgroundRequested = options.background === true;
     const yieldRequested = typeof options.yieldMs === "number";
     if (!allowBackground && (backgroundRequested || yieldRequested)) {
-      warnings.push("Warning: background execution is disabled; running synchronously.");
+      warnings.push(
+        "Warning: background execution is disabled; running synchronously.",
+      );
     }
     const yieldWindow = allowBackground
       ? backgroundRequested
         ? 0
-        : clampNumber(options.yieldMs ?? defaultBackgroundMs, defaultBackgroundMs, 10, 120_000)
+        : clampNumber(
+            options.yieldMs ?? defaultBackgroundMs,
+            defaultBackgroundMs,
+            10,
+            120_000,
+          )
       : null;
 
     // Resolve workdir
-    const rawWorkdir = options.workdir?.trim() || this.currentDirectory || process.cwd();
+    const rawWorkdir =
+      options.workdir?.trim() || this.currentDirectory || process.cwd();
     const resolvedWorkdir = resolveWorkdir(rawWorkdir, warnings);
     const validatedWorkdir = validatePath(
       resolvedWorkdir,
       this.shellConfig.allowedDirectory,
-      this.currentDirectory
+      this.currentDirectory,
     );
     if (!validatedWorkdir) {
       return {
@@ -496,7 +539,7 @@ export class ShellService extends Service {
     if (shouldUseSandboxExecution(this.runtime)) {
       if (backgroundRequested || yieldRequested || usePty) {
         warnings.push(
-          "Warning: local-safe sandbox execution runs synchronously; background, yield, and PTY options are ignored."
+          "Warning: local-safe sandbox execution runs synchronously; background, yield, and PTY options are ignored.",
         );
       }
       const startedAt = Date.now();
@@ -504,10 +547,12 @@ export class ShellService extends Service {
         trimmedCommand,
         workdir,
         timeoutSec * 1000,
-        mergedEnv
+        mergedEnv,
       );
       const warningText = warnings.length ? `${warnings.join("\n")}\n\n` : "";
-      const aggregated = [sandboxResult.stdout, sandboxResult.stderr].filter(Boolean).join("\n");
+      const aggregated = [sandboxResult.stdout, sandboxResult.stderr]
+        .filter(Boolean)
+        .join("\n");
       if (!sandboxResult.success) {
         return {
           status: "failed",
@@ -560,7 +605,9 @@ export class ShellService extends Service {
       // Wait for yieldWindow or completion
       const raceResult = await Promise.race([
         handle.promise,
-        new Promise<"yield">((resolve) => setTimeout(() => resolve("yield"), yieldWindow)),
+        new Promise<"yield">((resolve) =>
+          setTimeout(() => resolve("yield"), yieldWindow),
+        ),
       ]);
 
       if (raceResult === "yield" && !handle.session.exited) {
@@ -577,7 +624,8 @@ export class ShellService extends Service {
       }
 
       // Process completed within yield window
-      const outcome = raceResult === "yield" ? await handle.promise : raceResult;
+      const outcome =
+        raceResult === "yield" ? await handle.promise : raceResult;
       const warningText = warnings.length ? `${warnings.join("\n")}\n\n` : "";
 
       if (outcome.status === "failed") {
@@ -675,11 +723,13 @@ export class ShellService extends Service {
         .sort(
           (
             a: (typeof running)[number] | (typeof finished)[number],
-            b: (typeof running)[number] | (typeof finished)[number]
-          ) => b.startedAt - a.startedAt
+            b: (typeof running)[number] | (typeof finished)[number],
+          ) => b.startedAt - a.startedAt,
         );
       const lines = sessions.map((s: (typeof sessions)[number]) => {
-        const label = s.name ? truncateMiddle(s.name, 80) : truncateMiddle(s.command, 120);
+        const label = s.name
+          ? truncateMiddle(s.name, 80)
+          : truncateMiddle(s.command, 120);
         return `${s.sessionId} ${pad(s.status, 9)} ${formatDuration(s.runtimeMs)} :: ${label}`;
       });
       return {
@@ -716,7 +766,10 @@ export class ShellService extends Service {
                     : `code ${scopedFinished.exitCode ?? 0}`
                 }.`,
               data: {
-                status: scopedFinished.status === "completed" ? "completed" : "failed",
+                status:
+                  scopedFinished.status === "completed"
+                    ? "completed"
+                    : "failed",
                 sessionId: params.sessionId,
                 exitCode: scopedFinished.exitCode ?? undefined,
                 aggregated: scopedFinished.aggregated,
@@ -740,12 +793,13 @@ export class ShellService extends Service {
         const exitCode = scopedSession.exitCode ?? 0;
         const exitSignal = scopedSession.exitSignal ?? undefined;
         if (exited) {
-          const status = exitCode === 0 && exitSignal == null ? "completed" : "failed";
+          const status =
+            exitCode === 0 && exitSignal == null ? "completed" : "failed";
           markExited(
             scopedSession,
             scopedSession.exitCode ?? null,
             scopedSession.exitSignal ?? null,
-            status
+            status,
           );
         }
         const status = exited
@@ -753,7 +807,10 @@ export class ShellService extends Service {
             ? "completed"
             : "failed"
           : "running";
-        const output = [stdout.trimEnd(), stderr.trimEnd()].filter(Boolean).join("\n").trim();
+        const output = [stdout.trimEnd(), stderr.trimEnd()]
+          .filter(Boolean)
+          .join("\n")
+          .trim();
         return {
           success: true,
           message:
@@ -784,7 +841,7 @@ export class ShellService extends Service {
           const { slice, totalLines, totalChars } = sliceLogLines(
             scopedSession.aggregated,
             params.offset,
-            params.limit
+            params.limit,
           );
           return {
             success: true,
@@ -803,9 +860,10 @@ export class ShellService extends Service {
           const { slice, totalLines, totalChars } = sliceLogLines(
             scopedFinished.aggregated,
             params.offset,
-            params.limit
+            params.limit,
           );
-          const status = scopedFinished.status === "completed" ? "completed" : "failed";
+          const status =
+            scopedFinished.status === "completed" ? "completed" : "failed";
           return {
             success: true,
             message: slice || "(no output recorded)",
@@ -970,7 +1028,10 @@ export class ShellService extends Service {
             message: `Session ${params.sessionId} stdin is not writable.`,
           };
         }
-        const payload = encodePaste(params.text ?? "", params.bracketed !== false);
+        const payload = encodePaste(
+          params.text ?? "",
+          params.bracketed !== false,
+        );
         if (!payload) {
           return { success: false, message: "No paste text provided." };
         }
@@ -1063,7 +1124,9 @@ export class ShellService extends Service {
    */
   listRunningSessions(): ProcessSession[] {
     const scopeKey = this.scopeKey;
-    return listRunningSessions().filter((s) => !scopeKey || s.scopeKey === scopeKey);
+    return listRunningSessions().filter(
+      (s) => !scopeKey || s.scopeKey === scopeKey,
+    );
   }
 
   /**
@@ -1071,7 +1134,9 @@ export class ShellService extends Service {
    */
   listFinishedSessions(): FinishedSession[] {
     const scopeKey = this.scopeKey;
-    return listFinishedSessions().filter((s) => !scopeKey || s.scopeKey === scopeKey);
+    return listFinishedSessions().filter(
+      (s) => !scopeKey || s.scopeKey === scopeKey,
+    );
   }
 
   /**
@@ -1108,7 +1173,10 @@ export class ShellService extends Service {
   /**
    * Get command history for a conversation
    */
-  getCommandHistory(conversationId: string, limit?: number): CommandHistoryEntry[] {
+  getCommandHistory(
+    conversationId: string,
+    limit?: number,
+  ): CommandHistoryEntry[] {
     const history = this.commandHistory.get(conversationId) || [];
     if (limit && limit > 0) {
       return history.slice(-limit);
@@ -1138,7 +1206,7 @@ export class ShellService extends Service {
     const validatedPath = validatePath(
       directory,
       this.shellConfig.allowedDirectory,
-      this.currentDirectory
+      this.currentDirectory,
     );
     if (!validatedPath) {
       return false;
@@ -1180,7 +1248,7 @@ export class ShellService extends Service {
     const validatedPath = validatePath(
       targetPath,
       this.shellConfig.allowedDirectory,
-      this.currentDirectory
+      this.currentDirectory,
     );
 
     if (!validatedPath) {
@@ -1206,7 +1274,8 @@ export class ShellService extends Service {
 
   private async runCommandSimple(command: string): Promise<CommandResult> {
     return new Promise((resolve) => {
-      const useShell = command.includes(">") || command.includes("<") || command.includes("|");
+      const useShell =
+        command.includes(">") || command.includes("<") || command.includes("|");
 
       let cmd: string;
       let args: string[];
@@ -1216,13 +1285,15 @@ export class ShellService extends Service {
         cmd = shell.shell;
         args = [...shell.args, command];
         logger.info(
-          `Executing shell command: ${cmd} ${shell.args.join(" ")} "${command}" in ${this.currentDirectory}`
+          `Executing shell command: ${cmd} ${shell.args.join(" ")} "${command}" in ${this.currentDirectory}`,
         );
       } else {
         const parts = command.split(/\s+/);
         cmd = parts[0];
         args = parts.slice(1);
-        logger.info(`Executing command: ${cmd} ${args.join(" ")} in ${this.currentDirectory}`);
+        logger.info(
+          `Executing command: ${cmd} ${args.join(" ")} in ${this.currentDirectory}`,
+        );
       }
 
       let stdout = "";
@@ -1337,7 +1408,9 @@ export class ShellService extends Service {
         };
         const spawnPty = ptyModule.spawn ?? ptyModule.default?.spawn;
         if (!spawnPty) {
-          throw new Error("PTY support is unavailable (node-pty spawn not found).");
+          throw new Error(
+            "PTY support is unavailable (node-pty spawn not found).",
+          );
         }
         pty = spawnPty(shell, [...shellArgs, opts.command], {
           cwd: opts.workdir,
@@ -1375,7 +1448,9 @@ export class ShellService extends Service {
         // the caller as a warning appended to `opts.warnings`, not swallowed.
         const errText = String(err);
         const warning = `Warning: PTY spawn failed (${errText}); retrying without PTY.`;
-        logger.warn(`exec: PTY spawn failed (${errText}); retrying without PTY.`);
+        logger.warn(
+          `exec: PTY spawn failed (${errText}); retrying without PTY.`,
+        );
         opts.warnings.push(warning);
       }
     }
@@ -1538,7 +1613,10 @@ export class ShellService extends Service {
       reason?: string;
     }>((resolve) => {
       resolveFn = resolve;
-      const handleExit = (code: number | null, exitSignal: NodeJS.Signals | number | null) => {
+      const handleExit = (
+        code: number | null,
+        exitSignal: NodeJS.Signals | number | null,
+      ) => {
         if (timeoutTimer) {
           clearTimeout(timeoutTimer);
         }
@@ -1548,7 +1626,9 @@ export class ShellService extends Service {
         const durationMs = Date.now() - startedAt;
         const wasSignal = exitSignal != null;
         const isSuccess = code === 0 && !wasSignal && !timedOut;
-        const status: "completed" | "failed" = isSuccess ? "completed" : "failed";
+        const status: "completed" | "failed" = isSuccess
+          ? "completed"
+          : "failed";
         markExited(session, code, exitSignal, status);
         if (!session.child && session.stdin) {
           session.stdin.destroyed = true;
@@ -1608,7 +1688,9 @@ export class ShellService extends Service {
           }
           markExited(session, null, null, "failed");
           const aggregated = session.aggregated.trim();
-          const message = aggregated ? `${aggregated}\n\n${String(err)}` : String(err);
+          const message = aggregated
+            ? `${aggregated}\n\n${String(err)}`
+            : String(err);
           settle({
             status: "failed",
             exitCode: null,
@@ -1634,7 +1716,7 @@ export class ShellService extends Service {
     conversationId: string | undefined,
     command: string,
     result: CommandResult,
-    fileOperations?: FileOperation[]
+    fileOperations?: FileOperation[],
   ): void {
     if (!conversationId) return;
 
@@ -1663,7 +1745,10 @@ export class ShellService extends Service {
     }
   }
 
-  private detectFileOperations(command: string, cwd: string): FileOperation[] | undefined {
+  private detectFileOperations(
+    command: string,
+    cwd: string,
+  ): FileOperation[] | undefined {
     const operations: FileOperation[] = [];
     const parts = command.trim().split(/\s+/);
     const cmd = parts[0].toLowerCase();

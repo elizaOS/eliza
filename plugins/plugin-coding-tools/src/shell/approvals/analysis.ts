@@ -21,7 +21,15 @@ import { DEFAULT_SAFE_BINS } from "./types";
 /**
  * Disallowed tokens in pipeline commands
  */
-const DISALLOWED_PIPELINE_TOKENS = new Set([">", "<", "`", "\n", "\r", "(", ")"]);
+const DISALLOWED_PIPELINE_TOKENS = new Set([
+  ">",
+  "<",
+  "`",
+  "\n",
+  "\r",
+  "(",
+  ")",
+]);
 
 /**
  * Escape characters inside double quotes
@@ -76,7 +84,8 @@ function isExecutableFile(filePath: string): boolean {
 function expandHome(value: string): string {
   if (!value) return value;
   if (value === "~") return require("node:os").homedir();
-  if (value.startsWith("~/")) return path.join(require("node:os").homedir(), value.slice(2));
+  if (value.startsWith("~/"))
+    return path.join(require("node:os").homedir(), value.slice(2));
   return value;
 }
 
@@ -104,9 +113,11 @@ function parseFirstToken(command: string): string | null {
 function resolveExecutablePath(
   rawExecutable: string,
   cwd?: string,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
 ): string | undefined {
-  const expanded = rawExecutable.startsWith("~") ? expandHome(rawExecutable) : rawExecutable;
+  const expanded = rawExecutable.startsWith("~")
+    ? expandHome(rawExecutable)
+    : rawExecutable;
 
   if (expanded.includes("/") || expanded.includes("\\")) {
     if (path.isAbsolute(expanded)) {
@@ -117,9 +128,11 @@ function resolveExecutablePath(
     return isExecutableFile(candidate) ? candidate : undefined;
   }
 
-  const envPath = env?.PATH ?? env?.Path ?? process.env.PATH ?? process.env.Path ?? "";
+  const envPath =
+    env?.PATH ?? env?.Path ?? process.env.PATH ?? process.env.Path ?? "";
   const entries = envPath.split(path.delimiter).filter(Boolean);
-  const hasExtension = process.platform === "win32" && path.extname(expanded).length > 0;
+  const hasExtension =
+    process.platform === "win32" && path.extname(expanded).length > 0;
 
   const extensions =
     process.platform === "win32"
@@ -154,13 +167,15 @@ function resolveExecutablePath(
 export function resolveCommandResolution(
   command: string,
   cwd?: string,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
 ): CommandResolution | null {
   const rawExecutable = parseFirstToken(command);
   if (!rawExecutable) return null;
 
   const resolvedPath = resolveExecutablePath(rawExecutable, cwd, env);
-  const executableName = resolvedPath ? path.basename(resolvedPath) : rawExecutable;
+  const executableName = resolvedPath
+    ? path.basename(resolvedPath)
+    : rawExecutable;
 
   return { rawExecutable, resolvedPath, executableName };
 }
@@ -171,13 +186,15 @@ export function resolveCommandResolution(
 export function resolveCommandFromArgv(
   argv: string[],
   cwd?: string,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
 ): CommandResolution | null {
   const rawExecutable = argv[0]?.trim();
   if (!rawExecutable) return null;
 
   const resolvedPath = resolveExecutablePath(rawExecutable, cwd, env);
-  const executableName = resolvedPath ? path.basename(resolvedPath) : rawExecutable;
+  const executableName = resolvedPath
+    ? path.basename(resolvedPath)
+    : rawExecutable;
 
   return { rawExecutable, resolvedPath, executableName };
 }
@@ -192,8 +209,14 @@ type IteratorAction = "split" | "skip" | "include" | { reject: string };
  */
 function iterateQuoteAware(
   command: string,
-  onChar: (ch: string, next: string | undefined, index: number) => IteratorAction
-): { ok: true; parts: string[]; hasSplit: boolean } | { ok: false; reason: string } {
+  onChar: (
+    ch: string,
+    next: string | undefined,
+    index: number,
+  ) => IteratorAction,
+):
+  | { ok: true; parts: string[]; hasSplit: boolean }
+  | { ok: false; reason: string } {
   const parts: string[] = [];
   let buf = "";
   let inSingle = false;
@@ -318,12 +341,17 @@ function splitShellPipeline(command: string): {
   });
 
   if (!result.ok) {
-    return { ok: false, reason: (result as { reason: string }).reason, segments: [] };
+    return {
+      ok: false,
+      reason: (result as { reason: string }).reason,
+      segments: [],
+    };
   }
   if (emptySegment || result.parts.length === 0) {
     return {
       ok: false,
-      reason: result.parts.length === 0 ? "empty command" : "empty pipeline segment",
+      reason:
+        result.parts.length === 0 ? "empty command" : "empty pipeline segment",
       segments: [],
     };
   }
@@ -407,7 +435,7 @@ function tokenizeShellSegment(segment: string): string[] | null {
 function parseSegmentsFromParts(
   parts: string[],
   cwd?: string,
-  env?: NodeJS.ProcessEnv
+  env?: NodeJS.ProcessEnv,
 ): ExecCommandSegment[] | null {
   const segments: ExecCommandSegment[] = [];
 
@@ -460,7 +488,11 @@ export function analyzeShellCommand(params: {
         return { ok: false, reason: pipelineSplit.reason, segments: [] };
       }
 
-      const segments = parseSegmentsFromParts(pipelineSplit.segments, params.cwd, params.env);
+      const segments = parseSegmentsFromParts(
+        pipelineSplit.segments,
+        params.cwd,
+        params.env,
+      );
       if (!segments) {
         return {
           ok: false,
@@ -482,7 +514,11 @@ export function analyzeShellCommand(params: {
     return { ok: false, reason: split.reason, segments: [] };
   }
 
-  const segments = parseSegmentsFromParts(split.segments, params.cwd, params.env);
+  const segments = parseSegmentsFromParts(
+    split.segments,
+    params.cwd,
+    params.env,
+  );
   if (!segments) {
     return { ok: false, reason: "unable to parse shell segment", segments: [] };
   }
@@ -687,7 +723,12 @@ export function resolveSafeBins(entries?: string[] | null): Set<string> {
 function isPathLikeToken(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed || trimmed === "-") return false;
-  if (trimmed.startsWith("./") || trimmed.startsWith("../") || trimmed.startsWith("~")) return true;
+  if (
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../") ||
+    trimmed.startsWith("~")
+  )
+    return true;
   if (trimmed.startsWith("/")) return true;
   return /^[A-Za-z]:[\\/]/.test(trimmed);
 }
@@ -723,7 +764,8 @@ export function isSafeBinUsage(params: {
 
   const matchesSafeBin =
     params.safeBins.has(execName) ||
-    (process.platform === "win32" && params.safeBins.has(path.parse(execName).name));
+    (process.platform === "win32" &&
+      params.safeBins.has(path.parse(execName).name));
 
   if (!matchesSafeBin) return false;
   if (!resolution?.resolvedPath) return false;
@@ -739,7 +781,10 @@ export function isSafeBinUsage(params: {
       const eqIndex = token.indexOf("=");
       if (eqIndex > 0) {
         const value = token.slice(eqIndex + 1);
-        if (value && (isPathLikeToken(value) || exists(path.resolve(cwd, value)))) {
+        if (
+          value &&
+          (isPathLikeToken(value) || exists(path.resolve(cwd, value)))
+        ) {
           return false;
         }
       }
@@ -758,7 +803,7 @@ export function isSafeBinUsage(params: {
  */
 function resolveAllowlistCandidatePath(
   resolution: CommandResolution | null,
-  cwd?: string
+  cwd?: string,
 ): string | undefined {
   if (!resolution) return undefined;
   if (resolution.resolvedPath) return resolution.resolvedPath;
@@ -786,13 +831,17 @@ function evaluateSegments(
     cwd?: string;
     skillBins?: Set<string>;
     autoAllowSkills?: boolean;
-  }
+  },
 ): { satisfied: boolean; matches: ExecAllowlistEntry[] } {
   const matches: ExecAllowlistEntry[] = [];
-  const allowSkills = params.autoAllowSkills === true && (params.skillBins?.size ?? 0) > 0;
+  const allowSkills =
+    params.autoAllowSkills === true && (params.skillBins?.size ?? 0) > 0;
 
   const satisfied = segments.every((segment) => {
-    const candidatePath = resolveAllowlistCandidatePath(segment.resolution, params.cwd);
+    const candidatePath = resolveAllowlistCandidatePath(
+      segment.resolution,
+      params.cwd,
+    );
     const candidateResolution =
       candidatePath && segment.resolution
         ? { ...segment.resolution, resolvedPath: candidatePath }
@@ -883,7 +932,9 @@ export function evaluateShellAllowlist(params: {
   autoAllowSkills?: boolean;
   platform?: string | null;
 }): ExecAllowlistAnalysis {
-  const chainParts = isWindowsPlatform(params.platform) ? null : splitCommandChain(params.command);
+  const chainParts = isWindowsPlatform(params.platform)
+    ? null
+    : splitCommandChain(params.command);
 
   if (!chainParts) {
     const analysis = analyzeShellCommand({

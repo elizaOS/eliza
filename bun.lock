@@ -920,6 +920,14 @@
         "vite": "^8.0.0",
       },
     },
+    "packages/import-conversations": {
+      "name": "@elizaos/import-conversations",
+      "version": "2.0.4",
+      "devDependencies": {
+        "@types/node": "^24.0.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+      },
+    },
     "packages/logger": {
       "name": "@elizaos/logger",
       "version": "2.0.3-beta.7",
@@ -1231,6 +1239,7 @@
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/import-conversations": "workspace:*",
         "@elizaos/logger": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fontsource/poppins": "^5.2.7",
@@ -4018,6 +4027,8 @@
     "@elizaos/gateway-discord": ["@elizaos/gateway-discord@workspace:packages/cloud/services/gateway-discord"],
 
     "@elizaos/gateway-webhook": ["@elizaos/gateway-webhook@workspace:packages/cloud/services/gateway-webhook"],
+
+    "@elizaos/import-conversations": ["@elizaos/import-conversations@workspace:packages/import-conversations"],
 
     "@elizaos/ios-native-deps": ["@elizaos/ios-native-deps@workspace:packages/native/ios-deps"],
 

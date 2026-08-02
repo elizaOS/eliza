@@ -27,15 +27,15 @@ describe("resolveRuntimePluginImportSpecifier", () => {
     expect(
       resolveRuntimePluginImportSpecifier("@elizaos/plugin-calendar"),
     ).toBe("@elizaos/plugin-calendar/plugin");
-    expect(
-      resolveRuntimePluginImportSpecifier("@elizaos/plugin-notes"),
-    ).toBe("@elizaos/plugin-notes/plugin");
+    expect(resolveRuntimePluginImportSpecifier("@elizaos/plugin-notes")).toBe(
+      "@elizaos/plugin-notes/plugin",
+    );
   });
 
   it("keeps regular plugin package roots unchanged", () => {
-    expect(resolveRuntimePluginImportSpecifier("@elizaos/plugin-google-workspace")).toBe(
-      "@elizaos/plugin-google-workspace",
-    );
+    expect(
+      resolveRuntimePluginImportSpecifier("@elizaos/plugin-google-workspace"),
+    ).toBe("@elizaos/plugin-google-workspace");
   });
 });
 

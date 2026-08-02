@@ -93,4 +93,3 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description: "Delete every sticky note.",
   },
 ];
-

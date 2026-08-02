@@ -1,0 +1,2 @@
+{"role": "user", "content": "no meta header session", "timestamp": "2026-01-03T09:00:00.000000"}
+{"role": "assistant", "content": "handled without a meta line", "reasoning": null, "finish_reason": "stop", "timestamp": "2026-01-03T09:00:01.000000"}

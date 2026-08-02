@@ -19,7 +19,9 @@ function clampTtl(value: number | undefined): number {
   return Math.min(Math.max(value, MIN_JOB_TTL_MS), MAX_JOB_TTL_MS);
 }
 
-let jobTtlMs = clampTtl(Number.parseInt(process.env.SHELL_JOB_TTL_MS ?? "", 10));
+let jobTtlMs = clampTtl(
+  Number.parseInt(process.env.SHELL_JOB_TTL_MS ?? "", 10),
+);
 
 const runningSessions = new Map<string, ProcessSession>();
 const finishedSessions = new Map<string, FinishedSession>();
@@ -133,7 +135,10 @@ function randomChoice(values: string[], fallback: string): string {
 }
 
 function createSlugBase(words = 2): string {
-  const parts = [randomChoice(SLUG_ADJECTIVES, "steady"), randomChoice(SLUG_NOUNS, "harbor")];
+  const parts = [
+    randomChoice(SLUG_ADJECTIVES, "steady"),
+    randomChoice(SLUG_NOUNS, "harbor"),
+  ];
   if (words > 2) {
     parts.push(randomChoice(SLUG_NOUNS, "reef"));
   }
@@ -167,7 +172,9 @@ export function createSessionSlug(isTaken?: (id: string) => boolean): string {
     }
   }
   const fallback = `${createSlugBase(3)}-${Math.random().toString(36).slice(2, 5)}`;
-  return isIdTaken(fallback) ? `${fallback}-${Date.now().toString(36)}` : fallback;
+  return isIdTaken(fallback)
+    ? `${fallback}-${Date.now().toString(36)}`
+    : fallback;
 }
 
 export function addSession(session: ProcessSession): void {
@@ -196,7 +203,11 @@ function sumPendingChars(buffer: string[]): number {
   return total;
 }
 
-function capPendingBuffer(buffer: string[], pendingChars: number, cap: number): number {
+function capPendingBuffer(
+  buffer: string[],
+  pendingChars: number,
+  cap: number,
+): number {
   if (pendingChars <= cap) {
     return pendingChars;
   }
@@ -235,17 +246,21 @@ export function trimWithCap(text: string, max: number): string {
 export function appendOutput(
   session: ProcessSession,
   stream: "stdout" | "stderr",
-  chunk: string
+  chunk: string,
 ): void {
   session.pendingStdout ??= [];
   session.pendingStderr ??= [];
   session.pendingStdoutChars ??= sumPendingChars(session.pendingStdout);
   session.pendingStderrChars ??= sumPendingChars(session.pendingStderr);
-  const buffer = stream === "stdout" ? session.pendingStdout : session.pendingStderr;
-  const bufferChars = stream === "stdout" ? session.pendingStdoutChars : session.pendingStderrChars;
+  const buffer =
+    stream === "stdout" ? session.pendingStdout : session.pendingStderr;
+  const bufferChars =
+    stream === "stdout"
+      ? session.pendingStdoutChars
+      : session.pendingStderrChars;
   const pendingCap = Math.min(
     session.pendingMaxOutputChars ?? DEFAULT_PENDING_OUTPUT_CHARS,
-    session.maxOutputChars
+    session.maxOutputChars,
   );
   buffer.push(chunk);
   let pendingChars = bufferChars + chunk.length;
@@ -259,9 +274,13 @@ export function appendOutput(
     session.pendingStderrChars = pendingChars;
   }
   session.totalOutputChars += chunk.length;
-  const aggregated = trimWithCap(session.aggregated + chunk, session.maxOutputChars);
+  const aggregated = trimWithCap(
+    session.aggregated + chunk,
+    session.maxOutputChars,
+  );
   session.truncated =
-    session.truncated || aggregated.length < session.aggregated.length + chunk.length;
+    session.truncated ||
+    aggregated.length < session.aggregated.length + chunk.length;
   session.aggregated = aggregated;
   session.tail = tail(session.aggregated, 2000);
 }
@@ -305,7 +324,7 @@ export function markExited(
   session: ProcessSession,
   exitCode: number | null,
   exitSignal: NodeJS.Signals | number | null,
-  status: ProcessStatus
+  status: ProcessStatus,
 ): void {
   session.exited = true;
   session.exitCode = exitCode;

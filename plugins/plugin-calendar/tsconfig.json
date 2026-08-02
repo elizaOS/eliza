@@ -77,8 +77,12 @@
       "@elizaos/plugin-elizacloud/host-routes": [
         "../plugin-elizacloud/src/host-routes.ts"
       ],
-      "@elizaos/plugin-google-workspace": ["../plugin-google-workspace/src/index.ts"],
-      "@elizaos/plugin-google-workspace/*": ["../plugin-google-workspace/src/*"],
+      "@elizaos/plugin-google-workspace": [
+        "../plugin-google-workspace/src/index.ts"
+      ],
+      "@elizaos/plugin-google-workspace/*": [
+        "../plugin-google-workspace/src/*"
+      ],
       "@elizaos/plugin-meetings": ["../plugin-meetings/src/index.ts"],
       "@elizaos/plugin-meetings/*": ["../plugin-meetings/src/*"],
       "@elizaos/plugin-native-filesystem": [

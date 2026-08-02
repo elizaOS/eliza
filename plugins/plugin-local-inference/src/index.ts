@@ -39,6 +39,16 @@ export {
 	type LocalInferenceCommandIntent,
 } from "./local-inference-routes.js";
 export {
+	buildPiiExtractionPrompt,
+	chunkText as chunkPiiText,
+	LlmEntityRecognizer,
+	type LocalPiiGenerate,
+	parseReportedEntities,
+	type ReportedEntity,
+	relocateEntities,
+} from "./pii/llm-recognizer.js";
+export { LocalPiiRecognizerService } from "./pii/service.js";
+export {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 	LOCAL_INFERENCE_MODEL_TYPES,
@@ -50,16 +60,6 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
-export {
-	buildPiiExtractionPrompt,
-	chunkText as chunkPiiText,
-	LlmEntityRecognizer,
-	type LocalPiiGenerate,
-	parseReportedEntities,
-	relocateEntities,
-	type ReportedEntity,
-} from "./pii/llm-recognizer.js";
-export { LocalPiiRecognizerService } from "./pii/service.js";
 export {
 	handleLocalInferenceTtsRoute,
 	normalizeAudioBytes,

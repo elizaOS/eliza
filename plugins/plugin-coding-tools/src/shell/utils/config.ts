@@ -51,19 +51,27 @@ export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
 export function loadShellConfig(): ShellConfig {
   const allowedDirectory = process.env.SHELL_ALLOWED_DIRECTORY || process.cwd();
   const timeout = parseInt(process.env.SHELL_TIMEOUT || "30000", 10);
-  const maxOutputChars = parseInt(process.env.SHELL_MAX_OUTPUT_CHARS || "200000", 10);
+  const maxOutputChars = parseInt(
+    process.env.SHELL_MAX_OUTPUT_CHARS || "200000",
+    10,
+  );
   const pendingMaxOutputChars = parseInt(
     process.env.SHELL_PENDING_MAX_OUTPUT_CHARS || "200000",
-    10
+    10,
   );
-  const defaultBackgroundMs = parseInt(process.env.SHELL_BACKGROUND_MS || "10000", 10);
+  const defaultBackgroundMs = parseInt(
+    process.env.SHELL_BACKGROUND_MS || "10000",
+    10,
+  );
   const allowBackground = process.env.SHELL_ALLOW_BACKGROUND !== "false";
 
   const customForbidden = process.env.SHELL_FORBIDDEN_COMMANDS
     ? process.env.SHELL_FORBIDDEN_COMMANDS.split(",").map((cmd) => cmd.trim())
     : [];
 
-  const forbiddenCommands = [...new Set([...DEFAULT_FORBIDDEN_COMMANDS, ...customForbidden])];
+  const forbiddenCommands = [
+    ...new Set([...DEFAULT_FORBIDDEN_COMMANDS, ...customForbidden]),
+  ];
 
   const config: ShellConfig = {
     enabled: true,
@@ -78,19 +86,22 @@ export function loadShellConfig(): ShellConfig {
 
   const parseResult = configSchema.safeParse(config);
   if (!parseResult.success) {
-    const errorMessage = parseResult.error.issues[0]?.message || parseResult.error.toString();
+    const errorMessage =
+      parseResult.error.issues[0]?.message || parseResult.error.toString();
     throw new Error(`Shell plugin configuration error: ${errorMessage}`);
   }
 
   try {
     const stats = fs.statSync(allowedDirectory);
     if (!stats.isDirectory()) {
-      throw new Error(`SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`);
+      throw new Error(
+        `SHELL_ALLOWED_DIRECTORY is not a directory: ${allowedDirectory}`,
+      );
     }
     config.allowedDirectory = path.resolve(allowedDirectory);
     logger.info(
       `Shell plugin enabled with allowed directory: ${config.allowedDirectory}, ` +
-        `background: ${allowBackground}, timeout: ${timeout}ms`
+        `background: ${allowBackground}, timeout: ${timeout}ms`,
     );
   } catch (error) {
     // error-policy:J1 config boundary; translate the expected ENOENT into a
@@ -101,9 +112,12 @@ export function loadShellConfig(): ShellConfig {
       "code" in error &&
       (error as NodeJS.ErrnoException).code === "ENOENT"
     ) {
-      throw new Error(`SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`, {
-        cause: error,
-      });
+      throw new Error(
+        `SHELL_ALLOWED_DIRECTORY does not exist: ${allowedDirectory}`,
+        {
+          cause: error,
+        },
+      );
     }
     throw error;
   }

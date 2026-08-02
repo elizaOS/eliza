@@ -8,11 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { NotesStore } from "./store.js";
-import type {
-  NotesSnapshot,
-  NotesStoreStatus,
-  StickyNote,
-} from "./types.js";
+import type { NotesSnapshot, NotesStoreStatus, StickyNote } from "./types.js";
 import {
   parseCreateNoteInput,
   parseEntityId,

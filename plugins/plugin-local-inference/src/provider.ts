@@ -36,7 +36,6 @@ import {
 } from "@elizaos/core";
 
 import { generateMediaAction } from "./actions/generate-media.js";
-import { LocalPiiRecognizerService } from "./pii/service.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
@@ -47,6 +46,7 @@ import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
 } from "./actions/transcription-control.js";
+import { LocalPiiRecognizerService } from "./pii/service.js";
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";

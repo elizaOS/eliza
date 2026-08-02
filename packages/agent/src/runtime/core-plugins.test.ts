@@ -22,7 +22,9 @@ describe("CORE_PLUGINS", () => {
     // they belong in OPTIONAL_CORE_PLUGINS, never the default core load set.
     expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-google-workspace");
     expect(CORE_PLUGINS).not.toContain("@elizaos/plugin-personal-assistant");
-    expect(DEFERRED_CORE_PLUGINS).not.toContain("@elizaos/plugin-google-workspace");
+    expect(DEFERRED_CORE_PLUGINS).not.toContain(
+      "@elizaos/plugin-google-workspace",
+    );
     expect(DEFERRED_CORE_PLUGINS).not.toContain(
       "@elizaos/plugin-personal-assistant",
     );

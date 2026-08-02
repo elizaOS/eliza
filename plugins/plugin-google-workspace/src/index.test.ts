@@ -44,9 +44,9 @@ describe("google plugin", () => {
     expect(googlePlugin.name).toBe("google");
     expect(googlePlugin.description).toContain("Gmail, Calendar, Drive, Meet, and Chat");
     expect(googlePlugin.services).toContain(GoogleWorkspaceService);
-    expect(googlePlugin.services?.map((s) => (s as { serviceType?: string }).serviceType)).toContain(
-      "google-chat"
-    );
+    expect(
+      googlePlugin.services?.map((s) => (s as { serviceType?: string }).serviceType)
+    ).toContain("google-chat");
   });
 
   it("registers the Google connector account provider on init", async () => {

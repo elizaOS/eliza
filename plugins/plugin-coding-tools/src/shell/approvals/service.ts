@@ -122,7 +122,7 @@ export class ExecApprovalService extends Service {
       logger.error(
         { src: "service:exec_approval", error, agentId: runtime.agentId },
         "Failed to load approval config during startup - using in-memory defaults. " +
-          "Approvals may not persist. Check state-dir file permissions."
+          "Approvals may not persist. Check state-dir file permissions.",
       );
       // Use a minimal in-memory config so the service can still function
       service.approvalConfig = {
@@ -148,7 +148,7 @@ export class ExecApprovalService extends Service {
 
     logger.info(
       { src: "service:exec_approval", agentId: runtime.agentId },
-      "ExecApprovalService started"
+      "ExecApprovalService started",
     );
     return service;
   }
@@ -157,7 +157,10 @@ export class ExecApprovalService extends Service {
    * Stop the ExecApprovalService
    */
   async stop(): Promise<void> {
-    logger.debug({ src: "service:exec_approval" }, "ExecApprovalService stopped");
+    logger.debug(
+      { src: "service:exec_approval" },
+      "ExecApprovalService stopped",
+    );
   }
 
   /**
@@ -268,7 +271,7 @@ export class ExecApprovalService extends Service {
           params.agentId ?? this.runtime.agentId,
           match,
           params.command,
-          analysis.segments[0]?.resolution?.resolvedPath
+          analysis.segments[0]?.resolution?.resolvedPath,
         );
         if (!recorded) {
           recordingFailed = true;
@@ -278,7 +281,7 @@ export class ExecApprovalService extends Service {
       if (recordingFailed) {
         logger.debug(
           { src: "service:exec_approval", command: params.command },
-          "Some allowlist usage records failed to save - command will still proceed"
+          "Some allowlist usage records failed to save - command will still proceed",
         );
       }
 
@@ -345,13 +348,17 @@ export class ExecApprovalService extends Service {
   /**
    * Request approval for a command
    */
-  async requestApproval(request: ExecApprovalRequest): Promise<ExecApprovalResult> {
-    const approvalService = this.runtime.getService("approval") as ApprovalService | null;
+  async requestApproval(
+    request: ExecApprovalRequest,
+  ): Promise<ExecApprovalResult> {
+    const approvalService = this.runtime.getService(
+      "approval",
+    ) as ApprovalService | null;
 
     if (!approvalService) {
       logger.warn(
         { src: "service:exec_approval" },
-        "ApprovalService not available, denying by default"
+        "ApprovalService not available, denying by default",
       );
       return {
         decision: "deny",
@@ -360,7 +367,11 @@ export class ExecApprovalService extends Service {
     }
 
     // Build description
-    const descriptionLines = ["**Exec Approval Required**", "", `Command: \`${request.command}\``];
+    const descriptionLines = [
+      "**Exec Approval Required**",
+      "",
+      `Command: \`${request.command}\``,
+    ];
 
     if (request.cwd) {
       descriptionLines.push(`CWD: \`${request.cwd}\``);
@@ -416,19 +427,28 @@ export class ExecApprovalService extends Service {
       onApproved?: (decision: ExecApprovalDecision) => Promise<void>;
       onDenied?: () => Promise<void>;
       onTimeout?: () => Promise<void>;
-    }
+    },
   ): Promise<UUID> {
-    const approvalService = this.runtime.getService("approval") as ApprovalService | null;
+    const approvalService = this.runtime.getService(
+      "approval",
+    ) as ApprovalService | null;
 
     if (!approvalService) {
-      logger.warn({ src: "service:exec_approval" }, "ApprovalService not available");
+      logger.warn(
+        { src: "service:exec_approval" },
+        "ApprovalService not available",
+      );
       if (callbacks?.onDenied) {
         await callbacks.onDenied();
       }
       throw new Error("ApprovalService not available");
     }
 
-    const descriptionLines = ["**Exec Approval Required**", "", `Command: \`${request.command}\``];
+    const descriptionLines = [
+      "**Exec Approval Required**",
+      "",
+      `Command: \`${request.command}\``,
+    ];
 
     if (request.cwd) {
       descriptionLines.push(`CWD: \`${request.cwd}\``);
@@ -489,7 +509,11 @@ export class ExecApprovalService extends Service {
    */
   async addToAllowlist(pattern: string, agentId?: string): Promise<boolean> {
     const approvals = loadApprovals();
-    const added = addAllowlistEntry(approvals, agentId ?? this.runtime.agentId, pattern);
+    const added = addAllowlistEntry(
+      approvals,
+      agentId ?? this.runtime.agentId,
+      pattern,
+    );
     if (added) {
       // Reload config to pick up the new entry
       this.approvalConfig = null;
@@ -501,7 +525,9 @@ export class ExecApprovalService extends Service {
    * Cancel a pending approval
    */
   async cancelApproval(taskId: UUID): Promise<void> {
-    const approvalService = this.runtime.getService("approval") as ApprovalService | null;
+    const approvalService = this.runtime.getService(
+      "approval",
+    ) as ApprovalService | null;
 
     if (approvalService) {
       await approvalService.cancelApproval(taskId);
@@ -515,7 +541,7 @@ export class ExecApprovalService extends Service {
     if (!this.runtime) {
       logger.warn(
         { src: "service:exec_approval" },
-        "Cannot get pending approvals - runtime not available"
+        "Cannot get pending approvals - runtime not available",
       );
       return [];
     }
@@ -532,7 +558,10 @@ export class ExecApprovalService extends Service {
       return tasks
         .filter((t) => t.metadata?.execRequest)
         .map((t) => {
-          const execRequest = t.metadata?.execRequest as Record<string, unknown>;
+          const execRequest = t.metadata?.execRequest as Record<
+            string,
+            unknown
+          >;
           return {
             id: execRequest.id as string,
             command: execRequest.command as string,
@@ -548,12 +577,16 @@ export class ExecApprovalService extends Service {
       // error-policy:J4 a failed task query must not read as "no pending
       // approvals" (that would silently drop an approval prompt); reportError
       // surfaces the breakage to the agent/owner while the UI degrades to empty.
-      this.runtime.reportError("ExecApprovalService.getPendingApprovals", error, {
-        roomId,
-      });
+      this.runtime.reportError(
+        "ExecApprovalService.getPendingApprovals",
+        error,
+        {
+          roomId,
+        },
+      );
       logger.error(
         { src: "service:exec_approval", error, roomId },
-        "Failed to get pending approvals"
+        "Failed to get pending approvals",
       );
       return [];
     }
