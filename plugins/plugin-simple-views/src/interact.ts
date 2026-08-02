@@ -6,6 +6,7 @@
  */
 
 import {
+  type AppliedEffectReceipt,
   ElizaError,
   type IAgentRuntime,
   isElizaError,
@@ -28,6 +29,8 @@ export interface SimpleViewsInteractResult {
   text: string;
   state?: SimpleViewsSnapshot;
   data?: unknown;
+  effectReceipts?: readonly AppliedEffectReceipt[];
+  userFacingEffectReceiptIds?: readonly string[];
   error?: {
     code: string;
     message: string;
@@ -249,6 +252,39 @@ function success(
   return result;
 }
 
+function mutationSuccess(
+  state: SimpleViewsSnapshot,
+  capability: string,
+  resource: { kind: string; id: string },
+  text: string,
+  data?: unknown,
+): SimpleViewsInteractResult {
+  const observedAt = new Date().toISOString();
+  const receiptId = `simple-views:${capability}:${resource.id}:${state.revision}`;
+  const receipt: AppliedEffectReceipt = {
+    receiptId,
+    operation: `simple-views.${capability}`,
+    resource: { ...resource, version: String(state.revision) },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "applied",
+    commit: {
+      kind: "durable",
+      id: `simple-views:revision:${state.revision}`,
+      committedAt: observedAt,
+    },
+  };
+  return {
+    success: true,
+    text,
+    state,
+    ...(data !== undefined ? { data } : {}),
+    effectReceipts: [receipt],
+    userFacingEffectReceiptIds: [receiptId],
+  };
+}
+
 async function dispatchCapability(
   service: SimpleViewsService,
   capability: string,
@@ -266,26 +302,51 @@ async function dispatchCapability(
     return success(service, `Read sticky note "${note.title}".`, { note });
   }
   if (capability === "create-note") {
-    const note = await service.createNote(params);
-    return success(service, `Created sticky note "${note.title}".`, { note });
+    const { value: note, snapshot } =
+      await service.createNoteWithCommit(params);
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.note", id: note.id },
+      `Created sticky note "${note.title}".`,
+      { note },
+    );
   }
   if (capability === "update-note") {
-    const note = await service.updateNote(
+    const { value: note, snapshot } = await service.updateNoteWithCommit(
       requiredParam(params, "id"),
       withoutId(params),
     );
-    return success(service, `Updated sticky note "${note.title}".`, { note });
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.note", id: note.id },
+      `Updated sticky note "${note.title}".`,
+      { note },
+    );
   }
   if (capability === "delete-note") {
     assertOnlyParams(params, ["id", "title", "query"]);
     const id = resolveNoteTarget(service.listNotes(), params);
-    const note = await service.deleteNote(id);
-    return success(service, `Deleted sticky note "${note.title}".`, { note });
+    const { value: note, snapshot } = await service.deleteNoteWithCommit(id);
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.note", id: note.id },
+      `Deleted sticky note "${note.title}".`,
+      { note },
+    );
   }
   if (capability === "clear-notes") {
     assertOnlyParams(params, []);
-    const cleared = await service.clearNotes();
-    return success(service, `Cleared ${cleared} sticky note(s).`, { cleared });
+    const { value: cleared, snapshot } = await service.clearNotesWithCommit();
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.note-collection", id: "notes" },
+      `Cleared ${cleared} sticky note(s).`,
+      { cleared },
+    );
   }
   if (capability === "get-calendar-state") {
     assertOnlyParams(params, ["date"]);
@@ -307,39 +368,59 @@ async function dispatchCapability(
   }
   if (capability === "select-calendar-date") {
     assertOnlyParams(params, ["date"]);
-    const date = await service.selectDate(requiredParam(params, "date"));
-    return success(service, `Selected ${date}.`, { date });
+    const { value: date, snapshot } = await service.selectDateWithCommit(
+      requiredParam(params, "date"),
+    );
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.calendar-selection", id: "selected-date" },
+      `Selected ${date}.`,
+      { date },
+    );
   }
   if (capability === "create-calendar-event") {
-    const event = await service.createCalendarEvent(params);
-    return success(
-      service,
+    const { value: event, snapshot } =
+      await service.createCalendarEventWithCommit(params);
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.calendar-event", id: event.id },
       `Created calendar event "${event.title}" for ${event.date} at ${event.time}.`,
       { event },
     );
   }
   if (capability === "update-calendar-event") {
-    const event = await service.updateCalendarEvent(
-      requiredParam(params, "id"),
-      withoutId(params),
+    const { value: event, snapshot } =
+      await service.updateCalendarEventWithCommit(
+        requiredParam(params, "id"),
+        withoutId(params),
+      );
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.calendar-event", id: event.id },
+      `Updated calendar event "${event.title}".`,
+      { event },
     );
-    return success(service, `Updated calendar event "${event.title}".`, {
-      event,
-    });
   }
   if (capability === "delete-calendar-event") {
     assertOnlyParams(params, ["id", "title", "query"]);
     const target = parseCalendarEventTarget(params);
-    const event =
+    const { value: event, snapshot } =
       target.selector === "id"
-        ? await service.deleteCalendarEvent(target.value)
-        : await service.deleteCalendarEventByLookup(
+        ? await service.deleteCalendarEventWithCommit(target.value)
+        : await service.deleteCalendarEventByLookupWithCommit(
             target.selector,
             target.value,
           );
-    return success(service, `Deleted calendar event "${event.title}".`, {
-      event,
-    });
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "simple-views.calendar-event", id: event.id },
+      `Deleted calendar event "${event.title}".`,
+      { event },
+    );
   }
   throw new ElizaError(
     `Simple Views does not support capability "${capability}".`,
