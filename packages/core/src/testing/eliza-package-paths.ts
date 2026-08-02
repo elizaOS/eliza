@@ -38,6 +38,25 @@ function getRepoLocalWorkspaceRoot(
 		"@elizaos/shared": ["eliza/packages/shared", "../eliza/packages/shared"],
 	};
 
+	// Workspace plugins live under plugins/ (or eliza/plugins/ when this repo
+	// is embedded as a consumer's subrepo). Prefer the live checkout over an
+	// installed copy so tests never run against a stale published dist.
+	if (packageName.startsWith("@elizaos/plugin-")) {
+		const dirName = packageName.slice("@elizaos/".length);
+		const pluginCandidates = [
+			`plugins/${dirName}`,
+			`eliza/plugins/${dirName}`,
+			`../eliza/plugins/${dirName}`,
+		];
+		for (const relativeRoot of pluginCandidates) {
+			const candidate = path.resolve(repoRoot, relativeRoot);
+			if (existsSync(path.join(candidate, "package.json"))) {
+				return candidate;
+			}
+		}
+		return undefined;
+	}
+
 	for (const relativeRoot of relativeRoots[packageName] ?? []) {
 		const candidate = path.resolve(repoRoot, relativeRoot);
 		if (existsSync(path.join(candidate, "package.json"))) {
