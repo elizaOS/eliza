@@ -1,6 +1,7 @@
 /**
- * Mutates the real Linux ISO workflow to prove release-critical regressions
- * fail before image construction or publication.
+ * Exercises the Linux ISO workflow and staged runtime smoke contracts.
+ * Mutation cases prove release-critical regressions fail before image
+ * construction or publication.
  */
 
 import assert from "node:assert/strict";
@@ -21,6 +22,10 @@ const workflowSource = readFileSync(
 );
 const validationWorkflowSource = readFileSync(
   path.join(repoRoot, ".github/workflows/elizaos-os-release.yml"),
+  "utf8",
+);
+const runtimeSmokeSource = readFileSync(
+  path.join(repoRoot, "packages/os/linux/scripts/runtime-api-smoke.sh"),
   "utf8",
 );
 const isoFilenameExpression = `\${{ steps.iso.outputs.filename }}`;
@@ -46,6 +51,18 @@ test("keeps the ISO workflow registered with the OS validation gate", () => {
     validateLinuxIsoWorkflowRegistration(validationWorkflowSource),
     { ok: true },
   );
+});
+
+test("probes the canonical first-run API from the staged runtime", () => {
+  assert.match(
+    runtimeSmokeSource,
+    /^check_endpoint \/api\/first-run\/status 200$/m,
+  );
+  assert.match(
+    runtimeSmokeSource,
+    /^check_endpoint \/api\/first-run\/options 200$/m,
+  );
+  assert.doesNotMatch(runtimeSmokeSource, /\/api\/onboarding\//);
 });
 
 test("rejects an unreachable ISO workflow contract", () => {

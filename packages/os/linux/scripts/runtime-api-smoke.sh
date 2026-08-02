@@ -2,7 +2,7 @@
 
 set -eu
 
-ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 RUNTIME="${ELIZAOS_APP_STAGE:-${ROOT}/tails/config/chroot_local-includes/usr/share/elizaos/elizaos-app}"
 BUN="${RUNTIME}/bin/bun"
 ENTRY="${RUNTIME}/Resources/app/eliza-dist/entry.js"
@@ -94,8 +94,8 @@ grep -q '"ready":true' "${HOME_DIR}/body"
 grep -q '"failed":0' "${HOME_DIR}/body"
 
 check_endpoint /api/auth/status 200
-check_endpoint /api/onboarding/status 200
-check_endpoint /api/onboarding/options 200
+check_endpoint /api/first-run/status 200
+check_endpoint /api/first-run/options 200
 grep -q '"providers"' "${HOME_DIR}/body"
 
 check_endpoint /api/logs 200
