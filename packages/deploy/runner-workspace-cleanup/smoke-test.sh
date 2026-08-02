@@ -115,18 +115,25 @@ for script in "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/smoke-test.sh" \
   bash -n "$script" || fail "bash syntax error in $script"
 done
 
-# 8. BEHAVIORAL: the prune reclaims a stale checkout and spares a fresh one,
-#    driven through the real tool against a temporary runner tree.
-mkdir -p "$RUNNER_ROOT/runner-1/_work/stale-repo" "$RUNNER_ROOT/runner-1/_work/fresh-repo"
+# 8. BEHAVIORAL: the prune reclaims a stale checkout, spares a fresh one, and
+#    preserves live runner command pipes even when their parent mtime is stale.
+#    This is driven through the real tool against a temporary runner tree.
+mkdir -p "$RUNNER_ROOT/runner-1/_work/stale-repo" \
+         "$RUNNER_ROOT/runner-1/_work/fresh-repo" \
+         "$RUNNER_ROOT/runner-1/_work/_temp/_runner_file_commands"
 echo payload > "$RUNNER_ROOT/runner-1/_work/stale-repo/file"
 echo payload > "$RUNNER_ROOT/runner-1/_work/fresh-repo/file"
+echo state > "$RUNNER_ROOT/runner-1/_work/_temp/_runner_file_commands/save_state_smoke"
 # Age it through node: `touch -d "48 hours ago"` is GNU-only and the BSD `-A`
 # form counts HHMMSS, so both silently mis-age this directory on macOS.
 node -e '
   const fs = require("node:fs");
   const when = new Date(Date.now() - 48 * 3600 * 1000);
-  fs.utimesSync(process.argv[1], when, when);
-' "$RUNNER_ROOT/runner-1/_work/stale-repo"
+  for (const target of process.argv.slice(1)) {
+    fs.utimesSync(target, when, when);
+  }
+' "$RUNNER_ROOT/runner-1/_work/stale-repo" \
+  "$RUNNER_ROOT/runner-1/_work/_temp"
 
 # `--allow-active` only because this assertion runs INSIDE a CI job, which is
 # itself a live `Runner.Worker` the tool's host-global guard would refuse on —
@@ -138,6 +145,8 @@ node -e '
 
 test ! -e "$RUNNER_ROOT/runner-1/_work/stale-repo" || fail "stale checkout was not reclaimed"
 test -e "$RUNNER_ROOT/runner-1/_work/fresh-repo" || fail "fresh checkout must be preserved"
+test -e "$RUNNER_ROOT/runner-1/_work/_temp/_runner_file_commands/save_state_smoke" \
+  || fail "runner file-command state must be preserved"
 
 # 9. If systemd-analyze is available, verify rendered units whose paths point
 #    at a temp staging of the REAL shipped files. The normal rendering above
