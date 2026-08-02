@@ -53,15 +53,18 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-notes",
     description: "List every sticky note as structured data.",
+    effect: "read",
   },
   {
     id: "get-note",
     description: "Read one sticky note by id.",
+    effect: "read",
     params: ID_PARAM,
   },
   {
     id: "create-note",
     description: "Create a durable sticky note.",
+    effect: "write",
     params: {
       title: {
         ...TITLE_PARAM,
@@ -75,6 +78,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "update-note",
     description: "Update one or more fields on a sticky note.",
+    effect: "write",
     params: {
       ...ID_PARAM,
       title: { ...TITLE_PARAM, description: "Replacement note title." },
@@ -88,6 +92,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "delete-note",
     description: "Delete one sticky note by id, exact title, or unique query.",
+    effect: "write",
     params: {
       id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
       title: { ...TITLE_PARAM, description: "Exact note title." },
@@ -103,6 +108,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "clear-notes",
     description: "Delete every sticky note.",
+    effect: "write",
   },
 ];
 
@@ -110,6 +116,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-calendar-state",
     description: "Read selected date and calendar events as structured data.",
+    effect: "read",
     params: {
       date: {
         ...DATE_PARAM,
@@ -120,11 +127,13 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-calendar-event",
     description: "Read one Simple Calendar event by id.",
+    effect: "read",
     params: ID_PARAM,
   },
   {
     id: "select-calendar-date",
     description: "Persist the date selected in the Simple Calendar view.",
+    effect: "write",
     params: {
       date: {
         ...DATE_PARAM,
@@ -136,6 +145,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   {
     id: "create-calendar-event",
     description: "Create a durable Simple Calendar event.",
+    effect: "write",
     params: {
       title: {
         ...TITLE_PARAM,
@@ -157,6 +167,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
   {
     id: "update-calendar-event",
     description: "Update one or more fields on a Simple Calendar event.",
+    effect: "write",
     params: {
       ...ID_PARAM,
       title: { ...TITLE_PARAM, description: "Replacement event title." },
@@ -173,6 +184,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
     id: "delete-calendar-event",
     description:
       "Delete one Simple Calendar event by id, exact title, or unique query.",
+    effect: "write",
     params: {
       id: {
         ...ID_PARAM.id,

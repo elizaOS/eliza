@@ -59,6 +59,7 @@ const NOTES_VIEW: ViewSummary = {
 		{
 			id: "create-note",
 			description: "Create a durable sticky note.",
+			effect: "write",
 			params: {
 				title: {
 					type: "string",
@@ -96,6 +97,16 @@ async function readRequestBody(req: http.IncomingMessage): Promise<string> {
 
 async function startAuthenticatedViewsServer(
 	expectedToken: string,
+	interactionResponse: Record<string, unknown> = {
+		requestId: "view-request-1",
+		success: true,
+		result: {
+			success: true,
+			text: "interaction complete",
+			state: { revision: 7 },
+			data: { note: { id: "note-7", title: "nub" } },
+		},
+	},
 ): Promise<AuthenticatedViewsServer> {
 	const requests: CapturedRequest[] = [];
 	const server = http.createServer((req, res) => {
@@ -156,7 +167,7 @@ async function startAuthenticatedViewsServer(
 				request.pathname.startsWith("/api/views/") &&
 				request.pathname.endsWith("/interact")
 			) {
-				sendJson(res, 200, { success: true, text: "interaction complete" });
+				sendJson(res, 200, interactionResponse);
 				return;
 			}
 			if (
@@ -396,6 +407,23 @@ describe("authenticated view loopback requests", () => {
 			userFacingText: "interaction complete",
 			verifiedUserFacing: true,
 			turnComplete: true,
+			userFacingEffectReceiptIds: ["view-request-1"],
+			effectReceipts: [
+				{
+					receiptId: "view-request-1",
+					operation: "view.notes.create-note",
+					resource: {
+						kind: "view.notes.note",
+						id: "note-7",
+						version: "7",
+					},
+					outcome: "applied",
+					commit: {
+						kind: "durable",
+						id: "view-request-1:7",
+					},
+				},
+			],
 		});
 		expect(server.requests.at(-1)).toMatchObject({
 			method: "POST",
@@ -408,6 +436,53 @@ describe("authenticated view loopback requests", () => {
 				viewType: "gui",
 			}),
 		});
+	});
+
+	it("fails closed when a declared write lacks a durable receipt", async () => {
+		const token = "views-missing-receipt-token";
+		const server = await startAuthenticatedViewsServer(token, {
+			success: true,
+			result: { success: true, text: "interaction complete" },
+		});
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_TOKEN = token;
+
+		const callbackTexts: string[] = [];
+		const result = await createViewsAction({
+			hasOwnerAccess: async () => true,
+		}).handler(
+			{ agentId: "agent-1" } as never,
+			{
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: { text: "create nub note" },
+			} as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "create-note",
+				title: "nub",
+			},
+			async (content) => {
+				if (content.text) callbackTexts.push(content.text);
+				return [];
+			},
+		);
+
+		expect(callbackTexts).toEqual([
+			'View "notes" returned an unverified write result for capability "create-note". Check the view before retrying.',
+		]);
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText:
+				'View "notes" returned an unverified write result for capability "create-note". Check the view before retrying.',
+			data: { verification: "missing-durable-receipt" },
+		});
+		expect(result?.verifiedUserFacing).not.toBe(true);
+		expect(result?.turnComplete).not.toBe(true);
+		expect(result).not.toHaveProperty("effectReceipts");
 	});
 
 	it("authenticates every Node-side loopback caller", async () => {

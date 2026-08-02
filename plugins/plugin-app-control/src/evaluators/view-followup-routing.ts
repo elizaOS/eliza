@@ -102,15 +102,6 @@ function capabilityFamily(capability: ViewCapability): CapabilityFamily | null {
 	return null;
 }
 
-function viewSupportsFamily(
-	view: ViewSummary,
-	family: CapabilityFamily,
-): boolean {
-	return (view.capabilities ?? []).some(
-		(capability) => capabilityFamily(capability) === family,
-	);
-}
-
 function hasRegisteredViewsAction(context: ResponseHandlerEvaluatorContext) {
 	return (context.runtime.actions ?? []).some(
 		(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
@@ -139,7 +130,7 @@ function shouldConsiderViewFollowup(
 
 async function resolveActiveViewForFamily(
 	family: CapabilityFamily,
-): Promise<ViewSummary | null> {
+): Promise<{ view: ViewSummary; capability: ViewCapability } | null> {
 	// The intent gate (family verb + reference token, plus a content marker for
 	// create/update) is enforced in shouldConsiderViewFollowup. Here we only need
 	// to confirm a view is actually focused and can perform the requested family.
@@ -152,10 +143,14 @@ async function resolveActiveViewForFamily(
 
 		const views = await client.listViews();
 		const activeView = views.find((view) => view.id === current.viewId);
-		if (!activeView || !viewSupportsFamily(activeView, family)) {
+		if (!activeView) return null;
+		const matchingCapabilities = (activeView.capabilities ?? []).filter(
+			(capability) => capabilityFamily(capability) === family,
+		);
+		if (matchingCapabilities.length !== 1 || !matchingCapabilities[0]) {
 			return null;
 		}
-		return activeView;
+		return { view: activeView, capability: matchingCapabilities[0] };
 	} catch {
 		// error-policy:J4 loopback confirm failed -> can't route; the agent's normal
 		// reply stands (designed degrade, per the block comment above).
@@ -177,13 +172,17 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		const family = shouldConsiderViewFollowup(context);
 		if (!family) return undefined;
 
-		const activeView = await resolveActiveViewForFamily(family);
-		if (!activeView) return undefined;
+		const route = await resolveActiveViewForFamily(family);
+		if (!route) return undefined;
+		const { view: activeView, capability } = route;
 
 		return {
 			requiresTool: true,
 			clearReply: true,
 			addContexts: [GENERAL_CONTEXT],
+			addContextSlices: [
+				`Focused view route: call VIEWS with action="interact", view=${JSON.stringify(activeView.id)}, capability=${JSON.stringify(capability.id)}. Keep those fields fixed, infer only the declared capability params from the current user request and visible conversation, and do not substitute agent-fill or agent-click.`,
+			],
 			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
 			clearParentActionHints: true,
@@ -193,11 +192,12 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 				params: {
 					action: "interact",
 					view: activeView.id,
+					capability: capability.id,
 					...(activeView.viewType ? { viewType: activeView.viewType } : {}),
 				},
 			},
 			debug: [
-				`active view ${activeView.id} supports ${family}; forcing sole deterministic VIEWS owner`,
+				`active view ${activeView.id} uniquely routes ${family} to ${capability.id}; forcing sole deterministic VIEWS owner`,
 			],
 		};
 	},
