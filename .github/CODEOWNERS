@@ -32,7 +32,6 @@
 # Security and crypto-handling code — mandatory security review.
 /packages/security/                     @elizaos/security-team
 /packages/vault/                        @elizaos/security-team
-/packages/contracts/                    @elizaos/security-team @elizaos/backend-leads
 
 # Plugin runtime / sandboxing surface.
 # The host-shim cluster (base + android/ios/electrobun) now lives under

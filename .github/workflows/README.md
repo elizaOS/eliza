@@ -17,8 +17,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |
 | `release.yaml` | Reusable call only | Exact-SHA transactional npm, tag, and GitHub release |
 | `release-candidate-pr.yml` | PRs changing release authority | Credential-free candidate plus real local transport receipts |
-| `elizaos-os-full-release.yml` | Release created, manual | Configured automatic OS artifact/manifest path; currently startup-invalid |
-| `update-os-release-manifest.yml` | Manual only | SHA- and exact-asset-bound OS manifest recovery through a draft pull request |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
@@ -45,15 +43,11 @@ does not check out a repository revision or execute candidate-controlled code.
 
 ## Release Workflows
 
-The retained automated graph has three distinct responsibilities:
+The retained automated graph has two distinct responsibilities:
 `release-orchestrator.yml` is the sole full-cohort entry point,
-`release.yaml` performs the transactional npm/tag/GitHub Release operation,
-and `elizaos-os-full-release.yml` is the only configured automatic OS
-artifact/manifest path. The manual
-`update-os-release-manifest.yml` recovery workflow is intentionally outside
-that graph: it can only propose a SHA-bound checksum repair through a pull
-request. Do not add another automatic aggregate or direct protected-branch
-manifest writer.
+and `release.yaml` performs the transactional npm/tag/GitHub Release operation.
+Operating-system images and manifests are released from
+[`elizaOS/os`](https://github.com/elizaOS/os).
 
 The orchestrator waits for complete npm registry, annotated tag, and GitHub
 Release readback before passing those exact outputs to enabled downstream
@@ -90,29 +84,6 @@ workspace dependency closure.
 Coordinates npm, Android, Apple, desktop, Homebrew, and homepage release jobs.
 Every enabled distribution requires the transactional npm result; homepage
 publication additionally waits for every enabled distribution to succeed.
-
-### OS artifact manifest (`elizaos-os-full-release.yml`)
-
-This is intended to build and verify Linux OS artifacts, populate their release
-manifest, generate canonical checksums, validate publishability, and upload the
-result. It is the only automatic workflow configured to do so, but its recorded
-runs are startup failures, so it is not a working release authority. Its
-reusable-workflow permissions and end-to-end repair remain in #16279.
-
-### Manual OS manifest recovery (`update-os-release-manifest.yml`)
-
-This manual-only workflow preserves the separate recovery operation needed when
-release assets already exist. Operators must provide the current full
-`origin/develop` SHA and the release tag's full commit SHA. The workflow refuses
-stale or mismatched identities, captures every stable asset database/node ID,
-filename, size, and available GitHub SHA-256, then downloads each asset by its
-captured database ID. It rejects missing or extra files, size/digest mismatches,
-asset replacements, and any
-pre/post API inventory drift before regenerating publishable checksums. The only
-output is a dedicated draft pull request containing all seven evidence rows and
-the exact base, tag, asset, downloaded-byte, and workflow-log receipts. It has no
-`release`, `push`, or `workflow_call` trigger and never pushes to `develop`
-directly.
 
 ## Test Workflows
 

@@ -116,10 +116,6 @@ plugins/plugin-personal-assistant/test/helpers/*.d.ts.map
 plugins/plugin-personal-assistant/test/helpers/*.js
 plugins/plugin-personal-assistant/test/helpers/*.js.map
 
-# Accidental declaration emit next to TS in @elizaos/contracts (build output is dist/)
-packages/contracts/src/**/*.d.ts
-packages/contracts/src/**/*.d.ts.map
-
 # Accidental JS/declaration emit next to TS in @elizaos/plugin-app-control (build output is dist/)
 plugins/plugin-app-control/src/**/*.js
 plugins/plugin-app-control/src/**/*.js.map
