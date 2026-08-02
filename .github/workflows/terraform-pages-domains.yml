@@ -127,4 +127,4 @@ jobs:
         run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
       - name: Verify live environment routing
         if: github.event.inputs.action == 'apply'
-        run: node packages/scripts/cloud/verify-environment-routing-cli.mjs --environment "${{ github.event.inputs.environment }}" --require-beacon
+        run: node packages/cloud/scripts/verify-environment-routing-cli.mjs --environment "${{ github.event.inputs.environment }}" --require-beacon

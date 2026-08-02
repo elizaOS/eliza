@@ -266,7 +266,7 @@ describe("oauth-flow FlowState broadcast", () => {
     expect(account.credentials.idToken).toBe(ID_TOKEN);
 
     // And the persisted record is intact.
-    const saved = loadAccount("openai-codex", "acct-3");
+    const saved = (await loadAccount("openai-codex", "acct-3"));
     expect(saved?.credentials.access).toBe(ACCESS_TOKEN);
     expect(saved?.credentials.refresh).toBe(REFRESH_TOKEN);
     expect(saved?.credentials.idToken).toBe(ID_TOKEN);
@@ -312,16 +312,16 @@ describe("oauth-flow FlowState broadcast", () => {
     expect(secondAccount.label).toBe(email);
     expect(listAccounts("openai-codex")).toHaveLength(1);
     expect(
-      loadAccount("openai-codex", firstAccount.id)?.credentials.refresh,
+      (await loadAccount("openai-codex", firstAccount.id))?.credentials.refresh,
     ).toBe("updated-refresh");
-    expect(loadAccount("openai-codex", "reserved-id-2")).toBeNull();
+    expect((await loadAccount("openai-codex", "reserved-id-2"))).toBeNull();
   });
 
   it("replaces a same-provider credential in place after identity validation", async () => {
     useTempElizaHome();
     const identity = "stable-codex-account-id";
     const email = "person@example.com";
-    saveAccount({
+    await saveAccount({
       id: "target-account",
       providerId: "openai-codex",
       label: "Work Codex",
@@ -364,7 +364,7 @@ describe("oauth-flow FlowState broadcast", () => {
 
   it("fails closed on replacement identity mismatch and leaves the old credential intact", async () => {
     useTempElizaHome();
-    saveAccount({
+    await saveAccount({
       id: "target-account",
       providerId: "openai-codex",
       label: "Work Codex",
@@ -393,7 +393,7 @@ describe("oauth-flow FlowState broadcast", () => {
       code: "oauth_flow.replacement_identity_mismatch",
     });
     expect(
-      loadAccount("openai-codex", "target-account")?.credentials,
+      (await loadAccount("openai-codex", "target-account"))?.credentials,
     ).toMatchObject({
       access: "old-access",
       refresh: "old-refresh",
@@ -402,7 +402,7 @@ describe("oauth-flow FlowState broadcast", () => {
 
   it("leaves the old replacement credential intact when OAuth exchange fails", async () => {
     useTempElizaHome();
-    saveAccount({
+    await saveAccount({
       id: "target-account",
       providerId: "openai-codex",
       label: "Work Codex",
@@ -429,7 +429,7 @@ describe("oauth-flow FlowState broadcast", () => {
 
     await expect(handle.completion).rejects.toThrow("provider denied login");
     expect(
-      loadAccount("openai-codex", "target-account")?.credentials,
+      (await loadAccount("openai-codex", "target-account"))?.credentials,
     ).toMatchObject({
       access: "old-access",
       refresh: "old-refresh",
@@ -440,7 +440,7 @@ describe("oauth-flow FlowState broadcast", () => {
     useTempElizaHome();
     const identity = "stable-codex-account-id";
     const email = "person@example.com";
-    saveAccount({
+    await saveAccount({
       id: "target-account",
       providerId: "openai-codex",
       label: "Work Codex",
@@ -475,7 +475,7 @@ describe("oauth-flow FlowState broadcast", () => {
     });
     expect(rollback).toHaveBeenCalledOnce();
     expect(
-      loadAccount("openai-codex", "target-account")?.credentials.refresh,
+      (await loadAccount("openai-codex", "target-account"))?.credentials.refresh,
     ).toBe("old-refresh");
   });
 

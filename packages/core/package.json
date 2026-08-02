@@ -81,6 +81,46 @@
 			"import": "./dist/testing/index.js",
 			"default": "./dist/testing/index.js"
 		},
+		"./atomic-json": {
+			"types": "./dist/utils/atomic-json.d.ts",
+			"eliza-source": {
+				"types": "./src/utils/atomic-json.ts",
+				"import": "./src/utils/atomic-json.ts",
+				"default": "./src/utils/atomic-json.ts"
+			},
+			"import": "./dist/node/utils/atomic-json.js",
+			"default": "./dist/node/utils/atomic-json.js"
+		},
+		"./security/kms": {
+			"types": "./dist/security/kms/index.d.ts",
+			"eliza-source": {
+				"types": "./src/security/kms/index.ts",
+				"import": "./src/security/kms/index.ts",
+				"default": "./src/security/kms/index.ts"
+			},
+			"import": "./dist/node/security/kms/index.js",
+			"default": "./dist/node/security/kms/index.js"
+		},
+		"./security/mcp-server-config": {
+			"types": "./dist/security/mcp-server-config.d.ts",
+			"eliza-source": {
+				"types": "./src/security/mcp-server-config.ts",
+				"import": "./src/security/mcp-server-config.ts",
+				"default": "./src/security/mcp-server-config.ts"
+			},
+			"import": "./dist/node/security/mcp-server-config.js",
+			"default": "./dist/node/security/mcp-server-config.js"
+		},
+		"./security/network-policy": {
+			"types": "./dist/security/network-policy.d.ts",
+			"eliza-source": {
+				"types": "./src/security/network-policy.ts",
+				"import": "./src/security/network-policy.ts",
+				"default": "./src/security/network-policy.ts"
+			},
+			"import": "./dist/node/security/network-policy.js",
+			"default": "./dist/node/security/network-policy.js"
+		},
 		"./security/*": {
 			"types": "./dist/security/*.d.ts",
 			"eliza-source": {

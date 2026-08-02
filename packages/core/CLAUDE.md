@@ -52,7 +52,6 @@ src/
   registries/           Registry utilities
   sessions/             Session management
   sandbox/              Sandbox policy
-  optimization/         Optimization utilities
   scheduled-task/       Scheduled task helpers
   validation/           Input validation utilities
   constants/            Shared constants
@@ -60,7 +59,7 @@ src/
   owner-state/          Owner state tracking
   messaging/            Messaging utilities
   search.ts             In-memory/embedding search utilities
-  utils.ts  utils/      Shared helpers: prompts (composePromptFromState, parseKeyValueXml), batch-queue,
+  utils.ts  utils/      Shared helpers: prompts (composePromptFromState, parseKeyValueXml), deterministic hashing, state/optimization dirs, batch-queue,
                         confirmation, read-env, state-dir, streaming, environment, plugin-loader
 build.ts                Custom bun-based multi-target build (Node / browser / edge + d.ts generation)
 scripts/perf-settings.ts, scripts/run-e2e-smoke.mjs

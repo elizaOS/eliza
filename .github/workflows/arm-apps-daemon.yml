@@ -11,7 +11,7 @@ name: Arm Apps Daemon (Product 2)
 # ELIZA_PROVISIONING_SSH_KEY/HOST secrets the deploy workflow already uses. So
 # no operator SSH key needs to be added anywhere; dispatch it and it converges.
 #
-# Mirrors packages/scripts/cloud/admin/arm-apps-daemon.mjs (same upsert logic),
+# Mirrors packages/cloud/scripts/admin/arm-apps-daemon.mjs (same upsert logic),
 # so a local run and a CI run produce the same box state.
 #
 # Inputs:

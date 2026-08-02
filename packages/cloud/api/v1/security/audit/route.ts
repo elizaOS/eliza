@@ -6,7 +6,7 @@
  * actor, org, ip, user-agent, request id, and final allowlist validation.
  */
 
-import { AUDIT_ACTIONS, type AuditResult } from "@elizaos/security/audit";
+import { CLIENT_AUDIT_ACTIONS, type AuditResult } from "@/services/audit";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
@@ -18,7 +18,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 
 const clientAuditSchema = z.object({
-  action: z.enum(AUDIT_ACTIONS),
+  action: z.enum(CLIENT_AUDIT_ACTIONS),
   result: z.enum(["allow", "deny", "error"]),
   resource: z
     .object({

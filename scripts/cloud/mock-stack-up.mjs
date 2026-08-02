@@ -366,7 +366,7 @@ async function main() {
         "bun",
         [
           "run",
-          "packages/test/cloud-mocks/bin/hetzner-mock.ts",
+          "packages/cloud/test-mocks/bin/hetzner-mock.ts",
           "--port",
           String(hetznerPort),
         ],
@@ -384,7 +384,7 @@ async function main() {
     if (!flags.noCp) {
       const proc = spawn(
         "bun",
-        ["run", "packages/test/cloud-mocks/bin/control-plane-mock.ts"],
+        ["run", "packages/cloud/test-mocks/bin/control-plane-mock.ts"],
         {
           cwd: REPO_ROOT,
           env: {

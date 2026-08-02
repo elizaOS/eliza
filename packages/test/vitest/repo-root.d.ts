@@ -1,2 +1,2 @@
-export declare const repoRoot: any;
+export declare const repoRoot: string;
 //# sourceMappingURL=repo-root.d.ts.map

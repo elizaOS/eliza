@@ -33,7 +33,7 @@ async function seedGmailTriageGrant(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
   const { seedGoogleConnectorGrant } = await import(
-    "../../../../packages/test/mocks/helpers/seed-grants.ts"
+    "../support/helpers/seed-grants.ts"
   );
   await seedGoogleConnectorGrant(
     ctx.runtime as unknown as Parameters<typeof seedGoogleConnectorGrant>[0],

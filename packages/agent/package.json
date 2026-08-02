@@ -316,7 +316,6 @@
     "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-registry": "workspace:*",
-    "@elizaos/security": "workspace:*",
     "@elizaos/plugin-pty": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",

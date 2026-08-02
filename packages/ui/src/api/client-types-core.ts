@@ -244,11 +244,6 @@ export interface LaunchSnapshot {
     requiredGate?: "runtime" | "bootstrap" | "pairing" | null;
     error?: string | null;
   };
-  remotes: {
-    seeded: boolean;
-    requiredStarted: boolean;
-    errors: Array<{ id: string; error: string }>;
-  };
   localModel: {
     backgroundDownloadQueued: boolean;
     blocking: false;

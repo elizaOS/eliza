@@ -119,7 +119,7 @@ describe("#11632 LifeOps live-validation workflow", () => {
     expect(integrationConfig).toContain('"index.node.ts"');
     expect(integrationConfig).toContain('conditions: ["eliza-source"]');
     expect(integrationConfig).toContain(
-      "...buildHarnessSourceAliases(elizaWorkspaceRoot)",
+      "...buildWorkspaceSourceAliases(elizaWorkspaceRoot)",
     );
   });
 

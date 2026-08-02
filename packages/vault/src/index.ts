@@ -104,6 +104,7 @@ export {
   attestationMasterKey,
   defaultMasterKey,
   inMemoryMasterKey,
+  loadDefaultMasterKeySync,
   MasterKeyUnavailableError,
   osKeychainMasterKey,
   passphraseMasterKey,

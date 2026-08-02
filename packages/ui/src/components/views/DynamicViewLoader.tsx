@@ -693,7 +693,7 @@ const DEV_POLL_INTERVAL_MS = 2000;
  * host React singleton, the API client, and the native bridges via the
  * host-external map), so it runs with full app privilege. Only ever import a
  * bundle served by THIS origin: a cross-origin `bundleUrl` (which an untrusted
- * remote-plugin descriptor can announce) would be arbitrary attacker code
+ * view descriptor can announce) would be arbitrary attacker code
  * executing against the user's authenticated session. Every shipped view is
  * same-origin (`/api/views/<id>/bundle.js`); a future remote/CDN bundle must add
  * Subresource-Integrity before this gate can be relaxed.

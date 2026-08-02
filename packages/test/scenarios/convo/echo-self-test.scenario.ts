@@ -19,7 +19,7 @@ import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 const ECHO_INPUT = "Please echo this message back to me: hello world";
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -34,7 +34,7 @@ function asRuntime(value: unknown): RuntimeWithScenarioLlmFixtures {
 }
 
 /**
- * Under the deterministic LLM proxy (`SCENARIO_USE_LLM_PROXY=1`) the proxy has
+ * Under the deterministic LLM proxy (`SCENARIO_USE_DETERMINISTIC_MODEL=1`) the proxy has
  * no model intelligence to pick `ECHO_TEST` over a plain reply, so we register
  * the two routing fixtures that force the selection: the stage-1 response
  * handler nominates `ECHO_TEST` as the only candidate, and the action planner
@@ -94,7 +94,7 @@ export default scenario({
   // Keyless-deterministic: the trivial ECHO_TEST plugin runs in-memory and the
   // routing fixtures registered below force the action selection under the
   // deterministic LLM proxy. No external service, no secret. Verified passing
-  // under SCENARIO_USE_LLM_PROXY=1.
+  // under SCENARIO_USE_DETERMINISTIC_MODEL=1.
   lane: "pr-deterministic",
   tags: ["smoke", "convo", "self-test"],
   description:
@@ -112,7 +112,7 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(echoTestPlugin satisfies Plugin);
-        runtime.scenarioLlmFixtures?.register(...echoRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...echoRouteFixtures());
       },
     },
   ],

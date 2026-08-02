@@ -21,7 +21,7 @@ import {
  * (POST /api/views/:id/navigate against the loopback endpoint). Zero LLM spend.
  *
  * The proxy's utterance → exact (action, view) mapping is covered separately by
- * packages/test/mocks/__tests__/llm-proxy-plugin.test.ts. Here we prove the
+ * core deterministic model-provider tests. Here we prove the
  * action itself works for each navigable view.
  *
  * The `view` ids mirror the agent's BUILTIN_VIEWS registry

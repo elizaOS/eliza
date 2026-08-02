@@ -22,7 +22,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readJsonFile, writeJsonAtomic } from "@elizaos/auth/atomic-json";
+import { readJsonFile, writeJsonAtomic } from "@elizaos/core/atomic-json";
 import { logger } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
 import { resolveStateDir } from "../../config/paths.ts";

@@ -473,7 +473,6 @@ const SETTINGS_SECTIONS: DevRouteSettingsSection[] = [
   { id: "notifications", label: "Notifications" },
   { id: "runtime", label: "Runtime" },
   { id: "wallet-rpc", label: "Wallet & RPC" },
-  { id: "remote-plugins", label: "Remote Plugins" },
   { id: "updates", label: "Updates" },
   { id: "advanced", label: "Backups" },
   { id: "secrets", label: "Vault" },

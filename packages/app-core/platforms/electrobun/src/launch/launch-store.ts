@@ -36,11 +36,6 @@ function emptySnapshot(now: () => Date): LaunchSnapshot {
       complete: null,
       requiredGate: null,
     },
-    remotes: {
-      seeded: false,
-      requiredStarted: false,
-      errors: [],
-    },
     localModel: {
       backgroundDownloadQueued: false,
       blocking: false,

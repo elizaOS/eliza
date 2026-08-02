@@ -120,7 +120,7 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // staging subdomain silently falls into the prod wildcard and starts
       // serving prod — invisible except by asking who answered. This field is
       // the beacon the cross-environment routing verifier probes
-      // (packages/scripts/cloud/verify-environment-routing.mjs).
+      // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
     },
     {

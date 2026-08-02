@@ -20,7 +20,7 @@
  * the nightly publish job and the `publish-from-dist.mjs` preflight.
  *
  * The graph has pre-existing dangling edges beyond the #15833 registry fix
- * (private cloud-shared / plugin-remote-manifest / feed-* pins). Failing on all
+ * (private cloud-shared / feed-* pins). Failing on all
  * of them would leave the gate permanently red and unusable, so accepted edges
  * live in `publish-graph-baseline.json`: the guard fails only on a NEW edge not
  * in the baseline, and on a baseline entry that no longer dangles (ratchet down

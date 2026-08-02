@@ -43,4 +43,4 @@ jobs:
         run: bun packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Reap
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-reaper.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-reaper.ts

@@ -70,8 +70,8 @@ export default defineConfig({
       "src/**/*.{test,spec}.{ts,tsx}",
       "test/**/*.{test,spec}.{ts,tsx}",
     ],
-    // `*.harness.test.ts` boot a real PGLite runtime and need the workspace
-    // source aliases from vitest.harness.config.ts — run via `test:harness`.
-    exclude: ["**/node_modules/**", "dist/**", "**/*.harness.test.ts"],
+    // `*.real.test.ts` boot a real PGLite runtime and need the workspace
+    // source aliases from vitest.real-runtime.config.ts — run via `test:real-runtime`.
+    exclude: ["**/node_modules/**", "dist/**", "**/*.real.test.ts"],
   },
 });

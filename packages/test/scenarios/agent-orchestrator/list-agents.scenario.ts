@@ -21,7 +21,7 @@ import {
 
 const TASKS = "TASKS";
 type R = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -44,7 +44,7 @@ export default scenario({
       name: "orchestrator-list-agents-fixtures",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "orchestrator-stage1",
             match: {

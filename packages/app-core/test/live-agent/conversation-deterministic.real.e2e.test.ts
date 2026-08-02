@@ -3,7 +3,7 @@
  *
  * Boots a REAL AgentRuntime + the REAL app-core HTTP stack via
  * {@link startLiveRuntimeServer}, registering
- * {@link createDeterministicLlmProxyPlugin} (priority 1000) so every model call
+ * {@link createDeterministicModelPlugin} (priority 1000) so every model call
  * resolves deterministically with NO provider keys. The proxy supplies
  * TEXT_EMBEDDING (zero-vector, 384 dims to match the PGLite vector column the
  * real runtime configures) and deterministic RESPONSE_HANDLER/ACTION_PLANNER
@@ -15,11 +15,11 @@
  *     (request body field is `text`: chat-routes.ts:1666 normalizeIncomingChatPrompt(body.text, …))
  *   - GET  /api/conversations/:id/messages    :1269 → { messages: [{ id, role, text, timestamp, … }] }
  *     sorted by createdAt ascending; role = "assistant" when entityId === agentId, else "user".
- * Deterministic proxy: packages/test/mocks/helpers/llm-proxy-plugin.ts.
+ * Deterministic provider: `createDeterministicModelPlugin` from core testing.
  */
 
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDeterministicLlmProxyPlugin } from "../../../test/mocks/helpers/llm-proxy-plugin.ts";
 import {
   createConversation,
   postConversationMessage,
@@ -46,7 +46,22 @@ describe("conversation deterministic real coverage", () => {
       // Match the 384-dim local embedding column the real runtime configures
       // for PGLite vector search (real-runtime.ts sets EMBEDDING_DIMENSION=384).
       plugins: [
-        createDeterministicLlmProxyPlugin({ embeddingDimensions: 384 }),
+        createDeterministicModelPlugin({
+          embeddingDimensions: 384,
+          fixtures: [
+            {
+              name: "conversation-reply",
+              match: { modelType: "RESPONSE_HANDLER" },
+              response: {
+                contexts: ["simple"],
+                intents: ["greeting"],
+                replyText: "Hello from the deterministic model provider.",
+                candidateActionNames: [],
+              },
+              times: 1,
+            },
+          ],
+        }),
       ],
     });
   }, 120_000);

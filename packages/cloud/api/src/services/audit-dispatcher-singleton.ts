@@ -10,7 +10,7 @@ import {
   AuditDispatcher,
   type AuditSink,
   ConsoleSink,
-} from "@elizaos/security/audit";
+} from "@/services/audit";
 import { logger } from "@/lib/utils/logger";
 import { auditEventsSink } from "./audit-events";
 

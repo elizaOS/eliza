@@ -23,7 +23,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "../eliza-package-paths";
+} from "../../core/src/testing/eliza-package-paths";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,

@@ -15,13 +15,6 @@
     "reason": "CUSTOM_PLUGIN_BUILD_ALLOW keys the documented custom-build.ts exceptions by build-file path (some nested build.ts have no own package.json), which cannot be expressed as per-package metadata"
   },
   {
-    "file": "packages/scripts/build-private-workspace-packages.mjs",
-    "tokens": [
-      "@elizaos/plugin-remote-manifest"
-    ],
-    "reason": "prose header names @elizaos/plugin-remote-manifest as the concrete #8143 repro; membership is resolved from elizaos.scripts.buildOnInstall metadata, not this text"
-  },
-  {
     "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
     "tokens": [
       "plugins/plugin-personal-assistant"
@@ -49,7 +42,7 @@
     "reason": "path-gate rules map changes in these critical plugins to the scenario-pr test lane"
   },
   {
-    "file": "packages/scripts/cloud/admin/smoke-agent-plugins.ts",
+    "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
     "tokens": [
       "@elizaos/plugin-elizacloud",
       "@elizaos/plugin-sql"
@@ -156,22 +149,6 @@
       "plugins/plugin-openai"
     ],
     "reason": "boots a real runtime with plugin-openai wired to Cerebras to validate the runtime message stage"
-  },
-  {
-    "file": "packages/scripts/stage-b-stt-bench.mjs",
-    "tokens": [
-      "plugins/plugin-local-inference"
-    ],
-    "reason": "Stage-B STT benchmark measures plugin-local-inference ASR latency/WER"
-  },
-  {
-    "file": "packages/scripts/voice-matrix.mjs",
-    "tokens": [
-      "plugins/plugin-local-inference",
-      "plugins/plugin-native-swabble",
-      "plugins/plugin-native-talkmode"
-    ],
-    "reason": "voice live-matrix cells declare which fused-ASR / native wake-word / transcript plugins each cell exercises"
   },
   {
     "file": "scripts/check-markdown-links.mjs",

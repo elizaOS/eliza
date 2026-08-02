@@ -4076,7 +4076,7 @@ export async function startEliza(
   let subscriptionCredentialsDeferredPromise: Promise<void> = Promise.resolve();
   try {
     const { applySubscriptionCredentialsLocal } = await import("@elizaos/auth");
-    applySubscriptionCredentialsLocal(config);
+    await applySubscriptionCredentialsLocal(config);
   } catch (err) {
     logger.warn(
       `[eliza] Failed to apply local subscription credentials (agent will continue without them): ${formatError(err)}`,

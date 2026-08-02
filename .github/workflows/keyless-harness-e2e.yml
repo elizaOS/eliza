@@ -4,7 +4,7 @@ name: Keyless Harness E2E
 # through the deterministic in-process LLM proxy + recorded fixtures and runs
 # the corpus on EVERY pull request with NO API keys and NO secrets.
 #
-# The substrate lives in packages/test/mocks: `createDeterministicLlmProxyPlugin`
+# The substrate lives in packages/test/mocks: `createDeterministicModelPlugin`
 # (helpers/llm-proxy-plugin.ts) registers high-priority deterministic text +
 # embedding model handlers, and the payment/connector mocks (scripts/start-mocks.ts)
 # serve recorded fixtures. The harness suite (test/mocks/__tests__/**) exercises
@@ -89,8 +89,6 @@ jobs:
 
       - name: Remaining per-plugin keyless harness adoption proofs
         run: |
-          bun run --cwd plugins/plugin-openai test:harness
-          bun run --cwd plugins/plugin-groq test:harness
-          bun run --cwd plugins/plugin-openrouter test:harness
-          bun run --cwd plugins/plugin-google-genai test:harness
-          bun run --cwd plugins/plugin-telegram test:harness
+          bun run --cwd plugins/plugin-openai test:real-runtime
+          bun run --cwd plugins/plugin-google-genai test:real-runtime
+          bun run --cwd plugins/plugin-telegram test:real-runtime

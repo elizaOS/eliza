@@ -8,19 +8,19 @@ import { dirExists, readUtf8Safe, walk } from "../util/fs.js";
 
 export const pluginSignatureVerify: Check = {
   id: "CC6.8-plugin-signature-verify",
-  title: "plugin-remote-manifest invokes a signature-verify primitive",
+  title: "remote-plugin adapter invokes a signature-verify primitive",
   tsc: ["CC6.8", "CC8.1"],
   severity: "high",
   async run(ctx): Promise<CheckResult> {
-    const root = join(ctx.elizaRoot, "packages/plugin-remote-manifest");
+    const root = join(ctx.elizaRoot, "packages/agent/src/services");
     if (!dirExists(root)) {
       return {
         status: "fail",
-        evidence: `packages/plugin-remote-manifest not present.`,
+        evidence: `packages/agent/src/services not present.`,
         files: [root],
       };
     }
-    const files = await walk(root, { match: /\.(ts|js|mts)$/, maxDepth: 6 });
+    const files = await walk(root, { match: /remote-plugin.*\.(ts|js|mts)$/ });
     const matches: string[] = [];
     for (const f of files) {
       const src = readUtf8Safe(f);
@@ -42,7 +42,7 @@ export const pluginSignatureVerify: Check = {
         }
       : {
           status: "fail",
-          evidence: `plugin-remote-manifest contains no call to a signature verification primitive. SOC2 CC6.8 requires runtime integrity verification of installed code.`,
+          evidence: `The remote-plugin adapter contains no call to a signature verification primitive. SOC2 CC6.8 requires runtime integrity verification of installed code.`,
           files: [root],
         };
   },
@@ -56,7 +56,7 @@ export const subagentEnvAllowlist: Check = {
   async run(ctx): Promise<CheckResult> {
     const path = join(
       ctx.elizaRoot,
-      "packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts",
+      "plugins/plugin-cli-inference/src/sandbox.ts",
     );
     const src = readUtf8Safe(path);
     if (!src) {

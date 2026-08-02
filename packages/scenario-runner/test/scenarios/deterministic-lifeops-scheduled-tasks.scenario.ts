@@ -12,7 +12,7 @@ import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
   type StrictActionRouteFixture,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 type JsonRecord = Record<string, unknown>;
 

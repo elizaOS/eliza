@@ -4218,8 +4218,6 @@
   "settings.sections.localModels.desc": "Download and assign local models.",
   "settings.sections.localModels.label": "Local Models",
   "settings.sections.permissions.desc": "Capabilities and access control",
-  "settings.sections.remote-plugins.desc": "Sandboxed mini-apps.",
-  "settings.sections.remote-plugins.label": "Remote Plugins",
   "settings.sections.runtime.desc": "Switch between the on-device agent, Eliza Cloud, and a Remote Mac.",
   "settings.sections.runtime.label": "Runtime",
   "settings.sections.secrets.desc": "Where {{appName}} stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",

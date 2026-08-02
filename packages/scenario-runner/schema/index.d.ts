@@ -482,7 +482,7 @@ export type ScenarioFinalCheck =
  * Which CI lane a scenario runs in.
  *
  * - `pr-deterministic`: runs on every PR under the deterministic LLM proxy
- *   (`SCENARIO_USE_LLM_PROXY=1`) with zero credentials. A scenario may only
+ *   (`SCENARIO_USE_DETERMINISTIC_MODEL=1`) with zero credentials. A scenario may only
  *   claim this lane if it passes keyless — no live external service, no secret,
  *   and every LLM call is either backed by a registered proxy fixture or
  *   satisfied by the proxy's default reply.

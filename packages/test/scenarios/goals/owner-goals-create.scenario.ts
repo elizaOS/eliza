@@ -26,7 +26,7 @@ const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
 const OWNER_GOALS = "OWNER_GOALS";
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -166,7 +166,7 @@ export default scenario({
              created_at text NOT NULL
            )`,
         );
-        runtime.scenarioLlmFixtures?.register(...goalsRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...goalsRouteFixtures());
         return undefined;
       },
     },

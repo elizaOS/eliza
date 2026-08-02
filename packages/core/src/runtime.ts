@@ -49,8 +49,6 @@ import {
 	setInferenceModelProvider,
 } from "./inference-timing";
 import { createLogger } from "./logger";
-import { simpleHash } from "./optimization/ab-analysis";
-import { getOptimizationRootDir } from "./optimization-root-dir";
 import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
@@ -316,11 +314,12 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
-import { buildDeterministicSeed } from "./utils/deterministic";
+import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
+import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
 	StructuredFieldStreamExtractor,
@@ -7971,7 +7970,7 @@ ${section_end}`;
 							typeof params.prompt === "string"
 								? params.prompt
 								: tracePromptKey;
-						const computedTemplateHash = simpleHash(templateHashInput);
+						const computedTemplateHash = shortStringHash(templateHashInput);
 
 						const trace: ExecutionTrace = {
 							id: uuidv4(),
@@ -8230,7 +8229,7 @@ ${section_end}`;
 					reason: "All retry attempts exhausted",
 				});
 
-				const failTemplateHash = simpleHash(
+				const failTemplateHash = shortStringHash(
 					typeof params.prompt === "string" ? params.prompt : tracePromptKey,
 				);
 

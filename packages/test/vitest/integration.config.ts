@@ -8,8 +8,8 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "../eliza-package-paths";
-import { buildHarnessSourceAliases } from "../harness/source-aliases";
+} from "../../core/src/testing/eliza-package-paths";
+import { buildWorkspaceSourceAliases } from "./source-aliases";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -237,7 +237,7 @@ const integrationResolveAlias: ModuleAlias[] = [
   // Vite's SSR resolver does not consistently select custom export
   // conditions, so source-alias the remaining workspace leaves after the
   // specialized entry points above. This keeps clean CI independent of dist.
-  ...buildHarnessSourceAliases(elizaWorkspaceRoot),
+  ...buildWorkspaceSourceAliases(elizaWorkspaceRoot),
   ...getOptionalInstalledPackageAliases(repoRoot, [
     {
       find: "@elizaos/plugin-signal",

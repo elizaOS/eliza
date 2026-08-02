@@ -30,7 +30,8 @@
 /packages/cloud/sdk/                    @elizaos/backend-leads
 
 # Security and crypto-handling code — mandatory security review.
-/packages/security/                     @elizaos/security-team
+/packages/core/src/security/            @elizaos/security-team @elizaos/runtime-team
+/packages/cloud/api/src/services/audit/ @elizaos/security-team @elizaos/cloud-team
 /packages/vault/                        @elizaos/security-team
 
 # Plugin runtime / sandboxing surface.

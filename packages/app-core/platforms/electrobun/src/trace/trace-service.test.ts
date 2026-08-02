@@ -30,12 +30,6 @@ class FakeCanvas {
   }
 }
 
-class FakeWorkerStatusProvider {
-  getWorkerStatus(id: string): { state: string } | null {
-    return id === "eliza.runtime" ? { state: "running" } : null;
-  }
-}
-
 function service(env: Record<string, string | undefined> = {}): {
   service: TraceService;
   registry: DynamicViewRegistry;
@@ -47,7 +41,6 @@ function service(env: Record<string, string | undefined> = {}): {
   const sessions = new DynamicViewSessionManager({
     registry,
     canvas,
-    workerStatusProvider: new FakeWorkerStatusProvider(),
     now: () => new Date("2026-05-17T12:00:00.000Z"),
     sessionIdFactory: () => "view-session-1",
   });

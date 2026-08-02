@@ -32,6 +32,6 @@
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.e2e.test.ts",
-    "vitest.harness.config.ts"
+    "vitest.real-runtime.config.ts"
   ]
 }

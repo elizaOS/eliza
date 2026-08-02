@@ -105,8 +105,6 @@
       "@elizaos/plugin-wifi": ["./plugins/plugin-wifi/src/index.ts"],
       "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
       "@elizaos/plugin-x402": ["./plugins/plugin-x402/src/index.ts"],
-      "@elizaos/security": ["./packages/security/src/index.ts"],
-      "@elizaos/security/*": ["./packages/security/src/*"],
       "@elizaos/auth": ["./packages/auth/src/index.ts"],
       "@elizaos/auth/*": ["./packages/auth/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],

@@ -20,6 +20,8 @@
     "paths": {
       "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/logger/*": ["../logger/src/*"],
       "@elizaos/plugin-personal-assistant": [
@@ -101,8 +103,6 @@
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/security": ["../security/src/index.ts"],
-      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],

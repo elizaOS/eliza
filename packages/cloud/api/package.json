@@ -30,7 +30,6 @@
     "@cloudflare/workers-types": "^4.20260429.1",
     "@elevenlabs/elevenlabs-js": "^2.45.0",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/security": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
     "@upstash/redis": "^1.37.0",

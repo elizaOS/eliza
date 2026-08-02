@@ -37,7 +37,7 @@ type ComputerUseService = {
 };
 type R = AgentRuntime & {
   getService: (type: string) => ComputerUseService | null;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -86,7 +86,7 @@ export default scenario({
           restore = undefined;
         };
 
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "computeruse-stage1",
             match: {

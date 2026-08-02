@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 
 /**
- * Dual build script for @elizaos/core - generates both Node.js and browser builds
+ * Builds the Node, browser, edge, and testing distributions for core while
+ * keeping all compiler output confined to `dist/`. A package-wide lock avoids
+ * concurrent build races over the shared output tree.
  */
 
 import { execFile } from "node:child_process";
@@ -14,6 +16,9 @@ import type { BuildConfig, BunPlugin } from "bun";
 const execFileAsync = promisify(execFile);
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
 	new URL("../scripts/rm-path-recursive.mjs", import.meta.url),
+);
+const CLEAN_SRC_ARTIFACTS_SCRIPT = fileURLToPath(
+	new URL("./scripts/clean-src-artifacts.mjs", import.meta.url),
 );
 
 export interface ElizaBuildOptions {
@@ -755,7 +760,14 @@ export async function buildNode(
 	const runNode = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.node.ts`,
+				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/security/kms/index.ts`,
+				`${TS_SRC}/security/mcp-server-config.ts`,
+				`${TS_SRC}/security/network-policy.ts`,
+				`${TS_SRC}/utils/atomic-json.ts`,
+			],
 			outdir: "dist/node",
 			target: "node",
 			format: "esm",
@@ -1161,7 +1173,11 @@ if (import.meta.main) {
 	const isNodeOnly = process.argv.includes("--node-only");
 	const build = isNodeOnly ? buildNodeOnly : buildAll;
 
-	withCoreBuildLock(build).catch((error) => {
+	withCoreBuildLock(async () => {
+		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT]);
+		await build();
+		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT, "--check"]);
+	}).catch((error) => {
 		console.error("Build script error:", error);
 		process.exit(1);
 	});

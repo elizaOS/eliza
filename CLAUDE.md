@@ -138,8 +138,6 @@ packages/        framework, shared libraries, and product surfaces
   contracts/     on-chain contracts + ABIs
   security/ security/soc2-verify/ vault/  secrets, key management, compliance tooling
   robot/                         robotics
-  plugin-remote-manifest/ plugin-worker-runtime/
-                 remote plugin manifests, host shims, and worker runtime support
   homepage/ docs/  marketing site and docs site
   examples/      30+ standalone runnable examples (each has its own README)
 

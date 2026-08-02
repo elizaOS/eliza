@@ -111,7 +111,6 @@
     "@elizaos/prompts",
     "@elizaos/registry",
     "@elizaos/scenario-runner",
-    "@elizaos/security",
     "@elizaos/shared",
     "@elizaos/skills",
     "@elizaos/ui",

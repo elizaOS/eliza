@@ -78,7 +78,7 @@
   "exclude": [
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx",
-    "src/**/*.harness.test.ts",
-    "vitest.harness.config.ts"
+    "src/**/*.real.test.ts",
+    "vitest.real-runtime.config.ts"
   ]
 }

@@ -18,7 +18,7 @@ import githubPlugin, {
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -410,7 +410,7 @@ function registerGithubStrictFixtures(
   runtime: RuntimeWithGithubScenario,
 ): void {
   registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
-  runtime.scenarioLlmFixtures?.register({
+  runtime.scenarioModelFixtures?.register({
     name: "route-github-issue-create-preview-evaluator",
     match: {
       modelType: ModelType.RESPONSE_HANDLER,

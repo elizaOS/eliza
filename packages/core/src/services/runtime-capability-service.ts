@@ -48,7 +48,7 @@ import { Service } from "../types/service.js";
 /**
  * Routing strategy interface. Each strategy decides how to dispatch a
  * capability invocation: locally (via a remote-mode plugin running in the
- * host process) or remotely (via HTTPS to a `remote-plugin-host` container,
+ * host process) or remotely (via HTTPS to a capability-host container,
  * an e2b sandbox, or another paired user device).
  *
  * Strategies are an internal implementation detail of
@@ -174,9 +174,8 @@ export class RuntimeCapabilityService
 	}
 
 	/**
-	 * Replace the strategy table at runtime. Used during P1 when the
-	 * RemotePluginHost discovers a new capability-providing remote plugin
-	 * (e.g. agent-installed `eliza.fs`) and registers it as a strategy.
+	 * Replace the strategy table at runtime. Used when the host discovers a
+	 * new capability-providing remote plugin and registers it as a strategy.
 	 */
 	setStrategies(strategies: CapabilityStrategy[]): void {
 		this.strategies = strategies;

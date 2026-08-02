@@ -17,7 +17,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioLlmFixtures = {
   actions?: Array<{
@@ -30,7 +30,7 @@ type RuntimeWithScenarioLlmFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -431,7 +431,7 @@ export default scenario({
         };
 
         let launchCount = 0;
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           handleResponseFixture("Open the settings view", "VIEWS"),
           plannerFixture(
             "Open the settings view",

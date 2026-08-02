@@ -1,6 +1,6 @@
 /**
  * AuditSink implementation that persists `AuditEvent`s emitted by
- * `@elizaos/security/audit` to the `auth_events` table.
+ * `@/services/audit` to the `auth_events` table.
  *
  * Registered with the global `AuditDispatcher` from `bootstrap-app.ts`.
  * One sink failing must never block the others, so we intentionally do not
@@ -8,13 +8,14 @@
  * `onSinkError` handler, which logs and continues.
  */
 
-import type { AuditEvent, AuditSink } from "@elizaos/security/audit";
+import type { AuditEvent, AuditSink } from "@/services/audit";
 import { dbWrite } from "@/db/client";
 import { authEvents } from "@/db/schemas/auth-events";
 import { logger } from "@/lib/utils/logger";
 
 export class AuditEventsSink implements AuditSink {
   readonly name = "auth_events_pg";
+  readonly required = true;
 
   async emit(event: AuditEvent): Promise<void> {
     try {

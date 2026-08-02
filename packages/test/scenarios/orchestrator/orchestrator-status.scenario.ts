@@ -30,7 +30,7 @@ import {
 const COMMAND_TEXT = "/orchestrator-status";
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -116,7 +116,7 @@ export default scenario({
         for (const route of codingAgentRoutePlugin.routes ?? []) {
           runtime.routes.push(route);
         }
-        runtime.scenarioLlmFixtures?.register(...statusRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...statusRouteFixtures());
         return undefined;
       },
     },

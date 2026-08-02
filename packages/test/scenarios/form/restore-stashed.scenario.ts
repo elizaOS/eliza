@@ -34,7 +34,7 @@ const ENTITY_ID = stringToUuid(
 
 type R = AgentRuntime & {
   registerAction?: (action: unknown) => void;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -96,7 +96,7 @@ export default scenario({
         };
         await saveSession(runtime as unknown as AgentRuntime, session);
 
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "form-stage1",
             match: {

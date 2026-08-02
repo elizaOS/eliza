@@ -14,7 +14,7 @@ import {
   test,
 } from "bun:test";
 import { readFileSync } from "node:fs";
-import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/security/kms";
+import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/core/security/kms";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 

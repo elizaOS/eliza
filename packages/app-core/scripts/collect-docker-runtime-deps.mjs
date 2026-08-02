@@ -65,11 +65,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   "packages/shared",
   "packages/skills",
   "packages/vault",
-  // Compatibility package for remote workers that still import the historical
-  // @elizaos/plugin-worker-runtime entrypoint. It wraps
-  // @elizaos/plugin-remote-manifest/worker-runtime but still needs a linked
-  // workspace package in Docker images.
-  "packages/plugin-worker-runtime",
   "plugins/plugin-documents",
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",
@@ -79,10 +74,8 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-agent-orchestrator",
   "plugins/plugin-app-control",
   "plugins/plugin-commands",
-  "packages/plugin-remote-manifest",
   "packages/auth",
   "packages/logger",
-  "packages/security",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",

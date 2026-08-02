@@ -729,18 +729,18 @@ Current local implementation includes:
   expected from a dynamic remote plugin, including structural component type
   definitions, plugin contexts, and top-level plugin priority.
 - Plugin surface audit in
-  `packages/scripts/audit-capability-router-plugin-surface.ts`, exposed as
+  `packages/agent/scripts/audit-capability-router-plugin-surface.ts`, exposed as
   `bun run test:remote-capabilities:surface-audit`, which fails when a new
   local `Plugin` field is not classified as remote-supported or intentionally
   local-only for capability-router.
 - Capability-router naming audit in
-  `packages/scripts/audit-capability-router-naming.ts`, exposed as
+  `packages/agent/scripts/audit-capability-router-naming.ts`, exposed as
   `bun run test:remote-capabilities:naming-audit`, which fails if the canonical
   source/docs/workflow roots reintroduce `satellite` as runtime abstraction
   vocabulary outside this architecture record's historical naming analysis and
   the legacy env-alias compatibility path.
 - Runnable reference endpoint in
-  `packages/scripts/capability-router-fixture-server.ts`, exposed as
+  `packages/agent/scripts/capability-router-fixture-server.ts`, exposed as
   `bun run capability-router:fixture-server`, that serves the canonical fixture
   through the same `/v1/capabilities` and `/v1/capabilities/invoke` HTTP
   protocol expected from real remote endpoints. The endpoint can also serve a

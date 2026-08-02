@@ -16,7 +16,7 @@ import {
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const strictBrowserRoutes = [
   {

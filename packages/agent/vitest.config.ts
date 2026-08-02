@@ -176,7 +176,11 @@ export default defineConfig({
         inline: [/@elizaos\//, /\/plugins\/plugin-/],
       },
     },
-    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
+    include: [
+      "src/**/*.test.{ts,tsx}",
+      "test/**/*.test.{ts,tsx}",
+      "scripts/**/*.test.{ts,tsx}",
+    ],
     exclude: [
       "dist/**",
       "**/node_modules/**",

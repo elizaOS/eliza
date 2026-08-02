@@ -155,6 +155,7 @@ const CONFIGS = {
           "packages/agent/**",
           "packages/shared/**",
           "packages/scripts/**",
+          "packages/cloud/scripts/**",
           "packages/test/**",
           "packages/prompts/**",
         ],

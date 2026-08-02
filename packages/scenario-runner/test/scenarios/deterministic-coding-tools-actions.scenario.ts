@@ -18,7 +18,7 @@ import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const execFileAsync = promisify(execFile);
 

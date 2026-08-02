@@ -4148,8 +4148,6 @@
   "settings.sections.localModels.desc": "Descarga y asigna modelos locales.",
   "settings.sections.localModels.label": "Modelos locales",
   "settings.sections.permissions.desc": "Capacidades y control de acceso",
-  "settings.sections.remote-plugins.desc": "Mini-aplicaciones aisladas en sandbox.",
-  "settings.sections.remote-plugins.label": "Complementos remotos",
   "settings.sections.runtime.desc": "Cambia entre el agente en el dispositivo, Eliza Cloud y un Mac remoto.",
   "settings.sections.runtime.label": "Runtime",
   "settings.sections.secrets.desc": "Dónde guarda Eliza tus claves de API: localmente, en 1Password, en Bitwarden o en Proton Pass.",

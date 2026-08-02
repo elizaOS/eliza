@@ -505,7 +505,7 @@ then move to plugin-inbox.
 ### Session 2026-06-18 (round 15) — live real-DB testing (in-sandbox, no creds)
 Closed the persistence-layer "live real testing" gap: the decomposed services had
 only mocked-DB unit tests. Added real-PGlite integration tests via
-`createRealTestRuntime` (`packages/test/helpers/real-runtime.ts`) — real SQL/CRUD,
+`createRealTestRuntime` (`packages/app-core/test/helpers/real-runtime.ts`) — real SQL/CRUD,
 hermetic, no external creds: finances.real-db (5), goals.real-db (5), inbox.real-db
 (5, deterministic rule-based model handler — no LLM), knowledge-graph-service.real.e2e
 (5). All green; real PGlite execution proven (surfaced a genuine SQL bug a mock can't).

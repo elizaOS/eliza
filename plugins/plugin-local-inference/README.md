@@ -80,8 +80,9 @@ reading code. The source of truth is:
   classification and the mobile context clamp.
 - `src/services/recommendation.ts` for text-model slot ladders.
 - `src/runtime/embedding-presets.ts` for local embedding defaults.
-- `scripts/local-inference-thresholds.json` for backend tok/s floors used by
-  ablation gates.
+- `scripts/local-inference-performance-policy.json` for the relative
+  performance floors enforced by `scripts/local-inference-performance-check.mjs`
+  in the local-inference-matrix CI lane.
 
 | Target | Local mode | Text model policy | Context policy | Embeddings | Notes |
 |---|---|---|---|---|---|

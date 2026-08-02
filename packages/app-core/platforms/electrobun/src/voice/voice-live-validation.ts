@@ -97,12 +97,6 @@ class ValidationCanvas {
   async a2uiPush(): Promise<void> {}
 }
 
-class ValidationWorkerStatusProvider {
-  getWorkerStatus(): { state: string } {
-    return { state: "running" };
-  }
-}
-
 function isTruthy(value: string | undefined): boolean {
   const normalized = value?.trim().toLowerCase();
   return (
@@ -228,7 +222,6 @@ function createTraceService(
   const sessions = new DynamicViewSessionManager({
     registry,
     canvas: new ValidationCanvas(),
-    workerStatusProvider: new ValidationWorkerStatusProvider(),
     now: now ?? (() => new Date()),
   });
   return new TraceService({

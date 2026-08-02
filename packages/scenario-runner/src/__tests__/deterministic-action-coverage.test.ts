@@ -1240,15 +1240,12 @@ describe("deterministic action coverage", () => {
         problems.push(`${id}: source file was not found`);
         continue;
       }
-      // `_helpers/strict-llm-action-fixtures.ts` re-exports the canonical
-      // template from `@elizaos/test-harness`; scenarios may also import the
-      // stage1/planner fixture builders from that harness directly. Either
-      // way, read the harness file for the fixture literals
-      // (RESPONSE_HANDLER / ACTION_PLANNER / register call).
+      // Fixture templates live in core testing so scenarios and package-local
+      // runtime tests exercise the same response-handler/planner contract.
       const fixtureSource =
         source.includes("registerStrictActionRouteFixtures") ||
         source.includes("stage1ResponseHandlerFixture")
-          ? `${source}\n${readFileSync(resolve(repoRoot, "packages/test/harness/action-route-fixtures.ts"), "utf8")}`
+          ? `${source}\n${readFileSync(resolve(repoRoot, "packages/core/src/testing/deterministic-action-fixtures.ts"), "utf8")}`
           : source;
 
       const messageTurns = messageTurnCount(scenario);
@@ -1257,8 +1254,8 @@ describe("deterministic action coverage", () => {
           `${id}: expected at least ${spec.minMessageTurns} message turns, saw ${messageTurns}`,
         );
       }
-      if (!/scenarioLlmFixtures\?\.register\(/.test(fixtureSource)) {
-        problems.push(`${id}: no scenarioLlmFixtures.register call`);
+      if (!/scenarioModelFixtures\?\.register\(/.test(fixtureSource)) {
+        problems.push(`${id}: no scenarioModelFixtures.register call`);
       }
       if (!fixtureSource.includes("ModelType.RESPONSE_HANDLER")) {
         problems.push(`${id}: no RESPONSE_HANDLER fixture`);

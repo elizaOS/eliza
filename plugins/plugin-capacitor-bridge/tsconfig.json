@@ -129,12 +129,6 @@
 			"@elizaos/plugin-local-inference/*": [
 				"../../plugins/plugin-local-inference/src/*"
 			],
-			"@elizaos/plugin-remote-manifest": [
-				"../../packages/plugin-remote-manifest/src/index.ts"
-			],
-			"@elizaos/plugin-remote-manifest/*": [
-				"../../packages/plugin-remote-manifest/src/*"
-			],
 			"@elizaos/plugin-registry": [
 				"../../plugins/plugin-registry/src/index.ts"
 			],
@@ -152,12 +146,6 @@
 			],
 			"@elizaos/plugin-task-coordinator/*": [
 				"../../plugins/plugin-task-coordinator/src/*"
-			],
-			"@elizaos/plugin-worker-runtime": [
-				"../../packages/plugin-worker-runtime/src/index.ts"
-			],
-			"@elizaos/plugin-worker-runtime/*": [
-				"../../packages/plugin-worker-runtime/src/*"
 			],
 			"@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],

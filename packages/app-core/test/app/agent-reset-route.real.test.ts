@@ -29,7 +29,7 @@ import {
   scrubCloudSecretsFromEnv,
 } from "@elizaos/shared/elizacloud/cloud-secrets";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDeterministicLlmProxyPlugin } from "../../../test/mocks/helpers/llm-proxy-plugin.ts";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import {
   getSharedCompatRuntimeState,
   startApiServer,
@@ -71,7 +71,7 @@ describe("POST /api/agent/reset (real HTTP handler)", () => {
     runtimeResult = await createRealTestRuntime({
       characterName: "AgentResetRouteLive",
       plugins: [
-        createDeterministicLlmProxyPlugin({ failOnUnhandledAction: false }),
+        createDeterministicModelPlugin(),
       ],
       pgliteDir,
       // The reset handler deletes this dir; own its lifecycle explicitly so

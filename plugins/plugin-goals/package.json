@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "test:harness": "bunx vitest run --config ./vitest.harness.config.ts",
+    "test:real-runtime": "bunx vitest run --config ./vitest.real-runtime.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
@@ -69,7 +69,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.6",
-    "@elizaos/test-harness": "workspace:*",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

@@ -14,10 +14,10 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
-import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 
 type RuntimeWithScenarioLlmFixtures = {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -141,7 +141,7 @@ export default scenario({
       apply: (ctx) => {
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           // The simple-reply path answers straight from the stage-1 router
           // response (`replyText`); no follow-up TEXT_SMALL call fires. The
           // router fixture is therefore the required one, and the direct

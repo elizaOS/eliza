@@ -37,10 +37,6 @@ const localPackages = [
   // boot crashes with "Cannot find package '@elizaos/registry' imported from
   // .../app-core/dist/registry/index.js". Foundational, so listed up here.
   "eliza/packages/registry",
-  // Compatibility package for remote workers that still import
-  // @elizaos/plugin-worker-runtime. Keep it linked so those historical imports
-  // resolve inside local Docker app packages.
-  "eliza/packages/plugin-worker-runtime",
   "eliza/plugins/plugin-documents",
   "eliza/plugins/plugin-personal-assistant",
   "eliza/plugins/plugin-task-coordinator",
@@ -49,10 +45,8 @@ const localPackages = [
   "eliza/plugins/plugin-agent-orchestrator",
   "eliza/plugins/plugin-app-control",
   "eliza/plugins/plugin-commands",
-  "eliza/packages/plugin-remote-manifest",
   "eliza/packages/auth",
   "eliza/packages/logger",
-  "eliza/packages/security",
   "eliza/packages/app-core",
   "eliza/packages/cloud/sdk",
   "eliza/packages/shared",

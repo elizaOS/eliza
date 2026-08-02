@@ -152,7 +152,6 @@
       "@elizaos/scenario-runner": [
         "./packages/scenario-runner/dist/index.d.ts"
       ],
-      "@elizaos/security": ["./packages/security/dist/index.d.ts"],
       "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
       "@elizaos/shared/local-inference": [
         "./packages/shared/src/local-inference/index.ts"

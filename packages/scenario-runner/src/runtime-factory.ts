@@ -1,8 +1,8 @@
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
  * (no SQL mocks) and registers either the first available live LLM provider
- * via the core testing live-provider selector or the deterministic test LLM
- * proxy when mock mode is explicitly enabled.
+ * via the core testing live-provider selector or the deterministic fixture
+ * provider when deterministic mode is explicitly enabled.
  */
 
 import "./react-runtime-stubs";
@@ -19,6 +19,7 @@ import {
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
+	createDeterministicModelPlugin,
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
@@ -38,33 +39,27 @@ async function loadTestMocks() {
   // Keep these as file URL strings so runtime resolution is anchored to this
   // module instead of the process cwd or test runner transform root.
   const mockRuntimeSpecifier = new URL(
-    "../../test/mocks/helpers/mock-runtime.ts",
+    "../../../plugins/plugin-personal-assistant/test/support/helpers/mock-runtime.ts",
     import.meta.url,
   ).href;
   const lifeopsSimulatorSpecifier = new URL(
-    "../../test/mocks/helpers/lifeops-simulator.ts",
+    "../../../plugins/plugin-personal-assistant/test/support/helpers/lifeops-simulator.ts",
     import.meta.url,
   ).href;
   const benchmarkFixturesSpecifier = new URL(
-    "../../test/mocks/helpers/seed-benchmark-fixtures.ts",
+    "../../../plugins/plugin-personal-assistant/test/support/helpers/seed-benchmark-fixtures.ts",
     import.meta.url,
   ).href;
   const grantsSpecifier = new URL(
-    "../../test/mocks/helpers/seed-grants.ts",
+    "../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts",
     import.meta.url,
   ).href;
-  const llmProxySpecifier = new URL(
-    "../../test/mocks/helpers/llm-proxy-plugin.ts",
-    import.meta.url,
-  ).href;
-
-  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants, llmProxy] =
+  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
     await Promise.all([
       import(mockRuntimeSpecifier),
       import(lifeopsSimulatorSpecifier),
       import(benchmarkFixturesSpecifier),
       import(grantsSpecifier),
-      import(llmProxySpecifier),
     ]);
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
@@ -73,8 +68,6 @@ async function loadTestMocks() {
       benchmarkFixtures.seedBenchmarkLifeOpsFixtures,
     seedGoogleConnectorGrant: grants.seedGoogleConnectorGrant,
     seedXConnectorGrant: grants.seedXConnectorGrant,
-    createDeterministicLlmProxyPlugin:
-      llmProxy.createDeterministicLlmProxyPlugin,
   };
 }
 
@@ -82,8 +75,8 @@ export async function loadScenarioTestMocksForTests() {
   return loadTestMocks();
 }
 
-const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
-  "deterministic-llm-proxy" as const;
+const DETERMINISTIC_MODEL_PROVIDER_NAME =
+  "deterministic-model-provider" as const;
 const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
@@ -126,11 +119,11 @@ export interface RuntimeFactoryResult {
   pgliteDir: string;
   executionProfile: ScenarioExecutionProfile;
   registeredPluginPackages: readonly string[];
-  providerName: LiveProviderName | typeof DETERMINISTIC_LLM_PROXY_PROVIDER_NAME;
+  providerName: LiveProviderName | typeof DETERMINISTIC_MODEL_PROVIDER_NAME;
   providerConfig:
     | LiveProviderConfig
     | {
-        name: typeof DETERMINISTIC_LLM_PROXY_PROVIDER_NAME;
+        name: typeof DETERMINISTIC_MODEL_PROVIDER_NAME;
         env: Record<string, string>;
         pluginPackage: null;
       };
@@ -215,7 +208,7 @@ export interface CreateScenarioRuntimeOptions {
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
-  useDeterministicLlmProxy?: boolean;
+  useDeterministicModel?: boolean;
   executionProfile?: ScenarioExecutionProfile;
   requiredPlugins?: readonly string[];
 }
@@ -289,12 +282,12 @@ export function providerQualifiedEnvironmentProblems(
       problems.add(`${name} is not a production provider endpoint`);
     }
   }
-  if (envFlag(env.SCENARIO_USE_LLM_PROXY)) {
-    problems.add("SCENARIO_USE_LLM_PROXY enables the deterministic proxy");
+  if (envFlag(env.SCENARIO_USE_DETERMINISTIC_MODEL)) {
+    problems.add("SCENARIO_USE_DETERMINISTIC_MODEL enables the deterministic proxy");
   }
-  if (envFlag(env.ELIZA_SCENARIO_USE_LLM_PROXY)) {
+  if (envFlag(env.ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL)) {
     problems.add(
-      "ELIZA_SCENARIO_USE_LLM_PROXY enables the deterministic proxy",
+      "ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL enables the deterministic proxy",
     );
   }
   if (envFlag(env.ELIZA_DISABLE_LIFEOPS_SCHEDULER)) {
@@ -356,29 +349,20 @@ function envFlag(value: string | undefined): boolean {
   );
 }
 
-export function shouldUseDeterministicLlmProxy(
-  options: Pick<CreateScenarioRuntimeOptions, "useDeterministicLlmProxy"> = {},
+export function shouldUseDeterministicModel(
+  options: Pick<CreateScenarioRuntimeOptions, "useDeterministicModel"> = {},
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   return (
-    options.useDeterministicLlmProxy === true ||
-    envFlag(env.SCENARIO_USE_LLM_PROXY) ||
-    envFlag(env.ELIZA_SCENARIO_USE_LLM_PROXY)
+    options.useDeterministicModel === true ||
+    envFlag(env.SCENARIO_USE_DETERMINISTIC_MODEL) ||
+    envFlag(env.ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL)
   );
 }
 
-export function shouldUseStrictDeterministicLlmProxy(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return (
-    envFlag(env.SCENARIO_LLM_PROXY_STRICT) ||
-    envFlag(env.ELIZA_SCENARIO_LLM_PROXY_STRICT)
-  );
-}
-
-function deterministicLlmProxyProviderConfig(): RuntimeFactoryResult["providerConfig"] {
+function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfig"] {
   return {
-    name: DETERMINISTIC_LLM_PROXY_PROVIDER_NAME,
+    name: DETERMINISTIC_MODEL_PROVIDER_NAME,
     env: {},
     pluginPackage: null,
   };
@@ -533,12 +517,12 @@ export function resolveScenarioDeterministicLlmCall(
 export function resolveScenarioProviderConfig(
   options: Pick<
     CreateScenarioRuntimeOptions,
-    "preferredProvider" | "useDeterministicLlmProxy"
+    "preferredProvider" | "useDeterministicModel"
   > = {},
   env: NodeJS.ProcessEnv = process.env,
 ): RuntimeFactoryResult["providerConfig"] | null {
-  if (shouldUseDeterministicLlmProxy(options, env)) {
-    return deterministicLlmProxyProviderConfig();
+  if (shouldUseDeterministicModel(options, env)) {
+    return deterministicModelProviderConfig();
   }
   return selectLiveProvider(options.preferredProvider);
 }
@@ -552,13 +536,13 @@ export function resolveScenarioProviderConfig(
  * empty completions and scenarios fall back to REPLY — so live-lane trajectory
  * evidence would actually be mock traffic. Live means live: drop the LLM mock
  * overrides when a live provider is selected; connector mocks (gmail, etc.)
- * stay. The deterministic proxy lane keeps everything as-is.
+ * stay. The deterministic provider lane keeps everything as-is.
  */
 export function clearLlmWireMockEnvForLiveProvider(
   providerName: RuntimeFactoryResult["providerConfig"]["name"],
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  if (providerName === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) return;
+  if (providerName === DETERMINISTIC_MODEL_PROVIDER_NAME) return;
   delete env.ELIZA_MOCK_OPENAI_BASE;
   delete env.ELIZA_MOCK_ANTHROPIC_BASE;
 }
@@ -586,9 +570,9 @@ export async function createScenarioRuntime(
     options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
   if (executionProfile === "provider-qualified") {
     assertProviderQualifiedEnvironment();
-    if (options?.useDeterministicLlmProxy === true) {
+    if (options?.useDeterministicModel === true) {
       throw new Error(
-        "[scenario-runner] provider-qualified execution cannot use the deterministic LLM proxy",
+        "[scenario-runner] provider-qualified execution cannot use the deterministic model provider",
       );
     }
     if ((options?.extraPlugins?.length ?? 0) > 0) {
@@ -601,12 +585,12 @@ export async function createScenarioRuntime(
   const providerConfig = resolveScenarioProviderConfig(options);
   if (!providerConfig) {
     throw new Error(
-      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.",
+      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
     );
   }
   if (
     executionProfile === "provider-qualified" &&
-    providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME
+    providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME
   ) {
     throw new Error(
       "[scenario-runner] provider-qualified execution requires a live model provider",
@@ -780,31 +764,30 @@ export async function createScenarioRuntime(
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
-  if (providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
+  if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
     if (!testMocks) {
       throw new Error(
-        "[scenario-runner] deterministic proxy requested without the simulated test environment",
+        "[scenario-runner] deterministic model provider requested without the simulated test environment",
       );
     }
-    const deterministicLlmProxyPlugin =
-      testMocks.createDeterministicLlmProxyPlugin({
-        strict: shouldUseStrictDeterministicLlmProxy(),
+    const deterministicModelPlugin =
+      createDeterministicModelPlugin({
         resolve: resolveScenarioDeterministicLlmCall,
       });
-    await runtime.registerPlugin(deterministicLlmProxyPlugin);
+    await runtime.registerPlugin(deterministicModelPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
-      scenarioLlmFixtures?: unknown;
-      assertScenarioLlmFixturesConsumed?: () => void;
-      getScenarioLlmFixtureDiagnostics?: () => unknown;
+      scenarioModelFixtures?: unknown;
+      assertScenarioModelFixturesConsumed?: () => void;
+      getScenarioModelFixtureDiagnostics?: () => unknown;
     };
-    runtimeWithScenarioFixtures.scenarioLlmFixtures =
-      deterministicLlmProxyPlugin.llmFixtures;
-    runtimeWithScenarioFixtures.assertScenarioLlmFixturesConsumed =
-      deterministicLlmProxyPlugin.assertFixturesConsumed;
-    runtimeWithScenarioFixtures.getScenarioLlmFixtureDiagnostics =
-      deterministicLlmProxyPlugin.getFixtureDiagnostics;
+    runtimeWithScenarioFixtures.scenarioModelFixtures =
+      deterministicModelPlugin.fixtures;
+    runtimeWithScenarioFixtures.assertScenarioModelFixturesConsumed =
+      deterministicModelPlugin.assertFixturesConsumed;
+    runtimeWithScenarioFixtures.getScenarioModelFixtureDiagnostics =
+      deterministicModelPlugin.getFixtureDiagnostics;
     logger.info(
-      `[scenario-runner] Registered deterministic LLM proxy (${shouldUseStrictDeterministicLlmProxy() ? "strict" : "heuristic"} mode); no live provider key required.`,
+      "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
     );
   } else {
     const providerModule = (await import(

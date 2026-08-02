@@ -121,8 +121,7 @@ bun run --cwd packages/scenario-runner clean
 
 | Env var | Effect |
 |---|---|
-| `SCENARIO_USE_LLM_PROXY` / `ELIZA_SCENARIO_USE_LLM_PROXY` | `1` = use deterministic LLM proxy instead of a live provider |
-| `SCENARIO_LLM_PROXY_STRICT` / `ELIZA_SCENARIO_LLM_PROXY_STRICT` | `1` = strict mode: every LLM call must match a registered fixture, else it throws |
+| `SCENARIO_USE_DETERMINISTIC_MODEL` / `ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL` | `1` = use the fixture-driven core model provider instead of a live provider |
 | `SCENARIO_INCLUDE_PENDING` | `1` = include scenarios with `status: "pending"` |
 | `SKIP_REASON` | Set to a non-empty string to allow skipped scenarios without failing exit 2 |
 | `LIFEOPS_LIVE_JUDGE_MIN_SCORE` | Float, default `0.8`; minimum LLM judge score to pass |
@@ -196,7 +195,7 @@ and update the owning pack catalog.
 ## Conventions / gotchas
 
 - **Single shared runtime per CLI invocation.** PGLite cannot be torn down and recreated (segfaults). For true per-scenario isolation, invoke `eliza-scenarios run` once per scenario from a shell loop.
-- **Deterministic mode.** `SCENARIO_USE_LLM_PROXY=1` swaps the live provider for the deterministic LLM proxy plugin (`packages/test/mocks/helpers/llm-proxy-plugin.ts`). With `SCENARIO_LLM_PROXY_STRICT=1`, any LLM call that has no registered fixture throws instead of falling back. Fixtures are registered programmatically per scenario via `registerStrictActionRouteFixtures` from `test/scenarios/_helpers/strict-llm-action-fixtures.ts` — not loaded from a fixtures directory. (`test/fixtures/` holds only the MCP stdio fixture.)
+- **Deterministic mode.** `SCENARIO_USE_DETERMINISTIC_MODEL=1` registers `createDeterministicModelPlugin` from `@elizaos/core/testing`. Every model call must match exactly one registered fixture or an explicit scenario resolver. Action routes use `registerStrictActionRouteFixtures` from `@elizaos/core/testing`; there is no heuristic fallback.
 - **Silent skips fail loudly.** If a scenario skips without `SKIP_REASON` set, the CLI exits 2.
 - **UPDATE_ENTITY is removed** from the runtime's action list during scenario runs. It's too broad and steals action selection from domain-specific actions under test.
 - **Embedding fallback.** By default a zero-vector 1024-dim embedding fallback is registered instead of `@elizaos/plugin-local-inference` (avoids gated HuggingFace downloads). Set `ELIZA_BENCH_SKIP_EMBEDDING=0` to use the real plugin.

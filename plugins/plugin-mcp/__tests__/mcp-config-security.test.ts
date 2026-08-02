@@ -3,7 +3,7 @@
  * drives the real validateMcpServerConfig from @elizaos/security to confirm unsafe
  * stdio env channels (npm/uv config injection) are rejected before spawn.
  */
-import { validateMcpServerConfig } from "@elizaos/security/mcp-server-config";
+import { validateMcpServerConfig } from "@elizaos/core/security/mcp-server-config";
 import { describe, expect, it } from "vitest";
 
 describe("MCP spawn-time validation", () => {

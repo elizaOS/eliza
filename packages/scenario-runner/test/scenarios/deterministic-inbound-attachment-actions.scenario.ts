@@ -6,7 +6,7 @@
 import { ModelType } from "@elizaos/core";
 import type { ScenarioTurnExecution } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { matchesScenarioInput } from "./_helpers/strict-llm-action-fixtures";
+import { matchesScenarioInput } from "@elizaos/core/testing";
 
 // Deterministic INBOUND attachment coverage (#8876): a user message that
 // carries a `Media` attachment must flow end-to-end through a real AgentRuntime
@@ -23,7 +23,7 @@ const attachmentInput = "Take a look at the attached note and reply.";
 const replyText = "Thanks — I've got your attached note.";
 
 type RuntimeWithScenarioLlmFixtures = {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -42,7 +42,7 @@ export default scenario({
       name: "register the deterministic reply for the inbound attachment turn",
       apply: (ctx) => {
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
-        runtime.scenarioLlmFixtures?.register({
+        runtime.scenarioModelFixtures?.register({
           name: "inbound-attachment-stage1-direct-reply",
           match: {
             modelType: ModelType.RESPONSE_HANDLER,

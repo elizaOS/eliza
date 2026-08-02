@@ -4148,8 +4148,6 @@
   "settings.sections.localModels.desc": "Tải xuống và gán mô hình cục bộ.",
   "settings.sections.localModels.label": "Mô hình cục bộ",
   "settings.sections.permissions.desc": "Khả năng và kiểm soát truy cập",
-  "settings.sections.remote-plugins.desc": "Các mini-app chạy trong sandbox.",
-  "settings.sections.remote-plugins.label": "Plugin từ xa",
   "settings.sections.runtime.desc": "Chuyển giữa agent trên thiết bị, Eliza Cloud và Remote Mac.",
   "settings.sections.runtime.label": "Thời gian chạy",
   "settings.sections.secrets.desc": "Nơi Eliza lưu trữ API keys của bạn: cục bộ, trong 1Password, trong Bitwarden, hoặc trong Proton Pass.",

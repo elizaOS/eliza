@@ -42,7 +42,7 @@ const SPEAKER = "Alex";
 type R = AgentRuntime & {
   registerPlugin: (plugin: unknown) => Promise<unknown>;
   getService: (name: string) => unknown;
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -175,7 +175,7 @@ export default scenario({
           await new Promise((resolve) => setTimeout(resolve, 25));
         }
 
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "meetings-stage1",
             match: {

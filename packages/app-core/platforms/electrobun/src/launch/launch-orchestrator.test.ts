@@ -129,14 +129,6 @@ function createOrchestrator(options?: {
             effectiveTarget: "/tmp/pglite",
           }),
     readDiagnosticLogTail: () => "tail",
-    listRemoteStatuses: () => [
-      {
-        id: "eliza.runtime",
-        state: "running",
-        error: null,
-        required: true,
-      },
-    ],
     createBugReportBundle,
     dynamicViewRegistry: options?.withViews ? registry : undefined,
     dynamicViewSessions: options?.withViews ? sessions : undefined,

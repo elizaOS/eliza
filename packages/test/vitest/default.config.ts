@@ -25,7 +25,7 @@ import {
   getElizaCoreEntry,
   getSharedSourceRoot,
   getUiSourceRoot,
-} from "../eliza-package-paths";
+} from "../../core/src/testing/eliza-package-paths";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -469,7 +469,7 @@ export default defineConfig({
       "eliza/packages/app-core/test/live-agent/**/*.test.ts",
       "eliza/packages/app-core/test/live-agent/**/*.test.tsx",
       "eliza/packages/app-core/test/helpers/**/*.test.ts",
-      "eliza/test/mocks/__tests__/**/*.test.ts",
+      "eliza/packages/scenario-runner/test/mocks/__tests__/**/*.test.ts",
       // app-core src-colocated tests run here; test/ harness suites run in
       // the app-unit config (apps/app/vitest.config.ts) which provides the
       // correct @elizaos/app-core alias resolution. Running both in parallel

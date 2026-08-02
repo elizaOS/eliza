@@ -45,7 +45,7 @@ const ALICE_PHONE = "415-555-0199";
 const BOB_EMAIL = "bob@example.com";
 
 type R = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -114,7 +114,7 @@ export default scenario({
           transcript: buildTranscript(owner),
         });
 
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "transcript-permissioning-stage1",
             match: {

@@ -39,6 +39,14 @@
  * ```
  */
 
+export {
+	ADVERSARIAL_KIND_DESCRIPTIONS,
+	ADVERSARIAL_KINDS,
+	type AdversarialFixtureSpec,
+	type AdversarialKind,
+	adversarialActionRouteFixtures,
+	adversarialPlannerFixture,
+} from "./adversarial-model-fixtures";
 // Browser API shims (Storage, Canvas, Media, console patches)
 export {
 	createCanvas2DContext,
@@ -50,6 +58,33 @@ export {
 } from "./browser-mocks";
 // Conditional test helpers (describeIf, itIf, testIf)
 export { describeIf, itIf, testIf } from "./conditional-tests";
+export {
+	actionSlug,
+	benignExternalMessageFixture,
+	finalMessageUserText,
+	matchesScenarioInput,
+	type RuntimeWithScenarioModelFixtures,
+	registerStrictActionRouteFixtures,
+	type StrictActionRouteFixture,
+	stage1ResponseHandlerFixture,
+	strictActionRouteFixtures,
+} from "./deterministic-action-fixtures";
+export {
+	createDeterministicModelFixtureRegistry,
+	createDeterministicModelPlugin,
+	type DeterministicModelCall,
+	type DeterministicModelCallDiagnostic,
+	type DeterministicModelDiagnostics,
+	type DeterministicModelFixture,
+	type DeterministicModelFixtureDiagnostic,
+	type DeterministicModelFixtureMatch,
+	type DeterministicModelFixtureRegistry,
+	type DeterministicModelPlugin,
+	type DeterministicModelPluginOptions,
+	type DeterministicModelResponse,
+	type DeterministicSchemaMatcher,
+	type DeterministicTextMatcher,
+} from "./deterministic-model-plugin";
 // Package path resolution for monorepo tests
 export {
 	getAppCoreSourceRoot,
@@ -101,6 +136,11 @@ export {
 // Loopback port availability checker
 export { canBindLoopback } from "./loopback";
 export { createMockRuntime, MOCK_AGENT_ID } from "./mock-runtime";
+export {
+	createTestRuntimeWithModelProvider,
+	type ModelProviderTestRuntime,
+	type ModelProviderTestRuntimeOptions,
+} from "./model-provider-runtime";
 // Ollama model handlers (for local inference)
 export {
 	createOllamaModelHandlers,

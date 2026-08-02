@@ -145,10 +145,6 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
     "one-shot benchmark→training-dataset converter, invoked manually with explicit paths",
   ],
   [
-    "check-i18n.mjs",
-    "strict i18n linter run on demand; not yet wired into verify",
-  ],
-  [
     "audit-turbo-build-deps.self-test.mjs",
     "self-test fixture runner for the Turbo dependency audit; invoked manually when changing that audit",
   ],
@@ -452,7 +448,11 @@ function auditScriptFiles(root) {
 // Directories the plugin-coupling check scans for generic scripts. Both trees
 // hold plugin-agnostic build/test/dev automation that must discover plugins via
 // the shared seam + per-package metadata, not by naming plugin sets inline.
-const PLUGIN_COUPLING_SCAN_DIRS = ["scripts", path.join("packages", "scripts")];
+const PLUGIN_COUPLING_SCAN_DIRS = [
+  "scripts",
+  path.join("packages", "scripts"),
+  path.join("packages", "cloud", "scripts"),
+];
 const PLUGIN_COUPLING_FILE_TOKEN = /\.(mjs|cjs|js|mts|cts|ts|tsx)$/;
 // A `plugins/plugin-<name>` or `@elizaos/plugin-<name>` literal hardcoded in a
 // generic script. `<name>` is the package suffix; subpaths/quotes are trimmed by

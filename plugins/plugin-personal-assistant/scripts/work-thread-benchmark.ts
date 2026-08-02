@@ -12,7 +12,7 @@ import type {
   ResponseHandlerResult,
   State,
 } from "@elizaos/core";
-import { createMockedTestRuntime } from "../../../packages/test/mocks/helpers/mock-runtime.ts";
+import { createMockedTestRuntime } from "../test/support/helpers/mock-runtime.ts";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import {
   type ThreadOp,

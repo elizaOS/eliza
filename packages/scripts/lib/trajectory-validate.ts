@@ -158,7 +158,7 @@ export type TrajectoryEvidenceGrade = "live" | "proxy" | "mock" | "unknown";
  * trajectory served entirely by it is NOT live evidence.
  */
 export const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
-  "deterministic-llm-proxy" as const;
+  "deterministic-model-provider" as const;
 
 /**
  * Provider values that do NOT identify a real live model: the deterministic

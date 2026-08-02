@@ -4148,8 +4148,6 @@
   "settings.sections.localModels.desc": "下载和分配本地模型。",
   "settings.sections.localModels.label": "本地模型",
   "settings.sections.permissions.desc": "功能和访问控制",
-  "settings.sections.remote-plugins.desc": "沙盒化的小程序。",
-  "settings.sections.remote-plugins.label": "远程插件",
   "settings.sections.runtime.desc": "在本机 agent、Eliza Cloud 和远程 Mac 之间切换。",
   "settings.sections.runtime.label": "运行时",
   "settings.sections.secrets.desc": "Eliza 在哪里存储你的 API 密钥：本地、1Password、Bitwarden 或 Proton Pass。",

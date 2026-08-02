@@ -60,14 +60,6 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest": [
-        "../plugin-remote-manifest/src/index.ts"
-      ],
-      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
-      "@elizaos/plugin-worker-runtime": [
-        "../plugin-worker-runtime/src/index.ts"
-      ],
-      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@capacitor/app": [
         "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],
@@ -90,8 +82,6 @@
       "@elizaos/agent/*": ["./src/platform/empty-node-module.ts"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
       "@elizaos/vault/*": ["../../packages/vault/src/*"],
-      "@elizaos/security": ["../security/src/index.ts"],
-      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/cloud-sdk": ["../cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],

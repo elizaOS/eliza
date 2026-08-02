@@ -4148,8 +4148,6 @@
   "settings.sections.localModels.desc": "ローカルモデルのダウンロードと割り当て。",
   "settings.sections.localModels.label": "ローカルモデル",
   "settings.sections.permissions.desc": "機能とアクセス制御",
-  "settings.sections.remote-plugins.desc": "サンドボックス化されたミニアプリ。",
-  "settings.sections.remote-plugins.label": "リモートプラグイン",
   "settings.sections.runtime.desc": "デバイス上のエージェント、Eliza Cloud、リモートマック間で切り替えます。",
   "settings.sections.runtime.label": "ランタイム",
   "settings.sections.secrets.desc": "ElizaがAPIキーを保存する場所: ローカル、1Password、Bitwarden、Proton Pass。",

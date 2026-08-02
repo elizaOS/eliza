@@ -20,7 +20,7 @@ import {
 
 const INBOX = "INBOX";
 type R = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -43,7 +43,7 @@ export default scenario({
       name: "inbox-fixtures",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "inbox-stage1",
             match: {

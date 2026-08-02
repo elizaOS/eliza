@@ -4148,8 +4148,6 @@
   "settings.sections.localModels.desc": "로컬 모델 다운로드 및 할당.",
   "settings.sections.localModels.label": "로컬 모델",
   "settings.sections.permissions.desc": "기능 및 액세스 제어",
-  "settings.sections.remote-plugins.desc": "샌드박스로 격리된 미니 앱.",
-  "settings.sections.remote-plugins.label": "당근",
   "settings.sections.runtime.desc": "온디바이스 에이전트, Eliza Cloud, 원격 Mac 사이를 전환합니다.",
   "settings.sections.runtime.label": "런타임",
   "settings.sections.secrets.desc": "Eliza가 API 키를 저장하는 곳: 로컬, 1Password, Bitwarden, Proton Pass.",

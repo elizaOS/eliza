@@ -14,7 +14,7 @@ const packageRoot = path.resolve(
   "..",
 );
 const batchSize = Number.parseInt(process.env.AGENT_TEST_BATCH_SIZE ?? "1", 10);
-const roots = ["src", "test"];
+const roots = ["src", "test", "scripts"];
 
 const excludedPatterns = [
   /\.e2e\.test\.[cm]?tsx?$/,

@@ -28,8 +28,6 @@
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/logger": ["../logger/src/index.ts"],
       "@elizaos/logger/*": ["../logger/src/*"],
-      "@elizaos/security": ["../security/src/index.ts"],
-      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/vault/*": ["../vault/src/*"],
       "@elizaos/cloud-routing": ["../cloud/routing/src/index.ts"],
@@ -74,14 +72,6 @@
       "@elizaos/plugin-app-manager/*": [
         "../../plugins/plugin-app-manager/src/*"
       ],
-      "@elizaos/plugin-remote-manifest": [
-        "../plugin-remote-manifest/src/index.ts"
-      ],
-      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
-      "@elizaos/plugin-worker-runtime": [
-        "../plugin-worker-runtime/src/index.ts"
-      ],
-      "@elizaos/plugin-worker-runtime/*": ["../plugin-worker-runtime/src/*"],
       "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
       "@elizaos/plugin-github": ["../../plugins/plugin-github/src/index.ts"],
       "@elizaos/plugin-gitpathologist": [

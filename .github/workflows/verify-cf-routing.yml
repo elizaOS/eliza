@@ -75,7 +75,7 @@ jobs:
           if [ "$REQUIRE_BEACON" = "true" ]; then
             args+=(--require-beacon)
           fi
-          node packages/scripts/cloud/verify-environment-routing-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/verify-environment-routing-cli.mjs "${args[@]}"
 
       - name: Notify Discord (Failure)
         if: failure()

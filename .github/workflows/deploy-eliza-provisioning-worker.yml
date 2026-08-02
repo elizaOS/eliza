@@ -1,22 +1,22 @@
 name: Deploy Eliza Provisioning Worker
 
 # SSHes to the Hetzner provisioning host and deploys one immutable commit,
-# installs the systemd unit shipped at packages/scripts/cloud/admin/eliza-provisioning-worker.service,
+# installs the systemd unit shipped at packages/cloud/scripts/admin/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
 #
 # First-time setup:
-#   HCLOUD_TOKEN=... bun run packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs
+#   HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs
 
 on:
   push:
     branches: [develop, main]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
-      - 'packages/scripts/cloud/admin/daemons/provisioning-worker.ts'
-      - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
-      - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
-      - 'packages/scripts/cloud/admin/eliza-agent-router.service'
-      - 'packages/scripts/cloud/admin/ensure-generated-keywords.sh'
+      - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
+      - 'packages/cloud/scripts/admin/daemons/agent-router.ts'
+      - 'packages/cloud/scripts/admin/eliza-provisioning-worker.service'
+      - 'packages/cloud/scripts/admin/eliza-agent-router.service'
+      - 'packages/cloud/scripts/admin/ensure-generated-keywords.sh'
       - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
       - 'packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts'
       - 'packages/cloud/shared/src/lib/services/eliza-sandbox.ts'
@@ -187,7 +187,7 @@ jobs:
               echo "Bootstrap the Hetzner host and secrets with:"
               echo ""
               echo "\`\`\`bash"
-              echo "HCLOUD_TOKEN=... bun run packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs"
+              echo "HCLOUD_TOKEN=... bun run packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs"
               echo "\`\`\`"
             } >> "$GITHUB_STEP_SUMMARY"
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -324,7 +324,7 @@ jobs:
             # git clean removes these intentionally ignored modules. Generate
             # and assert them before install/build, while the healthy daemons
             # are still running, so generator failure cannot cause downtime.
-            bash packages/scripts/cloud/admin/ensure-generated-keywords.sh
+            bash packages/cloud/scripts/admin/ensure-generated-keywords.sh
 
             # Install the canary (Rust) Bun on first install.
             if ! command -v bun >/dev/null 2>&1; then
@@ -373,10 +373,10 @@ jobs:
 
             # Install/refresh both systemd units (provisioning worker + agent router).
             sudo install -m 0644 \
-              packages/scripts/cloud/admin/eliza-provisioning-worker.service \
+              packages/cloud/scripts/admin/eliza-provisioning-worker.service \
               "/etc/systemd/system/$SYSTEMD_UNIT"
             sudo install -m 0644 \
-              packages/scripts/cloud/admin/eliza-agent-router.service \
+              packages/cloud/scripts/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service

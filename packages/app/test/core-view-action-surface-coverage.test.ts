@@ -198,9 +198,6 @@ const SETTINGS_SECTION_OWNER_FILES: Readonly<
     "packages/ui/src/components/settings/WalletKeysSection.tsx",
     "packages/ui/src/components/pages/ConfigPageView.tsx",
   ],
-  "remote-plugins": [
-    "packages/ui/src/components/settings/RemotePluginHostSection.tsx",
-  ],
   updates: ["packages/ui/src/components/pages/ReleaseCenterView.tsx"],
   advanced: ["packages/ui/src/components/settings/AdvancedSection.tsx"],
   secrets: [

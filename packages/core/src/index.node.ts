@@ -207,7 +207,6 @@ export * from "./model-gateway";
 export * from "./name-tokens";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
-export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";

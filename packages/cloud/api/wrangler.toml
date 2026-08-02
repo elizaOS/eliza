@@ -2,8 +2,8 @@
 # eliza-cloud-api — Cloudflare Worker config
 # =============================================================================
 # This file is committed; secrets live in `wrangler secret put` (push them via
-# packages/scripts/cf-secrets-migrate.mjs).  Anything marked REPLACE_ME must be filled
-# in by the operator after running packages/scripts/cf-bootstrap.sh.
+# packages/cloud/scripts/admin/cf-secrets-migrate.mjs).  Anything marked REPLACE_ME must be filled
+# in by the operator after running packages/cloud/scripts/admin/cf-bootstrap.sh.
 # =============================================================================
 
 name = "eliza-cloud-api"
@@ -247,7 +247,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
 # -----------------------------------------------------------------------------
 # Required secrets — set via `wrangler secret put KEY` (or run
-# packages/scripts/cf-secrets-migrate.mjs which iterates a .env file).
+# packages/cloud/scripts/admin/cf-secrets-migrate.mjs which iterates a .env file).
 #
 # CANONICAL LIST (cross-reference cloud/packages/apps/api/MIGRATION_NOTES.md once Agent B
 # publishes it; if names diverge, Agent B's c.env.X usage wins — update this

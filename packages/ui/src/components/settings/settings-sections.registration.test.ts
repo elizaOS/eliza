@@ -166,7 +166,6 @@ describe("settings information architecture (grouped display order)", () => {
       "notifications",
       "runtime",
       "wallet-rpc",
-      "remote-plugins",
       "updates",
       "advanced",
     ]);

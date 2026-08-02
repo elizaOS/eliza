@@ -32,6 +32,10 @@
 		"src/index.ts",
 		"src/index.node.ts",
 		"src/index.browser.ts",
+		"src/security/kms/index.ts",
+		"src/security/mcp-server-config.ts",
+		"src/security/network-policy.ts",
+		"src/utils/atomic-json.ts",
 		"src/testing/**/*.ts"
 	],
 	"exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/__tests__/**/*"]

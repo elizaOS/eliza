@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { AuditDispatcher, InMemorySink } from "@elizaos/security/audit";
+import { AuditDispatcher, InMemorySink } from "@/services/audit";
 import { Hono } from "hono";
 
 import { assertOrgMembership } from "../src/middleware/org-membership";

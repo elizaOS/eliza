@@ -22,7 +22,7 @@ export const UI_E2E_SUITES = [
   {
     name: "cloud-e2e",
     displayName: "Cloud full-stack mock e2e",
-    configDir: "packages/test/cloud-e2e",
+    configDir: "packages/cloud/e2e",
     script: "test",
     coverage:
       "Boots the local cloud API, cloud frontend, auth cookie login, provisioning flows, screenshots, traces, and videos.",

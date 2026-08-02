@@ -206,9 +206,7 @@ export function deleteProviderCredentials(
   provider: AccountCredentialProvider,
 ): number {
   const accounts = listProviderAccounts(provider);
-  for (const account of accounts) {
-    deleteAccount(provider, account.id);
-  }
+  for (const account of accounts) deleteAccount(provider, account.id);
   return accounts.length;
 }
 

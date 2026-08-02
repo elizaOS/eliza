@@ -67,24 +67,6 @@ export const ELIZA_BUILD_STEPS = [
     label: "@elizaos/vault",
   },
   {
-    check: path.join("packages", "security", "dist", "index.js"),
-    cwd: path.join("packages", "security"),
-    args: ["run", "build"],
-    label: "@elizaos/security",
-  },
-  {
-    check: path.join("packages", "plugin-remote-manifest", "dist", "index.js"),
-    cwd: path.join("packages", "plugin-remote-manifest"),
-    args: ["run", "build"],
-    label: "@elizaos/plugin-remote-manifest",
-  },
-  {
-    check: path.join("packages", "plugin-worker-runtime", "dist", "index.js"),
-    cwd: path.join("packages", "plugin-worker-runtime"),
-    args: ["run", "build"],
-    label: "@elizaos/plugin-worker-runtime",
-  },
-  {
     // plugin-elizacloud imports types from @elizaos/cloud-sdk; without dist
     // its tsup --dts pass fails with TS2307.
     check: path.join("packages", "cloud", "sdk", "dist", "index.d.ts"),

@@ -12,19 +12,9 @@ export type DynamicViewPlacement =
   | "tray"
   | "debug";
 
-export type DynamicViewSource =
-  | "agent"
-  | "plugin"
-  | "remote"
-  | "system"
-  | "developer";
+export type DynamicViewSource = "agent" | "plugin" | "system" | "developer";
 
 export type DynamicViewMetadata = Record<string, JsonValue>;
-
-export interface DynamicViewEventSubscription {
-  remoteId: string;
-  events?: string[];
-}
 
 export interface DynamicViewManifest {
   id: DynamicViewId;
@@ -34,9 +24,6 @@ export interface DynamicViewManifest {
   entrypoint: string;
   placement: DynamicViewPlacement;
   permissions?: string[];
-  requiredRemotes?: string[];
-  eventSubscriptions?: DynamicViewEventSubscription[];
-  invokeTargets?: string[];
   metadata?: DynamicViewMetadata;
 }
 
@@ -100,7 +87,6 @@ export const DYNAMIC_VIEW_PLACEMENTS: readonly DynamicViewPlacement[] = [
 export const DYNAMIC_VIEW_SOURCES: readonly DynamicViewSource[] = [
   "agent",
   "plugin",
-  "remote",
   "system",
   "developer",
 ] as const;

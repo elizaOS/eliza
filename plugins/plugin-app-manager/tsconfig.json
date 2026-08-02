@@ -19,6 +19,10 @@
     "rootDir": "../..",
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/core/atomic-json": [
+        "../../packages/core/src/utils/atomic-json.ts"
+      ],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
       "@elizaos/logger/*": ["../../packages/logger/src/*"],
       "@elizaos/auth": ["../../packages/auth/src/index.ts"],

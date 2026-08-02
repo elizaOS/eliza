@@ -132,7 +132,6 @@ const CONVERTED_SUBCOMPONENTS = [
   "settings/AppsManagementSection",
   "settings/DesktopWorkspaceSection",
   "settings/LoadContentPackForm",
-  "settings/RemotePluginHostSection",
   "settings/SecuritySettingsSection",
   "settings/VaultInventoryPanel",
   "settings/vault-tabs/LoginsTab",

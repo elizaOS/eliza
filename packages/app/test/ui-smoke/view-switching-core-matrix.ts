@@ -49,7 +49,6 @@ export const REQUIRED_SETTINGS_SECTION_IDS = [
   "notifications",
   "runtime",
   "wallet-rpc",
-  "remote-plugins",
   "updates",
   "advanced",
   "secrets",

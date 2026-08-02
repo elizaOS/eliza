@@ -106,7 +106,7 @@ What exists today, verified in code.
 - Voice Workbench (`voice:workbench --mock|--logic|--real`, `--baseline` regression gate)
   scores WER, EOT, diarization, and first-audio/TTFT; CI runs the `--logic` lane
   (`.github/workflows/voice-workbench.yml`).
-- `voice:matrix` (`packages/scripts/voice-matrix.mjs`) — the per-platform live-cell
+- `voice:matrix` (`packages/app-core/scripts/voice/voice-matrix.mjs`) — the per-platform live-cell
   evidence matrix (`packages/ui/src/voice/VOICE_LIVE_MATRIX.md`).
 - `voice:cloud-bench` (`packages/scripts/voice-cloud-bench.mjs`) — the #14370 Railway
   benchmark runner added for this decision record. It reuses the live contract request

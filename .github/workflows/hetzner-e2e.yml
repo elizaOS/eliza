@@ -16,7 +16,7 @@ name: Hetzner Agent E2E
 #                            uploaded to Hetzner)
 #   CI_SSH_PUBLIC_KEY_ID   - Numeric Hetzner SSH key id for the above
 #
-# See packages/scripts/cloud/admin/hetzner-e2e/README.md for setup.
+# See packages/cloud/scripts/admin/hetzner-e2e/README.md for setup.
 
 on:
   schedule:
@@ -27,10 +27,10 @@ on:
     paths:
       - '.github/workflows/hetzner-e2e.yml'
       - '.github/workflows/hetzner-e2e-reaper.yml'
-      - 'packages/scripts/cloud/admin/hetzner-e2e/**'
+      - 'packages/cloud/scripts/admin/hetzner-e2e/**'
       - 'packages/cloud/shared/src/lib/services/containers/**'
-      - 'packages/scripts/cloud/admin/daemons/**'
-      - 'packages/scripts/cloud/admin/bootstrap-provisioning-worker-host.mjs'
+      - 'packages/cloud/scripts/admin/daemons/**'
+      - 'packages/cloud/scripts/admin/bootstrap-provisioning-worker-host.mjs'
 
 concurrency:
   group: hetzner-e2e
@@ -73,7 +73,7 @@ jobs:
               echo "Missing secrets in GitHub environment \`ci-hetzner-e2e\`:"
               for s in "${missing[@]}"; do echo "- \`$s\`"; done
               echo ""
-              echo "See \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` for setup."
+              echo "See \`packages/cloud/scripts/admin/hetzner-e2e/README.md\` for setup."
             } >> "$GITHUB_STEP_SUMMARY"
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "::error::Manual dispatch requires all hetzner-e2e secrets."
@@ -277,7 +277,7 @@ jobs:
           log=/tmp/hetzner-e2e-provision.log
           rm -f "$HETZNER_E2E_DIAGNOSTIC_FILE"
           set +e
-          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
+          bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
           rc=${PIPESTATUS[0]}
           set -e
           if [ "$rc" -eq 0 ]; then
@@ -291,7 +291,7 @@ jobs:
         if: always() && steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true' && steps.hcloud_auth.outputs.ready == 'true' && steps.provision.outcome == 'failure'
         run: |
           if [ -f "$HETZNER_E2E_DIAGNOSTIC_FILE" ]; then
-            bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision-diagnostic.ts "$HETZNER_E2E_DIAGNOSTIC_FILE" >> "$GITHUB_STEP_SUMMARY"
+            bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-provision-diagnostic.ts "$HETZNER_E2E_DIAGNOSTIC_FILE" >> "$GITHUB_STEP_SUMMARY"
           else
             {
               echo "### Hetzner E2E provisioning failed"
@@ -302,15 +302,15 @@ jobs:
 
       - name: Wait for host ready
         if: steps.provision.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
 
       - name: Deploy trivial agent
         if: steps.provision.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-deploy-agent.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-deploy-agent.ts
 
       - name: Healthcheck
         if: steps.provision.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-healthcheck.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-healthcheck.ts
 
       # A real user-message round-trip through the same Worker bridge path a
       # production chat takes. status.get alone lets "provisioned but chat
@@ -318,7 +318,7 @@ jobs:
       # the deploy job; the teardown job runs regardless (needs+always()).
       - name: Chat turn
         if: steps.provision.outputs.provisioned == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-chat.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-chat.ts
 
       - name: Upload state artifact
         if: always() && steps.provision.outputs.provisioned == 'true'
@@ -394,4 +394,4 @@ jobs:
           # provisioned, nothing can leak" (soft-skip) from "dead token but a
           # server exists" (hard fail so the leak is never silent).
           DEPLOY_PROVISIONED: ${{ needs.deploy.outputs.provisioned }}
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts
+        run: bun run packages/cloud/scripts/admin/hetzner-e2e/hetzner-e2e-teardown.ts

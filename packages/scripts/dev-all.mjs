@@ -267,7 +267,7 @@ const services = [
 ].filter(Boolean);
 
 const cloudDevVarsCommand = packagedCloudAvailable
-  ? [bunBin, "run", "packages/scripts/cloud/admin/sync-api-dev-vars.ts"]
+  ? [bunBin, "run", "packages/cloud/scripts/admin/sync-api-dev-vars.ts"]
   : [bunBin, "run", "--cwd", "cloud", "packages/scripts/sync-api-dev-vars.ts"];
 
 function packageDistReady(packageDir, requiredFiles) {

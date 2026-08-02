@@ -18,7 +18,7 @@ import gitPathologyPlugin, {
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 /**
  * Keyless GIT_PATHOLOGY coverage.

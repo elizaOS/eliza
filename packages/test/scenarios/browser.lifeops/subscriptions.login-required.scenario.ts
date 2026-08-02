@@ -3,7 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   attachFakeSubscriptionComputerUse,
   FakeSubscriptionComputerUseService,
-} from "../../helpers/subscription-computer-use-fixture";
+} from "../../../../plugins/plugin-personal-assistant/test/support/helpers/subscription-computer-use-fixture.ts";
 import { expectScenarioBrowserTask } from "../_helpers/browser-task-assertions.ts";
 
 export default scenario({

@@ -904,13 +904,13 @@ async function handleListAllAccounts(
   const pool = await getPool();
   await pool.sweepExpired?.();
   const broker = brokerSnapshot();
-  const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
+  const providers = await Promise.all(SUPPORTED_PROVIDER_IDS.map(async (providerId) => {
     const linkedConfigs = pool
       .list(providerId)
       .sort((a, b) => a.priority - b.priority);
     const accountProvider = asAccountCredentialProvider(providerId);
     const onDiskAccounts = accountProvider
-      ? listAccounts(accountProvider).map((r) => r.id)
+      ? (await listAccounts(accountProvider)).map((r) => r.id)
       : [];
     const onDiskSet = new Set(onDiskAccounts);
     const strategy = readAccountStrategy(ctx.state.config, providerId);
@@ -958,7 +958,7 @@ async function handleListAllAccounts(
         recentFailovers,
       },
     };
-  });
+  }));
   json(res, { providers });
   return true;
 }
@@ -1021,7 +1021,7 @@ async function handleCreateApiKeyAccount(
     return true;
   }
   const previousRecord = replaceAccountId
-    ? loadAccount(accountProvider, replaceAccountId)
+    ? await loadAccount(accountProvider, replaceAccountId)
     : null;
   if (replaceAccountId && !previousRecord) {
     error(res, "Replacement account credential not found", 404);
@@ -1086,15 +1086,15 @@ async function handleCreateApiKeyAccount(
         health: "ok" as const,
       }
     : buildLinkedAccountConfigFromRecord(record, priority);
-  saveAccount(record);
+  await saveAccount(record);
   try {
     await pool.upsert(linkedConfig);
   } catch (cause) {
     if (previousRecord && replacementTarget) {
-      saveAccount(previousRecord);
+      await saveAccount(previousRecord);
       await pool.upsert(replacementTarget);
     } else {
-      deleteAccount(accountProvider, record.id);
+      await deleteAccount(accountProvider, record.id);
     }
     throw new ElizaError("Account credential adoption failed", {
       code: "accounts.credential_adoption_failed",
@@ -1185,7 +1185,10 @@ async function handleOAuthRoutes(
       );
       return true;
     }
-    if (replaceAccountId && !loadAccount(subscription, replaceAccountId)) {
+    if (
+      replaceAccountId &&
+      !(await loadAccount(subscription, replaceAccountId))
+    ) {
       error(res, "Replacement account credential not found", 404);
       return true;
     }
@@ -1448,9 +1451,9 @@ async function handlePatchAccount(
   if (parsed.data.label !== undefined) {
     const accountProvider = asAccountCredentialProvider(providerId);
     if (accountProvider) {
-      const record = loadAccount(accountProvider, accountId);
+      const record = await loadAccount(accountProvider, accountId);
       if (record && record.label !== parsed.data.label) {
-        saveAccount({ ...record, label: parsed.data.label });
+        await saveAccount({ ...record, label: parsed.data.label });
       }
     }
   }
@@ -1469,7 +1472,7 @@ async function handleDeleteAccount(
   await pool.deleteMetadata(providerId, accountId);
   const accountProvider = asAccountCredentialProvider(providerId);
   if (accountProvider) {
-    deleteAccount(accountProvider, accountId);
+    await deleteAccount(accountProvider, accountId);
   }
   json(res, { deleted: true });
   return true;

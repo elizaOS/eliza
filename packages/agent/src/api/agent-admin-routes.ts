@@ -186,7 +186,7 @@ export async function handleAgentAdminRoutes(
         removeStateDir(dataDir);
       }
 
-      clearPersistedFirstRunConfig(config);
+      await clearPersistedFirstRunConfig(config);
       saveElizaConfig(config);
 
       // Wipe cloud-related vault entries so the next boot doesn't re-hydrate

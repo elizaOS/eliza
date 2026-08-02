@@ -14,7 +14,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/security/kms";
+import { createKmsClient, type KmsClient, resolveKmsBackend } from "@elizaos/core/security/kms";
 import { getCloudAwareEnv } from "../../lib/runtime/cloud-bindings";
 
 let _kms: KmsClient | null = null;
@@ -46,7 +46,7 @@ export function setKmsClient(client: KmsClient): void {
  *    which is precisely the misconfig class this guards against.
  *
  * Exported for tests. Keep in sync with `assertKmsBackendDurable` in
- * `packages/scripts/cloud/admin/daemons/provisioning-worker.ts`, which applies
+ * `packages/cloud/scripts/admin/daemons/provisioning-worker.ts`, which applies
  * the same policy at daemon preflight (before any job is claimed).
  */
 export function isEphemeralKmsAllowed(env: NodeJS.ProcessEnv): boolean {

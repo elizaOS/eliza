@@ -1,28 +1,17 @@
 {
-  "name": "@elizaos/test-harness",
+  "name": "@elizaos/test-corpus",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Zero-cost end-to-end test substrate: the deterministic mock-LLM proxy, a one-import withMockLlmRuntime() helper, and a shared negative-response fixture pack.",
-  "main": "./harness/index.ts",
-  "exports": {
-    ".": "./harness/index.ts",
-    "./llm-proxy": "./mocks/helpers/llm-proxy-plugin.ts",
-    "./action-route-fixtures": "./harness/action-route-fixtures.ts",
-    "./negative-fixtures": "./harness/negative-fixtures.ts"
-  },
+  "description": "Repository-wide scenario definitions and shared Vitest lane configuration.",
   "scripts": {
-    "test": "vitest run --config harness/vitest.config.ts",
-    "format": "bunx @biomejs/biome format --write package.json harness mocks",
-    "format:check": "bunx @biomejs/biome format package.json harness mocks"
-  },
-  "dependencies": {
-    "@capacitor/core": "8.4.0",
-    "@elizaos/core": "workspace:*",
-    "telegraf": "^4.16.3"
+    "test": "vitest run --config vitest/unit.config.ts --passWithNoTests",
+    "format": "bunx @biomejs/biome format --write package.json scenarios vitest",
+    "format:check": "bunx @biomejs/biome format package.json scenarios vitest"
   },
   "devDependencies": {
-    "discord.js": "^14.26.4",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/scenario-runner": "workspace:*",
     "vitest": "*"
   },
   "elizaos": {

@@ -75,7 +75,7 @@
       "tier": "T3",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic (keyless). Real scheduler tick: a high-priority VIP-breakthrough triage nudge fires through quiet hours while a quiet-hours-gated non-VIP digest ping is held; single-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 --conditions eliza-source (386ms)."
+      "notes": "pr-deterministic (keyless). Real scheduler tick: a high-priority VIP-breakthrough triage nudge fires through quiet hours while a quiet-hours-gated non-VIP digest ping is held; single-delivery finalCheck. Passes keyless under TZ=UTC SCENARIO_USE_DETERMINISTIC_MODEL=1 --conditions eliza-source (386ms)."
     },
     {
       "id": "comms_flood_triage.vip_allowlist_board_and_school",

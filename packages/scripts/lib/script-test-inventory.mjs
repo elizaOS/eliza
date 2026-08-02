@@ -36,8 +36,10 @@ export const SCRIPT_TEST_EXTENSIONS = [
   "cjs",
 ];
 
+// Cloud ops scripts live with the cloud package (packages/cloud/scripts) but
+// have no workspace manifest either, so this runner owns their tests too.
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^packages/scripts/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 

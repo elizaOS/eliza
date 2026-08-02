@@ -24,7 +24,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "@elizaos/test-harness/action-route-fixtures";
+} from "@elizaos/core/testing";
 import {
   describeCalls,
   successfulActionData,
@@ -71,7 +71,7 @@ export default scenario({
         ]);
         // The host re-voices the canonical "no bridge" fallback through one
         // TEXT_SMALL grounded-reply call (renderGroundedActionReply).
-        runtime.scenarioLlmFixtures?.register({
+        runtime.scenarioModelFixtures?.register({
           name: "owner-health-grounded-reply",
           match: {
             modelType: ModelType.TEXT_SMALL,

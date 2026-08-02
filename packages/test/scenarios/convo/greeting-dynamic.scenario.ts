@@ -25,7 +25,7 @@ import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 const GREETING_INPUT = "Hello!";
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -109,7 +109,7 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
-        runtime.scenarioLlmFixtures?.register(...greetingRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...greetingRouteFixtures());
       },
     },
   ],

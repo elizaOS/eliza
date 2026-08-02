@@ -16,6 +16,6 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/**/__tests__/**",
-    "vitest.harness.config.ts"
+    "vitest.real-runtime.config.ts"
   ]
 }

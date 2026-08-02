@@ -12,7 +12,7 @@ name: Monetized + Showcase Loop Nightly
 #
 #   2. `loop` - Real-Hetzner parity SCAFFOLD for the monetized full loop + the
 #      example-apps showcase (#8935 / #9300). The per-PR mock-stack variant runs
-#      via cloud-e2e.yml (it globs every packages/test/cloud-e2e/tests/*.spec.ts).
+#      via cloud-e2e.yml (it globs every packages/cloud/e2e/tests/*.spec.ts).
 #      This job is the live-infra counterpart: it sets MONETIZED_LOOP_REAL=1, under
 #      which both specs currently SKIP at the describe level (so no mock stack is
 #      booted and no mock assertion is ever passed off as real). Wiring the live
@@ -30,7 +30,7 @@ name: Monetized + Showcase Loop Nightly
 #   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
 #   CLOUD_E2E_API_KEY      - Eliza Cloud staging showcase bearer token (long-lived).
 #                            The showcase account is documented in
-#                            packages/test/cloud-e2e/docs/showcase-apps-coverage.md.
+#                            packages/cloud/e2e/docs/showcase-apps-coverage.md.
 #
 # Optional:
 #   MONETIZED_LOOP_BASE_URL - staging cloud-api base URL the loop drives.
@@ -208,8 +208,8 @@ jobs:
         with:
           name: monetized-loop-nightly-report-${{ github.run_attempt }}
           path: |
-            packages/test/cloud-e2e/playwright-report
-            packages/test/cloud-e2e/test-results
+            packages/cloud/e2e/playwright-report
+            packages/cloud/e2e/test-results
             e2e-recordings/cloud-e2e
           retention-days: 14
           if-no-files-found: ignore
@@ -220,7 +220,7 @@ jobs:
         with:
           name: monetized-loop-nightly-logs-${{ github.run_attempt }}
           path: |
-            packages/test/cloud-e2e/.logs
+            packages/cloud/e2e/.logs
           retention-days: 14
           include-hidden-files: true
           if-no-files-found: ignore
@@ -279,8 +279,8 @@ jobs:
         with:
           name: showcase-mock-report-${{ github.run_attempt }}
           path: |
-            packages/test/cloud-e2e/playwright-report
-            packages/test/cloud-e2e/test-results
+            packages/cloud/e2e/playwright-report
+            packages/cloud/e2e/test-results
             e2e-recordings/cloud-e2e
           retention-days: 14
           if-no-files-found: ignore
@@ -291,7 +291,7 @@ jobs:
         with:
           name: showcase-mock-logs-${{ github.run_attempt }}
           path: |
-            packages/test/cloud-e2e/.logs
+            packages/cloud/e2e/.logs
           retention-days: 14
           include-hidden-files: true
           if-no-files-found: ignore

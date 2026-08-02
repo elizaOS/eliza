@@ -90,7 +90,7 @@ jobs:
 
       - name: Arm Headscale and daemon env
         run: |
-          node packages/scripts/cloud/admin/arm-headscale-control-plane.mjs \
+          node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
             --host "$DEPLOY_HOST" \
             --ssh-key "$DEPLOY_SSH_KEY_PATH" \
             --headscale-public-url "$HEADSCALE_PUBLIC_URL" \

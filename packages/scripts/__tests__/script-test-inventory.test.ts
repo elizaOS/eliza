@@ -69,7 +69,7 @@ describe("packages/scripts executable-test inventory", () => {
   test("discovers every Bun dot/underscore test/spec form, extension, and case", () => {
     const files = [
       "packages/scripts/root.test.ts",
-      "packages/scripts/cloud/nested.SPEC.MTS",
+      "packages/cloud/scripts/nested.SPEC.MTS",
       "packages/scripts/a/b/c.test.cts",
       "packages/scripts/a/b/c.spec.js",
       "packages/scripts/a/b/c.test.jsx",
@@ -85,6 +85,7 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/other/ignored.test.ts",
     ];
     expect(inventory(files).files.map(({ file }) => file)).toEqual([
+      "packages/cloud/scripts/nested.SPEC.MTS",
       "packages/scripts/a/b/.spec.cjs",
       "packages/scripts/a/b/.test.ts",
       "packages/scripts/a/b/_spec.mts",
@@ -96,7 +97,6 @@ describe("packages/scripts executable-test inventory", () => {
       "packages/scripts/a/b/c.test.jsx",
       "packages/scripts/a/b/name_spec.js",
       "packages/scripts/a/b/name_test.tsx",
-      "packages/scripts/cloud/nested.SPEC.MTS",
       "packages/scripts/root.test.ts",
     ]);
     expect(() =>
@@ -868,7 +868,7 @@ jobs:
     // describe.skip`) are the only files permitted to report skips; a skip in
     // any other discovered file is silently-dropped coverage and must fail.
     const conditional =
-      "packages/scripts/cloud/admin/daemons/provisioning-worker-env-reconcile.test.ts";
+      "packages/cloud/scripts/admin/daemons/provisioning-worker-env-reconcile.test.ts";
     const unconditional =
       "packages/scripts/__tests__/script-test-inventory.test.ts";
     const junitFor = (file: string) => `<?xml version="1.0"?>
@@ -915,7 +915,7 @@ jobs:
     expect(
       result.files.some(
         ({ file }) =>
-          file === "packages/scripts/cloud/admin/bridge-reply-verdict.test.ts",
+          file === "packages/cloud/scripts/admin/bridge-reply-verdict.test.ts",
       ),
     ).toBe(true);
     expect(

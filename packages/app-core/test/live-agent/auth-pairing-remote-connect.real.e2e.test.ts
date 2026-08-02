@@ -69,7 +69,7 @@
 
 import crypto from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createDeterministicLlmProxyPlugin } from "../../../test/mocks/helpers/llm-proxy-plugin.ts";
+import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { SESSION_COOKIE_NAME } from "../../src/api/auth/sessions.ts";
 import {
   _resetAuthPairingStateForTests,
@@ -126,7 +126,7 @@ describe("production auth path: pair-code → machine session; remote-connect to
     runtimeResult = await createRealTestRuntime({
       characterName: "PairingRemoteConnectE2E",
       plugins: [
-        createDeterministicLlmProxyPlugin({ failOnUnhandledAction: false }),
+        createDeterministicModelPlugin(),
       ],
     });
     server = await startApiServer({

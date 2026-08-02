@@ -63,6 +63,11 @@ export function resolveStateDir(
 	return join(getHome(), ".local", "state", namespace);
 }
 
+/** Resolve the shared root for optimization traces and artifacts. */
+export function getOptimizationRootDir(settingValue?: string | null): string {
+	return settingValue || join(resolveStateDir(), "optimization");
+}
+
 /**
  * Resolve the OAuth credentials directory. Honors `ELIZA_OAUTH_DIR`;
  * otherwise falls back to `<state-dir>/credentials`.

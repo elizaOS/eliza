@@ -699,7 +699,9 @@ export function clearSubscriptionProviderConfig(
  * Clear persisted first-run state that should force the UI back through the
  * first-run setup on the next load/reset.
  */
-export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
+export async function clearPersistedFirstRunConfig(
+  config: MutableElizaConfig,
+): Promise<void> {
   if (config.meta && typeof config.meta === "object") {
     delete (config.meta as Record<string, unknown>).firstRunComplete;
   }
@@ -796,7 +798,7 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
   delete process.env.ELIZAOS_CLOUD_ACTION_PLANNER_MODEL;
   delete process.env.ELIZAOS_CLOUD_PLANNER_MODEL;
   for (const provider of SUBSCRIPTION_PROVIDER_IDS) {
-    deleteProviderCredentials(provider);
+    await deleteProviderCredentials(provider);
   }
 }
 

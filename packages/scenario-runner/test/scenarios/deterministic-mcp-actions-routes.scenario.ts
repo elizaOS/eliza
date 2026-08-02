@@ -26,7 +26,7 @@ import {
   matchesScenarioInput,
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const MCP_SERVER_NAME = "scenario_mcp";
 const TOOL_NAME = "echo_code";
@@ -157,7 +157,7 @@ type RuntimeWithMcpScenario = IAgentRuntime &
       ) => Promise<void> | void;
       __scenarioMcpRoute?: boolean;
     }>;
-    scenarioLlmFixtures?: {
+    scenarioModelFixtures?: {
       register: (...fixtures: Array<Record<string, unknown>>) => void;
     };
     setSetting: (key: string, value: unknown, secret?: boolean) => void;
@@ -510,7 +510,7 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
 
   runtime.setSetting("mcp", mcpConfig().mcp, false);
   registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
-  runtime.scenarioLlmFixtures?.register(
+  runtime.scenarioModelFixtures?.register(
     {
       name: "mcp-resource-analysis",
       match: {

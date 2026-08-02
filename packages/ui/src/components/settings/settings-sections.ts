@@ -20,7 +20,6 @@ import {
   type LucideIcon,
   Mic,
   Palette,
-  Puzzle,
   RefreshCw,
   Server,
   Shield,
@@ -106,11 +105,6 @@ const BackgroundSettingsSection = lazy(() =>
 const WebPushSettingsSection = lazy(() =>
   import("./WebPushSettingsSection").then((m) => ({
     default: m.WebPushSettingsSection,
-  })),
-);
-const RemotePluginHostSection = lazy(() =>
-  import("./RemotePluginHostSection").then((m) => ({
-    default: m.RemotePluginHostSection,
   })),
 );
 const WalletRpcSection = lazy(() =>
@@ -359,8 +353,8 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     Component: ConnectorsSection,
   },
   // System group order mirrors SETTINGS_SECTION_META: personalization first
-  // (appearance, background), then infrastructure (runtime, wallet, remote
-  // plugins), then maintenance (updates, backups) last.
+  // (appearance, background), then infrastructure (runtime, wallet), then
+  // maintenance (updates, backups) last.
   {
     id: "appearance",
     defaultLabel: "Appearance",
@@ -423,18 +417,6 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     // still resolves and it can be re-surfaced later.
     developerOnly: true,
     Component: WalletRpcSection,
-  },
-  {
-    id: "remote-plugins",
-    defaultLabel: "Remote Plugins",
-    group: "system",
-    aliases: ["remote"],
-    icon: Puzzle,
-    tone: "accent",
-    hue: "rose",
-    labelKey: "settings.sections.remote-plugins.label",
-    developerOnly: true,
-    Component: RemotePluginHostSection,
   },
   {
     id: "updates",

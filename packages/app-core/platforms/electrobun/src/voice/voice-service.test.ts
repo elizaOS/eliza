@@ -44,12 +44,6 @@ class FakeCanvas {
   }
 }
 
-class FakeWorkerStatusProvider {
-  getWorkerStatus(id: string): { state: string } | null {
-    return id === "eliza.runtime" ? { state: "running" } : null;
-  }
-}
-
 class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
   started = false;
   stopped = false;
@@ -233,7 +227,6 @@ function harness(env: Record<string, string | undefined> = {}): {
   const dynamicViewSessions = new DynamicViewSessionManager({
     registry,
     canvas,
-    workerStatusProvider: new FakeWorkerStatusProvider(),
     now,
     sessionIdFactory: () => "view-session-1",
   });

@@ -88,8 +88,8 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     aliases: ["connections", "integrations"],
   },
   // System group: most-used personalization first (appearance, background),
-  // then infrastructure (runtime, wallet, remote plugins), then maintenance
-  // (updates, backups) last so common taps are not buried behind rare ones.
+  // then infrastructure (runtime, wallet), then maintenance (updates,
+  // backups) last so common taps are not buried behind rare ones.
   {
     id: "appearance",
     defaultLabel: "Appearance",
@@ -109,12 +109,6 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     defaultLabel: "Wallet & RPC",
     group: "system",
     aliases: ["wallet", "rpc"],
-  },
-  {
-    id: "remote-plugins",
-    defaultLabel: "Remote Plugins",
-    group: "system",
-    aliases: ["remote"],
   },
   {
     id: "updates",

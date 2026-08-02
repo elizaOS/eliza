@@ -44,7 +44,7 @@ on:
       - "packages/cloud/shared/**"
       - "packages/cloud/services/**"
       - "packages/cloud/sdk/**"
-      - "packages/scripts/cloud/**"
+      - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/ui/**"
@@ -56,7 +56,7 @@ on:
       - "packages/cloud/shared/**"
       - "packages/cloud/services/**"
       - "packages/cloud/sdk/**"
-      - "packages/scripts/cloud/**"
+      - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/ui/**"
@@ -170,7 +170,7 @@ jobs:
             )"
           fi
 
-          node packages/scripts/cloud/release-admission-cli.mjs \
+          node packages/cloud/scripts/release-admission-cli.mjs \
             "--event=$EVENT_NAME" \
             "--environment=$TARGET_ENVIRONMENT" \
             "--ref=$GITHUB_REF" \
@@ -786,7 +786,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -1244,7 +1244,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
@@ -1278,7 +1278,7 @@ jobs:
         env:
           SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
         run: |
-          node packages/scripts/cloud/verify-pages-frontend-cli.mjs \
+          node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
             --served-url "$SERVED_URL" \
             --dist packages/app/dist \
             --require-text "Signing in to your agent" \
@@ -1646,7 +1646,7 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             args+=(--force)
           fi
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
+          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
@@ -1678,7 +1678,7 @@ jobs:
         env:
           SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
         run: |
-          node packages/scripts/cloud/verify-pages-frontend-cli.mjs \
+          node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
             --served-url "$SERVED_URL" \
             --dist packages/app/dist \
             --require-text "Signing in to your agent" \
@@ -1745,6 +1745,6 @@ jobs:
         # require the beacon: a beaconless answer means the deploy that was
         # supposed to carry it did not take. A genuine cross-wire is always fatal.
         run: |
-          node packages/scripts/cloud/verify-environment-routing-cli.mjs \
+          node packages/cloud/scripts/verify-environment-routing-cli.mjs \
             --environment "${{ steps.env.outputs.environment }}" \
             --require-beacon

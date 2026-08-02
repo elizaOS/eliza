@@ -187,7 +187,7 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 | `bun run --cwd packages/app test:e2e test/ui-smoke/settings-chat-control.spec.ts` | Runs the companion media settings persistence smoke. |
 | `bun run --cwd packages/app test:desktop:packaged` | Runs the packaged renderer smoke against `packages/app/dist/index.html`; skips if `dist` is missing. |
 
-**Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
+**Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `packages/app-core/test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
 
 **Path A vs native webview (Phase B):** These specs still target the renderer URL, not the embedded Electrobun webview. Packaged/native behaviors remain covered by **`bun run --cwd packages/app test:desktop:packaged`**, **`bun run --cwd packages/app test:e2e`**, and the [release regression checklist](/build-and-release).
 

@@ -27,7 +27,7 @@ const FINANCES_INPUT = "Pull up my finances dashboard for the last 30 days.";
 const OWNER_FINANCES = "OWNER_FINANCES";
 
 type RuntimeWithScenarioLlmFixtures = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
@@ -113,7 +113,7 @@ export default scenario({
       name: "register-strict-finances-route-fixtures",
       apply: async (ctx) => {
         const runtime = ctx.runtime as RuntimeWithScenarioLlmFixtures;
-        runtime.scenarioLlmFixtures?.register(...financesRouteFixtures());
+        runtime.scenarioModelFixtures?.register(...financesRouteFixtures());
         return undefined;
       },
     },

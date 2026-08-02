@@ -24,7 +24,7 @@ const START_TRANSCRIPTION = "START_TRANSCRIPTION";
 const VOICE_CONTROL_STREAM = "voice-control";
 
 type R = AgentRuntime & {
-  scenarioLlmFixtures?: {
+  scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
@@ -72,7 +72,7 @@ export default scenario({
           observedBusEvents.push(event);
         });
 
-        runtime.scenarioLlmFixtures?.register(
+        runtime.scenarioModelFixtures?.register(
           {
             name: "local-inference-stage1",
             match: {

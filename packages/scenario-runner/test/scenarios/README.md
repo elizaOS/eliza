@@ -1,10 +1,10 @@
 # Scenario Runner Deterministic PR Catalog
 
 `bun run --cwd packages/scenario-runner test:pr:e2e` runs the zero-cost PR
-catalog with `SCENARIO_USE_LLM_PROXY=1` and
-`SCENARIO_LLM_PROXY_STRICT=1`:
+catalog with `SCENARIO_USE_DETERMINISTIC_MODEL=1`. The core deterministic model
+provider always requires an exact fixture or explicit resolver:
 
-- `deterministic-pr-smoke` covers the deterministic LLM proxy reply plus
+- `deterministic-pr-smoke` covers the deterministic model reply plus
   VIEWS manager, pin, detached window, and mounted-view interact flows.
 - `deterministic-app-control-actions` covers VIEWS list, search, show,
   broadcast, create/edit, direct edit, and confirmed delete plus APP list,
@@ -85,7 +85,7 @@ Live-mode scenario execution remains separate:
 bun run --cwd packages/scenario-runner test:live:e2e
 ```
 
-That script intentionally does not set `SCENARIO_USE_LLM_PROXY`; the CLI still
+That script intentionally does not set `SCENARIO_USE_DETERMINISTIC_MODEL`; the CLI still
 requires a real provider key for live natural-language planner runs.
 
 - `live-help-knowledge` covers the deleted-Help-view replacement: a real model

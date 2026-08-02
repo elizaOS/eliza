@@ -72,13 +72,13 @@ const computerUseScreenshotQualityPath = resolve(
   import.meta.dirname,
   "../../../plugins/plugin-computeruse/src/platform/screenshot-quality.ts",
 );
-const llmProxyPath = resolve(
+const deterministicModelPath = resolve(
   import.meta.dirname,
-  "../../test/mocks/helpers/llm-proxy-plugin.ts",
+  "../../core/src/testing/deterministic-model-plugin.ts",
 );
-const llmProxyTestPath = resolve(
+const deterministicModelTestPath = resolve(
   import.meta.dirname,
-  "../../test/mocks/__tests__/llm-proxy-plugin.test.ts",
+  "../../core/src/testing/deterministic-model-plugin.test.ts",
 );
 const deterministicPrScenarioPath = resolve(
   import.meta.dirname,
@@ -95,9 +95,6 @@ const deterministicGeneratedAppRoutesScenarioPath = resolve(
 const deterministicTodosActionsScenarioPath = resolve(
   import.meta.dirname,
   "../test/scenarios/deterministic-todos-actions.scenario.ts",
-);
-const deterministicStreamingActionsScenarioPath = resolve(
-  import.meta.dirname,
 );
 const deterministicMcpActionsRoutesScenarioPath = resolve(
   import.meta.dirname,
@@ -169,10 +166,6 @@ describe("scenario PR workflow contract", () => {
       deterministicTodosActionsScenarioPath,
       "utf8",
     );
-    const deterministicStreamingActionsScenario = readFileSync(
-      deterministicStreamingActionsScenarioPath,
-      "utf8",
-    );
     const deterministicMcpActionsRoutesScenario = readFileSync(
       deterministicMcpActionsRoutesScenarioPath,
       "utf8",
@@ -229,14 +222,14 @@ describe("scenario PR workflow contract", () => {
       appVerificationIntegrationPath,
       "utf8",
     );
-    const llmProxy = readFileSync(llmProxyPath, "utf8");
-    const llmProxyTest = readFileSync(llmProxyTestPath, "utf8");
+    const deterministicModel = readFileSync(deterministicModelPath, "utf8");
+    const deterministicModelTest = readFileSync(deterministicModelTestPath, "utf8");
 
     expect(workflow).toContain("pull_request:");
     expect(workflow).not.toMatch(/\n\s+paths:\s*\n/);
-    expect(workflow).toContain('SCENARIO_USE_LLM_PROXY: "1"');
+    expect(workflow).toContain('SCENARIO_USE_DETERMINISTIC_MODEL: "1"');
     expect(testWorkflow).toContain(
-      "bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts",
+      "bun run --cwd packages/core test -- src/testing/deterministic-model-plugin.test.ts",
     );
     expect(prCiWorkflows).toContain(
       "bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx",
@@ -263,9 +256,9 @@ describe("scenario PR workflow contract", () => {
       "bun run test:deterministic:e2e && bun run test:corpus:pr:e2e && bun run test:orchestrator:pr:e2e && bun run test:lifeops:pr:e2e",
     );
     // The corpus lane runs the big `packages/test/scenarios` corpus filtered to
-    // the `pr-deterministic` lane, keyless, under the same strict proxy.
+    // the `pr-deterministic` lane, keyless, under the same strict provider.
     expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
-      "SCENARIO_USE_LLM_PROXY=1",
+      "SCENARIO_USE_DETERMINISTIC_MODEL=1",
     );
     expect(scenarioRunnerPackage.scripts?.["test:corpus:pr:e2e"]).toContain(
       "--lane pr-deterministic",
@@ -278,10 +271,7 @@ describe("scenario PR workflow contract", () => {
     );
     expect(
       scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
-    ).toContain("SCENARIO_USE_LLM_PROXY=1");
-    expect(
-      scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
-    ).toContain("SCENARIO_LLM_PROXY_STRICT=1");
+    ).toContain("SCENARIO_USE_DETERMINISTIC_MODEL=1");
     expect(
       scenarioRunnerPackage.scripts?.["test:orchestrator:pr:e2e"],
     ).toContain("plugins/plugin-agent-orchestrator/test/scenarios");
@@ -292,10 +282,7 @@ describe("scenario PR workflow contract", () => {
       "TZ=UTC",
     );
     expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
-      "SCENARIO_USE_LLM_PROXY=1",
-    );
-    expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
-      "SCENARIO_LLM_PROXY_STRICT=1",
+      "SCENARIO_USE_DETERMINISTIC_MODEL=1",
     );
     expect(scenarioRunnerPackage.scripts?.["test:lifeops:pr:e2e"]).toContain(
       "plugins/plugin-personal-assistant/test/scenarios",
@@ -310,17 +297,14 @@ describe("scenario PR workflow contract", () => {
       "reports/scenarios/pr-deterministic-corpus reports/scenarios/pr-deterministic-orchestrator reports/scenarios/pr-deterministic-lifeops",
     );
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "SCENARIO_USE_LLM_PROXY=1",
-    );
-    expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
-      "SCENARIO_LLM_PROXY_STRICT=1",
+      "SCENARIO_USE_DETERMINISTIC_MODEL=1",
     );
     // The deterministic lane selects by lane tag, not a hand-maintained id list.
     expect(scenarioRunnerPackage.scripts?.["test:deterministic:e2e"]).toContain(
       "--lane pr-deterministic",
     );
     expect(scenarioRunnerPackage.scripts?.["test:live:e2e"]).not.toContain(
-      "SCENARIO_USE_LLM_PROXY",
+      "SCENARIO_USE_DETERMINISTIC_MODEL",
     );
     expect(prCiWorkflows).toContain(
       "bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts",
@@ -340,21 +324,14 @@ describe("scenario PR workflow contract", () => {
     expect(prCiWorkflows).toContain(
       "bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts",
     );
-    expect(llmProxy).toContain("failOnUnhandledAction");
-    expect(llmProxy).toContain(
-      "Expected: the E2E prompt must clearly match exactly one provided action/tool.",
+    expect(deterministicModel).toContain(
+      "Unmatched or ambiguous calls fail",
     );
-    expect(llmProxyTest).toContain(
-      "fails closed with actual-vs-expected diagnostics when no planner tool matches",
+    expect(deterministicModelTest).toContain(
+      "fails unmatched and ambiguous calls instead of inventing a response",
     );
-    expect(llmProxyTest).toContain(
-      "fails closed with actual-vs-expected diagnostics when planner tools tie",
-    );
-    expect(llmProxyTest).toContain(
-      "fails Stage 1 with actual-vs-expected diagnostics when no candidate action matches",
-    );
-    expect(llmProxyTest).toContain(
-      "fails Stage 1 with actual-vs-expected diagnostics when candidate actions tie",
+    expect(deterministicModelTest).toContain(
+      "uses an explicit resolver only when no fixture matches",
     );
     expect(deterministicPrScenario).toContain(
       "Open the remote ledger view in a separate always on top window",
@@ -417,18 +394,6 @@ describe("scenario PR workflow contract", () => {
       "ModelType.ACTION_PLANNER",
     );
     expect(deterministicTodosActionsScenario).toContain('actionName: "TODO"');
-    expect(deterministicStreamingActionsScenario).toContain(
-      "Deterministic STREAM action and route coverage",
-    );
-    expect(deterministicStreamingActionsScenario).toContain(
-      "handleStreamRoute",
-    );
-    expect(deterministicStreamingActionsScenario).toContain(
-      "streamStatusProvider",
-    );
-    expect(deterministicStreamingActionsScenario).toContain(
-      'actionName: "STREAM"',
-    );
     expect(deterministicMcpActionsRoutesScenario).toContain(
       "Deterministic MCP action and route coverage",
     );
@@ -767,18 +732,18 @@ describe("scenario PR workflow contract", () => {
     }
   });
 
-  it("folds per-plugin keyless harness proofs into the required zero-key test status", () => {
+  it("folds deterministic provider proofs into the required zero-key test status", () => {
     const workflow = readFileSync(testWorkflowPath, "utf8");
 
     expect(workflow).toContain("zero-key-harness-e2e:");
     expect(workflow).toContain(
-      "bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/",
+      "bun run --cwd packages/scenario-runner test -- test/mocks/__tests__/",
     );
     expect(workflow).toContain(
-      "bun run --cwd plugins/plugin-anthropic test:harness",
+      "bun run --cwd plugins/plugin-anthropic test:real-runtime",
     );
     expect(workflow).toContain(
-      "bun run --cwd plugins/plugin-discord test:harness",
+      "bun run --cwd plugins/plugin-discord test:real-runtime",
     );
     expect(workflow).toContain("- zero-key-harness-e2e");
     expect(workflow).toContain(

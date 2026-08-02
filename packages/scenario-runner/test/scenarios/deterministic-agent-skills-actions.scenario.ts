@@ -11,7 +11,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioLlmFixtures,
   registerStrictActionRouteFixtures,
-} from "./_helpers/strict-llm-action-fixtures";
+} from "@elizaos/core/testing";
 
 const scenarioGuidanceSlug = "scenario-guidance";
 const registrySkillSlug = "registry-weather";

@@ -1,5 +1,4 @@
 /** Implements Electrobun desktop index ts behavior for app-core shell integration. */
-import { createDynamicViewHost, type DynamicViewHost } from "./host";
 import { DynamicViewRegistry } from "./registry";
 import { DynamicViewSessionManager } from "./session-manager";
 import type { DynamicViewManifest } from "./types";
@@ -39,9 +38,6 @@ export function registerBuiltInDynamicViews(): DynamicViewManifest[] {
     source: "developer",
     entrypoint: "./demo/agent-run-trace.html",
     placement: "floating",
-    requiredRemotes: ["eliza.runtime"],
-    eventSubscriptions: [{ remoteId: "eliza.runtime" }],
-    invokeTargets: ["eliza.runtime"],
     metadata: {
       demo: true,
     },
@@ -49,10 +45,4 @@ export function registerBuiltInDynamicViews(): DynamicViewManifest[] {
   registry.register(demoManifest, { update: true });
   builtInsRegistered = true;
   return registry.list();
-}
-
-export function createDynamicViewHostForRuntime(
-  sessions: DynamicViewSessionManager,
-): DynamicViewHost {
-  return createDynamicViewHost({ registry, sessions });
 }
