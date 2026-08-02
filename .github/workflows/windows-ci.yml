@@ -49,7 +49,6 @@ on:
       - "plugins/plugin-app-control/**"
       - "plugins/plugin-task-coordinator/**"
       - "plugins/plugin-browser/**"
-      - "scripts/verify-riscv64-buildpaths.sh"
       - "WINDOWS.md"
       - ".github/workflows/windows-ci.yml"
   pull_request:
@@ -76,7 +75,6 @@ on:
       - "plugins/plugin-app-control/**"
       - "plugins/plugin-task-coordinator/**"
       - "plugins/plugin-browser/**"
-      - "scripts/verify-riscv64-buildpaths.sh"
       - "WINDOWS.md"
       - ".github/workflows/windows-ci.yml"
   workflow_dispatch:
@@ -135,7 +133,6 @@ jobs:
               # then retain agent's dependency build graph at serial pressure.
               - bun run --cwd plugins/plugin-coding-tools build
               - node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=1
-              - node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh
               - node packages/scripts/run-python.mjs --version
               - node packages/scripts/test-cloud-run.mjs
               - node packages/scripts/clean-stray-dts.mjs
@@ -189,7 +186,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node packages/app-core/scripts/ensure-shared-i18n-data.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --filter=@elizaos/contracts --concurrency=1
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/logger --concurrency=1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           # Prompts codegen writes generated source consumed by core/shared; run
           # it outside Turbo so Windows prep does not build stale generated inputs.

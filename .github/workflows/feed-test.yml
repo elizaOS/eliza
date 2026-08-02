@@ -17,7 +17,8 @@ on:
     paths:
       - "packages/feed/**"
       - "packages/cloud/routing/**"
-      - "packages/contracts/**"
+      - "packages/core/src/contracts/**"
+      - "packages/shared/src/contracts/**"
       - "packages/core/**"
       - "packages/logger/**"
       - "packages/prompts/**"
