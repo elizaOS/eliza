@@ -577,7 +577,7 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     if (!second) throw new Error("expected a result");
     expect(second.success).toBe(true);
     expect(second.verifiedUserFacing).toBe(true);
-    expect(second.userFacingText).toBe("An equivalent trigger already exists.");
+    expect(second.userFacingText).toBe("Already set — you're covered.");
     expect(second.effectReceipts?.[0]).toMatchObject({
       operation: "trigger.create",
       outcome: "noop",
