@@ -94,11 +94,11 @@
 			"@elizaos/plugin-app-manager/*": [
 				"../../plugins/plugin-app-manager/src/*"
 			],
-			"@elizaos/plugin-aosp-local-inference": [
-				"../../plugins/plugin-aosp-local-inference/src/index.ts"
+			"@elizaos/plugin-native-inference": [
+				"../../plugins/plugin-native-inference/src/index.ts"
 			],
-			"@elizaos/plugin-aosp-local-inference/*": [
-				"../../plugins/plugin-aosp-local-inference/src/*"
+			"@elizaos/plugin-native-inference/*": [
+				"../../plugins/plugin-native-inference/src/*"
 			],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],

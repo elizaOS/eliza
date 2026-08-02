@@ -492,7 +492,6 @@ if (TARGET === "ios-jsc") {
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
-  "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
   // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
   // dependency is `@elizaos/core` (workspace:*), so it does not drag an
@@ -1186,7 +1185,7 @@ const stubCssPlugin = {
   },
 };
 
-// Workspace plugins like `@elizaos/plugin-wallet-ui` ship both a `.tsx` source
+// Workspace plugins like `@elizaos/plugin-wallet` ship both a `.tsx` source
 // file and a stale `.js` artifact (committed by accident from an earlier
 // build) at the same path inside `src/`. Bun's default resolver picks the
 // `.js` file when both exist, even though the `.tsx` source is the truth.
@@ -1204,8 +1203,8 @@ const stripStaleJsArtifactsPlugin = {
       // Only rewrite imports originating inside a workspace package source
       // tree. Symlinked node_modules paths (Bun's hoisted layout for
       // workspace deps) also count, so the regex covers both
-      // `<repo>/plugins/plugin-wallet-ui/src/...` and
-      // `<repo>/node_modules/@elizaos/plugin-wallet-ui/src/...`.
+      // `<repo>/plugins/plugin-wallet/src/...` and
+      // `<repo>/node_modules/@elizaos/plugin-wallet/src/...`.
       if (
         !/[/\\](packages|plugins|cloud)[/\\][^/\\]+([/\\][^/\\]+)?[/\\]src[/\\]/.test(
           importer,
@@ -1341,7 +1340,7 @@ const workspaceSrcFallbackPlugin = {
       // Two layouts to handle: packages with a `src/` directory (the
       // monorepo convention for typescript packages) and packages whose
       // .ts files sit at the package root (the elizaos-plugins convention,
-      // e.g. plugin-discord, plugin-telegram, plugin-google).
+      // e.g. plugin-discord, plugin-telegram, plugin-google-workspace).
       const srcDir = existsSync(path.join(pkgDir, "src"))
         ? path.join(pkgDir, "src")
         : pkgDir;
@@ -2018,7 +2017,6 @@ const manifest = {
   externalsAsStubs: Object.keys(stubAliases),
   unsupportedAndroidRuntimeStubs: [
     "@elizaos/plugin-agent-orchestrator",
-    "@elizaos/plugin-shell",
     "@node-llama-cpp/linux-arm64",
     "@node-llama-cpp/linux-x64",
     "@node-llama-cpp/mac-arm64",

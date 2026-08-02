@@ -38,13 +38,13 @@ const EXPECTED_SIDE_EFFECT_MODULES = [
   "@elizaos/plugin-feed#register",
   "@elizaos/plugin-hyperliquid#register",
   "@elizaos/plugin-native-settings#register",
+  "@elizaos/plugin-notes#register",
   "@elizaos/plugin-personal-assistant#register",
   "@elizaos/plugin-phone#register",
   "@elizaos/plugin-polymarket#register",
-  "@elizaos/plugin-simple-views#register",
   "@elizaos/plugin-trajectory-logger#register",
   "@elizaos/plugin-vector-browser#register",
-  "@elizaos/plugin-wallet-ui#register",
+  "@elizaos/plugin-wallet#register",
   "@elizaos/plugin-wifi#register",
 ] as const;
 

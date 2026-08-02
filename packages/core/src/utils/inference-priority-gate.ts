@@ -29,7 +29,7 @@
  *   - **No preemption.** An in-flight decode is never cancelled; interactive
  *     priority means jumping the queue, not yanking the lock.
  *
- * Consumers: the AOSP fused text handler (`plugin-aosp-local-inference`), the
+ * Consumers: the AOSP fused text handler (`plugin-native-inference`), the
  * bionic-host loader branch (`plugin-local-inference`), and the mobile
  * device-bridge text handlers (`plugin-capacitor-bridge`). All three run in the
  * same agent process and share the {@link getInferencePriorityGate} singleton.
@@ -46,7 +46,7 @@ import type { LocalInferencePriority } from "../types/model";
  * Device RAM class for on-device inference policy. Canonical probe
  * (env `ELIZA_INFERENCE_RAM_CLASS` exported by `ElizaAgentService`, with a
  * `/proc/meminfo` fallback) lives in
- * `plugins/plugin-aosp-local-inference/src/inference-memory-policy.ts`
+ * `plugins/plugin-native-inference/src/inference-memory-policy.ts`
  * (elizaOS/eliza#11760); this type is shared so policy helpers here and the
  * plugin-side probe agree.
  */

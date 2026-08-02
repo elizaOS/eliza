@@ -1,6 +1,6 @@
 # Google Chat Connector
 
-Connect your agent to Google Chat for DMs and space conversations using the `@elizaos/plugin-google-chat` package.
+Connect your agent to Google Chat for DMs and space conversations using the `@elizaos/plugin-google-workspace` package.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ Connect your agent to Google Chat for DMs and space conversations using the `@el
 
 | Field | Value |
 |-------|-------|
-| Package | `@elizaos/plugin-google-chat` |
+| Package | `@elizaos/plugin-google-workspace` |
 | Registry ID | `google-chat` |
 | Config key | `connectors.googlechat` |
 | Auto-enable trigger | `botToken`, `token`, or `apiKey` is truthy in connector config |
@@ -41,7 +41,7 @@ If you don't want to set a trigger field, add the plugin explicitly:
 ```json
 {
   "plugins": {
-    "allow": ["@elizaos/plugin-google-chat"]
+    "allow": ["@elizaos/plugin-google-workspace"]
   },
   "connectors": {
     "googlechat": {

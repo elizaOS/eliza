@@ -104,7 +104,7 @@ Signal/WhatsApp pairing events use. No changes in `packages/agent` were needed.
 | `ELIZA_MEETINGS_CHROMIUM_PATH` | No | Chromium executable override the platform bots launch |
 | `ELIZA_MEETINGS_HEADLESS` | No | Force headless (`true`) / headed (`false`). When unset, auto-detected from the available display (macOS/Windows always headed; Linux headed only when `DISPLAY`/`WAYLAND_DISPLAY` is set) |
 
-Enablement follows the standard feature-toggle convention (cf. plugin-shell /
+Enablement follows the standard feature-toggle convention (cf. plugin-coding-tools /
 plugin-browser) — there is **no bespoke on/off env flag**. Auto-enable is wired
 through the runtime's manifest mechanism: `package.json`'s
 `elizaos.plugin.autoEnableModule` points at the light root module

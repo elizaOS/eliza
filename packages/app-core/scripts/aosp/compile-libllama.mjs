@@ -36,7 +36,7 @@
 //   tested 0.13 line until the upstream linker crash is cleared.
 //
 // llama.cpp pin (matches the fork the runtime loads via
-// plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts):
+// plugins/plugin-native-inference/src/aosp-local-inference-bootstrap.ts):
 //   fork:   https://github.com/elizaOS/llama.cpp
 //   tag:    v1.0.0-eliza           (the kernel-complete v0.4.0-eliza tree,
 //                                   re-tagged on the elizaOS org rename)

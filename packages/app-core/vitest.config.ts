@@ -28,7 +28,7 @@ const pluginAppManagerSrc = path.join(
   monorepoRoot,
   "plugins/plugin-app-manager/src",
 );
-const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet-ui/src");
+const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src/ui");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
@@ -83,7 +83,6 @@ const pluginRegistrySrc = path.join(
   "plugins/plugin-registry/src",
 );
 const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
-const pluginShellRoot = path.join(monorepoRoot, "plugins/plugin-shell");
 const pluginStreamingSrc = path.join(
   monorepoRoot,
   "plugins/plugin-streaming/src",
@@ -107,7 +106,7 @@ const pluginGitpathologistSrc = path.join(
   monorepoRoot,
   "plugins/plugin-gitpathologist/src",
 );
-const pluginGoogleSrc = path.join(monorepoRoot, "plugins/plugin-google/src");
+const pluginGoogleSrc = path.join(monorepoRoot, "plugins/plugin-google-workspace/src");
 const pluginPtyRoot = path.join(monorepoRoot, "plugins/plugin-pty");
 const pluginVisionSrc = path.join(monorepoRoot, "plugins/plugin-vision/src");
 const pluginRemoteManifestSrc = path.join(
@@ -324,7 +323,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/app-wallet\/ui$/,
-        replacement: path.join(appWalletSrc, "ui.ts"),
+        replacement: path.join(appWalletSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/app-wallet\/(.+)$/,
@@ -503,14 +502,6 @@ export default defineConfig({
         replacement: path.join(pluginSignalSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-shell$/,
-        replacement: path.join(pluginShellRoot, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-shell\/(.+)$/,
-        replacement: path.join(pluginShellRoot, "$1"),
-      },
-      {
         find: /^@elizaos\/plugin-streaming$/,
         replacement: path.join(pluginStreamingSrc, "index.ts"),
       },
@@ -551,7 +542,7 @@ export default defineConfig({
         replacement: path.join(pluginGitpathologistSrc, "index.ts"),
       },
       {
-        find: /^@elizaos\/plugin-google$/,
+        find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },
       {

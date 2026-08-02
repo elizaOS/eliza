@@ -11,7 +11,6 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
       import("@elizaos/plugin-agent-orchestrator"),
     "@elizaos/plugin-task-coordinator": () =>
       import("@elizaos/plugin-task-coordinator"),
-    "@elizaos/plugin-shell": () => import("@elizaos/plugin-shell"),
     "@elizaos/plugin-coding-tools": () =>
       import("@elizaos/plugin-coding-tools"),
     "@elizaos/plugin-pty": () => import("@elizaos/plugin-pty"),

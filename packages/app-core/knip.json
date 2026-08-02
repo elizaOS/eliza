@@ -35,7 +35,7 @@
     "@elizaos/capacitor-llama",
     "@elizaos/core",
     "@elizaos/plugin-anthropic",
-    "@elizaos/plugin-aosp-local-inference",
+    "@elizaos/plugin-native-inference",
     "@elizaos/plugin-browser",
     "@elizaos/plugin-edge-tts",
     "@elizaos/plugin-elizacloud",

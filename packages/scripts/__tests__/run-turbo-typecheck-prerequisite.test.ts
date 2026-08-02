@@ -38,7 +38,6 @@ const agentImageFilters = [
   "@elizaos/plugin-capacitor-bridge",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-native-filesystem",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-commands",
   "@elizaos/plugin-computeruse",
   "@elizaos/plugin-discord",

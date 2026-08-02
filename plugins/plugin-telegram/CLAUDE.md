@@ -4,7 +4,7 @@ Connects an Eliza agent to Telegram via the Bot API, enabling bidirectional mess
 
 ## Purpose / role
 
-This plugin adds a `TelegramService` that polls Telegram for incoming messages and reactions, routes them through the elizaOS runtime, and sends agent responses back. It also provides an owner-pairing service for binding a Telegram user to an agent owner account. The plugin auto-enables when the `telegram` connector key is present in the agent's `eliza.json` connector config (`autoEnable.connectorKeys: ["telegram"]`); it can also be loaded explicitly as a dependency.
+This plugin adds a `TelegramService` that polls Telegram for incoming messages and reactions, routes them through the elizaOS runtime, and sends agent responses back. It also provides an owner-pairing service for binding a Telegram user to an agent owner account, plus an opt-in standalone long-poll mode (`TelegramStandaloneService`, the former `@elizaos/plugin-telegram-standalone` package, now merged in and selected via `ELIZA_TELEGRAM_STANDALONE_BOT`). The plugin auto-enables when the `telegram` connector key is present in the agent's `eliza.json` connector config (`autoEnable.connectorKeys: ["telegram"]`); it can also be loaded explicitly as a dependency.
 
 ## Plugin surface
 
@@ -14,6 +14,7 @@ This plugin adds a `TelegramService` that polls Telegram for incoming messages a
 |---|---|---|
 | `TelegramService` | `"telegram"` | Launches a Telegraf long-poll bot, processes `message` + `message_reaction` events, manages multi-account state, registers the agent as a `MessageConnector` |
 | `TelegramOwnerPairingServiceImpl` | `"OWNER_PAIRING_TELEGRAM"` | Registers `/eliza_pair <code>` bot command; provides `sendOwnerLoginDmLink` called by auth backend to DM login links |
+| `TelegramStandaloneService` | `"telegram-standalone"` | Opt-in standalone long-poll mode: a minimal Telegraf poller that routes inbound messages through the runtime message service. Self-gates — dormant unless LifeOps passive connectors are disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy |
 
 **Routes** (all `rawPath: true` — no plugin-name prefix):
 
@@ -51,6 +52,10 @@ src/
   interactions.ts             renderTelegramInteractions — inline keyboard / interaction rendering
   command-registration.ts     buildTelegramCommandDescriptors, registerTelegramCommandHandlers, applyTelegramSetMyCommands
   local-client.ts             TELEGRAM_LOCAL_MOCK_SESSION_PREFIX — mock session helpers
+  standalone/                 Standalone long-poll mode (former @elizaos/plugin-telegram-standalone)
+    service.ts                TelegramStandaloneService — self-gated Telegraf poller lifecycle
+    handler.ts                handleTelegramStandaloneMessage — inbound routing to the message service
+    policy.ts                 shouldStartTelegramStandaloneBot — the ELIZA_TELEGRAM_STANDALONE_BOT gate
   sensitive-request-adapter.ts  telegramDmSensitiveRequestAdapter, registerTelegramDmSensitiveRequestAdapter
   constants.ts                TELEGRAM_SERVICE_NAME = "telegram"; MESSAGE_CONSTANTS
   types.ts                    TelegramContent, Button, TelegramEventTypes, payload interfaces
@@ -87,6 +92,7 @@ bun run --cwd plugins/plugin-telegram clean          # rm dist .turbo
 | `TELEGRAM_API_ROOT` | No | Override Telegram Bot API base URL (default `https://api.telegram.org`). Allows local Bot API server. |
 | `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings that the bot will respond to. If absent, all chats are allowed. Read via `runtime.getSetting()`. |
 | `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by `TelegramTestSuite` for live smoke tests. |
+| `ELIZA_TELEGRAM_STANDALONE_BOT` | No | `1`/`true`/`yes` switches on the standalone long-poll mode (`TelegramStandaloneService`) — only honored when LifeOps passive connectors are disabled; otherwise the passive connector owns the long-poll. |
 
 Multi-account configuration is declared on `character.settings.telegram`:
 

@@ -188,12 +188,6 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "calendar app shell page",
-    path: "/simple-calendar",
-    selector: '[data-testid="simple-calendar-view"]',
-    timeoutMs: 90_000,
-  },
-  {
     // Pinned home tile → Settings.
     name: "settings view",
     path: "/settings",
@@ -236,7 +230,6 @@ const managerVisibleViewTileCases = [
   { viewId: "relationships", path: "/relationships" },
   { viewId: "screenshare", path: "/screenshare" },
   { viewId: "notes", path: "/notes" },
-  { viewId: "simple-calendar", path: "/simple-calendar" },
   { viewId: "task-coordinator", path: "/task-coordinator" },
   { viewId: "todos", path: "/todos" },
   { viewId: "training", path: "/apps/fine-tuning" },

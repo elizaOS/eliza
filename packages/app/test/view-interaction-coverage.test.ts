@@ -188,11 +188,11 @@ const GUI_INTERACTION_OWNERS: Readonly<
   ],
   notes: [
     {
-      spec: "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx",
+      spec: "plugins/plugin-notes/src/views/notes.e2e.test.tsx",
       proves:
         "Creates, edits, and preserves a note through the real Notes surface and filesystem-backed service.",
       signals: [
-        "creates, edits, and preserves a note while creating an event across view switches",
+        "creates, edits, and preserves a note across remounts",
         "Demo briefing ready",
       ],
     },
@@ -283,17 +283,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       proves:
         "Exercises host start/open/copy/stop, remote connect, capability refresh, and request payloads.",
       signals: ["host lifecycle", "capability refresh", "screen-token-1"],
-    },
-  ],
-  "simple-calendar": [
-    {
-      spec: "plugins/plugin-simple-views/src/views/simple-views.e2e.test.tsx",
-      proves:
-        "Creates a calendar event through the real Calendar surface and verifies persistence across a view switch.",
-      signals: [
-        "creates, edits, and preserves a note while creating an event across view switches",
-        "Create calendar event",
-      ],
     },
   ],
   "task-coordinator": [

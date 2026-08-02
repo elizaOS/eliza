@@ -15,7 +15,7 @@ enumerated live via the HF API on 2026-05-15.
 Search paths run by this audit:
 
 - `packages/training/scripts/` — corpus tooling + already-prepared corpora
-- `packages/benchmarks/` — eval scenarios with turn-aligned structure
+- https://github.com/elizaOS/benchmarks — eval scenarios with turn-aligned structure
 - `eliza/packages/skills/skills/*/scenarios/` — scenario YAML/JSON dialogs
 - Any `*dataset*`, `*corpus*`, `*conversations*`, `*scenarios*` dirs
 
@@ -37,7 +37,7 @@ Notable local sources:
   EOT. Use as supplementary signal: the natural end-of-message
   boundaries in the SFT corpus are positive EOT examples, and any
   truncation point is a negative.
-- **`packages/benchmarks/voice-speaker-validation/`** —
+- **`voice-speaker-validation/` (https://github.com/elizaOS/benchmarks)** —
   multi-speaker scenario fixtures with explicit turn boundaries (used
   for diarization eval). Small (5 fixtures) but on-distribution.
 - **`eliza/packages/skills/skills/*/scenarios/`** — scenario files

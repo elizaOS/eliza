@@ -98,7 +98,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-pdf",
   "plugins/plugin-registry",
   "plugins/plugin-signal",
-  "plugins/plugin-simple-views",
+  "plugins/plugin-notes",
   "plugins/plugin-streaming",
   "plugins/plugin-native-activity-tracker",
   "plugins/plugin-sql",

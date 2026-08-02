@@ -42,7 +42,7 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "settings",
   "wallet",
   "tasks",
-  "simple-calendar",
+  "calendar",
   "notes",
   "automations",
   "my-apps",

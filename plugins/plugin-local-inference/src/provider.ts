@@ -36,6 +36,7 @@ import {
 } from "@elizaos/core";
 
 import { generateMediaAction } from "./actions/generate-media.js";
+import { LocalPiiRecognizerService } from "./pii/service.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
@@ -164,7 +165,7 @@ interface LocalInferenceTranscriptionService {
  * Optional arbiter accessor. When the local-inference plugin's runtime
  * service registers a MemoryArbiter (WS1) on the IAgentRuntime, this
  * field returns it. Cross-plugin consumers (plugin-vision, plugin-image-gen,
- * plugin-aosp-local-inference) call `service.getMemoryArbiter()` to
+ * plugin-native-inference) call `service.getMemoryArbiter()` to
  * register their capability handlers and request model swaps without
  * knowing which backend is loaded.
  *
@@ -1139,6 +1140,9 @@ export const localInferencePlugin: Plugin = {
 	// because no server forwards these namespaces to the local-inference
 	// route dispatcher. See routes/voice-profile-plugin-routes.ts.
 	routes: [...voiceProfilePluginRoutes, ...transcriptsRoutes],
+	// PII recognizer for the core pseudonymization layer — runs NER extraction
+	// prompts on the resident local backend so PII never leaves the device.
+	services: [LocalPiiRecognizerService],
 	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
 	// plugin object. Runtime bootstrap probes embeddings before the user has
 	// activated an Eliza-1 bundle; registering the static handler there claims a

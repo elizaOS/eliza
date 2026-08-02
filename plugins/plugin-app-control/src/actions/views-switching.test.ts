@@ -189,7 +189,7 @@ const REGISTRY: ViewSummary[] = [
 		label: "Wallet",
 		description: "Non-custodial wallet inventory and token balances",
 		path: "/wallet",
-		pluginName: "@elizaos/plugin-wallet-ui",
+		pluginName: "@elizaos/plugin-wallet:ui",
 		available: true,
 		viewType: "gui",
 		tags: ["finance", "crypto", "wallet"],
@@ -998,7 +998,7 @@ describe("view switching — VIEWS action resolver", () => {
 						roomId: "room-1",
 						viewId: "wallet",
 						viewLabel: "Wallet",
-						pluginName: "plugin-wallet-ui",
+						pluginName: "plugin-wallet:ui",
 					},
 				},
 			];

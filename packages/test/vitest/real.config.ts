@@ -83,7 +83,6 @@ const ciExcludedRealPaths = [
   ),
   // These surfaces are covered by dedicated workflows or upstream package
   // suites instead of Eliza's required PR real-test lane.
-  elizaWorkspacePattern("packages/benchmarks/app-eval/evaluate.real.test.ts"),
   elizaWorkspacePattern(
     "plugins/plugin-form/src/tests/json-integration.live.test.ts",
   ),
@@ -105,7 +104,7 @@ const ciExcludedRealPaths = [
   elizaWorkspacePattern(
     "plugins/plugin-wallet/src/chains/evm/__tests__/integration/transfer.live.test.ts",
   ),
-  elizaWorkspacePattern("plugins/plugin-shell/__tests__/shell.real.test.ts"),
+  elizaWorkspacePattern("plugins/plugin-coding-tools/src/shell/__tests__/shell.real.test.ts"),
   // plugin-openrouter sdk nested workspace deps don't resolve in this CI lane.
   elizaWorkspacePattern(
     "plugins/plugin-openrouter/__tests__/models.live.test.ts",
@@ -191,7 +190,7 @@ const pluginOpenAiRoot = path.join(
 const pluginGoogleRoot = path.join(
   elizaWorkspaceRoot,
   "plugins",
-  "plugin-google",
+  "plugin-google-workspace",
   "src",
 );
 const pluginIMessageRoot = path.join(
@@ -251,7 +250,7 @@ const realResolveAlias: ModuleAlias[] = [
     replacement: path.join(pluginOpenAiRoot, "index.node.ts"),
   },
   {
-    find: /^@elizaos\/plugin-google$/,
+    find: /^@elizaos\/plugin-google-workspace$/,
     replacement: path.join(pluginGoogleRoot, "index.ts"),
   },
   {
@@ -310,7 +309,6 @@ const realResolveAlias: ModuleAlias[] = [
     "plugin-local-inference",
     "plugin-shopify",
     "plugin-training",
-    "plugin-wallet-ui",
     "plugin-x402",
   ]),
   {

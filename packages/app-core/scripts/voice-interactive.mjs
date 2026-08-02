@@ -692,7 +692,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "metal",
         runtime:
-          "in-process FFI (@elizaos/llama-cpp-capacitor LlamaCpp.xcframework + @elizaos/plugin-aosp-local-inference aosp-llama/mtp adapters) — NOT llama-server-spawn",
+          "in-process FFI (@elizaos/llama-cpp-capacitor LlamaCpp.xcframework + @elizaos/plugin-native-inference aosp-llama/mtp adapters) — NOT llama-server-spawn",
         kernels:
           "static .a + embedded default.metallib carry the 5 eliza kernel symbols; runtime graph dispatch on-device same as macOS Metal once the xcframework is rebuilt with them",
         mic: "Capacitor Microphone plugin → PushMicSource (no CLI recorder on iOS)",
@@ -712,7 +712,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "cpu",
         runtime:
-          "in-process FFI (@elizaos/plugin-aosp-local-inference compile-libllama.mjs → libllama .so + aosp-llama/mtp adapters) — NOT llama-server-spawn",
+          "in-process FFI (@elizaos/plugin-native-inference compile-libllama.mjs → libllama .so + aosp-llama/mtp adapters) — NOT llama-server-spawn",
         kernels:
           "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled into the .so",
         mic: "Capacitor Microphone plugin → PushMicSource",

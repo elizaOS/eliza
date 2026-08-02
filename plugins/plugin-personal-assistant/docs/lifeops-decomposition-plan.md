@@ -473,9 +473,9 @@ GMAIL-CURATION cascade finding (why the rest is dedicated, not clean slices):
 constants` + `service-normalize.ts` — and `service-normalize` (the GENERIC
 normalizer) is used widely across PA. `email-curation`/`bulk-review`/`service-mixin-
 gmail` additionally need the Gmail connector (requireGoogleGmailGrant/getGmailSearch
-→ plugin-google) + approval-queue (PA). So the remaining gmail-curation move
+→ plugin-google-workspace) + approval-queue (PA). So the remaining gmail-curation move
 requires: (a) share `service-normalize`+`service-constants` (or inject), (b) a
-plugin-google Gmail-client contract for plugin-inbox, (c) an approval-queue contract.
+plugin-google-workspace Gmail-client contract for plugin-inbox, (c) an approval-queue contract.
 That's a dedicated connector-contract-seam effort; email-classifier was the one
 cleanly-separable piece. Same shape for subscriptions (Gmail+browser+computeruse)
 and goal-review (occurrences/reminders/calendar/activity cross-domain aggregation).
@@ -498,8 +498,8 @@ the inbox curation flow and moved to plugin-inbox as part of gmail-curation step
 (It's currently unwired — a real "not done" gap, not dead code.)
 
 gmail-curation STEP 5 remaining (dedicated): service-mixin-email-unsubscribe (482,
-this-bound mixin) + google-plugin-delegates (546, imports @elizaos/plugin-google) →
-needs a plugin-google Gmail-client seam + mixin-extraction + approval-queue contract,
+this-bound mixin) + google-plugin-delegates (546, imports @elizaos/plugin-google-workspace) →
+needs a plugin-google-workspace Gmail-client seam + mixin-extraction + approval-queue contract,
 then move to plugin-inbox.
 
 ### Session 2026-06-18 (round 15) — live real-DB testing (in-sandbox, no creds)
@@ -541,7 +541,7 @@ seams: browser-bridge-seam (resolves BROWSER_BRIDGE_ROUTE_SERVICE_TYPE), gmail-s
 computeruse via runtime service. FinancesRepository (already there) for persistence.
 PA mixin → 105-line forwarding shim; /api/lifeops/subscriptions/* routes + actions
 byte-untouched. 27 plugin-finances tests (incl. real-PGlite subscriptions test); PA
-suite 614; no PA import. +@elizaos/plugin-browser/plugin-google deps.
+suite 614; no PA import. +@elizaos/plugin-browser/plugin-google-workspace deps.
 
 DECOMPOSITION now near-complete. Remaining PA orchestration: (a) email-curation
 engine (1648, UNWIRED — wiring it into the inbox flow is new integration touching PA

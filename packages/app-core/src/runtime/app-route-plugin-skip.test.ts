@@ -72,7 +72,7 @@ describe("normalizeAppRoutePluginId", () => {
   });
 
   it("strips -app / -ui / -routes suffixes", () => {
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet:ui")).toBe(
       "wallet",
     );
     expect(normalizeAppRoutePluginId("@elizaos/plugin-shopify")).toBe(
@@ -97,7 +97,7 @@ describe("normalizeAppRoutePluginId", () => {
 
   it("is idempotent on an already-short alias (so short tokens match full ids)", () => {
     expect(normalizeAppRoutePluginId("wallet")).toBe("wallet");
-    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet-ui")).toBe(
+    expect(normalizeAppRoutePluginId("@elizaos/plugin-wallet:ui")).toBe(
       normalizeAppRoutePluginId("wallet"),
     );
   });

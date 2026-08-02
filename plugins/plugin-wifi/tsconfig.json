@@ -46,16 +46,10 @@
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
-      "@elizaos/plugin-discord-local": [
-        "../../plugins/plugin-discord-local/src/index.ts"
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-discord-local/*": [
-        "../../plugins/plugin-discord-local/src/*"
-      ],
-      "@elizaos/plugin-wallet-ui": [
-        "../../plugins/plugin-wallet-ui/src/index.ts"
-      ],
-      "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"
       ],

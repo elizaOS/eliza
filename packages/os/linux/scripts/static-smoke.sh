@@ -1226,7 +1226,7 @@ for (const packageName of [
   "@elizaos/plugin-mcp",
   "@elizaos/plugin-imessage",
   "@elizaos/plugin-capacitor-bridge",
-  "@elizaos/plugin-aosp-local-inference",
+  "@elizaos/plugin-native-inference",
   "@elizaos/plugin-background-runner",
   "@elizaos/plugin-mlx",
 ]) {
@@ -1280,7 +1280,7 @@ for (const root of [
   const forcedLiveStubs = new Map([
     ["@elizaos/app-model-tester", "model-tester"],
     ["@elizaos/plugin-documents", "documents"],
-    ["@elizaos/plugin-google", "google"],
+    ["@elizaos/plugin-google-workspace", "google"],
     ["@elizaos/plugin-hyperliquid", "hyperliquid"],
     ["@elizaos/plugin-personal-assistant", "lifeops"],
     ["@elizaos/plugin-polymarket", "polymarket"],

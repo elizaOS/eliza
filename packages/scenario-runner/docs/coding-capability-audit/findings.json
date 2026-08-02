@@ -344,7 +344,7 @@
       },
       {
         "component": "benchmarks/orchestrator (SWE-bench-style trajectory harness + viewer)",
-        "path": "packages/benchmarks/orchestrator",
+        "path": "(elizaOS/benchmarks) orchestrator",
         "whatItDoes": "Python benchmark orchestrator that runs elizaos/opencode (and other) adapters across a matrix, normalizes results into SQLite/JSON, writes per-cell trajectories/ dirs, and serves a browser viewer; supports trajectory-review enforcement. A real trajectory-evidence system but a separate benchmark harness, not wired to the ACP plugin live path.",
         "maturity": "partial"
       }
@@ -514,7 +514,7 @@
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/__tests__/unit/multi-account-spawn.test.ts",
       "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts",
       "/Users/shawwalters/eliza/packages/sweagent/README.md",
-      "/Users/shawwalters/eliza/packages/benchmarks/orchestrator/README.md"
+      "/Users/shawwalters/eliza/(elizaOS/benchmarks) orchestrator/README.md"
     ]
   },
   {
@@ -2685,7 +2685,7 @@
       {
         "type": "report",
         "exists": true,
-        "where": "packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md documents an orchestrator sub-agent benchmark but contains NO concurrency/N-simultaneous-tasks/stress section."
+        "where": "(elizaOS/benchmarks) ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md documents an orchestrator sub-agent benchmark but contains NO concurrency/N-simultaneous-tasks/stress section."
       }
     ],
     "gaps": [
@@ -2750,7 +2750,7 @@
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/__tests__/unit/resolve-spawn-workdir.test.ts",
       "/Users/shawwalters/eliza/plugins/plugin-agent-orchestrator/scripts/compose-multi-account-e2e.ts",
       "/Users/shawwalters/eliza/plugins/plugin-background-runner/src/services/BgTaskSchedulerService.ts",
-      "/Users/shawwalters/eliza/packages/benchmarks/ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md"
+      "/Users/shawwalters/eliza/(elizaOS/benchmarks) ORCHESTRATOR_SUBAGENT_BENCHMARK_RUNBOOK.md"
     ]
   }
 ]

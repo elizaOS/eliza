@@ -43,7 +43,7 @@ thing is verification.
 
 Nine personas, condensed from [research/01](../research/01-mvp-product-personas.md).
 Where a bench persona already exists
-(`packages/benchmarks/lifeops-bench/.../scenarios/_personas.py`), the name is
+(`lifeops-bench/.../scenarios/_personas.py` in https://github.com/elizaOS/benchmarks), the name is
 reused for continuity. Each maps to a pack in the persona scenario corpus.
 
 **P1 — Casey, 29, product designer with ADHD** (Telegram; packs A1/A2).

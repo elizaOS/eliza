@@ -3402,11 +3402,7 @@ async function registerSqlPluginWithRecovery(
 }
 
 const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
-  ["@elizaos/plugin-coding-tools", ["@elizaos/plugin-shell"]],
-  [
-    "@elizaos/plugin-agent-skills",
-    ["@elizaos/plugin-shell", "@elizaos/plugin-commands"],
-  ],
+  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-coding-tools"]],
 ]);
 
 async function preregisterCorePluginsInDependencyWaves(args: {
@@ -4578,7 +4574,7 @@ export async function startEliza(
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
     try {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "@elizaos/plugin-aosp-local-inference"
+        "@elizaos/plugin-native-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } catch (err) {

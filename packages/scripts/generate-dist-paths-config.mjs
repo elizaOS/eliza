@@ -15,14 +15,6 @@ const checkOnly = process.argv.includes("--check");
 
 const explicitAliases = new Map([
   ["@elizaos/agent/*", ["./packages/agent/dist/*.d.ts"]],
-  [
-    "@elizaos/benchmark-framework",
-    ["./packages/benchmarks/framework/typescript/dist/index.d.ts"],
-  ],
-  [
-    "@elizaos/configbench",
-    ["./packages/benchmarks/configbench/dist/index.d.ts"],
-  ],
   ["@elizaos/plugin-facewear/*", ["./plugins/plugin-facewear/dist/*.d.ts"]],
   [
     "@elizaos/plugin-local-inference/routes",

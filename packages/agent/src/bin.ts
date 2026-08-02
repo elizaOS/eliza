@@ -103,11 +103,11 @@ async function bootstrapMobileEntrypoint(): Promise<void> {
     _binDebugLog("[bin.ts] entering android block");
     try {
       // Bundle anchor: evaluating this literal-specifier import forces
-      // @elizaos/plugin-aosp-local-inference into the mobile bundle. Its exports
+      // @elizaos/plugin-native-inference into the mobile bundle. Its exports
       // are re-imported and consumed by the runtime independently
       // (eliza.ts ensureAospLocalInferenceHandlers; plugin-local-inference's
       // registerAospLlamaLoader), so nothing is captured here.
-      await import(/* @vite-ignore */ "@elizaos/plugin-aosp-local-inference");
+      await import(/* @vite-ignore */ "@elizaos/plugin-native-inference");
     } catch (e) {
       // Android-only local inference is optional outside the privileged AOSP build.
       _binDebugLog(

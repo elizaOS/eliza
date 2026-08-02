@@ -12,10 +12,6 @@
     "**/coverage/**",
     "**/storybook-static/**",
     "**/.turbo/**",
-    "packages/benchmarks/benchmark_results/**",
-    "packages/benchmarks/OSWorld/**",
-    "packages/benchmarks/openclaw-benchmark/**",
-    "packages/benchmarks/swe-bench-workspace/**",
     "plugins/plugin-local-inference/native/llama.cpp/**",
     "plugins/plugin-local-inference/native/reports/**/*.json",
     "plugins/plugin-local-inference/native/verify/bench_results/**",
@@ -248,7 +244,7 @@
       "project": ["**/*.ts", "__tests__/**/*.test.ts", "vitest.config.ts"],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "plugins/plugin-aosp-local-inference": {
+    "plugins/plugin-native-inference": {
       "entry": [
         "src/index.ts",
         "src/aosp-mtp-adapter.ts",
@@ -381,67 +377,6 @@
         "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-workflow"
       ]
-    },
-    "packages/benchmarks/eliza-1": {
-      "entry": [
-        "src/index.ts",
-        "src/metrics.ts",
-        "src/report.ts",
-        "__tests__/**/*.ts",
-        "scripts/**/*.mjs"
-      ],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts", "scripts/**/*.mjs"],
-      "ignore": [".turbo/**"]
-    },
-    "packages/benchmarks/eliza-1/vision-cua-e2e": {
-      "entry": [
-        "src/pipeline.ts",
-        "*.e2e.test.ts",
-        "src/**/*.test.ts",
-        "src/**/*.e2e.test.ts",
-        "scripts/**/*.mjs",
-        "vitest.config.ts"
-      ],
-      "project": ["src/**/*.ts", "scripts/**/*.mjs", "vitest.config.ts"],
-      "ignore": [".turbo/**"]
-    },
-    "packages/benchmarks/interrupt-bench": {
-      "entry": [
-        "src/index.ts",
-        "src/runner.ts",
-        "src/scorer.ts",
-        "scripts/**/*.ts",
-        "tests/**/*.ts"
-      ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
-      "ignore": [".turbo/**"]
-    },
-    "packages/benchmarks/lib": {
-      "entry": [
-        "src/index.ts",
-        "src/metrics-schema.ts",
-        "src/model-tiers.ts",
-        "src/local-llama-cpp.ts",
-        "src/**/*.test.ts"
-      ],
-      "project": ["src/**/*.ts"],
-      "ignore": [".turbo/**", "__pycache__/**"]
-    },
-    "packages/benchmarks/three-agent-dialogue": {
-      "entry": [
-        "runner/run-dialogue.ts",
-        "runner/**/*.ts",
-        "verify/**/*.ts",
-        "__tests__/**/*.ts",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "runner/**/*.ts",
-        "verify/**/*.ts",
-        "__tests__/**/*.ts",
-        "vitest.config.ts"
-      ],
-      "ignore": [".turbo/**", "artifacts/**"]
     },
     "packages/contracts": {
       "entry": ["src/index.ts"],

@@ -731,7 +731,7 @@ function useResolvedDynamicPage(tab: string): ResolvedDynamicPage | null {
 /**
  * Render a dynamically-resolved plugin page. Honors:
  *   1. An in-process registration (`registerAppShellPage`) — preferred.
- *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet-ui#InventoryView"`,
+ *   2. A `componentExport` import-spec like `"@elizaos/plugin-wallet/ui#InventoryView"`,
  *      loaded with dynamic `import()` and rendered via Suspense.
  *
  * Plugins that declare a `componentExport` without a matching registration get

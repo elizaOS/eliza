@@ -52,7 +52,7 @@ The guiding constraint is **minimize additional scope**: turn what exists into a
 
 **Doc drift (small, real).** Root `CLAUDE.md:348` / `AGENTS.md:348` still link `docs/automation-glossary.md`, deleted in commit `da86f5cce34` ("delete stuff"). Every agent following the LifeOps pointer hits a dead link.
 
-**Bench context.** `packages/benchmarks/lifeops-bench` (Python) has a 10-persona library (`eliza_lifeops_bench/scenarios/_personas.py`) including an adult-diagnosed-ADHD designer (Casey Brennan, `_personas.py:265`) and comms-flooded executives — but no child and no elderly persona there either.
+**Bench context.** `lifeops-bench` (Python, now in https://github.com/elizaOS/benchmarks) has a 10-persona library (`eliza_lifeops_bench/scenarios/_personas.py`) including an adult-diagnosed-ADHD designer (Casey Brennan, `_personas.py:265`) and comms-flooded executives — but no child and no elderly persona there either.
 
 ## Design considerations
 
@@ -64,7 +64,7 @@ The guiding constraint is **minimize additional scope**: turn what exists into a
 
 ## Personas (9)
 
-Each: context → journey (first-open → onboarding → first win → week 2) → loves / struggles → intuitiveness fix. Struggles are grounded in the current UX, not hypotheticals. Where a bench persona already exists, reuse its name for continuity with `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/scenarios/_personas.py`.
+Each: context → journey (first-open → onboarding → first win → week 2) → loves / struggles → intuitiveness fix. Struggles are grounded in the current UX, not hypotheticals. Where a bench persona already exists, reuse its name for continuity with `lifeops-bench/eliza_lifeops_bench/scenarios/_personas.py` in https://github.com/elizaOS/benchmarks.
 
 **P1 — Casey, 29, product designer with ADHD** (phone-first; Telegram connector; maps to packs A1/A2 and bench persona Casey Brennan, `_personas.py:265`).
 - *First-open → onboarding:* opens the app mid-chaos, takes fast-start — zero questionnaire tolerance.

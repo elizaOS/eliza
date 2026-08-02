@@ -90,7 +90,7 @@ const CORE_SURFACE_OWNERS: Readonly<Record<string, CoreSurfaceOwner>> = {
   wallet: {
     viewId: "wallet",
     provider: "dynamic",
-    files: ["plugins/plugin-wallet-ui/src/components/InventoryAppView.tsx"],
+    files: ["plugins/plugin-wallet/src/ui/components/InventoryAppView.tsx"],
     minAgentElements: 5,
   },
   browser: {

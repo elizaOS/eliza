@@ -65,7 +65,7 @@ describe("registerBuiltinWidgets", () => {
 // already resolved its slot. The host subscribes to this store and re-resolves
 // when the version changes, instead of dropping the late widget until an
 // unrelated plugin-snapshot change. Without this, an idle-registered widget
-// (e.g. plugin-wallet-ui's chat-sidebar widget) is silently missing.
+// (e.g. plugin-wallet's chat-sidebar widget) is silently missing.
 describe("registry change subscription", () => {
   it("notifies subscribers and bumps the version on component registration", () => {
     const before = getWidgetRegistryVersion();

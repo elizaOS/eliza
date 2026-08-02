@@ -85,7 +85,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-finances": "workspace:*",
     "@elizaos/plugin-goals": "workspace:*",
-    "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/plugin-health": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",

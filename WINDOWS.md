@@ -35,7 +35,8 @@ helper under `packages/scripts/`), don't paper over it in CI.
    but lacks `&&` chains in script runners; nothing in this repo depends on
    it directly, but pwsh is the supported shell.
 7. **Python 3.10+** on PATH as either `python` or `python3` — only required
-   for the voice/training benchmarks (`bench:voice-*`, `publish:eliza1`).
+   for the training pipeline (`publish:eliza1`); voice benchmarks moved to
+   https://github.com/elizaOS/benchmarks.
    Cross-platform launcher lives at
    [`packages/scripts/run-python.mjs`](packages/scripts/run-python.mjs).
 
@@ -90,7 +91,7 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `plugin-calendar` | 36 | 0 fail |
 | `plugin-linear` | 22 | 0 fail |
 | `plugin-form` | 22 | 0 fail |
-| `plugin-google` | 21 | 0 fail |
+| `plugin-google-workspace` | 32 | 0 fail |
 | `plugin-anthropic` | 19 | 0 fail |
 | `plugin-bluesky` | 18 | 0 fail |
 | `plugin-music` | 18 | 0 fail |
@@ -100,12 +101,10 @@ Verified (`windows-latest` CI lane, see `.github/workflows/windows-ci.yml`):
 | `plugin-feishu` | 15 | 0 fail |
 | `plugin-cli` | 13 | 0 fail |
 | `plugin-streaming` | 11 | 0 fail |
-| `plugin-google-chat` | 11 | 0 fail |
 | `plugin-contacts` | 9 | 0 fail |
 | `plugin-app-manager` | 8 | 0 fail |
 | `plugin-google-genai` | 8 | 0 fail |
 | `plugin-edge-tts` | 7 | 0 fail |
-| `plugin-benchmarks` | 7 | 0 fail |
 | `plugin-codex-cli` | 5 | 0 fail |
 | `plugin-inmemorydb` | 5 | 0 fail |
 | `plugin-localdb` | 4 | 0 fail |

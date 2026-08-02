@@ -38,7 +38,7 @@ import {
 import { CalendlyAdapter } from "@elizaos/plugin-calendly";
 import { financesPlugin } from "@elizaos/plugin-finances/plugin";
 import { goalsPlugin } from "@elizaos/plugin-goals/plugin";
-import { GoogleGmailAdapter } from "@elizaos/plugin-google";
+import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace";
 import {
   createDefaultCircadianInsightContract,
   healthPlugin,
@@ -297,7 +297,7 @@ const localConditionsAction = createLocalConditionsAction({
   authorize: hasLifeOpsAccess,
 });
 
-const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
+const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google-workspace";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
@@ -479,7 +479,7 @@ async function importGoogleConnectorPluginModule(): Promise<
     >;
   } catch (error) {
     const stagedDependencyUrl = new URL(
-      "../node_modules/@elizaos/plugin-google/dist/index.js",
+      "../node_modules/@elizaos/plugin-google-workspace/dist/index.js",
       import.meta.url,
     );
     try {

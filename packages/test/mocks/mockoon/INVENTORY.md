@@ -64,11 +64,11 @@ Mockoon "rules" select the response. The default response is the happy path.
 
 ### 1. gmail (port 18801, file `gmail.json`)
 
-- Source: lifeops talks to Gmail via `@elizaos/plugin-google` (resolved through
+- Source: lifeops talks to Gmail via `@elizaos/plugin-google-workspace` (resolved through
   `service-mixin-gmail.ts`, `service-mixin-email-unsubscribe.ts`,
   `email-classifier.ts`). The plugin's `GoogleApiClientFactory` already honours
   `ELIZA_MOCK_GOOGLE_BASE` at
-  `eliza/plugins/plugin-google/src/client-factory.ts:20`, so the redirect
+  `eliza/plugins/plugin-google-workspace/src/client-factory.ts:20`, so the redirect
   helper sets that env var.
 - Base URL (real): `https://gmail.googleapis.com`
 - Mockoon URL: `http://localhost:18801` (set as `ELIZA_MOCK_GOOGLE_BASE`)

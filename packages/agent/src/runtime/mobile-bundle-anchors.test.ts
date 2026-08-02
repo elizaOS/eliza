@@ -53,7 +53,7 @@ describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
 
   it("keeps bin.ts literal-specifier anchor imports for the pinned packages", () => {
     expect(binSource).toContain(
-      'import(/* @vite-ignore */ "@elizaos/plugin-aosp-local-inference")',
+      'import(/* @vite-ignore */ "@elizaos/plugin-native-inference")',
     );
     expect(binSource).toContain(
       '"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"',
@@ -62,7 +62,7 @@ describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
 
   it("does not null-stub the AOSP local-inference bootstrap package", () => {
     expect(mobileBuildScript).not.toMatch(
-      /"@elizaos\/plugin-aosp-local-inference"\s*:\s*path\.join\(\s*stubsDir\s*,\s*"null-plugin\.cjs"\s*\)/,
+      /"@elizaos\/plugin-native-inference"\s*:\s*path\.join\(\s*stubsDir\s*,\s*"null-plugin\.cjs"\s*\)/,
     );
   });
 });

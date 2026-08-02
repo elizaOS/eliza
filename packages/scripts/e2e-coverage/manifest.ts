@@ -165,8 +165,8 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     "plugins/plugin-polymarket/src/routes.real.test.ts",
   ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
-  "plugin-simple-views": existing(
-    "plugins/plugin-simple-views/src/__tests__/backend.test.ts",
+  "plugin-notes": existing(
+    "plugins/plugin-notes/src/__tests__/backend.test.ts",
   ),
   "plugin-scheduling": existing(
     "plugins/plugin-scheduling/src/routes/scheduled-tasks.test.ts",
@@ -182,9 +182,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   // ── New keyless route e2e closing the §3 gap (boot via tryHandleRuntimePluginRoute) ─
   "plugin-computeruse": covered(
     "plugins/plugin-computeruse/src/__tests__/routes-e2e.test.ts",
-  ),
-  "plugin-discord-local": covered(
-    "plugins/plugin-discord-local/src/__tests__/routes-e2e.test.ts",
   ),
   "plugin-facewear": covered(
     "plugins/plugin-facewear/src/__tests__/routes-e2e.test.ts",

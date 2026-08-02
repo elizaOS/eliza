@@ -8,6 +8,10 @@ This plugin is **opt-in** middleware — it is **not** enabled by default. Set `
 
 The plugin applies a 7-layer bidirectional transformation pipeline that makes outbound Anthropic API calls look like they originate from the official Claude Code CLI, using the agent's own Claude subscription and OAuth token. The default fingerprint dictionaries target the elizaOS tool surface (`@elizaos/native-reasoning`). Non-elizaOS tool surfaces need a custom `config.json` — see `config.json.example`.
 
+## Why this is a separate plugin from plugin-anthropic
+
+`plugin-anthropic` is the API-key model provider (per-token billing, registers model handlers). This plugin registers **no model handlers** — it is billing middleware that rewrites `ANTHROPIC_BASE_URL` so `plugin-anthropic`'s traffic flows through a Claude Max/Pro subscription. The two have independent auto-enable gates (`ANTHROPIC_API_KEY` vs `CLAUDE_MAX_PROXY_MODE`), and the proxy is also usable standalone by non-eliza agents (custom fingerprint dictionaries via `config.json`). It is the Anthropic peer of `plugin-codex-cli` in the subscription-auth surface (`packages/ui` cockpit modes: `"anthropic-proxy" | "codex-cli"`; `packages/test/scenarios/anthropic-proxy/`; `plugin-pty` credential wiring). Do not merge it into `plugin-anthropic`.
+
 ## Plugin surface
 
 | Kind | Name | What it does |

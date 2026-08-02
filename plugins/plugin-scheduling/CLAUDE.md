@@ -59,7 +59,7 @@ stays PA-side. ScheduledTask rows and state-log rows are scheduling-owned in
 `app_scheduling`; the migration service non-destructively copies legacy
 `app_lifeops` rows into that schema.
 
-Gate: `rg "@elizaos/(app-core|agent|plugin-personal-assistant|plugin-google)"
+Gate: `rg "@elizaos/(app-core|agent|plugin-personal-assistant|plugin-google-workspace)"
 plugins/plugin-scheduling/src` must return comments/strings only.
 
 See `plugins/plugin-personal-assistant/docs/lifeops-extraction-plan.md` for the

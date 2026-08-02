@@ -51,6 +51,16 @@ export {
 	localInferencePlugin as default,
 } from "./provider.js";
 export {
+	buildPiiExtractionPrompt,
+	chunkText as chunkPiiText,
+	LlmEntityRecognizer,
+	type LocalPiiGenerate,
+	parseReportedEntities,
+	relocateEntities,
+	type ReportedEntity,
+} from "./pii/llm-recognizer.js";
+export { LocalPiiRecognizerService } from "./pii/service.js";
+export {
 	handleLocalInferenceTtsRoute,
 	normalizeAudioBytes,
 	sanitizeLocalInferenceSpeechText,

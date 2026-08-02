@@ -112,7 +112,7 @@ const LEVELS = [
   },
   {
     name: "plugin view wallet",
-    file: "plugins/plugin-wallet-ui/src/InventoryView.tsx",
+    file: "plugins/plugin-wallet/src/ui/InventoryView.tsx",
   },
   {
     name: "plugin view vector-browser",
@@ -132,11 +132,7 @@ const LEVELS = [
   },
   {
     name: "plugin view notes",
-    file: "plugins/plugin-simple-views/src/views/NotesView.tsx",
-  },
-  {
-    name: "plugin view simple-calendar",
-    file: "plugins/plugin-simple-views/src/views/SimpleCalendarView.tsx",
+    file: "plugins/plugin-notes/src/views/NotesView.tsx",
   },
   {
     name: "plugin view task coordinator",

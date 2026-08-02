@@ -1,6 +1,6 @@
 /**
- * Protects immutable authored benchmark reports and the real-model GEPA audit
- * while proving that adjacent disposable run output remains ignored.
+ * Protects the immutable real-model GEPA audit records while proving that
+ * adjacent disposable run output remains ignored.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -40,14 +40,6 @@ const AUTHORED_RECORDS = new Map([
     "plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.run.log",
     "638a48fb41c3b36eeae2c503fcf272393661e23ac0a6e2a40d4d2ca7404af2d2",
   ],
-  [
-    "packages/benchmarks/openclaw-benchmark/ralphy/BENCHMARK.md",
-    "1218bd4c2f12a2eb45e52c2710d0b1dcb447634f2210e55a184dae7fc834515f",
-  ],
-  [
-    "packages/benchmarks/openclaw-benchmark/ralphy/RESULTS.md",
-    "ccc3984f5aefe3cbfffc73e2600b20f0917b58981f2892a705a6c13e34f28824",
-  ],
 ]);
 
 function sha256(relativePath: string): string {
@@ -74,7 +66,7 @@ function isIgnored(relativePath: string): boolean {
 }
 
 describe("authored evidence retention (#16296)", () => {
-  test("pins the nine immutable authored records byte-for-byte", () => {
+  test("pins the immutable authored records byte-for-byte", () => {
     for (const [relativePath, expectedHash] of AUTHORED_RECORDS) {
       expect(sha256(relativePath), relativePath).toBe(expectedHash);
       expect(isIgnored(relativePath), relativePath).toBe(false);
@@ -88,27 +80,12 @@ describe("authored evidence retention (#16296)", () => {
     );
     expect(trainingReadme).toContain("docs/audit/9299-gepa-live/RESULTS.md");
     expect(trainingReadme).toContain("pull/9543");
-
-    const ralphyReadme = readFileSync(
-      path.join(
-        REPO_ROOT,
-        "packages/benchmarks/openclaw-benchmark/ralphy/README.md",
-      ),
-      "utf8",
-    );
-    expect(ralphyReadme).toContain("(BENCHMARK.md)");
-    expect(ralphyReadme).toContain("(RESULTS.md)");
   });
 
-  test("still ignores unlisted optimizer and misspelled benchmark output", () => {
+  test("still ignores unlisted optimizer output", () => {
     expect(
       isIgnored(
         "plugins/plugin-training/docs/audit/9299-gepa-live/ad-hoc-run.json",
-      ),
-    ).toBe(true);
-    expect(
-      isIgnored(
-        "packages/benchmarks/openclaw-benchmark/benchmark/benchmark_resukts/new-run.json",
       ),
     ).toBe(true);
   });

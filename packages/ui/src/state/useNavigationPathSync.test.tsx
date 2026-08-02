@@ -82,7 +82,7 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
         },
         {
           id: "wallet.inventory",
-          pluginId: "@elizaos/plugin-wallet-ui",
+          pluginId: "@elizaos/plugin-wallet:ui",
           label: "Wallet",
           path: "/inventory",
         },
@@ -93,7 +93,7 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
       registrations: [
         {
           id: "wallet.inventory",
-          pluginId: "@elizaos/plugin-wallet-ui",
+          pluginId: "@elizaos/plugin-wallet:ui",
           label: "Wallet",
           path: "/inventory",
         },
@@ -122,7 +122,7 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
         },
         {
           id: "wallet.inventory",
-          pluginId: "@elizaos/plugin-wallet-ui",
+          pluginId: "@elizaos/plugin-wallet:ui",
           label: "Wallet",
           path: "/inventory",
         },

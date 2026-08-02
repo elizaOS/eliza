@@ -10,7 +10,7 @@ import { BlueBubblesWorkflowCredentialProvider } from '../../../plugin-bluebubbl
 import { BlueskyWorkflowCredentialProvider } from '../../../plugin-bluesky/workflow-credential-provider';
 import { FarcasterWorkflowCredentialProvider } from '../../../plugin-farcaster/workflow-credential-provider';
 import { FeishuWorkflowCredentialProvider } from '../../../plugin-feishu/src/workflow-credential-provider';
-import { GoogleChatWorkflowCredentialProvider } from '../../../plugin-google-chat/src/workflow-credential-provider';
+import { GoogleChatWorkflowCredentialProvider } from '../../../plugin-google-workspace/src/chat/workflow-credential-provider';
 import { InstagramWorkflowCredentialProvider } from '../../../plugin-instagram/src/workflow-credential-provider';
 import { LineWorkflowCredentialProvider } from '../../../plugin-line/src/workflow-credential-provider';
 import { MatrixWorkflowCredentialProvider } from '../../../plugin-matrix/src/workflow-credential-provider';

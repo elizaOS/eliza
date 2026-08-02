@@ -1,6 +1,6 @@
 # @elizaos/plugin-wallet
 
-Non-custodial wallet for elizaOS agents: EVM + Solana signing, x402 micropayments, CCTP bridge, Li.Fi swap/bridge routing, Jupiter routing, multi-DEX LP management, on-chain spend policies, and analytics (Birdeye, DexScreener, token info).
+Non-custodial wallet for elizaOS agents: EVM + Solana signing, x402 micropayments, CCTP bridge, Li.Fi swap/bridge routing, Jupiter routing, multi-DEX LP management, on-chain spend policies, analytics (Birdeye, DexScreener, token info), and the wallet inventory UI surface (shell page, standalone view, chat-sidebar widget).
 
 ## Purpose / role
 
@@ -134,6 +134,22 @@ plugins/plugin-wallet/
       plugin.ts                Additional plugin route exports
     types/
       wallet-router.ts         WalletRouterParams, WalletRouterResult, WalletChainHandler interface
+    register.ts                Renderer boot side-effect entry (elizaos.appRegister:"register");
+                               imports ui/register-routes.ts
+    ui.ts                      `@elizaos/plugin-wallet/ui` subpath entry (re-exports ui/index.ts)
+    ui/                        Wallet inventory UI surface (formerly @elizaos/plugin-wallet-ui)
+      index.ts                 UI barrel; side-effect imports register-routes.ts
+      plugin.ts                walletAppPlugin descriptor (name "@elizaos/plugin-wallet:ui",
+                               packageName "@elizaos/plugin-wallet"; shell nav tab /inventory,
+                               GUI view /wallet via dist/views/bundle.js, wallet.status widget)
+      register-routes.ts       registerAppRoutePluginLoader + registerAppShellPage +
+                               registerBuiltinWidgets (must run once at boot)
+      InventoryView.tsx        GUI wallet view (Escape wrapper around InventoryAppView)
+      InventoryView.interact.ts  `interact` view capability handler
+      wallet-view-bundle.ts    Entry for the standalone Vite view bundle (dist/views/bundle.js)
+      components/              InventoryAppView DOM dashboard
+      inventory/               Chain config, hooks, token/NFT helpers, logos
+      widgets/                 wallet.status chat-sidebar widget
 ```
 
 ## Commands
@@ -151,7 +167,13 @@ bun run --cwd plugins/plugin-wallet format        # write formatting
 bun run --cwd plugins/plugin-wallet format:check  # read-only formatting check
 bun run --cwd plugins/plugin-wallet test          # run package tests
 bun run --cwd plugins/plugin-wallet test:watch    # watch test lane
+bun run --cwd plugins/plugin-wallet build:views   # standalone view bundle → dist/views/bundle.js
+bun run --cwd plugins/plugin-wallet build:ui-types # UI declaration emit (tsconfig.ui.json)
 ```
+
+`typecheck` runs both the Node tree (`tsconfig.json`, excludes `src/ui/**`) and the
+React UI tree (`tsconfig.ui.json`, `jsx: react-jsx`, resolves workspace deps via
+dist `.d.ts`).
 
 ## Config / env vars
 
@@ -212,6 +234,9 @@ Extend `src/analytics/birdeye/service.ts`. The service proxies all calls through
 - **Sub-plugins.** `evmPlugin` and `solanaPlugin` are composed into `walletPlugin` in `plugin.ts`. They are not intended to be loaded directly; always depend on `@elizaos/plugin-wallet`.
 - **`SDK-LICENSE`** covers the `src/sdk/` subtree (originally from agent-wallet-sdk, MIT).
 - **Auto-enable.** `auto-enable.ts` must remain a lightweight env-read module with no transitive plugin imports. The auto-enable engine loads it on every agent boot.
+- **UI surface is subpath-only.** The package root (`.`) is the server barrel and must never import `src/ui/**`. Hosts import `@elizaos/plugin-wallet/ui` (components/barrel) or rely on the manifest-driven renderer boot (`elizaos.appRegister: "register"` → `src/register.ts`). `src/ui/register-routes.ts` must execute exactly once; duplicate imports create duplicate shell pages.
+- **`walletAppPlugin` naming.** The UI descriptor is named `@elizaos/plugin-wallet:ui` with `packageName: "@elizaos/plugin-wallet"` so the views registry resolves the package dir while the app-route loader id stays distinct from the runtime `wallet` plugin. `normalizeAppRoutePluginId` strips `:ui`, so `ELIZA_SKIP_APP_ROUTE_PLUGINS=wallet` skips it.
+- **View bundle.** `dist/views/bundle.js` is built by `vite.config.views.ts` (entry `src/ui/wallet-view-bundle.ts`, export `InventoryView`), not by the Node build. Both must run for a complete dist.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

@@ -75,7 +75,7 @@ export const smokeViewDeclarations = [
     "/polymarket",
     "PolymarketView",
   ],
-  ["wallet", "Wallet", "plugin-wallet-ui", "/wallet", "InventoryView"],
+  ["wallet", "Wallet", "plugin-wallet", "/wallet", "InventoryView"],
   [
     "vector-browser",
     "Vector Browser",

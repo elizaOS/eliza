@@ -40,7 +40,7 @@ const guiViews = {
 			label: "Wallet",
 			path: "/wallet",
 			available: true,
-			pluginName: "@elizaos/plugin-wallet-ui",
+			pluginName: "@elizaos/plugin-wallet:ui",
 			heroImageUrl: "/api/views/wallet/hero",
 		},
 		{

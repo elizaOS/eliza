@@ -26,7 +26,7 @@ const expectedShortIdPluginMap = {
   codingAgent: "@elizaos/plugin-coding-tools",
   codingTools: "@elizaos/plugin-coding-tools",
   computeruse: "@elizaos/plugin-computeruse",
-  discordLocal: "@elizaos/plugin-discord-local",
+  discordLocal: "@elizaos/plugin-discord",
   "eliza-browser": "@elizaos/plugin-browser",
   elizaBrowser: "@elizaos/plugin-browser",
   elizacloud: "@elizaos/plugin-elizacloud",

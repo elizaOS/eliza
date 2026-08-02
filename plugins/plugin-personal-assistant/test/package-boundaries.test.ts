@@ -364,15 +364,15 @@ describe("LifeOps package boundaries", () => {
     ).toBe(false);
   });
 
-  it("imports Gmail message triage from plugin-google instead of owning a transport adapter", () => {
+  it("imports Gmail message triage from plugin-google-workspace instead of owning a transport adapter", () => {
     const pluginSource = readPackageFile("src/plugin.ts");
     const messagingIndex = readPackageFile("src/lifeops/messaging/index.ts");
 
     expect(pluginSource).toContain(
-      'import { GoogleGmailAdapter } from "@elizaos/plugin-google"',
+      'import { GoogleGmailAdapter } from "@elizaos/plugin-google-workspace"',
     );
     expect(messagingIndex).not.toContain("GoogleGmailAdapter");
-    expect(messagingIndex).not.toContain("@elizaos/plugin-google");
+    expect(messagingIndex).not.toContain("@elizaos/plugin-google-workspace");
     expect(
       existsSync(
         resolve(packageRoot, "src/lifeops/messaging/adapters/gmail-adapter.ts"),
@@ -405,7 +405,7 @@ describe("LifeOps package boundaries", () => {
     for (const connectorPackage of [
       "@elizaos/plugin-browser",
       "@elizaos/plugin-calendly",
-      "@elizaos/plugin-google",
+      "@elizaos/plugin-google-workspace",
       "@elizaos/plugin-x",
     ]) {
       expect(messagingIndex).not.toContain(connectorPackage);

@@ -259,7 +259,7 @@ Control which plugins load via `eliza.json`:
 {
   "plugins": {
     "allow": ["my-plugin", "telegram", "@elizaos/plugin-discord"],
-    "deny": ["@elizaos/plugin-shell"]
+    "deny": ["@elizaos/plugin-coding-tools"]
   }
 }
 ```

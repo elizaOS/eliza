@@ -45,7 +45,6 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_LOCAL_LLAMA = "1";
     const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-shell")).toBe(true);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
     expect(names.has("agent-orchestrator")).toBe(true);
   });
@@ -54,7 +53,6 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     process.env.ELIZA_PLATFORM = "android";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-background-runner")).toBe(true);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
   });
@@ -74,7 +72,6 @@ describe("collectPluginNames AOSP terminal plugins", () => {
       agents: { defaults: { agentOrchestrator: true } },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
     expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);
@@ -84,7 +81,6 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     process.env.ELIZA_PLATFORM = "ios";
     const names = collectPluginNames(emptyConfig);
     expect(names.has("@elizaos/plugin-background-runner")).toBe(true);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
   });
@@ -99,7 +95,6 @@ describe("collectPluginNames AOSP terminal plugins", () => {
       agents: { defaults: { agentOrchestrator: true } },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
     expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);
@@ -114,15 +109,14 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     expect(names.has("@elizaos/plugin-phone")).toBe(true);
   });
 
-  it("respects features.shellEnabled=false on AOSP — removes plugin-shell, keeps coding-tools", () => {
+  it("respects features.shellEnabled=false on AOSP — removes coding-tools (shell lives inside it)", () => {
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_LOCAL_LLAMA = "1";
     const config: ElizaConfig = {
       features: { shellEnabled: false },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
-    expect(names.has("@elizaos/plugin-coding-tools")).toBe(true);
+    expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
   });
 
   it("removes local execution plugins from store desktop builds even when config asks for them", () => {
@@ -139,7 +133,6 @@ describe("collectPluginNames AOSP terminal plugins", () => {
       },
     } as ElizaConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
     expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);

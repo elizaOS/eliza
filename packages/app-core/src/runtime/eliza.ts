@@ -514,15 +514,15 @@ export function getDeferAppRoutesEnabled(
 /**
  * Normalize an app-route-plugin id (or a user-supplied skip token) to a short
  * alias for forgiving matching: lowercase, drop the `@elizaos/plugin-` prefix
- * and the `:routes` / `-app` / `-ui` / `-routes` suffixes. So
- * `@elizaos/plugin-wallet-ui` and `wallet` both normalize to `wallet`.
+ * and the `:routes` / `:ui` / `-app` / `-ui` / `-routes` suffixes. So
+ * `@elizaos/plugin-wallet:ui` and `wallet` both normalize to `wallet`.
  */
 export function normalizeAppRoutePluginId(id: string): string {
   return id
     .trim()
     .toLowerCase()
     .replace(/^@elizaos\/plugin-/, "")
-    .replace(/:routes$/, "")
+    .replace(/:(routes|ui)$/, "")
     .replace(/-(app|ui|routes)$/, "");
 }
 
@@ -541,7 +541,7 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   }
 
   // Match a loader against the skip tokens by full id OR normalized short alias
-  // (so both `@elizaos/plugin-wallet-ui` and `wallet` skip the same loader).
+  // (so both `@elizaos/plugin-wallet:ui` and `wallet` skip the same loader).
   const skipNormalized = new Set(
     [...skip].map((token) => normalizeAppRoutePluginId(token)),
   );

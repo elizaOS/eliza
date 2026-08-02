@@ -121,7 +121,6 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-contacts", aospCore: true },
   { plugin: "@elizaos/plugin-phone", aospCore: true },
   // Privileged AOSP terminal/shell/coding surfaces (priv_app SELinux execve).
-  { plugin: "@elizaos/plugin-shell", aospTerminal: true, aospTerminalOrder: 0 },
   {
     plugin: "@elizaos/plugin-coding-tools",
     aospTerminal: true,
@@ -180,7 +179,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] =
  * that the Capacitor WebView agent does not need. On mobile, embeddings
  * come either from a cloud provider, the WebView-side llama-cpp-capacitor
  * binding, or the AOSP-only FFI bridge
- * (`@elizaos/plugin-aosp-local-inference`) when `ELIZA_LOCAL_LLAMA=1`.
+ * (`@elizaos/plugin-native-inference`) when `ELIZA_LOCAL_LLAMA=1`.
  */
 // Mobile-safe boot notes (kept here as the rationale for the metadata flags):
 // - plugin-vision (EPIC #9105) is mobile-safe: `sharp` is lazy-loaded with a
@@ -256,7 +255,7 @@ export const ELIZAOS_ANDROID_CORE_PLUGINS: readonly string[] =
  * is blocked by the default SELinux policy and would also fail Play review.
  */
 // Derived from CORE_PLUGIN_PROFILE_METADATA (`aospTerminal`), ordered by the
-// declared `aospTerminalOrder` so the historical shell -> coding-tools ->
+// declared `aospTerminalOrder` so the historical coding-tools ->
 // agent-orchestrator load order is preserved even though agent-orchestrator
 // leads the (table-ordered) desktop list. Legacy host-owned read surface;
 // declare new AOSP terminal plugins via the metadata table.
@@ -276,8 +275,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
   "@elizaos/plugin-cloud-apps", // Eliza Cloud Apps: LIST_CLOUD_APPS / GET_APP + CLOUD_APPS provider, plus CREATE_APP / DEPLOY_APP (READY+reachability completion gate) / GET_APP_DEPLOY_STATUS / DELETE_APP (two-phase confirm) + deploy-success facts cache. Reaches local/native + Discord/Telegram via the shared pipeline. Cloud-hosted agents add this separately via agent-loader, gated behind CLOUD_APPS_PLUGIN_ENABLED.
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
-  "@elizaos/plugin-shell", // shell service, approvals, and history provider
-  "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
+  "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools + shell service, approvals, and history provider (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
@@ -307,7 +305,7 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required
   "@elizaos/plugin-local-inference", // text + embeddings + voice — required for memory + generation
   "@elizaos/plugin-app-control", // VIEWS navigation in the app chat surface
-  "@elizaos/plugin-simple-views", // managed Cloud Notes + Calendar data and capabilities
+  "@elizaos/plugin-notes", // managed Cloud Notes data and capabilities
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
   "@elizaos/plugin-agent-skills", // skill execution + enabled-skills provider
   "@elizaos/plugin-commands", // slash commands
@@ -320,7 +318,6 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
  * Browser is listed per the "browser disabled until ready" decision.
  */
 export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-browser",
   "agent-orchestrator",
@@ -410,8 +407,8 @@ export const DEFERRED_CORE_PLUGINS: readonly string[] = CORE_PLUGINS.filter(
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
-  "@elizaos/plugin-google", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
-  "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google); enable explicitly
+  "@elizaos/plugin-google-workspace", // Google Workspace connector (requires googleapis + explicit OAuth config); only loaded when LifeOps/Google is enabled
+  "@elizaos/plugin-personal-assistant", // LifeOps: personal ops - tasks, goals, calendar, inbox, website blocking (requires @capacitor/core + plugin-google-workspace); enable explicitly
   "@elizaos/plugin-finances", // Owner finances dashboard (app_finances schema); auto-registered by plugin-personal-assistant, also enablable standalone
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
@@ -421,7 +418,6 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-vision", // vision/image understanding (feature-gated)
   "@elizaos/plugin-cli", // CLI interface
   "@elizaos/plugin-discord", // Discord bot integration
-  "@elizaos/plugin-discord-local", // Local Discord desktop integration for macOS
   "@elizaos/plugin-bluebubbles", // BlueBubbles-backed iMessage integration for macOS
   "@elizaos/plugin-telegram", // Telegram bot integration
   "@elizaos/plugin-signal", // Signal user-account integration

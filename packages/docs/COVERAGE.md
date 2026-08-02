@@ -26,7 +26,7 @@ This file maps every package under `packages/` to its docs-site coverage. Mainta
 | `upstreams/research/chip/`                 | Chip      | `tracks/chip/*.mdx`                                                  |
 | `upstreams/research/robot/`                | Robot     | `tracks/training/robot.mdx`                                          |
 | `packages/feed/`                 | Robot     | `tracks/training/feed.mdx`                                           |
-| `packages/benchmarks/`           | Robot     | `tracks/training/benchmarks.mdx`                                     |
+| [elizaOS/benchmarks](https://github.com/elizaOS/benchmarks) | Robot | `tracks/training/benchmarks.mdx` |
 | `packages/vault/`                | Runtime   | `guides/wallet.md`, `guides/platform-secure-store.md`                |
 
 ## Intentionally omitted (internal)

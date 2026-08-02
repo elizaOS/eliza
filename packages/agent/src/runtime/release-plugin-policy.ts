@@ -36,7 +36,6 @@ const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
   "@elizaos/plugin-health",
   "@elizaos/plugin-app-manager",
   "@elizaos/plugin-registry",
-  "@elizaos/plugin-wallet-ui",
   "@elizaos/plugin-wallet",
   "@elizaos/plugin-imessage",
   "@elizaos/plugin-streaming",

@@ -555,7 +555,7 @@ export interface PluginAppNavTab {
 	headerPolicy?: ViewHeaderPolicy;
 	/**
 	 * Optional package export specifier the shell will dynamically import
-	 * when the tab is activated, e.g. "@elizaos/plugin-wallet-ui#InventoryView".
+	 * when the tab is activated, e.g. "@elizaos/plugin-wallet/ui#InventoryView".
 	 * The string before `#` is the package subpath, after `#` is the named
 	 * export. When omitted, the shell falls back to the static component
 	 * registry keyed by `id`.

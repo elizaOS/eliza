@@ -134,7 +134,7 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-aosp-local-inference": "workspace:*",
+		"@elizaos/plugin-native-inference": "workspace:*",
 		"@elizaos/plugin-capacitor-bridge": "workspace:*",
 		"@elizaos/plugin-computeruse": "workspace:*",
 		"@elizaos/shared": "workspace:*",

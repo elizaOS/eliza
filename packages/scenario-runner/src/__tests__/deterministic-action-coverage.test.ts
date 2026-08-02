@@ -32,7 +32,6 @@ import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
 import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
-import shellPlugin from "@elizaos/plugin-shell";
 import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
@@ -158,7 +157,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
 
 /** Core plugins that intentionally expose no agent actions (service/registry only). */
 const ACTIONLESS_CORE_PLUGINS: Record<string, Plugin> = {
-  "@elizaos/plugin-shell": shellPlugin,
   "@elizaos/plugin-video": videoPlugin,
   "@elizaos/plugin-native-filesystem": deviceFilesystemPlugin,
 };
@@ -369,8 +367,8 @@ const BOOTED_PLUGIN_ACTION_SURFACE: Record<
   string,
   { files: readonly string[]; actions: readonly string[] }
 > = {
-  "@elizaos/plugin-google": {
-    files: ["plugins/plugin-google/src/index.ts"],
+  "@elizaos/plugin-google-workspace": {
+    files: ["plugins/plugin-google-workspace/src/index.ts"],
     actions: [],
   },
   "@elizaos/plugin-browser": {
@@ -1150,12 +1148,12 @@ describe("deterministic action coverage", () => {
     // Google wires `actions: []`; assert the empty-array literal stays so the
     // empty manifest above can't be silently bypassed by wiring an action.
     const googleSource = readFileSync(
-      resolve(repoRoot, "plugins/plugin-google/src/index.ts"),
+      resolve(repoRoot, "plugins/plugin-google-workspace/src/index.ts"),
       "utf8",
     );
     if (!/actions:\s*\[\s*\]/.test(googleSource)) {
       drift.push(
-        "@elizaos/plugin-google: index.ts no longer declares `actions: []` — " +
+        "@elizaos/plugin-google-workspace: index.ts no longer declares `actions: []` — " +
           "it now wires an action surface that must be classified and added to BOOTED_PLUGIN_ACTION_SURFACE.",
       );
     }

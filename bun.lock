@@ -110,7 +110,7 @@
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-agent-skills": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
-        "@elizaos/plugin-aosp-local-inference": "workspace:*",
+        "@elizaos/plugin-native-inference": "workspace:*",
         "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-app-manager": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
@@ -3139,8 +3139,8 @@
         "@elizaos/core": "workspace:*",
       },
     },
-    "plugins/plugin-aosp-local-inference": {
-      "name": "@elizaos/plugin-aosp-local-inference",
+    "plugins/plugin-native-inference": {
+      "name": "@elizaos/plugin-native-inference",
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
@@ -3362,7 +3362,7 @@
         "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-calendar": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-google": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -3871,7 +3871,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
-        "@elizaos/plugin-google": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "drizzle-orm": "^0.45.1",
@@ -3979,8 +3979,8 @@
         "react-dom": "^19.0.0",
       },
     },
-    "plugins/plugin-google": {
-      "name": "@elizaos/plugin-google",
+    "plugins/plugin-google-workspace": {
+      "name": "@elizaos/plugin-google-workspace",
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
@@ -3991,22 +3991,6 @@
       "devDependencies": {
         "@biomejs/biome": "2.5.6",
         "@types/node": "^25.6.0",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.0",
-      },
-    },
-    "plugins/plugin-google-chat": {
-      "name": "@elizaos/plugin-google-chat",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@elizaos/core": "workspace:*",
-        "google-auth-library": "^10.0.0",
-        "zod": "^4.4.3",
-      },
-      "devDependencies": {
-        "@biomejs/biome": "2.5.6",
-        "@types/node": "^22.19.17",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
@@ -4124,7 +4108,7 @@
       "dependencies": {
         "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-google": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "drizzle-orm": "^0.45.1",
@@ -4231,7 +4215,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-aosp-local-inference": "workspace:*",
+        "@elizaos/plugin-native-inference": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-computeruse": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -4994,7 +4978,7 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-finances": "workspace:*",
         "@elizaos/plugin-goals": "workspace:*",
-        "@elizaos/plugin-google": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
         "@elizaos/plugin-imessage": "workspace:*",
         "@elizaos/plugin-inbox": "workspace:*",
@@ -5067,23 +5051,6 @@
       "peerDependencies": {
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-      },
-    },
-    "plugins/plugin-pii-guard": {
-      "name": "@elizaos/plugin-pii-guard",
-      "version": "2.0.3-beta.7",
-      "dependencies": {
-        "@huggingface/transformers": "^3.8.1",
-      },
-      "devDependencies": {
-        "@elizaos/core": "workspace:*",
-        "@types/node": "^25.0.3",
-        "@typescript/native": "npm:typescript@^7.0.2",
-        "typescript": "^6.0.3",
-        "vitest": "^4.1.4",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "workspace:*",
       },
     },
     "plugins/plugin-polymarket": {
@@ -6803,7 +6770,7 @@
 
     "@elizaos/plugin-anthropic-proxy": ["@elizaos/plugin-anthropic-proxy@workspace:plugins/plugin-anthropic-proxy"],
 
-    "@elizaos/plugin-aosp-local-inference": ["@elizaos/plugin-aosp-local-inference@workspace:plugins/plugin-aosp-local-inference"],
+    "@elizaos/plugin-native-inference": ["@elizaos/plugin-native-inference@workspace:plugins/plugin-native-inference"],
 
     "@elizaos/plugin-app-control": ["@elizaos/plugin-app-control@workspace:plugins/plugin-app-control"],
 
@@ -6879,9 +6846,8 @@
 
     "@elizaos/plugin-goals": ["@elizaos/plugin-goals@workspace:plugins/plugin-goals"],
 
-    "@elizaos/plugin-google": ["@elizaos/plugin-google@workspace:plugins/plugin-google"],
+    "@elizaos/plugin-google-workspace": ["@elizaos/plugin-google-workspace@workspace:plugins/plugin-google-workspace"],
 
-    "@elizaos/plugin-google-chat": ["@elizaos/plugin-google-chat@workspace:plugins/plugin-google-chat"],
 
     "@elizaos/plugin-google-genai": ["@elizaos/plugin-google-genai@workspace:plugins/plugin-google-genai"],
 
@@ -6943,7 +6909,6 @@
 
     "@elizaos/plugin-phone": ["@elizaos/plugin-phone@workspace:plugins/plugin-phone"],
 
-    "@elizaos/plugin-pii-guard": ["@elizaos/plugin-pii-guard@workspace:plugins/plugin-pii-guard"],
 
     "@elizaos/plugin-polymarket": ["@elizaos/plugin-polymarket@workspace:plugins/plugin-polymarket"],
 

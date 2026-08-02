@@ -97,7 +97,7 @@ src/
 - **Subscription audit / cancellation lives in `SubscriptionsService`**
   (`src/services/subscriptions-service.ts`), a standalone successor to PA's
   `withSubscriptions` mixin. It reaches cross-domain surfaces through
-  runtime-service seams (`gmail-seam.ts` via `@elizaos/plugin-google`,
+  runtime-service seams (`gmail-seam.ts` via `@elizaos/plugin-google-workspace`,
   `browser-bridge-seam.ts` via `@elizaos/plugin-browser`) rather than PA
   internals, so it carries no PA dependency.
 

@@ -65,9 +65,9 @@ All three wire **real live data** (no stubs). Theme split is the key lever: wall
 
 Theme citations: Finances dark bg `plugins/plugin-finances/src/components/finances/FinancesView.tsx:299`; Wallet dark `InventoryView.tsx:2240,:1755,:1866`; Polymarket light `plugins/plugin-polymarket/src/PolymarketAppView.tsx:14-15,186`.
 
-## 1. Wallet — `wallet` / `InventoryView` (dashboard GUI) — `plugins/plugin-wallet-ui/src/InventoryView.tsx:2042`
+## 1. Wallet — `wallet` / `InventoryView` (dashboard GUI) — `plugins/plugin-wallet/src/ui/InventoryView.tsx:2042`
 
-ViewDeclaration: `plugins/plugin-wallet-ui/src/plugin.ts:23-62` (GUI `/wallet`); shell nav tab `wallet.inventory` → `/inventory`; chat-sidebar widget `wallet.status`.
+ViewDeclaration: `plugins/plugin-wallet/src/ui/plugin.ts:23-62` (GUI `/wallet`); shell nav tab `wallet.inventory` → `/inventory`; chat-sidebar widget `wallet.status`.
 
 - **Purpose:** Full non-custodial portfolio page — balances, token list, NFTs, DeFi/LP positions, trading P&L, market overview, activity timeline.
 - **Real or stub?** **REAL.** Live via `useApp()` + `client.getWalletTradingProfile()` / `client.getWalletMarketOverview()` (`:2043-2058, 2085, 2113`); localStorage hidden-token persistence (`:104-130`).
@@ -92,7 +92,7 @@ The old terminal wallet renderer was removed. Keep future adapter work behind
 the retained `viewType` contract instead of reintroducing a parallel
 hand-styled clone.
 
-## 3. Wallet chat-sidebar widget — `wallet.status` — `plugins/plugin-wallet-ui/src/widgets/wallet-status.tsx:168`
+## 3. Wallet chat-sidebar widget — `wallet.status` — `plugins/plugin-wallet/src/ui/widgets/wallet-status.tsx:168`
 
 - **Real or stub?** **REAL** (`useApp`, lazy `loadBalances`). Light by widget standards: chain-badge row, 2 address rows + copy, divider + Assets/Value stat rows. Minor trim targets: `EVM_CHAIN_ORDER` lists 7 chains but inventory filters 5; divider border (`:306`); dual copy buttons. **This is already close to the "glanceable" ideal the full InventoryView should aspire to.**
 

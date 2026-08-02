@@ -26,7 +26,7 @@
  *   - (a) orphan: the root package.json scripts block (the dumping ground).
  *   - (b) no-op: first-party shipping packages — root + packages/, plugins/,
  *     apps/ — minus the vendored/demo/scaffold subtrees packages/examples/**,
- *     packages/feed/**, packages/benchmarks/** and packages/elizaos/templates/**,
+ *     packages/feed/** and packages/elizaos/templates/**,
  *     which legitimately ship `echo "no toolchain; skipping"` placeholders.
  *   - (c) broken refs: the root scripts block only. Sub-package script paths are
  *     out of scope — the tree holds scaffolding templates and optional nested
@@ -224,15 +224,6 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   ["cloud:e2e", "cloud E2E package entrypoint"],
   ["cloud:e2e:headed", "cloud E2E headed mode entrypoint"],
   ["cloud:e2e:ui", "cloud E2E UI mode entrypoint"],
-  [
-    "bench:personality:calibrate",
-    "personality benchmark calibration entrypoint",
-  ],
-  ["bench:eliza-1", "benchmark suite root entrypoint"],
-  ["bench:recall", "benchmark suite root entrypoint"],
-  ["bench:recall:1k", "benchmark suite root entrypoint"],
-  ["bench:three-agent", "benchmark suite root entrypoint"],
-  ["bench:three-agent:smoke", "benchmark suite root entrypoint"],
   ["db:cloud:generate", "cloud shared database root entrypoint"],
   ["db:cloud:studio", "cloud shared database root entrypoint"],
 ]);
@@ -243,7 +234,6 @@ const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 const EXCLUDED_SUBTREES = [
   "packages/examples",
   "packages/feed",
-  "packages/benchmarks",
   "packages/elizaos/templates",
 ];
 const SKIP_DIRS = new Set([

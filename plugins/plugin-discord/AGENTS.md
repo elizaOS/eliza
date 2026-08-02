@@ -4,14 +4,15 @@ Discord connector plugin for elizaOS — connects an Eliza agent to Discord serv
 
 ## Purpose / role
 
-This plugin registers the `DiscordService` (and companion services) with the elizaOS runtime, giving an Eliza agent the ability to send and receive messages, handle voice, manage slash commands, track permission changes, and bridge the Discord desktop app via a local IPC connector. It is auto-enabled when `discord` appears in the character's connector keys (`autoEnable.connectorKeys: ["discord"]`). No actions or providers are registered; all behavior flows through services and events.
+This plugin registers the `DiscordService` (and companion services) with the elizaOS runtime, giving an Eliza agent the ability to send and receive messages, handle voice, manage slash commands, track permission changes, and bridge the Discord desktop app via a local IPC connector. It has two config-selected modes in one package: **bot-API mode** (`DiscordService`, activated by `DISCORD_API_TOKEN` / `DISCORD_BOT_TOKENS`) and **local desktop mode** (`DiscordLocalService`, activated by `DISCORD_LOCAL_CLIENT_ID` + `DISCORD_LOCAL_CLIENT_SECRET`); each service self-gates on its own credentials and stays dormant otherwise, so the modes can run independently or together. The former `@elizaos/plugin-discord-local` package is merged into this one (its old package name aliases here via the agent plugin collector). It is auto-enabled when `discord` appears in the character's connector keys (`autoEnable.connectorKeys: ["discord"]`). No actions or providers are registered; all behavior flows through services and events.
 
 ## Plugin surface
 
 ### Services
 | Name | Type key | Purpose |
 |---|---|---|
-| `DiscordService` | `"discord"` | Main gateway service — connects to Discord API, handles messages, voice, slash commands, reactions, history backfill, and emits `DiscordEventTypes.*` events |
+| `DiscordService` | `"discord"` | Main gateway service (bot-API mode) — connects to Discord API, handles messages, voice, slash commands, reactions, history backfill, and emits `DiscordEventTypes.*` events |
+| `DiscordLocalService` | `"discord-local"` | Local mode — IPC connector to the Discord desktop app (OAuth over the local RPC socket + macOS UI-automation replies). Dormant unless `DISCORD_LOCAL_CLIENT_ID` / `DISCORD_LOCAL_CLIENT_SECRET` are configured |
 | `DiscordOwnerPairingServiceImpl` | `"OWNER_PAIRING_DISCORD"` | Registers the `/eliza-pair` slash command; relays pairing codes to the backend owner-bind service and DMs login links |
 | `DiscordUserAccountScraperImpl` | `"discord_user_account_scraper"` | Scrapes message history and DM inboxes from the Discord desktop app via CDP/browser automation |
 
@@ -136,6 +137,12 @@ bun run --cwd plugins/plugin-discord clean       # rm dist + .turbo + generated 
 | `DISCORD_STATUS_REACTIONS` | No | Scope of the acknowledgement emoji reaction on handled inbound messages: `all` / `group-mentions` / `none` (default: `all`). |
 | `DISCORD_SYNC_PROFILE` | No | `"false"` to skip bot profile sync on startup (default: `true`) |
 | `DISCORD_IPC_DIR` | No | Override the IPC socket directory searched by `DiscordLocalService` when connecting to the Discord desktop app |
+| `DISCORD_LOCAL_CLIENT_ID` | No | Discord application client ID for local (desktop IPC) mode — with `DISCORD_LOCAL_CLIENT_SECRET`, activates `DiscordLocalService` |
+| `DISCORD_LOCAL_CLIENT_SECRET` | No | Discord application client secret for local mode |
+| `DISCORD_LOCAL_ENABLED` | No | `"false"` to disable local mode even when local credentials are set (default: enabled when credentials present) |
+| `DISCORD_LOCAL_SCOPES` | No | Comma-separated OAuth scopes for local mode (default `rpc,identify,rpc.notifications.read`) |
+| `DISCORD_LOCAL_MESSAGE_CHANNEL_IDS` | No | Comma-separated channel IDs to subscribe to `MESSAGE_CREATE` in local mode |
+| `DISCORD_LOCAL_SEND_DELAY_MS` | No | Milliseconds to wait after focusing Discord before typing in local mode (default 900, min 100) |
 | `DISCORD_GENERATION_TIMEOUT_MS` | No | Milliseconds cap for generation before the pending Discord message is discarded |
 | `MESSAGE_TIMEOUT_MS` | No | Fallback generation timeout in ms (used when `DISCORD_GENERATION_TIMEOUT_MS` is not set) |
 | `DISCORD_TEST_CHANNEL_ID` | No | Channel used by `DiscordTestSuite` |

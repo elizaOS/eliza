@@ -15,7 +15,12 @@ Those handlers call `getPtyConsoleBridge(state)`, which resolves
 `runtime.getService("PTY_SERVICE")?.consoleBridge`. **Without a registered
 `PTY_SERVICE`, that bridge is `null` and the terminal is inert.**
 
-This plugin supplies that service. It is the missing keystone — everything else
+This plugin supplies that service. Consumers: the app web terminal
+(`PtyTerminalPane` + agent-server WS handlers), the `@elizaos/plugin-task-coordinator`
+cockpit interactive terminal, and the agent swarm helpers in `packages/agent`.
+It is independent of `@elizaos/plugin-agent-orchestrator`, which spawns its
+coding agents as ACP subprocesses directly rather than through `PTY_SERVICE`.
+It is the missing keystone — everything else
 already exists, so this connects three finished pieces (xterm UI, WS keystroke
 path, interactive CLI) rather than building them.
 
