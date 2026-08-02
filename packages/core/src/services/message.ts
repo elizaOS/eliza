@@ -3043,6 +3043,20 @@ async function createV5MessageContextObject(args: {
 			' Before saying you cannot find something, read the final message:user itself: if the asker states a fact and asks about it in the same message ("my favorite color is teal, what is my favorite color?"), answer from the current message directly. Only when the asked-about token appears neither in the current message nor in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool. This "no chat-history search" limit is about CHAT recall ONLY. It does NOT apply to what a task, build, deploy, or sub-agent YOU ran actually did: that run status IS verifiable with the task/sub-agent tools. So when the final message asks "what happened with [the build/app/task]" or disputes whether something you ran actually worked, treat it as a live verification request (set requiresTool) and CHECK the current task/sub-agent status with a tool before reporting, disclaiming, or conceding — never say you cannot verify a run you can look up.',
 	});
 
+	// Prompt automations execute without a visible human message; their reply is
+	// the delivered result. Make that boundary explicit so the model performs
+	// the instruction instead of acknowledging framing the recipient never sees.
+	if (args.message.content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) {
+		events.push({
+			id: "trigger-automation-policy",
+			type: "instruction",
+			source: "message-service",
+			stable: false,
+			content:
+				'trigger_automation_policy: The final message:user below is a scheduled automation of yours firing, not a person talking to you. Its "Do this now:" clause is the instruction you must carry out on this turn, and whatever you reply is delivered to the user as the automation\'s output. Produce that output: if the instruction is to remind, the reply IS the reminder addressed to the user; if it is to check or report something, run the needed tools and reply with the result. Never reply with an acknowledgement of the instruction itself ("noted.", "got it", "will do") — the user never sees the instruction, so an acknowledgement reaches them as a bare non-sequitur.',
+		});
+	}
+
 	// Ambient-turn policy (live incident tj-f637475edcb7bd): on an unaddressed
 	// group turn the planner ran, produced no tool activity, and still shipped
 	// the filler completion "I handled the available step." as the reply. The
@@ -3774,9 +3788,13 @@ available_contexts:
 {{availableContexts}}
 
 direct/private rules:
-- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=["simple"] and put the final answer in replyText.
-- For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.
-- Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- Chat, static knowledge, writing, rewriting, translation, brainstorming, and explanations: contexts=["simple"]; answer in replyText.
+- Simple replyText must be natural and complete, not a placeholder, unless terse was requested.
+- Non-simple contexts/actions are only for tools, live/private state, files/web/shell, side effects, scheduling/memory/settings/secrets/finance/media/device control.
+- UI navigation is device/app control: open/show/switch/go-home requests use contexts=["general"], candidateActionNames=["VIEWS"], and a brief pending ack. Never claim the view opened before VIEWS succeeds.
+- Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
+- Sticky Notes and native device controls are also device/app control: note and flashlight reads or mutations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
+- Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
@@ -6386,14 +6404,24 @@ function collectPlannerTools(
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
 	const tierAParents = readTierAParentsFromContext(context);
+	const actionTools = buildPlannerToolsFromTieredActions(actions, {
+		tierAParents,
+		actionLookup: new Map(
+			actions.map((action) => [action.name, action] as const),
+		),
+		tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
+	});
+	const terminalNames = new Set(
+		CORE_PLANNER_TERMINALS.map((tool) => normalizeActionIdentifier(tool.name)),
+	);
+	// REPLY/IGNORE may also be registered runtime actions. The planner-loop owns
+	// these protocol terminals, so keep its canonical definitions exactly once;
+	// duplicate native tool names waste schema tokens and are ambiguous to model
+	// providers that preserve both entries.
 	return [
-		...buildPlannerToolsFromTieredActions(actions, {
-			tierAParents,
-			actionLookup: new Map(
-				actions.map((action) => [action.name, action] as const),
-			),
-			tierAChildrenByParent: readTierAChildrenByParentFromContext(context),
-		}),
+		...actionTools.filter(
+			(tool) => !terminalNames.has(normalizeActionIdentifier(tool.name)),
+		),
 		...CORE_PLANNER_TERMINALS,
 	];
 }
@@ -6597,13 +6625,13 @@ function collectPreviousActionResults(
 /**
  * Pre-LLM action shortcut gate (#8791).
  *
- * Matches the user's text against the runtime's `ShortcutRegistry` BEFORE any
- * model call. Explicit slash/`!` commands are always eligible (this is what
- * makes slash commands deterministic per #8790); natural-language shortcuts use
- * narrow/confidence-floored patterns. On a confident `action`-target match the
- * matched action runs and its reply is returned as a `direct_reply` — emitting
- * ZERO `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the
- * client (the slash menu already runs them locally) so the gate ignores them.
+ * Matches explicit slash/`!` protocol invocations against the runtime's
+ * `ShortcutRegistry` before any model call. Ordinary language is deliberately
+ * ineligible here: it must reach the planner even when a plugin registered a
+ * natural-language shortcut. On an explicit `action`-target match the action
+ * runs and its reply is returned as a `direct_reply` — emitting zero
+ * `RESPONSE_HANDLER` tokens. Navigate/client targets are resolved on the client
+ * (the slash menu already runs them locally) so the gate ignores them.
  *
  * Returns `null` on no match / mis-fire so the turn proceeds unchanged
  * (byte-identical to today). Set `ELIZA_SHORTCUTS_DISABLED=1` to bypass entirely.
@@ -6627,7 +6655,7 @@ export async function runShortcutGate(args: {
 	const authorized = isAdminRank(args.senderRole);
 	const match = registry.match(text, {
 		actions: args.runtime.actions.map((action) => action.name),
-		allowNatural: true,
+		allowNatural: false,
 		isAuthorized: authorized,
 		isElevated: hasAtLeastRole(args.senderRole, "OWNER"),
 	});
@@ -6923,6 +6951,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
 			args.message.content?.channelType === ChannelType.DM ||
+			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		// Ambient turn = a positively-identified unaddressed text-group turn
@@ -7129,6 +7158,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			// remains buffered until routing and effect validation complete. Cloud
 			// adapters ignore the flag and return the result whole.
 			streamStructured: true,
+			// This is the only Stage 1 field intended for the user. Local voice
+			// consumes the validated replyText field; planner/evaluator calls leave
+			// this unset and therefore cannot leak their structured output to TTS.
+			voiceOutput: "user-visible" as const,
 			responseSkeleton: responseGrammar.responseSkeleton,
 			grammar: responseGrammar.grammar,
 			spanSamplerPlan: stage1SpanSamplerPlan,
@@ -9321,21 +9354,17 @@ function hasExplicitReplyIntent(
 /**
  * Race-keep policy for a finished response that a newer same-room message
  * superseded mid-generation. Returns the human-readable keep reason, or null
- * when the response should be discarded. An explicit conversational reply is
- * always kept. Action-mode responses omit REPLY, so they are also kept when
- * the transport context deterministically establishes that the turn addressed
- * the agent. Unaddressed, non-conversational work remains replaceable.
+ * when the response should be discarded. Kept only when the planner
+ * deliberately chose to converse (explicit REPLY/RESPOND): every deliverable
+ * response constructor in this pipeline sets `actions:["REPLY"]`, so this is
+ * the complete keep set — a discard is always a non-deliverable shape, and it
+ * ends the run with the observable "replaced" terminal instead of vanishing.
  */
 export function resolveSupersededResponseKeepReason(
 	responseContent: Pick<Content, "actions"> | null | undefined,
-	deterministicallyAddressed = false,
 ): string | null {
-	if (!responseContent) return null;
 	if (hasExplicitReplyIntent(responseContent)) {
 		return "explicit REPLY for an addressed message";
-	}
-	if (deterministicallyAddressed) {
-		return "deterministically addressed action-mode turn";
 	}
 	return null;
 }
@@ -11520,12 +11549,9 @@ export class DefaultMessageService implements IMessageService {
 			setTranslatedUserText,
 		});
 
-		// #8791: pre-LLM action shortcut gate runs FIRST — before the planner or
-		// model call. An explicit slash/`!` command (always-on) or a
-		// confident natural-language shortcut resolves to a deterministic action
-		// reply with zero inference. Placed here (ahead of the pre-LLM
-		// conditional v5 stage) so a slash command can
-		// never be pre-empted by another handler.
+		// #8791: the explicit-protocol shortcut gate runs first so slash/`!`
+		// commands cannot be pre-empted by another handler. Ordinary language is
+		// never eligible here and always reaches the planner.
 		if (!strategyResult) {
 			// Reuse the role resolved once per turn in handleMessage (stamped on the
 			// trajectory context) — resolving again here costs a room+world lookup.
@@ -11850,35 +11876,12 @@ export class DefaultMessageService implements IMessageService {
 			// generating a response, the default behavior is to drop the older
 			// response so the bot only replies to the freshest input.
 			//
-			// Exceptions — keep the response when:
-			// 1. The planner picked an explicit REPLY/RESPOND action. That's a
-			//    deliberate conversational signal (often a direct @-mention) and
-			//    dropping it leaves the user looking at silence on a tagged
-			//    message, which the character contract treats as a bug.
-			// 2. The turn deterministically addressed the agent (DM, platform
-			//    mention/reply, autonomous, delivered early ack) even without an
-			//    explicit REPLY action. Action-mode turns finish without REPLY in
-			//    their actions list, so on a slow backend any addressed turn that
-			//    overlapped the next inbound message was silently dropped — and
-			//    connectors treat the resulting non-delivery as a deliberate
-			//    IGNORE, making the silence terminal and unobservable.
-			// Either way the newer message still gets its own turn through the
-			// normal pipeline, so each inbound message is answered at most once —
-			// keeping the older response never double-replies to either message.
+			// Keep only a deliverable response carrying the explicit REPLY/RESPOND
+			// marker. Action results opt into the user channel through userFacingText,
+			// and that path constructs the same explicit reply marker.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				const addressedTurn = this.isDeterministicallyAddressedTurn({
-					runtime,
-					message,
-					room,
-					mentionContext,
-					isAutonomous,
-					hasDeliveredEarlyReply: earlyReplyMessages.length > 0,
-				});
-				const keepReason = resolveSupersededResponseKeepReason(
-					responseContent,
-					addressedTurn.addressed,
-				);
+				const keepReason = resolveSupersededResponseKeepReason(responseContent);
 				if (keepReason) {
 					runtime.logger.info(
 						{
