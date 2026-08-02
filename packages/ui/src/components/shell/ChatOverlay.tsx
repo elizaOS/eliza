@@ -3146,7 +3146,15 @@ export function ChatOverlay({
   const scrimVisibility = useTransform(threadHeight, (h) =>
     h > 0 ? "visible" : "hidden",
   );
-  const threadFlexBasis = useTransform(threadHeight, (h) => `${h}px`);
+  // Scroll geometry is integer CSS pixels (`clientHeight`, `scrollHeight`, and
+  // the bottom-anchor `scrollTop`). Quantize the flex viewport to that same
+  // coordinate system so fractional pointer frames cannot make transcript
+  // glyphs drift subpixel-by-subpixel and then jump when the scroll anchor
+  // crosses its next integer pixel.
+  const threadFlexBasis = useTransform(
+    threadHeight,
+    (height) => `${Math.round(height)}px`,
+  );
   // Full-screen SHAPE spring (0 = inset chat shape, 1 = edge-to-edge). It springs
   // between the two whenever `maximized` flips, so a maximize ANIMATES out to full
   // screen instead of jumping, and a restore drag ANIMATES back to the exact inset
@@ -5117,8 +5125,9 @@ export function ChatOverlay({
       }
       openFromGrabber();
     },
-    // A deliberate (slow) drag: REST exactly where released instead of snapping
-    // to a detent — drag the sheet to any size and it stays.
+    // A tracked positioning drag rests where released instead of letting its
+    // final hand speed override the visible position. Short flicks still step
+    // through detents in the onPull handlers above.
     onSettleFree: (direction) => {
       draggingRef.current = false;
       // Onboarding: a released drag always springs back to the pinned FULL.
@@ -6551,50 +6560,55 @@ export function ChatOverlay({
               {/* Trailing controls. */}
               <div
                 data-testid="chat-composer-trailing-controls"
-                className="grid shrink-0 grid-cols-2 items-center gap-0"
+                className={cn(
+                  "grid shrink-0 items-center gap-0",
+                  transcriptionComposerActive ? "grid-cols-1" : "grid-cols-2",
+                )}
               >
                 {/* Two fixed slots keep the composer geometry stable while the
-                    controls dissolve between rest, send, and stop states. */}
-                <ComposerControlSlot
-                  slot="left"
-                  reduceMotion={reduce}
-                  controlKey={
-                    transcriptionComposerActive ||
-                    draftOwnsTrailingControl ||
-                    generationOwnsTrailingControl
-                      ? null
-                      : "voice"
-                  }
-                >
-                  {!transcriptionComposerActive &&
-                  !draftOwnsTrailingControl &&
-                  !generationOwnsTrailingControl ? (
-                    // Tap starts hands-free conversation; hold inserts
-                    // push-to-talk dictation into the editable draft.
-                    <SoftButton
-                      icon={AudioLines}
-                      label={
-                        pttHolding
-                          ? "release to insert"
-                          : handsFree
-                            ? "end conversation"
-                            : recording
-                              ? "stop listening"
-                              : "talk"
-                      }
-                      disabled={firstRunOpen}
-                      active={handsFree || pttHolding}
-                      pressed={recording || handsFree}
-                      pulse={recording || handsFree}
-                      onClick={handleMicClick}
-                      onPointerDown={micHoldHandlers.onPointerDown}
-                      onPointerUp={micHoldHandlers.onPointerUp}
-                      onPointerCancel={micHoldHandlers.onPointerCancel}
-                      onPointerLeave={micHoldHandlers.onPointerLeave}
-                      testId="chat-composer-mic"
-                    />
-                  ) : null}
-                </ComposerControlSlot>
+                    controls dissolve between rest, send, and stop states. Live
+                    transcription owns the text lane and needs only its single
+                    trailing stop, so its absent left slot must not reserve a
+                    blank button-width beside the activity bars. */}
+                {!transcriptionComposerActive ? (
+                  <ComposerControlSlot
+                    slot="left"
+                    reduceMotion={reduce}
+                    controlKey={
+                      draftOwnsTrailingControl || generationOwnsTrailingControl
+                        ? null
+                        : "voice"
+                    }
+                  >
+                    {!draftOwnsTrailingControl &&
+                    !generationOwnsTrailingControl ? (
+                      // Tap starts hands-free conversation; hold inserts
+                      // push-to-talk dictation into the editable draft.
+                      <SoftButton
+                        icon={AudioLines}
+                        label={
+                          pttHolding
+                            ? "release to insert"
+                            : handsFree
+                              ? "end conversation"
+                              : recording
+                                ? "stop listening"
+                                : "talk"
+                        }
+                        disabled={firstRunOpen}
+                        active={handsFree || pttHolding}
+                        pressed={recording || handsFree}
+                        pulse={recording || handsFree}
+                        onClick={handleMicClick}
+                        onPointerDown={micHoldHandlers.onPointerDown}
+                        onPointerUp={micHoldHandlers.onPointerUp}
+                        onPointerCancel={micHoldHandlers.onPointerCancel}
+                        onPointerLeave={micHoldHandlers.onPointerLeave}
+                        testId="chat-composer-mic"
+                      />
+                    ) : null}
+                  </ComposerControlSlot>
+                ) : null}
                 <ComposerControlSlot
                   slot="right"
                   reduceMotion={reduce}

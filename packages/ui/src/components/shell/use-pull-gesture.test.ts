@@ -83,10 +83,9 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     x: number,
     y: number,
     pointerId = 1,
-    currentTarget = {
-      setPointerCapture() {},
-      releasePointerCapture() {},
-    },
+    currentTarget: React.PointerEvent["currentTarget"] = document.createElement(
+      "button",
+    ),
     overrides: Partial<React.PointerEvent> = {},
   ): React.PointerEvent {
     return {
@@ -140,10 +139,10 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
 
   it("captures immediately for a vertical pull handle that also supports swipes", () => {
     const setPointerCapture = vi.fn();
-    const currentTarget = {
-      setPointerCapture,
-      releasePointerCapture() {},
-    };
+    const currentTarget = document.createElement("button");
+    Object.defineProperty(currentTarget, "setPointerCapture", {
+      value: setPointerCapture,
+    });
     const { result } = renderHook(() =>
       usePullGesture({
         onDrag: vi.fn(),
@@ -189,7 +188,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onDrag).toHaveBeenCalledTimes(1);
   });
 
-  it("recognizes a decisive final flick even when the whole press elapsed slowly", () => {
+  it("recognizes a short decisive final flick even when the whole press elapsed slowly", () => {
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((cb: FrameRequestCallback) => {
@@ -217,15 +216,137 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     t = 0;
     b.onPointerDown(pointer(100, 300));
     t = 420;
-    b.onPointerMove(pointer(100, 260)); // slow setup: whole-press velocity is low
+    b.onPointerMove(pointer(100, 295)); // slow setup: whole-press velocity is low
     t = 450;
-    b.onPointerMove(pointer(100, 170)); // decisive final segment: 90px / 30ms
+    b.onPointerMove(pointer(100, 250)); // decisive final segment: 45px / 30ms
     t = 452;
-    b.onPointerUp(pointer(100, 170));
+    b.onPointerUp(pointer(100, 250));
 
-    expect(onDrag).toHaveBeenLastCalledWith(130);
+    expect(onDrag).toHaveBeenLastCalledWith(50);
     expect(onPullUp).toHaveBeenCalledTimes(1);
     expect(onSettleFree).not.toHaveBeenCalled();
+  });
+
+  it("steps the next detent after a fast tracked drag", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onPullUp = vi.fn();
+    const onSettleFree = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onPullUp,
+        onSettleFree,
+        distanceThreshold: 56,
+        velocityThreshold: 0.5,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(100, 300));
+    t = 24;
+    b.onPointerMove(pointer(100, 250));
+    t = 48;
+    b.onPointerMove(pointer(100, 170));
+    t = 52;
+    b.onPointerUp(pointer(100, 170));
+
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onSettleFree).not.toHaveBeenCalled();
+  });
+
+  it("keeps tracking outside the handle when pointer capture is unavailable", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onDrag = vi.fn();
+    const onPullUp = vi.fn();
+    const { result } = renderHook(() => usePullGesture({ onDrag, onPullUp }));
+    const b = result.current;
+    const handle = document.createElement("button");
+    Object.defineProperties(handle, {
+      setPointerCapture: { value: vi.fn() },
+      hasPointerCapture: { value: vi.fn(() => false) },
+    });
+    const dispatchOutside = (type: string, y: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: 100,
+        clientY: y,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: "mouse" },
+        isPrimary: { value: true },
+      });
+      window.dispatchEvent(event);
+    };
+
+    b.onPointerDown(
+      pointer(100, 300, 1, handle, {
+        button: 0,
+        pointerType: "mouse",
+      }),
+    );
+    dispatchOutside("pointermove", 260);
+    dispatchOutside("pointermove", 180);
+    dispatchOutside("pointerup", 180);
+
+    expect(onDrag).toHaveBeenLastCalledWith(120);
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("expires remembered flick velocity while the pointer is held before release", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onPullUp = vi.fn();
+    const onSettleFree = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onPullUp,
+        onSettleFree,
+        velocityThreshold: 0.5,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(100, 300));
+    t = 420;
+    b.onPointerMove(pointer(100, 260));
+    t = 450;
+    b.onPointerMove(pointer(100, 170));
+    t = 650;
+    b.onPointerUp(pointer(100, 170));
+
+    expect(onPullUp).not.toHaveBeenCalled();
+    expect(onSettleFree).toHaveBeenCalledWith("up");
   });
 
   it("uses pointer event timestamps for short flick velocity", () => {
@@ -765,8 +886,8 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     // `lostpointercapture`, which BUBBLES up to the surface's handler with
     // `target` === the child (not the surface). That must NOT cancel the
     // gesture — otherwise a genuine finger swipe that began on a bubble
-    // self-cancels the instant it commits. Only a capture loss on the surface
-    // ITSELF (rotation / OS takeover) settles the gesture.
+    // self-cancels the instant it commits. Capture loss is recoverable; an
+    // actual pointercancel remains the OS/device interruption boundary.
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((cb: FrameRequestCallback) => {
@@ -779,9 +900,12 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     vi.spyOn(performance, "now").mockImplementation(() => t);
 
     const setPointerCapture = vi.fn();
-    const surface = { setPointerCapture, releasePointerCapture() {} };
+    const surface = document.createElement("div");
+    Object.defineProperty(surface, "setPointerCapture", {
+      value: setPointerCapture,
+    });
     // A DESCENDANT element (the bubble) — distinct from the swipe surface.
-    const child = {};
+    const child = document.createElement("div");
 
     const onSwipeLeft = vi.fn();
     const onCancel = vi.fn();
@@ -824,10 +948,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
-  it("still settles the gesture when the surface ITSELF loses capture (rotation)", () => {
-    // The case `onLostPointerCapture` exists for: the OS revokes OUR capture
-    // (device rotation) with the loss reported on the bound element itself
-    // (target === currentTarget). That must still cancel/settle the gesture.
+  it("keeps a fast pull alive when capture drops midway through the swipe", () => {
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((cb: FrameRequestCallback) => {
@@ -837,29 +958,56 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     );
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
-    const surface = { setPointerCapture() {}, releasePointerCapture() {} };
-    const onDragReset = vi.fn();
+    let captured = true;
+    const surface = document.createElement("button");
+    Object.defineProperties(surface, {
+      setPointerCapture: {
+        value: vi.fn(() => {
+          captured = true;
+        }),
+      },
+      hasPointerCapture: { value: vi.fn(() => captured) },
+    });
+    const dispatchOutside = (type: string, y: number) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        clientX: 100,
+        clientY: y,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        pointerType: { value: "mouse" },
+        isPrimary: { value: true },
+      });
+      window.dispatchEvent(event);
+    };
+    const onDrag = vi.fn();
+    const onPullUp = vi.fn();
     const onCancel = vi.fn();
     const { result } = renderHook(() =>
       usePullGesture({
-        onDrag: vi.fn(),
-        onDragReset,
-        onPullUp: vi.fn(),
+        onDrag,
+        onPullUp,
         onCancel,
       }),
     );
     const b = result.current;
 
     b.onPointerDown(pointer(100, 300, 1, surface));
-    b.onPointerMove(pointer(100, 280, 1, surface)); // small vertical drag
+    b.onPointerMove(pointer(100, 270, 1, surface));
+    captured = false;
     b.onLostPointerCapture({
       target: surface,
       currentTarget: surface,
       pointerId: 1,
     } as unknown as React.PointerEvent);
+    dispatchOutside("pointermove", 220);
+    dispatchOutside("pointermove", 150);
+    dispatchOutside("pointerup", 150);
 
-    expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(onDragReset).toHaveBeenCalled();
+    expect(onDrag).toHaveBeenLastCalledWith(150);
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it("still commits a steep drag (vertical well past the cone) as a vertical pull", () => {

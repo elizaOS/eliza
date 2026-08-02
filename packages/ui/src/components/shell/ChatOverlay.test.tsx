@@ -2871,6 +2871,10 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-control-slot-left")).toBeNull();
+    expect(
+      screen.getByTestId("chat-composer-trailing-controls").className,
+    ).toContain("grid-cols-1");
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
     expect(screen.queryByTestId("chat-composer-action")).toBeNull();
     expect(

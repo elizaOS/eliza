@@ -11,7 +11,6 @@ import {
   DEFAULT_SWIPE_DISTANCE,
   DEFAULT_SWIPE_VELOCITY,
   HORIZONTAL_DOMINANCE_RATIO,
-  isRealCaptureLoss,
   resolvePull,
   resolveSwipe,
   TAP_SLOP,
@@ -57,12 +56,11 @@ export interface PullGestureOptions {
   /** A near-stationary press/release — a tap, not a pull. */
   onTap?: () => void;
   /**
-   * A deliberate (slow) drag released without passing the flick/distance
-   * threshold. When provided, the gesture rests exactly where released
-   * (the consumer keeps the live offset) instead of snapping back.
+   * A deliberate drag released without flick velocity. When provided, the
+   * gesture rests exactly where released instead of snapping back.
    */
   onSettleFree?: (direction: "up" | "down") => void;
-  /** Gesture was interrupted by pointercancel/lost capture. */
+  /** Gesture was interrupted by pointercancel. */
   onCancel?: () => void;
   /** Enable horizontal swipe recognition. Defaults to true when swipe handlers exist. */
   swipeEnabled?: boolean;
@@ -89,13 +87,16 @@ export interface PullGestureBinding {
   onPointerMove: (event: React.PointerEvent) => void;
   onPointerUp: (event: React.PointerEvent) => void;
   onPointerCancel: (event: React.PointerEvent) => void;
-  /** The OS can revoke pointer capture without a pointerup/pointercancel — most
-   *  notably on device ROTATION, which otherwise strands the gesture mid-drag
-   *  (the consumer's morph freezes). Treat it as a release so the sheet settles. */
+  /** Re-arms cross-element tracking when the browser drops pointer capture. */
   onLostPointerCapture: (event: React.PointerEvent) => void;
 }
 
 type GestureAxis = "x" | "y";
+
+// A final movement only expresses flick intent while it is still adjacent to
+// the release. Holding the pointer still before letting go turns the gesture
+// into a deliberate placement, even though browsers emit no stationary moves.
+const RECENT_FLICK_MAX_AGE_MS = 80;
 
 export function usePullGesture(
   options: PullGestureOptions,
@@ -146,6 +147,71 @@ export function usePullGesture(
   const previous = React.useRef<{ x: number; y: number; t: number } | null>(
     null,
   );
+  // Pointer capture is the primary ownership mechanism, but embedded browser
+  // surfaces can accept it and then drop it when a fast-moving handle crosses a
+  // compositing boundary. Keep a window continuity guard for the whole press so
+  // either an initially missing capture or a mid-drag loss still receives the
+  // remaining moves and release. Callback refs let the guard use the current
+  // render's gesture decisions without reinstalling listeners on every render.
+  const fallbackCleanupRef = React.useRef<(() => void) | null>(null);
+  const fallbackMoveRef = React.useRef<
+    ((event: React.PointerEvent) => void) | null
+  >(null);
+  const fallbackFinishRef = React.useRef<
+    ((event: React.PointerEvent) => void) | null
+  >(null);
+  const fallbackCancelRef = React.useRef<
+    ((event: React.PointerEvent) => void) | null
+  >(null);
+  const clearPointerFallback = React.useCallback(() => {
+    fallbackCleanupRef.current?.();
+    fallbackCleanupRef.current = null;
+  }, []);
+  const installPointerFallback = React.useCallback(
+    (target: Element, pointerId: number) => {
+      clearPointerFallback();
+      const view = target.ownerDocument.defaultView;
+      if (!view) return;
+
+      const owns = (event: PointerEvent): boolean =>
+        event.pointerId === pointerId;
+      const targetsBoundElement = (event: PointerEvent): boolean =>
+        event.target instanceof view.Node && target.contains(event.target);
+      const onMove = (event: PointerEvent) => {
+        if (!owns(event)) return;
+        // While capture is healthy the bound React handler receives this same
+        // event, so the continuity guard stays dormant but remains armed in case
+        // capture disappears on a later frame.
+        if (target.hasPointerCapture?.(pointerId)) return;
+        // Events still targeting the bound element bubble into the normal React
+        // handler; processing them here too would duplicate velocity samples.
+        if (targetsBoundElement(event)) return;
+        fallbackMoveRef.current?.(event as unknown as React.PointerEvent);
+      };
+      const onUp = (event: PointerEvent) => {
+        if (!owns(event) || targetsBoundElement(event)) return;
+        clearPointerFallback();
+        fallbackFinishRef.current?.(event as unknown as React.PointerEvent);
+      };
+      const onCancel = (event: PointerEvent) => {
+        if (!owns(event) || targetsBoundElement(event)) return;
+        clearPointerFallback();
+        fallbackCancelRef.current?.(event as unknown as React.PointerEvent);
+      };
+
+      view.addEventListener("pointermove", onMove, true);
+      view.addEventListener("pointerup", onUp, true);
+      view.addEventListener("pointercancel", onCancel, true);
+      fallbackCleanupRef.current = () => {
+        view.removeEventListener("pointermove", onMove, true);
+        view.removeEventListener("pointerup", onUp, true);
+        view.removeEventListener("pointercancel", onCancel, true);
+      };
+    },
+    [clearPointerFallback],
+  );
+
+  React.useEffect(() => clearPointerFallback, [clearPointerFallback]);
 
   // Coalesce the continuous drag updates to at most one per animation frame: a
   // trackpad/touch panel emits pointermove well above the display refresh, and
@@ -194,6 +260,7 @@ export function usePullGesture(
       // every subsequent MOUSE gesture on a remounted handle: mouse reuses
       // pointerId 1, so it matched the dead `start` and the fresh press was
       // rejected outright — no seed, no capture, drives nothing.
+      clearPointerFallback();
       start.current = {
         x: event.clientX,
         y: event.clientY,
@@ -214,9 +281,22 @@ export function usePullGesture(
         } catch {
           // Detached node mid-gesture — capture is best-effort.
         }
+        if (
+          typeof Element !== "undefined" &&
+          event.currentTarget instanceof Element
+        ) {
+          installPointerFallback(event.currentTarget, event.pointerId);
+        }
       }
     },
-    [hasSwipe, hasVerticalPull, onStart, eventTime],
+    [
+      hasSwipe,
+      hasVerticalPull,
+      onStart,
+      eventTime,
+      clearPointerFallback,
+      installPointerFallback,
+    ],
   );
 
   const onPointerMove = React.useCallback(
@@ -246,6 +326,12 @@ export function usePullGesture(
               event.currentTarget.setPointerCapture(event.pointerId);
             } catch {
               // best-effort
+            }
+            if (
+              typeof Element !== "undefined" &&
+              event.currentTarget instanceof Element
+            ) {
+              installPointerFallback(event.currentTarget, event.pointerId);
             }
           }
           // Reset the other axis's live offset to 0 so the committed axis owns
@@ -283,6 +369,7 @@ export function usePullGesture(
       scheduleDrag,
       drag,
       eventTime,
+      installPointerFallback,
     ],
   );
 
@@ -290,6 +377,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      clearPointerFallback();
       // Apply the latest coalesced drag before deciding the release. Consumers
       // read that live value to choose the nearest detent, and the canceled rAF
       // cannot replay stale motion after the settle below.
@@ -318,9 +406,10 @@ export function usePullGesture(
       );
       const deltaUp = useLastSample ? lastDeltaUp : eventDeltaUp;
       const deltaLeft = useLastSample ? lastDeltaLeft : eventDeltaLeft;
+      const releaseTime = eventTime(event);
       const elapsed = Math.max(
         1,
-        (useLastSample && lastSample ? lastSample.t : eventTime(event)) - s.t,
+        (useLastSample && lastSample ? lastSample.t : releaseTime) - s.t,
       );
       const velocityUp = deltaUp / elapsed;
       const velocityLeft = deltaLeft / elapsed;
@@ -336,10 +425,18 @@ export function usePullGesture(
       const recentSegmentHasPriorMove = Boolean(
         previousSample && previousSample.t > s.t,
       );
+      const recentSegmentIsFresh = Boolean(
+        lastSample &&
+          Math.max(0, releaseTime - lastSample.t) <= RECENT_FLICK_MAX_AGE_MS,
+      );
       const recentSegmentYIsIntentional =
-        recentSegmentHasPriorMove && Math.abs(recentDeltaUp) >= TAP_SLOP;
+        recentSegmentHasPriorMove &&
+        recentSegmentIsFresh &&
+        Math.abs(recentDeltaUp) >= TAP_SLOP;
       const recentSegmentXIsIntentional =
-        recentSegmentHasPriorMove && Math.abs(recentDeltaLeft) >= TAP_SLOP;
+        recentSegmentHasPriorMove &&
+        recentSegmentIsFresh &&
+        Math.abs(recentDeltaLeft) >= TAP_SLOP;
       const recentElapsed =
         previousSample && lastSample
           ? Math.max(1, lastSample.t - previousSample.t)
@@ -360,7 +457,6 @@ export function usePullGesture(
       const isFlickX =
         Math.max(Math.abs(velocityLeft), Math.abs(recentVelocityLeft)) >=
         velocityThresholdX;
-
       // A near-stationary release (both axes) is a tap, not a drag/swipe.
       if (movedX < TAP_SLOP && movedY < TAP_SLOP && !isFlickY && !isFlickX) {
         onDragReset?.();
@@ -401,8 +497,8 @@ export function usePullGesture(
         return;
       }
 
-      // A quick FLICK snaps to the next detent in the flick direction; any
-      // deliberate (non-flick) drag RESTS wherever it was released.
+      // A quick flick steps to the next detent; a slower positioning drag keeps
+      // the live release height through onSettleFree below.
       if (isFlickY) {
         if (deltaUp > 0) onPullUp?.();
         else onPullDown?.();
@@ -433,6 +529,7 @@ export function usePullGesture(
       distanceThresholdX,
       velocityThresholdX,
       eventTime,
+      clearPointerFallback,
     ],
   );
 
@@ -440,6 +537,7 @@ export function usePullGesture(
     (event: React.PointerEvent) => {
       const s = start.current;
       if (!s || s.pointerId !== event.pointerId) return;
+      clearPointerFallback();
       const committedAxis = axis.current;
       const l = last.current;
       drag.cancel();
@@ -495,19 +593,31 @@ export function usePullGesture(
       onCancel,
       distanceThresholdX,
       velocityThresholdX,
+      clearPointerFallback,
     ],
   );
 
-  // Only a capture loss on the bound element ITSELF (device rotation / OS
-  // takeover) settles the gesture; a descendant's bubbled loss at axis-commit is
-  // ignored so a swipe that STARTED on a child bubble doesn't self-cancel.
+  // A mid-press capture loss is recoverable: the window continuity guard above
+  // owns subsequent movement and release. `pointercancel` remains the explicit
+  // OS/device-interruption boundary and still calls cancel. A loss after normal
+  // pointerup is a no-op because finish already cleared `start`.
   const lostCapture = React.useCallback(
     (event: React.PointerEvent) => {
-      if (!isRealCaptureLoss(event)) return;
-      cancel(event);
+      const s = start.current;
+      if (!s || s.pointerId !== event.pointerId) return;
+      if (
+        typeof Element !== "undefined" &&
+        event.currentTarget instanceof Element
+      ) {
+        installPointerFallback(event.currentTarget, event.pointerId);
+      }
     },
-    [cancel],
+    [installPointerFallback],
   );
+
+  fallbackMoveRef.current = onPointerMove;
+  fallbackFinishRef.current = finish;
+  fallbackCancelRef.current = cancel;
 
   return {
     onPointerDown,

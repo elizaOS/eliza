@@ -17,9 +17,9 @@
 // the `threadHeight` motion value, published as the chat-thread flex-basis — a
 // faithful readout of the drag MATH (raw = dragBase + offset, clamped/consumed
 // at the ceiling). We drive velocity by mocking performance.now: every gesture
-// here ends with a stationary final segment so it reads as a DELIBERATE drag
-// (onSettleFree), the "release where the finger is" path a mouse produces —
-// never an accidental flick.
+// Most adversarial paths end with a stationary final segment so they exercise
+// deliberate placement. The dedicated fast-release regression retains active
+// velocity and must step to the next detent instead.
 //
 // jsdom viewport: innerHeight 768 → insetPanelMaxH (FULL detent) 696, full-bleed
 // ceiling 768, halfH 353, detent magnet 64.
@@ -146,10 +146,10 @@ function drag(el: Element) {
       });
       return this;
     },
-    /** Release deliberately: a stationary final segment (0 velocity) so the
-     *  gesture engine reads a slow drag (onSettleFree), never a flick. */
-    up(y: number) {
-      t += 400; // long, stationary tail ⇒ deliberate release
+    /** Release after an optional pause; most adversarial paths use a stationary
+     * tail, while the placement regression exercises an active-speed release. */
+    up(y: number, dtMs = 400) {
+      t += dtMs;
       now.mockReturnValue(t);
       fireEvent.pointerUp(el, { clientY: y, pointerId: 1 });
       now.mockRestore();
@@ -209,6 +209,52 @@ describe("text-layer stability during sheet motion", () => {
     // a shake even though their layout coordinates are unchanged.
     expect(sheet().style.willChange).toBe("");
     g.up(380);
+  });
+
+  it("keeps the transcript viewport on whole CSS pixels during a fractional drag", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    await waitFor(() => expect(variant()).toBe("open"));
+
+    const g = drag(grabber()).down(360.5);
+    await g.move(391.25);
+
+    const basis = screen.getByTestId("chat-thread").style.flexBasis;
+    expect(basis).toMatch(/^\d+px$/);
+    g.up(391.25);
+  });
+});
+
+describe("deliberate drag release", () => {
+  it("steps from input to half after a fast multi-frame drag", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const g = drag(grabber()).down(760);
+    await g.move(700, 24);
+    await g.move(610, 24);
+    g.up(610, 4);
+
+    await waitFor(() => {
+      expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_HALF_OR_OVER");
+      expect(detent()).toBe("half");
+      const height = basisPx();
+      expect(height).not.toBeNull();
+      expect(Math.abs((height as number) - 353)).toBeLessThanOrEqual(4);
+    });
+  });
+
+  it("rests at the released height after a decisive move followed by a hold", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const g = drag(grabber()).down(760);
+    await g.move(700, 420);
+    await g.move(610, 30);
+    g.up(610);
+
+    await waitFor(() => {
+      expect(sheet().getAttribute("data-chat-state")).toBe("OPEN_UNDER_HALF");
+      const height = basisPx();
+      expect(height).not.toBeNull();
+      expect(Math.abs((height as number) - 150)).toBeLessThanOrEqual(4);
+    });
   });
 });
 
