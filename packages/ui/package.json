@@ -391,7 +391,6 @@
     "@capacitor/core": "8.4.0",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/import-conversations": "workspace:*",
     "@elizaos/logger": "workspace:*",

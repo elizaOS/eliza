@@ -14,9 +14,9 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { plugin } from "bun";
 import {
   compileTailwindTheme,
   createAssertGate,
@@ -32,29 +32,16 @@ import { chromium } from "playwright";
 const here = dirname(fileURLToPath(import.meta.url));
 const uiRoot = resolve(here, "../../../..");
 const repoRoot = resolve(uiRoot, "../..");
-
-// Resolve the `@elizaos/plugin-local-inference/voice-wake` subpath to the in-tree
-// barrel so we can import the REAL FusedWakeManager in this worktree (its
-// node_modules symlinks the package to a checkout without the new export).
-plugin({
-  name: "voice-wake-subpath-alias",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/plugin-local-inference\/voice-wake$/ }, () => ({
-      path: join(repoRoot, "plugins/plugin-local-inference/src/voice-wake.ts"),
-    }));
-  },
-});
+const require = createRequire(import.meta.url);
+const localInferenceRoot = dirname(
+  require.resolve("@elizaos/plugin-local-inference/package.json"),
+);
 
 const CLIP = join(
-  repoRoot,
-  "plugins/plugin-local-inference/src/services/voice/__fixtures__/hey-eliza-16k.f32",
+  localInferenceRoot,
+  "src/services/voice/__fixtures__/hey-eliza-16k.f32",
 );
-const LIB_CANDIDATES = [
-  process.env.ELIZA_WAKEWORD_LIB,
-  join(repoRoot, "packages/native/plugins/wakeword-cpp/build/libwakeword.dylib"),
-  join(repoRoot, "packages/native/plugins/wakeword-cpp/build/libwakeword.so"),
-].filter(Boolean);
-const LIB = LIB_CANDIDATES.find((p) => existsSync(p));
+const LIB = process.env.ELIZA_WAKEWORD_LIB;
 
 if (!existsSync(CLIP) || !LIB) {
   console.log(

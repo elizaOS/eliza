@@ -42,12 +42,6 @@
       "@elizaos/import-conversations/browser": [
         "../../packages/import-conversations/src/browser.ts"
       ],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
       "@elizaos/logger": ["../../packages/logger/src/index.ts"],
@@ -68,6 +62,12 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
       ]
     }
   },

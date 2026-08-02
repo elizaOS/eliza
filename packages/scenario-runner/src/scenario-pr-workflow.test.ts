@@ -98,7 +98,6 @@ const deterministicTodosActionsScenarioPath = resolve(
 );
 const deterministicStreamingActionsScenarioPath = resolve(
   import.meta.dirname,
-  "../test/scenarios/deterministic-streaming-actions.scenario.ts",
 );
 const deterministicMcpActionsRoutesScenarioPath = resolve(
   import.meta.dirname,

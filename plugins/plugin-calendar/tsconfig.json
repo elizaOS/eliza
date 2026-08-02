@@ -24,26 +24,12 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-calendar": [
-        "../../plugins/plugin-native-calendar/src/index.ts"
-      ],
-      "@elizaos/capacitor-calendar/*": [
-        "../../plugins/plugin-native-calendar/src/*"
-      ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
       "@elizaos/auth": ["../../packages/auth/src/index.ts"],
       "@elizaos/auth/*": ["../../packages/auth/src/*"],
       "@elizaos/cloud-routing": ["../../packages/cloud/routing/src/index.ts"],
       "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
       "@elizaos/cloud-sdk": ["../../packages/cloud/sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
-      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
-      "@elizaos/contracts/*": ["../../packages/contracts/src/*"],
       "@elizaos/plugin-app-control": ["../plugin-app-control/src/index.ts"],
       "@elizaos/plugin-app-control/*": ["../plugin-app-control/src/*"],
       "@elizaos/plugin-agent-skills": ["../plugin-agent-skills/src/index.ts"],
@@ -60,12 +46,6 @@
       ],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../plugin-capacitor-bridge/src/*"
-      ],
       "@elizaos/plugin-coding-tools": ["../plugin-coding-tools/src/index.ts"],
       "@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
       "@elizaos/plugin-commands": ["../plugin-commands/src/index.ts"],
@@ -85,9 +65,6 @@
       ],
       "@elizaos/plugin-meetings": ["../plugin-meetings/src/index.ts"],
       "@elizaos/plugin-meetings/*": ["../plugin-meetings/src/*"],
-      "@elizaos/plugin-native-filesystem": [
-        "../plugin-native-filesystem/src/index.ts"
-      ],
       "@elizaos/plugin-registry": ["../plugin-registry/src/index.ts"],
       "@elizaos/plugin-registry/*": ["../plugin-registry/src/*"],
       "@elizaos/plugin-scheduling": ["../plugin-scheduling/src/index.ts"],
@@ -120,7 +97,28 @@
       "@elizaos/skills": ["../../packages/skills/src/index.ts"],
       "@elizaos/skills/*": ["../../packages/skills/src/*"],
       "@elizaos/vault": ["../../packages/vault/src/index.ts"],
-      "@elizaos/vault/*": ["../../packages/vault/src/*"]
+      "@elizaos/vault/*": ["../../packages/vault/src/*"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "../../plugins/plugin-native-calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar/*": [
+        "../../plugins/plugin-native-calendar/src/*"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-native-filesystem": [
+        "../plugin-native-filesystem/src/index.ts"
+      ]
     }
   },
   "include": [

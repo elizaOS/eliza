@@ -51,7 +51,6 @@
     }
   },
   "dependencies": {
-    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

@@ -60,7 +60,6 @@ const EXPECTED_COMMANDS = [
   "bun run --cwd plugins/plugin-browser test",
   "bun run --cwd plugins/plugin-coding-tools build",
   "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=1",
-  "node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh",
   "node packages/scripts/run-python.mjs --version",
   "node packages/scripts/test-cloud-run.mjs",
   "node packages/scripts/clean-stray-dts.mjs",

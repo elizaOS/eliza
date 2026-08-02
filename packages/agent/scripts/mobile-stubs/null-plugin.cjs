@@ -69,7 +69,7 @@ function makeStubProxy() {
     // plugin-x402 route helpers
     "createPaymentAwareHandler",
     "isRoutePaymentWrapped",
-    // plugin-mcp / plugin-streaming used elsewhere; safer to populate
+    // plugin-mcp used elsewhere; safer to populate
     // since some are stubbed via `optionalPluginStubs`.
     "handleMcpRoutes",
     "handleTtsRoutes",

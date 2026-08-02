@@ -37,15 +37,6 @@
       "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/capacitor-wifi": [
-        "../../plugins/plugin-native-wifi/src/index.ts"
-      ],
-      "@elizaos/capacitor-system": [
-        "../../plugins/plugin-native-system/src/index.ts"
-      ],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
@@ -94,7 +85,16 @@
       "@elizaos/plugin-music/*": ["../../plugins/plugin-music/src/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"]
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "@elizaos/capacitor-wifi": [
+        "../../plugins/plugin-native-wifi/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "../../plugins/plugin-native-system/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ]
     }
   },
   "include": [

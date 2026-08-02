@@ -34,7 +34,6 @@ import {
   EventType,
   type IAgentRuntime,
   type IScreenCaptureService,
-  isStreamingDestinationConfigured,
   logger,
   NotificationService,
   readJsonBody as parseJsonBody,
@@ -170,7 +169,6 @@ const optionalPluginSpecifiers = {
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
   signal: "@elizaos/plugin-signal",
-  streaming: "@elizaos/plugin-streaming",
   whatsapp: "@elizaos/plugin-whatsapp",
   workflow: "@elizaos/plugin-workflow",
 } as const;
@@ -182,7 +180,6 @@ const optionalPluginImports = {
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
   signal: () => importOptionalPlugin(optionalPluginSpecifiers.signal),
-  streaming: () => importOptionalPlugin(optionalPluginSpecifiers.streaming),
   whatsapp: () => importOptionalPlugin(optionalPluginSpecifiers.whatsapp),
   workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
 };
@@ -492,23 +489,6 @@ import { runtimeRoutesNeedX402Validation } from "./x402-route-validation.ts";
 
 type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
-type TtsRouteArg = {
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
-  method: string;
-  pathname: string;
-  state: ServerState;
-  json: (res: http.ServerResponse, data: unknown, status?: number) => void;
-  error: (res: http.ServerResponse, message: string, status?: number) => void;
-  readJsonBody: typeof readJsonBody;
-  isRedactedSecretValue: (value: unknown) => boolean;
-  fetchWithTimeoutGuard: typeof fetchWithTimeoutGuard;
-  streamResponseBodyWithByteLimit: typeof streamResponseBodyWithByteLimit;
-  responseContentLength: typeof responseContentLength;
-  isAbortError: typeof isAbortError;
-  ELEVENLABS_FETCH_TIMEOUT_MS: number;
-  ELEVENLABS_AUDIO_MAX_BYTES: number;
-};
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
 >[0];
@@ -728,68 +708,6 @@ export {
 
 const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
 const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
-
-interface StreamRouteDestination {
-  name?: string;
-  [key: string]: unknown;
-}
-
-interface StreamingPluginDestinationFactories {
-  createCustomRtmpDestination(config?: {
-    rtmpUrl?: string;
-    rtmpKey?: string;
-  }): StreamRouteDestination;
-  createNamedRtmpDestination(params: {
-    id: string;
-    name?: string;
-    rtmpUrl: string;
-    rtmpKey: string;
-  }): StreamRouteDestination;
-  createTwitchDestination(
-    runtime?: IAgentRuntime,
-    config?: { streamKey?: string },
-  ): StreamRouteDestination;
-  createYoutubeDestination(
-    runtime?: IAgentRuntime,
-    config?: { streamKey?: string; rtmpUrl?: string },
-  ): StreamRouteDestination;
-  createPumpfunDestination(
-    runtime?: IAgentRuntime,
-    config?: { streamKey?: string; rtmpUrl?: string },
-  ): StreamRouteDestination;
-  createXStreamDestination(
-    runtime?: IAgentRuntime,
-    config?: { streamKey?: string; rtmpUrl?: string },
-  ): StreamRouteDestination;
-}
-
-const STREAMING_PLUGIN_MODULE_ID = ["@elizaos", "plugin-streaming"].join("/");
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStreamingPluginDestinationFactories(
-  value: unknown,
-): value is StreamingPluginDestinationFactories {
-  return (
-    isObjectRecord(value) &&
-    typeof value.createCustomRtmpDestination === "function" &&
-    typeof value.createNamedRtmpDestination === "function" &&
-    typeof value.createTwitchDestination === "function" &&
-    typeof value.createYoutubeDestination === "function" &&
-    typeof value.createPumpfunDestination === "function" &&
-    typeof value.createXStreamDestination === "function"
-  );
-}
-
-async function loadStreamingPluginDestinationFactories(): Promise<StreamingPluginDestinationFactories> {
-  const moduleValue: unknown = await import(STREAMING_PLUGIN_MODULE_ID);
-  if (!isStreamingPluginDestinationFactories(moduleValue)) {
-    throw new Error("missing destination factory exports");
-  }
-  return moduleValue;
-}
 
 /**
  * Read and parse a JSON request body with size limits and error handling.
@@ -3053,36 +2971,6 @@ async function handleRequest(
   }
 
   if (
-    pathname.startsWith("/api/tts/") &&
-    (await (async () => {
-      const { handleTtsRoutes } = await getOptionalPluginApi<{
-        handleTtsRoutes: (args: TtsRouteArg) => Promise<boolean>;
-      }>("streaming");
-      return handleTtsRoutes({
-        req,
-        res,
-        method,
-        pathname,
-        state,
-        json,
-        error,
-        readJsonBody,
-        isRedactedSecretValue,
-        fetchWithTimeoutGuard,
-        streamResponseBodyWithByteLimit: coerce<
-          TtsRouteArg["streamResponseBodyWithByteLimit"]
-        >(streamResponseBodyWithByteLimit),
-        responseContentLength,
-        isAbortError,
-        ELEVENLABS_FETCH_TIMEOUT_MS: 30_000,
-        ELEVENLABS_AUDIO_MAX_BYTES: 20 * 1_048_576,
-      });
-    })())
-  ) {
-    return;
-  }
-
-  if (
     await handleAvatarRoutes({
       req,
       res,
@@ -4374,252 +4262,6 @@ export async function startApiServer(opts?: {
       }
     }
 
-    // ── Dynamic streaming + connector route loading ────────────────────────
-    // Always register generic stream routes. If a streaming destination is
-    // configured, inject it so /api/stream/live can fetch credentials.
-    void (async () => {
-      if (
-        isMobilePlatform() &&
-        process.env.ELIZA_MOBILE_ENABLE_STREAMING_ROUTES !== "1"
-      ) {
-        logger.debug(
-          "[eliza-api] Desktop streaming routes disabled on mobile platform.",
-        );
-        return;
-      }
-      try {
-        const streamRoutes = await import(
-          /* @vite-ignore */ "@elizaos/plugin-streaming"
-        );
-        const handleStreamRoute =
-          typeof streamRoutes.handleStreamRoute === "function"
-            ? streamRoutes.handleStreamRoute
-            : null;
-        if (!handleStreamRoute) {
-          logger.debug(
-            "[eliza-api] @elizaos/plugin-streaming did not export handleStreamRoute; skipping streaming route registration.",
-          );
-        }
-        // Desktop screen-capture bridge, resolved lazily from the current
-        // runtime. Desktop startup can bind streaming routes before the runtime
-        // service is registered, then updateRuntime hot-swaps state.runtime.
-        const resolveScreenCapture = (): IScreenCaptureService | undefined =>
-          state.runtime?.getService<IScreenCaptureService>(
-            ServiceType.SCREEN_CAPTURE,
-          ) ?? undefined;
-
-        // Build destination registry — all configured destinations
-        const _connectors = state.config.connectors ?? {};
-        const streaming = (state.config as Record<string, unknown>).streaming as
-          | Record<string, unknown>
-          | undefined;
-        const destinations = new Map<string, StreamRouteDestination>();
-
-        try {
-          const streamMod = await loadStreamingPluginDestinationFactories();
-
-          if (
-            isStreamingDestinationConfigured(
-              "customRtmp",
-              streaming?.customRtmp,
-            )
-          ) {
-            destinations.set(
-              "custom-rtmp",
-              streamMod.createCustomRtmpDestination(
-                streaming?.customRtmp as {
-                  rtmpUrl?: string;
-                  rtmpKey?: string;
-                },
-              ),
-            );
-          }
-
-          const rawSources = streaming?.rtmpSources;
-          if (Array.isArray(rawSources)) {
-            for (const row of rawSources) {
-              if (!row || typeof row !== "object") continue;
-              const rec = row as Record<string, string | undefined>;
-              const id = String(rec.id ?? "").trim();
-              const name = String(rec.name ?? id).trim();
-              const rtmpUrl = String(rec.rtmpUrl ?? "").trim();
-              const rtmpKey = String(rec.rtmpKey ?? "").trim();
-              if (!id || !rtmpUrl || !rtmpKey) continue;
-              destinations.set(
-                id,
-                streamMod.createNamedRtmpDestination({
-                  id,
-                  name,
-                  rtmpUrl,
-                  rtmpKey,
-                }),
-              );
-            }
-          }
-
-          if (isStreamingDestinationConfigured("twitch", streaming?.twitch)) {
-            destinations.set(
-              "twitch",
-              streamMod.createTwitchDestination(
-                undefined,
-                streaming?.twitch as { streamKey?: string },
-              ),
-            );
-          }
-
-          if (isStreamingDestinationConfigured("youtube", streaming?.youtube)) {
-            destinations.set(
-              "youtube",
-              streamMod.createYoutubeDestination(
-                undefined,
-                streaming?.youtube as { streamKey?: string; rtmpUrl?: string },
-              ),
-            );
-          }
-
-          if (isStreamingDestinationConfigured("pumpfun", streaming?.pumpfun)) {
-            destinations.set(
-              "pumpfun",
-              streamMod.createPumpfunDestination(
-                undefined,
-                streaming?.pumpfun as { streamKey?: string; rtmpUrl?: string },
-              ),
-            );
-          }
-
-          if (isStreamingDestinationConfigured("x", streaming?.x)) {
-            destinations.set(
-              "x",
-              streamMod.createXStreamDestination(
-                undefined,
-                streaming?.x as { streamKey?: string; rtmpUrl?: string },
-              ),
-            );
-          }
-        } catch (err) {
-          logger.warn(
-            `[eliza-api] Failed to load @elizaos/plugin-streaming destinations: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-
-        // Active destination: config preference → first available
-        const activeDestinationId =
-          (streaming?.activeDestination as string | undefined) ??
-          (destinations.size > 0
-            ? destinations.keys().next().value
-            : undefined);
-        const { streamManager } = await getOptionalPluginApi<{
-          streamManager: unknown;
-        }>("streaming");
-
-        const streamState = {
-          streamManager,
-          port,
-          get screenCapture() {
-            return resolveScreenCapture();
-          },
-          captureUrl: undefined as string | undefined,
-          destinations,
-          activeDestinationId,
-          activeStreamSource: { type: "stream-tab" as const },
-          mirrorStreamAvatarToElizaConfig: (avatarIndex: number) => {
-            try {
-              if (!Number.isFinite(avatarIndex)) {
-                return;
-              }
-              const diskCfg = loadElizaConfig();
-              const lang = state.config.ui?.language ?? diskCfg.ui?.language;
-              // Keep an already-consistent presetId: avatarIndex is a VRM
-              // art-asset index shared by several personas, so re-deriving the
-              // preset from the index would overwrite the user's persona (e.g.
-              // persisting presetId "chen" over an Eliza selection).
-              const presetId = resolveMirroredAvatarPresetId(
-                state.config.ui?.presetId ?? diskCfg.ui?.presetId,
-                avatarIndex,
-                lang,
-              );
-              const nextUi: ElizaConfig["ui"] = {
-                ...(state.config.ui ?? {}),
-                avatarIndex,
-                ...(presetId ? { presetId } : {}),
-              };
-              state.config = {
-                ...state.config,
-                ui: nextUi,
-              };
-              // Merge disk + live server config so we never persist a minimal
-              // snapshot (e.g. ENOENT default) and clobber eliza.json during
-              // first-run while state.config still holds the full boot payload.
-              const toSave: ElizaConfig = {
-                ...diskCfg,
-                ...state.config,
-                ui: {
-                  ...(diskCfg.ui ?? {}),
-                  ...(state.config.ui ?? {}),
-                  ...nextUi,
-                },
-              };
-              saveElizaConfig(toSave);
-              state.config = {
-                ...state.config,
-                ui: toSave.ui,
-              };
-            } catch (err) {
-              logger.warn(
-                `[eliza-api] mirrorStreamAvatarToElizaConfig failed: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              );
-            }
-          },
-          get config() {
-            const cfg = state.config as Record<string, unknown> | undefined;
-            const msgs = cfg?.messages as Record<string, unknown> | undefined;
-            return msgs
-              ? {
-                  messages: {
-                    tts: msgs.tts as
-                      | import("../config/types.messages.ts").TtsConfig
-                      | undefined,
-                  },
-                }
-              : undefined;
-          },
-        };
-        // `handleStreamRoute` is exported by `@elizaos/plugin-streaming`,
-        // which the mobile bundle replaces with a null-plugin proxy (see
-        // `packages/agent/scripts/build-mobile-bundle.mjs` —
-        // `@elizaos/plugin-streaming` is in the mobile replacement allowlist because the
-        // TTS / SSE worker pool has zero mobile use). On mobile the
-        // dynamic import resolves successfully but `handleStreamRoute` is
-        // `undefined`, and the closure here gets pushed into
-        // `connectorRouteHandlers` anyway — so every inbound HTTP request
-        // (including `/api/local-inference/device-bridge/status`) errors
-        // with `handleStreamRoute is not a function`. Skip the push when
-        // the import returned a null-plugin proxy.
-        if (typeof handleStreamRoute === "function") {
-          state.connectorRouteHandlers.push((req, res, pathname, method) =>
-            handleStreamRoute(req, res, pathname, method, streamState as never),
-          );
-        }
-
-        const destNames = Array.from(destinations.values())
-          .map((d) => d.name)
-          .join(", ");
-        const destLabel =
-          destinations.size > 0
-            ? `destinations: ${destNames}`
-            : "no destinations";
-        addLog("info", `Stream routes registered (${destLabel})`, "system", [
-          "system",
-          "streaming",
-        ]);
-      } catch (err) {
-        logger.warn(
-          `[eliza-api] Failed to load stream routes: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    })();
   };
 
   // ── WebSocket Server ─────────────────────────────────────────────────────

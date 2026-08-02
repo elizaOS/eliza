@@ -7,16 +7,11 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { BlueBubblesWorkflowCredentialProvider } from '../../../plugin-bluebubbles/src/workflow-credential-provider';
-import { BlueskyWorkflowCredentialProvider } from '../../../plugin-bluesky/workflow-credential-provider';
-import { FarcasterWorkflowCredentialProvider } from '../../../plugin-farcaster/workflow-credential-provider';
-import { FeishuWorkflowCredentialProvider } from '../../../plugin-feishu/src/workflow-credential-provider';
 import { GoogleChatWorkflowCredentialProvider } from '../../../plugin-google-workspace/src/chat/workflow-credential-provider';
 import { InstagramWorkflowCredentialProvider } from '../../../plugin-instagram/src/workflow-credential-provider';
-import { LineWorkflowCredentialProvider } from '../../../plugin-line/src/workflow-credential-provider';
 import { MatrixWorkflowCredentialProvider } from '../../../plugin-matrix/src/workflow-credential-provider';
 import { SignalWorkflowCredentialProvider } from '../../../plugin-signal/src/workflow-credential-provider';
 import { SlackWorkflowCredentialProvider } from '../../../plugin-slack/src/workflow-credential-provider';
-import { TwitchWorkflowCredentialProvider } from '../../../plugin-twitch/src/workflow-credential-provider';
 import { WhatsAppWorkflowCredentialProvider } from '../../../plugin-whatsapp/src/workflow-credential-provider';
 import { XWorkflowCredentialProvider } from '../../../plugin-x/src/workflow-credential-provider';
 
@@ -106,22 +101,6 @@ describe('MatrixWorkflowCredentialProvider', () => {
   });
 });
 
-describe('TwitchWorkflowCredentialProvider', () => {
-  test('returns httpHeaderAuth credential when TWITCH_ACCESS_TOKEN is set', async () => {
-    const runtime = makeRuntime({ TWITCH_ACCESS_TOKEN: 'twitch-token' });
-    const provider = await TwitchWorkflowCredentialProvider.start(runtime as never);
-    const result = await provider.resolve('user1', 'httpHeaderAuth');
-    expect(result?.status).toBe('credential_data');
-    expect((result as { data: { value: string } }).data.value).toMatch(/^Bearer /);
-  });
-
-  test('returns null when TWITCH_ACCESS_TOKEN is absent', async () => {
-    const runtime = makeRuntime({});
-    const provider = await TwitchWorkflowCredentialProvider.start(runtime as never);
-    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
-  });
-});
-
 describe('GoogleChatWorkflowCredentialProvider', () => {
   const tmpFiles: string[] = [];
   afterAll(async () => {
@@ -174,38 +153,6 @@ describe('GoogleChatWorkflowCredentialProvider', () => {
     const runtime = makeRuntime({});
     const provider = await GoogleChatWorkflowCredentialProvider.start(runtime as never);
     expect(await provider.resolve('user1', 'googleChatOAuth2Api')).toBeNull();
-  });
-});
-
-describe('LineWorkflowCredentialProvider', () => {
-  test('returns httpHeaderAuth credential when LINE_CHANNEL_ACCESS_TOKEN is set', async () => {
-    const runtime = makeRuntime({ LINE_CHANNEL_ACCESS_TOKEN: 'line-token' });
-    const provider = await LineWorkflowCredentialProvider.start(runtime as never);
-    const result = await provider.resolve('user1', 'httpHeaderAuth');
-    expect(result?.status).toBe('credential_data');
-    expect((result as { data: { value: string } }).data.value).toMatch(/^Bearer /);
-  });
-
-  test('returns null when LINE_CHANNEL_ACCESS_TOKEN is absent', async () => {
-    const runtime = makeRuntime({});
-    const provider = await LineWorkflowCredentialProvider.start(runtime as never);
-    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
-  });
-});
-
-describe('FeishuWorkflowCredentialProvider', () => {
-  test('returns httpHeaderAuth credential when FEISHU_APP_ID and FEISHU_APP_SECRET are set', async () => {
-    const runtime = makeRuntime({ FEISHU_APP_ID: 'app-id', FEISHU_APP_SECRET: 'app-secret' });
-    const provider = await FeishuWorkflowCredentialProvider.start(runtime as never);
-    const result = await provider.resolve('user1', 'httpHeaderAuth');
-    expect(result?.status).toBe('credential_data');
-    expect((result as { data: Record<string, unknown> }).data.appSecret).toBe('app-secret');
-  });
-
-  test('returns null when only one env var is set', async () => {
-    const runtime = makeRuntime({ FEISHU_APP_ID: 'app-id' });
-    const provider = await FeishuWorkflowCredentialProvider.start(runtime as never);
-    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
   });
 });
 
@@ -268,40 +215,6 @@ describe('InstagramWorkflowCredentialProvider', () => {
   test('returns null for unsupported cred type (private API creds not wirable)', async () => {
     const runtime = makeRuntime({ INSTAGRAM_PAGE_ACCESS_TOKEN: 'page-access-token' });
     const provider = await InstagramWorkflowCredentialProvider.start(runtime as never);
-    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
-  });
-});
-
-describe('FarcasterWorkflowCredentialProvider', () => {
-  test('returns httpHeaderAuth credential when FARCASTER_NEYNAR_API_KEY is set', async () => {
-    const runtime = makeRuntime({ FARCASTER_NEYNAR_API_KEY: 'neynar-key' });
-    const provider = await FarcasterWorkflowCredentialProvider.start(runtime as never);
-    const result = await provider.resolve('user1', 'httpHeaderAuth');
-    expect(result?.status).toBe('credential_data');
-  });
-
-  test('returns null when FARCASTER_NEYNAR_API_KEY is absent', async () => {
-    const runtime = makeRuntime({});
-    const provider = await FarcasterWorkflowCredentialProvider.start(runtime as never);
-    expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
-  });
-});
-
-describe('BlueskyWorkflowCredentialProvider', () => {
-  test('returns httpHeaderAuth credential when BLUESKY_HANDLE and BLUESKY_PASSWORD are set', async () => {
-    const runtime = makeRuntime({
-      BLUESKY_HANDLE: 'user.bsky.social',
-      BLUESKY_PASSWORD: 'app-password',
-    });
-    const provider = await BlueskyWorkflowCredentialProvider.start(runtime as never);
-    const result = await provider.resolve('user1', 'httpHeaderAuth');
-    expect(result?.status).toBe('credential_data');
-    expect((result as { data: Record<string, unknown> }).data.appPassword).toBe('app-password');
-  });
-
-  test('returns null when only BLUESKY_HANDLE is set', async () => {
-    const runtime = makeRuntime({ BLUESKY_HANDLE: 'user.bsky.social' });
-    const provider = await BlueskyWorkflowCredentialProvider.start(runtime as never);
     expect(await provider.resolve('user1', 'httpHeaderAuth')).toBeNull();
   });
 });

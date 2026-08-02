@@ -14,14 +14,10 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     "@elizaos/plugin-coding-tools": () =>
       import("@elizaos/plugin-coding-tools"),
     "@elizaos/plugin-pty": () => import("@elizaos/plugin-pty"),
-    "@elizaos/plugin-birdclaw": () => import("@elizaos/plugin-birdclaw"),
-    "@elizaos/plugin-ollama": () => import("@elizaos/plugin-ollama"),
     "@elizaos/plugin-elizacloud": () => import("@elizaos/plugin-elizacloud"),
     "@elizaos/plugin-commands": () => import("@elizaos/plugin-commands"),
     "@elizaos/plugin-video": () => import("@elizaos/plugin-video"),
     "@elizaos/plugin-vision": () => import("@elizaos/plugin-vision"),
-    "@elizaos/plugin-background-runner": () =>
-      import("@elizaos/plugin-background-runner"),
     // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
     // @ts-ignore: optional mobile bundle plugin is outside sibling typecheck build graph; runtime import is guarded.
     "@elizaos/plugin-native-filesystem": () =>

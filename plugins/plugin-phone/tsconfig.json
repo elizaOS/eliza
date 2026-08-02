@@ -27,9 +27,6 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/capacitor-phone": [
-        "../../plugins/plugin-native-phone/src/index.ts"
-      ],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
@@ -76,12 +73,6 @@
       "@elizaos/import-conversations/browser": [
         "../../packages/import-conversations/src/browser.ts"
       ],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
@@ -95,6 +86,15 @@
       ],
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
       ]
     }
   },

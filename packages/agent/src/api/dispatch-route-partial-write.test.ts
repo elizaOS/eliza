@@ -21,11 +21,11 @@ import { describe, expect, it } from "vitest";
 import {
   dispatchBufferedRequest,
   dispatchStreamingRequest,
-} from "../../../../plugins/plugin-capacitor-bridge/src/android/dispatch.ts";
+} from "@elizaos/plugin-capacitor-bridge/android/dispatch";
 import {
   createStdioBridge,
   type StdioBridgeResponseFrame,
-} from "../../../../plugins/plugin-capacitor-bridge/src/shared/stdio-bridge.ts";
+} from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
 import { dispatchRoute } from "./dispatch-route.ts";
 import { mountRoutesOnHono } from "./hono-adapter.ts";
 

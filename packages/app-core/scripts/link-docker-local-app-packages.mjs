@@ -30,7 +30,6 @@ const localPackages = [
   // "Cannot find package '@elizaos/core'". Listed first so they link before
   // any per-package side effects (e.g. the app-core argon2/jose linking).
   "eliza/packages/core",
-  "eliza/packages/contracts",
   "eliza/packages/cloud/routing",
   // @elizaos/app-core's registry/index.ts eagerly re-exports
   // `@elizaos/registry/first-party` (#9190 moved the curated app/plugin/connector

@@ -4,15 +4,14 @@
  * deployment (mobile bundles, cloud-agent containers, lightweight runtimes).
  * Every handler degrades to an inert snapshot (empty list / `unavailable` /
  * `off`) rather than a 404, so the dashboard SPA can render without exploding
- * when computer-use, the apps catalog, streaming settings, or coding-agent
- * tooling are absent. Covers runtime-mode reporting, computer-use approvals
- * (+ SSE stream) and approval-mode, stream settings (served by the streaming
- * plugin or an in-process mobile shim), catalog/apps, drop status, coding-agent
- * preflight/coordinator, and lifeops activity-signals.
+ * when computer-use, the apps catalog, or coding-agent tooling are absent.
+ * Covers runtime-mode reporting, computer-use approvals (+ SSE stream) and
+ * approval-mode, stream visual settings (in-process snapshot), catalog/apps,
+ * drop status, coding-agent preflight/coordinator, and lifeops
+ * activity-signals.
  */
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
-import type { StreamVisualSettings } from "@elizaos/plugin-streaming";
 import {
   isMobilePlatform,
   normalizeDeploymentTargetConfig,
@@ -20,17 +19,20 @@ import {
 import { loadElizaConfig } from "../config/config.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 
-type StreamingSettingsModule = {
-  readStreamSettings: () => StreamVisualSettings;
-  validateStreamSettings: (value: unknown) => {
-    error?: string;
-    settings?: StreamVisualSettings;
+/**
+ * Visual/voice settings persisted by GET/POST /api/stream/settings. The
+ * dashboard hydrates these at startup (client.getStreamSettings()); the
+ * server keeps an in-process snapshot per boot.
+ */
+export type StreamVisualSettings = {
+  theme?: string;
+  avatarIndex?: number;
+  voice?: {
+    enabled: boolean;
+    autoSpeak?: boolean;
+    provider?: string;
   };
-  writeStreamSettings: (value: StreamVisualSettings) => void;
 };
-
-let streamingSettingsModulePromise: Promise<StreamingSettingsModule> | null =
-  null;
 
 const EMPTY_MOBILE_APPROVAL_SNAPSHOT = {
   mode: "off",
@@ -38,9 +40,9 @@ const EMPTY_MOBILE_APPROVAL_SNAPSHOT = {
   pendingApprovals: [],
 } as const;
 const STREAM_SETTINGS_MAX_JSON_BYTES = 4096;
-let mobileFallbackStreamSettings: StreamVisualSettings = {};
+let streamSettings: StreamVisualSettings = {};
 
-function validateMobileFallbackStreamSettings(
+function validateStreamSettings(
   raw: unknown,
 ):
   | { settings: StreamVisualSettings; error?: undefined }
@@ -112,40 +114,6 @@ function validateMobileFallbackStreamSettings(
     if (!knownKeys.has(key)) return { error: `Unknown settings key: ${key}` };
   }
   return { settings: result };
-}
-
-function mobileFallbackStreamingSettingsModule(): StreamingSettingsModule {
-  return {
-    readStreamSettings: () => mobileFallbackStreamSettings,
-    validateStreamSettings: validateMobileFallbackStreamSettings,
-    writeStreamSettings: (value) => {
-      mobileFallbackStreamSettings = value;
-    },
-  };
-}
-
-function isStreamingSettingsModule(
-  value: unknown,
-): value is StreamingSettingsModule {
-  const mod = value as Partial<StreamingSettingsModule> | null | undefined;
-  return (
-    typeof mod?.readStreamSettings === "function" &&
-    typeof mod.validateStreamSettings === "function" &&
-    typeof mod.writeStreamSettings === "function"
-  );
-}
-
-function getStreamingSettingsModule(): Promise<StreamingSettingsModule> {
-  streamingSettingsModulePromise ??= (async () => {
-    try {
-      const mod = await import(/* @vite-ignore */ "@elizaos/plugin-streaming");
-      if (isStreamingSettingsModule(mod)) return mod;
-    } catch {
-      // Mobile bundles intentionally replace optional desktop/streaming plugins.
-    }
-    return mobileFallbackStreamingSettingsModule();
-  })();
-  return streamingSettingsModulePromise;
 }
 
 function isTrueMobileLocalAgent(): boolean {
@@ -262,18 +230,12 @@ export async function handleMobileOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/stream/settings") {
-    const { readStreamSettings } = await getStreamingSettingsModule();
-    sendJson(res, { ok: true, settings: readStreamSettings() });
+    sendJson(res, { ok: true, settings: streamSettings });
     return true;
   }
 
   if (method === "POST" && pathname === "/api/stream/settings") {
     try {
-      const {
-        readStreamSettings,
-        validateStreamSettings,
-        writeStreamSettings,
-      } = await getStreamingSettingsModule();
       const body = parseJsonPayload(await readRequestBody(req)) as
         | { settings?: unknown }
         | undefined;
@@ -282,8 +244,8 @@ export async function handleMobileOptionalRoutes(
         sendJsonError(res, result.error ?? "Invalid settings", 400);
         return true;
       }
-      const settings = { ...readStreamSettings(), ...result.settings };
-      writeStreamSettings(settings);
+      const settings = { ...streamSettings, ...result.settings };
+      streamSettings = settings;
       sendJson(res, { ok: true, settings });
     } catch (err) {
       sendJsonError(

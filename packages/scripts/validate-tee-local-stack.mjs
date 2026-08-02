@@ -5,6 +5,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const repoRoot = path.resolve(new URL("../..", import.meta.url).pathname);
+const osRepoRoot = path.resolve(
+  process.env.ELIZAOS_OS_REPO_ROOT ?? path.join(repoRoot, "..", "os"),
+);
 const outputPath = path.join(
   repoRoot,
   "evidence/tee/local-stack-validation-2026-05-20.json",
@@ -80,6 +83,7 @@ const checks = [
   {
     id: "os-release-tests",
     command: "node",
+    cwd: osRepoRoot,
     args: [
       "--test",
       "packages/os/scripts/__tests__/os-release-scripts.test.mjs",
@@ -88,11 +92,13 @@ const checks = [
   {
     id: "os-tee-measurements-validator",
     command: "node",
+    cwd: osRepoRoot,
     args: ["packages/os/scripts/validate-tee-measurements.mjs"],
   },
   {
     id: "os-release-schema-json",
     command: "node",
+    cwd: osRepoRoot,
     args: [
       "-e",
       "JSON.parse(require('fs').readFileSync('packages/os/release/schema/elizaos-os-release-manifest.schema.json','utf8')); console.log('schema json valid')",
@@ -150,7 +156,7 @@ if (!ok) {
 function runCheck(check) {
   const startedAtMs = Date.now();
   const child = spawnSync(check.command, check.args, {
-    cwd: repoRoot,
+    cwd: check.cwd ?? repoRoot,
     encoding: "utf8",
     env: { ...process.env, ...(check.env ?? {}) },
     maxBuffer: 10 * 1024 * 1024,

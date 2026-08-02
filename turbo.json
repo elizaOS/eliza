@@ -24,16 +24,9 @@
   ],
   "tasks": {
     "build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"],
       "inputs": [
         "src/**",
         "**/*.ts",
@@ -66,10 +59,7 @@
       ]
     },
     "@elizaos/app#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "env": [
         "LOG_LEVEL",
         "ELIZA_BUILD_STAMP",
@@ -77,9 +67,7 @@
         "ELIZA_RELEASE_AUTHORITY",
         "VITE_ENVIRONMENT"
       ],
-      "outputs": [
-        "dist/**"
-      ],
+      "outputs": ["dist/**"],
       "inputs": [
         "src/**",
         "index.ts",
@@ -105,46 +93,11 @@
       ]
     },
     "@elizaos/cloud-api#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/ios-native-deps#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "env": [
-        "DEVELOPER_DIR",
-        "ELIZA_IOS_MIN_VERSION",
-        "ELIZA_LLAMA_BUILD_IOS",
-        "ELIZA_LLAMA_FORCE_REBUILD",
-        "ELIZA_LLAMA_SIM_METAL",
-        "ELIZA_SQLITE_VEC_BUILD_IOS",
-        "ELIZA_SQLITE_VEC_FORCE_REBUILD",
-        "LLAMA_CPP_REPO",
-        "SQLITE_VEC_REPO"
-      ],
-      "inputs": [
-        "package.json",
-        "VERSIONS",
-        "llama.cpp/build-ios.sh",
-        "llama.cpp/shim/**",
-        "sqlite-vec/build-ios.sh"
-      ],
-      "outputs": [
-        ".turbo/native-deps-build/**",
-        "llama.cpp/dist/**",
-        "sqlite-vec/dist/**"
-      ]
-    },
     "@elizaos/prompts#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": [
         "specs/actions/plugins.generated.json",
         "$TURBO_ROOT$/packages/core/src/generated/action-docs.ts"
@@ -164,12 +117,8 @@
         "@elizaos/shared#build",
         "@elizaos/ui#build"
       ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
     },
     "@elizaos/ui#build": {
       "dependsOn": [
@@ -178,47 +127,17 @@
         "@elizaos/import-conversations#build",
         "@elizaos/shared#build"
       ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
-    },
-    "@elizaos/plugin-native-inference#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": []
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
     },
     "eliza-next-example#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": []
-    },
-    "elizaos-plugin-echo#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/core#build": {
-      "dependsOn": [
-        "@elizaos/contracts#build",
-        "@elizaos/logger#build",
-        "@elizaos/cloud-routing#build"
-      ],
-      "env": [
-        "LOG_LEVEL"
-      ],
-      "outputs": [
-        "dist/**",
-        "src/i18n/generated/**"
-      ],
+      "dependsOn": ["@elizaos/logger#build", "@elizaos/cloud-routing#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**", "src/i18n/generated/**"],
       "inputs": [
         "src/**",
         "build.ts",
@@ -227,84 +146,42 @@
         "$TURBO_ROOT$/packages/shared/src/i18n/keywords/*.keywords.json"
       ]
     },
-    "@elizaos/contracts#build": {
-      "dependsOn": [],
-      "outputs": [
-        "dist/**"
-      ]
-    },
     "@elizaos/cloud-routing#build": {
       "dependsOn": [],
-      "outputs": [
-        "dist/**"
-      ]
+      "outputs": ["dist/**"]
     },
     "@elizaos/logger#build": {
       "dependsOn": [],
-      "outputs": [
-        "dist/**"
-      ]
+      "outputs": ["dist/**"]
     },
     "@elizaos/electrobun#build": {
-      "dependsOn": [
-        "@elizaos/app#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/app#build", "^build"],
       "cache": false,
       "outputs": []
     },
     "@elizaos/plugin-cli#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-app-control#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-pdf#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-wallet#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
     },
     "@elizaos/plugin-sql#build": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
-      "outputs": [
-        "src/dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["src/dist/**"]
     },
     "@elizaos/native-activity-tracker#build": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
-      "outputs": [
-        "dist/**"
-      ]
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": ["dist/**"]
     },
     "@elizaos/scenario-runner#build": {
       "dependsOn": [
@@ -320,9 +197,7 @@
         "@elizaos/plugin-elizacloud#build",
         "@elizaos/ui#build"
       ],
-      "outputs": [
-        "dist/**"
-      ]
+      "outputs": ["dist/**"]
     },
     "lint": {
       "outputs": []
@@ -365,15 +240,11 @@
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-cloud-apps#build"
-      ],
+      "dependsOn": ["@elizaos/plugin-cloud-apps#build"],
       "outputs": []
     },
     "@elizaos/plugin-discord#typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
@@ -405,30 +276,15 @@
       "outputs": []
     },
     "@elizaos/plugin-capacitor-bridge#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "@elizaos/shared#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": []
     },
     "@elizaos/scenario-runner#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-browser#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
       "outputs": []
     },
     "eliza-react-example#typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": []
-    },
-    "@elizaos/plugin-local-inference#typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "format": {
@@ -438,36 +294,56 @@
       "outputs": []
     },
     "start": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
-      "env": [
-        "LOG_LEVEL"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
+      "env": ["LOG_LEVEL"],
       "cache": false,
       "persistent": true
     },
     "dev": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
       "cache": false,
       "persistent": true
     },
     "migrate": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
       "cache": false
     },
     "migrate:generate": {
-      "dependsOn": [
-        "@elizaos/core#build"
-      ],
+      "dependsOn": ["@elizaos/core#build"],
       "cache": false
     },
     "clean": {
       "cache": false
+    },
+    "@elizaos/ios-native-deps#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "env": [
+        "DEVELOPER_DIR",
+        "ELIZA_IOS_MIN_VERSION",
+        "ELIZA_LLAMA_BUILD_IOS",
+        "ELIZA_LLAMA_FORCE_REBUILD",
+        "ELIZA_LLAMA_SIM_METAL",
+        "ELIZA_SQLITE_VEC_BUILD_IOS",
+        "ELIZA_SQLITE_VEC_FORCE_REBUILD",
+        "LLAMA_CPP_REPO",
+        "SQLITE_VEC_REPO"
+      ],
+      "inputs": [
+        "package.json",
+        "VERSIONS",
+        "llama.cpp/build-ios.sh",
+        "llama.cpp/shim/**",
+        "sqlite-vec/build-ios.sh"
+      ],
+      "outputs": [
+        ".turbo/native-deps-build/**",
+        "llama.cpp/dist/**",
+        "sqlite-vec/dist/**"
+      ]
+    },
+    "@elizaos/plugin-native-inference#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
     }
   }
 }

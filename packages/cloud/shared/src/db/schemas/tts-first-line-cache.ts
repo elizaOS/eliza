@@ -2,7 +2,7 @@
  * TTS first-line cache manifest (Eliza Cloud).
  *
  * Sister table to the local `tts_first_line` sqlite cache shipped in
- * `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`.
+ * `/plugin-local-inference/services/voice/first-line-cache.ts`.
  * The cloud side caches the first-sentence snip of every assistant TTS
  * request, keyed on `(algo_version, provider, voice_id, voice_revision,
  * sample_rate, codec, voice_settings_fp, normalized_text)` so byte-equal

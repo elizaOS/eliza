@@ -53,9 +53,15 @@
       "@elizaos/security/*": ["../../../security/src/*"],
       "@elizaos/ui": ["../../../ui/src/index.ts"],
       "@elizaos/ui/*": ["../../../ui/src/*"],
-      "@elizaos/import-conversations": ["../../../import-conversations/src/index.ts"],
-      "@elizaos/import-conversations/*": ["../../../import-conversations/src/*"],
-      "@elizaos/import-conversations/browser": ["../../../import-conversations/src/browser.ts"],
+      "@elizaos/import-conversations": [
+        "../../../import-conversations/src/index.ts"
+      ],
+      "@elizaos/import-conversations/*": [
+        "../../../import-conversations/src/*"
+      ],
+      "@elizaos/import-conversations/browser": [
+        "../../../import-conversations/src/browser.ts"
+      ],
       "@elizaos/plugin-elizacloud": [
         "../../../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
@@ -69,18 +75,6 @@
       ],
       "@elizaos/plugin-coding-tools/*": [
         "../../../../plugins/plugin-coding-tools/src/*"
-      ],
-      "@elizaos/plugin-capacitor-bridge": [
-        "../../../../plugins/plugin-capacitor-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-capacitor-bridge/*": [
-        "../../../../plugins/plugin-capacitor-bridge/src/*"
-      ],
-      "@elizaos/plugin-local-inference": [
-        "../../../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "../../../../plugins/plugin-local-inference/src/*"
       ],
       "@elizaos/plugin-app-manager": [
         "../../../../plugins/plugin-app-manager/src/index.ts"
@@ -104,16 +98,10 @@
       "@elizaos/plugin-whatsapp/*": [
         "../../../../plugins/plugin-whatsapp/src/*"
       ],
-      "@elizaos/capacitor-llama": [
-        "../../../native-plugins/llama/src/index.ts"
-      ],
-      "@elizaos/capacitor-*": ["../../../native-plugins/*/src/index.ts"],
       "@elizaos/plugin-wallet/ui": [
         "../../../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-wallet/*": [
-        "../../../../plugins/plugin-wallet/src/*"
-      ],
+      "@elizaos/plugin-wallet/*": ["../../../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-task-coordinator": [
         "../../../../plugins/plugin-task-coordinator/src/index.ts"
       ],
@@ -125,7 +113,6 @@
       "@elizaos/plugin-wallet": [
         "../../../../plugins/plugin-wallet/src/index.ts"
       ],
-      "@elizaos/plugin-wallet/*": ["../../../../plugins/plugin-wallet/src/*"],
       "@elizaos/plugin-registry": [
         "../../../../plugins/plugin-registry/src/index.ts"
       ],
@@ -141,7 +128,23 @@
       ],
       "@elizaos/plugin-streaming/*": [
         "../../../../plugins/plugin-streaming/src/*"
-      ]
+      ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/capacitor-llama": [
+        "../../../native-plugins/llama/src/index.ts"
+      ],
+      "@elizaos/capacitor-*": ["../../../native-plugins/*/src/index.ts"]
     }
   },
   "include": [

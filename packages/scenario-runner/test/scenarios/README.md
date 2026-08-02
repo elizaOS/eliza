@@ -33,9 +33,6 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
   `TODO`, then the real `TODO` action against real TodosService DB state and
   CURRENT_TODOS provider output for write, create, update, complete, cancel,
   delete, list, clear, and active-only provider rendering.
-- `deterministic-streaming-actions` covers the real `STREAM` action and stream
-  route handler for start, status, stop, provider status rendering, exact
-  loopback route responses, and stream destination lifecycle side effects.
 - `deterministic-mcp-actions-routes` covers the real `@elizaos/plugin-mcp`
   service against a committed stdio MCP fixture, the parent `MCP` router,
   `MCP_READ_RESOURCE`, `MCP_CALL_TOOL`, `MCP_SEARCH_ACTIONS`,

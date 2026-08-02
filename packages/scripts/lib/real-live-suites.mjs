@@ -154,19 +154,8 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes: "runs in browser-real-bench.yml via test:real:chromium",
   },
   {
-    file: "plugins/plugin-birdclaw/src/birdclaw/birdclaw.real.test.ts",
-    blocked:
-      "plugin-birdclaw vitest.config.ts excludes *.real.test.ts unless BIRDCLAW_REAL_TESTS=1; run via bun run --cwd plugins/plugin-birdclaw test:real",
-    probe: "birdclaw CLI at BIRDCLAW_REAL_BIN or on PATH",
-  },
-  {
     file: "plugins/plugin-calendar/test/google-calendar-connector.real.test.ts",
     requires: ["GOOGLE_CALENDAR_ACCESS_TOKEN"],
-    notes: "also runs nightly in external-api-live-drift.yml",
-  },
-  {
-    file: "plugins/plugin-calendly/src/calendly-client.real.test.ts",
-    anyOf: [["CALENDLY_ACCESS_TOKEN"], ["ELIZA_E2E_CALENDLY_ACCESS_TOKEN"]],
     notes: "also runs nightly in external-api-live-drift.yml",
   },
   {
@@ -228,27 +217,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     file: "plugins/plugin-health/test/withings-connector.real.test.ts",
     requires: ["WITHINGS_ACCESS_TOKEN"],
     notes: "also runs nightly in external-api-live-drift.yml",
-  },
-  {
-    file: "plugins/plugin-hyperliquid/src/routes.real.test.ts",
-    notes:
-      "public API, no credential; also runs nightly in external-api-live-drift.yml",
-  },
-  {
-    file: "plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts",
-    probe: "bun runtime + built libelizainference + staged voice models",
-  },
-  {
-    file: "plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts",
-    probe: "bun runtime + built libelizainference + Kokoro model",
-  },
-  {
-    file: "plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts",
-    probe: "bun runtime + built libelizainference + diarizer model",
-  },
-  {
-    file: "plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.real.test.ts",
-    probe: "bun runtime + built libelizainference + speaker-encoder model",
   },
   {
     file: "plugins/plugin-ollama/__tests__/native-plumbing.live.test.ts",
@@ -317,11 +285,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
       ["GOOGLE_GENERATIVE_AI_API_KEY"],
     ],
     guardVia: ["packages/app-core/test/helpers/live-provider.ts"],
-  },
-  {
-    file: "plugins/plugin-polymarket/src/routes.real.test.ts",
-    notes:
-      "public API, no credential; also runs nightly in external-api-live-drift.yml",
   },
   {
     file: "plugins/plugin-pty/test/pty.real.test.ts",

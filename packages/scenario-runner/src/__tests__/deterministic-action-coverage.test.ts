@@ -27,12 +27,10 @@ import agentSkillsPlugin from "@elizaos/plugin-agent-skills";
 import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
-import facewearPlugin from "@elizaos/plugin-facewear";
 import githubPlugin from "@elizaos/plugin-github";
 import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
 import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
-import streamingPlugin from "@elizaos/plugin-streaming";
 import todosPlugin from "@elizaos/plugin-todos";
 import videoPlugin from "@elizaos/plugin-video";
 import workflowPlugin from "@elizaos/plugin-workflow";
@@ -59,8 +57,6 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-local-inference": localInferencePlugin,
   "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
   "@elizaos/plugin-todos": todosPlugin,
-  "@elizaos/plugin-streaming": streamingPlugin,
-  "@elizaos/plugin-facewear": facewearPlugin,
   "@elizaos/plugin-mcp": mcpPlugin,
   "@elizaos/plugin-workflow": workflowPlugin,
   "@elizaos/plugin-github": githubPlugin,
@@ -124,15 +120,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   ],
   "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
-  "@elizaos/plugin-streaming": ["STREAM"],
-  "@elizaos/plugin-facewear": [
-    "FACEWEAR_CONNECT",
-    "FACEWEAR_DEBUG",
-    "SMARTGLASSES_CONTROL",
-    "SMARTGLASSES_DISPLAY_TEXT",
-    "SMARTGLASSES_MICROPHONE",
-    "SMARTGLASSES_STATUS",
-  ],
   "@elizaos/plugin-mcp": [
     "MCP",
     "MCP_CALL_TOOL",
@@ -772,10 +759,6 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
       "MCP_SEARCH_ACTIONS",
     ],
     minMessageTurns: 5,
-  },
-  "deterministic-streaming-actions": {
-    actionNames: ["STREAM"],
-    minMessageTurns: 4,
   },
   "deterministic-todos-actions": {
     actionNames: ["TODO"],

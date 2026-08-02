@@ -169,10 +169,8 @@ console.log("[build-mobile] output dir:", outDir);
 
 if (process.argv.includes("--verify-workspace-resolution")) {
   const requiredPackages = [
-    "@elizaos/plugin-birdclaw",
     "@elizaos/plugin-commands",
     "@elizaos/plugin-vision",
-    "@elizaos/plugin-background-runner",
     "@elizaos/plugin-wallet",
     "@elizaos/cloud-routing",
     "@elizaos/cloud-sdk",
@@ -334,7 +332,7 @@ const nativeStubs = {
   // bombs the bundle resolve:
   //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
   // The local-inference voice caches (e.g.
-  // `plugins/plugin-local-inference/src/services/voice/first-line-cache.ts`)
+  // `/plugin-local-inference/services/voice/first-line-cache.ts`)
   // resolve it lazily and fall back when it's missing, so the on-disk SQLite
   // caches simply stay disabled on mobile. Map it to `empty.cjs` so the bundle
   // loads; the lazy resolver then sees no `DatabaseSync` export and degrades
@@ -367,7 +365,7 @@ const nativeStubs = {
   // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
   // directly via aosp-llama-adapter.ts, never this package — but Bun.build
   // still has to resolve the dynamic import in
-  // plugins/plugin-native-llama/src/capacitor-llama-adapter.ts.
+  // /capacitor-llama/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
   mammoth: path.join(stubsDir, "mammoth.cjs"),
   "source-map": path.join(stubsDir, "source-map.cjs"),
@@ -526,19 +524,6 @@ const optionalPluginStubs = {
   // being linked into packages/agent/node_modules.
   "@elizaos/plugin-imessage": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.cjs"),
-  // `plugin-streaming` carries the TTS / SSE plumbing for desktop +
-  // server. Mobile never runs the streaming worker pool — the agent
-  // statically imports `streamManager` and `handleTtsRoutes`, so we
-  // stub the package with the same null-plugin proxy. The runtime
-  // log otherwise spams `[eliza-api] Failed to load
-  // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
-  // find module '@elizaos/plugin-streaming'` on every chat turn.
-  "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
-  // Birdclaw shells out to the host-local birdclaw CLI and is never loaded on
-  // mobile; the runtime plugin filter strips it before registration. Stub the
-  // static optional import so fresh mobile builds do not require its desktop
-  // package output to exist.
-  "@elizaos/plugin-birdclaw": path.join(stubsDir, "null-plugin.cjs"),
   // Workflow/automation routes are desktop/cloud surface area. Mobile's
   // runtime plugin filter does not load workflow, and latest workflow source
   // keeps large generated node catalogs in dist rather than src/data. Stub the
@@ -705,7 +690,6 @@ const corePackages = [
   "@elizaos/shared-brand",
   "@elizaos/ui",
   "@elizaos/plugin-sql",
-  "@elizaos/plugin-ollama",
   "@elizaos/plugin-wallet",
 ];
 
@@ -780,12 +764,6 @@ const dedupeTargets = {
     "plugins",
     "plugin-sql",
     "src",
-    "index.node.ts",
-  ),
-  "@elizaos/plugin-ollama": path.resolve(
-    repoRoot,
-    "plugins",
-    "plugin-ollama",
     "index.node.ts",
   ),
   "@elizaos/plugin-wallet": path.resolve(
@@ -1504,7 +1482,7 @@ const iosJscExternals =
     : undefined;
 
 // Pin every `@elizaos/plugin-local-inference/<subpath>` import to the WORKSPACE
-// `plugins/plugin-local-inference/src/...` tree. Without this, subpath imports
+// `/plugin-local-inference/...` tree. Without this, subpath imports
 // resolve through `node_modules/@elizaos/plugin-local-inference` (a symlink Bun
 // does NOT realpath) while the plugin's own relative imports resolve to the
 // workspace path — so shared modules like `services/device-tier.ts` get bundled

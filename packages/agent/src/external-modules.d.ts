@@ -407,10 +407,8 @@ declare module "@elizaos/plugin-imessage" {
   const imessagePlugin: unknown;
   export default imessagePlugin;
 }
-declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-pty";
-declare module "@elizaos/plugin-birdclaw";
 declare module "@elizaos/plugin-x402" {
   import type {
     IAgentRuntime,

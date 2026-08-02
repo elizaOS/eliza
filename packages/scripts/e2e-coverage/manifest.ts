@@ -135,9 +135,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
   ),
-  "plugin-birdclaw": existing(
-    "plugins/plugin-birdclaw/src/routes/birdclaw-routes.test.ts",
-  ),
   "plugin-bluebubbles": existing(
     "plugins/plugin-bluebubbles/__tests__/data-routes.test.ts",
   ),
@@ -151,18 +148,9 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-elizacloud": existing(
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
   ),
-  "plugin-hyperliquid": existing(
-    "plugins/plugin-hyperliquid/src/routes.real.test.ts",
-  ),
   "plugin-inbox": existing("plugins/plugin-inbox/test/inbox-routes.test.ts"),
-  "plugin-local-inference": existing(
-    "plugins/plugin-local-inference/__tests__/voice-models-routes.test.ts",
-  ),
   "plugin-meetings": existing(
     "plugins/plugin-meetings/src/routes/meetings-routes.test.ts",
-  ),
-  "plugin-polymarket": existing(
-    "plugins/plugin-polymarket/src/routes.real.test.ts",
   ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-notes": existing(
@@ -170,9 +158,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   ),
   "plugin-scheduling": existing(
     "plugins/plugin-scheduling/src/routes/scheduled-tasks.test.ts",
-  ),
-  "plugin-training": existing(
-    "plugins/plugin-training/src/routes/trajectory-routes.test.ts",
   ),
   "plugin-wallet": existing("plugins/plugin-wallet/src/plugin.routes.test.ts"),
   "plugin-whatsapp": existing(
@@ -182,9 +167,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   // ── New keyless route e2e closing the §3 gap (boot via tryHandleRuntimePluginRoute) ─
   "plugin-computeruse": covered(
     "plugins/plugin-computeruse/src/__tests__/routes-e2e.test.ts",
-  ),
-  "plugin-facewear": covered(
-    "plugins/plugin-facewear/src/__tests__/routes-e2e.test.ts",
   ),
   "plugin-github": covered("plugins/plugin-github/src/routes-e2e.test.ts"),
   "plugin-imessage": covered("plugins/plugin-imessage/src/routes-e2e.test.ts"),
@@ -210,11 +192,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     status: "exempt",
     reason:
       "lifeOps HTTP routes are exercised by the scheduled live-scenarios.yml default corpus and the plugin-personal-assistant test suite; a keyless route e2e would duplicate that coverage without a deterministic backend.",
-  },
-  "app-model-tester": {
-    status: "exempt",
-    reason:
-      "model-tester is a dev-only diagnostic surface whose routes proxy live model providers; it has no deterministic fixture and is not shipped in the default agent.",
   },
   "plugin-vision": {
     status: "exempt",

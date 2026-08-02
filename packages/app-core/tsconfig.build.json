@@ -31,6 +31,14 @@
       "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/dist/*"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-wechat": ["../../plugins/plugin-wechat/dist/index.d.ts"],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
+      "react/jsx-dev-runtime": [
+        "./node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
       "@elizaos/capacitor-canvas": [
         "../../plugins/plugin-native-canvas/dist/esm/index.d.ts"
       ],
@@ -48,15 +56,7 @@
       ],
       "@elizaos/capacitor-screencapture": [
         "../../plugins/plugin-native-screencapture/dist/esm/index.d.ts"
-      ],
-      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
-      "react": ["./node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
-      "react/jsx-dev-runtime": [
-        "./node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ],
-      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"]
+      ]
     }
   },
   "exclude": [

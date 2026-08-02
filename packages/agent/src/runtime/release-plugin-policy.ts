@@ -12,15 +12,12 @@ import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 const BASELINE_RUNTIME_SUPPORT_PACKAGES = [
   "@elizaos/core",
   "@elizaos/prompts",
-  "@elizaos/plugin-remote-manifest",
-  "@elizaos/plugin-worker-runtime",
 ] as const;
 
 const BASELINE_PROVIDER_PLUGINS = [
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-openai",
   "@elizaos/plugin-anthropic",
-  "@elizaos/plugin-ollama",
 ] as const;
 
 // Desktop loads this through the legacy "agent-orchestrator" compatibility id,
@@ -32,19 +29,13 @@ const BASELINE_DESKTOP_RUNTIME_PLUGINS = [
 // These are implementation dependencies of bundled core plugins. They need
 // to ship in the runtime bundle, but are not auto-loaded by collectPluginNames.
 const BASELINE_PLUGIN_SUPPORT_PACKAGES = [
-  "@elizaos/plugin-calendly",
   "@elizaos/plugin-health",
   "@elizaos/plugin-app-manager",
   "@elizaos/plugin-registry",
   "@elizaos/plugin-wallet",
   "@elizaos/plugin-imessage",
-  "@elizaos/plugin-streaming",
   "@elizaos/ui",
-  "@elizaos/app-model-tester",
   "@elizaos/plugin-documents",
-  "@elizaos/plugin-hyperliquid",
-  "@elizaos/plugin-polymarket",
-  "@elizaos/plugin-training",
 ] as const;
 
 // Plugins excluded from the baseline release that can only be installed on a

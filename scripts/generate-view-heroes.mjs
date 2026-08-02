@@ -98,20 +98,6 @@ const views = [
     icon: VIEW_HERO_ICONS.views,
   },
   {
-    out: "plugins/plugin-facewear/assets/hero-facewear.svg",
-    id: "facewear",
-    label: "Facewear",
-    hue: 190,
-    icon: VIEW_HERO_ICONS.headphones,
-  },
-  {
-    out: "plugins/plugin-facewear/assets/hero-smartglasses.svg",
-    id: "smartglasses",
-    label: "Smartglasses",
-    hue: 300,
-    icon: VIEW_HERO_ICONS.glasses,
-  },
-  {
     out: "plugins/plugin-finances/assets/hero.svg",
     id: "finances",
     label: "Finances",
@@ -159,13 +145,6 @@ const views = [
     label: "Todos",
     hue: 52,
     icon: VIEW_HERO_ICONS.todos,
-  },
-  {
-    out: "plugins/plugin-vector-browser/assets/hero.svg",
-    id: "vector-browser",
-    label: "Vector Browser",
-    hue: 286,
-    icon: VIEW_HERO_ICONS.vectorBrowser,
   },
 ];
 

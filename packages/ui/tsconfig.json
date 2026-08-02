@@ -71,37 +71,8 @@
       "@capacitor/app": [
         "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],
-      "@elizaos/capacitor-appblocker": [
-        "../../plugins/plugin-native-appblocker/src/index.ts"
-      ],
-      "@elizaos/capacitor-bun-runtime": [
-        "../../plugins/plugin-native-bun-runtime/src/index.ts"
-      ],
-      "@elizaos/capacitor-calendar": [
-        "../../plugins/plugin-native-calendar/src/index.ts"
-      ],
-      "@elizaos/capacitor-camera": [
-        "../../plugins/plugin-native-camera/src/index.ts"
-      ],
-      "@elizaos/capacitor-contacts": [
-        "../../plugins/plugin-native-contacts/src/index.ts"
-      ],
-      "@elizaos/capacitor-messages": [
-        "../../plugins/plugin-native-messages/src/index.ts"
-      ],
-      "@elizaos/capacitor-mobile-signals": [
-        "../../plugins/plugin-native-mobile-signals/src/index.ts"
-      ],
-      "@elizaos/capacitor-phone": [
-        "../../plugins/plugin-native-phone/src/index.ts"
-      ],
-      "@elizaos/capacitor-system": [
-        "../../plugins/plugin-native-system/src/index.ts"
-      ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/contracts": ["../contracts/src/index.ts"],
-      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
@@ -134,7 +105,34 @@
       "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/ui/navigation": ["./src/navigation/index.ts"],
       "@elizaos/ui/*": ["./src/*"],
-      "@elizaos/*": ["../../node_modules/@elizaos/*"]
+      "@elizaos/*": ["../../node_modules/@elizaos/*"],
+      "@elizaos/capacitor-appblocker": [
+        "../../plugins/plugin-native-appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "../../plugins/plugin-native-calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "../../plugins/plugin-native-camera/src/index.ts"
+      ],
+      "@elizaos/capacitor-contacts": [
+        "../../plugins/plugin-native-contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-messages": [
+        "../../plugins/plugin-native-messages/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "../../plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "../../plugins/plugin-native-system/src/index.ts"
+      ]
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],

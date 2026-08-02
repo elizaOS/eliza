@@ -70,7 +70,6 @@ vi.mock("@elizaos/shared", () => ({
   CONNECTOR_PLUGINS: {
     discord: "@elizaos/plugin-discord",
   },
-  STREAMING_PLUGINS: {},
 }));
 
 vi.mock("@elizaos/vault", () => ({

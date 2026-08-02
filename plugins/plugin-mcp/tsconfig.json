@@ -57,10 +57,10 @@
       "@elizaos/plugin-google-workspace/*": ["../../plugins/plugin-google-workspace/src/*"],
       "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/src/index.ts"],
       "@elizaos/plugin-telegram/*": ["../../plugins/plugin-telegram/src/*"],
-      "@elizaos/plugin-local-inference": ["../../plugins/plugin-local-inference/src/index.ts"],
-      "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"],
       "@elizaos/plugin-task-coordinator": ["../../plugins/plugin-task-coordinator/src/index.ts"],
-      "@elizaos/plugin-task-coordinator/*": ["../../plugins/plugin-task-coordinator/src/*"]
+      "@elizaos/plugin-task-coordinator/*": ["../../plugins/plugin-task-coordinator/src/*"],
+      "@elizaos/plugin-local-inference": ["../../plugins/plugin-local-inference/src/index.ts"],
+      "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"]
     },
     "types": ["node"]
   },

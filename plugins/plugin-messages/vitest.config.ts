@@ -46,20 +46,6 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/capacitor-messages$/,
-        replacement: path.join(
-          repoRoot,
-          "plugins/plugin-native-messages/src/index.ts",
-        ),
-      },
-      {
-        find: /^@elizaos\/capacitor-system$/,
-        replacement: path.join(
-          repoRoot,
-          "plugins/plugin-native-system/src/index.ts",
-        ),
-      },
-      {
         find: /^@elizaos\/ui\/components\/permissions\/PermissionRecoveryCallout$/,
         replacement: path.join(
           repoRoot,
