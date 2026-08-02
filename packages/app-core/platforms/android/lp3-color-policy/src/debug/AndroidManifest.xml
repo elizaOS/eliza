@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <application>
+    <application android:networkSecurityConfig="@xml/lp3_usb_network_security_config">
         <provider
             android:name=".Lp3ColorPolicyInitializer"
             android:authorities="${applicationId}.lp3-color-policy-initializer"
