@@ -6,7 +6,7 @@
  */
 
 import { client } from "@elizaos/ui/api";
-import { useViewEvent } from "@elizaos/ui/events";
+import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NotesSnapshot } from "../types.js";
 import {
@@ -86,6 +86,10 @@ export function useNotesState(): NotesState {
   }, [refresh]);
 
   useViewEvent(NOTES_UPDATED_EVENT, () => {
+    void refresh();
+  }, [refresh]);
+
+  useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
     void refresh();
   }, [refresh]);
 
