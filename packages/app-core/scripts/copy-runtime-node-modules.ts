@@ -1080,12 +1080,7 @@ export function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
     relativeEntry.startsWith("dist/platforms/electrobun/build/") ||
     relativeEntry === "dist/platforms/electrobun/artifacts" ||
     relativeEntry.startsWith("dist/platforms/electrobun/artifacts/") ||
-    relativeEntry ===
-      "dist/platforms/electrobun/src/libMacWindowEffects.dylib" ||
-    relativeEntry === "scripts/bun-riscv64" ||
-    relativeEntry.startsWith("scripts/bun-riscv64/") ||
-    relativeEntry === "dist/scripts/bun-riscv64" ||
-    relativeEntry.startsWith("dist/scripts/bun-riscv64/")
+    relativeEntry === "dist/platforms/electrobun/src/libMacWindowEffects.dylib"
   );
 }
 

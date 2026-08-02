@@ -1425,7 +1425,7 @@
       },
       {
         "component": "Cloud full-stack mock e2e config",
-        "path": "/Users/shawwalters/eliza/packages/test/cloud-e2e/playwright.config.ts",
+        "path": "/Users/shawwalters/eliza/packages/cloud/e2e/playwright.config.ts",
         "whatItDoes": "Boots local cloud API + frontend with auth-cookie login and provisioning flows; honors recording flag to set trace/screenshot/video to 'on'. Feeds the cloud-e2e suite in the recording orchestrator.",
         "maturity": "solid"
       },
@@ -1486,7 +1486,7 @@
         "gaps": "No video, no adb screenrecord/scrcpy; recording effectively off on Android/AOSP"
       },
       {
-        "path": "/Users/shawwalters/eliza/packages/os/usb-installer/tests/visual.spec.ts",
+        "path": "elizaOS/os:packages/os/usb-installer/tests/visual.spec.ts",
         "kind": "e2e",
         "covers": "USB installer wizard UI visual pages (desktop+mobile screenshots)",
         "gaps": "Only OS-image surface with Playwright; no Debian/AOSP runtime coding-flow recording; the OS-linux tree's recording hits are vendored Tails docs, not a harness"
@@ -1576,7 +1576,7 @@
       "/Users/shawwalters/eliza/packages/app/playwright.electrobun.packaged.config.ts",
       "/Users/shawwalters/eliza/packages/app/playwright.android.config.ts",
       "/Users/shawwalters/eliza/packages/app/scripts/android-e2e.mjs",
-      "/Users/shawwalters/eliza/packages/test/cloud-e2e/playwright.config.ts",
+      "/Users/shawwalters/eliza/packages/cloud/e2e/playwright.config.ts",
       "/Users/shawwalters/eliza/packages/scripts/check-live-test-artifact-coverage.mjs",
       "/Users/shawwalters/eliza/packages/scenario-runner/test/scenarios/deterministic-coding-tools-actions.scenario.ts",
       "/Users/shawwalters/eliza/packages/app/test/electrobun-packaged/desktop-launch-render.e2e.spec.ts"
@@ -1870,13 +1870,13 @@
       },
       {
         "component": "AOSP Android OS distro (vendor overlay, build + boot-validate)",
-        "path": "/Users/shawwalters/eliza/packages/os/android (Makefile, vendor/eliza, sepolicy/eliza_agent.te)",
+        "path": "elizaOS/os:packages/os/android (Makefile, vendor/eliza, sepolicy/eliza_agent.te)",
         "whatItDoes": "AOSP fork producing Cuttlefish/Pixel images with the eliza launcher, init.eliza.rc, SELinux policy for eliza_agent. make build does build+launch+boot-validate. This is OS packaging only — it does not exercise coding-agent execution.",
         "maturity": "partial"
       },
       {
         "component": "elizaOS Live Debian distro",
-        "path": "/Users/shawwalters/eliza/packages/os/linux (Justfile, build-iso.sh, elizaos overlay)",
+        "path": "elizaOS/os:packages/os/linux (Justfile, build-iso.sh, elizaos overlay)",
         "whatItDoes": "Tails-derived Debian live-build ISO bundling the Electrobun app. just build (Docker) / just boot (QEMU) / just static-smoke. Direct-build app inside -> local coding capable, but no coding-agent run is part of the build/boot validation.",
         "maturity": "partial"
       },
@@ -1937,7 +1937,7 @@
         "gaps": "No coding/orchestrator/terminal/sandbox spec among the Android device specs (grep for coding|orchestr|terminal|sandbox|TASKS|spawn returned nothing) — coding execution on Android/AOSP is never exercised on a device."
       },
       {
-        "path": "/Users/shawwalters/eliza/packages/os/scripts/__tests__/*.test.mjs + packages/os/android/installer/tests/run-tests.sh",
+        "path": "elizaOS/os:packages/os/scripts/__tests__/*.test.mjs + elizaOS/os:packages/os/android/installer/tests/run-tests.sh",
         "kind": "unit",
         "covers": "OS release pipeline: manifest validation, checksums, image reproducibility, TEE/confidential checks, dstack pins; Android installer flasher tests.",
         "gaps": "Validates release/installer machinery, not coding-agent behavior on the built OS. No AOSP/Debian image is ever booted-then-asked-to-code in CI."
@@ -1986,12 +1986,12 @@
         "title": "No coding/orchestrator e2e on Android or AOSP device",
         "severity": "high",
         "description": "playwright.android.config.ts drives a real on-device WebView against the on-device agent, but none of the android specs (route-coverage/local-runtime/voice-selftest) touch coding, orchestrator, terminal, TASKS, or sandbox. AOSP requires local-yolo + a staged /system/bin/sh (terminal-capabilities.ts), a path only covered by a negative unit test (missing-shell -> stub). The happy path (Android direct/AOSP with a staged shell actually spawning claude/codex/opencode) is never executed on a device or emulator.",
-        "suggestedWork": "Add a *.android.spec.ts that, on an AOSP/Cuttlefish image with a staged shell, invokes TASKS spawn_agent (or a deterministic local runner) to create a file and asserts the workspace diff; capture trace+screenshot. Add a Cuttlefish CI lane that boots the packages/os/android image and runs this coding smoke as the boot-validate's final step."
+        "suggestedWork": "Add a *.android.spec.ts that, on an AOSP/Cuttlefish image with a staged shell, invokes TASKS spawn_agent (or a deterministic local runner) to create a file and asserts the workspace diff; capture trace+screenshot. Add a Cuttlefish CI lane that boots the elizaOS/os:packages/os/android image and runs this coding smoke as the boot-validate's final step."
       },
       {
         "title": "No Debian-live (elizaOS Live) coding-agent boot smoke",
         "severity": "high",
-        "description": "packages/os/linux builds a Debian ISO bundling the direct-build Electrobun app (local-coding capable). just boot (QEMU) and just static-smoke validate the image, but nothing boots the ISO and then asks the bundled agent to write code. There is no proof the shipped Live image can actually run a coding agent.",
+        "description": "elizaOS/os:packages/os/linux builds a Debian ISO bundling the direct-build Electrobun app (local-coding capable). just boot (QEMU) and just static-smoke validate the image, but nothing boots the ISO and then asks the bundled agent to write code. There is no proof the shipped Live image can actually run a coding agent.",
         "suggestedWork": "Extend the just boot path (or a new just coding-smoke) to boot the ISO in QEMU, bring up the bundled agent, run a minimal local coding task (create + run a script), and emit a log + screenshot artifact. Wire into the OS release verification (verify-release.sh)."
       },
       {
@@ -2041,8 +2041,8 @@
       "/Users/shawwalters/eliza/packages/app/test/ui-smoke/orchestrator-gui-workbench.spec.ts",
       "/Users/shawwalters/eliza/packages/app/test/ui-smoke/remote-capability-view.spec.ts",
       "/Users/shawwalters/eliza/plugins/plugin-native-mobile-agent-bridge/src/index.ts",
-      "/Users/shawwalters/eliza/packages/os/android/Makefile",
-      "/Users/shawwalters/eliza/packages/os/linux/Justfile",
+      "elizaOS/os:packages/os/android/Makefile",
+      "elizaOS/os:packages/os/linux/Justfile",
       "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/host-shim/index.ts",
       "/Users/shawwalters/eliza/packages/plugin-remote-manifest/src/worker-runtime/bootstrap.ts"
     ]

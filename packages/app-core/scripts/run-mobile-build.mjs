@@ -250,6 +250,9 @@ const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 // Canonical system images live in the sibling elizaOS/os checkout. App-only
 // Android builds never write there; the AOSP lane sets ELIZAOS_OS_REPO_ROOT.
 function resolveSystemApkStagingDir() {
+  const osRepositoryRoot = path.resolve(
+    process.env.ELIZAOS_OS_REPO_ROOT ?? path.join(elizaRepoRoot, "..", "os"),
+  );
   let variant = null;
   try {
     variant = loadAospVariantConfig({
@@ -262,7 +265,8 @@ function resolveSystemApkStagingDir() {
   }
   if (variant) {
     const vendorDir = path.join(
-      repoRoot,
+      osRepositoryRoot,
+      "packages",
       "os",
       "android",
       "vendor",
@@ -274,9 +278,6 @@ function resolveSystemApkStagingDir() {
       apkName: `${variant.appName}.apk`,
     };
   }
-  const osRepositoryRoot = path.resolve(
-    process.env.ELIZAOS_OS_REPO_ROOT ?? path.join(elizaRepoRoot, "..", "os"),
-  );
   const elizaOsVendorDir = path.join(
     osRepositoryRoot,
     "packages",

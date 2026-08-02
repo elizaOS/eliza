@@ -321,5 +321,5 @@ transcript exists.
   `packages/agent/src/services/tee-policy.ts`,
   `packages/agent/src/services/tee-release-policy.ts`,
   `packages/agent/src/services/tee-key-release.ts`,
-  `packages/os/docs/tee-measured-boot-contract.md`,
+  `elizaOS/os:packages/os/docs/tee-measured-boot-contract.md`,
   `upstreams/research/chip/docs/security/confidential-domain.md`.
