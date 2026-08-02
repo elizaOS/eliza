@@ -61,6 +61,10 @@ const persistenceMock = vi.hoisted(() => ({
   createPersistedActiveServer: vi.fn((args: Record<string, unknown>) => args),
 }));
 
+const cloudPairTokenMock = vi.hoisted(() => ({
+  clearStalePairCredentialsForAgent: vi.fn(),
+}));
+
 vi.mock("../../state", () => ({
   useApp: () => appMock.value,
   useAppSelector: (sel: (value: typeof appMock.value) => unknown) =>
@@ -89,6 +93,8 @@ vi.mock("../../config/branding", () => ({
 }));
 
 vi.mock("../../state/persistence", () => persistenceMock);
+
+vi.mock("../../state/cloud-pair-token", () => cloudPairTokenMock);
 
 import { CloudAgentsSection } from "./CloudAgentsSection";
 
@@ -606,6 +612,7 @@ describe("CloudAgentsSection delete (job polling)", () => {
   beforeEach(() => {
     appMock.value = { elizaCloudConnected: true, setActionNotice: vi.fn() };
     resetClientMocks();
+    cloudPairTokenMock.clearStalePairCredentialsForAgent.mockReset();
     // The active server is a DIFFERENT agent so delete is not disabled.
     persistenceMock.loadPersistedActiveServer.mockReturnValue({
       kind: "cloud",
@@ -657,6 +664,11 @@ describe("CloudAgentsSection delete (job polling)", () => {
       "success",
       expect.any(Number),
     );
+    // Pair credentials purged for the deleted agent only after the job
+    // actually completes.
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).toHaveBeenCalledWith("agent-1");
   });
 
   it("keeps the row and surfaces an error when the delete job fails", async () => {
@@ -685,6 +697,10 @@ describe("CloudAgentsSection delete (job polling)", () => {
         1,
       ),
     );
+    // Credentials are NOT purged when the delete did not complete.
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).not.toHaveBeenCalled();
   });
 
   it("removes the row immediately for a synchronous delete (no jobId)", async () => {
@@ -698,6 +714,10 @@ describe("CloudAgentsSection delete (job polling)", () => {
 
     await waitFor(() => expect(screen.queryByText("Sync")).toBeNull());
     expect(clientMock.getCloudCompatJobStatus).not.toHaveBeenCalled();
+    // Synchronous delete: credentials purged right after the row drops.
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).toHaveBeenCalledWith("agent-1");
   });
 
   it("does NOT delete when the confirm dialog is dismissed", async () => {
@@ -708,6 +728,9 @@ describe("CloudAgentsSection delete (job polling)", () => {
 
     expect(clientMock.deleteCloudCompatAgent).not.toHaveBeenCalled();
     expect(screen.queryByText("Sync")).not.toBeNull();
+    expect(
+      cloudPairTokenMock.clearStalePairCredentialsForAgent,
+    ).not.toHaveBeenCalled();
   });
 });
 

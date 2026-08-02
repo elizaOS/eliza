@@ -21,6 +21,7 @@ const getCloudStatusMock = vi.hoisted(() => vi.fn());
 const getCloudCreditsMock = vi.hoisted(() => vi.fn());
 const cloudDisconnectMock = vi.hoisted(() => vi.fn());
 const clearStaleStewardSessionMock = vi.hoisted(() => vi.fn());
+const clearCloudPairApiTokenMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({
   client: {
@@ -34,6 +35,11 @@ vi.mock("../api", () => ({
 
 vi.mock("../cloud/shell/StewardProviderShared", () => ({
   clearStaleStewardSession: clearStaleStewardSessionMock,
+}));
+
+vi.mock("./cloud-pair-token", () => ({
+  clearCloudPairApiToken: clearCloudPairApiTokenMock,
+  clearStalePairCredentialsForAgent: vi.fn(),
 }));
 
 vi.mock("../first-run/mobile-runtime-mode", async (importOriginal) => ({
@@ -90,6 +96,10 @@ describe("useCloudState — backend-backed (unlocked) Cloud account sign-out", (
     // The account-only shortcut (clearStaleStewardSession) is reserved for the
     // locked runtime and must NOT be the path taken here.
     expect(clearStaleStewardSession).not.toHaveBeenCalled();
+    // Disconnect clears every at-rest credential, including the durable
+    // cloud-pair API token (localStorage + sessionStorage) so a rotated or
+    // revoked pair key is not re-adopted at the next boot.
+    expect(clearCloudPairApiTokenMock).toHaveBeenCalledTimes(1);
     expect(result.current.elizaCloudConnected).toBe(false);
     expect(result.current.elizaCloudEnabled).toBe(false);
     expect(result.current.elizaCloudUserId).toBeNull();
