@@ -38,6 +38,7 @@ export const Filter: Story = {
 export const Textarea: Story = {
   render: () => (
     <SettingsTextarea
+      aria-label="Agent configuration"
       className="min-h-24"
       defaultValue={'{\n  "model": "gpt-4o",\n  "temperature": 0.7\n}'}
     />

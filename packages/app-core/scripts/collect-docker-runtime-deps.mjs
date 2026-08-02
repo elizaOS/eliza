@@ -96,7 +96,6 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-wallet",
   "plugins/plugin-whatsapp",
   "plugins/plugin-workflow",
-  "plugins/plugin-x402",
 ];
 
 // Native / desktop / GPU packages that the image deliberately removes or that

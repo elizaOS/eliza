@@ -711,8 +711,6 @@ else
 fi
 
 log "Building shared/cloud package artifacts"
-# plugin-streaming imports @elizaos/cloud-routing during its declarations build,
-# so Docker smoke needs the local workspace package built and linked.
 for package_dir in packages/shared packages/cloud/sdk packages/cloud/routing packages/skills; do
   if [[ -f "$package_dir/package.json" ]] && jq -e '.scripts.build' "$package_dir/package.json" >/dev/null; then
     log "Building $(node -p "require('./$package_dir/package.json').name") workspace artifacts"
@@ -761,11 +759,9 @@ for plugin in \
   plugin-local-inference \
   plugin-mcp \
   plugin-signal \
-  plugin-streaming \
   plugin-telegram \
   plugin-whatsapp \
-  plugin-workflow \
-  plugin-x402; do
+  plugin-workflow; do
   plugin_dir="$PLUGINS_DIR/$plugin"
   if [[ -f "$plugin_dir/package.json" ]]; then
     if jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then

@@ -91,20 +91,7 @@ jobs:
           echo "Building snap version: $VERSION"
 
       - name: Normalize runner root ownership for snapd
-        run: |
-          set -euo pipefail
-          ROOT_OWNER="$(stat -c '%u:%g' /)"
-          echo "Runner root owner: ${ROOT_OWNER}"
-          if [ "${ROOT_OWNER}" = "0:0" ]; then
-            echo "Root is already 0:0 — snapd canonicalization OK"
-            exit 0
-          fi
-          echo "Attempting to repair / ownership so snapd/systemd path canonicalization accepts this runner"
-          if sudo -n chown root:root / 2>/dev/null; then
-            echo "Chown succeeded; new owner: $(stat -c '%u:%g' /)"
-          else
-            echo "::warning::Unable to chown / to root:root (sudo unavailable or passwordless sudo disabled). snapd may fail downstream. Remediation: run this job on a standard ubuntu-latest / ubuntu-24.04 GitHub-hosted runner, or configure the container image so / is owned by 0:0."
-          fi
+        uses: ./.github/actions/normalize-snapd-root
 
       - name: Build snap
         uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79

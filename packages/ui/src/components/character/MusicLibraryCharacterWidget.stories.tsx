@@ -52,6 +52,7 @@ export const WithoutPluginState: Story = {
 };
 
 export const Disabled: Story = {
+  tags: ["story-gate-expect-blank"],
   args: {
     pluginState: {
       ...basePluginState,

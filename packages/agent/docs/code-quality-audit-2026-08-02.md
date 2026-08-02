@@ -4,9 +4,9 @@ Date: 2026-08-02
 
 ## Executive summary
 
-`@elizaos/agent` typechecks and now passes a full-source Biome check, but it has
-outgrown the shape of a standalone process wrapper. The package contains 929
-tracked files and roughly 306,000 lines; 474 non-test TypeScript files account
+`@elizaos/agent` typechecks and passes a full-source Biome check, but it has
+outgrown the shape of a standalone process wrapper. The package contains 918
+tracked files and roughly 305,000 lines; 491 non-test TypeScript files account
 for about 174,000 lines. Runtime boot, API hosting, route implementation,
 configuration projection, optional-plugin compatibility, UI-facing DTOs, TEE
 policy, wallet plumbing, and several application features all meet here.
@@ -29,7 +29,7 @@ This audit made the following low-risk changes:
   artifacts;
 - removed four unreferenced package-local test-support modules from the public
   root barrel and source tree;
-- removed eleven confirmed zero-import dependencies and refreshed the lockfile;
+- removed thirteen confirmed zero-import dependencies and refreshed the lockfile;
 - retired four validators/smokes for a TEE implementation and fixtures that no
   longer exist in the repository, then corrected the surviving TEE docs;
 - replaced global logger method mutation with disposable structured-log
@@ -45,6 +45,17 @@ This audit made the following low-risk changes:
   parsed endpoint identity;
 - removed stale view-affinity fixtures for actions deleted with their plugins
   and repaired a route-test runtime fixture that omitted a required method;
+- removed the duplicate `/api/restart` implementation from the API composition
+  root and added route-level restart coverage;
+- made trigger notification and prompt-capture failures observable through
+  `runtime.reportError`, without recording failed prompt captures as saved;
+- consolidated duplicate ambient media declarations and removed three shims for
+  workspace packages that already publish declarations;
+- made package cleanup remove generated declaration residue beside source files,
+  including an orphaned ignored declaration pair found by the second pass;
+- removed unused `@solana/web3.js` and `ignore` direct dependencies and taught
+  Knip about seven dependencies loaded through string/dynamic plugin maps;
+- corrected package-local startup, TEE, lint, and script-layout guidance;
 - added compliant prose headers to two source files; and
 - formatted one previously unformatted route block.
 
@@ -61,16 +72,16 @@ Baseline observations:
 
 | Measure | Result |
 | --- | ---: |
-| Tracked package files | 926 |
-| Tracked TypeScript source files | 865 |
-| Test files | 358 |
-| Non-test TypeScript files | 500 |
-| Total tracked lines | ~304,000 |
+| Tracked package files | 918 |
+| Tracked TypeScript source files | 858 |
+| Test files | 363 |
+| Non-test TypeScript files | 491 |
+| Total tracked lines | ~305,000 |
 | Non-test source lines | ~174,000 |
 | Non-test files over 500 lines | 75 |
 | Catch clauses in production source | 932 |
-| `error-policy:J1`–`J7` annotations in production source | 126 |
-| `process.env` occurrences in production source | 785 |
+| `error-policy:J1`–`J7` annotations in production source | 131 |
+| `process.env` occurrences in production source | 776 |
 | Explicit `any` occurrences in production source | 20 |
 
 Static dead-code analysis reported one unused file, but it was a false positive:
@@ -222,7 +233,7 @@ useful consolidation when the boot pipeline is extracted.
 
 ### P1 — process environment is acting as the runtime dependency container
 
-Production source contains 787 `process.env` occurrences. Boot writes provider,
+Production source contains 776 `process.env` occurrences. Boot writes provider,
 wallet, database, cloud, model, connector, feature, and compatibility state into
 the global process environment; hot reload then tries to replay selected writes.
 This prevents isolated runtime instances and makes precedence dependent on call
@@ -236,16 +247,16 @@ of mirrored keys and a reset strategy for restart/tests.
 
 ### P1 — ambient internal-module declarations shadow real packages
 
-`src/external-modules.d.ts` is 969 lines and declares large surfaces for
+`src/external-modules.d.ts` is 957 lines and declares large surfaces for
 workspace packages including elizacloud, app-manager, UI, and mobile bridges.
 These declarations can silently diverge from the real packages while agent
-typechecking stays green. This audit found and removed one duplicate declaration
-that the old lint scope did not inspect.
+typechecking stays green. This audit removed the duplicate media shim file and
+declarations for three workspace packages that already publish their own types.
 
 Replace internal-package declarations with exported contract-only subpaths or
 small interfaces owned by the agent. Keep ambient declarations only for truly
-untyped third-party modules. Rename the two remaining `external-modules.d.ts`
-files by purpose so ownership is obvious while they are being retired.
+untyped third-party modules. Rename the remaining ambient file by purpose so
+ownership is obvious while it is being retired.
 
 ### Partially resolved — package dependency ownership
 
@@ -264,10 +275,13 @@ dependencies were removed and the lockfile was regenerated:
 - `readable-stream`
 - `sha.js`
 - `simple-get`
+- `@solana/web3.js`
+- `ignore`
 
 The duplicate `@lydell/node-pty` dev dependency was also removed because
-`plugin-pty` owns it. Build and package inspection cover the agent package;
-mobile and isolated-consumer smokes remain appropriate before release.
+`plugin-pty` owns it. Build, package inspection, and the Android mobile bundle
+load smoke cover the agent package; an isolated-consumer smoke remains
+appropriate before release.
 
 `@elizaos/plugin-x402` is dynamically imported by API routing but is neither
 present in this repository nor declared by the package. Make the intended
@@ -277,7 +291,7 @@ the same unresolved ownership problem for `@elizaos/plugin-e2b-sandbox`.
 
 ### P2 — error-policy adoption remains incomplete
 
-Production source has 932 catch clauses but only 126 `error-policy:J1`–`J7`
+Production source has 932 catch clauses but only 131 `error-policy:J1`–`J7`
 annotations. Counts are not proof of incorrectness, but the gap is too large for
 the repository's mechanically checkable policy.
 
@@ -358,10 +372,12 @@ consumer.
 
 ### Safe generated cleanup
 
-- `packages/agent/dist/` is ignored and can be removed with
-  `bun run --cwd packages/agent clean`. Before this audit it contained 478
-  generated `.d.ts.map` files plus compiled `__tests__`/`__fixtures__` files;
-  the build now emits neither category.
+- `packages/agent/dist/`, `dist-mobile/`, `dist-mobile-ios/`, and
+  `dist-mobile-ios-jsc/` are ignored and are removed by
+  `bun run --cwd packages/agent clean`. Before this audit, `dist/` contained
+  478 generated `.d.ts.map` files plus compiled `__tests__`/`__fixtures__`
+  files; the build now emits neither category. The same clean command also
+  removes compiler-generated declarations accidentally written beside source.
 - `.turbo/` and package-local `node_modules/` are ignored caches/install state
   and can be regenerated by normal tooling.
 
@@ -374,13 +390,11 @@ consumer.
 
 ### Tracked declaration files
 
-There are no tracked `.d.ts.map` files in this package. The three tracked
+There are no tracked `.d.ts.map` files in this package. The two tracked
 `.d.ts` files are authored source:
 
 - `src/external-modules.d.ts` — internal/optional package shims; retire through
   real contracts, not blind deletion;
-- `src/types/external-modules.d.ts` — untyped media dependency shims; keep until
-  those dependencies publish types or are wrapped; and
 - `src/types/elizaos-action-augments.d.ts` — a module augmentation; preferably
   move the field into the owning core `Action` contract, then delete the
   augmentation.
@@ -423,6 +437,7 @@ dependencies were also removed rather than left as candidates.
 - `bun run --cwd packages/agent typecheck`
 - `bun run --cwd packages/agent build`
 - `bun run --cwd packages/agent pack:dry-run`
+- `bun run --cwd packages/agent build:mobile`
 - `AGENT_TEST_BATCH_SIZE=10 bun run --cwd packages/agent test`
 - post-build check that every literal `types` export target exists
 - post-build check that `dist` contains no declaration maps, test directories,
@@ -434,23 +449,24 @@ dependencies were also removed rather than left as candidates.
 - Knip scan for files, dependencies, unresolved imports, and cycles
 - tracked/ignored artifact inventory and declaration-map check
 
-All 353 files in the deterministic package inventory received a green result.
-The run used the script's supported batch-size override to avoid 353 separate
-Vitest process startups; configured skips remained skips. A stale affinity
+All 355 files in the deterministic package inventory received a green or
+configured-skip result: 352 files passed and 3 were skipped, with 3,172 passing
+tests and 22 configured skips. The run used the script's supported batch-size
+override to avoid 355 separate Vitest process startups. A stale affinity
 fixture failed the first pass because several referenced actions had been
 deleted with their plugins, and a route fixture failed because it omitted the
 now-required `getParticipantsForRoom` collaborator. Both fixtures were repaired
 and their focused suites plus the affected final inventory segment were rerun
 green.
 
-The dry-run tarball contains 957 files, is 4.4 MB compressed, and has no emitted
+The dry-run tarball contains 953 files, is 4.4 MB compressed, and has no emitted
 `.d.ts.map`, test, or fixture artifacts. Knip no longer reports any of the
-removed exact-zero-import npm dependencies. Its remaining findings are the
-documented live-suite config, dynamically loaded workspace-plugin false
-positives, and the unresolved optional x402/E2B ownership items described
-above. Live-model, mobile-bundle, TEE hardware, cloud, push-delivery, and UI
-evidence remain outside this static/refactor audit because this pass did not
-change those behaviors.
+removed exact-zero-import npm dependencies. Its sole unused-file result is the
+documented live-suite config; the other output is an intentionally referenced
+optional peer plus configuration-hygiene hints. The Android mobile bundle built
+successfully and passed its module-load smoke. Live-model, TEE hardware, cloud,
+push-delivery, and UI evidence remain outside this static/refactor audit because
+this pass did not change those behaviors.
 
 The final post-cleanup lint, typecheck, and production build pass. The build
 artifacts were inspected and then removed, so no generated `dist` residue is

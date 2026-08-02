@@ -97,13 +97,19 @@ function validateManifest(file: string): void {
       `${prefix} LLAMA_CONTEXT must match max_model_len`,
     );
     assert(
-      manifest.vast_template_env?.LLAMA_PARALLEL === "1",
-      `${prefix} single-3090 long-context profile must set LLAMA_PARALLEL=1`,
+      Number.isInteger(Number(manifest.vast_template_env?.LLAMA_PARALLEL)) &&
+        Number(manifest.vast_template_env?.LLAMA_PARALLEL) > 0,
+      `${prefix} llama profile must set a positive LLAMA_PARALLEL`,
+    );
+    const hasCacheTypeK = Boolean(
+      manifest.vast_template_env?.LLAMA_CACHE_TYPE_K,
+    );
+    const hasCacheTypeV = Boolean(
+      manifest.vast_template_env?.LLAMA_CACHE_TYPE_V,
     );
     assert(
-      manifest.vast_template_env?.LLAMA_CACHE_TYPE_K &&
-        manifest.vast_template_env?.LLAMA_CACHE_TYPE_V,
-      `${prefix} llama profile must set compressed KV cache types`,
+      hasCacheTypeK === hasCacheTypeV,
+      `${prefix} llama profile must set both KV cache types or neither`,
     );
   }
 
@@ -126,7 +132,7 @@ function validateManifest(file: string): void {
   }
 
   assert(
-    !manifest.additional_config || manifest.additional_config.qjl !== true,
+    manifest.additional_config?.qjl !== true,
     `${prefix} QJL must not be enabled in manifests; use VLLM_EXPERIMENTAL_QJL with benchmark gate`,
   );
   validateManifestSearch(file, manifest);

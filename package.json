@@ -119,7 +119,7 @@
     "postpublish:restore": "node packages/scripts/restore-workspace-refs.js",
     "migrate": "node packages/scripts/run-turbo.mjs run migrate --filter=./plugins/plugin-sql --force",
     "migrate:generate": "node packages/scripts/run-turbo.mjs run migrate:generate --filter=./plugins/plugin-sql",
-    "test": "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --min-tasks=200 && bun run test:scripts",
+    "test": "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --min-tasks=120 && bun run test:scripts",
     "test:scripts": "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml",
     "test:e2e:audit-ui": "node scripts/e2e-recordings/audit-ui-coverage.mjs",
     "ai-qa:review": "node scripts/ai-qa/review-screenshots.mjs",

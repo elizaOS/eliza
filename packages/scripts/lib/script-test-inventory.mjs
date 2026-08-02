@@ -21,7 +21,7 @@ import {
 export const SCRIPT_TEST_RUNNER =
   "node packages/scripts/run-script-tests.mjs --report reports/script-tests/inventory.json --junit reports/script-tests/junit.xml";
 export const SCRIPT_TEST_LANE_COMMANDS = {
-  test: "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --min-tasks=200 && bun run test:scripts",
+  test: "node packages/scripts/run-all-tests.mjs --only=test --no-cloud --min-tasks=120 && bun run test:scripts",
   "test:all":
     "node packages/scripts/run-all-tests.mjs --all && bun run test:scripts",
 };

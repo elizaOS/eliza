@@ -16,7 +16,9 @@ import type {
   WifiStateResult,
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
-import { Button, Input, type OverlayAppContext } from "@elizaos/ui";
+import type { OverlayAppContext } from "@elizaos/shared";
+import { Button } from "@elizaos/ui/button";
+import { Input } from "@elizaos/ui/input";
 import {
   CheckCircle2,
   ChevronLeft,

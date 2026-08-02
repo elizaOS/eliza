@@ -60,6 +60,7 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
         a: { type: "Table", props: { rows: "nope", columns: "nope" } },
       },
     });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     let container: HTMLElement | undefined;
     expect(() => {
       container = withApp(
@@ -73,5 +74,7 @@ describe("MessageUiSpecBlock — a malformed model spec never bricks the app", (
     // contained fallback is shown, and the raw JSON stays reachable.
     expect(screen.getByText("Couldn't render this widget.")).toBeTruthy();
     expect(container?.textContent ?? "").toContain("View JSON");
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

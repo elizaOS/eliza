@@ -100,7 +100,7 @@ export interface AdminMonoMetaProps
 export function AdminMonoMeta({ className, ...props }: AdminMonoMetaProps) {
   return (
     <span
-      className={cn("text-2xs font-mono text-muted/70", className)}
+      className={cn("text-2xs font-mono text-muted", className)}
       {...props}
     />
   );

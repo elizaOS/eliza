@@ -41,7 +41,7 @@ function UsageBar({ label, pct }: { label: string; pct?: number }) {
   const clamped = Math.max(0, Math.min(100, Math.round(pct)));
   return (
     <div className="flex items-center gap-1.5">
-      <span className="w-9 shrink-0 text-3xs uppercase tracking-wide text-muted/70">
+      <span className="w-9 shrink-0 text-3xs uppercase tracking-wide text-muted">
         {label}
       </span>
       <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted/20">
@@ -150,7 +150,7 @@ export function OrchestratorAccountsView({
       testId="chat-widget-accounts"
     >
       <div className="space-y-2.5">
-        <div className="flex items-center justify-between text-3xs text-muted/70">
+        <div className="flex items-center justify-between text-3xs text-muted">
           <span>
             {t("agentorchestrator.strategy", { defaultValue: "Strategy" })}
           </span>
@@ -197,7 +197,7 @@ export function OrchestratorAccountsView({
                 <span className="truncate font-medium text-txt">
                   {account.label}
                 </span>
-                <span className="truncate text-3xs text-muted/60">
+                <span className="truncate text-3xs text-muted">
                   {account.providerId}
                 </span>
                 {inUse > 0 ? (
@@ -225,7 +225,7 @@ export function OrchestratorAccountsView({
             className="space-y-1.5 border-t border-border/40 pt-1.5"
             data-testid="orchestrator-room-roster"
           >
-            <div className="text-3xs font-medium uppercase tracking-wide text-muted/60">
+            <div className="text-3xs font-medium uppercase tracking-wide text-muted">
               {t("agentorchestrator.taskRooms", { defaultValue: "Task rooms" })}
             </div>
             {activeRooms.map((room) => (
@@ -248,18 +248,18 @@ export function OrchestratorAccountsView({
                     key={`${room.taskId}:${p.kind}:${p.id}`}
                     className="flex items-center gap-1 pl-1 text-3xs text-muted"
                   >
-                    <Workflow className="h-3 w-3 shrink-0 text-muted/60" />
+                    <Workflow className="h-3 w-3 shrink-0 text-muted" />
                     <span className="truncate font-medium text-txt">
                       {p.label}
                     </span>
                     {p.accountLabel ? (
                       <>
-                        <span className="shrink-0 text-muted/50">→</span>
+                        <span className="shrink-0 text-muted">→</span>
                         <span className="truncate">{p.accountLabel}</span>
                       </>
                     ) : null}
                     {typeof p.totalTokens === "number" && p.totalTokens > 0 ? (
-                      <span className="ml-auto shrink-0 tabular-nums text-muted/60">
+                      <span className="ml-auto shrink-0 tabular-nums text-muted">
                         {Math.round(p.totalTokens / 1000)}k
                       </span>
                     ) : null}
@@ -275,11 +275,11 @@ export function OrchestratorAccountsView({
                 key={a.sessionId}
                 className="flex items-center gap-1 text-3xs text-muted"
               >
-                <Workflow className="h-3 w-3 shrink-0 text-muted/60" />
+                <Workflow className="h-3 w-3 shrink-0 text-muted" />
                 <span className="truncate font-medium text-txt">{a.label}</span>
-                <span className="shrink-0 text-muted/50">→</span>
+                <span className="shrink-0 text-muted">→</span>
                 <span className="truncate">{a.accountLabel}</span>
-                <span className="ml-auto shrink-0 tabular-nums text-muted/60">
+                <span className="ml-auto shrink-0 tabular-nums text-muted">
                   {Math.round(a.totalTokens / 1000)}k
                 </span>
               </div>

@@ -320,8 +320,8 @@ may only use the manual PR boundary documented above.
 | `PHALA_CLOUD_API_KEY` | TEE deployment |
 | `GH_PAT` | Cross-repo operations |
 
-Turbo caching is GitHub-native (`.github/actions/turbo-cache-github` via
-`setup-bun-workspace`) — no Vercel SaaS remote cache, so `TURBO_TOKEN` /
+Turbo caching is GitHub-native through `setup-bun-workspace` — no Vercel SaaS
+remote cache, so `TURBO_TOKEN` /
 `TURBO_TEAM` are no longer used and are banned by
 `ci-workflow-dedup-contract.mjs` (#12341).
 

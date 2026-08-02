@@ -188,7 +188,7 @@
 [data-theme="dark"],
 .dark {
   --bg: var(--brand-black);
-  --bg-accent: var(--brand-black);
+  --bg-accent: rgba(255, 255, 255, 0.08);
   --bg-elevated: rgba(255, 255, 255, 0.04);
   --bg-hover: rgba(255, 255, 255, 0.08);
   --bg-muted: rgba(255, 255, 255, 0.06);

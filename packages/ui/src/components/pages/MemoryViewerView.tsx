@@ -190,7 +190,7 @@ const MemoryCard = memo(function MemoryCard({
           {typeLabel(memory.type, t)}
         </span>
         {memory.source ? (
-          <span className="text-xs-tight text-muted/70">{memory.source}</span>
+          <span className="text-xs-tight text-muted">{memory.source}</span>
         ) : null}
         <span className="ml-auto text-xs-tight text-muted">
           {formatRelativeTime(memory.createdAt, t)}
@@ -203,7 +203,7 @@ const MemoryCard = memo(function MemoryCard({
         <div className="mt-3 space-y-1.5 pt-3">
           {memory.entityId ? (
             <div className="text-xs-tight text-muted">
-              <span className="text-muted/70">
+              <span className="text-muted">
                 {t("memoryviewer.field.entity", { defaultValue: "Entity" })}
               </span>{" "}
               <span className="font-mono text-2xs">{memory.entityId}</span>
@@ -211,14 +211,14 @@ const MemoryCard = memo(function MemoryCard({
           ) : null}
           {memory.roomId ? (
             <div className="text-xs-tight text-muted">
-              <span className="text-muted/70">
+              <span className="text-muted">
                 {t("memoryviewer.field.room", { defaultValue: "Room" })}
               </span>{" "}
               <span className="font-mono text-2xs">{memory.roomId}</span>
             </div>
           ) : null}
           <div className="text-xs-tight text-muted">
-            <span className="text-muted/70">
+            <span className="text-muted">
               {t("memoryviewer.field.created", { defaultValue: "Created" })}
             </span>{" "}
             {formatDateTime(memory.createdAt, {
@@ -226,7 +226,7 @@ const MemoryCard = memo(function MemoryCard({
             })}
           </div>
           <div className="text-xs-tight text-muted">
-            <span className="text-muted/70">
+            <span className="text-muted">
               {t("memoryviewer.field.id", { defaultValue: "ID" })}
             </span>{" "}
             <span className="font-mono text-2xs">{memory.id}</span>

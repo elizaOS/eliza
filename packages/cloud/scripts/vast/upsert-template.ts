@@ -20,7 +20,7 @@
  *                        when VAST_RUNTIME=vllm. Llama runtime may opt in
  *                        with a llama manifest such as eliza-1-27b-3090.json.
  *   PYWORKER_REPO      — git URL for the PyWorker source (defaults to the
- *                        elizaOS/cloud repo).
+ *                        elizaOS/eliza monorepo).
  *   PYWORKER_REF       — branch/tag/commit. **Pin a commit in production**;
  *                        defaults to "develop" only because that matches the
  *                        non-production default.
@@ -31,7 +31,7 @@
  *   LLAMA_SERVER_BIN   — compatible llama-server binary (default: llama-server).
  *   HF_TOKEN_SECRET    — pass-through HuggingFace token for gated repos.
  *
- * The on_start script lives in services/vast-pyworker/onstart.sh and is
+ * The on_start script lives in packages/cloud/services/vast-pyworker/onstart.sh and is
  * inlined here at write time so the Vast template is fully self-contained
  * (Vast doesn't fetch additional files at start; everything happens inside
  * the on_start body).
@@ -76,6 +76,11 @@ function readEnv(name: string, fallback?: string): string {
   if (value && value.trim().length > 0) return value.trim();
   if (fallback !== undefined) return fallback;
   throw new Error(`Missing required env var: ${name}`);
+}
+
+function readOptionalEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value || undefined;
 }
 
 function optionalEnv(env: Record<string, string>, names: string[]): void {
@@ -151,7 +156,7 @@ async function main(): Promise<void> {
     throw new Error(`VAST_RUNTIME must be "llama" or "vllm", got ${runtime}`);
   }
   const manifest =
-    runtime === "vllm" || process.env.ELIZA_VAST_MANIFEST
+    runtime === "vllm" || readOptionalEnv("ELIZA_VAST_MANIFEST")
       ? readSelectedManifest()
       : null;
   const manifestRuntime =
@@ -174,7 +179,7 @@ async function main(): Promise<void> {
   const env: Record<string, string> = {
     PYWORKER_REPO: readEnv(
       "PYWORKER_REPO",
-      "https://github.com/elizaOS/cloud.git",
+      "https://github.com/elizaOS/eliza.git",
     ),
     PYWORKER_REF: readEnv("PYWORKER_REF", "develop"),
   };
@@ -199,7 +204,7 @@ async function main(): Promise<void> {
     // retired split repos or the GGUF bundle repo.
     const manifestModel =
       manifest?.manifest.model ?? manifest?.manifest.model_repo;
-    if (!manifestModel && !process.env.MODEL_REPO?.trim()) {
+    if (!manifestModel && !readOptionalEnv("MODEL_REPO")) {
       throw new Error(
         "VAST_RUNTIME=vllm requires ELIZA_VAST_MANIFEST or MODEL_REPO",
       );
@@ -306,11 +311,14 @@ async function main(): Promise<void> {
   // operator sets, forward both common names. The Python hub library reads
   // HUGGINGFACE_HUB_TOKEN natively; the worker scripts login from the older
   // HUGGING_FACE_HUB_TOKEN name.
-  const hfToken =
-    process.env.HF_TOKEN ??
-    process.env.HF_TOKEN_SECRET ??
-    process.env.HUGGINGFACE_HUB_TOKEN ??
-    process.env.HUGGING_FACE_HUB_TOKEN;
+  const hfToken = [
+    "HF_TOKEN",
+    "HF_TOKEN_SECRET",
+    "HUGGINGFACE_HUB_TOKEN",
+    "HUGGING_FACE_HUB_TOKEN",
+  ]
+    .map(readOptionalEnv)
+    .find(Boolean);
   if (hfToken && hfToken.trim().length > 0) {
     env.HUGGINGFACE_HUB_TOKEN = hfToken.trim();
     env.HUGGING_FACE_HUB_TOKEN = hfToken.trim();
@@ -346,7 +354,7 @@ async function main(): Promise<void> {
   const template = await upsertTemplate(apiKey, config);
   console.log(`[vast] Template ready: id=${template.id} name=${template.name}`);
   console.log(
-    `[vast] Next: VAST_TEMPLATE_ID=${template.id} bun scripts/vast/provision-endpoint.ts`,
+    `[vast] Next: VAST_TEMPLATE_ID=${template.id} bun packages/cloud/scripts/vast/provision-endpoint.ts`,
   );
 }
 

@@ -101,6 +101,8 @@ plugins/**/auto-enable.d.ts
 plugins/**/auto-enable.d.ts.map
 **/vitest.config.d.ts
 **/vitest.config.d.ts.map
+packages/scripts/vitest/*.d.ts
+packages/scripts/vitest/*.d.ts.map
 
 # Stray declaration emit next to TS in plugin-discord (canonical declarations live under dist/)
 plugins/plugin-discord/**/*.d.ts

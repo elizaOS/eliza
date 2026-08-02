@@ -6,11 +6,12 @@
 
 This pass implemented the highest-risk startup corrections instead of leaving them as recommendations. The global `node:http` monkey-patch is gone; compatibility behavior is explicit middleware on one concrete server. Process signals and exit codes are owned by the CLI boundary. A typed startup state machine now drives lifecycle/status projection. Compatibility state is per-server, startup failures close bound resources, deferred feature failures become an observable degraded phase, and a real reset-route E2E is no longer dark.
 
-The major work that remains is decomposition, not emergency correctness repair: `runtime/eliza.ts` and `api/server.ts` are still oversized, compatibility routes need consumer-led retirement, several service handles are still module-global, and native/build/release tooling should eventually become separate workspaces.
+The major work that remains is decomposition, not emergency correctness repair: `runtime/eliza.ts` and `api/server.ts` are still oversized, compatibility routes need consumer-led retirement, and native/build/release tooling should eventually become separate workspaces.
 
 ## Cleanup and refactoring completed
 
 - Removed about 11.9 GB of ignored generated output: the Bun/RISC-V build cache, Electrobun build output, `app-core/dist`, and a stray generated `test/eliza-package-paths.d.ts` plus source map. These outputs are reproducible and were not tracked.
+- The verification pass removed another roughly 790 MB of regenerated Electrobun release artifacts/probes, the runtime skill catalog cache, local PGlite test state, Pods, Python bytecode, native library outputs, and package build output. Installed dependencies and the repository-managed iOS artifact bundle were preserved.
 - Confirmed that the remaining tracked declaration files are source inputs, not compiler debris:
   - `vite-env.d.ts` supplies Vite ambient types.
   - `platforms/electrobun/src/types/web-speech.d.ts` supplies missing Web Speech declarations.
@@ -35,12 +36,16 @@ The major work that remains is decomposition, not emergency correctness repair: 
 - Removed dead config-file synchronization that resolved source and destination to the same path yet ran after every response.
 - Removed an unused SQL table-introspection helper and the unused direct `undici` dependency.
 - Removed the dead Shopify live-test switch and its nonexistent dynamic import.
-- Converted trigger-bridge and connector-catalog startup from log-and-continue to an observable post-ready failure. Background SQL/TTS and sandbox registration failures now call `runtime.reportError`.
+- Converted trigger-bridge and connector-catalog startup from log-and-continue to an observable post-ready failure. Background SQL and sandbox registration failures now call `runtime.reportError`.
 - Made agent reset fail explicitly on runtime-stop timeout, unexpected database paths, deletion failures, config persistence failures, or secure-store cleanup failures instead of returning partial success.
 - Activated and fixed the real reset-route E2E lane by renaming its previously excluded file and making the app-real config inherit app-core's workspace aliases.
 - Deleted the machine-specific iOS `Podfile.lock`, ignored regenerated locks, and normalize Android Capacitor settings to portable `require.resolve` lookups after sync.
 - Added `check:source-artifacts`, which rejects accidental `.d.ts` and `.d.ts.map` files outside generated output while allowing the two intentional ambient declarations.
 - Excluded Pods, temporary build probes, and test/spec files from copied package assets. Dry-run unpacked size fell from 78.2 MB/1,509 files to 33.6 MB/1,378 files; the tarball fell from 34.7 MB to 26.5 MB.
+- Moved post-ready tail, trigger-bridge, and connector-catalog handles into per-runtime boot resources. Multiple embedded hosts no longer supersede or tear down each other's resources, and failed runtime repair shuts down the unpublished runtime before surfacing the original failure.
+- Removed the obsolete Edge TTS fallback stack. `plugin-edge-tts` is no longer a workspace package; local voice ownership stays with local inference, while Cloud TTS remains at its explicit server boundary. Stale dependencies, aliases, Docker entries, declarations, and orchestrator requirements were removed with it.
+- Removed stale `plugin-streaming` and `plugin-x402` references from app-core Docker, Electrobun, TypeScript, Vitest, and setup paths after confirming those workspace directories do not exist.
+- Made Android LP3 policy helpers independent of the importing repository's ambient app identity. Production audits pass the active whitelabel ID explicitly, while canonical policy tests remain deterministic in nested consumer checkouts.
 
 ## How agent startup currently works
 
@@ -51,7 +56,7 @@ The major work that remains is decomposition, not emergency correctness repair: 
 5. It starts the app-core API wrapper before the runtime so the renderer can connect while the agent boots.
 6. `src/api/server.ts` passes an explicit compatibility middleware and concrete-server configurator to `@elizaos/agent`; unmatched requests delegate once to the upstream route kernel.
 7. Runtime boot calls the upstream agent boot, repairs SQL compatibility, installs registry boot hooks, initializes autonomy, and either awaits or backgrounds a post-ready tail.
-8. The post-ready tail registers TTS, app routes, runtime hooks, credential bridges, trigger handling, connector catalogs, and voice warmup. A failure marks lifecycle `degraded` and is reported to the runtime.
+8. The post-ready tail registers app routes, runtime hooks, credential bridges, trigger handling, connector catalogs, and voice warmup. A failure marks lifecycle `degraded` and is reported to the runtime.
 9. The runtime returns a server-only host handle. `register.start.ts` owns process signals, shutdown timeout, and exit; the host owns only its resources.
 
 This sequence optimizes time-to-first-render, but it has too many owners and implicit ordering constraints.
@@ -92,7 +97,7 @@ The global patch and per-response config synchronization are removed. The remain
 
 ### P1: complete error-policy compliance
 
-Static counts found roughly 294 catches in `src` but only 57 `error-policy:J*` annotations at the start. The startup/server paths changed in this pass now fail fast or carry a justification. Post-swap SQL/TTS and sandbox registration call `runtime.reportError`; trigger/catalog failures propagate to the degraded feature phase; reset no longer reports partial success.
+The current tree contains 211 catches in `src` and 80 `error-policy:J*` annotations. A proximity scan still finds 181 catches across 70 files without a nearby justification; the largest concentrations are `cli/plugins-cli.ts`, `api/ios-local-agent-transport.ts`, `api/secrets-manager-routes.ts`, and `runtime/dev-server.ts`. The startup/server paths changed in this pass now fail fast or carry a justification. Post-swap SQL and sandbox registration call `runtime.reportError`; trigger/catalog failures propagate to the degraded feature phase; reset no longer reports partial success.
 
 The rest of `src` still needs a package-wide boundary audit rather than mechanical annotation. Inner helpers should throw `ElizaError` with cause/context, deferred work should update feature state and report errors, and teardown catches should be observable J6 handlers.
 
@@ -128,7 +133,7 @@ At minimum, publish an explicit asset manifest instead of copying entire top-lev
 
 Static scanning found 53 `as never` uses and 87 broad `any`/double-cast patterns in `src`. Many occur where runtime service registries do not express app-specific services. Extend the core registry typing or add typed app-core adapters instead of repeatedly casting service names and values.
 
-Shared compatibility runtime and signal-registration globals are gone. `_triggerEventBridge`, `_connectorTargetCatalog`, and `latestBootTailRuntime` remain and should become fields on the per-host lifecycle object. Multiple hosts in one process can still contend for those three resources.
+Shared compatibility runtime and signal-registration globals are gone. Trigger bridges, connector catalogs, and post-ready tail ownership are isolated in a `WeakMap` keyed by the concrete runtime, and shutdown disposes only that runtime's resources. Remaining weak typing is concentrated at service-registry boundaries rather than host ownership.
 
 ### P2: consolidate port and environment policy
 
@@ -151,23 +156,22 @@ The two tracked `.d.ts` files are not deletion candidates without replacement be
 
 ## Recommended implementation order
 
-1. Move the three remaining module-global service/tail handles onto a concrete host object.
-2. Split runtime and server modules along the boundaries above without changing the new lifecycle contract.
-3. Add route metadata and structured readiness failures for post-ready feature routes.
-4. Inventory compatibility-route consumers and remove shims route-by-route.
-5. Split build/native/packaging workspaces and replace broad asset-directory copying with an explicit manifest.
-6. Consolidate iOS splash assets with real native launch-screen evidence.
-7. Run the remaining package-wide error-policy and weak-type audit after module ownership is clear.
-8. Tighten Knip dependency ignores as packaging dependencies move to their owning workspace.
+1. Split runtime and server modules along the boundaries above without changing the new lifecycle contract.
+2. Add route metadata and structured readiness failures for post-ready feature routes.
+3. Inventory compatibility-route consumers and remove shims route-by-route.
+4. Split build/native/packaging workspaces and replace broad asset-directory copying with an explicit manifest.
+5. Consolidate iOS splash assets with real native launch-screen evidence.
+6. Run the remaining package-wide error-policy and weak-type audit after module ownership is clear.
+7. Tighten Knip dependency ignores as packaging dependencies move to their owning workspace.
 
 ## Verification notes
 
 - The complete package build passed, including declaration generation, filtered asset copying, package preparation, and ESM import rewriting.
-- Startup state/process-owner/repair tests passed (12 tests), agent HTTP extension tests passed (9 tests), asset/native-normalizer tests passed, and the newly activated real HTTP reset E2E passed against a real runtime and PGlite database.
-- `check:source-artifacts` passes with exactly two intentional ambient declarations, and Android native-plugin verification passes 19/19.
-- The dry-run package is 26.5 MB compressed, 33.6 MB unpacked, and 1,378 files (previously 34.7 MB, 78.2 MB, and 1,509 files).
-- Package typecheck passed earlier in the pass. It is currently blocked by concurrent repository refactoring that removed or moved the `@elizaos/core/atomic-json` export while several agent/auth/plugin consumers still import it; none of the reported sites is part of this app-core refactor.
-- The package lint baseline has an unrelated import-order failure in `src/services/multi-account-refresh-failover.test.ts`.
-- The full unit command completed 697 passing tests and 36 skips but is not green in the current worktree: 98 suites fail to import because `@elizaos/logger` has no resolvable package entry, and existing mobile-policy/smoke-declaration fixtures add several independent failures. None of those failures touches the files changed by this review.
-- Package-scoped Knip completes successfully; remaining output consists only of configuration-tightening hints.
+- The full suite passes with module isolation: 193 files passed and 1 intentionally skipped; 1,571 tests passed and 15 skipped. Focused startup, Android policy/audit, reset, view-provenance, local-inference, and multi-account failover regressions also pass.
+- Package typecheck, Biome lint, Biome format, and `check:source-artifacts` pass. The source tree contains exactly two intentional ambient declarations and no compiler debris.
+- Package-scoped Knip exits successfully; its only output is the existing `.css` compiled-extension configuration hint.
+- Android native-plugin verification passes 19/19 required compiled plugins. It reports two present-but-undeclared modules that correctly will not ship.
+- The dry-run package is 26.5 MB compressed, 33.6 MB unpacked, and 1,364 files (previously 34.7 MB, 78.2 MB, and 1,509 files).
+- The default non-isolated Vitest mode completed once with only the three Anthropic clean-checkout failures fixed here, but a subsequent repetition deadlocked in idle coordinator/worker IPC under concurrent repository test load. The isolated run completed cleanly; removing the package's `isolate: false` test coupling remains a test-infrastructure cleanup item.
+- The updated mobile documentation passes all 23 documentation integrity, navigation, and link tests.
 - No `packages/app` UI code changed, so the app screenshot audit is not applicable to this cleanup.

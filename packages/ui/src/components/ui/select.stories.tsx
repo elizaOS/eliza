@@ -30,7 +30,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   render: (args) => (
     <Select {...args}>
-      <SelectTrigger className="w-56">
+      <SelectTrigger aria-label="Fruit" className="w-56">
         <SelectValue placeholder="Select a fruit" />
       </SelectTrigger>
       <SelectContent>
@@ -57,7 +57,7 @@ export const Disabled: Story = {
 export const WithGroupsAndLabels: Story = {
   render: (args) => (
     <Select {...args}>
-      <SelectTrigger className="w-56">
+      <SelectTrigger aria-label="Timezone" className="w-56">
         <SelectValue placeholder="Select a timezone" />
       </SelectTrigger>
       <SelectContent>

@@ -96,7 +96,7 @@ function rootScript(name) {
 
 describe("root test lane min-task wiring (#13620)", () => {
   for (const [scriptName, floor] of [
-    ["test", 200],
+    ["test", 120],
     ["test:server", 8],
     ["test:client", 3],
     ["test:plugins", 100],

@@ -101,7 +101,7 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
   if (policies.length === 0) {
     return (
       <div className="p-8 text-center border border-white/10 bg-black/40">
-        <p className="font-mono text-sm text-white/40">No policies yet</p>
+        <p className="font-mono text-sm text-white/60">No policies yet</p>
         <p className="font-mono text-xs text-white/20 mt-1">
           Policies will appear here once configured through the Steward
           dashboard.
@@ -148,7 +148,7 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
 
             {policy.description && (
               <div className="px-4 py-2 border-b border-white/5">
-                <p className="font-mono text-xs text-white/40">
+                <p className="font-mono text-xs text-white/60">
                   {policy.description}
                 </p>
               </div>

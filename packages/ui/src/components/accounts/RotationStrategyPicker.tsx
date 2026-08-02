@@ -101,6 +101,9 @@ export function RotationStrategyPicker({
         disabled={disabled}
       >
         <SelectTrigger
+          aria-label={t("accounts.strategy.label", {
+            defaultValue: "Strategy",
+          })}
           id={`rotation-strategy-${providerId}`}
           className="h-8 w-[160px] gap-1 truncate whitespace-nowrap rounded-sm border border-border bg-card text-xs [&>span]:truncate"
         >

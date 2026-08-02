@@ -657,7 +657,7 @@ export function ElizaAgentActions({
             </p>
             {upgradeJob && (
               <p
-                className="text-xs text-white/40"
+                className="text-xs text-white/60"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
               >
                 {t("cloud.containers.agentActions.jobLabel", {
@@ -701,7 +701,7 @@ export function ElizaAgentActions({
             </p>
             {trackedJob && (
               <p
-                className="text-xs text-white/40"
+                className="text-xs text-white/60"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
               >
                 {t("cloud.containers.agentActions.jobLabel", {

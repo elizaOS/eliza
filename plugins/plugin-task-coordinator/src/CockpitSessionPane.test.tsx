@@ -22,7 +22,7 @@
 import type {
   CodingAgentTaskThreadDetail,
   CodingAgentTaskTimelineItem,
-} from "@elizaos/ui";
+} from "@elizaos/ui/api/client-types-cloud";
 import {
   cleanup,
   fireEvent,
@@ -93,7 +93,7 @@ vi.mock("@elizaos/ui", async (importOriginal) => {
   };
 });
 
-import { getViewChatBinding } from "@elizaos/ui";
+import { getViewChatBinding } from "@elizaos/ui/state/view-chat-binding";
 import { CockpitSessionPane } from "./CockpitSessionPane";
 
 const ISO = "2026-01-01T00:00:00.000Z";

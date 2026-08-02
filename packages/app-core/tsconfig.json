@@ -12,9 +12,6 @@
     "noEmit": true,
     "paths": {
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
-      "@elizaos/plugin-streaming": [
-        "../../plugins/plugin-streaming/src/index.ts"
-      ],
       "@elizaos/plugin-app-manager": [
         "../../plugins/plugin-app-manager/src/index.ts"
       ],

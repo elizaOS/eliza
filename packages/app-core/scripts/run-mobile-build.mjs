@@ -5503,10 +5503,15 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
+// LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
+// entrypoints pass their resolved identity explicitly so nested hosts cannot
+// leak ambient branding into these pure policy helpers.
+const ANDROID_LP3_CANONICAL_APP_ID = "ai.elizaos.app";
+
 export function enforceAndroidLp3ColorPolicyBuildPolicy({
   targetName,
   env = process.env,
-  appId = APP.appId,
+  appId = ANDROID_LP3_CANONICAL_APP_ID,
 }) {
   if (!isAndroidLp3ColorPolicyEnabled(env)) return;
   const playSignaled =
@@ -7079,6 +7084,7 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   assertAndroidArtifactOmitsLp3ManifestMarkers(
     dumpAndroidArtifactManifest(aapt, artifact),
     {
+      appId: APP.appId,
       label: "ordinary AOSP",
       permissions: ["WRITE_SECURE_SETTINGS"],
     },
@@ -7847,12 +7853,10 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
 
 export function assertAndroidArtifactOmitsLp3ManifestMarkers(
   manifestText,
-  { label, permissions = [] },
+  { appId = ANDROID_LP3_CANONICAL_APP_ID, label, permissions = [] },
 ) {
   const forbiddenMarkers = [
-    ...ANDROID_LP3_POLICY_CLASSES.map(
-      (className) => `${APP.appId}.${className}`,
-    ),
+    ...ANDROID_LP3_POLICY_CLASSES.map((className) => `${appId}.${className}`),
     ...ANDROID_LP3_PRIVATE_ACTIONS,
     ...ANDROID_LP3_POLICY_MARKERS,
     ...permissions.map((permission) => `android.permission.${permission}`),
@@ -8045,6 +8049,7 @@ export function auditAndroidCloudArtifact(
         assertAndroidLp3ColorPolicyManifest(manifestText);
       } else {
         assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+          appId: APP.appId,
           label: "normal Cloud",
         });
       }

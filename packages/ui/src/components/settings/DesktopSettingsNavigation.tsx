@@ -86,7 +86,7 @@ export function DesktopSettingsNavigation({
 
         {grouped.map(({ group, label: groupLabel, items }) => (
           <section key={group} data-testid={`desktop-settings-group-${group}`}>
-            <h2 className="mb-1 px-2 text-2xs font-medium uppercase tracking-wide text-muted/70">
+            <h2 className="mb-1 px-2 text-2xs font-medium uppercase tracking-wide text-muted">
               {groupLabel}
             </h2>
             <div className="flex flex-col gap-0.5">

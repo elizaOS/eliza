@@ -2,7 +2,8 @@
  * Drawer variant of PtyConsoleBase — wraps the PTY console with a session
  * switcher and a new-session control for the bottom-drawer surface.
  */
-import { Button, type CodingAgentSession } from "@elizaos/ui";
+import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
+import { Button } from "@elizaos/ui/button";
 import { Plus, Terminal } from "lucide-react";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 

@@ -8,8 +8,7 @@ export const VAST_PYWORKER_DIR = join(
   __dirname,
   "..",
   "..",
-  "..",
-  "cloud-services",
+  "services",
   "vast-pyworker",
 );
 export const VAST_MANIFEST_DIR = join(VAST_PYWORKER_DIR, "manifests");

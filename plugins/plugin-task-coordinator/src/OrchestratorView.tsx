@@ -5,7 +5,7 @@
  * detailed task state, inspection, and mutations.
  */
 
-import { OrchestratorTaskWidget } from "@elizaos/ui";
+import { OrchestratorTaskWidget } from "@elizaos/ui/components/chat/widgets/orchestrator-task-widget";
 import { Escape } from "@elizaos/ui/spatial";
 import { OrchestratorWorkbench } from "./OrchestratorWorkbench.tsx";
 

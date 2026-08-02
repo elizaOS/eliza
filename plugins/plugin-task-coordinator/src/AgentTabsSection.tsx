@@ -3,12 +3,10 @@
  * of the available agent frameworks, each tab carrying its install/auth state
  * (preflight result → status icon).
  */
-import {
-  type AgentPreflightResult,
-  Button,
-  SettingsControls,
-  useAppSelector,
-} from "@elizaos/ui";
+import type { AgentPreflightResult } from "@elizaos/ui/api/client-types-cloud";
+import { Button } from "@elizaos/ui/button";
+import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { useAppSelector } from "@elizaos/ui/state/app-store";
 import {
   AlertTriangle,
   CheckCircle2,

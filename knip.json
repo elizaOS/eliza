@@ -436,7 +436,19 @@
         "*.ts"
       ],
       "ignore": ["dist/**", "dist-mobile*/**"],
-      "ignoreDependencies": ["node:sqlite", "ws", "@types/ws", "x402-fetch"]
+      "ignoreDependencies": [
+        "@elizaos/plugin-cloud-apps",
+        "@elizaos/plugin-imessage",
+        "@elizaos/plugin-mcp",
+        "@elizaos/plugin-notes",
+        "@elizaos/plugin-signal",
+        "@elizaos/plugin-whatsapp",
+        "@elizaos/plugin-workflow",
+        "node:sqlite",
+        "ws",
+        "@types/ws",
+        "x402-fetch"
+      ]
     },
     "packages/core": {
       "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],

@@ -12,7 +12,8 @@
  * task-coordinator depend on app-core for hooks, types, and the client.
  */
 
-import { registerTaskCoordinatorSlots, registerTaskWidget } from "@elizaos/ui";
+import { registerTaskWidget } from "@elizaos/ui/components/chat/widgets/task-widget";
+import { registerTaskCoordinatorSlots } from "@elizaos/ui/slots/task-coordinator-slots.helpers";
 import type {
   TaskCoordinatorCodingAgentControlChipProps,
   TaskCoordinatorCodingAgentSettingsSectionProps,

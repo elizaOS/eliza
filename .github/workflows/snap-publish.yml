@@ -61,6 +61,9 @@ jobs:
           ref: ${{ inputs.tag }}
           submodules: false
 
+      - name: Normalize runner root ownership for snapd
+        uses: ./.github/actions/normalize-snapd-root
+
       - name: Check Snap Store credentials
         id: creds_check
         run: |

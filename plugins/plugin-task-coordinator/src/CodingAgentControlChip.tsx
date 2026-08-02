@@ -2,12 +2,10 @@
  * App-shell header chip showing the live coding-agent session count with a
  * stop-all control. Fills the `@elizaos/ui` control-chip slot.
  */
-import {
-  Button,
-  type CodingAgentSession,
-  client,
-  useAppSelector,
-} from "@elizaos/ui";
+import { client } from "@elizaos/ui/api/client";
+import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
+import { Button } from "@elizaos/ui/button";
+import { useAppSelector } from "@elizaos/ui/state/app-store";
 import { Square, Terminal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 

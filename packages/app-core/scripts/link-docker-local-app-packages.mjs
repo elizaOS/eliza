@@ -73,7 +73,6 @@ const localPackages = [
   "eliza/plugins/plugin-wallet",
   "eliza/plugins/plugin-whatsapp",
   "eliza/plugins/plugin-workflow",
-  "eliza/plugins/plugin-x402",
 ];
 
 function resolveSourceExportPath(packageDir, exportPath) {

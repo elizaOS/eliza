@@ -119,7 +119,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Cancel zombie in_progress + wedged queued + pending deploy + stale waiting runs
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           MAX_AGE_MINUTES: ${{ vars.ACTIONS_JANITOR_MAX_AGE_MINUTES || '' }}
           LEGACY_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_MAX_AGE_HOURS || '' }}

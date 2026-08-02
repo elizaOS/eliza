@@ -67,6 +67,14 @@ const pluginIMessageSrc = path.join(
   "plugins/plugin-imessage/src",
 );
 const pluginMcpSrc = path.join(monorepoRoot, "plugins/plugin-mcp/src");
+const pluginLocalInferenceSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-local-inference/src",
+);
+const pluginNativeFilesystemSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-native-filesystem/src",
+);
 const pluginOllamaRoot = path.join(monorepoRoot, "plugins/plugin-ollama");
 const pluginOpenAiSrc = path.join(monorepoRoot, "plugins/plugin-openai");
 const pluginPdfSrc = path.join(monorepoRoot, "plugins/plugin-pdf");
@@ -75,10 +83,6 @@ const pluginRegistrySrc = path.join(
   "plugins/plugin-registry/src",
 );
 const pluginSignalSrc = path.join(monorepoRoot, "plugins/plugin-signal/src");
-const pluginStreamingSrc = path.join(
-  monorepoRoot,
-  "plugins/plugin-streaming/src",
-);
 const pluginVideoSrc = path.join(monorepoRoot, "plugins/plugin-video/src");
 const pluginWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet/src");
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
@@ -104,7 +108,6 @@ const pluginWorkflowSrc = path.join(
   monorepoRoot,
   "plugins/plugin-workflow/src",
 );
-const pluginX402Src = path.join(monorepoRoot, "plugins/plugin-x402/src");
 // Optional static plugins imported by
 // packages/agent/src/runtime/optional-plugin-imports.generated.ts. The Windows
 // CI app-and-cli shard runs vitest without a plugin build, so these must resolve
@@ -433,6 +436,18 @@ export default defineConfig({
         replacement: path.join(pluginMcpSrc, "index.ts"),
       },
       {
+        find: /^@elizaos\/plugin-local-inference$/,
+        replacement: path.join(pluginLocalInferenceSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-local-inference\/(.+)$/,
+        replacement: path.join(pluginLocalInferenceSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-native-filesystem$/,
+        replacement: path.join(pluginNativeFilesystemSrc, "index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-ollama$/,
         replacement: path.join(pluginOllamaRoot, "index.node.ts"),
       },
@@ -459,10 +474,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-signal$/,
         replacement: path.join(pluginSignalSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-streaming$/,
-        replacement: path.join(pluginStreamingSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-video$/,
@@ -511,10 +522,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-workflow$/,
         replacement: path.join(pluginWorkflowSrc, "index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-x402$/,
-        replacement: path.join(pluginX402Src, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-browser$/,

@@ -23,6 +23,7 @@
 		"dist",
 		"node_modules",
 		"build.ts",
+		"vitest.config.ts",
 		"vitest.real-runtime.config.ts"
 	]
 }

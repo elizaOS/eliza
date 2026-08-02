@@ -1,5 +1,5 @@
 /**
- * Docs site integrity tests for Mintlify navigation and markdown links.
+ * Docs site integrity tests for Mintlify navigation, metadata, and links.
  *
  * Runs against the real files on disk so docs.json, redirects, frontmatter,
  * local assets, and internal links stay deployable together.
@@ -314,6 +314,18 @@ describe("docs.json configuration", () => {
 });
 
 describe("documentation files", () => {
+  it("does not expose Node test files as Mintlify browser scripts", () => {
+    const browserScripts = readdirSync(join(DOCS_DIR, "test")).filter((file) =>
+      file.endsWith(".js"),
+    );
+
+    assert.deepStrictEqual(
+      browserScripts,
+      [],
+      "Mintlify injects .js files under the docs tree into published pages",
+    );
+  });
+
   it("core documentation pages referenced in navigation exist", () => {
     const config = readDocsConfig();
     const pages = collectPages(config.navigation);
@@ -510,7 +522,8 @@ describe("documentation files", () => {
           sourcePath.endsWith("/dist") ||
           sourcePath.includes("/dist-") ||
           sourcePath.includes("/node_modules/") ||
-          sourcePath.endsWith("/node_modules");
+          sourcePath.endsWith("/node_modules") ||
+          sourcePath.startsWith("packages/app-core/platforms/electrobun/artifacts/");
         const externalOsPath = sourcePath.startsWith("packages/os/");
         const illustrativePath = /[{}*?<>]/.test(sourcePath);
 

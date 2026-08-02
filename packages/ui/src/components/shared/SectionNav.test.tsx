@@ -263,7 +263,7 @@ describe("SectionTabStrip agent surface", () => {
     });
     expect(
       screen
-        .getByRole("button", { name: "Shared" })
+        .getByRole("button", { name: "Shared knowledge" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });

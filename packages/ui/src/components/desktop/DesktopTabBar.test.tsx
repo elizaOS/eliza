@@ -60,7 +60,7 @@ describe("DesktopTabBar", () => {
     );
 
     expect(
-      screen.getByRole("tablist", { name: "Desktop view tabs" }),
+      screen.getByRole("toolbar", { name: "Desktop view tabs" }),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Local Notes" }));
@@ -93,6 +93,6 @@ describe("DesktopTabBar", () => {
       />,
     );
 
-    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("toolbar")).toBeNull();
   });
 });

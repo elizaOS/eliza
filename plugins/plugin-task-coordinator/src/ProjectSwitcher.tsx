@@ -19,7 +19,8 @@
  * second project is registered. In the hidden case it reports a `null`
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
-import { Button, client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api/client";
+import { Button } from "@elizaos/ui/button";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
 // Direct subpath (mirrors the sibling panels): the browser barrel doesn't

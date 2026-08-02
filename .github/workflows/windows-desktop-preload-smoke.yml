@@ -85,7 +85,6 @@ jobs:
             /bunfig.toml
             /tsconfig.json
             /.github/actions/setup-bun-workspace/**
-            /.github/actions/turbo-cache-github/**
             packages/
             patches/
             scripts/

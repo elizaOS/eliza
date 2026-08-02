@@ -21,7 +21,7 @@
  * fields the route emits — no fabricated rows.
  */
 
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api/client";
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

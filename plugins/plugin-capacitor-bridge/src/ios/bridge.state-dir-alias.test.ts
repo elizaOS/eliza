@@ -6,11 +6,11 @@
  * ELIZA_* mirror write.
  */
 
+import { readAliasedEnv } from "@elizaos/shared";
 import {
 	getBootConfig,
 	setBootConfig,
 } from "@elizaos/shared/config/boot-config-store";
-import { readAliasedEnv } from "@elizaos/shared/utils/env";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveMobileStateDir } from "./bridge.ts";
 

@@ -141,7 +141,6 @@ export function ContinuousChatToggle({
       data-mode={value}
       className={cn(
         "inline-flex items-center gap-0.5 rounded-sm border border-border/40 bg-card/30 p-0.5",
-        disabled && "opacity-50 pointer-events-none",
         className,
       )}
     >
@@ -158,6 +157,7 @@ export function ContinuousChatToggle({
                   size="sm"
                   role="radio"
                   aria-checked={active}
+                  disabled={disabled}
                   data-mode={modeId}
                   data-active={active ? "true" : "false"}
                   onClick={() => handleSelect(modeId)}

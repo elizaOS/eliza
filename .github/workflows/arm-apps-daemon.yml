@@ -141,11 +141,11 @@ jobs:
       # runner; we also ::add-mask:: it before writing to $GITHUB_ENV.
       - name: Checkout (for terraform fetch)
         if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Terraform (for DSN fetch)
         if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
         with:
           terraform_version: "1.10.5"
 

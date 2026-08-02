@@ -1,7 +1,7 @@
 """Periodic vLLM /metrics scraper that emits one JSONL line per interval.
 
 Used by both ad-hoc local serves (via `serve_vllm.py --with-heartbeat`) and
-Vast deployments (via `eliza/cloud/services/vast-pyworker/onstart-vllm.sh`).
+Vast deployments (via `packages/cloud/services/vast-pyworker/onstart-vllm.sh`).
 The output JSONL is the contract the Eliza Cloud UI reads to render
 tokens/s, KV pressure, drafter accept rate, and APC hit rate over time.
 

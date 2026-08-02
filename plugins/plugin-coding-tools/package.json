@@ -68,6 +68,9 @@
     "zod": "^4.4.3",
     "cross-spawn": "^7.0.6"
   },
+  "optionalDependencies": {
+    "@lydell/node-pty": "^1.1.0"
+  },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",

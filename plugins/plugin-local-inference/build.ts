@@ -96,11 +96,12 @@ export async function buildLocalInferencePlugin(
 	}
 
 	console.log("📝 Generating TypeScript declarations...");
-	// Override rootDir to src so declarations land directly in dist/ rather than nested under the monorepo rootDir
+	// Declaration emit resolves workspace packages from their built types so it
+	// cannot write dependency artifacts beside source files.
 	await (
 		options.emitDeclarations ??
 		(() =>
-			$`tsc6 --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet())
+			$`tsc6 --emitDeclarationOnly --declaration --noCheck --skipLibCheck -p tsconfig.build.json`.quiet())
 	)();
 
 	await smokeImport(

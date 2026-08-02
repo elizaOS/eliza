@@ -22,8 +22,8 @@ export { registerDetailExtension, registerOverlayApp } from "@elizaos/shared";
 export type {
   AppRunSummary,
   AppSessionJsonValue,
-  SurfaceTone,
-} from "@elizaos/ui";
+} from "@elizaos/shared/contracts/apps";
+export type { SurfaceTone } from "@elizaos/ui/components/apps/extensions/surface";
 export { client } from "@elizaos/ui/api";
 export {
   SurfaceBadge,

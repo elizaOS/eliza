@@ -73,7 +73,36 @@ function HomeWidgetsHarness() {
   useEffect(() => {
     // Seed the module-level stores the real widgets read.
     __setAppValueForTests({
-      plugins: [{ id: "todo", enabled: true, isActive: true }],
+      plugins: [
+        {
+          id: "story-home",
+          enabled: true,
+          isActive: true,
+          widgets: [
+            {
+              id: "story-home.summary",
+              pluginId: "story-home",
+              slot: "home",
+              label: "Today",
+              visibility: "always",
+              uiSpec: {
+                root: "summary",
+                state: {},
+                elements: {
+                  summary: {
+                    type: "Card",
+                    props: {
+                      title: "Today",
+                      description: "Three conversations are ready to continue.",
+                    },
+                    children: [],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
       conversations: CONVERSATIONS,
       t,
       // biome-ignore lint/suspicious/noExplicitAny: partial seed — widgets read only the fields above

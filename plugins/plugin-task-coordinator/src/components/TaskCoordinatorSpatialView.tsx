@@ -25,7 +25,7 @@ import type {
   CodingAgentTaskSessionRecord,
   CodingAgentTaskThread,
   CodingAgentTaskThreadDetail,
-} from "@elizaos/ui";
+} from "@elizaos/ui/api/client-types-cloud";
 import {
   Button,
   Card,

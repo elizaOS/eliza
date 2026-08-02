@@ -13,7 +13,11 @@ const meta = {
     disabled: { control: "boolean" },
     required: { control: "boolean" },
   },
-  args: { disabled: false, required: false },
+  args: {
+    "aria-label": "Example option",
+    disabled: false,
+    required: false,
+  },
 } satisfies Meta<typeof Checkbox>;
 
 export default meta;

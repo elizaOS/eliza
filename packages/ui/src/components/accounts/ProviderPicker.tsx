@@ -176,7 +176,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                   className={cn(
                     "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors",
                     active ? "bg-bg-accent" : "hover:bg-bg-accent/60",
-                    option.unavailable && "opacity-60",
+                    option.unavailable && "bg-bg-muted",
                   )}
                 >
                   <span

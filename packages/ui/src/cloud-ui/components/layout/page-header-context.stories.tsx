@@ -22,7 +22,7 @@ function HeaderDisplay() {
           padding: "12px 16px",
           border: "1px dashed #d1d5db",
           borderRadius: 8,
-          color: "#6b7280",
+          color: "#9ca3af",
           fontFamily: "system-ui, sans-serif",
         }}
       >
@@ -41,7 +41,7 @@ function HeaderDisplay() {
     >
       <div style={{ fontSize: 18, fontWeight: 600 }}>{pageInfo.title}</div>
       {pageInfo.description ? (
-        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+        <div style={{ fontSize: 13, color: "#9ca3af", marginTop: 4 }}>
           {pageInfo.description}
         </div>
       ) : null}
@@ -130,6 +130,7 @@ export const WithActions: Story = {
                 borderRadius: 6,
                 border: "1px solid #e5e7eb",
                 background: "white",
+                color: "#111827",
                 cursor: "pointer",
               }}
             >

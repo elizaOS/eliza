@@ -4,7 +4,7 @@
 // view and routed through the bundle's shared `interact` export so the agent
 // can drive the workbench by voice or chat. Every handler maps 1:1 to a client
 // method.
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api/client";
 import {
   paramPriority,
   paramString,

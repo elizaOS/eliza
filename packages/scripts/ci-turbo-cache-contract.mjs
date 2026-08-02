@@ -2,27 +2,15 @@
 /**
  * Contract for the GitHub-native Turbo cache migration (#12341). Guards the
  * one-way move off the Vercel remote cache (TURBO_TOKEN / TURBO_TEAM /
- * TURBO_CACHE: remote:rw) toward the pinned `turbo-cache-github` composite
- * action, so a workflow cannot silently straddle both regimes.
+ * TURBO_CACHE: remote:rw) to the cache embedded in setup-bun-workspace.
  *
  * Two invariants, checked statically against the checked-in YAML:
  *
- *   1. The GitHub-native shim exists and stays pinned. `turbo-cache-github`
- *      must be present, `using: composite`, key off the deterministic
- *      `turbo-cache-key.mjs` hash, and reference `actions/cache` by a full
- *      commit SHA (never a floating tag). The shim itself must carry no SaaS
- *      remote-cache env.
+ *   1. setup-bun-workspace is a composite action, keys off the deterministic
+ *      `turbo-cache-key.mjs` hash, and references `actions/cache` by a full
+ *      commit SHA (never a floating tag).
  *
- *   2. No workflow mixes regimes. Any workflow that ADOPTS the shim
- *      (`uses: ./.github/actions/turbo-cache-github`) must NOT also wire the
- *      SaaS remote cache env. Re-adding `TURBO_TOKEN`/`TURBO_TEAM`/
- *      `TURBO_CACHE: remote:rw` to a migrated workflow fails the contract.
- *
- * This contract is intentionally silent about workflows that still use the SaaS
- * remote cache and have NOT yet adopted the shim — those are migrated one at a
- * time under #12341, each removal proven safe on its own. The existing
- * `ci-workflow-dedup-contract.mjs` continues to pin the SaaS wiring that is
- * still live (nightly/release) until it is migrated.
+ *   2. No workflow or the shared setup action wires the SaaS remote-cache env.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -34,9 +22,7 @@ const DEFAULT_REPO_ROOT = resolve(
   "..",
 );
 
-const SHIM_PATH = ".github/actions/turbo-cache-github/action.yml";
 const SETUP_WORKSPACE_PATH = ".github/actions/setup-bun-workspace/action.yml";
-const SHIM_USES = "./.github/actions/turbo-cache-github";
 const WORKFLOW_DIR = ".github/workflows";
 
 // Match the SaaS remote-cache env as actual YAML wiring — a key followed by a
@@ -60,42 +46,34 @@ function firstSaasMarker(text) {
 }
 
 // Validate the two invariants against a repo layout rooted at `repoRoot`. Pure
-// (no process exit / no console) so tests can drive it against a fixture tree;
-// throws on any violation and returns the list of adopting workflows on success.
+// (no process exit / no console) so tests can drive it against a fixture tree.
 export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   const read = (rel) => readFileSync(resolve(repoRoot, rel), "utf8");
 
-  // --- Invariant 1: the shim exists, is pinned, and carries no SaaS env. ---
-  const shim = read(SHIM_PATH);
-  assert(
-    /using:\s*["']?composite["']?/.test(shim),
-    `${SHIM_PATH}: must be a composite action (using: composite)`,
-  );
-  assert(
-    shim.includes("turbo-cache-key.mjs"),
-    `${SHIM_PATH}: must key off the deterministic turbo-cache-key hash`,
-  );
-  const cacheRef = shim.match(/actions\/cache@([^\s]+)/);
-  assert(cacheRef !== null, `${SHIM_PATH}: must reference actions/cache`);
-  assert(
-    /^[0-9a-f]{40}$/.test(cacheRef[1]),
-    `${SHIM_PATH}: actions/cache must be pinned to a full 40-char commit SHA, got "${cacheRef[1]}"`,
-  );
-  const shimSaas = firstSaasMarker(shim);
-  assert(
-    shimSaas === null,
-    `${SHIM_PATH}: the GitHub-native shim must not wire the SaaS remote cache (found ${shimSaas})`,
-  );
-
-  // setup-bun-workspace must invoke actions/cache directly. A second composite
-  // boundary drops actions/cache's post-step inputs, which prevents cold jobs
-  // from saving .turbo. Lane-scoped primary keys also prevent a fast empty
-  // lane from reserving the one immutable key before Build/Type Check save.
   const workspaceSetup = read(SETUP_WORKSPACE_PATH);
   assert(
-    !workspaceSetup.includes(`uses: ${SHIM_USES}`),
-    `${SETUP_WORKSPACE_PATH}: must not nest the Turbo cache shim`,
+    /using:\s*["']?composite["']?/.test(workspaceSetup),
+    `${SETUP_WORKSPACE_PATH}: must be a composite action (using: composite)`,
   );
+  assert(
+    workspaceSetup.includes("turbo-cache-key.mjs"),
+    `${SETUP_WORKSPACE_PATH}: must key off the deterministic turbo-cache-key hash`,
+  );
+  const cacheRef = workspaceSetup.match(/actions\/cache@([^\s]+)/);
+  assert(
+    cacheRef !== null,
+    `${SETUP_WORKSPACE_PATH}: must reference actions/cache`,
+  );
+  assert(
+    /^[0-9a-f]{40}$/.test(cacheRef[1]),
+    `${SETUP_WORKSPACE_PATH}: actions/cache must be pinned to a full 40-char commit SHA, got "${cacheRef[1]}"`,
+  );
+  const setupSaas = firstSaasMarker(workspaceSetup);
+  assert(
+    setupSaas === null,
+    `${SETUP_WORKSPACE_PATH}: must not wire the SaaS remote cache (found ${setupSaas})`,
+  );
+
   assert(
     /actions\/cache@[0-9a-f]{40}/.test(workspaceSetup),
     `${SETUP_WORKSPACE_PATH}: must invoke a pinned actions/cache directly`,
@@ -121,33 +99,28 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     `${SETUP_WORKSPACE_PATH}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path or using space-bearing runner metadata`,
   );
 
-  // --- Invariant 2: no adopting workflow also wires the SaaS remote cache. ---
   const workflowFiles = readdirSync(resolve(repoRoot, WORKFLOW_DIR)).filter(
     (name) => name.endsWith(".yml") || name.endsWith(".yaml"),
   );
 
-  const adopters = [];
   for (const name of workflowFiles) {
     const rel = join(WORKFLOW_DIR, name);
     const text = read(rel);
-    if (!text.includes(SHIM_USES)) continue;
-    adopters.push(rel);
     const saas = firstSaasMarker(text);
     assert(
       saas === null,
-      `${rel}: adopts the GitHub-native turbo cache shim but still wires the SaaS remote cache (${saas}). ` +
-        "Pick one regime — remove the SaaS env.",
+      `${rel}: must not wire the SaaS remote cache (${saas})`,
     );
   }
 
-  return { adopters };
+  return { workflowCount: workflowFiles.length };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const { adopters } = runContract();
+    const { workflowCount } = runContract();
     console.log(
-      `ci turbo cache contract passed (shim pinned; ${adopters.length} adopting workflow(s), none mixing regimes)`,
+      `ci turbo cache contract passed (shared cache pinned; ${workflowCount} workflow(s) use no SaaS cache)`,
     );
   } catch (error) {
     console.error(`[ci-turbo-cache-contract] FAIL ${error.message}`);

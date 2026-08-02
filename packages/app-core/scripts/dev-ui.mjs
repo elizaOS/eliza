@@ -1032,8 +1032,8 @@ if (uiOnly) {
   // walks up from cwd looking for a package.json with a `workspaces` field.
   // When running from the eliza-style outer repo (cwd contains an `eliza/`
   // submodule), the outer package.json's `workspaces: ["apps/*"]` excludes
-  // eliza's workspace packages — so plugin-x402, plugin-streaming, etc. fail
-  // to resolve. Spawn the API child with cwd anchored at eliza/ so its
+  // eliza's workspace packages fail to resolve. Spawn the API child with cwd
+  // anchored at eliza/ so its
   // workspaces ([packages/*, plugins/*]) are visible.
   const elizaSubmoduleRoot = path.join(cwd, "eliza");
   const apiSpawnCwd = existsSync(path.join(elizaSubmoduleRoot, "package.json"))

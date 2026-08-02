@@ -1,13 +1,13 @@
 // Direct subpath: the app renderer resolves the bare `@elizaos/ui` root to the
 // browser barrel, which doesn't reliably re-export this newer component.
-import {
-  ApiError,
-  Button,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
-  client,
-  useAppSelectorShallow,
-} from "@elizaos/ui";
+import { client } from "@elizaos/ui/api/client";
+import type {
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+} from "@elizaos/ui/api/client-types-cloud";
+import { ApiError } from "@elizaos/ui/api/client-types-core";
+import { Button } from "@elizaos/ui/button";
+import { useAppSelectorShallow } from "@elizaos/ui/state/app-store";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Archive, Bot, ListChecks, Terminal } from "lucide-react";
 import {

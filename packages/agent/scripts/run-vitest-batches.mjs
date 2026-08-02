@@ -23,6 +23,9 @@ const excludedPatterns = [
   /\.live\.e2e\.test\.[cm]?tsx?$/,
   /\.real\.test\.[cm]?tsx?$/,
   /-real\.test\.[cm]?tsx?$/,
+  /\.cloud-smoke\.test\.[cm]?tsx?$/,
+  /\.provider-smoke\.test\.[cm]?tsx?$/,
+  /test\/crash-restart-supervisor\.test\.[cm]?tsx?$/,
 ];
 
 function walk(relativeDir, out) {

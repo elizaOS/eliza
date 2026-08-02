@@ -23,6 +23,24 @@ Availability depends on the platform, build variant, native artifacts, and
 credentials. A successful Capacitor build does not by itself prove that a
 local model or on-device Bun engine is present.
 
+The Cloud builds are thin clients. Their WebView does not open a TCP
+connection to the full-Bun backend; it uses the configured Cloud transport.
+The build removes `ElizaAgentService`, the `MANAGE_APP_OPS_MODES`,
+`PACKAGE_USAGE_STATS`, and `MANAGE_VIRTUAL_MACHINE` permissions,
+`assets/agent`, and native `libeliza_` libraries. These exclusions are release
+requirements, not runtime feature detection.
+
+Use the explicit Android lanes when validating that boundary:
+
+```bash
+bun run build:android:cloud
+bun run build:android:system
+```
+
+The Cloud command produces the store-oriented thin client. The system command
+produces the privileged AOSP build with the on-device runtime; it must not be
+used as a substitute for Cloud release verification.
+
 ## Build and open a platform project
 
 From the repository root:

@@ -523,36 +523,45 @@ Report-writing commands generate these locally only when explicitly requested;
 4. **Raise visual coverage.** Add stories for the 177 uncovered visual
    components and interactions beyond the current 17, lowering both baselines
    after every batch.
-5. **Burn down allowlists.** Convert the 407 color-bearing files, existing
+5. **Repair the Storybook runtime baseline.** The full 1,520-story audit
+   currently reports 91 regressions: primarily color-contrast findings, plus
+   network-dependent music-player stories and blank-render avatar/loading
+   states. Convert network stories to deterministic fixtures, make intentional
+   skeleton/avatar renders auditable, and fix contrast at shared token seams.
+6. **Burn down allowlists.** Convert the 407 color-bearing files, existing
    console-warning fingerprints, and 561 test headers in independently
    reviewable batches.
 
 ## Verification performed
 
-- `bun run --cwd packages/ui typecheck` — passed before cleanup.
-- `bun run --cwd packages/ui lint:check` — passed after cleanup; the baseline's
-  three unused imports were removed.
-- `bun run --cwd packages/ui build` — passed; 44 runtime exports verified.
-- Focused `StartupFailureView` test — passed.
-- Full package suite — **9,001 passed, 7 skipped, 4 failed**. The four failures
-  are in concurrently modified files outside this audit's edits: the memories
-  mutation ratchet needs its baseline reduced from 21 to 15, and two catalog
-  curation assertions disagree with the concurrent launcher-curation change.
-  The suite also demonstrates the test-output noise described above.
-- `bun run --cwd packages/app audit:app` — blocked before screenshot capture by
-  an existing host-app consistency error: `packages/app/src/main.tsx` and its
-  Vite configuration import `@elizaos/app-model-tester`, but
-  `plugins/app-model-tester` no longer exists. All 19 plugin view bundles built;
-  the app renderer then failed to resolve that deleted package. Visual verdicts
-  could not be produced until those stale host references are removed or the
-  package is restored.
-- Knip dependency and duplicate-export analysis.
-- Duplicate-component scan.
-- Story-coverage scan.
-- Focused technical-design detector over startup, primitives, and styles.
-- Manual inspection of startup coordinator, shell, failure UI, lifecycle mirror,
-  timing policy, generated artifacts, ambient declarations, exports, and build
-  output.
-
-Post-change verification results should be recorded in the final handoff; the
-full app visual audit is required because startup UI changed.
+- `bun run --cwd packages/ui lint:check` and `typecheck` — passed across 2,797
+  checked files.
+- `bun run --cwd packages/ui build` — passed. The built JavaScript surface is
+  10.7 MB; the generated icon registry fell from roughly 925 KB to 4.3 KB plus
+  copied image assets.
+- Strict full package suite with four workers — **877 test files passed; 9,026
+  tests passed and 7 skipped**. A separate baseline-capture run produced the
+  same result and reduced the console-warning baseline to 61 exact
+  fingerprints. The default high-concurrency strict run reached 8,602 passing
+  tests before host worker exhaustion; the bounded rerun proves the package
+  itself is green.
+- Static ratchets — dead code 0, forbidden cross-layer imports 0, hardcoded
+  color files 407, missing production headers 0, missing test headers 561,
+  stories 210/387 (54.3%), interactive `play` stories 17, and root public API
+  exports 3,306.
+- The broader Storybook runtime audit completed all 1,520 stories but is not
+  baseline-clean: 91 new regressions (accessibility, network-dependent stories,
+  and blank-render detection). These are recorded above as remaining work; they
+  do not invalidate the green package unit suite or app-level visual audit.
+- `bun run --cwd packages/app audit:app` — **218/218 captures passed**. Computed
+  verdicts were 198 good, 18 needs-eyeball, 0 needs-work, and 0 broken. OCR
+  verification covered 216 views with 92 verified, 124 needs-eyeball, and 0
+  broken. Desktop, mobile portrait, mobile landscape, and tablet contact sheets
+  were then reviewed manually; no clipping, blank-route, overlay-clearance, or
+  hierarchy regressions were found.
+- The visual pass exposed and fixed a classic-JSX runtime failure in the wallet
+  inventory view and a stale fine-tuning OCR expectation. The wallet's focused
+  20-test suite, typecheck, lint, and all four inventory viewport captures pass.
+- Manual inspection covered the startup coordinator, failure UI, timing and
+  probe policies, generated artifacts, ambient declarations, package exports,
+  duplicate component names, build output, and every visual contact sheet.

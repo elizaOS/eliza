@@ -70,8 +70,8 @@ runs:
   using: "composite"
   steps:
     # Self-hosted (hetzner-robot) runners are not guaranteed to expose `node`
-    # on the step PATH, and the very next step (turbo-cache-github ->
-    # turbo-cache-key.mjs) invokes `node` directly. Without this, jobs that
+    # on the step PATH, and the very next step (turbo-cache-key.mjs) invokes
+    # `node` directly. Without this, jobs that
     # rely solely on this composite for their toolchain fail with
     # "node: command not found" on runners missing a system Node. setup-node is
     # idempotent, so callers that already ran it (model-provider-runtime, the audits)
@@ -84,12 +84,11 @@ runs:
         node-version: ${{ inputs.node-version }}
 
     # Persist Turbo's local filesystem cache (.turbo) directly from this
-    # composite instead of nesting turbo-cache-github inside it. actions/cache's
+    # composite instead of nesting another composite. actions/cache's
     # post step loses `path` through a doubly nested composite, so restores ran
     # but every save ended with "Input required and not supplied: path" and the
-    # repository never populated a turbo-Linux-* entry. Keep the standalone
-    # shim for workflows that invoke it directly; setup-bun-workspace must
-    # inline the same pinned cache contract so its post step can save.
+    # repository never populated a turbo-Linux-* entry. setup-bun-workspace
+    # owns the single cache contract so its post step can save.
     #
     # Include github.job in the primary key because every setup consumer races
     # to save at post-job time. Without a lane suffix, a fast non-Turbo lane
@@ -135,7 +134,7 @@ runs:
       # don't let an ISA-incompatible download turn into a hard job failure —
       # hosted runners are never in this branch and keep fail-fast behavior.
       continue-on-error: ${{ runner.environment == 'self-hosted' }}
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -296,7 +295,7 @@ runs:
         fi
 
     - name: Setup Bun
-      uses: oven-sh/setup-bun@v2
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
       env:
         # setup-bun installs via os.homedir(), so per-matrix homes prevent
         # concurrent executable replacement on a shared runner.

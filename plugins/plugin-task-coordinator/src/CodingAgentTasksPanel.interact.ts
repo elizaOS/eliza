@@ -4,7 +4,7 @@
 // also exports a plain function). The view bundle re-exports `interact` via
 // ./task-coordinator-view-bundle.ts. Orchestrator capabilities are delegated to
 // runOrchestratorCapability; the remaining ids drive the task-coordinator view.
-import { client } from "@elizaos/ui";
+import { client } from "@elizaos/ui/api/client";
 import {
   ORCHESTRATOR_CAPABILITY_IDS,
   runOrchestratorCapability,

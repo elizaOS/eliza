@@ -79,14 +79,14 @@ export function DashboardSidebarNavigationItem({
       <div
         className={cn(
           "relative flex items-center gap-3 border-l-2 border-l-transparent px-3 py-2.5",
-          "cursor-default select-none text-white/40 opacity-60",
+          "cursor-default select-none text-white/60",
         )}
         style={itemTextStyle}
       >
         <Icon className="h-4 w-4 shrink-0" />
         <span className="flex-1 whitespace-nowrap">{item.label}</span>
         <span
-          className="bg-white/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/40"
+          className="bg-white/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/60"
           style={{
             fontFamily: "var(--font-roboto-mono)",
           }}
@@ -112,6 +112,7 @@ export function DashboardSidebarNavigationItem({
       children: (
         <>
           <Icon className="h-4 w-4 shrink-0 opacity-50" />
+          {isCollapsed ? <span className="sr-only">{item.label}</span> : null}
           {!isCollapsed && (
             <>
               <span className="flex-1 whitespace-nowrap">{item.label}</span>
@@ -151,6 +152,7 @@ export function DashboardSidebarNavigationItem({
   const linkContents = (
     <>
       <Icon className="h-4 w-4 shrink-0 transition-colors" />
+      {isCollapsed ? <span className="sr-only">{item.label}</span> : null}
       {!isCollapsed && (
         <>
           <span className="flex-1 whitespace-nowrap">{item.label}</span>

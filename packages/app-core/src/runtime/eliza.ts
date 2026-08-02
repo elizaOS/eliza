@@ -4,8 +4,8 @@
  * with app-shell concerns — installs the agent host bridge (vault, account pool,
  * wallet-key hydration, cloud-pair route), syncs brand env aliases, binds the
  * API server (bind-first, then background runtime boot), and runs the post-ready
- * boot tail: local-inference + TTS handler registration, autonomy service +
- * bootstrap context, app-route plugins and registry runtime-hooks (drained
+ * boot tail: local-inference boot hooks, autonomy service + bootstrap context,
+ * app-route plugins and registry runtime-hooks (drained
  * concurrently with per-loader failure isolation), sensitive-request + sub-agent
  * credential adapters, the trigger event bridge, connector-target catalog, and
  * background embedding + voice model warmup.
@@ -979,7 +979,7 @@ async function repairRuntimeAfterBoot(
       () => onPostReadyPhase?.("complete"),
       (err: unknown) => {
         // error-policy:J1 boundary translation — the deferred tail has no caller
-        // left to throw to; a TTS-handler or runtime-hook failure here would
+        // left to throw to; a contributor or runtime-hook failure here would
         // otherwise vanish into an unhandled rejection. Mark the phase failed
         // (so health-pollers stop waiting) and surface it agent-visibly.
         markDeferredBootPhase("app-route-tail", "failed");

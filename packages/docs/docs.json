@@ -216,7 +216,6 @@
               "dashboard/chat",
               "dashboard/apps",
               "dashboard/pairing",
-              "dashboard/stream",
               "apps/dashboard/settings",
               "apps/dashboard/talk-mode"
             ]
@@ -375,6 +374,10 @@
     }
   },
   "redirects": [
+    {
+      "source": "/dashboard/stream",
+      "destination": "/apps/dashboard"
+    },
     {
       "source": "/guides/contributing",
       "destination": "/index"
