@@ -8,15 +8,18 @@
  * outline.
  */
 
-import { cn } from "../../../lib/utils";
+import {
+  StatusBadge as SharedStatusBadge,
+  type StatusVariant,
+} from "../../../components/ui/status-badge";
 
 type Tone = "accent" | "success" | "danger" | "neutral";
 
-const TONE_CLASS: Record<Tone, string> = {
-  accent: "border-accent/40 text-accent bg-accent/10",
-  success: "border-success/40 text-success bg-success/10",
-  danger: "border-destructive/40 text-danger bg-destructive/10",
-  neutral: "border-border text-muted bg-bg-accent",
+const TONE_VARIANT: Record<Tone, StatusVariant> = {
+  accent: "warning",
+  success: "success",
+  danger: "danger",
+  neutral: "muted",
 };
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -48,17 +51,14 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "Failed",
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function ApprovalStatusBadge({ status }: { status: string }) {
   const tone = STATUS_TONE[status] ?? "neutral";
   const label = STATUS_LABEL[status] ?? status;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-sm border px-2 py-0.5 text-xs font-medium",
-        TONE_CLASS[tone],
-      )}
-    >
-      {label}
-    </span>
+    <SharedStatusBadge
+      label={label}
+      variant={TONE_VARIANT[tone]}
+      className="text-xs font-medium normal-case"
+    />
   );
 }

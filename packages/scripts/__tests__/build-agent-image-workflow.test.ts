@@ -403,7 +403,6 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-commands",
       "@elizaos/plugin-computeruse",
       "@elizaos/plugin-discord",
-      "@elizaos/plugin-edge-tts",
       "@elizaos/plugin-elizacloud",
       "@elizaos/plugin-imessage",
       "@elizaos/plugin-local-inference",
@@ -412,13 +411,11 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-pdf",
       "@elizaos/plugin-signal",
       "@elizaos/plugin-sql",
-      "@elizaos/plugin-streaming",
       "@elizaos/plugin-telegram",
       "@elizaos/plugin-video",
       "@elizaos/plugin-wallet",
       "@elizaos/plugin-whatsapp",
       "@elizaos/plugin-workflow",
-      "@elizaos/plugin-x402",
     ]);
   });
 

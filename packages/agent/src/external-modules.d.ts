@@ -1,4 +1,3 @@
-declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
   import type { AgentRuntime, MobileDeviceBridgeStatus } from "@elizaos/core";
@@ -401,14 +400,11 @@ declare module "@elizaos/plugin-wifi" {
   export const wifiNetworksProvider: Provider;
 }
 
-declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/plugin-imessage" {
   export function resolveBlueBubblesWebhookPath(...args: unknown[]): string;
   const imessagePlugin: unknown;
   export default imessagePlugin;
 }
-declare module "@elizaos/plugin-openai";
-declare module "@elizaos/plugin-pty";
 declare module "@elizaos/plugin-x402" {
   import type {
     IAgentRuntime,
@@ -835,7 +831,6 @@ declare module "@elizaos/ui" {
   export const App: ComponentType<AnyValue>;
   export const AppProvider: ComponentType<AnyValue>;
   export const AppWindowRenderer: ComponentType<AnyValue>;
-  export const EmbeddedAppViewer: ComponentType<AnyValue>;
   export const Button: ComponentType<AnyValue>;
   export const CharacterEditor: ComponentType<AnyValue>;
   export const COMMAND_PALETTE_EVENT: string;

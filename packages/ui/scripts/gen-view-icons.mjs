@@ -27,7 +27,7 @@ const SUBJECTS = {
   contacts: "a single person silhouette in a circle",
   feed: "an RSS feed symbol: a dot with two quarter-circle radiating arcs",
   focus: "a target bullseye",
-  glasses: "a pair of smart glasses",
+  glasses: "a pair of eyeglasses",
   health: "a heart with a small medical cross",
   inbox: "an inbox tray",
   keys: "a single key",
@@ -74,7 +74,6 @@ const SUBJECTS = {
   desktop: "a desktop monitor",
   logs: "a scroll with list lines",
   background: "a framed landscape picture",
-  facewear: "a face silhouette wearing a pair of smart glasses",
   polymarket: "a bar chart comparing two outcomes with an up arrow",
 };
 

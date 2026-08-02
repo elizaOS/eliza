@@ -9,7 +9,6 @@ import path from "node:path";
 import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
 import { type AgentRuntime, getConnectorAccountManager } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import {
   createConversation,
@@ -20,6 +19,7 @@ import {
   isLiveTestEnabled,
   selectLiveProvider,
 } from "../../../packages/app-core/test/helpers/live-provider";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { saveEnv } from "../../../packages/app-core/test/helpers/test-utils";
 import {
   createLifeOpsConnectorGrant,

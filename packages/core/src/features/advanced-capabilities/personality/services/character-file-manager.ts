@@ -11,6 +11,7 @@
 import path from "node:path";
 import fs from "fs-extra";
 import { z } from "zod";
+import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import type {
 	IAgentRuntime,
@@ -139,7 +140,7 @@ export class CharacterFileManager extends Service {
 						return;
 					}
 				} catch {
-					// Continue searching
+					// error-policy:J3 Malformed candidate files are rejected while discovery continues to other known locations.
 				}
 			}
 		}
@@ -234,28 +235,30 @@ export class CharacterFileManager extends Service {
 			logger.info({ backupPath }, "Character backup created");
 			return backupPath;
 		} catch (error) {
-			logger.error(
-				{ error: error instanceof Error ? error.message : String(error) },
-				"Failed to create character backup",
-			);
-			return null;
+			throw new ElizaError("Failed to create character backup", {
+				code: "CHARACTER_BACKUP_FAILED",
+				cause: error,
+				context: { characterFilePath: this.characterFilePath },
+			});
 		}
 	}
 
 	private async cleanupOldBackups(): Promise<void> {
 		try {
 			const files = await fs.readdir(this.backupDir);
-			const backupFiles = files
-				.filter((file: string) => file.endsWith(".json"))
-				.map((file: string) => ({
-					name: file,
-					path: path.join(this.backupDir, file),
-					stat: fs.statSync(path.join(this.backupDir, file)),
-				}))
-				.sort(
-					(a: { stat: { mtime: Date } }, b: { stat: { mtime: Date } }) =>
-						b.stat.mtime.getTime() - a.stat.mtime.getTime(),
-				);
+			const backupFiles = (
+				await Promise.all(
+					files
+						.filter((file: string) => file.endsWith(".json"))
+						.map(async (file: string) => {
+							const backupPath = path.join(this.backupDir, file);
+							return {
+								path: backupPath,
+								stat: await fs.stat(backupPath),
+							};
+						}),
+				)
+			).sort((a, b) => b.stat.mtime.getTime() - a.stat.mtime.getTime());
 
 			// Keep only the most recent backups
 			const filesToDelete = backupFiles.slice(this.maxBackups);
@@ -267,7 +270,8 @@ export class CharacterFileManager extends Service {
 				logger.info(`Cleaned up ${filesToDelete.length} old backups`);
 			}
 		} catch (error) {
-			logger.error(
+			// error-policy:J6 Retention cleanup is best-effort after the new backup has been durably written.
+			logger.warn(
 				{ error: error instanceof Error ? error.message : String(error) },
 				"Error cleaning up old backups",
 			);

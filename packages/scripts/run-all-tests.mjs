@@ -444,14 +444,10 @@ const POSTGRES_INIT_SQL_PATH = path.join(
 // ---------------------------------------------------------------------------
 
 function collectPackageJsonPaths() {
-  // Whole-subtree exclusion of every `!`-negated workspace root. bun/npm/yarn
-  // exclude only the exact negated dir (so `packages/feed/packages/*` stay
-  // members), but the test lane must additionally drop feed's nested members:
-  // their tests need feed's own install/environment (its postinstall pulls
-  // python + agent-framework deps, and shared deps like drizzle-orm live in the
-  // excluded `@feed/root`), so they can't resolve under a plain root install and
-  // structurally belong to feed's own CI lane. Membership itself is the shared
-  // seam; this whole-subtree policy is a caller-local filter over its output.
+  // Whole-subtree exclusion keeps explicitly negated workspace roots and their
+  // nested packages out of the shared test lane. Package managers exclude only
+  // the exact negated directory, so this caller-level filter preserves the
+  // stronger repository test-boundary contract.
   const rootPackageJson = JSON.parse(
     fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),
   );

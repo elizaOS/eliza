@@ -11,7 +11,7 @@
  * *.spec.ts            — Playwright specs (run by playwright configs)
  *
  * Test locations: src/, __tests__/, test/ — all are auto-discovered.
- * Subsystems with their own runners: packages/cloud and packages/examples.
+ * Cloud subsystems use their own runners.
  */
 import fs from "node:fs";
 import { createRequire } from "node:module";

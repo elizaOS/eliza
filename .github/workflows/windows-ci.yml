@@ -146,11 +146,9 @@ jobs:
       - name: Install bun
         uses: oven-sh/setup-bun@v2
         with:
-          # Match the repo-wide pin (packageManager: bun@1.4.0-canary.1). `latest`
-          # (stable) cannot parse the canary-written lockfile (`lockfileVersion: 2`)
-          # and aborts install with "Unknown lockfile version". canary is exercised
-          # on Windows by windows-dev-smoke, so it is known-good here.
-          bun-version: canary
+          # Match the repo-wide packageManager pin so the lockfile is parsed and
+          # installed by the same Bun release on every platform.
+          bun-version: "1.3.14"
 
       - name: Configure Windows Defender exclusions
         shell: pwsh
@@ -165,10 +163,10 @@ jobs:
         # once with the cache warm; usually the second pass clears it.
         run: |
           $ErrorActionPreference = "Continue"
-          bun install --no-progress
+          bun install --frozen-lockfile --no-progress
           if ($LASTEXITCODE -ne 0) {
             Write-Host "Install failed; retrying with cache warm."
-            bun install --no-progress
+            bun install --frozen-lockfile --no-progress
           }
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE

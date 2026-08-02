@@ -6,40 +6,24 @@
 export const AUDIT_ACTIONS = [
   // auth
   "auth.login",
-  "auth.logout",
-  "auth.login.failed",
-  "auth.mfa.enroll",
-  "auth.mfa.challenge",
-  "auth.mfa.verify",
-  "auth.password.change",
-  "auth.password.reset",
   "auth.session.revoke",
 
   // api keys
-  "api_key.create",
   "api_key.revoke",
   "api_key.use",
-  "api_key.rotate",
 
   // secrets / vault
   "secret.access",
-  "secret.create",
-  "secret.update",
-  "secret.delete",
 
   // plugins
   "plugin.install",
   "plugin.uninstall",
   "plugin.grant",
   "plugin.revoke",
-  "plugin.execute",
   "plugin.denied",
 
   // agents
-  "agent.spawn",
-  "agent.terminate",
   "agent.config.update",
-  "agent.session_record",
 
   // vision / screen capture (opt-in capability)
   "vision.allowed",
@@ -47,24 +31,14 @@ export const AUDIT_ACTIONS = [
 
   // payments
   "payment.charge",
-  "payment.refund",
   "redemption.payout",
-  "redemption.request",
 
   // admin
   "admin.action",
-  "admin.user.impersonate",
-  "admin.policy.update",
 
   // data subject rights
   "data.export",
   "data.delete_request",
-  "data.delete_complete",
-
-  // kms
-  "kms.key.create",
-  "kms.key.rotate",
-  "kms.key.access",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

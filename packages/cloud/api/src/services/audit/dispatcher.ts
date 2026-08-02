@@ -62,7 +62,6 @@ const METADATA_ALLOWLIST: Record<string, ReadonlySet<string>> = {
   ]),
   "admin.": new Set(["target_user_id", "policy_id", "reason"]),
   "data.": new Set(["request_id", "subject_id", "scope", "reason"]),
-  "kms.": new Set(["key_id", "version", "algorithm", "reason"]),
 };
 
 function allowlistFor(action: AuditAction): ReadonlySet<string> | undefined {

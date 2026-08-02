@@ -8,8 +8,8 @@ view instrumentation, GenUI, voice, and platform/bridge glue.
 
 A single design-system + runtime-glue package consumed by every elizaOS
 front-end and by plugin UIs. Importers include `@elizaos/app` (web + desktop
-shell), `@elizaos/app-core`, `@elizaos/cloud-frontend`, `@elizaos/os-homepage`,
-the `eliza-app` homepage, and many plugin UI packages (`plugin-wallet`,
+shell), `@elizaos/app-core`, `@elizaos/cloud-frontend`, the `eliza-app`
+homepage, and many plugin UI packages (`plugin-wallet`,
 `plugin-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are

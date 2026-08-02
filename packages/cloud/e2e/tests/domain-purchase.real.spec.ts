@@ -5,8 +5,8 @@
  *
  *   1. auth preflight     GET /credits/balance → 200, org funded ≥ the ceiling.
  *   2. create app         POST /apps (unique run-slugged name).
- *   3. deploy             POST /apps/:id/deploy (source build, EDAD dockerfile
- *                         by default) → poll deploy/status to READY → live URL.
+ *   3. deploy             POST /apps/:id/deploy (operator-selected source
+ *                         Dockerfile) → poll deploy/status to READY → live URL.
  *   4. quote + CEILING    POST /apps/:id/domains/check on each cheap candidate
  *                         TLD (.xyz/.click/.sbs) with a unique base36 run slug;
  *                         the cheapest available quote must be ≤ the ceiling
@@ -31,6 +31,8 @@
  *   ELIZA_LIVE_DOMAIN_BASE_URL       live cloud-api base (no default — pointing
  *                                    a paid run somewhere must be deliberate)
  *   CLOUD_E2E_API_KEY                funded operator org API key
+ *   ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE path to a deployable Dockerfile in the
+ *                                       selected repository/ref
  * Otherwise every test honest-skips at the describe level (before any fixture
  * resolves — the mock stack is never booted) and a console line states exactly
  * what to set. CI never sets these, so CI can never spend money here.
@@ -69,12 +71,18 @@ import { expect, test } from "../src/helpers/test-fixtures";
 const LIVE_ENABLED = process.env.ELIZA_LIVE_DOMAIN_PURCHASE === "1";
 const BASE_URL = process.env.ELIZA_LIVE_DOMAIN_BASE_URL?.replace(/\/+$/, "");
 const API_KEY = process.env.CLOUD_E2E_API_KEY;
-const GATE_SATISFIED = LIVE_ENABLED && Boolean(BASE_URL) && Boolean(API_KEY);
+const DEPLOY_DOCKERFILE = process.env.ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE;
+const GATE_SATISFIED =
+  LIVE_ENABLED &&
+  Boolean(BASE_URL) &&
+  Boolean(API_KEY) &&
+  Boolean(DEPLOY_DOCKERFILE);
 
 const SKIP_REASON =
   "live domain purchase (REAL MONEY) is off: set ELIZA_LIVE_DOMAIN_PURCHASE=1 " +
   "+ ELIZA_LIVE_DOMAIN_BASE_URL=<staging/prod cloud-api base> " +
-  "+ CLOUD_E2E_API_KEY=<funded operator org key> to run it " +
+  "+ CLOUD_E2E_API_KEY=<funded operator org key> " +
+  "+ ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE=<repo-relative path> to run it " +
   "(see packages/cloud/e2e/docs/domain-purchase-live.md)";
 
 if (!GATE_SATISFIED) {
@@ -82,6 +90,9 @@ if (!GATE_SATISFIED) {
     ...(LIVE_ENABLED ? [] : ["ELIZA_LIVE_DOMAIN_PURCHASE=1"]),
     ...(BASE_URL ? [] : ["ELIZA_LIVE_DOMAIN_BASE_URL"]),
     ...(API_KEY ? [] : ["CLOUD_E2E_API_KEY"]),
+    ...(DEPLOY_DOCKERFILE
+      ? []
+      : ["ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE"]),
   ];
   // Loud, honest skip — a reader of the run output sees exactly what to set.
   console.log(
@@ -113,16 +124,16 @@ const SERVE_CAP_MS = Number(
 );
 const POLL_INTERVAL_MS = 5_000;
 
-/** Live deploy build hints — same source-build shape the EDAD live driver uses. */
-const DEPLOY_BODY = {
-  repoUrl:
-    process.env.ELIZA_LIVE_DOMAIN_DEPLOY_REPO_URL ??
-    "https://github.com/elizaOS/eliza.git",
-  ref: process.env.ELIZA_LIVE_DOMAIN_DEPLOY_REF ?? "develop",
-  dockerfile:
-    process.env.ELIZA_LIVE_DOMAIN_DEPLOY_DOCKERFILE ??
-    "packages/examples/cloud/edad/Dockerfile.cloud",
-};
+/** Live deploy build hints are explicit because this suite can spend money. */
+const DEPLOY_BODY = DEPLOY_DOCKERFILE
+  ? {
+      repoUrl:
+        process.env.ELIZA_LIVE_DOMAIN_DEPLOY_REPO_URL ??
+        "https://github.com/elizaOS/eliza.git",
+      ref: process.env.ELIZA_LIVE_DOMAIN_DEPLOY_REF ?? "develop",
+      dockerfile: DEPLOY_DOCKERFILE,
+    }
+  : undefined;
 
 test.describe("live domain purchase — real money, operator-gated (#10691)", () => {
   // Honest-skip gate FIRST — evaluated before any fixture resolves, so the mock
@@ -131,8 +142,13 @@ test.describe("live domain purchase — real money, operator-gated (#10691)", ()
 
   test("create app → deploy → buy real domain under ceiling → active → serves → detach", async () => {
     test.setTimeout(DEPLOY_CAP_MS + STATUS_CAP_MS + SERVE_CAP_MS + 180_000);
-    const api = BASE_URL as string;
-    const authed = authedClient(api, API_KEY as string);
+    if (!BASE_URL || !API_KEY || !DEPLOY_BODY) {
+      throw new Error(
+        "live-domain configuration is incomplete after the money guard opened",
+      );
+    }
+    const api = BASE_URL;
+    const authed = authedClient(api, API_KEY);
     const runId = newRunId();
     const slug = `e2e-10691-${runId}`;
 

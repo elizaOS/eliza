@@ -25,8 +25,8 @@
  * Scope:
  *   - (a) orphan: the root package.json scripts block (the dumping ground).
  *   - (b) no-op: first-party shipping packages — root + packages/, plugins/,
- *     apps/ — minus the vendored/demo/scaffold subtrees packages/examples/**,
- *     package-owned nested workspaces and packages/elizaos/templates/**,
+ *     apps/ — minus package-owned nested workspaces and
+ *     packages/elizaos/templates/**,
  *     which legitimately ship `echo "no toolchain; skipping"` placeholders.
  *   - (c) broken refs: the root scripts block only. Sub-package script paths are
  *     out of scope — the tree holds scaffolding templates and optional nested
@@ -228,7 +228,6 @@ const NOOP_GATE_KEYS = /^(lint|typecheck|test|build)(:|$)/;
 // Demo / vendored / scaffold subtrees that legitimately ship placeholder scripts
 // or reference paths that only exist after scaffolding. Out of the no-op gate.
 const EXCLUDED_SUBTREES = [
-  "packages/examples",
   "packages/elizaos/templates",
 ];
 const SKIP_DIRS = new Set([

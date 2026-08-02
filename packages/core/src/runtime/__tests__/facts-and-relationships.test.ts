@@ -564,6 +564,54 @@ describe("runFactsAndRelationshipsStage", () => {
 		});
 	});
 
+	it("propagates fact persistence failures instead of reporting a successful write", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["the user's birthday is March 5"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const failure = new Error("facts store unavailable");
+		runtime.createMemory.mockRejectedValueOnce(failure);
+
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: { facts: ["the user's birthday is March 5"] },
+			}),
+		).rejects.toBe(failure);
+	});
+
+	it("propagates relationship edge failures instead of counting a partial write", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: [],
+				relationships: [
+					{ subject: "user", predicate: "works_with", object: "Alice" },
+				],
+				thought: "new relationship",
+			}),
+		);
+		const failure = new Error("relationship store unavailable");
+		runtime.createRelationship.mockRejectedValueOnce(failure);
+
+		await expect(
+			runFactsAndRelationshipsStage({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				extract: {
+					relationships: [
+						{ subject: "user", predicate: "works_with", object: "Alice" },
+					],
+				},
+			}),
+		).rejects.toBe(failure);
+	});
+
 	it("filters low-signal and secret-like candidates before calling the model", async () => {
 		const runtime = makeRuntime("");
 		const result = await runFactsAndRelationshipsStage({

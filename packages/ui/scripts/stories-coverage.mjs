@@ -18,6 +18,8 @@ const componentsRoot = path.resolve(pkgRoot, "src/components");
 
 const args = process.argv.slice(2);
 const onlyComponents = !args.includes("--all");
+const updateBaseline = args.includes("--update-baseline");
+const writeReport = args.includes("--write-report");
 
 function* walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -122,18 +124,45 @@ for (const [area, list] of [...byDir.entries()].sort(
   for (const f of list) lines.push(`- ${f}`);
 }
 
-fs.writeFileSync(
-  path.join(here, "stories-coverage-report.json"),
-  JSON.stringify(report, null, 2),
-);
-fs.writeFileSync(
-  path.join(here, "stories-coverage-report.md"),
-  lines.join("\n"),
-);
+if (writeReport) {
+  fs.writeFileSync(
+    path.join(here, "stories-coverage-report.json"),
+    JSON.stringify(report, null, 2),
+  );
+}
+
+const baselinePath = path.join(here, "stories-coverage-baseline.json");
+const baseline = {
+  componentFiles: report.componentFiles,
+  withStories: report.withStories,
+  missingStories: report.missingStories,
+};
+if (updateBaseline) {
+  fs.writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
+} else {
+  const previous = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+  if (
+    report.missingStories > previous.missingStories ||
+    report.withStories < previous.withStories
+  ) {
+    throw new Error(
+      `Story coverage regressed: ${report.withStories} covered / ${report.missingStories} missing; baseline is ${previous.withStories} covered / ${previous.missingStories} missing.`,
+    );
+  }
+}
+if (writeReport) {
+  fs.writeFileSync(
+    path.join(here, "stories-coverage-report.md"),
+    lines.join("\n"),
+  );
+}
 
 console.log(`Components: ${componentFiles.length}`);
 console.log(`With stories: ${present.length}`);
 console.log(`Missing: ${missing.length}`);
 console.log(`Coverage: ${report.coverage}`);
-console.log(`\nWrote: scripts/stories-coverage-report.json`);
-console.log(`Wrote: scripts/stories-coverage-report.md`);
+if (writeReport) {
+  console.log(`\nWrote: scripts/stories-coverage-report.json`);
+  console.log(`Wrote: scripts/stories-coverage-report.md`);
+}
+if (updateBaseline) console.log("Updated story coverage baseline.");

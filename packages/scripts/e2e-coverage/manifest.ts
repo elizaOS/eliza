@@ -149,6 +149,15 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
     "plugins/plugin-elizacloud/__tests__/cloud-billing-routes.test.ts",
   ),
   "plugin-inbox": existing("plugins/plugin-inbox/test/inbox-routes.test.ts"),
+  "plugin-local-inference": {
+    status: "exempt",
+    reason:
+      "Route handlers are exercised against their real catalog and request contracts, but the production dispatch integration requires native model/voice FFI backends that are unavailable in the keyless lane.",
+    artifacts: [
+      "plugins/plugin-local-inference/src/local-inference-routes.test.ts",
+      "plugins/plugin-local-inference/src/routes/local-inference-route-contracts.fuzz.test.ts",
+    ],
+  },
   "plugin-meetings": existing(
     "plugins/plugin-meetings/src/routes/meetings-routes.test.ts",
   ),
@@ -170,9 +179,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   ),
   "plugin-github": covered("plugins/plugin-github/src/routes-e2e.test.ts"),
   "plugin-imessage": covered("plugins/plugin-imessage/src/routes-e2e.test.ts"),
-  "plugin-music": covered(
-    "plugins/plugin-music/src/__tests__/routes-e2e.test.ts",
-  ),
   "plugin-telegram": covered("plugins/plugin-telegram/src/routes-e2e.test.ts"),
   "plugin-workflow": covered(
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts",
@@ -208,10 +214,7 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
  *
  * Currently empty: every plugin under `plugins/` ships at least one test.
  * `plugin-tee` and `plugin-native-shared-types` gained real tests (#9991);
- * `plugin-action-bench` and `plugin-xmtp` were vestigial `bun.lock`-only
- * directories left by the v2.0.4 baseline squash (action-bench's runtime lives
- * in plugin-training; xmtp had no source) and were removed (#9943). Keep this
- * map empty unless a genuinely untestable plugin lands — never paper a missing
- * test with an exemption.
+ * Keep this map empty unless a genuinely untestable plugin lands — never paper
+ * a missing test with an exemption.
  */
 export const ZERO_TEST_EXEMPT: Record<string, string> = {};

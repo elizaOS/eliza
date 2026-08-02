@@ -29,7 +29,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -79,9 +79,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --no-save --ignore-scripts --verbose && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts --verbose && exit 0
             else
-              bun install --no-save --ignore-scripts && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts && exit 0
             fi
 
             echo "bun install attempt $attempt failed; retrying in 10s..."
@@ -162,9 +162,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --no-save --ignore-scripts --verbose && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts --verbose && exit 0
             else
-              bun install --no-save --ignore-scripts && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts && exit 0
             fi
 
             echo "bun install attempt $attempt failed; retrying in 10s..."
@@ -310,7 +310,7 @@ jobs:
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
             for attempt in 1 2 3; do
-              if bun install --no-save --ignore-scripts; then
+              if bun install --frozen-lockfile --no-save --ignore-scripts; then
                 break
               fi
 

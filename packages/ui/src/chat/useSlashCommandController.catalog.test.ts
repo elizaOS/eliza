@@ -14,7 +14,7 @@
  */
 
 import type { CustomActionDef } from "@elizaos/shared";
-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CommandSurface,
@@ -217,8 +217,9 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     // empty catalog — `error` is true, not a silent healthy-empty.
     expect(result.current.error).toBe(true);
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining("[useSlashCommandController]"),
-      failure,
+      expect.anything(),
+      expect.anything(),
+      expect.stringContaining("slash-commands.catalog"),
     );
     consoleError.mockRestore();
   });
@@ -236,8 +237,9 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(true);
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining("[useSlashCommandController]"),
-      failure,
+      expect.anything(),
+      expect.anything(),
+      expect.stringContaining("slash-commands.catalog"),
     );
     consoleError.mockRestore();
   });
@@ -259,8 +261,9 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     // does not imply a complete catalog.
     expect(result.current.error).toBe(true);
     expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining("[useSlashCommandController]"),
-      failure,
+      expect.anything(),
+      expect.anything(),
+      expect.stringContaining("slash-commands.custom-actions"),
     );
     consoleError.mockRestore();
   });
@@ -352,7 +355,9 @@ describe("useSlashCommandController — protected-probe gate (#16242)", () => {
   });
 
   afterEach(() => {
-    __resetAuthStatusForTests();
+    act(() => {
+      __resetAuthStatusForTests();
+    });
     if (originalLocation) {
       Object.defineProperty(window, "location", originalLocation);
     }
@@ -366,16 +371,18 @@ describe("useSlashCommandController — protected-probe gate (#16242)", () => {
     expect(listCommands).not.toHaveBeenCalled();
     expect(listCustomActions).not.toHaveBeenCalled();
 
-    __setAuthStatusForTests({
-      phase: "authenticated",
-      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
-      session: { id: "s-1", kind: "browser", expiresAt: null },
-      access: {
-        mode: "session",
-        passwordConfigured: true,
-        ownerConfigured: true,
-        role: "OWNER",
-      },
+    act(() => {
+      __setAuthStatusForTests({
+        phase: "authenticated",
+        identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+        session: { id: "s-1", kind: "browser", expiresAt: null },
+        access: {
+          mode: "session",
+          passwordConfigured: true,
+          ownerConfigured: true,
+          role: "OWNER",
+        },
+      });
     });
     await waitFor(() => {
       expect(listCommands).toHaveBeenCalledWith(
@@ -384,5 +391,6 @@ describe("useSlashCommandController — protected-probe gate (#16242)", () => {
       );
       expect(listCustomActions).toHaveBeenCalled();
     });
+    await waitFor(() => expect(result.current.loading).toBe(false));
   });
 });

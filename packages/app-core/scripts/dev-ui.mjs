@@ -23,13 +23,11 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
-import * as JSON5Module from "json5";
 import { startAgentSourceWatcher } from "./lib/agent-source-watcher.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
-import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
 import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
@@ -157,7 +155,6 @@ const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
 syncElizaEnvAliases();
 
 const API_PORT = resolveDesktopApiPort(process.env);
-const JSON5 = JSON5Module.default ?? JSON5Module;
 const cwd = process.cwd();
 
 // --app=<name> selects which app to serve (default: "app" → packages/app)
@@ -410,192 +407,6 @@ if (!hasBun && !which("npx")) {
       "Install Bun or Node.js with npx to run this dev script.",
   );
   process.exit(1);
-}
-
-// ---------------------------------------------------------------------------
-// Stealth import config
-// ---------------------------------------------------------------------------
-
-// coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
-
-function resolveElizaStateDir() {
-  const explicitStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (explicitStateDir) return path.resolve(explicitStateDir);
-
-  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
-  const stateHome = xdgStateHome
-    ? path.isAbsolute(xdgStateHome)
-      ? xdgStateHome
-      : path.join(os.homedir(), xdgStateHome)
-    : path.join(os.homedir(), ".local", "state");
-
-  return path.join(stateHome, resolveElizaNamespace());
-}
-
-function resolveElizaNamespace() {
-  return process.env.ELIZA_NAMESPACE?.trim() || cliName || "eliza";
-}
-
-function resolveElizaConfigPath() {
-  const explicitConfigPath = process.env.ELIZA_CONFIG_PATH?.trim();
-  if (explicitConfigPath) {
-    return path.resolve(explicitConfigPath);
-  }
-
-  return path.join(resolveElizaStateDir(), `${resolveElizaNamespace()}.json`);
-}
-
-function loadElizaConfigForDev() {
-  const configPath = resolveElizaConfigPath();
-  if (!existsSync(configPath)) return null;
-  try {
-    const raw = readFileSync(configPath, "utf-8");
-    return JSON5.parse(raw);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `${green(logPrefix)} Failed to parse config at ${configPath}: ${msg}`,
-    );
-    return null;
-  }
-}
-
-function readPluginStealthFlag(entries, ids) {
-  if (!entries || typeof entries !== "object") return null;
-
-  for (const id of ids) {
-    const entry = entries[id];
-    if (!entry || typeof entry !== "object") continue;
-
-    const config = entry.config;
-    if (!config || typeof config !== "object") continue;
-
-    const stealthFlag =
-      config.stealthImport ??
-      config.enableStealthImport ??
-      config.enableStealth;
-    const parsed = coerceBoolean(stealthFlag);
-    if (parsed !== null) return parsed;
-  }
-
-  return null;
-}
-
-function _formatRelativeImportPath(relativePath) {
-  const normalized = relativePath.split(path.sep).join("/");
-  return normalized.startsWith("./") ? normalized : `./${normalized}`;
-}
-
-function resolveStealthImportPath(devCwd, candidatePaths) {
-  for (const candidatePath of candidatePaths) {
-    const absPath = path.join(devCwd, candidatePath);
-    if (existsSync(absPath)) {
-      // Return the absolute path so the value stays valid regardless of
-      // which cwd the API child gets spawned in. The API child is anchored
-      // at the eliza/ submodule (see apiSpawnCwd below), so a path computed
-      // relative to the outer eliza cwd would resolve to a non-existent
-      // `eliza/eliza/...` from the child's perspective.
-      return absPath;
-    }
-  }
-  return null;
-}
-
-function addStealthImport(imports, label, candidatePaths) {
-  const resolvedPath = resolveStealthImportPath(cwd, candidatePaths);
-  if (resolvedPath) {
-    imports.push(resolvedPath);
-    return;
-  }
-
-  console.warn(
-    `  ${green(logPrefix)} ${orange(
-      `${label} stealth requested but no preload file was found. Tried: ${candidatePaths.join(", ")}`,
-    )}`,
-  );
-}
-
-function resolveStealthImportFlags() {
-  let openaiFlag = coerceBoolean(process.env.ELIZA_ENABLE_OPENAI_STEALTH);
-  let claudeFlag = coerceBoolean(process.env.ELIZA_ENABLE_CLAUDE_STEALTH);
-
-  const globalFlag = coerceBoolean(process.env.ELIZA_ENABLE_STEALTH_IMPORTS);
-  if (globalFlag !== null) {
-    openaiFlag = globalFlag;
-    claudeFlag = globalFlag;
-  }
-
-  const config = loadElizaConfigForDev();
-  if (config && typeof config === "object") {
-    const feature = config.features?.stealthImports;
-    if (typeof feature === "boolean") {
-      if (openaiFlag === null) openaiFlag = feature;
-      if (claudeFlag === null) claudeFlag = feature;
-    } else if (feature && typeof feature === "object") {
-      const enabled = coerceBoolean(feature.enabled);
-      if (enabled !== null) {
-        if (openaiFlag === null) openaiFlag = enabled;
-        if (claudeFlag === null) claudeFlag = enabled;
-      }
-
-      const openaiFeature =
-        coerceBoolean(feature.openai) ?? coerceBoolean(feature.codex);
-      const claudeFeature =
-        coerceBoolean(feature.claude) ?? coerceBoolean(feature.anthropic);
-
-      if (openaiFeature !== null && openaiFlag === null) {
-        openaiFlag = openaiFeature;
-      }
-      if (claudeFeature !== null && claudeFlag === null) {
-        claudeFlag = claudeFeature;
-      }
-    }
-
-    const pluginEntries = config.plugins?.entries;
-    const openaiPluginStealth = readPluginStealthFlag(pluginEntries, [
-      "openai",
-      "@elizaos/plugin-openai",
-      "openai-codex-stealth",
-    ]);
-    const claudePluginStealth = readPluginStealthFlag(pluginEntries, [
-      "anthropic",
-      "@elizaos/plugin-anthropic",
-      "claude-code-stealth",
-    ]);
-
-    if (openaiPluginStealth !== null && openaiFlag === null) {
-      openaiFlag = openaiPluginStealth;
-    }
-    if (claudePluginStealth !== null && claudeFlag === null) {
-      claudeFlag = claudePluginStealth;
-    }
-  }
-
-  // Auto-detect subscription credentials: if the user has logged in via
-  // a subscription provider, enable the corresponding stealth interceptor
-  // automatically (unless explicitly disabled above).
-  const stateDir = resolveElizaStateDir();
-  if (openaiFlag === null) {
-    const codexAuthPath = path.join(stateDir, "auth", "openai-codex.json");
-    if (existsSync(codexAuthPath)) {
-      openaiFlag = true;
-    }
-  }
-  if (claudeFlag === null) {
-    const anthropicAuthPath = path.join(
-      stateDir,
-      "auth",
-      "anthropic-subscription.json",
-    );
-    if (existsSync(anthropicAuthPath)) {
-      claudeFlag = true;
-    }
-  }
-
-  return {
-    openai: openaiFlag === true,
-    claude: claudeFlag === true,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1196,33 +1007,6 @@ if (uiOnly) {
     )}`,
   );
 
-  // Security default: stealth shims are disabled unless explicitly enabled
-  // via env vars or plugin config in eliza.json.
-  const stealth = resolveStealthImportFlags();
-  const nodeStealthImports = [];
-  if (stealth.openai) {
-    addStealthImport(nodeStealthImports, "OpenAI Codex", [
-      "packages/app-core/scripts/openai-codex-stealth.mjs",
-      "eliza/packages/app-core/scripts/openai-codex-stealth.mjs",
-      "openai-codex-stealth.mjs",
-    ]);
-  }
-  if (stealth.claude) {
-    addStealthImport(nodeStealthImports, "Claude Code", [
-      "packages/agent/src/auth/claude-code-stealth-preload.ts",
-      "eliza/packages/agent/src/auth/claude-code-stealth-preload.ts",
-      "packages/app-core/scripts/claude-code-stealth.mjs",
-      "eliza/packages/app-core/scripts/claude-code-stealth.mjs",
-      "claude-code-stealth.mjs",
-    ]);
-  }
-
-  if (nodeStealthImports.length > 0) {
-    console.log(
-      `  ${green(logPrefix)} ${dim(`Stealth imports enabled: ${nodeStealthImports.join(", ")}`)}`,
-    );
-  }
-
   let devServerEntry = resolveDevServerEntryRelativePath(cwd);
   // Resolve to absolute so it stays valid when we anchor the API child cwd
   // at eliza/ for workspace lookup (see apiSpawnCwd below).
@@ -1242,13 +1026,6 @@ if (uiOnly) {
     apiRuntimeCmd,
     "--conditions=eliza-source",
     ...(apiRuntimeIsBun ? [] : ["--import", "tsx"]),
-    // Bun preloads modules with `--preload`; Node uses `--import`. Passing
-    // `--import` to Bun breaks startup whenever a stealth shim is enabled
-    // (OpenAI Codex / Claude Code).
-    ...nodeStealthImports.flatMap((filePath) => [
-      apiRuntimeIsBun ? "--preload" : "--import",
-      filePath,
-    ]),
     devServerEntry,
   ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which

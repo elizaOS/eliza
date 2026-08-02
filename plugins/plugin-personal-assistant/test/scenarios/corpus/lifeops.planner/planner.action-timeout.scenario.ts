@@ -20,11 +20,11 @@
  */
 
 import type { Action, AgentRuntime, Handler, Plugin } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 const HANG_ACTION_NAME = "SCENARIO_HANG";
 

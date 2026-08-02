@@ -3,11 +3,11 @@
  * must distinguish virtual from in-person.
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   seedCalendarCache,
   seedMeetingPreferences,

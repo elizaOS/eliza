@@ -41,9 +41,9 @@ src/
   contracts/            Runtime-owned contracts plus topology, routing, first-run, and wallet adapters
   generated/            Build-time generated action/provider/evaluator docs + spec-helpers (do not hand-edit)
   i18n/                 validation + action-search keyword data (some generated; see prebuild)
-  security/             KMS adapters, MCP config validation, network/spawn policy, redaction, and content guards
+  security/             KMS adapters, MCP config validation, spawn policy, redaction, and content guards
   sensitive-requests/   Sensitive request policy helpers
-  network/              SSRF guard + secure fetch (fetch-guard, ssrf)
+  network/              Canonical SSRF/IP policy, DNS pinning, and guarded fetch transport
   markdown/  media/     markdown IR/chunking; media fetch + mime/type detection
   testing/              Test harness exports (live-provider, integration-runtime, http, mocks) — `@elizaos/core/testing`
   capabilities/         Runtime capability index
@@ -76,7 +76,7 @@ From `@elizaos/core` (`index.node.ts`):
 - Boot/composition (Node): `loadCharacters`, `createRuntimes`, `buildBaseTables`, `InMemoryDatabaseAdapter`.
 - Prompt + model helpers: `composePromptFromState`, `parseKeyValueXml`, `callModelWithValidation`, `parseAndValidate`.
 
-Subpath entries (see `package.json` `exports`): `@elizaos/core/node`, `@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`, `@elizaos/core/services/*`.
+Subpath entries (see `package.json` `exports`): `@elizaos/core/node`, `@elizaos/core/browser`, `@elizaos/core/roles`, `@elizaos/core/testing`, `@elizaos/core/network`, `@elizaos/core/security/mcp-server-config`, `@elizaos/core/security/kms`, `@elizaos/core/security/spawn-policy`, and `@elizaos/core/services/*`.
 
 This package does NOT export a `corePlugin` singleton — the foundational actions/providers/evaluators/services live in `features/basic-capabilities` and are exported as the `basic*` bundles above.
 

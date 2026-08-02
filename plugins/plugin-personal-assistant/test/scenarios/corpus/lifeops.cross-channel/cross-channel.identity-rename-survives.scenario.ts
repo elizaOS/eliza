@@ -11,13 +11,13 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   seedCanonicalIdentityFixture,
 } from "../../../../plugins/plugin-personal-assistant/test/helpers/lifeops-identity-merge-fixtures.ts";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 const PERSON_NAME = "Priya Rao";
 

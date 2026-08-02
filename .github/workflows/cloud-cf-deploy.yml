@@ -245,9 +245,9 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             if [ "$attempt" -eq 3 ]; then
-              bun install --no-save --ignore-scripts --verbose && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts --verbose && exit 0
             else
-              bun install --no-save --ignore-scripts && exit 0
+              bun install --frozen-lockfile --no-save --ignore-scripts && exit 0
             fi
 
             echo "bun install attempt $attempt failed; retrying in 10s..."
@@ -449,7 +449,7 @@ jobs:
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -1116,7 +1116,7 @@ jobs:
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -1521,7 +1521,7 @@ jobs:
           for attempt in 1 2 3; do
             test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
             mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --no-save --ignore-scripts --cache-dir "$install_cache"; then
+            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then

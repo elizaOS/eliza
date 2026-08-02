@@ -86,6 +86,32 @@ import {
   NotificationRow,
   orderDashboardNotifications,
 } from "./notification-shade-content";
+import {
+  CLEAR_CONFIRM_TIMEOUT_MS,
+  EMPTY_PULL_COMMIT_PX,
+  isClickBelowNotificationCards,
+  isInteractiveGestureTarget,
+  MAX_PULL_PREVIEW_GROUPS,
+  MAX_RENDERED_ROWS,
+  MAX_VISIBLE_STACK_LAYERS,
+  NOTIFICATION_COUNT_RESTORE_MS,
+  POST_DRAG_CLICK_SUPPRESSION_MS,
+  PULL_CANCEL_SETTLE_MS,
+  SHADE_CLOSE_EDGE_PX,
+  SHADE_EASING,
+  SHADE_FLICK_VELOCITY_PX_PER_MS,
+  SHADE_MAX_SETTLE_MS,
+  SHADE_MIN_FLICK_DISTANCE_PX,
+  SHADE_MIN_SETTLE_MS,
+  SHADE_MIN_SETTLE_SPEED_PX_PER_MS,
+  SHADE_MIN_VELOCITY_SAMPLE_MS,
+  SHADE_SETTLE_MS,
+  STACK_BOTTOM_CLEARANCE_PX,
+  STACK_PEEK_OFFSET_PX,
+  touchWithIdentifier,
+  WHEEL_COLLAPSE_STEP_PX,
+  WHEEL_COMMIT_LOCK_MS,
+} from "./notification-shade-gesture-policy";
 
 export {
   __setNotificationRowRenderObserverForTests,
@@ -128,110 +154,6 @@ export {
   PULL_COMMIT_PX,
 } from "./notification-shade-presentation";
 
-/**
- * Upper bound on rendered rows. The store caps the inbox at 300 but painting
- * hundreds of buttons on the always-mounted home hurts low-end mobile; 100
- * matches the HTTP hydrate limit, and dismiss/clear manage volume beyond it.
- */
-const MAX_RENDERED_ROWS = 100;
-
-/**
- * Only the first viewport's stacks participate in the live pull preview.
- * Mounting the full 100-row inbox on the first touchmove stalls the gesture on
- * mobile; the remaining stacks mount after the shade commits and are below the
- * fold.
- */
-const MAX_PULL_PREVIEW_GROUPS = 6;
-
-/** Empty feedback should latch after a normal short pull, not require a full shade drag. */
-const EMPTY_PULL_COMMIT_PX = PULL_COMMIT_PX / 2;
-
-/**
- * Bottom-edge capture for the iOS-style upward close gesture. Keeping this
- * narrow lets the rest of an overflowing list retain native vertical scroll.
- */
-const SHADE_CLOSE_EDGE_PX = 40;
-
-const INTERACTIVE_GESTURE_TARGET_SELECTOR =
-  "button, a, input, textarea, select, [role='button'], [contenteditable='true']";
-
-function isInteractiveGestureTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof Element &&
-    target.closest(INTERACTIVE_GESTURE_TARGET_SELECTOR) !== null
-  );
-}
-
-function isClickBelowNotificationCards(
-  target: EventTarget | null,
-  clientY: number,
-  center: HTMLElement,
-): boolean {
-  if (!(target instanceof Node) || !center.contains(target)) return false;
-  if (
-    target instanceof Element &&
-    target.closest("[data-notification-group]")
-  ) {
-    return false;
-  }
-  if (isInteractiveGestureTarget(target)) return false;
-  const groups = center.querySelectorAll<HTMLElement>(
-    "[data-notification-group]",
-  );
-  const lastGroup = groups.item(groups.length - 1);
-  if (!lastGroup) return false;
-  const bounds = lastGroup.getBoundingClientRect();
-  return bounds.height > 0 && clientY > bounds.bottom;
-}
-
-function touchWithIdentifier(
-  touches: TouchList,
-  identifier: number,
-): Touch | undefined {
-  for (let index = 0; index < touches.length; index += 1) {
-    const touch = touches[index];
-    if (touch?.identifier === identifier) return touch;
-  }
-  return undefined;
-}
-
-/**
- * Per-event cap (px) on a wheel delta's contribution toward the COLLAPSE
- * commit. Collapse shares its direction with ordinary downward scrolling, so
- * one aggressive flick at the top of an overflowing list must never commit on
- * its first event — with the cap, the commit needs at least two events with
- * the list still at its top, and the first real scroll resets the run.
- * Expansion has no such conflict (the list is already at its top) and stays
- * uncapped.
- */
-const WHEEL_COLLAPSE_STEP_PX = PULL_COMMIT_PX / 2;
-
-/** iOS-style visual depth: one, two, or three cards, never more. */
-const MAX_VISIBLE_STACK_LAYERS = 3;
-
-/** Vertical offset (px) each successive peek card protrudes beneath the top. */
-const STACK_PEEK_OFFSET_PX = 7;
-
-/** Clear space after the final peek before the next notification group. */
-const STACK_BOTTOM_CLEARANCE_PX = 2;
-
-const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const POST_DRAG_CLICK_SUPPRESSION_MS = 180;
-const SHADE_SETTLE_MS = 460;
-const SHADE_MIN_SETTLE_MS = 320;
-const SHADE_MAX_SETTLE_MS = 600;
-const SHADE_MIN_SETTLE_SPEED_PX_PER_MS = 0.15;
-const SHADE_EASING = "cubic-bezier(0.25,0.1,0.25,1)";
-/** Ignore trackpad rebound while the committed shade settle is running. */
-const WHEEL_COMMIT_LOCK_MS = SHADE_SETTLE_MS;
-const PULL_CANCEL_SETTLE_MS = SHADE_SETTLE_MS;
-const SHADE_MIN_FLICK_DISTANCE_PX = 22;
-const SHADE_FLICK_VELOCITY_PX_PER_MS = 0.45;
-const SHADE_MIN_VELOCITY_SAMPLE_MS = 16;
-// The count and clear slots trade the same 40px of list flow space. Their
-// geometry must settle on one clock or a cancelled pull overshoots before the
-// slower slot catches up, making the count reverse direction at the edge.
-const NOTIFICATION_COUNT_RESTORE_MS = SHADE_SETTLE_MS;
 /** The stack fan has enough travel to read clearly without feeling delayed. */
 export const STACK_FAN_SETTLE_MS = 300;
 const STACK_FAN_LAYOUT_TRANSITION = {

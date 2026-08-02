@@ -89,7 +89,20 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
         "core",
         "duplicate.live.test.ts",
       );
-      for (const file of [realSuite, nestedCodexSuite, nestedCodexPrSuite]) {
+      const nestedWorktreeSuite = path.join(
+        root,
+        ".worktrees",
+        "branch",
+        "packages",
+        "core",
+        "duplicate.real.test.ts",
+      );
+      for (const file of [
+        realSuite,
+        nestedCodexSuite,
+        nestedCodexPrSuite,
+        nestedWorktreeSuite,
+      ]) {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(
           file,
@@ -140,19 +153,6 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     ).toMatchObject({
       optIn: "ELIZA_LIVE_TEST",
       requires: ["ANTHROPIC_API_KEY"],
-    });
-  });
-
-  test("OpenRouter Anthropic caching has an invocable credentialed live proof", () => {
-    expect(
-      manifest.find(
-        (entry) =>
-          entry.file ===
-          "plugins/plugin-openrouter/__tests__/anthropic-cache.live.test.ts",
-      ),
-    ).toMatchObject({
-      requires: ["OPENROUTER_API_KEY"],
-      notes: expect.stringContaining("cache-write/cache-read"),
     });
   });
 

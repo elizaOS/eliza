@@ -49,6 +49,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { ElizaError } from "../errors.js";
 import { logger } from "../logger.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
@@ -276,37 +277,32 @@ async function runExclusive<T>(
 // mismatch triggers AUDIT_ACTIONS.optimized_prompt.integrity_failed (emitted
 // via the runtime's structured logger for downstream audit ingestion).
 //
-// Key source: in this single-user-desktop context the HMAC key is derived
-// from `ELIZA_OPTIMIZED_PROMPT_HMAC_KEY` (a 32-byte hex/base64 secret set at
-// install time). The contract mirrors `KmsClient.hmac(orgKey(orgId,
-// "optimized-prompt-integrity"), bytes)` from the core KMS contract.
+// The host hydrates `ELIZA_OPTIMIZED_PROMPT_HMAC_KEY` from its vault/KMS before
+// runtime start. Core validates that boundary strictly and never substitutes a
+// public or process-local key that would make forged artifacts appear valid.
 // -----------------------------------------------------------------------------
 
 const OPTIMIZED_PROMPT_MAC_SUFFIX = ".mac";
-const OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG =
-	"elizaos.optimized-prompt.integrity.v1";
-
 function resolveHmacKey(): Buffer {
-	const fromEnv = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
-	if (fromEnv?.trim()) {
-		// Accept hex (64 chars) or base64; fall back to raw utf-8 bytes.
-		const trimmed = fromEnv.trim();
-		if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
-			return Buffer.from(trimmed, "hex");
-		}
-		try {
-			const buf = Buffer.from(trimmed, "base64");
-			if (buf.length >= 16) return buf;
-		} catch {
-			// fall through
-		}
-		return Buffer.from(trimmed, "utf-8");
+	const encoded = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY?.trim();
+	if (!encoded) {
+		throw new ElizaError("Optimized-prompt integrity key is unavailable", {
+			code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_UNAVAILABLE",
+			severity: "fatal",
+		});
 	}
-	// Deterministic fallback: HMAC key tag itself. This is NOT secret-grade
-	// but it does protect against accidental tampering by an unrelated
-	// process and it lets local-dev installs run without explicit setup.
-	// Production deployments must set ELIZA_OPTIMIZED_PROMPT_HMAC_KEY.
-	return Buffer.from(OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG, "utf-8");
+	if (/^[0-9a-fA-F]{64}$/.test(encoded)) return Buffer.from(encoded, "hex");
+	if (/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) && encoded.length % 4 === 0) {
+		const key = Buffer.from(encoded, "base64");
+		if (key.length === 32) return key;
+	}
+	throw new ElizaError(
+		"ELIZA_OPTIMIZED_PROMPT_HMAC_KEY must encode exactly 32 bytes as hex or base64",
+		{
+			code: "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID",
+			severity: "fatal",
+		},
+	);
 }
 
 function computeArtifactMac(payload: Buffer | string): string {
@@ -873,6 +869,13 @@ export class OptimizedPromptService extends Service {
 				const entry = await this.loadTaskEntry(task);
 				if (entry) next[task] = entry;
 			} catch (err) {
+				if (
+					err instanceof ElizaError &&
+					(err.code === "OPTIMIZED_PROMPT_INTEGRITY_KEY_UNAVAILABLE" ||
+						err.code === "OPTIMIZED_PROMPT_INTEGRITY_KEY_INVALID")
+				) {
+					throw err;
+				}
 				const code = (err as NodeJS.ErrnoException).code;
 				logger.warn(
 					{

@@ -42,6 +42,7 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from "wagmi/actions";
+import { reportRendererDiagnostic } from "../../../utils/renderer-diagnostics";
 import { api, apiFetch } from "../../lib/api-client";
 import type { CryptoStatusResponse, CryptoStatusTokenOption } from "../types";
 import {
@@ -172,7 +173,12 @@ async function attachDirectPaymentTx(
       json: { transactionHash, payerSignature },
     });
   } catch (error) {
-    console.warn("[direct-crypto] attach-tx failed", error);
+    reportRendererDiagnostic({
+      scope: "billing.direct-crypto.attach-transaction",
+      error,
+      severity: "warning",
+      context: { paymentId, transactionHash },
+    });
   }
 }
 
@@ -450,10 +456,12 @@ export function DirectCryptoCreditCard({
       try {
         await confirmDirectPayment(payment.paymentId, hash, payerSignature);
       } catch (confirmError) {
-        console.warn(
-          "[direct-crypto] inline confirm failed; relying on cron",
-          confirmError,
-        );
+        reportRendererDiagnostic({
+          scope: "billing.direct-crypto.inline-confirmation",
+          error: confirmError,
+          severity: "warning",
+          context: { paymentId: payment.paymentId, transactionHash: hash },
+        });
       }
     } catch (error) {
       if (!activePaymentId) pendingPaymentStore.clear();

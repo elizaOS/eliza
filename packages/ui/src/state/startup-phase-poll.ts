@@ -62,6 +62,8 @@ import {
 import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
+import { runStartupProbe, unwrapStartupProbe } from "./startup-probe";
+import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 
 function isCapacitorNative(): boolean {
   try {
@@ -81,7 +83,8 @@ function isCapacitorNative(): boolean {
  * `backendTimeoutMs` (issue #11030). Native policies override it via
  * `PlatformPolicy.nativeConsecutiveFailureBudgetMs`.
  */
-const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS = 90_000;
+const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS =
+  STARTUP_TIMING_POLICY.nativeConsecutiveFailureBudgetMs;
 
 /**
  * Per-request cap for a single startup probe (issue #13737). Well under the
@@ -92,7 +95,7 @@ const NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS = 90_000;
  * cold-boots the full agent in ~60s, but any *individual* request that is
  * going to succeed resolves in well under 12s).
  */
-const PROBE_REQUEST_TIMEOUT_MS = 12_000;
+const PROBE_REQUEST_TIMEOUT_MS = STARTUP_TIMING_POLICY.probeRequestTimeoutMs;
 
 /**
  * A startup probe outlived the whole remaining phase budget without settling
@@ -884,11 +887,11 @@ export async function runPollingBackend(
             return;
           }
           try {
-            const [options, config] = await Promise.all([
+            const [options, configProbe] = await Promise.all([
               boundedProbe(client.getFirstRunOptions()),
-              // error-policy:J4 config only pre-fills resume fields; the
-              // required options fetch fails loudly via the loop's deadline
-              boundedProbe(client.getConfig()).catch(() => null),
+              runStartupProbe(() => boundedProbe(client.getConfig()), {
+                unsupportedStatuses: [404],
+              }),
             ]);
             // The effect may have been torn down (unmount / re-run) while the
             // fetch was in flight — bail before mutating state or dispatching,
@@ -899,6 +902,10 @@ export async function runPollingBackend(
               dispatch({ type: "FIRST_RUN_COMPLETE" });
               return;
             }
+            const config =
+              configProbe.kind === "unsupported"
+                ? undefined
+                : unwrapStartupProbe(configProbe);
             const rf = deriveFirstRunResumeFieldsFromConfig(config);
             deps.setFirstRunOptions({
               ...options,
@@ -927,7 +934,10 @@ export async function runPollingBackend(
               // Transient 401: retry. /api/auth/status is the auth gate.
               optErr = err;
               await new Promise<void>((r) => {
-                tidRef.current = setTimeout(r, 500);
+                tidRef.current = setTimeout(
+                  r,
+                  STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+                );
               });
               continue;
             }
@@ -993,7 +1003,10 @@ export async function runPollingBackend(
             }
             optErr = err;
             await new Promise<void>((r) => {
-              tidRef.current = setTimeout(r, 500);
+              tidRef.current = setTimeout(
+                r,
+                STARTUP_TIMING_POLICY.runtimePollIntervalMs,
+              );
             });
           }
         }

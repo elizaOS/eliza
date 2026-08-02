@@ -13,6 +13,7 @@ import {
   dispatchCloudHandoffPhase,
 } from "../../events";
 import { loadPersistedActiveServer } from "../../state/persistence";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,
@@ -137,9 +138,12 @@ export function resumePendingCloudHandoff(): boolean {
   void dedicatedHandoffTargetState(pending.dedicatedAgentId).then((state) => {
     if (state === "gone") {
       clearPendingCloudHandoff();
-      console.warn(
-        `[resumePendingCloudHandoff] dedicated handoff target ${pending.dedicatedAgentId} is gone; clearing marker instead of resuming a dead migration`,
-      );
+      reportRendererDiagnostic({
+        scope: "cloud-handoff.target-gone",
+        error: new Error("Dedicated handoff target is no longer available"),
+        severity: "warning",
+        context: { dedicatedAgentId: pending.dedicatedAgentId },
+      });
       // Surface a first-class `failed` phase so the provisioning tile lights
       // up instead of silently persisting "Setting up…". Arm a one-shot Retry
       // listener that mints a FRESH dedicated target (the dead id is never
@@ -178,9 +182,12 @@ export function resumePendingCloudHandoff(): boolean {
           })
           .then((res) => {
             if (!res.success) {
-              console.warn(
-                `[resumePendingCloudHandoff] shared bridge delete failed (leaked row ${pending.sharedAgentId}): ${res.error ?? "unknown"}`,
-              );
+              reportRendererDiagnostic({
+                scope: "cloud-handoff.shared-bridge-cleanup",
+                error: new Error(res.error ?? "Shared bridge cleanup failed"),
+                severity: "warning",
+                context: { sharedAgentId: pending.sharedAgentId },
+              });
             }
           });
       },
@@ -280,9 +287,12 @@ async function runFreshDedicatedHandoff(
           })
           .then((res) => {
             if (!res.success) {
-              console.warn(
-                `[runFreshDedicatedHandoff] shared bridge delete failed (leaked row ${pending.sharedAgentId}): ${res.error ?? "unknown"}`,
-              );
+              reportRendererDiagnostic({
+                scope: "cloud-handoff.fresh-shared-bridge-cleanup",
+                error: new Error(res.error ?? "Shared bridge cleanup failed"),
+                severity: "warning",
+                context: { sharedAgentId: pending.sharedAgentId },
+              });
             }
           });
       },

@@ -1,14 +1,13 @@
 /** Scenario fixture for ea docs collect id copy for workflow; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
+  expectScenarioActionResultData,
   expectScenarioToCallAction,
+  expectTurnActionResultData,
   expectTurnToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
-import {
-  expectScenarioActionResultData,
-  expectTurnActionResultData,
-} from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

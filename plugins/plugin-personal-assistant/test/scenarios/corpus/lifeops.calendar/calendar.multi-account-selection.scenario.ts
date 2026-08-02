@@ -5,12 +5,12 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
 import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 function checkAgentAsksWhichAccount(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();

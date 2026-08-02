@@ -22,17 +22,17 @@ import type {
   MeetingService,
   MeetingServiceDependencies,
 } from "@elizaos/plugin-meetings";
+import {
+  callPayloadBlob,
+  describeCalls,
+  successfulActionData,
+} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import type {
   MeetingPlatform,
   MeetingSession,
   TranscriptSegment,
 } from "@elizaos/shared";
-import {
-  callPayloadBlob,
-  describeCalls,
-  successfulActionData,
-} from "@elizaos/scenario-runner/scenario-assertions";
 
 const GET_MEETING_TRANSCRIPT = "GET_MEETING_TRANSCRIPT";
 const MEET_URL = "https://meet.google.com/abc-defg-hij";

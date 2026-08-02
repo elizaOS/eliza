@@ -30,8 +30,6 @@ export const ROUTES = [
   ["/inventory", "wallet.inventory"],
   ["/model-tester", "model-tester"],
   ["/phone-companion", "phone-companion"],
-  ["/apps/facewear", "facewear"],
-  ["/apps/smartglasses", "smartglasses"],
   ["/trajectory-logger", "trajectory-logger"],
   ["/hyperliquid", "hyperliquid"],
   ["/polymarket", "polymarket"],

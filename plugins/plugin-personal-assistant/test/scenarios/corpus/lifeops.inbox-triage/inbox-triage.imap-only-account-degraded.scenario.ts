@@ -16,6 +16,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
@@ -25,7 +26,6 @@ import {
   executeRawSql,
   sqlQuote,
 } from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 function checkAgentHandledImapHonestly(
   ctx: ScenarioContext,

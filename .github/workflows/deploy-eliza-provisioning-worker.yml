@@ -328,14 +328,14 @@ jobs:
 
             # Install the canary (Rust) Bun on first install.
             if ! command -v bun >/dev/null 2>&1; then
-              curl -fsSL https://bun.sh/install | bash -s "canary"
+              curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.14"
               export BUN_INSTALL="$HOME/.bun"
               export PATH="$BUN_INSTALL/bin:$PATH"
             fi
 
             cd /opt/eliza
             for attempt in 1 2 3; do
-              if bun install --no-save --ignore-scripts; then
+              if bun install --frozen-lockfile --no-save --ignore-scripts; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then exit 1; fi

@@ -10,8 +10,8 @@
  * Cited: 03-coverage-gap-matrix.md — attachment metadata.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

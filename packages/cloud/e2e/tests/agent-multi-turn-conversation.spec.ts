@@ -3,7 +3,7 @@
  *
  * The cloud-e2e suite proves provisioning (`provision.spec.ts`), app deploy
  * (`remote-app-deploy.spec.ts`), and the per-app inference-billing loop
- * (`monetized-mock-llm-journey.spec.ts` / `example-apps-showcase.spec.ts`), but
+ * (`monetized-mock-llm-journey.spec.ts`), but
  * nothing exercised the biggest uncovered surface: a real agent holding a
  * MULTI-TURN conversation — where turn 2 depends on turn 1's context and the
  * transcript + per-turn billing persist. This spec closes that gap.
@@ -38,7 +38,7 @@
  *     appCreditsService) — the agent-conversation path bills the org for
  *     inference but mints no creator markup, so there is nothing to assert there.
  *     The app earnings loop is covered by monetized-mock-llm-journey.spec.ts and
- *     example-apps-showcase.spec.ts. We assert the per-turn CREDIT DEDUCTION that
+ *     monetized-full-loop.spec.ts. We assert the per-turn CREDIT DEDUCTION that
  *     genuinely applies to a conversation.
  */
 

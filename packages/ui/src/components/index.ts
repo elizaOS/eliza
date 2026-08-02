@@ -1,5 +1,7 @@
-// Re-export primitives from local modules (avoid `from "@elizaos/ui"` here — it
-// creates a barrel cycle and breaks consumers' type resolution for the package root).
+/**
+ * Compatibility component barrel for existing package consumers. Exports stay
+ * local to avoid a root-barrel cycle during the subpath API migration.
+ */
 
 export {
   type AnalyticsExportFormat,

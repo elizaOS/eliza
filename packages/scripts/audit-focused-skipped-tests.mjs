@@ -204,7 +204,22 @@ export function discoverTestSourceFiles(
     )
       .split("\0")
       .filter(Boolean);
-  const eligible = files
+  const checkoutFiles =
+    candidateFiles === undefined
+      ? files.filter((file) => {
+          // `git ls-files --cached` retains index entries deleted in the
+          // worktree. Audit the executable checkout while leaving symlinks in
+          // the inventory for the containment validator to reject below.
+          try {
+            fs.lstatSync(path.join(root, file));
+            return true;
+          } catch (error) {
+            if (error?.code === "ENOENT") return false;
+            throw error;
+          }
+        })
+      : files;
+  const eligible = checkoutFiles
     .map(normalizeRelativePath)
     .filter(isTestSourcePath)
     .sort((left, right) => {

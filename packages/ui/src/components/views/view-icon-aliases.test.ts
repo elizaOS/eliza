@@ -9,7 +9,6 @@ describe("resolveViewIconId", () => {
   it("maps known plugin view ids to their nearest baked icon", () => {
     expect(resolveViewIconId("hyperliquid")).toBe("trade");
     expect(resolveViewIconId("shopify")).toBe("shop");
-    expect(resolveViewIconId("smartglasses")).toBe("glasses");
     expect(resolveViewIconId("trajectory-logger")).toBe("trajectory");
     expect(resolveViewIconId("phone-companion")).toBe("companion");
   });

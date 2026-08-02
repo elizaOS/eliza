@@ -1,9 +1,9 @@
 ---
 title: Tracks Overview
-description: "Six dimensions of elizaOS. Pick the one that fits your project."
+description: "The four elizaOS product layers and where each one lives."
 ---
 
-elizaOS spans an operating system, a runtime, an app distribution layer, a hosted cloud, custom silicon, and an embodied robot stack. The documentation is organized around six dimensions. Pick the one that describes what you're building.
+elizaOS spans an operating system, an agent runtime, application shells, and a hosted cloud. Pick the layer closest to what you're building.
 
 <CardGroup cols={2}>
   <Card title="OS" icon="computer" href="/tracks/elizaos/overview">
@@ -18,12 +18,6 @@ elizaOS spans an operating system, a runtime, an app distribution layer, a hoste
   <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
     **Managed infrastructure.** Auth, app registration, inference routing, container deploys, billing, domains.
   </Card>
-  <Card title="Chip" icon="microchip" href="/tracks/chip/overview">
-    **The Eliza E1 SoC.** Open RISC-V AI phone chip — RTL, verification, BSP, physical design.
-  </Card>
-  <Card title="Robot" icon="robot" href="/tracks/training/robot">
-    **Embodiment.** MuJoCo simulation, RL training, real-hardware bridge, Feed.
-  </Card>
 </CardGroup>
 
 ## How the dimensions compose
@@ -31,8 +25,7 @@ elizaOS spans an operating system, a runtime, an app distribution layer, a hoste
 These aren't silos. A typical project crosses several:
 
 - A **Plugin** is consumed by an **Agent** (Runtime), wrapped in an **App**, optionally deployed to **Cloud**.
-- A **Robot** policy loads an Eliza-1 model from the **Runtime**.
-- The **Chip** runs the **OS**, which hosts the **Runtime**, which runs the **App**.
+- The **OS** can host the **Runtime**, which powers the **App**.
 
 Start with the dimension closest to your output artifact and follow the links inward.
 
@@ -41,8 +34,6 @@ Start with the dimension closest to your output artifact and follow the links in
 | Dimension  | Primary packages                                                              |
 | ---------- | ----------------------------------------------------------------------------- |
 | OS         | [`elizaOS/os`](https://github.com/elizaOS/os)                                |
-| Runtime    | `packages/core/`, `packages/agent/`, `packages/training/`, plugins under `packages/` and `@elizaos/*` |
-| App        | `packages/app/`, `packages/app-core/`, `packages/elizaos/templates/project/`  |
-| Cloud      | `packages/cloud/api/`, `packages/cloud-frontend/`, `packages/cloud/shared/`, `packages/cloud/sdk/` |
-| Chip       | `upstreams/research/chip/`                                                              |
-| Robot      | `upstreams/research/robot/`, `packages/feed/`, [elizaOS/benchmarks](https://github.com/elizaOS/benchmarks)                   |
+| Runtime    | `packages/core/`, `packages/agent/`, `packages/training/`, and `plugins/` |
+| App        | `packages/app/`, `packages/app-core/`, `packages/ui/`, and `packages/elizaos/templates/project/` |
+| Cloud      | `packages/cloud/api/`, `packages/cloud/shared/`, and `packages/cloud/sdk/` |

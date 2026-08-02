@@ -1,10 +1,7 @@
 [
   {
     "file": "packages/cloud/scripts/admin/smoke-agent-plugins.ts",
-    "tokens": [
-      "@elizaos/plugin-elizacloud",
-      "@elizaos/plugin-sql"
-    ],
+    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
     "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
   },
   {
@@ -24,9 +21,7 @@
   },
   {
     "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
-    "tokens": [
-      "plugins/plugin-personal-assistant"
-    ],
+    "tokens": ["plugins/plugin-personal-assistant"],
     "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
   },
   {
@@ -51,10 +46,7 @@
   },
   {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
-    "tokens": [
-      "@elizaos/plugin-discord",
-      "plugins/plugin-commands"
-    ],
+    "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
   },
   {
@@ -71,6 +63,7 @@
       "plugins/plugin-github",
       "plugins/plugin-imessage",
       "plugins/plugin-inbox",
+      "plugins/plugin-local-inference",
       "plugins/plugin-meetings",
       "plugins/plugin-scheduling",
       "plugins/plugin-signal",
@@ -84,32 +77,17 @@
   },
   {
     "file": "packages/scripts/ensure-native-plugins-linked.mjs",
-    "tokens": [
-      "plugins/plugin-native-"
-    ],
+    "tokens": ["plugins/plugin-native-"],
     "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
   },
   {
     "file": "packages/scripts/ensure-workspace-symlinks.mjs",
-    "tokens": [
-      "@elizaos/plugin-pdf"
-    ],
+    "tokens": ["@elizaos/plugin-pdf"],
     "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
   },
   {
-    "file": "packages/scripts/generate-dist-paths-config.mjs",
-    "tokens": [
-      "@elizaos/plugin-local-inference",
-      "plugins/plugin-local-inference",
-      "plugins/plugin-native-"
-    ],
-    "reason": "explicit tsconfig dist-path aliases for source-condition subpaths that a normal exports map cannot reflect"
-  },
-  {
     "file": "packages/scripts/launch-qa/run.mjs",
-    "tokens": [
-      "plugins/plugin-personal-assistant"
-    ],
+    "tokens": ["plugins/plugin-personal-assistant"],
     "reason": "release-readiness QA runs focused vitest suites in the personal-assistant plugin"
   },
   {
@@ -137,17 +115,8 @@
     "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
   {
-    "file": "packages/scripts/run-eliza-cerebras.ts",
-    "tokens": [
-      "plugins/plugin-openai"
-    ],
-    "reason": "boots a real runtime with plugin-openai wired to Cerebras to validate the runtime message stage"
-  },
-  {
     "file": "packages/scripts/run-scenario-benchmark.mjs",
-    "tokens": [
-      "plugins/plugin-personal-assistant"
-    ],
+    "tokens": ["plugins/plugin-personal-assistant"],
     "reason": "scenario benchmark drives the personal-assistant executive-assistant corpus by explicit path"
   },
   {
@@ -209,18 +178,12 @@
   },
   {
     "file": "packages/scripts/vitest/source-aliases.ts",
-    "tokens": [
-      "@elizaos/plugin-sql",
-      "plugins/plugin-sql"
-    ],
+    "tokens": ["@elizaos/plugin-sql", "plugins/plugin-sql"],
     "reason": "source-condition alias seam needs the concrete plugin-sql mapping because its exports use a nested src package layout no generic rule can derive"
   },
   {
     "file": "packages/scripts/vitest/unit.config.ts",
-    "tokens": [
-      "@elizaos/plugin-anthropic",
-      "@elizaos/plugin-cli"
-    ],
+    "tokens": ["@elizaos/plugin-anthropic", "@elizaos/plugin-cli"],
     "reason": "unit-lane vitest config stubs these provider plugins so unit suites stay keyless and offline"
   },
   {
@@ -235,9 +198,7 @@
   },
   {
     "file": "scripts/cuda-continuity.mjs",
-    "tokens": [
-      "plugins/plugin-local-inference"
-    ],
+    "tokens": ["plugins/plugin-local-inference"],
     "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
   },
   {
@@ -268,24 +229,17 @@
   },
   {
     "file": "scripts/lifeops/connector-paths.mjs",
-    "tokens": [
-      "plugins/plugin-github",
-      "plugins/plugin-personal-assistant"
-    ],
+    "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
     "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
   },
   {
     "file": "scripts/lifeops/credential-probes.mjs",
-    "tokens": [
-      "plugins/plugin-github"
-    ],
+    "tokens": ["plugins/plugin-github"],
     "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
   },
   {
     "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
-    "tokens": [
-      "plugins/plugin-github"
-    ],
+    "tokens": ["plugins/plugin-github"],
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
   },
   {
@@ -299,14 +253,7 @@
   },
   {
     "file": "scripts/training-harvest/build-manifest.mjs",
-    "tokens": [
-      "@elizaos/plugin-cli-inference",
-      "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-app-control",
-      "plugins/plugin-cloud-apps",
-      "plugins/plugin-health",
-      "plugins/plugin-personal-assistant"
-    ],
-    "reason": "MEASURED_EXPANSION embeds per-scenario-dir persona/paraphrase multipliers sampled live, and the CLI-inference provider note names its plugin; SCENARIO_DIRS itself is seam-discovered"
+    "tokens": ["@elizaos/plugin-cli-inference"],
+    "reason": "the harvest manifest names the CLI-inference provider plugin that supplies its authenticated live-model execution seam"
   }
 ]

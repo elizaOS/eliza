@@ -4,7 +4,7 @@
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "esModuleInterop": true,
     "noEmit": false,
     "outDir": "./dist",
@@ -43,6 +43,11 @@
       "../../../node_modules/.bun/node_modules"
     ]
   },
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/__tests__/**",
+    "src/**/__fixtures__/**"
+  ],
   "include": ["src", "vite-env.d.ts"]
 }

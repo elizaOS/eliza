@@ -35,6 +35,16 @@ import {
 	parseOptimizedPromptArtifact,
 } from "./optimized-prompt";
 
+const TEST_INTEGRITY_KEY = Buffer.alloc(32, 0x5a).toString("base64");
+
+beforeEach(() => {
+	process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY = TEST_INTEGRITY_KEY;
+});
+
+afterEach(() => {
+	delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+});
+
 /**
  * Helper for legacy-store tests: writes the artifact payload AND its `.mac`
  * sidecar (the on-disk format every artifact now requires).
@@ -355,6 +365,13 @@ describe("OptimizedPromptService — HMAC integrity (SOC2 CC6.8)", () => {
 
 	afterEach(async () => {
 		await rm(storeRoot, { recursive: true, force: true });
+	});
+
+	it("fails closed when no vault-hydrated integrity key is available", () => {
+		delete process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
+		expect(() => _computeOptimizedPromptMacForTest("payload")).toThrow(
+			/ integrity key is unavailable/i,
+		);
 	});
 
 	it("writes a `.mac` sidecar next to every artifact and loads when intact", async () => {

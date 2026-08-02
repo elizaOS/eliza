@@ -23,7 +23,7 @@ import {
   useTallyBallot,
   useVoteBallot,
 } from "../lib/approvals";
-import { StatusBadge } from "./status-badge";
+import { ApprovalStatusBadge } from "./status-badge";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -100,7 +100,7 @@ function BallotCard({ ballot }: { ballot: Ballot }) {
             </p>
           </div>
         </div>
-        <StatusBadge status={ballot.status} />
+        <ApprovalStatusBadge status={ballot.status} />
       </div>
 
       {ballot.tallyResult ? (

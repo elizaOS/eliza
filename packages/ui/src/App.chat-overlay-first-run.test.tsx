@@ -156,6 +156,12 @@ vi.mock("./state", () => {
     setUiThemeMode: vi.fn(),
     startupCoordinator: {
       phase: appState.startupPhase,
+      isShellPaintable: [
+        "first-run-required",
+        "starting-runtime",
+        "hydrating",
+        "ready",
+      ].includes(appState.startupPhase),
       dispatch: vi.fn(),
       retry: vi.fn(),
     },

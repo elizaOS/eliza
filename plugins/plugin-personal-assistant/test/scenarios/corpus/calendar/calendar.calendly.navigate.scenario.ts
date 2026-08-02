@@ -1,6 +1,7 @@
 /** Scenario fixture for calendar calendly navigate; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const THIRD_PARTY_CALENDLY_URL = "https://calendly.com/alex/intro";
 

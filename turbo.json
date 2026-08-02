@@ -7,10 +7,8 @@
     "turbo.json",
     "tsconfig.json",
     "tsconfig.base.json",
-    "tsconfig.dist-paths.json",
     "tsconfig.build.template.json",
-    "plugins/tsconfig.build.shared.json",
-    "packages/feed/packages/tsconfig.base.json"
+    "plugins/tsconfig.build.shared.json"
   ],
   "globalEnv": [
     "BUN_PATH",
@@ -121,17 +119,9 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/ui#build": {
-      "dependsOn": [
-        "@elizaos/cloud-sdk#build",
-        "@elizaos/core#build",
-        "@elizaos/shared#build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
-    },
-    "eliza-next-example#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
     },
     "@elizaos/core#build": {
       "dependsOn": ["@elizaos/logger#build", "@elizaos/cloud-routing#build"],
@@ -280,10 +270,6 @@
     },
     "@elizaos/scenario-runner#typecheck": {
       "dependsOn": ["@elizaos/plugin-browser#build", "^build"],
-      "outputs": []
-    },
-    "eliza-react-example#typecheck": {
-      "dependsOn": ["^build"],
       "outputs": []
     },
     "format": {

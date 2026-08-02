@@ -8,8 +8,8 @@
  * Cited: 03-coverage-gap-matrix.md — mark-as-spam single message.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const SPAM_TARGET = "msg-spam";
 

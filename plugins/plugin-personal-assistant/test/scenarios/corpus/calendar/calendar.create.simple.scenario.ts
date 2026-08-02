@@ -1,9 +1,10 @@
 /** Scenario fixture for calendar create simple; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
 
 function assertSimpleMeetingCreated(ctx: ScenarioContext): string | undefined {
   const calls = ctx.actionsCalled.filter(

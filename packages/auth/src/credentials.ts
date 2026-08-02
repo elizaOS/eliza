@@ -438,7 +438,12 @@ function readConfiguredAnthropicSetupToken(): string | null {
     };
     const token = parsed.env?.__anthropicSubscriptionToken;
     return typeof token === "string" && token.trim() ? token.trim() : null;
-  } catch {
+  } catch (error) {
+    // error-policy:J4 optional setup-token discovery degrades to unavailable;
+    // malformed or unreadable config must not block unrelated auth providers.
+    logger.debug(
+      `[auth] Anthropic setup token config unavailable: ${String(error)}`,
+    );
     return null;
   }
 }
@@ -652,6 +657,8 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
         source,
       };
     } catch {
+      // error-policy:J3 stored CLI credentials are untrusted input; malformed
+      // JSON produces the explicit invalid/unavailable signal.
       return null;
     }
   };
@@ -664,8 +671,12 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
       const blob = parse(raw, "credentials file");
       if (blob) return blob;
     }
-  } catch {
-    // Non-fatal
+  } catch (error) {
+    // error-policy:J4 Claude CLI credentials are an optional external source;
+    // inability to read them leaves that source explicitly unavailable.
+    logger.debug(
+      `[auth] Claude Code credential file unavailable: ${String(error)}`,
+    );
   }
 
   // 2. Try macOS Keychain
@@ -679,8 +690,12 @@ function readClaudeCodeOAuthBlob(): ClaudeCodeCredentialBlob | null {
         const blob = parse(raw, "keychain");
         if (blob) return blob;
       }
-    } catch {
-      // Keychain not available or no entry
+    } catch (error) {
+      // error-policy:J4 the optional keychain source is unavailable; pooled and
+      // configured auth sources remain usable.
+      logger.debug(
+        `[auth] Claude Code keychain credential unavailable: ${String(error)}`,
+      );
     }
   }
 
@@ -723,6 +738,8 @@ async function importClaudeCodeOAuthToken(): Promise<string | null> {
     logger.info(`[auth] Refreshed Claude Code OAuth token from ${blob.source}`);
     return refreshed.access;
   } catch (err) {
+    // error-policy:J4 an optional external credential that cannot refresh is
+    // reported and marked unavailable; no healthy token is fabricated.
     if (isClaudeCodeInvalidGrantError(err)) {
       invalidClaudeCodeRefreshTokens.add(refreshTokenCacheKey);
       logger.info(

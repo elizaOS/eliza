@@ -38,6 +38,7 @@ import {
 import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
 import { getElizaApiToken } from "../utils/eliza-globals";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import {
   isTtsDebugEnabled,
   ttsDebug,
@@ -1671,19 +1672,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             // proxy): still ElevenLabs, same voice — NOT a voice swap (#12253).
             // Log at warn (not debug-only) so the retry is visible in the
             // console without the TTS debug flag.
-            console.warn(
-              `[useVoiceChat] Cloud TTS proxy returned ${cloudRes.status}; retrying via the direct ElevenLabs proxy (same voice)`,
-            );
+            reportRendererDiagnostic({
+              scope: "voice.tts-cloud-proxy-fallback",
+              error: new Error("Cloud TTS proxy rejected the request"),
+              severity: "warning",
+              context: { status: cloudRes.status, engine: "elevenlabs" },
+            });
             ttsDebug("useVoiceChat:cloud-proxy-fallback", {
               status: cloudRes.status,
               ttsTarget: describeTtsCloudFetchTargetForDebug(),
             });
           } catch (error) {
-            console.warn(
-              `[useVoiceChat] Cloud TTS proxy unreachable; retrying via the direct ElevenLabs proxy (same voice): ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
+            reportRendererDiagnostic({
+              scope: "voice.tts-cloud-proxy-unavailable",
+              error,
+              severity: "warning",
+              context: { engine: "elevenlabs" },
+            });
             ttsDebug("useVoiceChat:cloud-proxy-unavailable", {
               ttsTarget: describeTtsCloudFetchTargetForDebug(),
               error: error instanceof Error ? error.message : String(error),
@@ -2556,9 +2561,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         error: unknown,
       ): void => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(
-          `[useVoiceChat] ${engine} TTS failed; failing closed (no voice-engine swap): ${message}`,
-        );
+        reportRendererDiagnostic({
+          scope: "voice.tts-failed-closed",
+          error,
+          context: { engine },
+        });
         workerError = error;
         ttsFailure = {
           engine,

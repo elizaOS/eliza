@@ -9,7 +9,7 @@
 import {
   AuditDispatcher,
   type AuditSink,
-  ConsoleSink,
+  LoggerSink,
 } from "@/api-app/services/audit";
 import { logger } from "@/lib/utils/logger";
 import { auditEventsSink } from "./audit-events";
@@ -18,8 +18,8 @@ let dispatcher: AuditDispatcher | null = null;
 
 function buildDefaultSinks(): AuditSink[] {
   const sinks: AuditSink[] = [auditEventsSink];
-  if (process.env.AUDIT_CONSOLE_SINK === "true") {
-    sinks.push(new ConsoleSink());
+  if (process.env.AUDIT_LOG_SINK === "true") {
+    sinks.push(new LoggerSink());
   }
   return sinks;
 }

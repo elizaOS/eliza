@@ -5,10 +5,7 @@
 
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
-import {
-	isBlockedPrivateOrLinkLocalIp,
-	normalizeHostLike,
-} from "./network-policy.ts";
+import { isPrivateIpAddress, normalizeHostLike } from "../network/ssrf.ts";
 import {
 	BLOCKED_SPAWN_ENV_KEYS,
 	BLOCKED_SPAWN_ENV_PREFIXES,
@@ -265,7 +262,7 @@ async function resolveMcpRemoteUrlRejection(
 	}
 
 	if (net.isIP(hostname)) {
-		if (isBlockedPrivateOrLinkLocalIp(hostname)) {
+		if (isPrivateIpAddress(hostname)) {
 			return `URL host "${hostname}" is blocked for security reasons`;
 		}
 		return null;
@@ -284,7 +281,7 @@ async function resolveMcpRemoteUrlRejection(
 	}
 
 	for (const entry of addresses) {
-		if (isBlockedPrivateOrLinkLocalIp(entry.address)) {
+		if (isPrivateIpAddress(entry.address)) {
 			return `URL host "${hostname}" resolves to blocked address ${entry.address}`;
 		}
 	}

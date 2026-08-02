@@ -12,12 +12,9 @@ import {
   FileText,
   MessageSquareText,
   Search,
-  ShieldCheck,
   Sparkles,
-  Upload,
 } from "lucide-react";
 import {
-  type ChangeEvent,
   memo,
   type ReactNode,
   useCallback,

@@ -11,7 +11,7 @@
  * exercises exactly the engine the session will use. It never picks the engine
  * itself: the router fails closed for `TEXT_TO_SPEECH` (#12253), so a broken
  * Kokoro surfaces its structured error here — logged at `warn` — instead of the
- * router silently swapping in edge-tts and reporting a healthy warmup. Warmup is
+ * router swapping providers and reporting a healthy warmup. Warmup is
  * a first-use-latency optimization; a failure is non-fatal (the model loads on
  * first real use) but is never masked by warming a different voice.
  *

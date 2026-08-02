@@ -12,13 +12,13 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  type ScenarioContext,
-  scenario,
-} from "@elizaos/scenario-runner/schema";
-import {
   expectScenarioToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 
 function checkHandoffRoomPersisted(ctx: ScenarioContext): string | undefined {
   const runtime = ctx.runtime as AgentRuntime | undefined;

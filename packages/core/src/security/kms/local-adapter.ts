@@ -50,16 +50,10 @@ export interface LocalKmsOptions {
 	rootKey: Uint8Array;
 }
 
-interface VersionState {
-	current: KeyVersion;
-	versions: Set<KeyVersion>;
-}
-
 const HKDF_DOMAIN = "elizaos.security.local-kms.v1";
 
 export class LocalKmsAdapter implements KmsClient {
 	private readonly rootKey: Uint8Array;
-	private readonly state = new Map<KeyId, VersionState>();
 
 	constructor(opts: LocalKmsOptions) {
 		if (opts.rootKey.length !== 32) {
@@ -91,38 +85,27 @@ export class LocalKmsAdapter implements KmsClient {
 		return createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
 	}
 
-	private ensureState(keyId: KeyId): VersionState {
-		parseKeyId(keyId);
-		let s = this.state.get(keyId);
-		if (!s) {
-			const version = parseKeyId(keyId).version;
-			s = { current: version, versions: new Set([version]) };
-			this.state.set(keyId, s);
-		}
-		return s;
+	private version(keyId: KeyId): KeyVersion {
+		return parseKeyId(keyId).version;
 	}
 
 	async getOrCreateKey(
 		keyId: KeyId,
 		_opts: GetOrCreateKeyOptions = {},
 	): Promise<KeyHandle> {
-		const s = this.ensureState(keyId);
-		return { keyId, version: s.current };
+		return { keyId, version: this.version(keyId) };
 	}
 
 	async rotateKey(
 		keyId: KeyId,
 	): Promise<{ keyId: KeyId; newVersion: KeyVersion }> {
-		const s = this.ensureState(keyId);
-		const newVersion = s.current + 1;
+		const newVersion = this.version(keyId) + 1;
 		const rotatedKeyId = withVersion(keyId, newVersion);
-		this.ensureState(rotatedKeyId);
 		return { keyId: rotatedKeyId, newVersion };
 	}
 
 	async listKeyVersions(keyId: KeyId): Promise<KeyVersion[]> {
-		const s = this.ensureState(keyId);
-		return [s.current];
+		return [this.version(keyId)];
 	}
 
 	async encrypt(
@@ -130,10 +113,10 @@ export class LocalKmsAdapter implements KmsClient {
 		plaintext: Uint8Array,
 		aad?: Uint8Array,
 	): Promise<EncryptResult> {
-		const s = this.ensureState(keyId);
-		const k = this.deriveSym(keyId, s.current);
+		const version = this.version(keyId);
+		const k = this.deriveSym(keyId, version);
 		const out = aeadEncrypt(k, plaintext, aad);
-		return { ...out, keyId, keyVersion: s.current };
+		return { ...out, keyId, keyVersion: version };
 	}
 
 	async decrypt(
@@ -144,9 +127,9 @@ export class LocalKmsAdapter implements KmsClient {
 		aad?: Uint8Array,
 		keyVersion?: KeyVersion,
 	): Promise<Uint8Array> {
-		const s = this.ensureState(keyId);
-		const version = keyVersion ?? s.current;
-		if (version !== s.current) {
+		const currentVersion = this.version(keyId);
+		const version = keyVersion ?? currentVersion;
+		if (version !== currentVersion) {
 			throw new KeyNotFoundError(keyId, version);
 		}
 		const k = this.deriveSym(keyId, version);
@@ -154,9 +137,9 @@ export class LocalKmsAdapter implements KmsClient {
 	}
 
 	async hmac(keyId: KeyId, data: Uint8Array): Promise<Uint8Array> {
-		const s = this.ensureState(keyId);
+		const version = this.version(keyId);
 		const info = Buffer.from(
-			`${HKDF_DOMAIN}|hmac|${keyId}|v${s.current}`,
+			`${HKDF_DOMAIN}|hmac|${keyId}|v${version}`,
 			"utf8",
 		);
 		const macKey = hkdfSha256(this.rootKey, 32, info);
@@ -171,9 +154,9 @@ export class LocalKmsAdapter implements KmsClient {
 		data: Uint8Array,
 		tag: Uint8Array,
 	): Promise<boolean> {
-		const s = this.ensureState(keyId);
+		const version = this.version(keyId);
 		const info = Buffer.from(
-			`${HKDF_DOMAIN}|hmac|${keyId}|v${s.current}`,
+			`${HKDF_DOMAIN}|hmac|${keyId}|v${version}`,
 			"utf8",
 		);
 		const macKey = hkdfSha256(this.rootKey, 32, info);
@@ -192,14 +175,14 @@ export class LocalKmsAdapter implements KmsClient {
 		algo: SignatureAlgorithm = "ed25519",
 	): Promise<SignResult> {
 		if (algo === "ed25519") {
-			const s = this.ensureState(keyId);
-			const privateKey = this.deriveEd25519PrivateKey(keyId, s.current);
+			const version = this.version(keyId);
+			const privateKey = this.deriveEd25519PrivateKey(keyId, version);
 			const signature = nodeSign(null, Buffer.from(data), privateKey);
 			return {
 				signature: new Uint8Array(signature),
 				algorithm: algo,
 				keyId,
-				keyVersion: s.current,
+				keyVersion: version,
 			};
 		}
 		throw new KmsError(
@@ -213,8 +196,8 @@ export class LocalKmsAdapter implements KmsClient {
 		algo: SignatureAlgorithm = "ed25519",
 	): Promise<boolean> {
 		if (algo === "ed25519") {
-			const s = this.ensureState(keyId);
-			const privateKey = this.deriveEd25519PrivateKey(keyId, s.current);
+			const version = this.version(keyId);
+			const privateKey = this.deriveEd25519PrivateKey(keyId, version);
 			const publicKey = createPublicKey(privateKey);
 			return nodeVerify(
 				null,
@@ -228,8 +211,8 @@ export class LocalKmsAdapter implements KmsClient {
 		);
 	}
 	async getPublicKey(keyId: KeyId): Promise<Uint8Array> {
-		const s = this.ensureState(keyId);
-		const privateKey = this.deriveEd25519PrivateKey(keyId, s.current);
+		const version = this.version(keyId);
+		const privateKey = this.deriveEd25519PrivateKey(keyId, version);
 		const publicKey = createPublicKey(privateKey);
 		return new Uint8Array(publicKey.export({ format: "der", type: "spki" }));
 	}

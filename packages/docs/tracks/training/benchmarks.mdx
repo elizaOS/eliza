@@ -1,20 +1,17 @@
 ---
 title: Benchmarks
-description: "70+ harnesses for agents, models, and embodied systems."
+description: "Evaluation suites for agent behavior, tool use, coding, voice, and web tasks."
 ---
 
-The benchmarks suite orchestrates evaluation runs across every Eliza subsystem. It covers tool-call correctness, agent autonomy, voice and vision, embodied control, long-horizon reasoning, and adversarial robustness.
+The standalone benchmarks repository collects evaluation suites for Eliza agents. It covers tool-call correctness, software engineering, browser and desktop tasks, orchestration, voice, configuration, and adversarial robustness.
 
 ## Categories
 
-- **Eliza-1** — model-side: tool-calling, instruction following, agentic loops.
-- **SWE-Bench** — software engineering tasks.
-- **LifeOps-Bench** — long-running personal-assistant scenarios.
-- **Orchestrator** — multi-agent coordination harness.
-- **Vision-Language** — multimodal grounding.
-- **Voice-Emotion** — speech recognition and affect under noise.
-- **Feed / ScamBench** — adversarial social pressure inside the Feed simulation.
-- **Robot** — embodied skill evaluation.
+- **Agent and tool use** — AgentBench, BFCL, GAIA, Tau Bench, and related suites.
+- **Software engineering** — SWE-bench, Terminal-Bench, and coding scenarios.
+- **Browser and desktop** — Mind2Web, OSWorld, WebShop, and computer-use tasks.
+- **Orchestration** — multi-agent coordination and lifecycle harnesses.
+- **Voice and configuration** — VoiceBench, ConfigBench, and runtime-specific checks.
 
 ## Running a benchmark
 
@@ -31,5 +28,3 @@ Each run emits a calibration report, scorecards, and per-task traces. Reports ar
 ## See also
 
 - [Eliza-1](/tracks/training/eliza-1)
-- [Feed](/tracks/training/feed)
-- [Robot](/tracks/training/robot)

@@ -4,11 +4,11 @@
  * parameters/result must reflect a write, not just another read.
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   seedCalendarCache,
   seedMeetingPreferences,

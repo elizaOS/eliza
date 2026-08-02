@@ -214,15 +214,6 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "MODEL_SWITCH",
   // Local-inference management action; no deterministic keyless scenario yet.
   "LOCAL_INFERENCE",
-  // Facewear owns smartglasses connection/runtime actions. The device-facing
-  // actions need dedicated keyless scenarios before they can leave this
-  // baseline.
-  "FACEWEAR_CONNECT",
-  "FACEWEAR_DEBUG",
-  "SMARTGLASSES_CONTROL",
-  "SMARTGLASSES_DISPLAY_TEXT",
-  "SMARTGLASSES_MICROPHONE",
-  "SMARTGLASSES_STATUS",
   // plugin-commands slash-command actions (/help, /status, /reset, /compact,
   // /think, /model, /tts, …) are dispatched through the command palette, not
   // the keyless scenario pipeline, so they have no deterministic scenario yet.

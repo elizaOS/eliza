@@ -1,11 +1,11 @@
 /** Scenario fixture for cross platform escalation to user; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { AgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
-import { receivePendingIntents } from "../../../../plugins/plugin-personal-assistant/src/lifeops/intent-sync.ts";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
+import { receivePendingIntents } from "../../../../plugins/plugin-personal-assistant/src/lifeops/intent-sync.ts";
 
 export default scenario({
   lane: "live-only",

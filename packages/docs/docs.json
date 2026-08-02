@@ -71,7 +71,7 @@
           },
           {
             "group": "Project",
-            "pages": ["changelog", "direction", "build-and-release"]
+            "pages": ["changelog", "build-and-release"]
           }
         ]
       },
@@ -130,17 +130,7 @@
               "runtime/events",
               "runtime/services",
               "runtime/providers",
-              "runtime/types",
-              "runtime/action-callback-streaming"
-            ]
-          },
-          {
-            "group": "Agent internals",
-            "pages": [
-              "agents/runtime-and-lifecycle",
-              "agents/character-interface",
-              "agents/personality-and-behavior",
-              "agents/memory-and-state"
+              "runtime/types"
             ]
           },
           {
@@ -149,7 +139,6 @@
               "plugins/overview",
               "plugins/architecture",
               "plugins/create-a-plugin",
-              "plugins/development",
               "plugins/patterns",
               "plugins/schemas",
               "plugins/testing",
@@ -158,8 +147,7 @@
               "plugins/plugin-eject",
               "plugins/publish",
               "plugins/skills",
-              "plugins/decision-guide",
-              "plugin-resolution-and-node-path"
+              "plugins/decision-guide"
             ]
           },
           {
@@ -167,48 +155,13 @@
             "pages": [
               "architecture",
               "configuration",
-              "config-schema",
               "model-providers",
-              "chat-commands",
-              "plugin-setup-guide",
-              "action-catalog",
-              "skills/streaming"
+              "chat-commands"
             ]
           },
           {
             "group": "Connectors",
-            "pages": [
-              "tracks/agent/connect-channels",
-              "connectors/discord",
-              "connectors/telegram",
-              "connectors/slack",
-              "connectors/twitter",
-              "connectors/whatsapp",
-              "connectors/signal",
-              "connectors/imessage",
-              "connectors/wechat",
-              "connectors/farcaster",
-              "connectors/bluesky",
-              "connectors/nostr",
-              "connectors/lens",
-              "connectors/matrix",
-              "connectors/msteams",
-              "connectors/googlechat",
-              "connectors/instagram",
-              "connectors/github",
-              "connectors/twitch",
-              "connectors/gmail-watch",
-              "connectors/line",
-              "connectors/feishu",
-              "connectors/mattermost",
-              "connectors/tlon",
-              "connectors/twilio",
-              "connectors/blooio",
-              "connectors/bluebubbles",
-              "connectors/nextcloud-talk",
-              "connectors/zalo",
-              "connectors/zalouser"
-            ]
+            "pages": ["tracks/agent/connect-channels"]
           },
           {
             "group": "Eliza-1 model",
@@ -248,10 +201,6 @@
               "apps/overview",
               "apps/desktop",
               "apps/desktop-local-development",
-              "apps/desktop-main-process-reset",
-              "apps/desktop-vrm-three-and-spark",
-              "apps/electrobun-darwin-macos-webgpu-version",
-              "electrobun-startup",
               "apps/desktop/deep-linking",
               "apps/desktop/native-modules",
               "apps/mobile",
@@ -287,9 +236,7 @@
               "plugins/testing",
               "plugins/scenarios",
               "plugins/decision-guide",
-              "plugins/local-plugins",
-              "plugin-resolution-and-node-path",
-              "action-catalog"
+              "plugins/local-plugins"
             ]
           }
         ]
@@ -321,11 +268,7 @@
           },
           {
             "group": "Agents",
-            "pages": [
-              "cloud/agents",
-              "cloud/agent-creator",
-              "cloud/character-json"
-            ]
+            "pages": ["cloud/agents", "cloud/character-json"]
           },
           {
             "group": "Runtime & Apps",
@@ -375,48 +318,11 @@
           },
           {
             "group": "Reference",
-            "pages": [
-              "cloud/rate-limits",
-              "cloud/errors",
-              "cloud/sdks",
-              "cloud/launch-status",
-              "cloud/changelog"
-            ]
+            "pages": ["cloud/rate-limits", "cloud/errors", "cloud/sdks"]
           },
           {
             "group": "Guides",
-            "pages": [
-              "tracks/cloud/overview",
-              "tracks/cloud/inference",
-              "eliza-cloud-deployment",
-              "eliza-cloud-rollout"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Chip",
-        "groups": [
-          {
-            "group": "Eliza E1 SoC",
-            "pages": [
-              "tracks/chip/overview",
-              "tracks/chip/architecture",
-              "tracks/chip/rtl-verify",
-              "tracks/chip/software",
-              "tracks/chip/physical-design",
-              "tracks/chip/simulation",
-              "tracks/chip/manufacturing"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Robot",
-        "groups": [
-          {
-            "group": "Embodiment",
-            "pages": ["tracks/training/robot", "tracks/training/feed"]
+            "pages": ["tracks/cloud/overview", "tracks/cloud/inference"]
           }
         ]
       },
@@ -436,7 +342,6 @@
             "group": "Configuration",
             "pages": [
               "configuration",
-              "config-schema",
               "model-providers",
               "chat-commands",
               "self-updates"
@@ -444,12 +349,7 @@
           },
           {
             "group": "Deployment",
-            "pages": [
-              "deployment",
-              "deployment-bare-metal",
-              "build-and-release",
-              "security"
-            ]
+            "pages": ["deployment", "build-and-release", "security"]
           },
           {
             "group": "Advanced",
@@ -458,8 +358,6 @@
               "advanced/logs",
               "advanced/trajectories",
               "websocket-events",
-              "stability/known-failure-modes",
-              "security/codeflow-residual-risk",
               "security/MODEL-BOUNDARY-PRIVACY"
             ]
           }
@@ -567,7 +465,7 @@
     },
     {
       "source": "/guides/whatsapp",
-      "destination": "/connectors/whatsapp"
+      "destination": "/tracks/agent/connect-channels"
     },
     {
       "source": "/guides/registry",
@@ -595,11 +493,11 @@
     },
     {
       "source": "/guides/tutorial-discord-bot",
-      "destination": "/connectors/discord"
+      "destination": "/tracks/agent/connect-channels"
     },
     {
       "source": "/guides/tutorial-telegram-bot",
-      "destination": "/connectors/telegram"
+      "destination": "/tracks/agent/connect-channels"
     },
     {
       "source": "/guides/mcp-marketplace",
@@ -612,6 +510,214 @@
     {
       "source": "/guides/cloud-provider-routing",
       "destination": "/tracks/cloud/inference"
+    },
+    {
+      "source": "/action-catalog",
+      "destination": "/plugins/overview"
+    },
+    {
+      "source": "/direction",
+      "destination": "/index"
+    },
+    {
+      "source": "/cloud/launch-status",
+      "destination": "/cloud/index"
+    },
+    {
+      "source": "/cloud/changelog",
+      "destination": "/cloud/index"
+    },
+    {
+      "source": "/deployment-bare-metal",
+      "destination": "/deployment"
+    },
+    {
+      "source": "/apps/desktop-main-process-reset",
+      "destination": "/apps/desktop"
+    },
+    {
+      "source": "/apps/desktop-vrm-three-and-spark",
+      "destination": "/apps/desktop"
+    },
+    {
+      "source": "/apps/electrobun-darwin-macos-webgpu-version",
+      "destination": "/apps/desktop"
+    },
+    {
+      "source": "/electrobun-startup",
+      "destination": "/apps/desktop"
+    },
+    {
+      "source": "/plugin-resolution-and-node-path",
+      "destination": "/plugins/create-a-plugin"
+    },
+    {
+      "source": "/plugins/development",
+      "destination": "/plugins/create-a-plugin"
+    },
+    {
+      "source": "/runtime/action-callback-streaming",
+      "destination": "/runtime/core"
+    },
+    {
+      "source": "/security/codeflow-residual-risk",
+      "destination": "/security"
+    },
+    {
+      "source": "/connectors/bluesky",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/farcaster",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/feishu",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/github",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/gmail-watch",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/instagram",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/lens",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/line",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/nextcloud-talk",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/nostr",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/tlon",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/twilio",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/twitch",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/zalo",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/zalouser",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/blooio",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/bluebubbles",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/discord",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/googlechat",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/imessage",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/matrix",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/mattermost",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/msteams",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/signal",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/slack",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/telegram",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/twitter",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/wechat",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/connectors/whatsapp",
+      "destination": "/tracks/agent/connect-channels"
+    },
+    {
+      "source": "/config-schema",
+      "destination": "/configuration"
+    },
+    {
+      "source": "/plugin-setup-guide",
+      "destination": "/plugins/overview"
+    },
+    {
+      "source": "/stability/known-failure-modes",
+      "destination": "/user/troubleshooting"
+    },
+    {
+      "source": "/agents/runtime-and-lifecycle",
+      "destination": "/runtime/core"
+    },
+    {
+      "source": "/agents/character-interface",
+      "destination": "/tracks/agent/character"
+    },
+    {
+      "source": "/agents/personality-and-behavior",
+      "destination": "/tracks/agent/character"
+    },
+    {
+      "source": "/agents/memory-and-state",
+      "destination": "/runtime/memory"
+    },
+    {
+      "source": "/eliza-cloud-deployment",
+      "destination": "/tracks/cloud/overview"
+    },
+    {
+      "source": "/eliza-cloud-rollout",
+      "destination": "/tracks/cloud/overview"
+    },
+    {
+      "source": "/cloud/agent-creator",
+      "destination": "/cloud/agents"
     }
   ],
   "topAnchor": {

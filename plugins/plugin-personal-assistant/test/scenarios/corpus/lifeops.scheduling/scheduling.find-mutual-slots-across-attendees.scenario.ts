@@ -7,11 +7,11 @@
  * from the OWNER's calendar and frame them as "propose to attendees".
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   seedCalendarCache,
   seedMeetingPreferences,

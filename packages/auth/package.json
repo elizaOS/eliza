@@ -41,20 +41,90 @@
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json",
-    "./*": {
-      "types": "./dist/*.d.ts",
+    "./account-storage": {
+      "types": "./dist/account-storage.d.ts",
       "eliza-source": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
+        "types": "./src/account-storage.ts",
+        "import": "./src/account-storage.ts",
+        "default": "./src/account-storage.ts"
       },
       "bun": {
-        "types": "./src/*.ts",
-        "import": "./src/*.ts",
-        "default": "./src/*.ts"
+        "types": "./src/account-storage.ts",
+        "import": "./src/account-storage.ts",
+        "default": "./src/account-storage.ts"
       },
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
+      "import": "./dist/account-storage.js",
+      "default": "./dist/account-storage.js"
+    },
+    "./anthropic": {
+      "types": "./dist/anthropic.d.ts",
+      "eliza-source": "./src/anthropic.ts",
+      "bun": "./src/anthropic.ts",
+      "import": "./dist/anthropic.js",
+      "default": "./dist/anthropic.js"
+    },
+    "./codex-usage": {
+      "types": "./dist/codex-usage.d.ts",
+      "eliza-source": "./src/codex-usage.ts",
+      "bun": "./src/codex-usage.ts",
+      "import": "./dist/codex-usage.js",
+      "default": "./dist/codex-usage.js"
+    },
+    "./credentials": {
+      "types": "./dist/credentials.d.ts",
+      "eliza-source": "./src/credentials.ts",
+      "bun": "./src/credentials.ts",
+      "import": "./dist/credentials.js",
+      "default": "./dist/credentials.js"
+    },
+    "./direct-api-probe": {
+      "types": "./dist/direct-api-probe.d.ts",
+      "eliza-source": "./src/direct-api-probe.ts",
+      "bun": "./src/direct-api-probe.ts",
+      "import": "./dist/direct-api-probe.js",
+      "default": "./dist/direct-api-probe.js"
+    },
+    "./oauth-flow": {
+      "types": "./dist/oauth-flow.d.ts",
+      "eliza-source": "./src/oauth-flow.ts",
+      "bun": "./src/oauth-flow.ts",
+      "import": "./dist/oauth-flow.js",
+      "default": "./dist/oauth-flow.js"
+    },
+    "./openai-codex": {
+      "types": "./dist/openai-codex.d.ts",
+      "eliza-source": "./src/openai-codex.ts",
+      "bun": "./src/openai-codex.ts",
+      "import": "./dist/openai-codex.js",
+      "default": "./dist/openai-codex.js"
+    },
+    "./refresh-mutex": {
+      "types": "./dist/refresh-mutex.d.ts",
+      "eliza-source": "./src/refresh-mutex.ts",
+      "bun": "./src/refresh-mutex.ts",
+      "import": "./dist/refresh-mutex.js",
+      "default": "./dist/refresh-mutex.js"
+    },
+    "./subscription-auth/adopt-codex-cli-login": {
+      "types": "./dist/subscription-auth/adopt-codex-cli-login.d.ts",
+      "eliza-source": "./src/subscription-auth/adopt-codex-cli-login.ts",
+      "bun": "./src/subscription-auth/adopt-codex-cli-login.ts",
+      "import": "./dist/subscription-auth/adopt-codex-cli-login.js",
+      "default": "./dist/subscription-auth/adopt-codex-cli-login.js"
+    },
+    "./token-expiry": {
+      "types": "./dist/token-expiry.d.ts",
+      "eliza-source": "./src/token-expiry.ts",
+      "bun": "./src/token-expiry.ts",
+      "import": "./dist/token-expiry.js",
+      "default": "./dist/token-expiry.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "eliza-source": "./src/types.ts",
+      "bun": "./src/types.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
     }
   },
   "scripts": {

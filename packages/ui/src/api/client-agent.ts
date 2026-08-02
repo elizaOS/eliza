@@ -35,7 +35,24 @@ import {
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { openEventSource } from "../utils/event-source";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
+import {
+  type ConnectorAccountActionResult,
+  type ConnectorAccountAuditEventsQuery,
+  type ConnectorAccountAuditEventsResponse,
+  type ConnectorAccountCreateInput,
+  type ConnectorAccountOAuthStartInput,
+  type ConnectorAccountRecord,
+  type ConnectorAccountsListResponse,
+  type ConnectorAccountUpdateInput,
+  connectorAccountAuditPath,
+  connectorAccountOAuthPath,
+  connectorAccountsPath,
+  normalizeConnectorAccountActionResult,
+  normalizeConnectorAccountRecord,
+  normalizeConnectorAccountsListResponse,
+} from "./client-agent-connector-accounts";
 import { ElizaClient } from "./client-base";
 import { isDirectCloudSharedAgentBase } from "./client-cloud";
 import type {
@@ -153,6 +170,24 @@ import {
 import { isApiError } from "./client-types-core";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { workflowSurfaceClient } from "./workflow-surface-routing";
+
+export {
+  CONNECTOR_SERVER_ROLE_TO_UI_ROLE,
+  type ConnectorAccountActionResult,
+  type ConnectorAccountAuditEventRecord,
+  type ConnectorAccountAuditEventsQuery,
+  type ConnectorAccountAuditEventsResponse,
+  type ConnectorAccountCreateInput,
+  type ConnectorAccountOAuthStartInput,
+  type ConnectorAccountPrivacy,
+  type ConnectorAccountPurpose,
+  type ConnectorAccountRecord,
+  type ConnectorAccountRole,
+  type ConnectorAccountStatus,
+  type ConnectorAccountsListResponse,
+  type ConnectorAccountUpdateInput,
+  normalizeConnectorAccountRecord,
+} from "./client-agent-connector-accounts";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -361,127 +396,6 @@ export interface AccountOAuthStartResult {
 // Connector config still uses `/api/connectors`; account inventory lives under
 // `/api/connectors/:provider/accounts`.
 // ---------------------------------------------------------------------------
-
-export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM";
-export type ConnectorAccountPurpose =
-  | "messaging"
-  | "posting"
-  | "reading"
-  | "admin"
-  | "automation"
-  | (string & {});
-
-export type ConnectorAccountPrivacy =
-  | "owner_only"
-  | "team_visible"
-  | "semi_public"
-  | "public";
-
-export type ConnectorAccountStatus =
-  | "connected"
-  | "pending"
-  | "needs-reauth"
-  | "disconnected"
-  | "error"
-  | "unknown";
-
-export interface ConnectorAccountRecord {
-  id: string;
-  provider: string;
-  connectorId: string;
-  label: string;
-  handle?: string | null;
-  externalId?: string | null;
-  avatarUrl?: string | null;
-  status?: ConnectorAccountStatus;
-  statusDetail?: string | null;
-  role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose[];
-  privacy?: ConnectorAccountPrivacy;
-  isDefault?: boolean;
-  enabled?: boolean;
-  createdAt?: number;
-  updatedAt?: number;
-  lastSyncedAt?: number;
-  metadata?: Record<string, unknown>;
-}
-
-export interface ConnectorAccountsListResponse {
-  provider: string;
-  connectorId: string;
-  defaultAccountId?: string | null;
-  accounts: ConnectorAccountRecord[];
-}
-
-export interface ConnectorAccountCreateInput {
-  label?: string;
-  role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
-  privacy?: ConnectorAccountPrivacy;
-  metadata?: Record<string, unknown>;
-  confirmation?: {
-    role?: string;
-    privacy?: string;
-    publicAcknowledged?: boolean;
-  };
-}
-
-export interface ConnectorAccountUpdateInput {
-  label?: string;
-  role?: ConnectorAccountRole;
-  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[];
-  privacy?: ConnectorAccountPrivacy;
-  enabled?: boolean;
-  metadata?: Record<string, unknown>;
-  confirmation?: {
-    role?: string;
-    privacy?: string;
-    publicAcknowledged?: boolean;
-  };
-}
-
-export interface ConnectorAccountOAuthStartInput {
-  redirectUri?: string;
-  accountId?: string;
-  label?: string;
-  scopes?: string[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface ConnectorAccountActionResult {
-  ok: boolean;
-  account?: ConnectorAccountRecord;
-  accounts?: ConnectorAccountRecord[];
-  defaultAccountId?: string | null;
-  authUrl?: string;
-  flow?: Record<string, unknown>;
-  status?: ConnectorAccountStatus | string;
-  error?: string;
-}
-
-export interface ConnectorAccountAuditEventRecord {
-  id: string;
-  accountId?: string | null;
-  agentId?: string;
-  provider: string;
-  actorId?: string | null;
-  action: string;
-  outcome: "success" | "failure" | string;
-  metadata?: Record<string, unknown>;
-  createdAt?: number;
-}
-
-export interface ConnectorAccountAuditEventsQuery {
-  accountId?: string;
-  action?: string;
-  outcome?: "success" | "failure";
-  limit?: number;
-}
-
-export interface ConnectorAccountAuditEventsResponse {
-  provider: string;
-  events: ConnectorAccountAuditEventRecord[];
-}
 
 // ---------------------------------------------------------------------------
 // Declaration merging
@@ -2112,269 +2026,6 @@ ElizaClient.prototype.deleteConnector = async function (
   });
 };
 
-function connectorAccountsPath(
-  provider: string,
-  _connectorId?: string,
-  accountId?: string,
-  action?: "test" | "refresh" | "default",
-): string {
-  const base = `/api/connectors/${encodeURIComponent(provider)}/accounts`;
-  if (!accountId) return base;
-  const withAccount = `${base}/${encodeURIComponent(accountId)}`;
-  return action ? `${withAccount}/${action}` : withAccount;
-}
-
-function connectorAccountOAuthPath(
-  provider: string,
-  action: "start" | "status",
-): string {
-  return `/api/connectors/${encodeURIComponent(provider)}/oauth/${action}`;
-}
-
-/**
- * Server connector-account role → UI role mapping (#12087 Item 32). Keys are the
- * uppercased server role strings; the value is the UI bucket. A server role NOT
- * in this table is genuinely unknown and maps to `undefined` — it is NOT
- * silently relabelled `OWNER` (the fail-open mislabel this replaced).
- */
-export const CONNECTOR_SERVER_ROLE_TO_UI_ROLE: Readonly<
-  Record<string, ConnectorAccountRole>
-> = {
-  OWNER: "OWNER",
-  AGENT: "AGENT",
-  SERVICE: "AGENT",
-  TEAM: "TEAM",
-  ADMIN: "TEAM",
-  MEMBER: "TEAM",
-  VIEWER: "TEAM",
-};
-
-function normalizeConnectorAccountRole(
-  value: unknown,
-): ConnectorAccountRole | undefined {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  return CONNECTOR_SERVER_ROLE_TO_UI_ROLE[value.trim().toUpperCase()];
-}
-
-function normalizeConnectorStatus(value: unknown): ConnectorAccountStatus {
-  switch (value) {
-    case "connected":
-    case "pending":
-    case "needs-reauth":
-    case "disconnected":
-    case "error":
-      return value;
-    case "disabled":
-    case "revoked":
-      return "disconnected";
-    default:
-      return "unknown";
-  }
-}
-
-function isConnectorRoleValue(value: unknown): value is ConnectorAccountRole {
-  return normalizeConnectorAccountRole(value) !== undefined;
-}
-
-function normalizeConnectorPurposeList(
-  value: unknown,
-): ConnectorAccountPurpose[] {
-  const values = Array.isArray(value)
-    ? value
-    : typeof value === "string"
-      ? [value]
-      : [];
-  return values
-    .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(
-      (item): item is ConnectorAccountPurpose =>
-        Boolean(item) && !isConnectorRoleValue(item),
-    );
-}
-
-function recordFromUnknown(raw: unknown): Record<string, unknown> {
-  return raw && typeof raw === "object" && !Array.isArray(raw)
-    ? (raw as Record<string, unknown>)
-    : {};
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
-}
-
-function connectorAccountLabel(record: Record<string, unknown>): string {
-  return (
-    nonEmptyString(record.label) ??
-    nonEmptyString(record.displayHandle) ??
-    nonEmptyString(record.handle) ??
-    nonEmptyString(record.externalId) ??
-    String(record.id ?? "unknown")
-  );
-}
-
-function connectorAccountHandle(
-  record: Record<string, unknown>,
-): string | null {
-  return typeof record.handle === "string"
-    ? record.handle
-    : typeof record.displayHandle === "string"
-      ? record.displayHandle
-      : null;
-}
-
-function connectorAccountMetadata(
-  record: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  return record.metadata && typeof record.metadata === "object"
-    ? (record.metadata as Record<string, unknown>)
-    : undefined;
-}
-
-export function normalizeConnectorAccountRecord(
-  provider: string,
-  connectorId: string,
-  raw: unknown,
-): ConnectorAccountRecord {
-  const record = recordFromUnknown(raw);
-  // #12087 Item 32: an unrecognized/missing server role stays `undefined` — it
-  // is NOT defaulted to OWNER. The UI renders such accounts outside the Owner
-  // section (ConnectorAccountList "UNKNOWN" bucket) rather than mislabelling
-  // them as the owner's own account.
-  const role =
-    normalizeConnectorAccountRole(record.role) ??
-    normalizeConnectorAccountRole(record.purpose);
-  return {
-    ...(record as Partial<ConnectorAccountRecord>),
-    id: String(record.id ?? ""),
-    provider:
-      typeof record.provider === "string" && record.provider
-        ? record.provider
-        : provider,
-    connectorId,
-    label: connectorAccountLabel(record),
-    handle: connectorAccountHandle(record),
-    externalId:
-      typeof record.externalId === "string" ? record.externalId : null,
-    status: normalizeConnectorStatus(record.status),
-    role,
-    purpose: normalizeConnectorPurposeList(record.purpose),
-    isDefault: record.isDefault === true,
-    enabled: record.enabled !== false,
-    metadata: connectorAccountMetadata(record),
-  };
-}
-
-function normalizeConnectorAccountsListResponse(
-  provider: string,
-  connectorId: string,
-  raw: unknown,
-): ConnectorAccountsListResponse {
-  const record =
-    raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
-  const accounts = Array.isArray(record.accounts)
-    ? record.accounts.map((item) =>
-        normalizeConnectorAccountRecord(provider, connectorId, item),
-      )
-    : [];
-  const defaultAccountId =
-    typeof record.defaultAccountId === "string"
-      ? record.defaultAccountId
-      : (accounts.find(
-          (account) =>
-            account.isDefault === true &&
-            account.enabled !== false &&
-            account.status === "connected",
-        )?.id ?? null);
-  return {
-    provider:
-      typeof record.provider === "string" && record.provider
-        ? record.provider
-        : provider,
-    connectorId,
-    defaultAccountId,
-    accounts,
-  };
-}
-
-function normalizeConnectorAccountActionResult(
-  provider: string,
-  connectorId: string,
-  raw: unknown,
-): ConnectorAccountActionResult {
-  const record = recordFromUnknown(raw);
-  const account =
-    record.account ?? (typeof record.id === "string" ? record : null);
-  const flow = recordFromUnknown(record.flow);
-  return {
-    ...(record as Partial<ConnectorAccountActionResult>),
-    ok: normalizeConnectorActionOk(record, account),
-    account: account
-      ? normalizeConnectorAccountRecord(provider, connectorId, account)
-      : undefined,
-    accounts: Array.isArray(record.accounts)
-      ? record.accounts.map((item) =>
-          normalizeConnectorAccountRecord(provider, connectorId, item),
-        )
-      : undefined,
-    defaultAccountId:
-      typeof record.defaultAccountId === "string"
-        ? record.defaultAccountId
-        : null,
-    flow: Object.keys(flow).length > 0 ? flow : undefined,
-    authUrl: connectorActionAuthUrl(record, flow),
-    status: connectorActionStatus(record, flow),
-    error: typeof record.error === "string" ? record.error : undefined,
-  };
-}
-
-function normalizeConnectorActionOk(
-  record: Record<string, unknown>,
-  account: unknown,
-): boolean {
-  return typeof record.ok === "boolean"
-    ? record.ok
-    : record.deleted === true || (!("error" in record) && account !== null);
-}
-
-function connectorActionAuthUrl(
-  record: Record<string, unknown>,
-  flow: Record<string, unknown>,
-): string | undefined {
-  if (typeof record.authUrl === "string") return record.authUrl;
-  return typeof flow.authUrl === "string" ? flow.authUrl : undefined;
-}
-
-function connectorActionStatus(
-  record: Record<string, unknown>,
-  flow: Record<string, unknown>,
-): ConnectorAccountStatus | undefined {
-  if (typeof record.status === "string") {
-    return normalizeConnectorStatus(record.status);
-  }
-  return typeof flow.status === "string"
-    ? normalizeConnectorStatus(flow.status)
-    : undefined;
-}
-
-function connectorAccountAuditPath(
-  provider: string,
-  query: ConnectorAccountAuditEventsQuery = {},
-): string {
-  const params = new URLSearchParams();
-  if (query.accountId) params.set("accountId", query.accountId);
-  if (query.action) params.set("action", query.action);
-  if (query.outcome) params.set("outcome", query.outcome);
-  if (typeof query.limit === "number") {
-    params.set("limit", String(query.limit));
-  }
-  const qs = params.toString();
-  return `/api/connectors/${encodeURIComponent(provider)}/audit/events${
-    qs ? `?${qs}` : ""
-  }`;
-}
-
 ElizaClient.prototype.listConnectorAccounts = async function (
   this: ElizaClient,
   provider,
@@ -3176,10 +2827,12 @@ function parseSecurityAuditPayload(
       onEvent(parsed);
     }
   } catch (error) {
-    console.warn(
-      "[client-agent] dropped malformed security audit stream frame",
-      { payload, error },
-    );
+    reportRendererDiagnostic({
+      scope: "client-agent.security-audit-frame",
+      severity: "warning",
+      error,
+      context: { payload },
+    });
   }
 }
 

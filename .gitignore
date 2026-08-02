@@ -12,6 +12,12 @@ node_modules
 # Isolated UI e2e runners write screenshots, bundles, reports, and videos next
 # to their fixtures. CI uploads these directories as artifacts.
 /packages/ui/src/**/__e2e__/output-*/
+/packages/ui/src/agent-surface/__e2e__/output/
+/packages/ui/scripts/duplicate-components-report.json
+/packages/ui/scripts/duplicate-components-report.md
+/packages/ui/scripts/stories-coverage-report.json
+/packages/ui/scripts/stories-coverage-report.md
+/packages/ui/stories/check-stories-report.json
 # Voice trajectory video capture (binary webm — regenerate via record-voice-trajectories.mjs)
 packages/ui/src/components/shell/__e2e__/output-voice-recording/
 # Settings hub e2e output (screenshots + webm — regenerate via test:settings-e2e)
@@ -75,12 +81,6 @@ xcuserdata/
 
 # Tauri-generated Xcode project
 examples/browser-extension/safari/
-
-# Safari browser-extension example Xcode project — regenerates UUIDs +
-# timestamps on every Xcode open/build, creating large pure-churn diffs.
-# The Swift sources, assets, and Resources/ subtree stay tracked; only
-# the generated *.xcodeproj/ pbxproj is ignored.
-packages/examples/browser-extension/safari/**/*.xcodeproj/project.pbxproj
 
 # Generated app platform shells; canonical templates live under packages/app-core/platforms.
 packages/app/android/
@@ -157,9 +157,6 @@ packages/app-core/src/platform/ios-runtime-backends.d.ts
 packages/app-core/src/platform/ios-runtime-backends.d.ts.map
 packages/cloud/shared/src/lib/types/cloud-api.js
 packages/cloud/shared/src/lib/types/cloud-api.d.ts
-packages/feed/packages/engine/src/services/world-state-snapshot-service.js
-packages/feed/packages/engine/src/services/world-state-snapshot-service.js.map
-packages/feed/packages/engine/src/services/world-state-snapshot-service.d.ts.map
 packages/scenario-runner/src/cerebras-judge.d.ts
 packages/scenario-runner/src/cerebras-judge.d.ts.map
 plugins/plugin-local-inference/src/services/voice-prewarm.js
@@ -344,12 +341,6 @@ tasks/
 # legitimate source (ported react-query hooks) — un-ignore them too.
 !packages/ui/src/cloud/**/data/
 !packages/ui/src/cloud/**/data/**
-# The Feed engine ships content/grounding modules as TS source under src/data/
-# (reality-grounding, world-facts, world-event-examples, question-examples, and
-# the actors/organizations/correlations re-export shims). These are real source,
-# not generated data — track them.
-!packages/feed/packages/engine/src/data/
-!packages/feed/packages/engine/src/data/**
 # Benchmark fixture data is vendored, not generated.
 # eliza-1 smoke corpus: 20-row synthetic SFT pipeline validator, kept in
 # git so the pipeline can be smoke-tested from a fresh clone. The
@@ -654,8 +645,6 @@ dev-desktop.pid
 reports/
 !packages/cloud/api/v1/reports/
 !packages/cloud/api/v1/reports/**
-!packages/feed/apps/web/src/app/api/moderation/reports/
-!packages/feed/apps/web/src/app/api/moderation/reports/**
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 !docs/automation-glossary.md
@@ -803,12 +792,7 @@ packages/app-core/platforms/android/app/src/main/jniLibs/
 
 # Embedded third-party checkouts vendored under the tree (own git repos; must
 # not be committed as gitlinks without a .gitmodules entry).
-packages/research/robot/vendor/mujoco_menagerie/
-packages/research/robot/.tools/
 plugins/plugin-local-inference/native/stable-diffusion.cpp/
-
-# Generated chip mechanical render frames.
-packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded-frames/
 
 # Zig build cache + compiled output.
 **/.zig-cache/
@@ -818,98 +802,46 @@ waifu.fun/
 # --- synced artifacts (stripped for fast clones; pulled on install by
 #     packages/scripts/sync-artifacts.mjs from elizaOS/eliza-archive) ---
 /.eliza-artifacts-version
-/packages/research/chip/board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
-/packages/research/chip/board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
-/packages/research/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
-/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb
 /packages/shared/assets-classic/background/Clouds_Loop_HQ_1080p.mp4
-/packages/research/robot/assets/profiles/asimov-1/meshes/WAIST_YAW.STL
 /packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png
 /packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png
 /packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png
-/packages/research/chip/sw/firemarshal/eliza-e1-ap-benchmarks/bin/fio
-/packages/research/chip/docs/evidence/cpu_ap/bpu_h2p_sc_debug_replay.json
-/packages/research/chip/mechanical/e1-phone/out/e1-phone-solid-assembly.step
 /packages/shared/assets-classic/background/clouds_background.jpg
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_ANKLE_B.STL
-/packages/research/chip/board/kicad/e1-phone/preview/schematic/e1-phone-compute.svg
 /packages/shared/assets-classic/background/Clouds_Loop_Mobile_480p.mp4
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/unitree-r1-bodykit.blend
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/unitree-r1-bodykit.blend1
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-donor.blend
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-donor.blend1
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_KNEE.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_KNEE.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_ANKLE_B.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_yaw_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/head_yaw_link.STL
 /packages/app/public/app-heroes/skills-viewer.png
 /plugins/plugin-companion/public/vrms/eliza-7.vrm.gz
-/packages/research/robot/assets/profiles/asimov-1/meshes/IMU_ORIGIN.STL
 /plugins/plugin-companion/public/vrms/eliza-5.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-8.vrm.gz
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_SHOULDER_ROLL.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_SHOULDER_ROLL.STL
 /packages/shared/assets-classic/background/optimized/clouds_8x_1080p.mp4
 /packages/app/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/shared/assets/background/Clouds_Loop_HQ_1080p.mp4
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/torso_link_rev_1_0.STL
 /plugins/plugin-companion/public/vrms/eliza-6.vrm.gz
-/packages/research/robot/examples/robot-mujoco-demo/evidence/real/real_robot_sweep_robot_cam.mp4
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_SHOULDER_YAW.STL
 /plugins/plugin-companion/public/vrms/eliza-1.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-3.vrm.gz
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/torso_link.stl
 /plugins/plugin-companion/public/vrms/eliza-2.vrm.gz
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_rubber_hand.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_rubber_hand.STL
 /packages/app/public/brand/concepts/billboard_concept.jpg
 /packages/shared/assets-classic/concepts/billboard_concept.jpg
 /packages/shared/assets/concepts/billboard_concept.jpg
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_palm_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_palm_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/waist_yaw_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/waist_yaw_link.STL
 /plugins/plugin-training/assets/hero.png
 /plugins/plugin-trajectory-logger/assets/hero.png
 /plugins/plugin-wallet-ui/assets/hero.png
-/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/pelvis_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/pelvis_link.STL
 /packages/docs/images/shakespeare-discord-screenshot.jpeg
 /plugins/plugin-documents/assets/hero.png
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_HIP_YAW.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_HIP_YAW.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/pelvis_contour_link.STL
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/visual-concept-orange-android.png
 /packages/shared/assets-classic/background/optimized/clouds_4x_1080p.mp4
-/packages/research/chip/mechanical/e1-phone/review/local-kicad-cli/routed-drc.json
-/packages/research/chip/board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_df40c_80dp_0_4v_51/DF40C-80DP-0.4V_3d_stp.stp
 /packages/shared/assets-classic/background/optimized/clouds_8x_1080p.webm
 /packages/cloud-frontend/public/brand/elizaos-phone.png
 /plugins/plugin-companion/public_src/animations/mixamo/Angry.fbx
-/packages/research/robot/examples/robot-mujoco-demo/evidence/real/real_robot_onboard_strip.png
 /packages/cloud-frontend/public/brand/elizaos-phone-transparent.png
 /packages/docs/images/ask-to-join-vc.jpeg
-/packages/research/chip/board/kicad/e1-phone/preview/schematic/e1-phone-power_usb.svg
-/packages/research/robot/examples/robot-mujoco-demo/evidence/real/real_robot_contact_sheet.png
-/packages/research/robot/checkpoints/_validator/final_params
 /plugins/plugin-task-coordinator/assets/hero.png
 /plugins/plugin-form/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Wave Hip Hop Dance.fbx
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_index_1_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_middle_1_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_thumb_2_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_index_1_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_middle_1_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_thumb_2_link.STL
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/login-desktop-chromium-linux.png
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/connected-desktop-chromium-linux.png
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-desktop-chromium-linux.png
 /plugins/plugin-companion/assets/hero.png
-/packages/research/robot/examples/robot-mujoco-demo/evidence/live/live_camera_aruco.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Happy.fbx
 /packages/homepage/public/product/elizaos-usb-key-concept.png
 /plugins/plugin-companion/public_src/animations/mixamo/Hip Hop Dancing 2.fbx
@@ -918,58 +850,23 @@ waifu.fun/
 /plugins/plugin-phone/assets/hero.png
 /plugins/plugin-wifi/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/manufacturing-manifest.json
 /packages/shared/assets-classic/background/optimized/clouds_8x_720p.mp4
-/packages/research/chip/board/kicad/e1-phone/preview/kicad-cli-mainboard.svg
 /plugins/plugin-shopify/assets/hero.png
-/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.obj
 /packages/shared/assets-classic/background/optimized/clouds_4x_1080p.webm
-/packages/research/robot/mechanical/unitree-r1-bodykit/cad/source-assets/human-donor/eliza_face_donor.stl
-/packages/research/robot/examples/robot-mujoco-demo/evidence/live/live_camera_aruco_contact_sheet.png
 /plugins/plugin-companion/public_src/animations/mixamo/Bashful.fbx
 /plugins/plugin-personal-assistant/assets/hero.png
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_HIP_PITCH.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_HIP_PITCH.STL
 /packages/docs/images/shakespeare-screenshot.jpeg
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/pelvis.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Bored.fbx
 /packages/shared/assets-classic/background/optimized/clouds_8x_720p.webm
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/body_link.STL
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2018-10.pdf
 /plugins/plugin-companion/public_src/animations/mixamo/Yawn.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Gangnam Style.fbx
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/head_link.STL
-/packages/research/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2023-10-v5.0.pdf
 /packages/app/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/shared/assets/background/Clouds_Loop_Mobile_480p.mp4
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_shoulder_roll_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_shoulder_roll_link.stl
-/packages/research/chip/board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_50dp_2_0_35v_53/BM28B0.6-50DP_2-0.35V_3d_stp.stp
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_knee_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_knee_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_knee_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_knee_link.STL
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_hip_yaw_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_hip_yaw_link.stl
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_wrist_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_wrist_roll_link.STL
 /packages/shared/assets-classic/background/optimized/clouds_4x_720p.mp4
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_wrist_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_wrist_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_ankle_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_ankle_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_ankle_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_ankle_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_yaw_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_hip_yaw_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_yaw_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_hip_yaw_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_knee_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_knee_link.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/NECK_PITCH.STL
 /packages/training/datasets/eliza1-sft-0_6b/train.jsonl
 /packages/shared/assets-classic/background/optimized/clouds_1x_1080p.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Crying.fbx
@@ -977,51 +874,25 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Breathing Idle.fbx
 /packages/app/public/app-heroes/runtime-debugger.png
 /packages/shared/assets-classic/background/optimized/clouds_1x_1080p.webm
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_shoulder_pitch_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_shoulder_pitch_link.stl
-/packages/research/robot/examples/robot-mujoco-demo/evidence/live/live_camera_aruco_annotated.png
 /plugins/plugin-companion/public_src/animations/mixamo/Shoulder Rubbing.fbx
-/packages/research/robot/examples/robot-mujoco-demo/evidence/live/live_camera_frame.png
 /packages/app/public/app-heroes/memory-viewer.png
 /packages/app/public/app-heroes/database-viewer.png
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_hip_roll_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_hip_roll_link.stl
-/packages/research/chip/mechanical/e1-phone/out/orange_side_frame.step
 /packages/app/public/app-heroes/relationship-viewer.png
 /packages/shared/assets-classic/background/optimized/clouds_4x_720p.webm
 /plugins/plugin-companion/public_src/animations/mixamo/Spin In Place.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Surprised.fbx
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_SHOULDER_PITCH.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_SHOULDER_PITCH.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Breakdance Freeze Var 4.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Standing Greeting 2.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Looking.fbx
 /plugins/plugin-companion/public/vrms/eliza-4.vrm.gz
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/blender-bodykit-parts.png
 /packages/app/public/app-heroes/log-viewer.png
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing.fbx
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_SHOULDER_YAW.STL
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/pelvis.stl
 /packages/app/public/brand/concepts/concept_minipc.jpg
 /packages/shared/assets-classic/concepts/concept_minipc.jpg
 /packages/shared/assets/concepts/concept_minipc.jpg
-/packages/research/chip/board/kicad/e1-phone/production/sourcing/public-cad-downloads/hirose_bm28b0_6_24dp_2_0_35v_53/BM28B0.6-24DP_2-0.35V_3d_stp.stp
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_knee_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_knee_link.stl
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_ankle_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_ankle_roll_link.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Blow A Kiss.fbx
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_yaw_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_shoulder_yaw_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_yaw_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_shoulder_yaw_link.STL
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_shoulder_yaw_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_shoulder_yaw_link.stl
 /plugins/plugin-companion/public_src/animations/mixamo/Thinking.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Kneeling Idle.fbx
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_ELBOW.STL
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_ELBOW.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/waist_yaw_link_rev_1_0.STL
 /packages/shared/assets-classic/background/optimized/clouds_8x_480p.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Relieved Sigh.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thankful.fbx
@@ -1029,27 +900,11 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Salute.fbx
 /plugins/plugin-local-inference/native/verify/cuda_verify
 /plugins/plugin-companion/public_src/animations/mixamo/Rejected.fbx
-/packages/research/chip/sw/firemarshal/eliza-e1-ap-benchmarks/bin/coremark
-/packages/research/chip/sw/firemarshal/eliza-e1-ap-benchmarks/bin/lat_mem_rd
-/packages/research/robot/examples/robot-mujoco-demo/evidence/sweep/actions_sweep.mp4
 /plugins/plugin-companion/public/animations/mixamo/Wave Hip Hop Dance.fbx.gz
-/packages/research/chip/sw/firemarshal/eliza-e1-linux-smoke/e1-npu-ml-smoke
-/packages/research/chip/sw/firemarshal/eliza-e1-ap-benchmarks/bin/ap-bench-lite
-/packages/research/chip/sw/firemarshal/eliza-e1-ap-benchmarks/bin/stream_c.exe
 /packages/app/public/app-heroes/trajectory-viewer.png
 /plugins/plugin-companion/public_src/animations/Idle.fbx
-/packages/research/chip/sw/firemarshal/eliza-e1-linux-smoke/eliza-riscv-hwprobe
 /plugins/plugin-companion/public_src/animations/mixamo/Hip Hop Dancing.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Happy Idle.fbx
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_shoulder_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_pitch_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_hip_pitch_link.STL
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/current-cad-step-screenshot.png
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_pitch_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_hip_pitch_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_shoulder_roll_link.STL
 /plugins/plugin-companion/public/animations/mixamo/Angry.fbx.gz
 /packages/app/public/brand/concepts/chibi_usb_concept.jpg
 /packages/shared/assets-classic/concepts/chibi_usb_concept.jpg
@@ -1061,35 +916,20 @@ waifu.fun/
 /plugins/plugin-companion/public/animations/mixamo/Hip Hop Dancing 2.fbx.gz
 /plugins/plugin-companion/public/animations/mixamo/Happy.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Cheering.fbx
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_hip_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_hip_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_hip_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_hip_roll_link.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Rumba Dancing.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Mma Kick.fbx
-/packages/research/robot/examples/robot-mujoco-demo/evidence/aruco_full_anchor/side_by_side.mp4
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2023-05-v4.9.pdf
 /plugins/plugin-companion/public_src/animations/mixamo/Acknowledging.fbx
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/eliza-face-donor.png
 /plugins/plugin-companion/public_src/animations/emotes/dance-popping.glb
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_index_0_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_middle_0_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hand_thumb_1_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_index_0_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_middle_0_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hand_thumb_1_link.STL
 /packages/ui/src/components/shell/__e2e__/output/33-state-reduced-motion-open.png
 /plugins/plugin-companion/public_src/animations/mixamo/Joyful Jump.fbx
 /plugins/plugin-companion/public/animations/mixamo/Look Around.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing 2.fbx
 /packages/shared/assets-classic/background/optimized/clouds_1x_720p.webm
-/packages/research/robot/cad/erobot/visual/parts_grid.png
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-mobile-chromium-linux.png
 /packages/cloud-frontend/public/avatars/eliza.png
 /packages/ui/src/components/shell/__e2e__/output/24-state-responding.png
 /packages/ui/src/components/shell/__e2e__/output/31-state-keyboard-full.png
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/left_hip_pitch_link.stl
-/packages/research/robot/assets/profiles/unitree-h1/mjcf/assets/right_hip_pitch_link.stl
 /packages/ui/src/components/shell/__e2e__/output/25-state-typing-send.png
 /packages/ui/src/components/shell/__e2e__/output/34-state-reduced-motion-open.png
 /packages/ui/src/components/shell/__e2e__/output/29-state-multiline-input.png
@@ -1105,10 +945,6 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/26-state-responding.png
 /packages/ui/src/components/shell/__e2e__/output/27-state-typing-send.png
 /packages/ui/src/components/shell/__e2e__/output/31-state-multiline-input.png
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_shoulder_pitch_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_shoulder_pitch_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_shoulder_pitch_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_shoulder_pitch_link.STL
 /plugins/plugin-companion/public_src/animations/emotes/dance-happy.glb
 /packages/ui/src/first-run/__e2e__/output/04-mobile-remote.png
 /packages/ui/src/first-run/__e2e__/output/06-mobile-busy.png
@@ -1117,8 +953,6 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/34-state-no-provider-gate.png
 /plugins/plugin-companion/public_src/animations/mixamo/Whatever Gesture.fbx
 /packages/shared/assets-classic/background/optimized/clouds_1x_720p.mp4
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_shoulder_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_shoulder_roll_link.STL
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2024-10-v5.1.pdf
 /packages/ui/src/first-run/__e2e__/output/05-mobile-cloud-signin.png
 /packages/shared/assets-classic/background/optimized/clouds_8x_360p.mp4
@@ -1131,37 +965,20 @@ waifu.fun/
 /packages/app/public/brand/concepts/concept_phone.jpg
 /packages/shared/assets-classic/concepts/concept_phone.jpg
 /packages/shared/assets/concepts/concept_phone.jpg
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/left_elbow_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/left_elbow_link.STL
 /plugins/plugin-companion/public/animations/emotes/dance-popping.glb.gz
 /packages/ui/src/components/shell/__e2e__/output/03-desktop-full.png
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/waist_roll_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/waist_roll_link.STL
 /packages/ui/src/components/shell/__e2e__/output/04-desktop-beyond-full-rubberband.png
 /packages/ui/src/components/shell/__screenshots__/slash-commands/01-all-commands--desktop.png
 /packages/cloud-frontend/public/avatars/eliza-default.png
 /plugins/plugin-companion/public/animations/mixamo/Bashful.fbx.gz
 /packages/shared/assets-classic/background/optimized/clouds_4x_480p.webm
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/l_ank_pitch_link.STL
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/l_hip_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/right_elbow_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/right_elbow_link.STL
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/r_ank_pitch_link.STL
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/r_hip_roll_link.STL
 /plugins/plugin-companion/public/animations/mixamo/Bored.fbx.gz
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_wrist_roll_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_wrist_roll_link.STL
 /plugins/plugin-companion/public_src/animations/mixamo/Clapping.fbx
-/packages/research/robot/examples/robot-mujoco-demo/evidence/sweep/actions_contact_sheet.png
 /packages/shared/assets-classic/background/optimized/clouds_8x_360p.webm
 /packages/ui/src/components/shell/__screenshots__/slash-commands/02-filtered--desktop.png
 /packages/ui/src/components/shell/__e2e__/output/06-desktop-free-rest.png
 /packages/ui/src/components/shell/__e2e__/output-home/02-mobile-home-editing.png
-/packages/research/robot/assets/profiles/asimov-1/meshes/NECK_YAW.STL
 /packages/ui/src/components/shell/__e2e__/output/05-desktop-mid-drag-hold.png
-/packages/research/chip/mechanical/e1-phone/out/orange_back_shell.step
-/packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_HIP_ROLL.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_wrist_yaw_link.STL
 /packages/ui/src/components/shell/__e2e__/output/16-mobile-free-rest.png
 /packages/ui/src/components/shell/__screenshots__/slash-commands/04-settings-filtered--desktop.png
 /packages/ui/src/components/shell/__e2e__/output/14-mobile-mid-drag-hold.png
@@ -1169,8 +986,6 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/14-mobile-beyond-full-rubberband.png
 /packages/ui/src/components/shell/__e2e__/output/13-mobile-full.png
 /packages/ui/src/components/shell/__e2e__/output/15-mobile-mid-drag-hold.png
-/packages/research/robot/assets/profiles/asimov-1/meshes/LEFT_HIP_ROLL.STL
-/packages/research/chip/mechanical/e1-phone/review/part-explode-contact-sheet.png
 /plugins/plugin-companion/public/animations/emotes/dance-happy.glb.gz
 /packages/ui/src/components/shell/__e2e__/output/13-mobile-beyond-full-rubberband.png
 /packages/ui/src/components/shell/__e2e__/output/12-mobile-full.png
@@ -1178,12 +993,8 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/11-mobile-half.png
 /packages/ui/src/components/shell/__e2e__/output/12-mobile-half.png
 /packages/ui/src/components/shell/__e2e__/output/19-mobile-flick-open.png
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/r_sho_roll_link.STL
 /packages/ui/src/components/shell/__e2e__/output/17-mobile-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/20-mobile-nudge-snapback.png
-/packages/research/robot/assets/profiles/hiwonder-ainex/meshes/l_sho_roll_link.STL
-/packages/research/chip/sw/aosp-device/fixtures/golden-stt.wav
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_wrist_yaw_link.STL
 /packages/cloud-frontend/public/avatars/historyscholar.webp
 /plugins/plugin-companion/public/animations/mixamo/Yawn.fbx.gz
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2026-02-v5.6.pdf
@@ -1191,20 +1002,12 @@ waifu.fun/
 /packages/ui/src/components/shell/__e2e__/output/08-desktop-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/09-desktop-flick-open.png
 /packages/ui/src/components/shell/__e2e__/output/02-desktop-half.png
-/packages/research/robot/mechanical/unitree-r1-bodykit/review/cad-step-evidence.png
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/left_hip_yaw_link.STL
-/packages/research/robot/assets/profiles/unitree-g1/mjcf/assets/right_hip_yaw_link.STL
 /packages/cloud-frontend/public/agents/agent-2.webp
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2025-07-v5.4.pdf
 /packages/cloud-frontend/public/avatars/amara.webp
-/packages/research/robot/cad/erobot/erobot_views.png
 /packages/ui/src/components/shell/__e2e__/output/10-desktop-nudge-snapback.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-desktop-chromium-desktop-darwin.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-desktop-chromium-mobile-darwin.png
-/packages/research/robot/cad/erobot/visual/erobot_views.png
-/packages/research/robot/examples/robot-mujoco-demo/evidence/aruco_full_anchor/obsbot_live.mp4
-/packages/research/robot/assets/profiles/unitree-r1/mjcf/assets/head_pitch_link.STL
-/packages/research/robot/vendor/unitree_mujoco/unitree_robots/r1/meshes/head_pitch_link.STL
 /plugins/plugin-companion/public_src/animations/emotes/fishing.glb
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-mobile-chromium-desktop-darwin.png
 /packages/cloud-frontend/tests/e2e/visual.spec.ts-snapshots/terms-of-service-mobile-chromium-mobile-darwin.png

@@ -62,7 +62,6 @@ describe("internal tool app descriptors", () => {
   });
 
   it("routes nested app view paths through the dynamic view renderer", () => {
-    expect(tabFromPath("/apps/facewear/status")).toBe("views");
     expect(tabFromPath("/apps/custom-panel/detail")).toBe("views");
   });
 

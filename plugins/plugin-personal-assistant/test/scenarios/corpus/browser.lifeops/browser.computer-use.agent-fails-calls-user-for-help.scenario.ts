@@ -1,11 +1,12 @@
 /** Scenario fixture for browser computer use agent fails calls user for help; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectConnectorDispatch,
   expectScenarioToCallAction,
   expectTurnToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

@@ -11,16 +11,16 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  expectScenarioToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
-import {
-  expectScenarioToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 
 export default scenario({
   lane: "live-only",

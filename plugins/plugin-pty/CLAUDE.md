@@ -32,8 +32,8 @@ automatically on store builds.
 ## Why eliza-code on cerebras (not the Claude/Codex CLIs)
 
 Running a real interactive CLI *on a subscription* inherently means impersonating
-that vendor's CLI — the TOS-unsafe tier. `eliza-code` (`packages/examples/code`)
-is a real interactive slash-command TUI **we own**: it already implements
+that vendor's CLI — the TOS-unsafe tier. `eliza-code` is a separately installed
+interactive slash-command TUI: it already implements
 `/help`, `/clear`, `/task`, etc., and selects its model provider purely from env.
 Pointing it at Eliza Cloud's OpenAI-compatible endpoint routes inference to
 cerebras (`gemma-4-31b` for both fast and smart) — a real CLI with all slash
@@ -133,7 +133,7 @@ bun run --cwd plugins/plugin-pty lint
 | `PTY_ELIZA_CLOUD_FAST_MODEL` / `PTY_ELIZA_CLOUD_SMART_MODEL` | `gemma-4-31b` | Optional deployment pins for the fast/smart eliza-code model ids. Request body model values still take precedence. |
 | `PTY_ALLOWED_BASE_URLS` | Eliza Cloud API | Comma-separated operator allowlist for non-default OpenAI-compatible base URLs. |
 | `PTY_IDLE_TIMEOUT_MS` | `900000` | Idle live-session timeout. Set `0` to disable the fallback reaper. |
-| `ELIZA_CODE_BIN` | auto-resolved | Absolute path to built `eliza-code` `dist/index.js`. |
+| `ELIZA_CODE_BIN` | — | Required absolute path to the installed `eliza-code` entrypoint. |
 | `PTY_VENDOR_CLI_ENABLED` | `false` | Experimental vendor-CLI tier (`kind: "claude" \| "codex"` — the real vendor CLI on the user's own subscription). Enables only on `true`, `1`, `on`, or `yes`; never on store builds. |
 | `PTY_CLAUDE_BIN` / `PTY_CODEX_BIN` | PATH lookup | Absolute path to the `claude` / `codex` launcher. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | — | Optional Claude Code OAuth token passed through to `kind: "claude"` sessions; without it the CLI reads `~/.claude/.credentials.json`. |
@@ -142,8 +142,7 @@ bun run --cwd plugins/plugin-pty lint
 
 ## How the cerebras wiring works
 
-`buildElizaCodeCerebrasSpec` sets the env eliza-code reads
-(`packages/examples/code/src/lib/model-provider.ts`):
+`buildElizaCodeCerebrasSpec` sets the provider env consumed by eliza-code:
 `ELIZA_CODE_PROVIDER=openai`, `ELIZA_CODE_CODING_ONLY=1`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`
 (`https://api.elizacloud.ai/v1`), and `OPENAI_{SMALL,MEDIUM,LARGE}_MODEL`. The
 `tier` (`fast`/`smart`) controls which model small/medium lead with; large is

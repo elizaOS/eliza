@@ -74,7 +74,9 @@ const _binDebugLog = isAndroidMobile()
       try {
         _earlyFs.mkdirSync(stateDir, { recursive: true });
       } catch {
-        /* ignore */
+        // error-policy:J7 early Android diagnostics cannot depend on the logger;
+        // failure to create the diagnostic directory is observed by the later
+        // fatal stderr path.
       }
       return (msg: string) => {
         try {
@@ -83,7 +85,8 @@ const _binDebugLog = isAndroidMobile()
             `${new Date().toISOString()} ${msg}\n`,
           );
         } catch {
-          /* ignore */
+          // error-policy:J7 the raw diagnostic sink must never mask the boot
+          // error it is attempting to record.
         }
       };
     })()

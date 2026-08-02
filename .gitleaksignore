@@ -17,7 +17,6 @@
 # not real secrets. Confirmed false positives — no key material present.
 6e5a9ae9d7ea4fabdafb4d87d993927f48393110:packages/app-core/scripts/playwright-ui-smoke-api-stub.mjs:generic-api-key:2812
 6e5a9ae9d7ea4fabdafb4d87d993927f48393110:packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts:generic-api-key:1131
-f9184d51cc60210ad6be388f3b1f1eae529a9904:packages/research/chip/scripts/test_release_archive_simulator_evidence.py:generic-api-key:129
 
 # Pre-built OS agent bundle (agent-bundle.js) committed as a distribution
 # artifact for elizaOS Linux. The gitleaks finding is a base64-encoded string

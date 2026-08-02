@@ -6,6 +6,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
@@ -15,7 +16,6 @@ import {
   executeRawSql,
   sqlQuote,
 } from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 const NIGHT_START_UTC = "2025-11-04T05:00:00.000Z"; // 22:00 Pacific Mon Nov 3
 const NAP_START_UTC = "2025-11-03T22:00:00.000Z"; // 14:00 Pacific Mon Nov 3

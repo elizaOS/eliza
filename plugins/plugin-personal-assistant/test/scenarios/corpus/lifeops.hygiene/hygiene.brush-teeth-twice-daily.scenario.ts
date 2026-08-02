@@ -11,8 +11,8 @@
  * at twice-per-day cadence (8am, 9pm), with a reminder plan attached.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

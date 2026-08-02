@@ -41,6 +41,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
+import * as React from "react";
 import {
   memo,
   type ReactNode,
@@ -59,6 +60,10 @@ import {
 } from "../inventory/constants.ts";
 import { TokenLogo } from "../inventory/TokenLogo.tsx";
 import { useInventoryData } from "../inventory/useInventoryData.ts";
+
+// The app's workspace-source build can emit classic JSX for plugin modules.
+// Keep the namespace live even though the standalone view uses the automatic runtime.
+void React;
 
 type DashboardWindow = "24h" | "7d" | "30d";
 type WalletRailTab = "tokens" | "defi" | "nfts";

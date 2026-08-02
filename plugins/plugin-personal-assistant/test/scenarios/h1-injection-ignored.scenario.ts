@@ -3,8 +3,9 @@
  * may contain instructions, but relationship edges must come from owner intent
  * and evidence, not from untrusted message text.
  */
+
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "../../../../packages/test/scenarios/_helpers/action-assertions.ts";
 
 export default scenario({
   lane: "live-only",

@@ -28,6 +28,9 @@
       "@elizaos/cloud-sdk/*": ["./packages/cloud/sdk/src/*"],
       "@elizaos/core": ["./packages/core/src/index.node.ts"],
       "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
+      "@elizaos/core/atomic-json": [
+        "./packages/core/src/utils/atomic-json.ts"
+      ],
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/import-conversations": [
         "./packages/import-conversations/src/index.ts"
@@ -67,7 +70,6 @@
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/src/index.ts"
       ],
-      "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/src/index.ts"],
       "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
       "@elizaos/plugin-hyperliquid": [
         "./plugins/plugin-hyperliquid/src/index.ts"

@@ -1,3 +1,8 @@
+/**
+ * Declares host-owned tabs and resolves their shared render and background
+ * policies so the app shell does not maintain parallel routing tables.
+ */
+
 import {
   type AppShellBackgroundPolicy,
   IMMERSIVE_WALLPAPER_SURFACE,

@@ -398,79 +398,6 @@
       ],
       "ignore": ["dist/**", "templates/**"]
     },
-    "packages/examples/_plugin": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "build.ts",
-        "vite.config.ts",
-        "tailwind.config.js",
-        "postcss.config.js"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "build.ts",
-        "vite.config.ts",
-        "tailwind.config.js",
-        "postcss.config.js"
-      ],
-      "ignore": ["dist/**"],
-      "ignoreDependencies": ["@types/uuid", "uuid"]
-    },
-    "packages/examples/app/capacitor/frontend": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/app/electron/backend": {
-      "entry": ["src/main.ts", "src/preload.ts"],
-      "project": ["src/**/*.ts"],
-      "ignore": ["dist/**", "renderer/**"]
-    },
-    "packages/examples/app/electron/frontend": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/elizagotchi": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/farcaster-miniapp": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "server.js",
-        "vite.config.ts",
-        "index.html"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "server.js", "vite.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/html": {
-      "entry": ["index.html", "package.json"],
-      "project": [],
-      "ignoreBinaries": ["python3"]
-    },
-    "packages/examples/react": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.mjs",
-        "vite.config.ts",
-        "index.html"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "scripts/**/*.mjs", "vite.config.ts"],
-      "ignore": ["dist/**", "public/pglite/**"]
-    },
-    "packages/examples/trader": {
-      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts", "tsconfig.node.json"],
-      "ignore": ["dist/**"]
-    },
-    "packages/examples/vercel": {
-      "entry": ["api/**/*.ts", "test-client.ts", "vercel.json"],
-      "project": ["api/**/*.ts", "test-client.ts"],
-      "ignore": ["dist/**", ".vercel/**"]
-    },
     "packages/homepage": {
       "entry": [
         "src/main.tsx",
@@ -493,58 +420,6 @@
         "tailwindcss",
         "tw-animate-css"
       ]
-    },
-    "packages/examples/aws": {
-      "entry": [
-        "handler.ts",
-        "server-local.ts",
-        "test-client.ts",
-        "test-local.ts"
-      ],
-      "project": ["*.ts"],
-      "ignore": ["dist/**", ".eliza/**"],
-      "ignoreBinaries": ["sam"]
-    },
-    "packages/examples/browser-extension": {
-      "entry": ["package.json"],
-      "project": [],
-      "ignore": ["chrome/**", "safari/**", "shared/**"]
-    },
-    "packages/examples/browser-extension/chrome": {
-      "entry": [
-        "src/**/*.ts",
-        "../shared/eliza-runtime-full.ts",
-        "../shared/types.ts",
-        "tsup.config.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "../shared/eliza-runtime-full.ts",
-        "../shared/types.ts",
-        "tsup.config.ts"
-      ],
-      "ignore": ["dist/**"],
-      "ignoreDependencies": [
-        "@elizaos/core",
-        "@elizaos/plugin-anthropic",
-        "@elizaos/plugin-elizacloud",
-        "@elizaos/plugin-google-genai",
-        "@elizaos/plugin-groq",
-        "@elizaos/plugin-localdb",
-        "@elizaos/plugin-openai",
-        "@elizaos/plugin-openrouter"
-      ]
-    },
-    "packages/examples/browser-extension/safari": {
-      "entry": ["package.json", "scripts/**/*.mjs"],
-      "project": ["scripts/**/*.mjs"],
-      "ignore": [".generated/**"],
-      "ignoreBinaries": ["xcrun"]
-    },
-    "packages/examples/convex": {
-      "entry": ["test-client.ts", "convex/*.ts"],
-      "project": ["test-client.ts", "convex/**/*.ts"],
-      "ignore": ["convex/_generated/**"]
     },
     "packages/agent": {
       "entry": [

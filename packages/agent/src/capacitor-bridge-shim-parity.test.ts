@@ -15,11 +15,11 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { describe, expectTypeOf, it } from "vitest";
 import type {
   AndroidCoreRouteDeps,
   AndroidDispatchRoute,
 } from "@elizaos/plugin-capacitor-bridge/android/dispatch";
+import { describe, expectTypeOf, it } from "vitest";
 
 type ShimAgentRoot =
   typeof import("@elizaos/plugin-capacitor-bridge/type-shims/agent-root");

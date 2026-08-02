@@ -1,7 +1,8 @@
 /** Scenario fixture for selfcontrol integration with todos auto block; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectNoActionCalled } from "@elizaos/scenario-runner/scenario-assertions";
 
 function expectClarificationBeforeTodoBlock(
   ctx: ScenarioContext,

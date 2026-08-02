@@ -5,11 +5,11 @@
  * to an afternoon slot the same day, (c) not invent a different event.
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkLaunchSyncMovedToAfternoon(

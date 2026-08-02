@@ -10,10 +10,21 @@ const pluginSqlRoot = path.join(
 	"plugin-sql",
 	"src",
 );
+const loggerSource = path.join(
+	getElizaWorkspaceRoot(repoRoot),
+	"packages",
+	"logger",
+	"src",
+	"index.ts",
+);
 
 export default defineConfig({
 	resolve: {
 		alias: [
+			{
+				find: /^@elizaos\/logger$/,
+				replacement: loggerSource,
+			},
 			{
 				find: /^@elizaos\/plugin-sql$/,
 				replacement: path.join(pluginSqlRoot, "index.node.ts"),

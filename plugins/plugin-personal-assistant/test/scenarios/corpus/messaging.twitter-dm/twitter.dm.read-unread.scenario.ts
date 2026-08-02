@@ -1,9 +1,10 @@
 /** Scenario fixture for twitter dm read unread; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedXReadFixtures } from "../../../scenario-support/x-seeds.ts";
 
 export default scenario({

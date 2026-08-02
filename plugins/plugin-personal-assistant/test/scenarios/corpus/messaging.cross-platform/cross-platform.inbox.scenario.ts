@@ -1,16 +1,16 @@
 /** Scenario fixture for cross platform inbox; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  expectScenarioToCallAction,
+  expectTurnToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
   seedCanonicalIdentityFixture,
 } from "../../../../plugins/plugin-personal-assistant/test/helpers/lifeops-identity-merge-fixtures.ts";
-import {
-  expectScenarioToCallAction,
-  expectTurnToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 
 const PERSON_NAME = "Priya Rao";
 

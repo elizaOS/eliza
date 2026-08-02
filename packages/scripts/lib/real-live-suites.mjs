@@ -47,10 +47,14 @@ export const REAL_LIVE_FILE_PATTERN = /\.(?:real|live)\.test\.tsx?$/;
 
 const DISCOVERY_SKIP_DIRS = new Set([
   ".git",
+  ".audit-worktrees",
+  ".codex-tmp",
   ".turbo",
   ".claude",
   ".codex-pr-worktrees",
   ".codex-worktrees",
+  ".worktrees",
+  ".migration",
   "coverage",
   "dist",
   "node_modules",
@@ -136,22 +140,24 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-anthropic/__tests__/anthropic-drift.real.test.ts",
     requires: ["ANTHROPIC_API_KEY"],
+    blocked:
+      "plugin-anthropic excludes *.real.test.ts from its default config; run explicitly with vitest.real-runtime.config.ts",
     notes: "also runs nightly in external-api-live-drift.yml",
   },
   {
     file: "plugins/plugin-browser/src/benchmark/__tests__/external-dataset-chromium.real.test.ts",
     probe: "playwright Chromium install",
-    notes: "runs in browser-real-bench.yml via test:real:chromium",
+    notes: "runs explicitly via the plugin's Chromium real-test script",
   },
   {
     file: "plugins/plugin-browser/src/benchmark/__tests__/miniwob-chromium.real.test.ts",
     probe: "playwright Chromium install",
-    notes: "runs in browser-real-bench.yml via test:real:chromium",
+    notes: "runs explicitly via the plugin's Chromium real-test script",
   },
   {
     file: "plugins/plugin-browser/src/benchmark/__tests__/web-grounding-chromium.real.test.ts",
     probe: "playwright Chromium install",
-    notes: "runs in browser-real-bench.yml via test:real:chromium",
+    notes: "runs explicitly via the plugin's Chromium real-test script",
   },
   {
     file: "plugins/plugin-calendar/test/google-calendar-connector.real.test.ts",
@@ -219,11 +225,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     notes: "also runs nightly in external-api-live-drift.yml",
   },
   {
-    file: "plugins/plugin-ollama/__tests__/native-plumbing.live.test.ts",
-    requires: ["OLLAMA_API_ENDPOINT"],
-    probe: "reachable local Ollama server",
-  },
-  {
     file: "plugins/plugin-openai/__tests__/cerebras-spawn-subagent-refusal.live.test.ts",
     optIn: "ELIZA_RUN_LIVE_TESTS",
     requires: ["CEREBRAS_API_KEY"],
@@ -242,16 +243,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
   {
     file: "plugins/plugin-openai/__tests__/trajectory.live.test.ts",
     requires: ["OPENAI_API_KEY_REAL"],
-  },
-  {
-    file: "plugins/plugin-openrouter/__tests__/anthropic-cache.live.test.ts",
-    requires: ["OPENROUTER_API_KEY"],
-    notes:
-      "exact OpenRouter-to-Anthropic 1h cache-write/cache-read usage and typed invalid-TTL receipt",
-  },
-  {
-    file: "plugins/plugin-openrouter/__tests__/models.live.test.ts",
-    requires: ["OPENROUTER_API_KEY"],
   },
   {
     file: "plugins/plugin-personal-assistant/test/apple-reminders.live.test.ts",
@@ -292,7 +283,33 @@ export const GUARDED_REAL_LIVE_SUITES = [
   },
   {
     file: "plugins/plugin-coding-tools/src/shell/__tests__/shell.real.test.ts",
+    blocked:
+      "plugin-coding-tools excludes *.real.test.ts from its default config; run explicitly on a POSIX host",
     probe: "POSIX shell (skips on win32; runs in every lane elsewhere)",
+  },
+  {
+    file: "plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts",
+    blocked:
+      "plugin-local-inference excludes *.real.test.ts from its default config; run with Bun, the fused native library, ASR bundle, and audio fixtures",
+    probe: "Bun FFI, fused inference library, ASR bundle, and audio fixtures",
+  },
+  {
+    file: "plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/kokoro-engine-bridge.real.test.ts",
+    blocked:
+      "plugin-local-inference excludes *.real.test.ts from its default config; run with the fused Kokoro-capable native library",
+    probe: "fused inference library with Kokoro support",
+  },
+  {
+    file: "plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts",
+    blocked:
+      "plugin-local-inference excludes *.real.test.ts from its default config; run with Bun and the fused diarizer library",
+    probe: "Bun FFI and fused inference library",
+  },
+  {
+    file: "plugins/plugin-local-inference/src/services/voice/speaker/encoder-fused.real.test.ts",
+    blocked:
+      "plugin-local-inference excludes *.real.test.ts from its default config; run with Bun and the fused speaker-encoder library",
+    probe: "Bun FFI and fused inference library",
   },
   {
     file: "plugins/plugin-sql/src/__tests__/integration/postgres/rls-entity.real.test.ts",

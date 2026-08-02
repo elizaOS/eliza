@@ -4,12 +4,7 @@ TOS-clean SAFE/CLOUD inference route for elizaOS. Serves chat/planner inference 
 
 ## Purpose / role
 
-This is the develop-shippable peer to the two TOS-gray, never-commit bypass paths:
-
-- the in-process claude-code-stealth fetch interceptor at `packages/agent/src/auth/credentials.ts`, and
-- `plugin-codex-cli`'s in-process `postResponses` HTTP path,
-
-both of which replay the consumer-subscription token in-process. Here the handlers SHELL OUT to the official CLI, which loads `~/.claude/.credentials.json` / `~/.codex/auth.json` itself. The token is never injected into the child env (`filterEnv` allowlist + `SENSITIVE_ENV_RE` blocklist) or into logs (stderr is redacted before logging).
+The handlers shell out to the official CLI, which loads `~/.claude/.credentials.json` / `~/.codex/auth.json` itself. The token is never injected into the child env (`filterEnv` allowlist + `SENSITIVE_ENV_RE` blocklist) or into logs (stderr is redacted before logging).
 
 Node-only (`"platforms": ["node"]`) — exported from `index.node.ts` only.
 
@@ -179,7 +174,6 @@ bun run --cwd plugins/plugin-cli-inference build
 ## Conventions / gotchas
 
 - **Node-only.** `index.browser.ts` is a stub; the real handlers use `node:child_process`.
-- **Double-activation guard.** `ELIZA_CHAT_VIA_CLI=claude` + `ELIZA_ENABLE_CLAUDE_STEALTH` both set throws in `init()` (two colliding claude routes). The guard lives in THIS plugin because `credentials.ts` is skip-worktree on the live branch.
 - **Isolated cwd per call.** Created with `mkdtemp` under `tmpdir()`, validated by `resolveSafeCwd`, removed in a `finally`. Keeps the CLI out of real projects (suppresses Claude Code repo-context identity).
 - **`/dev/null` stdin is REQUIRED** — without it the CLI waits ~3s for stdin.
 - **sandbox.ts is the canonical copy** of the `SAFE_ENV_KEYS` allowlist and `SENSITIVE_ENV_RE` redaction pattern for spawned CLI subprocesses.

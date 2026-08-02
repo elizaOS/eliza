@@ -19,7 +19,6 @@ describe("launch QA task selection", () => {
 
     expect(ids).toContain("app-core-focused");
     expect(ids).toContain("agent-focused");
-    expect(ids).toContain("training-focused");
     expect(ids).toContain("cloud-api-key-client");
     expect(ids).not.toContain("docs");
     expect(ids).not.toContain("ui-smoke");

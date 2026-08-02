@@ -12,6 +12,10 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  expectScenarioToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
+import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
@@ -20,10 +24,6 @@ import {
   assertCanonicalIdentityMerged,
   seedCanonicalIdentityFixture,
 } from "../../../../plugins/plugin-personal-assistant/test/helpers/lifeops-identity-merge-fixtures.ts";
-import {
-  expectScenarioToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 
 const PERSON_NAME = "Priya Rao";
 const EXPECTED_CHANNELS = ["gmail", "signal", "telegram", "discord"];

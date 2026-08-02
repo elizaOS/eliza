@@ -7659,7 +7659,18 @@ export async function runV5MessageRuntimeStage1(args: {
 						runtime: args.runtime,
 						message: args.message,
 						addressedTo,
-					}).catch(() => false)
+					}).catch((error) => {
+						// error-policy:J4 an unresolved addressee must not suppress a
+						// response, but the failed room lookup remains observable.
+						args.runtime.reportError(
+							"MessageService.resolveAddressees",
+							error,
+							{
+								roomId: args.message.roomId,
+							},
+						);
+						return false;
+					})
 				: false;
 		const route = routeMessageHandlerOutput(messageHandler, {
 			suppressToolPromotion,

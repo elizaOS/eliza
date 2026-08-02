@@ -32,7 +32,7 @@ import {
   signApprovalChallenge,
   WalletSignError,
 } from "../lib/wallet-sign";
-import { StatusBadge } from "./status-badge";
+import { ApprovalStatusBadge } from "./status-badge";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -114,7 +114,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
             ) : null}
           </div>
         </div>
-        <StatusBadge status={request.status} />
+        <ApprovalStatusBadge status={request.status} />
       </div>
 
       {challenge.message ? (

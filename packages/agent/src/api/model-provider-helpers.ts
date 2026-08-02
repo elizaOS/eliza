@@ -474,9 +474,21 @@ export async function fetchOpenRouterModels(
   const [chatRes, embedRes] = await Promise.all([
     fetch("https://openrouter.ai/api/v1/models?output_modalities=all", {
       headers,
-    }).catch(() => null),
+    }).catch((error) => {
+      // error-policy:J4 the combined catalog can remain partially available.
+      logger.warn(
+        `[model-catalog] OpenRouter text catalog unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }),
     fetch("https://openrouter.ai/api/v1/embeddings/models", { headers }).catch(
-      () => null,
+      (error) => {
+        // error-policy:J4 the combined catalog can remain partially available.
+        logger.warn(
+          `[model-catalog] OpenRouter embedding catalog unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      },
     ),
   ]);
 
@@ -498,8 +510,11 @@ export async function fetchOpenRouterModels(
         else if (outputs.includes("audio")) category = "tts";
         models.push({ id: m.id, name: m.name ?? m.id, category });
       }
-    } catch {
-      /* parse error */
+    } catch (error) {
+      // error-policy:J4 invalid text-catalog data leaves embeddings available.
+      logger.warn(
+        `[model-catalog] Invalid OpenRouter text catalog: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -510,8 +525,11 @@ export async function fetchOpenRouterModels(
       for (const m of data.data ?? []) {
         models.push({ id: m.id, name: m.name ?? m.id, category: "embedding" });
       }
-    } catch {
-      /* parse error */
+    } catch (error) {
+      // error-policy:J4 invalid embedding data leaves the text catalog available.
+      logger.warn(
+        `[model-catalog] Invalid OpenRouter embedding catalog: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

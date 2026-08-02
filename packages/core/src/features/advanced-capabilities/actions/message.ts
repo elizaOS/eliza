@@ -1303,58 +1303,51 @@ async function collectEntityCandidates(
 		return [];
 	}
 
-	try {
-		const entity = await findEntityByName(
-			runtime,
-			{ ...message, content: { ...message.content, text: query } },
-			state ?? ({ values: {}, data: {}, text: "" } as State),
-		);
-		if (!entity?.id) return [];
+	const entity = await findEntityByName(
+		runtime,
+		{ ...message, content: { ...message.content, text: query } },
+		state ?? ({ values: {}, data: {}, text: "" } as State),
+	);
+	if (!entity?.id) return [];
 
-		const label = entity.names[0] ?? query;
-		const candidates: SendCandidate[] = [];
-		for (const connector of connectors) {
-			if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
-			const matchingComponent = entity.components?.find(
-				(c) =>
-					normalizeComparable(c.type) === normalizeComparable(connector.source),
-			);
-			const target = {
-				source: connector.source,
-				accountId: connector.accountId ?? accountId,
-				entityId: entity.id as UUID,
-			} as TargetInfo;
-			if (matchingComponent) {
-				const channelId = componentString(matchingComponent, [
-					"channelId",
-					"chatId",
-					"conversationId",
-					"phone",
-					"phoneNumber",
-					"email",
-				]);
-				if (channelId) target.channelId = channelId;
-				const roomId = componentString(matchingComponent, ["roomId"]);
-				if (roomId) target.roomId = roomId as UUID;
-				const serverId = componentString(matchingComponent, ["serverId"]);
-				if (serverId) target.serverId = serverId;
-			}
-			candidates.push({
-				connector,
-				target,
-				label,
-				kind: targetKind ?? "contact",
-				score: matchingComponent ? 0.78 : sourceWasExact ? 0.66 : 0.56,
-				reasons: matchingComponent ? ["entity", "component"] : ["entity"],
-			});
-		}
-		return candidates;
-	} catch (error) {
-		logger.warn(
-			`[MESSAGE/send] entity resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+	const label = entity.names[0] ?? query;
+	const candidates: SendCandidate[] = [];
+	for (const connector of connectors) {
+		if (!connectorSupportsKind(connector, targetKind ?? "contact")) continue;
+		const matchingComponent = entity.components?.find(
+			(c) =>
+				normalizeComparable(c.type) === normalizeComparable(connector.source),
 		);
-		return [];
+		const target = {
+			source: connector.source,
+			accountId: connector.accountId ?? accountId,
+			entityId: entity.id as UUID,
+		} as TargetInfo;
+		if (matchingComponent) {
+			const channelId = componentString(matchingComponent, [
+				"channelId",
+				"chatId",
+				"conversationId",
+				"phone",
+				"phoneNumber",
+				"email",
+			]);
+			if (channelId) target.channelId = channelId;
+			const roomId = componentString(matchingComponent, ["roomId"]);
+			if (roomId) target.roomId = roomId as UUID;
+			const serverId = componentString(matchingComponent, ["serverId"]);
+			if (serverId) target.serverId = serverId;
+		}
+		candidates.push({
+			connector,
+			target,
+			label,
+			kind: targetKind ?? "contact",
+			score: matchingComponent ? 0.78 : sourceWasExact ? 0.66 : 0.56,
+			reasons: matchingComponent ? ["entity", "component"] : ["entity"],
+		});
 	}
+	return candidates;
 }
 
 async function currentRoomCandidate(
@@ -2392,27 +2385,23 @@ async function resolveLocalChannelRoom(
 	source: string | undefined,
 	channel: string,
 ): Promise<Room | null> {
-	try {
+	if (isUuidLike(channel)) {
 		const direct = await runtime.getRoom(channel as UUID);
 		if (direct) return direct;
-	} catch {
-		// not a uuid
 	}
 	const agentRooms = await runtime.getRoomsForParticipant(runtime.agentId);
+	const rooms = await Promise.all(
+		agentRooms.map((roomId) => runtime.getRoom(roomId)),
+	);
 	const channelLower = channel.toLowerCase();
-	for (const roomId of agentRooms) {
-		try {
-			const room = await runtime.getRoom(roomId);
-			if (!room) continue;
-			const roomRecord = room as Room & { name?: string; source?: string };
-			const name = (roomRecord.name ?? "").toLowerCase();
-			const roomSource = roomRecord.source.toLowerCase();
-			if (name === channelLower || name.includes(channelLower)) {
-				if (source && roomSource !== source.toLowerCase()) continue;
-				return room;
-			}
-		} catch {
-			// ignore individual room lookup failures
+	for (const room of rooms) {
+		if (!room) continue;
+		const roomRecord = room as Room & { name?: string; source?: string };
+		const name = (roomRecord.name ?? "").toLowerCase();
+		const roomSource = (roomRecord.source ?? "").toLowerCase();
+		if (name === channelLower || name.includes(channelLower)) {
+			if (source && roomSource !== source.toLowerCase()) continue;
+			return room;
 		}
 	}
 	return null;

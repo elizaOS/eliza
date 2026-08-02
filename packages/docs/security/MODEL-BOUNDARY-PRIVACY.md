@@ -1,3 +1,8 @@
+---
+title: Model-Boundary Privacy
+description: "Keep configured secrets and personal identifiers out of model-provider prompts."
+---
+
 # Model-Boundary Privacy — Secret Swap & PII Pseudonymization
 
 elizaOS can keep secrets and personal data **out of the LLM provider** entirely.

@@ -24,7 +24,7 @@ import {
   useCancelSensitiveRequest,
   useSensitiveRequest,
 } from "../lib/approvals";
-import { StatusBadge } from "./status-badge";
+import { ApprovalStatusBadge } from "./status-badge";
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -113,7 +113,7 @@ export function SensitiveTab() {
                 </p>
               </div>
             </div>
-            <StatusBadge status={request.status} />
+            <ApprovalStatusBadge status={request.status} />
           </div>
 
           {request.reason ? (

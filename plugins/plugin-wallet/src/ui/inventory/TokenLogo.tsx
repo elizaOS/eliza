@@ -4,10 +4,14 @@
  * monogram badge (first letter of the symbol) on load failure or when no URL
  * resolves.
  */
+import * as React from "react";
 import { useState } from "react";
 import { getContractLogoUrl, getNativeLogoUrl } from "./chainConfig.ts";
 import { chainIcon } from "./constants.ts";
 import { normalizeInventoryImageUrl } from "./media-url.ts";
+
+// The app's workspace-source build can emit classic JSX for plugin modules.
+void React;
 
 function tokenLogoUrl(
   chain: string,

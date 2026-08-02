@@ -20,11 +20,11 @@
  * stage is the only missing recorder phase.
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 const _ALLOWED_NOOP_ACTIONS = new Set<string>([
   "REPLY",

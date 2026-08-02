@@ -3,8 +3,11 @@
  * ethereum/base/bsc/avax/solana have art; unrecognized or unlisted chains
  * render nothing (`null`) rather than falling back to a generic icon.
  */
-import type * as React from "react";
+import * as React from "react";
 import { resolveChainKey } from "./chainConfig.ts";
+
+// The app's workspace-source build can emit classic JSX for plugin modules.
+void React;
 
 export type ChainIconSize = "sm" | "md" | "lg";
 

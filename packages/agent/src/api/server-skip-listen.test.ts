@@ -115,6 +115,25 @@ async function runBootHarness(
 }
 
 describe("startApiServer skipListen — source-level guard (#12180)", () => {
+  it("offers explicit host middleware without patching Node's HTTP factory", () => {
+    expect(SERVER_SRC).toMatch(/requestMiddleware\?:\s*ApiRequestMiddleware/);
+    expect(SERVER_SRC).toContain(
+      "await opts.requestMiddleware(req, res, dispatch)",
+    );
+    expect(SERVER_SRC).not.toMatch(/http\.createServer\s*=/);
+  });
+
+  it("configures protocol extensions on the concrete server", () => {
+    const createIndex = SERVER_SRC.indexOf("const server = http.createServer");
+    const configureIndex = SERVER_SRC.indexOf(
+      "await opts?.configureServer?.(server)",
+    );
+    const listenIndex = SERVER_SRC.indexOf("server.listen(port, host");
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(configureIndex).toBeGreaterThan(createIndex);
+    expect(listenIndex).toBeGreaterThan(configureIndex);
+  });
+
   it("declares an optional skipListen boolean on the options object", () => {
     expect(SERVER_SRC).toMatch(/skipListen\?:\s*boolean/);
   });

@@ -1,7 +1,10 @@
 /** Scenario fixture for todo forceful reminder morning routine; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import {
+  expectScenarioActionResultData,
+  expectTurnToCallAction,
+} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
-import { expectScenarioActionResultData } from "@elizaos/scenario-runner/scenario-assertions";
 import { seedCheckinTodo } from "../../../scenario-support/lifeops-seeds.ts";
 
 export default scenario({

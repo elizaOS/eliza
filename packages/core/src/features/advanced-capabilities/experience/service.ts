@@ -19,6 +19,7 @@
  * `contradicts`.
  */
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { Memory } from "../../../types/memory.ts";
 import { ModelType } from "../../../types/model.ts";
@@ -68,22 +69,32 @@ export class ExperienceService extends Service {
 		super(runtime);
 		this.decayManager = new ConfidenceDecayManager();
 		this.relationshipManager = new ExperienceRelationshipManager();
-
-		void this.loadExperiences();
-
-		// Batch-persist dirty access counts every 60 seconds
-		this.persistTimer = setInterval(() => {
-			void this.persistDirtyExperiences();
-		}, 60_000);
-		this.maintenanceTimer = setInterval(() => {
-			void this.dedupeDuplicateExperiences({ deleteDuplicates: false });
-		}, DAILY_EXPERIENCE_MAINTENANCE_MS);
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<ExperienceService> {
 		const service = new ExperienceService(runtime);
-		// loadExperiences is triggered in constructor
+		await service.loadExperiences();
+		service.startBackgroundTasks();
 		return service;
+	}
+
+	private startBackgroundTasks(): void {
+		this.persistTimer = setInterval(() => {
+			// error-policy:J7 the timer cannot await this diagnostic write; the
+			// runtime error channel observes every rejected batch.
+			void this.persistDirtyExperiences().catch((error) => {
+				this.runtime.reportError("ExperienceService.persistDirty", error);
+			});
+		}, 60_000);
+		this.maintenanceTimer = setInterval(() => {
+			// error-policy:J7 maintenance is detached from message processing;
+			// report failures without terminating the scheduler.
+			void this.dedupeDuplicateExperiences({ deleteDuplicates: false }).catch(
+				(error) => {
+					this.runtime.reportError("ExperienceService.dedupe", error);
+				},
+			);
+		}, DAILY_EXPERIENCE_MAINTENANCE_MS);
 	}
 
 	private toTimestamp(
@@ -369,32 +380,34 @@ export class ExperienceService extends Service {
 			Experience,
 			"context" | "action" | "result" | "learning"
 		>,
-	): Promise<number[] | undefined> {
+	): Promise<number[]> {
 		const embeddingText = `${experienceData.context} ${experienceData.action} ${experienceData.result} ${experienceData.learning}`;
 		const runModel = this.runtime.useModel.bind(this.runtime);
 
+		let result: number[];
 		try {
-			const result = await runModel(ModelType.TEXT_EMBEDDING, {
+			result = await runModel(ModelType.TEXT_EMBEDDING, {
 				text: embeddingText,
 			});
-			if (
-				Array.isArray(result) &&
-				result.length > 0 &&
-				result.some((value: number) => value !== 0)
-			) {
-				return result;
-			}
-
-			logger.warn(
-				"[ExperienceService] Embedding model returned empty/zero vector, storing without embedding",
-			);
-		} catch (err) {
-			logger.warn(
-				`[ExperienceService] Embedding generation failed, storing without embedding: ${err}`,
-			);
+		} catch (error) {
+			throw new ElizaError("Experience embedding generation failed", {
+				code: "EXPERIENCE_EMBEDDING_FAILED",
+				cause: error,
+				severity: "ephemeral",
+			});
 		}
-
-		return undefined;
+		if (
+			!Array.isArray(result) ||
+			result.length === 0 ||
+			!result.some((value) => value !== 0)
+		) {
+			throw new ElizaError("Experience embedding is empty or zero-valued", {
+				code: "EXPERIENCE_EMBEDDING_INVALID",
+				context: { dimensions: Array.isArray(result) ? result.length : null },
+				severity: "fatal",
+			});
+		}
+		return result;
 	}
 
 	private buildExperienceMemory(experience: Experience): Memory {
@@ -582,10 +595,8 @@ export class ExperienceService extends Service {
 			extractionReason: experienceData.extractionReason,
 		};
 
-		this.setExperience(experience);
-
-		// Save to memory service
 		await this.saveExperienceToMemory(experience);
+		this.setExperience(experience);
 
 		// Check for contradictions and add relationships
 		const allExperiences = Array.from(this.experiences.values());
@@ -630,9 +641,13 @@ export class ExperienceService extends Service {
 				try {
 					await this.saveExperienceToMemory(exp);
 					saved++;
-				} catch {
-					// Re-mark as dirty so it retries next cycle
+				} catch (error) {
+					// error-policy:J7 the periodic writer retries on its next cycle and
+					// reports the failed durable write to the agent/owner channel.
 					this.dirtyExperiences.add(id);
+					this.runtime.reportError("ExperienceService.persistDirty", error, {
+						experienceId: id,
+					});
 				}
 			}
 		}
@@ -753,9 +768,9 @@ export class ExperienceService extends Service {
 			updatedAt: Date.now(),
 		};
 
+		await this.saveExperienceToMemory(updated);
 		this.setExperience(updated);
 		this.dirtyExperiences.delete(id);
-		await this.saveExperienceToMemory(updated);
 
 		return this.cloneExperience(updated);
 	}
@@ -766,11 +781,11 @@ export class ExperienceService extends Service {
 			return false;
 		}
 
+		await this.runtime.deleteMemory(id);
 		this.unindexExperience(existing);
 		this.experiences.delete(id);
 		this.dirtyExperiences.delete(id);
 		this.relationshipManager.removeExperience(id);
-		await this.runtime.deleteMemory(id);
 		return true;
 	}
 
@@ -1334,8 +1349,8 @@ export class ExperienceService extends Service {
 			]),
 		};
 
-		this.setExperience(merged);
 		await this.saveExperienceToMemory(merged);
+		this.setExperience(merged);
 
 		if (deleteDuplicate) {
 			await this.deleteExperience(duplicate.id);
@@ -1352,8 +1367,8 @@ export class ExperienceService extends Service {
 				primary.id,
 			]),
 		};
-		this.setExperience(superseded);
 		await this.saveExperienceToMemory(superseded);
+		this.setExperience(superseded);
 	}
 
 	async analyzeExperiences(
@@ -1546,22 +1561,17 @@ export class ExperienceService extends Service {
 			this.maintenanceTimer = null;
 		}
 
-		// Final persist of all dirty experiences + full save
+		// Final persistence is part of shutdown correctness: callers must know when
+		// state could not be made durable before the service stopped.
 		const experiencesToSave = Array.from(this.experiences.values());
-		let savedCount = 0;
-
-		for (const experience of experiencesToSave) {
-			try {
-				await this.saveExperienceToMemory(experience);
-				savedCount++;
-			} catch (err) {
-				logger.warn(
-					`[ExperienceService] Failed to save experience ${experience.id}: ${err}`,
-				);
-			}
-		}
-
+		await Promise.all(
+			experiencesToSave.map((experience) =>
+				this.saveExperienceToMemory(experience),
+			),
+		);
 		this.dirtyExperiences.clear();
-		logger.info(`[ExperienceService] Saved ${savedCount} experiences`);
+		logger.info(
+			`[ExperienceService] Saved ${experiencesToSave.length} experiences`,
+		);
 	}
 }

@@ -119,7 +119,13 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
     expect(Array.isArray(inv.files)).toBe(true);
     expect(inv.summary.totalRootScripts).toBe(inv.roots.length);
     expect(inv.scriptTests.discoveredCount).toBeGreaterThan(100);
-    expect(inv.scriptTests.excluded).toEqual([]);
+    expect(inv.scriptTests.excluded).toEqual([
+      {
+        file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+        reason:
+          "the release-candidate workflow owns this slow real-registry transport test",
+      },
+    ]);
     expect(inv.summary.totalScriptTests).toBe(inv.scriptTests.discoveredCount);
   });
 
@@ -175,11 +181,7 @@ describe("script inventory: packages/app surface (issue #10200)", () => {
   test("documented standalone scripts are tracked separately from true orphans", () => {
     const byFile = (name: string) => inv.files.find((f) => f.file === name);
 
-    expect(byFile("ensure-skills.mjs")?.category).toBe("reachable-from-docs");
     expect(byFile("run-scenarios-isolated.mjs")?.category).toBe(
-      "reachable-from-docs",
-    );
-    expect(byFile("validate-tee-local-stack.mjs")?.category).toBe(
       "reachable-from-docs",
     );
     expect(inv.summary.filesByCategory.orphan).toBe(0);

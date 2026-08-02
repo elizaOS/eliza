@@ -14,7 +14,6 @@ import type {
 } from "@elizaos/core";
 import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
 import {
@@ -23,6 +22,7 @@ import {
 } from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
 import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
 import { workThreadsProvider } from "../src/providers/work-threads.ts";
+import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 
 let cleanupRuntime: (() => Promise<void>) | undefined;
 

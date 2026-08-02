@@ -14,6 +14,9 @@ export interface Vault {
   /** Store a value. Sensitive values are encrypted at rest. */
   set(key: string, value: string, opts?: SetOptions): Promise<void>;
 
+  /** Atomically store a value only when the key does not already exist. */
+  setIfAbsent(key: string, value: string, opts?: SetOptions): Promise<boolean>;
+
   /**
    * Store a reference to a password-manager item. The actual value
    * lives there, never copied to disk by this vault.

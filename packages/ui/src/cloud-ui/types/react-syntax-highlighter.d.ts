@@ -1,3 +1,5 @@
+/** Supplies browser-safe syntax-highlighter contracts missing from its package. */
+
 declare module "react-syntax-highlighter" {
   import type { ComponentType, CSSProperties, ReactNode } from "react";
 

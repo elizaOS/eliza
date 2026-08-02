@@ -4,11 +4,11 @@
  * browser extension.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const AUTOFILL_ACTIONS = ["AUTOFILL_FIELD", "AUTOFILL"];
 

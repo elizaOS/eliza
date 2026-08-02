@@ -407,19 +407,13 @@ jobs:
     });
     const command = reports[0]?.execution.command ?? [];
     expect(command.slice(0, 3)).toEqual([
-      "bun",
+      "node",
+      "packages/scripts/run-script-test-files.mjs",
       "--config=packages/scripts/bunfig.script-tests.toml",
-      "test",
     ]);
-    expect(command).toContain("--parallel=4");
-    expect(command.indexOf("--reporter=junit")).toBeLessThan(
-      command.indexOf("packages/scripts/example.test.ts"),
-    );
-    expect(command.indexOf("--reporter-outfile")).toBe(-1);
+    expect(command).toContain("--concurrency=4");
     expect(
-      command.findIndex((argument) =>
-        argument.startsWith("--reporter-outfile="),
-      ),
+      command.findIndex((argument) => argument.startsWith("--junit=")),
     ).toBeLessThan(command.indexOf("packages/scripts/example.test.ts"));
   });
 
@@ -911,7 +905,13 @@ jobs:
   test("the real repository has one executing lane for every discovered test", () => {
     const result = buildScriptTestInventory();
     expect(result.discoveredCount).toBeGreaterThan(100);
-    expect(result.excluded).toEqual([]);
+    expect(result.excluded).toEqual([
+      {
+        file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+        reason:
+          "the release-candidate workflow owns this slow real-registry transport test",
+      },
+    ]);
     expect(
       result.files.some(
         ({ file }) =>

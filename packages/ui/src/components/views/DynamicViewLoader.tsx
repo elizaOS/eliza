@@ -84,6 +84,7 @@ import {
   SurfaceRealmDeniedError,
   type SurfaceRealmScope,
 } from "../../surface-realm-broker";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { registerDetailExtension } from "../apps/extensions/registry.ts";
 import {
   formatDetailTimestamp,
@@ -1344,10 +1345,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       .catch((err) => {
         if (cancelled) return;
         const error = err instanceof Error ? err : new Error(String(err));
-        console.error(
-          `DynamicViewLoader failed to load view "${viewIdRef.current}" from ${bundleUrl}`,
+        reportRendererDiagnostic({
+          scope: "dynamic-view.load",
           error,
-        );
+          context: { viewId: viewIdRef.current, bundleUrl },
+        });
         setLoadError(error);
       });
 

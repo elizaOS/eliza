@@ -12,6 +12,7 @@ import {
 } from "@elizaos/ui/components";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Check, Copy, Wallet } from "lucide-react";
+import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   type ChainKey,
@@ -19,6 +20,9 @@ import {
   resolveChainKey,
 } from "../inventory/chainConfig.ts";
 import { normalizeInventoryImageUrl } from "../inventory/media-url.ts";
+
+// The app's workspace-source build can emit classic JSX for plugin modules.
+void React;
 
 const DUST_THRESHOLD_USD = 0.01;
 const COPY_FEEDBACK_MS = 1200;

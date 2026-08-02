@@ -7,11 +7,11 @@
  * "key talking points".
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import { seedCalendarCache } from "../../../scenario-support/lifeops-seeds.ts";
 
 function checkDossierAddressesSeededMeeting(

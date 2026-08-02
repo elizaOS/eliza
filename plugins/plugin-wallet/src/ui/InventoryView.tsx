@@ -14,7 +14,12 @@
  */
 
 import { Escape } from "@elizaos/ui/spatial";
+import * as React from "react";
 import { InventoryAppView } from "./components/InventoryAppView.tsx";
+
+// The app's workspace-source build can emit classic JSX for plugin modules.
+// Keep the namespace live even though the standalone view uses the automatic runtime.
+void React;
 
 export function InventoryView() {
   return (

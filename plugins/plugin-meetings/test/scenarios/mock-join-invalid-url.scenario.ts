@@ -9,8 +9,8 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
-  scenario,
   type ScenarioContext,
+  scenario,
 } from "@elizaos/scenario-runner/schema";
 import { joinMeetingAction } from "../../src/actions/index.js";
 import { installMockSeed } from "./_meetings-mock.js";

@@ -17,9 +17,9 @@ import { ChannelType, createMessageMemory, type UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { withTimeout } from "../../../packages/app-core/test/helpers/test-utils.ts";
+import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
 import type { MockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
-import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;

@@ -5,7 +5,7 @@ Standalone elizaOS agent + HTTP backend server. Wraps `@elizaos/core`'s `AgentRu
 ## Role
 
 - Consumed by the desktop/mobile shells and CLI as the agent process and backend server. Many subpath exports (`@elizaos/agent/api`, `/runtime`, `/services/*`, `/config/*`, `/security/*`, `/auth/*`) are imported by sibling `@elizaos/plugin-*` packages and the app shell.
-- Owns runtime boot, plugin resolution/lifecycle, the HTTP API + route dispatch, character/config loading, trajectory persistence, triggers/scheduling, permission brokering, and the TEE (dstack) boot/key-release path.
+- Owns runtime boot, plugin resolution/lifecycle, the HTTP API + route dispatch, character/config loading, trajectory persistence, triggers/scheduling, permission brokering, and provider-neutral TEE policy/key-release paths.
 
 Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflow) live in the root [AGENTS.md](../../AGENTS.md) — not repeated here.
 
@@ -43,7 +43,7 @@ src/
     web-search-tools.ts / vault-profile-resolver.ts  Miscellaneous runtime helpers
     trajectory-*.ts       Trajectory persistence / query / internals
     conversation-compactor*.ts  Conversation summarization/compaction
-    operations/           vault-bridge.ts (Vault-backed config env resolution), classifier.ts,
+    operations/           vault-bridge.ts (config env resolution + optimized-prompt integrity key), classifier.ts,
                           cold-strategy.ts, manager.ts, health.ts, health-checks.ts,
                           reload-hot.ts, repository.ts, types.ts
   api/
@@ -60,18 +60,18 @@ src/
     plugin-auto-enable.ts Plugin auto-enable resolution
     paths.ts              resolveUserPath() and state/path helpers
     env-vars.ts, schema.ts, model-metadata.ts, owner-contacts.ts
-  services/               Business-logic services (capability-broker, permissions-registry, config-plugin-manager, plugin-installer/-compiler, relationships-graph, agent-export, shell-execution-router, tee-*, dstack-tee-provider, cove-quote)
+  services/               Business-logic services (capability-broker, permissions-registry, config-plugin-manager, plugin-installer/-compiler, relationships-graph, agent-export, shell-execution-router, provider-neutral tee-*)
   actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory, compact-conversation)
   providers/              Providers for createElizaPlugin (workspace, admin-trust/-panel, session, rolodex, recent/relevant-conversations, pending-permissions, escalation-trigger, page-scoped-context, ...)
   triggers/               runtime.ts (registerTriggerTaskWorker), scheduling.ts, types.ts
   auth/                   Credential storage + OAuth/Anthropic/OpenAI-Codex flows (account-storage, oauth-flow, refresh-mutex)
-  security/               access.ts, audit-log.ts, network-policy.ts, mcp-server-config.ts (validateMcpServerConfig)
+  security/               access.ts and audit-log.ts; network and MCP policy live in @elizaos/core
   awareness/              Re-exports AwarenessRegistry from @elizaos/shared
   hooks/                  loadHooks() / triggerHook() — workspace hook discovery + dispatch
   contracts/awareness.ts  Local-only awareness contract types
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
-scripts/                  build-mobile-bundle.mjs, live-sandbox-smoke.ts, tee-*-smoke.ts, validate-tee-*.mjs
+scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness
 docs/                     capability-router-remote-plugins.md, e2b-capability-routing.md, tee-agent-implementation-plan.md
 ```
 
@@ -82,7 +82,7 @@ docs/                     capability-router-remote-plugins.md, e2b-capability-ro
 - **HTTP:** `startApiServer()`, `dispatchRoute()`, route handlers (`@elizaos/agent/api`).
 - **Plugin sets:** `CORE_PLUGINS`, `BLOCKING_CORE_PLUGINS`, `DEFERRED_CORE_PLUGINS`, `OPTIONAL_CORE_PLUGINS`, `MOBILE_CORE_PLUGINS` (`runtime/core-plugins.ts`); `resolvePlugins()`, `collectPluginNames()`.
 - **Config:** `loadElizaConfig`/`saveElizaConfig`, `CharacterSchema`, `resolveUserPath`, `resolveDefaultAgentWorkspaceDir`.
-- **Services (named subpaths):** `getCapabilityBroker`/`CapabilityBroker`, `PermissionRegistry`, `runShell` (`services/shell-execution-router.ts`), `resolveRelationshipsGraphService`, TEE helpers (`tee-*`, `dstack-tee-provider`, `cove-quote`).
+- **Services (named subpaths):** `getCapabilityBroker`/`CapabilityBroker`, `PermissionRegistry`, `runShell` (`services/shell-execution-router.ts`), `resolveRelationshipsGraphService`, and the provider-neutral TEE policy/key-release helpers (`tee-*`). Concrete attestation providers register through `tee-evidence-provider.ts` from deployment-specific plugins.
 - Cloud route handlers (`handleCloudRoute`, `handleCloudBillingRoute`, `validateCloudBaseUrl`) are lazy re-exports that dynamically import `@elizaos/plugin-elizacloud`.
 
 ## Commands
@@ -94,7 +94,7 @@ bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to 
 bun run --cwd packages/agent dev              # bun --hot src/bin.ts
 bun run --cwd packages/agent typecheck        # tsgo --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # vitest run --config vitest.config.ts
-bun run --cwd packages/agent lint             # biome check --write (curated src subdirs)
+bun run --cwd packages/agent lint             # biome check --write across src/
 bun run --cwd packages/agent lint:check       # biome check read-only
 bun run --cwd packages/agent format           # biome format --write
 bun run --cwd packages/agent format:check     # biome format read-only
@@ -145,8 +145,8 @@ supervisor relaunches) — never a silent `process.exit`.
 - `bin.ts` statically imports `node:fs` and pins AOSP/mobile bootstrap symbols onto `globalThis` to defeat tree-shaking in the mobile bundle — do not remove those guards.
 - `core-plugins.ts` splits plugins into blocking vs deferred boot phases; slow feature/provider plugins must stay in the deferred set or boot regresses.
 - Several barrel re-exports avoid duplicate-symbol (`TS2308`) collisions and lazy-load heavy plugins (wallet, app-manager, elizacloud) — read the inline comments in `index.ts`/`api/index.ts`/`services/index.ts` before adding broad `export *` lines.
-- `lint`/`lint:check` only cover a curated subset of `src/` directories (see the script in `package.json`); `format` covers all of `src`.
-- TEE work (dstack) is gated behind `services/tee-boot-gate*` and validated by `scripts/validate-tee-*.mjs` + `scripts/tee-*-smoke.ts`; see `docs/tee-agent-implementation-plan.md`.
+- `lint`/`lint:check` and `format` cover the complete `src/` tree.
+- Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment; see `docs/tee-agent-implementation-plan.md`.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>` with `nosniff` + a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves via `runtime.getService(ServiceType.REMOTE_FILES)` — `store`/`getUrl`/`list`/`delete`; the authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` agent tool both go through it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs into the store on the outgoing path (SSRF-guarded) and runs the reference-aware orphan GC (which also counts document `metadata.mediaUrl`). Do NOT add a second file store, a `files` DB table, or a refcount/GC engine — see issue #8876 and the root AGENTS.md anti-pattern clause.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

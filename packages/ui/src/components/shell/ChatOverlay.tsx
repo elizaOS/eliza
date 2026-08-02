@@ -141,6 +141,12 @@ import {
 } from "../ui/message-scroller";
 import { Textarea } from "../ui/textarea";
 import {
+  clamp01,
+  grabberBarOpacity,
+  pillHandleCounterScale,
+  pillMorphScale,
+} from "./chat-overlay-motion";
+import {
   isShortLandscapeViewport,
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
@@ -152,7 +158,7 @@ import {
   filterRenderableShellMessages,
   type ShellMessage,
 } from "./shell-state";
-import { TopicChipsBar } from "./TopicChipsBar";
+import { ShellTopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 import {
   deriveChannelTopics,
@@ -427,47 +433,12 @@ const MAXIMIZE_COMMIT_FROM_BELOW_T = 0.5;
 // still un-maximizes promptly.
 const RESTORE_UNMAX_SLOP = 24;
 
-const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
-
-// Panel scale at the PILL end of the pill↔input morph. The collapse must read
-// as the whole chat shrinking down into the capsule — a hard, visible scale
-// lerp — not a near-imperceptible 0.9 nudge (the "barely animates down" bug).
-// The glass crossfades out over the same progress, so the deep scale never
-// shows a crumpled composer: by the time content would distort it has faded.
-export const PILL_MORPH_MIN_SCALE = 0.45;
-/** Panel scale for a pill↔input morph progress (0 = pill, 1 = input). */
-export function pillMorphScale(progress: number): number {
-  return PILL_MORPH_MIN_SCALE + (1 - PILL_MORPH_MIN_SCALE) * clamp01(progress);
-}
-
-/**
- * Inverse of {@link pillMorphScale}, applied to the pill-capsule wrapper so the
- * handle bar keeps a CONSTANT on-screen size through the whole pill↔input
- * morph: the fieldset scales about bottom-center and the pill wrapper is
- * bottom-anchored, so `panelScale × pillHandleCounterScale ≡ 1` cancels the
- * shrink exactly. (The "handle gets smaller when collapsed" regression was the
- * pill bar riding the 0.45 panel scale while the input-mode grabber rendered
- * outside the fieldset, unscaled.)
- */
-export function pillHandleCounterScale(progress: number): number {
-  return 1 / pillMorphScale(progress);
-}
-
-/**
- * Grabber-bar opacity from the two morphs that own it. It fades IN only after
- * the pill capsule has fully faded out (strict anti-phase over [0.55, 0.95] of
- * the pill→input open — the "two pills" guard), and back OUT as the over-pull
- * shape morph (`fullBleedT`) approaches edge-to-edge — so the handle dissolves
- * under the finger through the top ~10% of the pull instead of popping away
- * the frame the maximize commits (which unmounts it for the restore strip).
- */
-export function grabberBarOpacity(
-  openProgress: number,
-  fullBleedT: number,
-): number {
-  const openFade = clamp01((openProgress - 0.55) / 0.4);
-  return openFade * (1 - clamp01(fullBleedT));
-}
+export {
+  grabberBarOpacity,
+  PILL_MORPH_MIN_SCALE,
+  pillHandleCounterScale,
+  pillMorphScale,
+} from "./chat-overlay-motion";
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
 // + mic now use lucide icons (SendHorizontal / Mic); the rest stay hand-drawn.
@@ -5941,7 +5912,7 @@ export function ChatOverlay({
                       sticky above the scrolling transcript. Tap a chip to jump
                       to (and expand) its group. Hidden when nothing is tagged. */}
                         {hasTopics ? (
-                          <TopicChipsBar
+                          <ShellTopicChipsBar
                             topics={channelTopics}
                             onSelectTopic={scrollToTopic}
                             className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"

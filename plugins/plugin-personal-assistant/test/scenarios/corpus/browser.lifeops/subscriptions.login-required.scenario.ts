@@ -1,10 +1,11 @@
 /** Scenario fixture for subscriptions login required; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import { expectScenarioBrowserTask } from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   attachFakeSubscriptionComputerUse,
   FakeSubscriptionComputerUseService,
 } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/subscription-computer-use-fixture.ts";
-import { expectScenarioBrowserTask } from "@elizaos/scenario-runner/scenario-assertions";
 
 export default scenario({
   lane: "live-only",

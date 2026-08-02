@@ -765,7 +765,6 @@ export async function buildNode(
 				`${TS_SRC}/roles.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
 				`${TS_SRC}/security/mcp-server-config.ts`,
-				`${TS_SRC}/security/network-policy.ts`,
 				`${TS_SRC}/utils/atomic-json.ts`,
 			],
 			outdir: "dist/node",

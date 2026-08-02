@@ -59,8 +59,6 @@ const ROUTES = [
   ["/inventory", "wallet.inventory"],
   ["/model-tester", "model-tester"],
   ["/phone-companion", "phone-companion"],
-  ["/apps/facewear", "facewear"],
-  ["/apps/smartglasses", "smartglasses"],
   // the 9 mobile plugin views fixed this session
   ["/trajectory-logger", "trajectory-logger"],
   ["/hyperliquid", "hyperliquid"],

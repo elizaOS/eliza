@@ -8,6 +8,7 @@
 
 import { createNavigateViewEvent } from "@elizaos/shared/events";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -368,6 +369,12 @@ vi.mock("./state", async () => {
     setUiThemeMode: vi.fn(),
     startupCoordinator: {
       phase: appState.startupPhase,
+      isShellPaintable: [
+        "first-run-required",
+        "starting-runtime",
+        "hydrating",
+        "ready",
+      ].includes(appState.startupPhase),
       retry: vi.fn(),
     },
     startupError: null,
@@ -504,7 +511,9 @@ vi.mock("./hooks/useIsDeveloperMode", () => ({
 import { App } from "./App";
 
 function navigateView(detail: Record<string, unknown>) {
-  window.dispatchEvent(createNavigateViewEvent(detail));
+  act(() => {
+    window.dispatchEvent(createNavigateViewEvent(detail));
+  });
 }
 
 describe("App navigate-view event wiring", () => {

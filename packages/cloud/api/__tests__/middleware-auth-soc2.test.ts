@@ -8,8 +8,9 @@
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
-import { AuditDispatcher, InMemorySink } from "@/api-app/services/audit";
 import { Hono } from "hono";
+import { AuditDispatcher } from "@/api-app/services/audit";
+import { InMemorySink } from "@/api-app/services/audit/testing";
 
 import { assertOrgMembership } from "../src/middleware/org-membership";
 import { setAuditDispatcher } from "../src/services/audit-dispatcher-singleton";

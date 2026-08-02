@@ -108,8 +108,9 @@ describe("startLayoutShiftMonitor", () => {
     });
     expect(eventListener).toHaveBeenCalledTimes(1);
     expect(consoleError).toHaveBeenCalledWith(
-      "[RenderTelemetry] layout shifted 2x (CLS 0.120) within 100ms",
-      event,
+      expect.anything(),
+      expect.anything(),
+      expect.stringContaining("render-telemetry.layout-shift"),
     );
 
     stop();

@@ -17,6 +17,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  expectApprovalRequest,
+  expectScenarioToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
+import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
@@ -25,11 +30,6 @@ import {
   executeRawSql,
   sqlQuote,
 } from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
-import {
-  expectApprovalRequest,
-  expectScenarioToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 
 interface ThreadMessage {
   index: number;

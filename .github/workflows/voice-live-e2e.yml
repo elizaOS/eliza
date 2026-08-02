@@ -103,7 +103,7 @@ permissions:
 env:
   CI: "true"
   NODE_VERSION: "24"
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_OPTIONS: "--experimental-sqlite"
 jobs:
   voice-platform-matrix-index:
@@ -270,20 +270,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # this repo tracks bun canary, and canary rebuilds reserialize bun.lock
-      # between builds, so a bare frozen install reds with "lockfile had changes,
-      # but lockfile is frozen" on the nightly self-hosted runs (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile and
-      # scenario-pr.yml. Native apt + protoc are disabled: these self-hosted
+      # Native apt + protoc are disabled: these self-hosted
       # runners build no Rust plugins, the install is --ignore-scripts, and a
       # sudo apt-get would introduce a new failure mode on the fleet.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -372,14 +366,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`
-      # (bun-canary reserializes bun.lock → "lockfile had changes, but lockfile is
-      # frozen"; see run 28548736294).
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -507,16 +498,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -556,16 +542,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -606,16 +587,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"
@@ -656,16 +632,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # setup-bun-workspace instead of a hand-rolled `bun install --frozen-lockfile`:
-      # bun-canary reserializes bun.lock between builds, so a bare frozen install
-      # reds with "lockfile had changes, but lockfile is frozen" (run 28548736294).
-      # The composite handles the drift fallback and restores the committed
-      # lockfile — same pattern as scenario-pr.yml.
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           install-protoc: "false"
           skip-avatar-clone: "true"

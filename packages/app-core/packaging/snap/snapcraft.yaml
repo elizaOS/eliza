@@ -139,7 +139,6 @@ parts:
           "plugin-pdf",
           "plugin-signal",
           "plugin-sql",
-          "plugin-streaming",
           "plugin-task-coordinator",
           "plugin-telegram",
           "plugin-training",
@@ -500,7 +499,6 @@ parts:
         --filter=@elizaos/plugin-pdf \
         --filter=@elizaos/plugin-signal \
         --filter=@elizaos/plugin-sql \
-        --filter=@elizaos/plugin-streaming \
         --filter=@elizaos/plugin-task-coordinator \
         --filter=@elizaos/plugin-telegram \
         --filter=@elizaos/plugin-training \

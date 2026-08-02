@@ -135,29 +135,6 @@ function normalizeHostname(hostname: string | undefined): string | null {
   return normalized || null;
 }
 
-function normalizeOriginHost(value: string | undefined): string | null {
-  const raw = value?.trim();
-  if (!raw) return null;
-
-  try {
-    const origin = new URL(raw.includes("://") ? raw : `https://${raw}`);
-    if (
-      origin.username ||
-      origin.password ||
-      origin.pathname !== "/" ||
-      origin.search ||
-      origin.hash
-    ) {
-      return null;
-    }
-    return normalizeHostname(origin.host);
-  } catch {
-    // error-policy:J3 untrusted origin header parse; null = reject (unparseable
-    // origin is not a valid host and must not be matched against the allowlist).
-    return null;
-  }
-}
-
 function getGeneratedAgentId(
   url: URL,
   env: AgentDomainBindings,
@@ -194,17 +171,6 @@ export function redirectFrontendHost(
   return Response.redirect(targetUrl.toString(), 308);
 }
 
-// The Feed app's public host. Feed runs on Railway and serves both its pages and
-// its own `/api/*` from one origin, so the wildcard `*.elizacloud.ai/*` Worker
-// route would otherwise swallow it (see packages/feed/RAILWAY.md). When the
-// operator sets `FEED_ORIGIN_HOST` (the Railway host) this Worker reverse-proxies
-// the host to Railway; unset = inert (request falls through to cloud-api as before).
-const FEED_ALIAS_HOST = "feed.elizacloud.ai";
-const FEED_OBSERVABILITY_SCRIPT_PATHS = new Set([
-  "/_vercel/insights/script.js",
-  "/_vercel/speed-insights/script.js",
-]);
-const FEED_PRESET_PFP_PATTERN = /^\/assets\/user-pfps\/pfp-\d{3}\.png$/;
 const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
   "cdn-loop",
   "connection",
@@ -221,22 +187,9 @@ const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
   "x-real-ip",
 ]);
 
-export function getFrontendAliasProxyTarget(
-  url: URL,
-  env?: { FEED_ORIGIN_HOST?: string },
-): URL | null {
+export function getFrontendAliasProxyTarget(url: URL): URL | null {
   const hostname = normalizeHostname(url.hostname);
   if (!hostname) return null;
-
-  // Config-gated Feed passthrough. Single origin for pages + API, so no app/api
-  // split. Inert unless FEED_ORIGIN_HOST is set.
-  if (hostname === FEED_ALIAS_HOST) {
-    const feedOrigin = normalizeOriginHost(env?.FEED_ORIGIN_HOST);
-    if (!feedOrigin) return null;
-    const feedUrl = new URL(url);
-    feedUrl.host = feedOrigin;
-    return feedUrl;
-  }
 
   const target = FRONTEND_ALIAS_TARGETS[hostname];
   if (!target) return null;
@@ -270,42 +223,11 @@ export function getFrontendAliasApiProxyTarget(url: URL): URL | null {
   return targetUrl;
 }
 
-export function getFrontendAliasSyntheticResponse(url: URL): Response | null {
-  const hostname = normalizeHostname(url.hostname);
-  if (hostname !== FEED_ALIAS_HOST) return null;
-
-  if (FEED_OBSERVABILITY_SCRIPT_PATHS.has(url.pathname)) {
-    return new Response("", {
-      status: 200,
-      headers: {
-        "content-type": "application/javascript; charset=utf-8",
-        "cache-control": "public, max-age=3600",
-      },
-    });
-  }
-
-  if (FEED_PRESET_PFP_PATTERN.test(url.pathname)) {
-    const fallbackUrl = new URL(url);
-    fallbackUrl.pathname = "/blankmonkey.png";
-    fallbackUrl.search = "";
-    return Response.redirect(fallbackUrl.toString(), 302);
-  }
-
-  return null;
-}
-
 function proxyFrontendAliasRequest(
   request: Request,
   url: URL,
-  env: AppEnv["Bindings"],
 ): Promise<Response> | null {
-  const syntheticResponse = getFrontendAliasSyntheticResponse(url);
-  if (syntheticResponse) return Promise.resolve(syntheticResponse);
-
-  const targetUrl = getFrontendAliasProxyTarget(
-    url,
-    env as { FEED_ORIGIN_HOST?: string },
-  );
+  const targetUrl = getFrontendAliasProxyTarget(url);
   if (!targetUrl) return null;
 
   return fetch(
@@ -420,7 +342,7 @@ export default {
       return (await getApp()).fetch(apiRequest, env, ctx);
     }
 
-    const frontendAliasResponse = proxyFrontendAliasRequest(request, url, env);
+    const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
     if (frontendAliasResponse) return frontendAliasResponse;
     const blobResponse = await serveBlobHostRequest(request, url, env);
     if (blobResponse) return blobResponse;

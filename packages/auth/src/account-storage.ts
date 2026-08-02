@@ -258,6 +258,8 @@ export function listAccounts(
   try {
     entries = fs.readdirSync(dir);
   } catch (error) {
+    // error-policy:J4 a never-created provider directory is the designed empty
+    // account state; every other filesystem failure remains observable.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
@@ -276,6 +278,8 @@ export function loadAccount(
   try {
     return readRecord(provider, file);
   } catch (error) {
+    // error-policy:J4 an absent requested account is represented explicitly as
+    // null; malformed ciphertext and other read failures still throw.
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }

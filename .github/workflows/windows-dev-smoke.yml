@@ -61,7 +61,7 @@ jobs:
       matrix:
         # Exercise the same Bun line that can parse the current lockfile, so
         # Windows smoke covers repo behavior instead of failing during install.
-        bun-version: ["canary"]
+        bun-version: ["1.3.14"]
 
     steps:
       - name: Enable long paths (Windows)
@@ -107,7 +107,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ matrix.bun-version }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "false"
           init-submodules: "false"

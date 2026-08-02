@@ -23,13 +23,13 @@ on:
     - cron: "0 18 * * *"
   workflow_dispatch:
 
-# The bounded native queue preserves every twice-daily invocation instead of
-# replacing an older pending run when a third arrives. Each called workflow
-# receives the same explicit scope below, keeping its jobs outside every
-# standalone push, PR, dispatch, and schedule group.
+# GitHub concurrency keeps one run active and one pending for this scope. Newer
+# invocations replace a stale pending run while the active exhaustive sweep is
+# allowed to finish. Each called workflow receives the same explicit scope
+# below, keeping its jobs outside every standalone push, PR, dispatch, and
+# schedule group.
 concurrency:
   group: develop-exhaustive-${{ github.ref }}
-  queue: max
   cancel-in-progress: false
 
 permissions:

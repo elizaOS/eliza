@@ -22,8 +22,3 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-
-  # NOTE: cargo (Rust) example entries were removed — commit b69d70632b made the
-  # examples TypeScript-only and deleted the packages/examples/*/rust/* trees.
-  # The stale cargo entries made Dependabot abort every run with
-  # "Cargo.toml not found". Re-add cargo blocks only if a real Cargo.toml returns.

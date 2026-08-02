@@ -1,7 +1,10 @@
 /** Scenario fixture for x dm group chat gateway; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+
+import {
+  expectScenarioActionResultData,
+  expectTurnToCallAction,
+} from "@elizaos/scenario-runner/scenario-assertions";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { expectTurnToCallAction } from "@elizaos/scenario-runner/scenario-assertions";
-import { expectScenarioActionResultData } from "@elizaos/scenario-runner/scenario-assertions";
 
 export default scenario({
   lane: "live-only",

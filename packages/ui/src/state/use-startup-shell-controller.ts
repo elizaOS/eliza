@@ -14,6 +14,7 @@ import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-run
 import { applyLaunchConnection } from "../platform";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
+import { runStartupProbe } from "./startup-probe";
 import type { StartupErrorReason, StartupErrorState } from "./types";
 
 /**
@@ -45,26 +46,6 @@ function gatewayHostForDisplay(gatewayUrl: string): string {
     return new URL(gatewayUrl).host || gatewayUrl;
   } catch {
     return gatewayUrl;
-  }
-}
-
-function phaseToStatusKey(phase: string): string {
-  switch (phase) {
-    case "restoring-session":
-      return "startupshell.Starting";
-    case "resolving-target":
-    case "polling-backend":
-      // Generic boot message — the user shouldn't see a backend-specific status
-      // (the agent can be local, remote, or cloud). Reuses the already-localized
-      // generic "Booting up…" key rather than "Connecting to backend…".
-      return "startupshell.Starting";
-    case "starting-runtime":
-      return "startupshell.InitializingAgent";
-    case "hydrating":
-    case "ready":
-      return "startupshell.Loading";
-    default:
-      return "startupshell.Starting";
   }
 }
 
@@ -237,26 +218,34 @@ export function useStartupShellController(): StartupShellController {
     cloudSkipProbeStartedRef.current = true;
     let cancelled = false;
 
-    void client
-      .getFirstRunStatus()
-      .then((status) => {
-        if (cancelled) return;
+    void runStartupProbe(() => client.getFirstRunStatus()).then((probe) => {
+      if (cancelled) return;
 
-        if (!status.cloudProvisioned) {
-          return;
-        }
+      if (probe.kind !== "ok") {
+        coordinatorDispatchRef.current({
+          type: "AGENT_ERROR",
+          message:
+            probe.error instanceof Error
+              ? probe.error.message
+              : "Could not verify the agent setup state.",
+        });
+        return;
+      }
 
-        if (needsBootstrapSession()) {
-          setShowBootstrap(true);
-          return;
-        }
+      const status = probe.value;
 
-        setState("firstRunComplete", true);
-        coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
-      })
-      .catch(() => {
-        cloudSkipProbeStartedRef.current = false;
-      });
+      if (!status.cloudProvisioned) {
+        return;
+      }
+
+      if (needsBootstrapSession()) {
+        setShowBootstrap(true);
+        return;
+      }
+
+      setState("firstRunComplete", true);
+      coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
+    });
 
     return () => {
       cancelled = true;
@@ -312,7 +301,7 @@ export function useStartupShellController(): StartupShellController {
     view = {
       kind: "loading",
       phase,
-      status: t(phaseToStatusKey(phase)),
+      status: t(startupCoordinator.statusMessageKey),
     };
   }
 

@@ -165,8 +165,6 @@ describe("curateLauncherPages", () => {
         entry("companion"),
         entry("model-tester"),
         entry("shopify"),
-        entry("facewear", { viewKind: "preview" }),
-        entry("smartglasses", { viewKind: "preview" }),
       ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
@@ -454,8 +452,6 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("companion"),
     entry("model-tester"),
     entry("shopify"),
-    entry("facewear", { viewKind: "preview" }),
-    entry("smartglasses", { viewKind: "preview" }),
     // Wallet + duplicate registrations + grouped sub-views.
     entry("wallet", { viewKind: "system" }),
     entry("inventory", { builtin: true, viewKind: "system" }),

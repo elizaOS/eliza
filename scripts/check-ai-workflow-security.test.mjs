@@ -8,9 +8,6 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const SKILL_REVIEW_PATH = ".github/workflows/skill-review.yml";
-const ELIZA_COMPUTER_PATH = ".github/workflows/eliza-computer.yml";
-const ELIZA_ARMY_RELEASE_LABEL_PATH =
-  ".github/workflows/eliza-army-release-label.yml";
 const CLAUDE_PATH = ".github/workflows/claude.yml";
 const DOCS_CI_PATH = ".github/workflows/docs-ci.yml";
 
@@ -61,43 +58,6 @@ function eventArm(condition, eventName) {
 }
 
 describe("AI workflow security policy", () => {
-  it("invalidates eliza.army release approval without executing candidate code", () => {
-    const source = workflow(ELIZA_ARMY_RELEASE_LABEL_PATH);
-
-    assert.match(source, /^\s*pull_request_target:\s*$/m);
-    assert.match(source, /^\s*branches:\s*\[develop\]\s*$/m);
-    assert.match(source, /^\s*types:\s*\[synchronize\]\s*$/m);
-    assert.doesNotMatch(source, /^\s*pull_request:\s*$/m);
-    assert.match(source, /^\s*contents:\s*read\s*$/m);
-    assert.match(source, /^\s*pull-requests:\s*write\s*$/m);
-    assert.doesNotMatch(
-      source,
-      /(?:issues|actions|checks|deployments|id-token|packages|statuses):\s*write/,
-    );
-    assert.match(source, /^\s*runs-on:\s*ubuntu-24\.04\s*$/m);
-    assert.doesNotMatch(source, /self-hosted|hetzner-robot/);
-    assert.doesNotMatch(source, /^\s*uses:\s*/m);
-    assert.doesNotMatch(
-      source,
-      /actions\/checkout|\bgit\b|\beval\b|\bsource\b/,
-    );
-    assert.doesNotMatch(source, /secrets\.|pull_request\.(?:body|title|head)/);
-    assert.match(
-      source,
-      /EVENT_NAME.*github\.event_name[\s\S]*EVENT_ACTION.*github\.event\.action/,
-    );
-    assert.match(
-      source,
-      /EVENT_NAME[^\n]*pull_request_target[\s\S]*EVENT_ACTION[^\n]*synchronize/,
-    );
-    assert.match(source, /target_label="eliza-army-release-candidate"/);
-    assert.match(source, /gh api --paginate[\s\S]*--jq '\.\[\]\.name'/);
-    assert.match(
-      source,
-      /gh api \\\s*\n\s*--method DELETE \\\s*\n[\s\S]*issues\/\$\{PR_NUMBER\}\/labels\/\$\{target_label\}/,
-    );
-  });
-
   it("validates untrusted changed skills without secrets, models, writes, or persistent runners", () => {
     const source = workflow(SKILL_REVIEW_PATH);
 
@@ -342,12 +302,7 @@ describe("AI workflow security policy", () => {
   });
 
   it("pins every third-party action to a full commit", () => {
-    for (const path of [
-      SKILL_REVIEW_PATH,
-      ELIZA_COMPUTER_PATH,
-      CLAUDE_PATH,
-      DOCS_CI_PATH,
-    ]) {
+    for (const path of [SKILL_REVIEW_PATH, CLAUDE_PATH, DOCS_CI_PATH]) {
       const references = actionReferences(workflow(path));
       assert.ok(references.length > 0, `${path} must use pinned actions`);
       for (const reference of references) {

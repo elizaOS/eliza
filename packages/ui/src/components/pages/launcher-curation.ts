@@ -101,7 +101,7 @@ export const LAUNCHER_AOSP_ONLY_IDS: readonly string[] =
  * Views that never appear in the launcher grid:
  *  - shell surfaces reached another way (views/apps launchers; background +
  *    voice are set from Settings/chat; character-select is inline),
- *  - removed apps (companion, model tester, shopify, wearables).
+ *  - removed apps (companion, model tester, shopify).
  */
 export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "views",
@@ -131,8 +131,6 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "companion",
   "model-tester",
   "shopify",
-  "facewear",
-  "smartglasses",
 ]);
 
 /**

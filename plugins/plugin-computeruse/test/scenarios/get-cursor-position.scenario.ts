@@ -13,16 +13,16 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import {
-  ComputerUseService,
   type ComputerActionResult,
+  ComputerUseService,
   type DesktopActionParams,
 } from "@elizaos/plugin-computeruse";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
   toRecord,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 process.env.COMPUTER_USE_ENABLED = "1";
 

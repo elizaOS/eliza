@@ -62,7 +62,6 @@ const pluginElizaCloudSrc = path.join(
   "plugins/plugin-elizacloud",
   "src",
 );
-const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
 const pluginIMessageSrc = path.join(
   monorepoRoot,
   "plugins/plugin-imessage/src",
@@ -524,18 +523,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-browser\/(.+)$/,
         replacement: path.join(pluginBrowserBridgeSrc, "$1"),
-      },
-      {
-        find: /^@elizaos\/plugin-edge-tts\/node$/,
-        replacement: path.join(pluginEdgeTtsSrc, "index.node.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-edge-tts$/,
-        replacement: path.join(pluginEdgeTtsSrc, "src/index.ts"),
-      },
-      {
-        find: /^@elizaos\/plugin-edge-tts\/(.+)$/,
-        replacement: path.join(pluginEdgeTtsSrc, "$1"),
       },
       {
         find: /^@elizaos\/app-task-coordinator$/,

@@ -125,7 +125,6 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
 
 import {
   AcpService,
-  ensureWorkspaceElizaCodeAcp,
   normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
@@ -340,15 +339,6 @@ async function waitForNativeClient(
 }
 
 describe("AcpService", () => {
-  it("falls back when the current checkout has no workspace ACP package", () => {
-    const root = mkdtempSync(join(tmpdir(), "acp-no-workspace-package-"));
-    try {
-      expect(ensureWorkspaceElizaCodeAcp(root)).toBeUndefined();
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
@@ -830,7 +820,7 @@ describe("AcpService", () => {
     // The "elizaos" agent type resolves to the eliza-code ACP server binary
     // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
     expect(nativeClientMock.instances[0]?.opts.command).toMatch(
-      /eliza-code-acp|packages\/examples\/code\/dist\/acp\.js/,
+      /eliza-code-acp/,
     );
   });
 

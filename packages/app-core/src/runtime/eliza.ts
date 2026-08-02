@@ -14,10 +14,9 @@
  * corrupt `.elizadb` and retry once), the ELIZA_SKIP_APP_ROUTE_PLUGINS /
  * ELIZA_DEFER_APP_ROUTES boot knobs (the tail defers by default;
  * ELIZA_DEFER_APP_ROUTES=0 opts back into the inline pre-ready tail), the
- * local-agent IPC port gate (#12180), and a direct-run CLI (help/version) when
- * executed as a script. Mobile platforms take a trimmed boot path. Several seams
- * (PostReadyBootSteps, __setLatestBootTailRuntimeForTest) exist only for focused
- * unit tests.
+ * local-agent IPC port gate (#12180). Mobile platforms take a trimmed boot
+ * path. The post-ready coordinator is scoped to one host so embedded runtimes
+ * cannot supersede or tear down each other's services.
  */
 import "@elizaos/shared";
 import { existsSync } from "node:fs";
@@ -56,6 +55,7 @@ import {
   AutonomyService,
   ChannelType,
   CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+  ElizaError,
   isOptionalAppRoutePluginUnavailableError,
   isTruthyEnvValue,
   logger,
@@ -108,11 +108,7 @@ async function _localInference() {
   return _localInferenceRuntime;
 }
 
-import {
-  getSharedCompatRuntimeState,
-  patchHttpCreateServerForCompat,
-  startApiServer,
-} from "../api/server.js";
+import { startApiServer } from "../api/server.js";
 
 const _require = createRequire(import.meta.url);
 
@@ -125,21 +121,18 @@ import {
 import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { bootLap } from "../boot-profile.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
-import { ensureTextToSpeechHandler } from "./ensure-text-to-speech-handler.js";
 import {
   type EmbeddingWarmupPhase,
   updateStartupEmbeddingProgress,
 } from "./startup-overlay.js";
+import {
+  type AppStartupPhase,
+  AppStartupStateMachine,
+} from "./startup-state.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
-
-const require = createRequire(import.meta.url);
-const DIRECT_HELP_FLAGS = new Set(["-h", "--help", "help"]);
-const DIRECT_VERSION_FLAGS = new Set(["-v", "-V", "--version", "version"]);
-
-export const shutdownRuntime = upstreamShutdownRuntime;
 
 type ErrorWithCause = Error & {
   cause?: unknown;
@@ -159,9 +152,6 @@ function isAutonomyService(value: unknown): value is AutonomyServiceLike {
     typeof value.enableAutonomy === "function"
   );
 }
-
-/** Guards against registering signal handlers more than once. */
-let signalHandlersRegistered = false;
 
 interface EntityLike {
   id: string;
@@ -365,6 +355,8 @@ async function resolveLocalAppRoutePluginEntry(
   try {
     packageJsonPath = _require.resolve(`${parsed.packageName}/package.json`);
   } catch {
+    // error-policy:J4 optional plugin resolution — a missing local package is
+    // represented as unavailable and handled distinctly by the plugin loader.
     return null;
   }
 
@@ -420,6 +412,8 @@ async function importAppModuleFromSpecifier(
       /* webpackIgnore: true */ specifier
     )) as AppRoutePluginModule;
   } catch (err) {
+    // error-policy:J4 optional plugin resolution — only a genuine missing
+    // package degrades to unavailable; all module execution failures rethrow.
     if (!isModuleNotFoundError(err)) throw err;
     const sourceEntry = await resolveLocalAppRoutePluginEntry(specifier);
     if (!sourceEntry) {
@@ -668,6 +662,8 @@ export async function drainRuntimeHookContributors(
     try {
       await invoke(runtime);
     } catch (err) {
+      // error-policy:J4 registry-declared optional integrations may be absent;
+      // real contributor failures still propagate and fail the boot tail.
       if (isOptionalAppRoutePluginUnavailableError(err)) {
         logger.debug(
           `[eliza] Runtime-hook contributor ${id} unavailable, skipping`,
@@ -821,6 +817,8 @@ export async function drainBootHookContributors(
     try {
       await invoke(runtime);
     } catch (err) {
+      // error-policy:J4 registry-declared optional integrations may be absent;
+      // real contributor failures still propagate and fail pre-ready boot.
       if (isOptionalAppRoutePluginUnavailableError(err)) {
         logger.debug(
           `[eliza] Boot-hook contributor ${id} unavailable, skipping`,
@@ -847,17 +845,32 @@ async function runBootHooks(runtime: AgentRuntime): Promise<void> {
   await drainBootHookContributors(runtime, getBootHookContributors());
 }
 
-// The most recent runtime handed to the post-ready boot tail. A backgrounded
-// (deferred) tail compares against this so a hot-restart that boots a newer
-// runtime supersedes the old one's still-running tail, preventing route/service
-// registration onto a torn-down runtime. In the default inline-await path the
-// tail completes before the next repair call reassigns this, so the guard never
-// trips and default behavior stays byte-identical.
-let latestBootTailRuntime: AgentRuntime | null = null;
+interface StoppableRuntimeResource {
+  stop(): void;
+}
+
+export interface RuntimeBootResources {
+  tailRuntime: AgentRuntime | null;
+  triggerEventBridge: StoppableRuntimeResource | null;
+  connectorTargetCatalog: StoppableRuntimeResource | null;
+}
+
+const runtimeBootResources = new WeakMap<AgentRuntime, RuntimeBootResources>();
+
+export function createRuntimeBootResources(): RuntimeBootResources {
+  return {
+    tailRuntime: null,
+    triggerEventBridge: null,
+    connectorTargetCatalog: null,
+  };
+}
 
 async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
+  resources: RuntimeBootResources,
+  onPostReadyPhase?: (phase: "pending" | "complete" | "failed") => void,
 ): Promise<AgentRuntime> {
+  runtimeBootResources.set(runtime, resources);
   await ensureRuntimeSqlCompatibility(runtime);
 
   // Make the app-bundled fused libelizainference (staged into the desktop
@@ -893,6 +906,8 @@ async function repairRuntimeAfterBoot(
     logger.info(
       "[eliza] Mobile platform detected — skipping desktop-only boot helpers",
     );
+    markDeferredBootPhase("app-route-tail", "complete");
+    onPostReadyPhase?.("complete");
     return runtime;
   }
 
@@ -910,6 +925,8 @@ async function repairRuntimeAfterBoot(
       await startAndRegisterAutonomyService(runtime);
       logger.info("[eliza] AutonomyService started and waiting");
     } catch (error) {
+      // error-policy:J2 context-adding rethrow — identify the boot subsystem
+      // while preserving the service error as the cause.
       throw new Error(
         `[eliza] AutonomyService start failed: ${formatError(error)}`,
         { cause: error },
@@ -927,6 +944,8 @@ async function repairRuntimeAfterBoot(
           "[eliza] AutonomyService enabled — trigger instructions will be processed",
         );
       } catch (err) {
+        // error-policy:J2 context-adding rethrow — identify autonomy enablement
+        // while preserving the service error as the cause.
         throw new Error(
           `[eliza] Failed to enable autonomy loop: ${formatError(err)}`,
           { cause: err },
@@ -948,31 +967,46 @@ async function repairRuntimeAfterBoot(
   // opts back into awaiting the tail inline, identical in steps and order to
   // the pre-split path. The phase is marked pending before ready can flip so
   // a health probe never reads a not-yet-announced tail as settled.
-  latestBootTailRuntime = runtime;
+  resources.tailRuntime = runtime;
   markDeferredBootPhase("app-route-tail", "pending");
+  onPostReadyPhase?.("pending");
   if (getDeferAppRoutesEnabled()) {
-    void runPostReadyBootTail(runtime).catch((err: unknown) => {
-      // error-policy:J1 boundary translation — the deferred tail has no caller
-      // left to throw to; a TTS-handler or runtime-hook failure here would
-      // otherwise vanish into an unhandled rejection. Mark the phase failed
-      // (so health-pollers stop waiting) and surface it agent-visibly.
-      markDeferredBootPhase("app-route-tail", "failed");
-      logger.error(
-        `[eliza] post-ready boot tail failed: ${formatErrorWithStack(err)}`,
-      );
-      runtime.reportError("eliza.postReadyBootTail", err, {
-        phase: "app-route-tail",
-      });
-    });
+    void runPostReadyBootTail(
+      runtime,
+      createPostReadyBootSteps(resources),
+      resources,
+    ).then(
+      () => onPostReadyPhase?.("complete"),
+      (err: unknown) => {
+        // error-policy:J1 boundary translation — the deferred tail has no caller
+        // left to throw to; a TTS-handler or runtime-hook failure here would
+        // otherwise vanish into an unhandled rejection. Mark the phase failed
+        // (so health-pollers stop waiting) and surface it agent-visibly.
+        markDeferredBootPhase("app-route-tail", "failed");
+        logger.error(
+          `[eliza] post-ready boot tail failed: ${formatErrorWithStack(err)}`,
+        );
+        runtime.reportError("eliza.postReadyBootTail", err, {
+          phase: "app-route-tail",
+        });
+        onPostReadyPhase?.("failed");
+      },
+    );
     return runtime;
   }
   try {
-    await runPostReadyBootTail(runtime);
+    await runPostReadyBootTail(
+      runtime,
+      createPostReadyBootSteps(resources),
+      resources,
+    );
+    onPostReadyPhase?.("complete");
   } catch (err) {
     // error-policy:J2 context-preserving rethrow — inline mode keeps the
     // pre-split contract (a tail failure fails the boot); only the phase
     // marker is updated so health never reports a failed tail as pending.
     markDeferredBootPhase("app-route-tail", "failed");
+    onPostReadyPhase?.("failed");
     throw err;
   }
   return runtime;
@@ -984,7 +1018,6 @@ async function repairRuntimeAfterBoot(
  * full runtime. Production passes {@link DEFAULT_POST_READY_BOOT_STEPS}.
  */
 export interface PostReadyBootSteps {
-  ensureTextToSpeechHandler: (runtime: AgentRuntime) => Promise<void>;
   registerAppRoutePlugins: (runtime: AgentRuntime) => Promise<void>;
   registerRuntimeHooks: (runtime: AgentRuntime) => Promise<void>;
   registerCoreSensitiveRequestAdapters: (runtime: AgentRuntime) => void;
@@ -995,44 +1028,46 @@ export interface PostReadyBootSteps {
   startDeferredVoiceWarmup: (runtime: AgentRuntime) => void;
 }
 
-const DEFAULT_POST_READY_BOOT_STEPS: PostReadyBootSteps = {
-  ensureTextToSpeechHandler,
-  registerAppRoutePlugins,
-  registerRuntimeHooks,
-  registerCoreSensitiveRequestAdapters,
-  registerSubAgentCredentialBridge,
-  registerSubAgentCredentialBridgeAdapter,
-  ensureTriggerEventBridge,
-  ensureConnectorTargetCatalog,
-  startDeferredVoiceWarmup,
-};
+function createPostReadyBootSteps(
+  resources: RuntimeBootResources,
+): PostReadyBootSteps {
+  return {
+    registerAppRoutePlugins,
+    registerRuntimeHooks,
+    registerCoreSensitiveRequestAdapters,
+    registerSubAgentCredentialBridge,
+    registerSubAgentCredentialBridgeAdapter,
+    ensureTriggerEventBridge: (runtime) =>
+      ensureTriggerEventBridge(runtime, resources),
+    ensureConnectorTargetCatalog: (runtime) =>
+      ensureConnectorTargetCatalog(runtime, resources),
+    startDeferredVoiceWarmup,
+  };
+}
 
 /**
  * Post-ready boot steps split out of {@link repairRuntimeAfterBoot}. Each step
- * keeps its original error behavior verbatim — there is no wrapping try/catch:
- * registerAppRoutePlugins isolates per-loader failures internally,
- * ensureTriggerEventBridge / ensureConnectorTargetCatalog swallow into
- * logger.warn internally, and ensureTextToSpeechHandler / registerRuntimeHooks
- * throw (preserved in the default inline-await dispatch above).
+ * has no wrapping try/catch: optional absent plugins are handled by their
+ * registry loaders, while actual initialization failures propagate to the
+ * deferred-tail boundary and mark startup degraded.
  *
- * `steps` defaults to the real bound functions, so production behavior is
- * unchanged; the seam exists only so the phase split is unit-testable.
+ * Injected steps keep the phase split unit-testable without introducing
+ * process-global ownership.
  */
 export async function runPostReadyBootTail(
   runtime: AgentRuntime,
-  steps: PostReadyBootSteps = DEFAULT_POST_READY_BOOT_STEPS,
+  steps: PostReadyBootSteps,
+  resources: RuntimeBootResources,
 ): Promise<void> {
   // Liveness guard: a hot-restart can swap runtimes mid-tail. If a newer boot
   // has already claimed the tail slot, this runtime is superseded — bail before
   // the first mutation so we never register routes/services onto a torn-down
   // runtime. (In the default inline-await path the tail completes before the
   // next repair call reassigns the slot, so this never trips.)
-  if (latestBootTailRuntime !== runtime) {
+  if (resources.tailRuntime !== runtime) {
     logger.info("[eliza] post-ready boot tail skipped — runtime superseded");
     return;
   }
-
-  await steps.ensureTextToSpeechHandler(runtime);
 
   // ── Register app-specific route plugins ─────────────────────────────
   // The registry and explicit registration API own the package bindings; the
@@ -1075,82 +1110,119 @@ export async function runPostReadyBootTail(
   markDeferredBootPhase("app-route-tail", "complete");
 }
 
-/**
- * Test seam: set the runtime that owns the post-ready tail slot. Mirrors what
- * {@link repairRuntimeAfterBoot} does just before dispatching the tail, so a
- * unit test can drive the liveness guard without a full boot.
- */
-export function __setLatestBootTailRuntimeForTest(
-  runtime: AgentRuntime | null,
-): void {
-  latestBootTailRuntime = runtime;
-}
-
-// Module-level handle for the trigger event bridge. Reset across
-// hot-reloads so we never leave two handler sets racing the runtime's
-// event bus.
-let _triggerEventBridge: { stop: () => void } | null = null;
-
-// Module-level handle for the connector-target-catalog service.
-let _connectorTargetCatalog: { stop: () => void } | null = null;
-
 const CONNECTOR_TARGET_CATALOG_SERVICE_TYPE = "connector_target_catalog";
 
-async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
-  if (_triggerEventBridge) {
-    _triggerEventBridge.stop();
-    _triggerEventBridge = null;
+async function ensureTriggerEventBridge(
+  runtime: AgentRuntime,
+  resources: RuntimeBootResources,
+): Promise<void> {
+  if (resources.triggerEventBridge) {
+    resources.triggerEventBridge.stop();
+    resources.triggerEventBridge = null;
   }
-  try {
-    const { startTriggerEventBridge } = await import(
-      "../services/trigger-event-bridge.js"
-    );
-    _triggerEventBridge = startTriggerEventBridge(runtime);
-    logger.info("[eliza] trigger event bridge armed");
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to start trigger event bridge: ${formatError(err)}`,
-    );
-  }
+  const { startTriggerEventBridge } = await import(
+    "../services/trigger-event-bridge.js"
+  );
+  resources.triggerEventBridge = startTriggerEventBridge(runtime);
+  logger.info("[eliza] trigger event bridge armed");
 }
 
 async function ensureConnectorTargetCatalog(
   runtime: AgentRuntime,
+  resources: RuntimeBootResources,
 ): Promise<void> {
-  if (_connectorTargetCatalog) {
-    _connectorTargetCatalog.stop();
-    _connectorTargetCatalog = null;
+  if (resources.connectorTargetCatalog) {
+    resources.connectorTargetCatalog.stop();
+    resources.connectorTargetCatalog = null;
   }
+  const { createElizaConnectorTargetCatalog } = await import(
+    "../services/connector-target-catalog.js"
+  );
+  const catalog = createElizaConnectorTargetCatalog({
+    getConfig: () => loadElizaConfig(),
+    listSources: () => {
+      const registry = runtime.getService(
+        CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
+      ) as { list(): TargetSource[] } | null;
+      return registry?.list() ?? [];
+    },
+    logger: { warn: runtime.logger.warn.bind(runtime.logger) },
+  });
+  runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [
+    catalog as never,
+  ]);
+  resources.connectorTargetCatalog = {
+    stop: () => {
+      runtime.services.delete(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never);
+    },
+  };
+  logger.info("[eliza] connector-target-catalog registered");
+}
+
+function stopRuntimeBootResources(resources: RuntimeBootResources): void {
+  resources.tailRuntime = null;
+  if (resources.triggerEventBridge) {
+    try {
+      resources.triggerEventBridge.stop();
+    } catch (error) {
+      // error-policy:J6 bridge teardown must not prevent the remaining host
+      // resources from being released.
+      logger.warn(
+        `[eliza] Trigger event bridge stop failed during shutdown: ${formatError(error)}`,
+      );
+    }
+    resources.triggerEventBridge = null;
+  }
+  if (resources.connectorTargetCatalog) {
+    try {
+      resources.connectorTargetCatalog.stop();
+    } catch (error) {
+      // error-policy:J6 catalog teardown must not prevent runtime shutdown.
+      logger.warn(
+        `[eliza] Connector target catalog stop failed during shutdown: ${formatError(error)}`,
+      );
+    }
+    resources.connectorTargetCatalog = null;
+  }
+}
+
+export async function shutdownRuntime(
+  ...args: Parameters<typeof upstreamShutdownRuntime>
+): Promise<Awaited<ReturnType<typeof upstreamShutdownRuntime>>> {
+  const runtime = args[0];
+  if (runtime) {
+    const resources = runtimeBootResources.get(runtime);
+    if (resources) {
+      stopRuntimeBootResources(resources);
+      runtimeBootResources.delete(runtime);
+    }
+  }
+  return await upstreamShutdownRuntime(...args);
+}
+
+async function failRuntimeRepair(
+  runtime: AgentRuntime,
+  scope: "boot" | "server-only-boot" | "start",
+  repairError: unknown,
+): Promise<never> {
   try {
-    const { createElizaConnectorTargetCatalog } = await import(
-      "../services/connector-target-catalog.js"
-    );
-    const catalog = createElizaConnectorTargetCatalog({
-      getConfig: () => loadElizaConfig(),
-      listSources: () => {
-        const registry = runtime.getService(
-          CONNECTOR_TARGET_SOURCE_REGISTRY_SERVICE,
-        ) as { list(): TargetSource[] } | null;
-        return registry?.list() ?? [];
-      },
-      logger: { warn: runtime.logger.warn.bind(runtime.logger) },
+    await shutdownRuntime(runtime, `${scope} repair failed`);
+  } catch (shutdownError) {
+    // error-policy:J2 preserve both the repair and cleanup failures so neither
+    // root cause is hidden at the startup boundary.
+    throw new ElizaError("Runtime repair and cleanup failed", {
+      code: "APP_RUNTIME_REPAIR_CLEANUP_FAILED",
+      cause: new AggregateError([repairError, shutdownError]),
+      context: { scope },
+      severity: "fatal",
     });
-    runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [
-      catalog as never,
-    ]);
-    _connectorTargetCatalog = {
-      stop: () => {
-        runtime.services.delete(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never);
-      },
-    };
-    logger.info("[eliza] connector-target-catalog registered");
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to register connector-target-catalog: ${formatError(
-        err,
-      )}`,
-    );
   }
+  throw new ElizaError("App-core runtime repair failed", {
+    code: "APP_RUNTIME_REPAIR_FAILED",
+    cause: repairError,
+    context: { scope },
+    severity: "fatal",
+  });
 }
 
 /**
@@ -1296,7 +1368,8 @@ async function warmupEmbeddingModelImpl(
   try {
     await li.ensureModel(modelsDir, modelRepo, model, false, progressCb);
   } catch (err) {
-    // Non-fatal: the plugin will attempt its own download on first use
+    // error-policy:J4 the eager warmup is an optimization; the model plugin
+    // exposes the real load failure on first use and can retry the download.
     logger.warn(
       `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
     );
@@ -1355,6 +1428,7 @@ export interface BootElizaRuntimeOptionsExt extends BootElizaRuntimeOptions {
 export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptionsExt = {},
 ): Promise<Awaited<ReturnType<typeof upstreamBootElizaRuntime>>> {
+  const bootResources = createRuntimeBootResources();
   // Eagerly download the embedding model before the full runtime boot.
   // This way the TUI loading screen (or server logs) can show download
   // progress instead of the app silently stalling on first embedding call.
@@ -1384,7 +1458,14 @@ export async function bootElizaRuntime(
 
   const runtime = await upstreamBootElizaRuntime(opts);
   // Voice warmup fires inside repairRuntimeAfterBoot (the shared ready-point).
-  return runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
+  if (!runtime) return runtime;
+  try {
+    return await repairRuntimeAfterBoot(runtime, bootResources);
+  } catch (error) {
+    // error-policy:J2 a failed app-core repair cannot leave the upstream
+    // runtime alive after bootElizaRuntime rejects.
+    return await failRuntimeRepair(runtime, "boot", error);
+  }
 }
 
 export interface StartElizaOptionsExt extends StartElizaOptions {
@@ -1401,6 +1482,10 @@ export interface StartElizaOptionsExt extends StartElizaOptions {
    * today. (#12180)
    */
   localAgentMode?: boolean;
+  /** Receives the closeable server host without giving bootstrap process ownership. */
+  onServerOnlyHostReady?: (
+    host: import("./server-only-process").ServerOnlyHost,
+  ) => void;
 }
 
 function collectErrorObjects(err: unknown): ErrorWithCause[] {
@@ -1617,6 +1702,8 @@ async function upstreamStartElizaWithPgliteCompat(
   try {
     return await upstreamStartEliza(options);
   } catch (err) {
+    // error-policy:J2 startup compatibility translation — preserve the
+    // upstream database error as the normalized startup error's cause.
     throw normalizePgliteStartupError(err);
   }
 }
@@ -1656,29 +1743,12 @@ export function getPgliteRecoveryRetrySkipPlugins(): string[] {
 export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
+  const bootResources = createRuntimeBootResources();
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
   const orchRaw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
   }
-
-  // Install the compat-route http.createServer wrapper BEFORE the upstream
-  // agent's bootElizaRuntime path (which calls upstream startApiServer →
-  // http.createServer at packages/agent/src/runtime/eliza.ts ~3984). The
-  // upstream call binds the port and creates the listener that will receive
-  // every request from the renderer; if our patch isn't already in place,
-  // /api/tts/local-inference, /api/database, /api/runtime/mode, and every
-  // other compat-dispatcher path 404 because the wrapper never runs on the
-  // active listener. The app-core `startApiServer` wrapper (line ~1188 of
-  // ../api/server.ts) ALSO installs the patch, but that's too late — the
-  // upstream listener is already bound by then.
-  //
-  // The patch falls back to a module-scoped singleton state when called
-  // without an explicit one; `startApiServer` later seeds that same
-  // singleton with the live runtime via its `server.updateRuntime` wrapper,
-  // so the early listener picks up the runtime as soon as it's available.
-  patchHttpCreateServerForCompat();
-  const earlyCompatState = getSharedCompatRuntimeState();
 
   // Eagerly download the embedding model with progress reporting.
   // Fire-and-forget — see comment at the matching call in bootElizaRuntime
@@ -1698,13 +1768,34 @@ export async function startEliza(
   if (options?.serverOnly) {
     bootLap("startEliza:serverOnly entry");
     let currentRuntime: AgentRuntime | undefined;
+    let runtimePublished = false;
+    let postReadyPhase: "pending" | "complete" | "failed" = "pending";
+    const startup = new AppStartupStateMachine();
+    const publishStartup = (phase: AppStartupPhase): void => {
+      const snapshot = startup.transition(phase);
+      updateStartup?.({
+        phase: snapshot.phase,
+        attempt: snapshot.attempt,
+        state: snapshot.agentState,
+      });
+    };
+    const publishPostReadyPhase = (
+      phase: "pending" | "complete" | "failed",
+    ): void => {
+      postReadyPhase = phase;
+      if (!runtimePublished) return;
+      publishStartup(
+        phase === "pending"
+          ? "features-starting"
+          : phase === "complete"
+            ? "ready"
+            : "degraded",
+      );
+    };
 
-    // Boot (or re-boot) the runtime headless + repair, and hand the live
-    // runtime to the early-installed compat wrapper so `/api/tts/*`,
-    // `/api/database`, `/api/runtime/mode`, and every other compat-dispatcher
-    // path can resolve. Without the latter, `state.current` stays null and
-    // `handleCompatRoute` short-circuits. Used for the initial async boot AND
-    // the `/api/agent/restart` handler.
+    // Boot (or re-boot) the runtime headless and run app-core repair before it
+    // is published to the API server. Used for both initial asynchronous boot
+    // and the `/api/agent/restart` handler.
     const bootServerOnlyRuntime = async (): Promise<
       AgentRuntime | undefined
     > => {
@@ -1714,9 +1805,18 @@ export async function startEliza(
           headless: true,
           serverOnly: false,
         })) ?? undefined;
-      const repaired = booted ? await repairRuntimeAfterBoot(booted) : booted;
-      earlyCompatState.current = repaired ?? null;
-      return repaired;
+      if (!booted) return booted;
+      try {
+        return await repairRuntimeAfterBoot(
+          booted,
+          bootResources,
+          publishPostReadyPhase,
+        );
+      } catch (error) {
+        // error-policy:J2 a failed repair must release the runtime that the API
+        // has not published yet.
+        return await failRuntimeRepair(booted, "server-only-boot", error);
+      }
     };
 
     // Fresh-install gate, decided BEFORE the API binds so the onRestart
@@ -1744,6 +1844,7 @@ export async function startEliza(
     let updateStartup:
       | Awaited<ReturnType<typeof startApiServer>>["updateStartup"]
       | undefined;
+    let closeApiServer: (() => Promise<void>) | undefined;
     // Local-agent IPC mode binds NO TCP listener (frontend reaches the
     // runtime over native IPC), unless the operator opts back in with
     // ELIZA_API_EXPOSE_PORT for dev tooling / LAN access / e2e harnesses.
@@ -1769,23 +1870,26 @@ export async function startEliza(
     // explicit start/restart can retry.
     if (deferRuntimeBootUntilOnboarding) {
       registerDeferredRuntimeBoot(async () => {
-        updateStartup?.({ phase: "starting", state: "starting" });
+        runtimePublished = false;
+        postReadyPhase = "pending";
+        publishStartup("runtime-starting");
         try {
           currentRuntime = await bootServerOnlyRuntime();
         } catch (err) {
           // error-policy:J2 context-adding rethrow — flip the reported agent
           // state to "error" first so /api/status never reads healthy.
-          updateStartup?.({ phase: "error", state: "error" });
+          publishStartup("failed");
           throw new Error("Runtime boot after onboarding failed", {
             cause: err,
           });
         }
         if (!currentRuntime) {
-          updateStartup?.({ phase: "error", state: "error" });
+          publishStartup("failed");
           throw new Error("Runtime boot after onboarding returned no runtime");
         }
         updateRuntime?.(currentRuntime);
-        updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+        runtimePublished = true;
+        publishPostReadyPhase(postReadyPhase);
         bootLap("startEliza:deferred runtime booted + ready:true");
       });
     }
@@ -1818,28 +1922,42 @@ export async function startEliza(
             return currentRuntime ?? null;
           }
           if (currentRuntime) {
-            await upstreamShutdownRuntime(
-              currentRuntime,
-              "server-only restart",
-            );
+            await shutdownRuntime(currentRuntime, "server-only restart");
           }
-          currentRuntime = await bootServerOnlyRuntime();
+          runtimePublished = false;
+          postReadyPhase = "pending";
+          publishStartup("runtime-starting");
+          try {
+            currentRuntime = await bootServerOnlyRuntime();
+          } catch (error) {
+            // error-policy:J1 restart orchestration boundary — publish a failed
+            // lifecycle state before propagating the boot failure to the route.
+            publishStartup("failed");
+            throw error;
+          }
+          if (!currentRuntime) {
+            publishStartup("failed");
+            return null;
+          }
+          runtimePublished = true;
+          publishPostReadyPhase(postReadyPhase);
           return currentRuntime ?? null;
         },
       });
       actualApiPort = startedApiServer.port;
       updateRuntime = startedApiServer.updateRuntime;
       updateStartup = startedApiServer.updateStartup;
+      closeApiServer = startedApiServer.close;
+      publishStartup("api-bound");
     } catch (apiErr) {
+      // error-policy:J1 API-bind boundary — publish terminal startup state and
+      // propagate the bind failure to the CLI/process owner.
       const apiErrMsg =
         apiErr instanceof Error
           ? (apiErr.stack ?? apiErr.message)
           : String(apiErr);
       logger.error(`[eliza] API server failed to start: ${apiErrMsg}`);
-      console.error(apiErrMsg);
-      if (options?.serverOnly) {
-        process.exit(1);
-      }
+      publishStartup("failed");
       throw apiErr;
     }
 
@@ -1861,7 +1979,7 @@ export async function startEliza(
       logger.info(
         `[eliza] API server listening on http://localhost:${actualApiPort} (agent booting…)`,
       );
-      console.log(`[eliza] Control UI: http://localhost:${actualApiPort}`);
+      logger.info(`[eliza] Control UI: http://localhost:${actualApiPort}`);
       bootLap("startEliza:API bound (webview can connect, ready:false)");
     } else {
       logger.info(
@@ -1879,7 +1997,7 @@ export async function startEliza(
       // commit) or POST /api/agent/start|restart, whichever comes first; a
       // cloud/remote-target commit leaves this process runtime-less on
       // purpose (#13377 — the client binds the cloud agent instead).
-      updateStartup?.({ phase: "awaiting-onboarding", state: "not_started" });
+      publishStartup("awaiting-onboarding");
       logger.info(
         "[eliza] Fresh install — agent runtime boot deferred until onboarding commits (onboarding API routes are live)",
       );
@@ -1888,17 +2006,28 @@ export async function startEliza(
       // Now boot the runtime; the API is already reachable (state "starting"),
       // so the UI is connecting + hydrating while this runs, then flips to
       // "running" once the agent is ready.
-      currentRuntime = await bootServerOnlyRuntime();
+      publishStartup("runtime-starting");
+      try {
+        currentRuntime = await bootServerOnlyRuntime();
+      } catch (error) {
+        // error-policy:J1 initial-boot boundary — close the already-bound API
+        // server and propagate failure after publishing terminal startup state.
+        publishStartup("failed");
+        await closeApiServer?.();
+        throw error;
+      }
       if (!currentRuntime) {
-        updateStartup?.({ phase: "error", state: "error" });
+        publishStartup("failed");
+        await closeApiServer?.();
         return currentRuntime;
       }
       updateRuntime?.(currentRuntime);
-      updateStartup?.({ phase: "running", attempt: 0, state: "running" });
+      runtimePublished = true;
+      publishPostReadyPhase(postReadyPhase);
       bootLap("startEliza:runtime booted + ready:true");
     }
 
-    console.log("[eliza] Server running. Press Ctrl+C to stop.");
+    logger.info("[eliza] Server running. Press Ctrl+C to stop.");
 
     const { buildSandboxRegistryFromEnv } = await import(
       "@elizaos/shared/sandbox-registry"
@@ -1908,123 +2037,58 @@ export async function startEliza(
       try {
         await sandboxRegistry.register();
       } catch (err) {
+        // error-policy:J7 registry heartbeat can recover after an initial
+        // registration failure; surface the degraded routing path to the agent.
         logger.error(
           `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${formatError(err)}`,
         );
+        currentRuntime?.reportError("eliza.sandboxRegistry", err, {
+          phase: "register",
+        });
       }
       sandboxRegistry.startHeartbeat(30_000);
     }
 
-    const keepAlive = setInterval(() => {}, 1 << 30);
-    let isCleaningUp = false;
-    const cleanup = async () => {
-      if (isCleaningUp) {
-        return;
-      }
-      isCleaningUp = true;
-      clearInterval(keepAlive);
-      // Force exit if graceful shutdown hangs for more than 10 seconds.
-      const forceExitTimer = setTimeout(() => {
-        logger.warn("[eliza] Shutdown timed out after 10s — forcing exit");
-        process.exit(1);
-      }, 10_000);
-      forceExitTimer.unref();
+    let isClosed = false;
+    const close = async (): Promise<void> => {
+      if (isClosed) return;
+      isClosed = true;
+      runtimePublished = false;
+      publishStartup("stopping");
+      await closeApiServer?.();
       if (sandboxRegistry) {
         sandboxRegistry.stopHeartbeat();
         try {
           await sandboxRegistry.unregister();
         } catch (err) {
+          // error-policy:J6 best-effort teardown — Redis keys expire by TTL and
+          // the shutdown path remains observable through this warning.
           logger.warn(
             `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
           );
         }
       }
       if (currentRuntime) {
-        await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
+        await shutdownRuntime(currentRuntime, "server-only shutdown");
+      } else {
+        stopRuntimeBootResources(bootResources);
       }
-      // Stop the trigger event bridge so its event handlers do not
-      // fire against the runtime after shutdown begins.
-      if (_triggerEventBridge) {
-        try {
-          _triggerEventBridge.stop();
-        } catch (err) {
-          // error-policy:J6 best-effort teardown — process shutdown continues,
-          // but a failed bridge stop remains observable before exit.
-          logger.warn(
-            `[eliza] Trigger event bridge stop failed during shutdown: ${formatError(err)}`,
-          );
-        }
-        _triggerEventBridge = null;
-      }
-      process.exit(0);
     };
-
-    if (!signalHandlersRegistered) {
-      signalHandlersRegistered = true;
-      process.on("SIGINT", () => void cleanup());
-      process.on("SIGTERM", () => void cleanup());
-    }
+    options.onServerOnlyHostReady?.({
+      port: actualApiPort,
+      getRuntime: () => currentRuntime,
+      close,
+    });
     return currentRuntime;
   }
 
   const runtime = await upstreamStartElizaWithPgliteCompat(options);
-  const repaired = runtime ? await repairRuntimeAfterBoot(runtime) : runtime;
-  // Same wiring as the serverOnly branch above — hand the live runtime to
-  // the early-installed compat wrapper so its dispatcher engages.
-  if (repaired) {
-    earlyCompatState.current = repaired;
-  }
-  return repaired;
-}
-
-function isDirectRuntimeRun(): boolean {
-  if (
-    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
-      .__ELIZA_MOBILE_BUNDLE__ === true ||
-    (globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: unknown })
-      .__ELIZA_DISABLE_DIRECT_RUN === true ||
-    process.argv.includes("ios-bridge") ||
-    process.env.ELIZA_DISABLE_DIRECT_RUN === "1"
-  ) {
-    return false;
-  }
-  const scriptArg = process.argv[1];
-  if (!scriptArg) {
-    return false;
-  }
-  return import.meta.url === pathToFileURL(path.resolve(scriptArg)).href;
-}
-
-function printDirectRuntimeHelp(): void {
-  console.log(`eliza runtime
-
-Usage:
-  bun packages/app-core/src/runtime/eliza.ts
-  bun run start:eliza
-
-Flags:
-  --help, -h       Show this help
-  --version, -v    Show the app-core package version
-
-For full CLI help, run:
-  bun run eliza --help`);
-}
-
-function printDirectRuntimeVersion(): void {
-  const pkg = require("../../package.json") as { version?: string };
-  console.log(pkg.version ?? "unknown");
-}
-
-if (isDirectRuntimeRun()) {
-  const command = process.argv[2];
-  if (DIRECT_HELP_FLAGS.has(command ?? "")) {
-    printDirectRuntimeHelp();
-  } else if (DIRECT_VERSION_FLAGS.has(command ?? "")) {
-    printDirectRuntimeVersion();
-  } else {
-    startEliza().catch((err) => {
-      console.error("[eliza] Fatal error:", formatErrorWithStack(err));
-      process.exit(1);
-    });
+  if (!runtime) return runtime;
+  try {
+    return await repairRuntimeAfterBoot(runtime, bootResources);
+  } catch (error) {
+    // error-policy:J2 startEliza owns the unpublished runtime until repair
+    // succeeds, so rejection includes teardown and preserves the cause.
+    return await failRuntimeRepair(runtime, "start", error);
   }
 }

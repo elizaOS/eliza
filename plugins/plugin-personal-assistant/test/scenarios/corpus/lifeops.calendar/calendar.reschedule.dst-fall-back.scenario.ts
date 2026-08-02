@@ -28,15 +28,15 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  expectScenarioToCallAction,
+  judgeRubric,
+} from "@elizaos/scenario-runner/scenario-assertions";
+import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts";
-import {
-  expectScenarioToCallAction,
-  judgeRubric,
-} from "@elizaos/scenario-runner/scenario-assertions";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 // 2025-11-02 is the US DST fall-back day for Pacific Time.

@@ -1,10 +1,11 @@
 /** Scenario fixture for selfcontrol unblock websites no active block; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
-import { scenario } from "@elizaos/scenario-runner/schema";
+
 import {
   describeCalls,
   successfulCalls,
   toRecord,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

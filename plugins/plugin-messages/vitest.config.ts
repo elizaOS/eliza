@@ -38,7 +38,7 @@ export default defineConfig({
         // @elizaos/ui's DynamicViewLoader statically imports this plugin-health
         // subpath; the keyless lane has no built plugin-health dist, so anchor
         // the exact subpath to source. Matches plugin-contacts/hyperliquid-app/
-        // phone/wallet-ui/facewear.
+        // phone and wallet-ui.
         find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
         replacement: path.join(
           repoRoot,

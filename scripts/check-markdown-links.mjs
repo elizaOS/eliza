@@ -24,8 +24,6 @@ const EXCLUDED_PREFIXES = [
   "packages/docs/plugins/",
   "packages/docs/runtime/",
   "packages/elizaos/src/commands/",
-  "packages/examples/",
-  "packages/feed/",
   "packages/skills/",
   "packages/training/",
   "packages/ui/src/services/local-inference/",
@@ -34,7 +32,6 @@ const EXCLUDED_PREFIXES = [
   "plugins/plugin-computeruse/",
   "plugins/plugin-local-inference/",
   "plugins/plugin-wallet/src/chains/solana/",
-  "plugins/plugin-xai/",
 ];
 
 const EXCLUDED_NAMES = new Set(["CHANGELOG.md"]);

@@ -487,6 +487,7 @@ describe("MESSAGE op=send delivery evidence", () => {
 					contexts: [],
 				},
 			],
+			getRoom: async () => null,
 			sendMessageToTarget: async () => outcome,
 			ensureWorldExists: async () => undefined,
 			ensureRoomExists: async () => undefined,

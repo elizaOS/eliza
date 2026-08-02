@@ -21,6 +21,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
@@ -30,7 +31,6 @@ import {
   executeRawSql,
   sqlQuote,
 } from "../../../../plugins/plugin-personal-assistant/src/lifeops/sql.ts";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 // LARP-bait substrings that the existing morning-brief fixtures pre-seed —
 // if any of these appear in a reply on an empty inbox, the agent invented

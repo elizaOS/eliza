@@ -601,40 +601,36 @@ async function persistFactsAndRelationships(
 			const sanitized = sanitizePersistedFact(runtime, factText);
 			if (!sanitized) continue;
 			const keywords = buildFactKeywordsForStorage(sanitized);
-			try {
-				await runtime.createMemory(
-					{
-						entityId: message.entityId,
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-						content: { text: sanitized, type: "fact" },
-						metadata: {
-							type: MemoryType.CUSTOM,
-							source: "facts_and_relationships_stage",
-							messageId: message.id,
-							tags: ["fact", "extracted", "stage1"],
-							keywords,
-							extractedAt: Date.now(),
-							// Stage-1 extraction is a single-message, unverified pass.
-							// Classify as `current` (time-decaying) with default
-							// confidence so the read path treats these as transient
-							// claims rather than permanent durable identity facts (the
-							// reader otherwise defaults missing `kind` to `durable`).
-							// The reflection pass promotes confirmed facts to durable.
-							kind: "current" as FactKind,
-							category: "uncategorized",
-							confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
-							verificationStatus: "self_reported" as FactVerificationStatus,
-							validAt: new Date().toISOString(),
-						},
-					} as Memory,
-					"facts",
-					true,
-				);
-				factsWritten += 1;
-			} catch {
-				// best-effort persistence — failures land in the trajectory thought.
-			}
+			await runtime.createMemory(
+				{
+					entityId: message.entityId,
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					content: { text: sanitized, type: "fact" },
+					metadata: {
+						type: MemoryType.CUSTOM,
+						source: "facts_and_relationships_stage",
+						messageId: message.id,
+						tags: ["fact", "extracted", "stage1"],
+						keywords,
+						extractedAt: Date.now(),
+						// Stage-1 extraction is a single-message, unverified pass.
+						// Classify as `current` (time-decaying) with default
+						// confidence so the read path treats these as transient
+						// claims rather than permanent durable identity facts (the
+						// reader otherwise defaults missing `kind` to `durable`).
+						// The reflection pass promotes confirmed facts to durable.
+						kind: "current" as FactKind,
+						category: "uncategorized",
+						confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
+						verificationStatus: "self_reported" as FactVerificationStatus,
+						validAt: new Date().toISOString(),
+					},
+				} as Memory,
+				"facts",
+				true,
+			);
+			factsWritten += 1;
 		}
 	}
 
@@ -658,66 +654,60 @@ async function persistFactsAndRelationships(
 				message,
 			);
 			const echoText = `${normalized.subject} ${normalized.predicate} ${normalized.object}`;
-			try {
-				await runtime.createMemory(
-					{
-						entityId: message.entityId,
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-						content: {
-							text: echoText,
-							type: "relationship",
-							subject: normalized.subject,
-							predicate: normalized.predicate,
-							object: normalized.object,
-						},
-						metadata: {
-							type: MemoryType.CUSTOM,
-							source: "facts_and_relationships_stage",
-							messageId: message.id,
-							sourceEntityId,
-							targetEntityId,
-							tags: ["relationship", "extracted", "stage1"],
-							keywords: buildFactKeywordsForStorage(echoText),
-							extractedAt: Date.now(),
-							// Same stage-1 classification as the fact branch above: this
-							// echo lands in the `facts` table, and the reader defaults a
-							// missing `kind` to `durable` — an unkinded echo therefore
-							// resurfaces as a permanent durable fact (live symptom: the
-							// same claim shown twice, once durable, once current).
-							kind: "current" as FactKind,
-							category: "relationship",
-							confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
-							verificationStatus: "self_reported" as FactVerificationStatus,
-							validAt: new Date().toISOString(),
-						},
-					} as Memory,
-					"facts",
-					true,
-				);
-				if (
-					sourceEntityId &&
-					targetEntityId &&
-					sourceEntityId !== targetEntityId &&
-					typeof runtime.createRelationship === "function"
-				) {
-					await runtime
-						.createRelationship({
-							sourceEntityId,
-							targetEntityId,
-							tags: [normalized.predicate],
-							metadata: {
-								source: "facts_and_relationships_stage",
-								messageId: message.id,
-								lastInteractionAt: new Date().toISOString(),
-							},
-						})
-						.catch(() => false);
-				}
-				relationshipsWritten += 1;
-			} catch {
-				// best-effort persistence
+			await runtime.createMemory(
+				{
+					entityId: message.entityId,
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					content: {
+						text: echoText,
+						type: "relationship",
+						subject: normalized.subject,
+						predicate: normalized.predicate,
+						object: normalized.object,
+					},
+					metadata: {
+						type: MemoryType.CUSTOM,
+						source: "facts_and_relationships_stage",
+						messageId: message.id,
+						sourceEntityId,
+						targetEntityId,
+						tags: ["relationship", "extracted", "stage1"],
+						keywords: buildFactKeywordsForStorage(echoText),
+						extractedAt: Date.now(),
+						// Same stage-1 classification as the fact branch above: this
+						// echo lands in the `facts` table, and the reader defaults a
+						// missing `kind` to `durable` — an unkinded echo therefore
+						// resurfaces as a permanent durable fact (live symptom: the
+						// same claim shown twice, once durable, once current).
+						kind: "current" as FactKind,
+						category: "relationship",
+						confidence: DEFAULT_STAGE_FACT_CONFIDENCE,
+						verificationStatus: "self_reported" as FactVerificationStatus,
+						validAt: new Date().toISOString(),
+					},
+				} as Memory,
+				"facts",
+				true,
+			);
+			if (
+				sourceEntityId &&
+				targetEntityId &&
+				sourceEntityId !== targetEntityId &&
+				typeof runtime.createRelationship === "function"
+			) {
+				await runtime.createRelationship({
+					sourceEntityId,
+					targetEntityId,
+					tags: [normalized.predicate],
+					metadata: {
+						source: "facts_and_relationships_stage",
+						messageId: message.id,
+						lastInteractionAt: new Date().toISOString(),
+					},
+				});
 			}
+			relationshipsWritten += 1;
 		}
 	}
 

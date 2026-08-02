@@ -8,11 +8,11 @@
  * trip OR the agent should explain that it doesn't have a maps integration.
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   seedCalendarCache,
   seedMeetingPreferences,

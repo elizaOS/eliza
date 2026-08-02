@@ -1,3 +1,8 @@
+/**
+ * Persists bounded OAuth handoff state per account provider so setup can resume
+ * across redirects without retaining stale authorization attempts.
+ */
+
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { shellLocalStorage } from "../../surface-realm-channel";
 

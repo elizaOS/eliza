@@ -43,7 +43,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
   NODE_VERSION: "24.15.0"
 
 # Default to least privilege. Override per-job where needed.
@@ -76,7 +76,7 @@ jobs:
           ELIZA_SKIP_ARTIFACT_SYNC: "1"
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -182,7 +182,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           setup-python: "false"
           install-protoc: "false"
@@ -212,7 +212,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           # Biome only needs JS dependencies; skipping Python/protoc keeps this
           # 5-minute format gate away from apt mirrors and Rust build tooling.
@@ -232,13 +232,6 @@ jobs:
       # periodically, not on the hot path (#10195, #10201).
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
-
-      # Behavioral: renders the units and settles every claim through the REAL
-      # prune tool (effective flags, unknown-flag rejection, an actual
-      # stale-vs-fresh reclaim in a temp tree). A string-compare version of this
-      # let a flag the tool never accepted ship as "configured" (#15398).
-      - name: Run runner-workspace cleanup smoke
-        run: ./packages/deploy/runner-workspace-cleanup/smoke-test.sh
 
       - name: Run biome format check
         run: bun run format:check
@@ -291,7 +284,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           # Both gates are static AST/text scans over source — no Python/protoc,
           # Rust, or postinstall artifacts needed (same lean install as the
@@ -342,7 +335,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install
+          install-command: bun install --frozen-lockfile
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"

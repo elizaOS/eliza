@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
 
@@ -177,7 +178,11 @@ export function emitRenderTelemetry(event: AnyRenderTelemetryEvent): void {
 
   const message = formatRenderTelemetryMessage(event);
   if (event.severity === "error") {
-    console.error(message, event);
+    reportRendererDiagnostic({
+      scope: "render-telemetry.render-loop",
+      error: new Error(message),
+      context: { event },
+    });
     return;
   }
   console.info(message, event);
@@ -193,7 +198,7 @@ export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
  * Tracks commit timestamps for the named component within a 1s sliding window
  * and emits structured telemetry only when the rate is high enough to indicate
  * a loop rather than ordinary churn: an `info` heads-up at `INFO_THRESHOLD`
- * commits/window, escalating to a single `console.error` at `ERROR_THRESHOLD`.
+ * commits/window, escalating to a structured diagnostic at `ERROR_THRESHOLD`.
  * Thresholds sit well above normal startup churn, typing, dragging, and token
  * streaming to avoid false positives. Production builds skip all work.
  */

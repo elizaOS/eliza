@@ -14,7 +14,8 @@ import {
   mock,
   test,
 } from "bun:test";
-import { AuditDispatcher, InMemorySink } from "@/api-app/services/audit";
+import { AuditDispatcher } from "@/api-app/services/audit";
+import { InMemorySink } from "@/api-app/services/audit/testing";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as loggerActual from "@/lib/utils/logger";
 import { setAuditDispatcher } from "../src/services/audit-dispatcher-singleton";

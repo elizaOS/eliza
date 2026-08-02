@@ -15,6 +15,7 @@ import { exec, execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import fs from "fs-extra";
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/runtime.ts";
 import type { ServiceTypeName } from "../../../types/service.ts";
@@ -29,8 +30,6 @@ const execFileAsync = promisify(execFile);
 const CORE_GIT_URL = "https://github.com/elizaos/eliza.git";
 const CORE_BRANCH = "develop";
 const CORE_PACKAGE_NAME = "@elizaos/core";
-const _DEFAULT_CORE_PATHS = ["../packages/core/src/index.node.ts"];
-const _DEFAULT_CORE_SUBPATHS = ["../packages/core/src/*"];
 
 const VALID_GIT_URL = /^https:\/\/[a-zA-Z0-9][\w./-]*\.git$/;
 const VALID_BRANCH = /^[a-zA-Z0-9][\w./-]*$/;
@@ -160,13 +159,11 @@ export class CoreManagerService extends Service {
 	private async readCorePackageVersion(
 		packageDir = this.corePackageDir(),
 	): Promise<string> {
-		try {
-			const pkg = await fs.readJson(path.join(packageDir, "package.json"));
-			if (typeof pkg.version === "string" && pkg.version.trim()) {
-				return pkg.version.trim();
-			}
-		} catch {
-			// Fall through
+		const packagePath = path.join(packageDir, "package.json");
+		if (!(await fs.pathExists(packagePath))) return "unknown";
+		const pkg = await fs.readJson(packagePath);
+		if (typeof pkg.version === "string" && pkg.version.trim()) {
+			return pkg.version.trim();
 		}
 		return "unknown";
 	}
@@ -174,78 +171,80 @@ export class CoreManagerService extends Service {
 	private async resolveInstalledCoreVersion(): Promise<string> {
 		try {
 			const entry = await getRegistryEntry(CORE_PACKAGE_NAME);
-			const _npmVersion =
-				entry?.npm.v2Version ?? entry?.npm.v1Version ?? entry?.npm.package;
 			const registryVersion = entry?.npm.v2Version || entry?.npm.v1Version;
 			if (registryVersion) {
 				return registryVersion;
 			}
-		} catch {
-			// Ignored
+		} catch (error) {
+			// error-policy:J4 Registry status may degrade to the locally installed
+			// package version, while the failed remote lookup remains observable.
+			this.runtime.reportError("CoreManager.resolveInstalledVersion", error);
 		}
 
-		try {
-			const corePkgPath = path.resolve(
-				process.cwd(),
-				"node_modules",
-				"@elizaos",
-				"core",
-				"package.json",
-			);
-			if (await fs.pathExists(corePkgPath)) {
-				const pkg = await fs.readJson(corePkgPath);
-				return pkg.version || "unknown";
-			}
-		} catch {
-			// Keep unknown fallback
+		const corePkgPath = path.resolve(
+			process.cwd(),
+			"node_modules",
+			"@elizaos",
+			"core",
+			"package.json",
+		);
+		if (!(await fs.pathExists(corePkgPath))) return "unknown";
+		const pkg = await fs.readJson(corePkgPath);
+		if (typeof pkg.version === "string" && pkg.version.trim()) {
+			return pkg.version.trim();
 		}
 
 		return "unknown";
 	}
 
 	private async readUpstreamMetadata(): Promise<UpstreamMetadata | null> {
+		const upstreamPath = this.upstreamFilePath();
+		if (!(await fs.pathExists(upstreamPath))) return null;
+		const raw = await fs.readFile(upstreamPath, "utf-8");
+		let parsed: Partial<UpstreamMetadata>;
 		try {
-			const raw = await fs.readFile(this.upstreamFilePath(), "utf-8");
-			const parsed = JSON.parse(raw) as Partial<UpstreamMetadata>;
-			if (
-				parsed.$schema !== "eliza-upstream-v1" ||
-				typeof parsed.gitUrl !== "string" ||
-				typeof parsed.branch !== "string" ||
-				typeof parsed.commitHash !== "string" ||
-				typeof parsed.npmPackage !== "string" ||
-				typeof parsed.npmVersion !== "string"
-			) {
-				return null;
-			}
-
-			return {
-				$schema: "eliza-upstream-v1",
-				source:
-					typeof parsed.source === "string"
-						? parsed.source
-						: "github:elizaos/eliza",
-				gitUrl: parsed.gitUrl,
-				branch: parsed.branch,
-				commitHash: parsed.commitHash,
-				ejectedAt:
-					typeof parsed.ejectedAt === "string"
-						? parsed.ejectedAt
-						: new Date().toISOString(),
-				npmPackage: parsed.npmPackage,
-				npmVersion: parsed.npmVersion,
-				lastSyncAt:
-					typeof parsed.lastSyncAt === "string" || parsed.lastSyncAt === null
-						? parsed.lastSyncAt
-						: null,
-				localCommits:
-					typeof parsed.localCommits === "number" &&
-					Number.isFinite(parsed.localCommits)
-						? parsed.localCommits
-						: 0,
-			};
+			parsed = JSON.parse(raw) as Partial<UpstreamMetadata>;
 		} catch {
+			// error-policy:J3 malformed optional metadata is an explicit invalid
+			// signal; filesystem read failures still propagate above.
 			return null;
 		}
+		if (
+			parsed.$schema !== "eliza-upstream-v1" ||
+			typeof parsed.gitUrl !== "string" ||
+			typeof parsed.branch !== "string" ||
+			typeof parsed.commitHash !== "string" ||
+			typeof parsed.npmPackage !== "string" ||
+			typeof parsed.npmVersion !== "string"
+		) {
+			return null;
+		}
+
+		return {
+			$schema: "eliza-upstream-v1",
+			source:
+				typeof parsed.source === "string"
+					? parsed.source
+					: "github:elizaos/eliza",
+			gitUrl: parsed.gitUrl,
+			branch: parsed.branch,
+			commitHash: parsed.commitHash,
+			ejectedAt:
+				typeof parsed.ejectedAt === "string"
+					? parsed.ejectedAt
+					: new Date().toISOString(),
+			npmPackage: parsed.npmPackage,
+			npmVersion: parsed.npmVersion,
+			lastSyncAt:
+				typeof parsed.lastSyncAt === "string" || parsed.lastSyncAt === null
+					? parsed.lastSyncAt
+					: null,
+			localCommits:
+				typeof parsed.localCommits === "number" &&
+				Number.isFinite(parsed.localCommits)
+					? parsed.localCommits
+					: 0,
+		};
 	}
 
 	private async writeUpstreamMetadata(
@@ -256,11 +255,10 @@ export class CoreManagerService extends Service {
 	}
 
 	private async readTsconfig(): Promise<TsConfig> {
-		try {
-			return await fs.readJson(this.tsconfigFilePath());
-		} catch {
-			return {};
-		}
+		const tsconfigPath = this.tsconfigFilePath();
+		return (await fs.pathExists(tsconfigPath))
+			? await fs.readJson(tsconfigPath)
+			: {};
 	}
 
 	private async writeTsconfigCorePaths(
@@ -477,16 +475,12 @@ export class CoreManagerService extends Service {
 			const isShallow = await this.gitStdout(
 				["rev-parse", "--is-shallow-repository"],
 				monorepoDir,
-			).catch(() => "false");
+			);
 			if (isShallow === "true") {
-				try {
-					await execAsync(`git fetch --unshallow origin ${upstream.branch}`, {
-						cwd: monorepoDir,
-						env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-					});
-				} catch {
-					// Ignore
-				}
+				await execAsync(`git fetch --unshallow origin ${upstream.branch}`, {
+					cwd: monorepoDir,
+					env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+				});
 			}
 
 			await execAsync(`git fetch origin ${upstream.branch}`, {
@@ -495,16 +489,19 @@ export class CoreManagerService extends Service {
 			});
 
 			const localChanges =
-				(
-					await this.gitStdout(["status", "--porcelain"], monorepoDir).catch(
-						() => "",
-					)
-				).length > 0;
+				(await this.gitStdout(["status", "--porcelain"], monorepoDir)).length >
+				0;
 			const upstreamCountRaw = await this.gitStdout(
 				["rev-list", "--count", `HEAD..origin/${upstream.branch}`],
 				monorepoDir,
 			);
-			const upstreamCommits = Number.parseInt(upstreamCountRaw, 10) || 0;
+			const upstreamCommits = Number.parseInt(upstreamCountRaw, 10);
+			if (!Number.isSafeInteger(upstreamCommits) || upstreamCommits < 0) {
+				throw new ElizaError("Git returned an invalid upstream commit count", {
+					code: "CORE_MANAGER_INVALID_COMMIT_COUNT",
+					context: { upstreamCountRaw },
+				});
+			}
 
 			if (upstreamCommits > 0) {
 				try {
@@ -516,7 +513,7 @@ export class CoreManagerService extends Service {
 					const conflictsRaw = await this.gitStdout(
 						["diff", "--name-only", "--diff-filter=U"],
 						monorepoDir,
-					).catch(() => "");
+					);
 					const conflicts = conflictsRaw
 						.split("\n")
 						.map((l) => l.trim())
@@ -650,19 +647,9 @@ export class CoreManagerService extends Service {
 		}
 
 		const version = await this.readCorePackageVersion(packageDir);
-		// error-policy:J3 untrusted-input probe — an npm (non-git) install has no
-		// git metadata; null commit / empty status is the explicit "not a checkout"
-		// signal, matching the null-commit npm branch above (not a masked failure).
-		const commitHash = await this.gitStdout(
-			["rev-parse", "HEAD"],
-			monorepoDir,
-		).catch(() => null);
+		const commitHash = await this.gitStdout(["rev-parse", "HEAD"], monorepoDir);
 		const localChanges =
-			(
-				await this.gitStdout(["status", "--porcelain"], monorepoDir).catch(
-					() => "",
-				)
-			).length > 0;
+			(await this.gitStdout(["status", "--porcelain"], monorepoDir)).length > 0;
 
 		return {
 			ejected: true,

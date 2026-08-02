@@ -21,7 +21,6 @@ const REQUIRED_STANDALONE_UI_DIRS = [
   "packages/cloud/e2e",
   "packages/homepage",
   "packages/ui",
-  "packages/feed/tools/dag-visualizer",
 ];
 
 const coveredDirs = new Set([

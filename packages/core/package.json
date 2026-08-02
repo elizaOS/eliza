@@ -111,16 +111,6 @@
 			"import": "./dist/node/security/mcp-server-config.js",
 			"default": "./dist/node/security/mcp-server-config.js"
 		},
-		"./security/network-policy": {
-			"types": "./dist/security/network-policy.d.ts",
-			"eliza-source": {
-				"types": "./src/security/network-policy.ts",
-				"import": "./src/security/network-policy.ts",
-				"default": "./src/security/network-policy.ts"
-			},
-			"import": "./dist/node/security/network-policy.js",
-			"default": "./dist/node/security/network-policy.js"
-		},
 		"./security/*": {
 			"types": "./dist/security/*.d.ts",
 			"eliza-source": {

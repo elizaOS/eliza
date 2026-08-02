@@ -41,10 +41,6 @@ import {
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import {
-  formatAcpCommand,
-  provisionWorkspaceElizaCodeAcp,
-} from "./acp-provisioning.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   type CodexSandboxMode,
@@ -356,25 +352,6 @@ export function normalizeClaudeAcpModelId(
     .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
     .trim();
   return normalized || undefined;
-}
-
-/**
- * Provision the workspace-native ACP executable on first use, crash-safely.
- * Development and self-hosted checkouts deliberately do not require a global
- * npm install: the package is built into its normal dist directory and launched
- * with the same Bun executable that performed the build.
- *
- * Delegates to the advisory-lock and atomic-publish protocol in
- * `acp-provisioning.ts` (#16169). The thin adapter preserves the string command
- * contract while the formatter quotes paths only when the downstream parser
- * needs it.
- */
-export function ensureWorkspaceElizaCodeAcp(
-  startDir: string = process.cwd(),
-): string | undefined {
-  const result = provisionWorkspaceElizaCodeAcp(startDir);
-  if (!result) return undefined;
-  return formatAcpCommand(result);
 }
 
 async function runGitForAcp(
@@ -3169,16 +3146,13 @@ export class AcpService extends Service {
         this.setting("ELIZA_CLAUDE_ACP_COMMAND") ??
         "npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
       );
-    // The elizaos native agent is the eliza-code ACP server
-    // (packages/examples/code, bin `eliza-code-acp`). The elizaos CLI has no
-    // ACP mode, so the bare-name fallback below would spawn the wrong binary —
-    // resolve to the eliza-code bin unless an explicit command is configured.
+    // The elizaOS CLI has no ACP mode; the separately installed eliza-code ACP
+    // server is the native adapter for this agent type.
     if (normalizedAgentType === "elizaos")
       return (
         this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
         findExecutableOnPath("eliza-code-acp") ??
-        ensureWorkspaceElizaCodeAcp() ??
-        "npx -y --package @elizaos/example-code@2.0.0-beta.1 eliza-code-acp"
+        "eliza-code-acp"
       );
     return String(normalizedAgentType);
   }

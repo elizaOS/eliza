@@ -6,8 +6,8 @@
  */
 
 import {
-  scenario,
   type ScenarioContext,
+  scenario,
 } from "@elizaos/scenario-runner/schema";
 import { installMockSeed } from "./_meetings-mock.js";
 

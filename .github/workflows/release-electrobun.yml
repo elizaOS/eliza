@@ -85,7 +85,7 @@ permissions:
 
 env:
   CI: "true"
-  BUN_VERSION: "canary" # Rust-rewrite canary runtime (repo-wide migration 2026-05-30). Electrobun bundle creation is Bun-version-sensitive — watch packaging on canary bumps.
+  BUN_VERSION: "1.3.14" # Electrobun bundle creation is Bun-version-sensitive; keep this aligned with packageManager.
 
 jobs:
   prepare:
@@ -188,7 +188,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "true"
           run-postinstall: "true"
           init-submodules: "false"
@@ -334,7 +334,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
           run-postinstall: "true"
           init-submodules: "false"
@@ -470,9 +470,9 @@ jobs:
         # ships with dual-arch shims.
         run: |
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
-            install_cmd=(arch -x86_64 bun install --ignore-scripts)
+            install_cmd=(arch -x86_64 bun install --frozen-lockfile --ignore-scripts)
           else
-            install_cmd=(bun install --ignore-scripts)
+            install_cmd=(bun install --frozen-lockfile --ignore-scripts)
           fi
 
           for attempt in 1 2 3; do

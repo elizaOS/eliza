@@ -10,11 +10,11 @@
  * Cited: 03-coverage-gap-matrix.md — cross-channel search.
  */
 
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   judgeRubric,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   lane: "live-only",

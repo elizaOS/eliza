@@ -44,7 +44,12 @@ const SCRIPT_TEST_PATTERN = new RegExp(
 );
 
 /** Exact exclusions only. Each entry must remain eligible and carry a reason. */
-export const SCRIPT_TEST_EXCLUSIONS = new Map();
+export const SCRIPT_TEST_EXCLUSIONS = new Map([
+  [
+    "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+    "the release-candidate workflow owns this slow real-registry transport test",
+  ],
+]);
 
 function compareText(left, right) {
   if (left < right) return -1;

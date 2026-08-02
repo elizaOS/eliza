@@ -12,7 +12,8 @@
   },
   "devDependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/scenario-runner": "workspace:*"
+    "@elizaos/scenario-runner": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2"
   },
   "elizaos": {
     "scripts": {

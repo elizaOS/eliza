@@ -31,6 +31,7 @@ const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 import path from "node:path";
 import {
   type AgentRuntime,
+  ElizaError,
   EventType,
   type IAgentRuntime,
   logger,
@@ -689,6 +690,7 @@ export type {
 
 import type {
   AgentStartupDiagnostics,
+  LogEntry,
   ServerState,
   StreamEventEnvelope,
 } from "./server-types.ts";
@@ -1197,7 +1199,6 @@ import {
 export {
   resolveMcpServersRejection,
   resolveMcpTerminalAuthorizationRejection,
-  validateMcpServerConfig,
 } from "./server-helpers-mcp.ts";
 
 const resolveMcpServersRejection = _resolveMcpServersRejection;
@@ -2948,16 +2949,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Restart ──────────────────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/restart") {
-    state.agentState = "restarting";
-    state.startup = { ...state.startup, phase: "restarting" };
-    state.broadcastStatus?.();
-    json(res, { ok: true, message: "Restarting...", restarting: true });
-    setTimeout(() => process.exit(0), 1000);
-    return;
-  }
-
   if (
     await handleAvatarRoutes({
       req,
@@ -3565,13 +3556,27 @@ async function handleRequest(
 // the entire server dependency graph into lightweight consumers (e.g. the
 // headless `startEliza()` path).
 // ---------------------------------------------------------------------------
-import { type captureEarlyLogs, flushEarlyLogs } from "./early-logs.ts";
+import {
+  type captureEarlyLogs,
+  flushEarlyLogs,
+  listenForUiLogs,
+} from "./early-logs.ts";
 
 export type { captureEarlyLogs };
 
 // ---------------------------------------------------------------------------
 // Server start
 // ---------------------------------------------------------------------------
+
+export type ApiRequestMiddleware = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  next: () => Promise<void>,
+) => Promise<void>;
+
+export type ApiServerConfigurator = (
+  server: http.Server,
+) => void | Promise<void>;
 
 function strictPortBindingEnabled(): boolean {
   const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
@@ -3599,6 +3604,17 @@ export async function startApiServer(opts?: {
    * If omitted the endpoint returns 501 (not supported in this mode).
    */
   onRestart?: () => Promise<AgentRuntime | null>;
+  /**
+   * Runs at the HTTP boundary before the built-in route dispatcher. Hosts use
+   * this to add product-specific routes without mutating Node's global HTTP
+   * factory or duplicating the agent server.
+   */
+  requestMiddleware?: ApiRequestMiddleware;
+  /**
+   * Configures the concrete HTTP server before it starts listening. This is
+   * intended for protocol extensions such as WebSocket upgrade handlers.
+   */
+  configureServer?: ApiServerConfigurator;
 }): Promise<{
   port: number;
   close: () => Promise<void>;
@@ -3640,9 +3656,16 @@ export async function startApiServer(opts?: {
   try {
     config = loadElizaConfig();
   } catch (err) {
-    logger.warn(
-      `[eliza-api] Failed to load config, starting with defaults: ${err instanceof Error ? err.message : err}`,
-    );
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      // error-policy:J2 only a genuinely absent config is first-run state;
+      // malformed or unreadable configuration must fail API startup.
+      throw new ElizaError("Failed to load agent API configuration", {
+        code: "AGENT_CONFIG_LOAD_FAILED",
+        cause: err,
+        severity: "fatal",
+      });
+    }
+    logger.info("[eliza-api] No config found; starting in first-run mode");
     config = {} as ElizaConfig;
   }
   logger.debug(`[eliza-api] Config loaded (${Date.now() - apiStartTime}ms)`);
@@ -3866,23 +3889,6 @@ export async function startApiServer(opts?: {
     );
   };
 
-  // ── Flush early-captured logs into the main buffer ────────────────────
-  const earlyEntries = flushEarlyLogs();
-  if (earlyEntries.length > 0) {
-    for (const entry of earlyEntries) {
-      state.logBuffer.push(entry);
-    }
-    if (state.logBuffer.length > 1000) {
-      state.logBuffer.splice(0, state.logBuffer.length - 1000);
-    }
-    addLog(
-      "info",
-      `Flushed ${earlyEntries.length} early startup log entries`,
-      "system",
-      ["system"],
-    );
-  }
-
   addLog(
     "info",
     `Discovered ${plugins.length} plugins, loading skills in background`,
@@ -3895,92 +3901,10 @@ export async function startApiServer(opts?: {
     logger.warn("[api] Provider cache warm-up failed:", err);
   });
 
-  // ── Intercept loggers so ALL agent/plugin/service logs appear in the UI ──
-  // We patch both the global `logger` singleton from @elizaos/core (used by
-  // eliza.ts, services, plugins, etc.) AND the runtime instance logger.
-  // A marker prevents double-patching on hot-restart and avoids stacking
-  // wrapper functions that would leak memory.
-  const PATCHED_MARKER = "__elizaLogPatched";
-  const LEVELS = ["debug", "info", "warn", "error"] as const;
-
-  /**
-   * Patch a logger object so every log call also feeds into the UI log buffer.
-   * Returns true if patching was performed, false if already patched.
-   */
-  const patchLogger = (
-    target: typeof logger,
-    defaultSource: string,
-    defaultTags: string[],
-  ): boolean => {
-    const patchedTarget = target as typeof logger & {
-      [PATCHED_MARKER]?: boolean;
-    };
-    if (patchedTarget[PATCHED_MARKER]) {
-      return false;
-    }
-
-    for (const lvl of LEVELS) {
-      const original = target[lvl].bind(target);
-      // pino / adze signature: logger.info(obj, msg) or logger.info(msg)
-      const patched: (typeof target)[typeof lvl] = (
-        ...args: Parameters<typeof original>
-      ) => {
-        let msg = "";
-        let source = defaultSource;
-        let tags = [...defaultTags];
-        if (typeof args[0] === "string") {
-          msg = args[0];
-        } else if (args[0] && typeof args[0] === "object") {
-          const obj = args[0] as Record<string, unknown>;
-          if (typeof obj.src === "string") source = obj.src;
-          // Extract tags from structured log objects
-          if (Array.isArray(obj.tags)) {
-            tags = [...tags, ...(obj.tags as string[])];
-          }
-          msg = typeof args[1] === "string" ? args[1] : JSON.stringify(obj);
-        }
-        // Auto-extract source from [bracket] prefixes (e.g. "[eliza] ...")
-        const bracketMatch = /^\[([^\]]+)\]\s*/.exec(msg);
-        if (bracketMatch && source === defaultSource) {
-          source = bracketMatch[1];
-        }
-        // Auto-tag based on source context
-        if (source !== defaultSource && !tags.includes(source)) {
-          tags.push(source);
-        }
-        if (msg) addLog(lvl, msg, source, tags);
-        return original(...args);
-      };
-      target[lvl] = patched;
-    }
-
-    patchedTarget[PATCHED_MARKER] = true;
-    return true;
+  let detachApiLogListener: (() => void) | null = null;
+  const captureStructuredLog = (entry: LogEntry): void => {
+    addLog(entry.level, entry.message, entry.source, entry.tags);
   };
-
-  // 1) Patch the global @elizaos/core logger — this captures ALL log calls
-  //    from eliza.ts, services, plugins, cloud, hooks, etc.
-  if (patchLogger(logger, "agent", ["agent"])) {
-    addLog(
-      "info",
-      "Global logger connected — all agent logs will stream to the UI",
-      "system",
-      ["system", "agent"],
-    );
-  }
-
-  // 2) Patch the runtime instance logger (if it's a different object)
-  //    This catches logs from runtime internals that use their own logger child.
-  if (opts?.runtime?.logger && opts.runtime.logger !== logger) {
-    if (patchLogger(opts.runtime.logger, "runtime", ["agent", "runtime"])) {
-      addLog(
-        "info",
-        "Runtime logger connected — runtime logs will stream to the UI",
-        "system",
-        ["system", "agent"],
-      );
-    }
-  }
 
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
@@ -3991,22 +3915,28 @@ export async function startApiServer(opts?: {
   apiLap("pre-createServer (route imports + middleware setup done)");
   const server = http.createServer(async (req, res) => {
     try {
-      await handleRequest(req, res, state, {
-        onRestart,
-        onRuntimeSwapped: () => {
-          bindRuntimeStreams(state.runtime);
-          wireModelRegistrationBroadcast(state.runtime);
-          void wireCoordinatorBridgesWhenReady(state, {
-            wireChatBridge: wireCodingAgentChatBridge,
-            wireWsBridge: wireCodingAgentWsBridge,
-            wireEventRouting: wireCoordinatorEventRouting,
-            wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
-            context: "restart",
-            logger,
-          });
-        },
-        getAppManager: ensureAppManager,
-      });
+      const dispatch = () =>
+        handleRequest(req, res, state, {
+          onRestart,
+          onRuntimeSwapped: () => {
+            bindRuntimeStreams(state.runtime);
+            wireModelRegistrationBroadcast(state.runtime);
+            void wireCoordinatorBridgesWhenReady(state, {
+              wireChatBridge: wireCodingAgentChatBridge,
+              wireWsBridge: wireCodingAgentWsBridge,
+              wireEventRouting: wireCoordinatorEventRouting,
+              wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
+              context: "restart",
+              logger,
+            });
+          },
+          getAppManager: ensureAppManager,
+        });
+      if (opts?.requestMiddleware) {
+        await opts.requestMiddleware(req, res, dispatch);
+      } else {
+        await dispatch();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "internal error";
       logger.error({ err }, `[eliza-api] Request handler failed: ${msg}`);
@@ -4014,6 +3944,7 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
+  await opts?.configureServer?.(server);
   if (
     isMobilePlatform() ||
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
@@ -5088,13 +5019,44 @@ export async function startApiServer(opts?: {
   logger.debug(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
-  await assertX402RoutesValid(state.runtime);
+  let earlyEntries: LogEntry[] = [];
+  try {
+    await assertX402RoutesValid(state.runtime);
+    // The logger package owns all global and child logger methods. Register the
+    // server listener before releasing early capture so startup has no gap.
+    detachApiLogListener = listenForUiLogs(captureStructuredLog);
+  } finally {
+    earlyEntries = flushEarlyLogs();
+  }
+
+  if (earlyEntries.length > 0) {
+    for (const entry of earlyEntries) {
+      state.logBuffer.push(entry);
+    }
+    if (state.logBuffer.length > 1000) {
+      state.logBuffer.splice(0, state.logBuffer.length - 1000);
+    }
+    addLog(
+      "info",
+      `Flushed ${earlyEntries.length} early startup log entries`,
+      "system",
+      ["system"],
+    );
+  }
+  addLog(
+    "info",
+    "Structured logger connected — agent logs will stream to the UI",
+    "system",
+    ["system", "agent"],
+  );
 
   // Shared teardown for connectors/streams/websockets that runs regardless of
   // whether a TCP listener was bound. Kept as a closure so the skip-listen path
   // and the listening path perform identical cleanup minus the socket close.
   const stopServerSideResources = (): void => {
     clearInterval(statusInterval);
+    detachApiLogListener?.();
+    detachApiLogListener = null;
     if (state.connectorHealthMonitor) {
       state.connectorHealthMonitor.stop();
       state.connectorHealthMonitor = null;
@@ -5121,8 +5083,9 @@ export async function startApiServer(opts?: {
       for (const s of state.whatsappPairingSessions.values()) {
         try {
           s.stop();
-        } catch {
-          /* non-fatal */
+        } catch (error) {
+          // error-policy:J6 one failed connector teardown must not block the rest.
+          logger.debug({ error }, "[eliza-api] WhatsApp session stop failed");
         }
       }
       state.whatsappPairingSessions.clear();
@@ -5131,16 +5094,18 @@ export async function startApiServer(opts?: {
       for (const s of state.signalPairingSessions.values()) {
         try {
           s.stop();
-        } catch {
-          /* non-fatal */
+        } catch (error) {
+          // error-policy:J6 one failed connector teardown must not block the rest.
+          logger.debug({ error }, "[eliza-api] Signal session stop failed");
         }
       }
       state.signalPairingSessions.clear();
     }
     if (state.telegramAccountAuthSession) {
       void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(
-        () => {
-          /* non-fatal */
+        (error) => {
+          // error-policy:J6 teardown is observed without blocking server close.
+          logger.debug({ error }, "[eliza-api] Telegram session stop failed");
         },
       );
       state.telegramAccountAuthSession = null;
@@ -5205,6 +5170,7 @@ export async function startApiServer(opts?: {
           `[eliza-api] Server error: ${err.message} (code: ${err.code})`,
         );
       }
+      stopServerSideResources();
       reject(err);
     });
 
@@ -5262,15 +5228,23 @@ export async function startApiServer(opts?: {
               if (typeof closeAllConnections === "function") {
                 try {
                   closeAllConnections();
-                } catch {
-                  // Bun/Node server internals vary by runtime; non-fatal on shutdown.
+                } catch (error) {
+                  // error-policy:J6 Bun/Node server internals vary by runtime.
+                  logger.debug(
+                    { error },
+                    "[eliza-api] closeAllConnections failed",
+                  );
                 }
               }
               if (typeof closeIdleConnections === "function") {
                 try {
                   closeIdleConnections();
-                } catch {
-                  // Bun/Node server internals vary by runtime; non-fatal on shutdown.
+                } catch (error) {
+                  // error-policy:J6 Bun/Node server internals vary by runtime.
+                  logger.debug(
+                    { error },
+                    "[eliza-api] closeIdleConnections failed",
+                  );
                 }
               }
               server.close(finalize);

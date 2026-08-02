@@ -25,14 +25,14 @@ describe("build-views bundle guard (#15791)", () => {
     const configPath = path.join(
       "/repo",
       "plugins",
-      "plugin-polymarket",
+      "plugin-example",
       "vite.config.views.ts",
     );
     expect(expectedBundlePath(configPath)).toBe(
       path.join(
         "/repo",
         "plugins",
-        "plugin-polymarket",
+        "plugin-example",
         "dist",
         "views",
         "bundle.js",
@@ -47,13 +47,13 @@ describe("build-views bundle guard (#15791)", () => {
   test("a configured view that emitted no bundle fails observably", () => {
     const report = missingBundleReport([
       {
-        name: "plugin-polymarket",
-        relativeBundle: "plugins/plugin-polymarket/dist/views/bundle.js",
-        relativeConfig: "plugins/plugin-polymarket/vite.config.views.ts",
+        name: "plugin-example",
+        relativeBundle: "plugins/plugin-example/dist/views/bundle.js",
+        relativeConfig: "plugins/plugin-example/vite.config.views.ts",
       },
     ]);
     expect(report).not.toBeNull();
-    expect(report).toContain("plugin-polymarket");
+    expect(report).toContain("plugin-example");
     expect(report).toContain("missing after build");
   });
 

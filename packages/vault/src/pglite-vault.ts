@@ -202,6 +202,37 @@ export class PgliteVaultImpl implements Vault {
     await this.audit.record({ action: "set", key, ...optsCaller(opts) });
   }
 
+  async setIfAbsent(
+    key: string,
+    value: string,
+    opts: SetOptions = {},
+  ): Promise<boolean> {
+    assertKey(key);
+    if (typeof value !== "string") {
+      throw new TypeError("vault.setIfAbsent: value must be a string");
+    }
+    const db = await this.db();
+    const lastModified = Date.now();
+    const result = opts.sensitive
+      ? await db.query<{ key: string }>(
+          `INSERT INTO vault_entries (key, kind, ciphertext, last_modified)
+           VALUES ($1, 'secret', $2, $3)
+           ON CONFLICT (key) DO NOTHING
+           RETURNING key`,
+          [key, encrypt(await this.loadMasterKey(), value, key), lastModified],
+        )
+      : await db.query<{ key: string }>(
+          `INSERT INTO vault_entries (key, kind, value, last_modified)
+           VALUES ($1, 'value', $2, $3)
+           ON CONFLICT (key) DO NOTHING
+           RETURNING key`,
+          [key, value, lastModified],
+        );
+    if (result.rows.length === 0) return false;
+    await this.audit.record({ action: "set", key, ...optsCaller(opts) });
+    return true;
+  }
+
   async setReference(
     key: string,
     ref: PasswordManagerReference,

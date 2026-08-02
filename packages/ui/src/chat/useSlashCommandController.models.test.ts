@@ -256,8 +256,9 @@ describe("useSlashCommandController — models choice source", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() =>
       expect(consoleError).toHaveBeenCalledWith(
-        expect.stringContaining("model catalog"),
-        failure,
+        expect.anything(),
+        expect.anything(),
+        expect.stringContaining("slash-commands.model-catalog"),
       ),
     );
     expect(

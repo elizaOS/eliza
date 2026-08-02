@@ -11,11 +11,11 @@
  * Cited: 03-coverage-gap-matrix.md — token expiry handling.
  */
 
+import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { judgeRubric } from "@elizaos/scenario-runner/scenario-assertions";
 
 function checkAgentSurfacesAuthFailure(
   ctx: ScenarioContext,

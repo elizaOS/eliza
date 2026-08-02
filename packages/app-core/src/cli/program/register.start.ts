@@ -61,12 +61,16 @@ async function startAction() {
 
   await runCommandWithRuntime(defaultRuntime, async () => {
     const { startEliza } = await import("../../runtime/eliza");
+    const { installServerOnlyProcessOwner } = await import(
+      "../../runtime/server-only-process"
+    );
     const { ensureAuthPairingCodeForRemoteAccess } = await import(
       "../../api/auth-pairing-routes"
     );
     // Use serverOnly mode: starts API server, no interactive chat loop
     await startEliza({
       serverOnly: true,
+      onServerOnlyHostReady: installServerOnlyProcessOwner,
       onEmbeddingProgress: (phase, detail) => {
         if (phase === "downloading") {
           console.log(`[eliza] Embedding: ${detail ?? "downloading..."}`);

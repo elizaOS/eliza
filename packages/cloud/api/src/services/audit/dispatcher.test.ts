@@ -1,10 +1,11 @@
 /**
- * Tests audit dispatcher fan-out, validation, metadata redaction, and HTTP delivery behavior.
+ * Tests audit dispatcher fan-out, validation, and metadata redaction.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { AuditDispatcher } from "./dispatcher.js";
-import { type AuditSink, HttpSink, InMemorySink } from "./sink.js";
+import type { AuditSink } from "./sink.js";
+import { InMemorySink } from "./testing.js";
 import type { AuditEvent } from "./types.js";
 
 class FailingSink implements AuditSink {
@@ -83,59 +84,5 @@ describe("AuditDispatcher", () => {
     const ev = mem.snapshot()[0];
     expect(ev).toBeDefined();
     expect(ev?.metadata).toBeUndefined();
-  });
-
-  it("posts audit events through HttpSink", async () => {
-    const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
-    const sink = new HttpSink({
-      endpoint: "https://audit.example.test/events",
-      fetch: fetchImpl,
-      headers: { Authorization: "Bearer token" },
-    });
-
-    const event = await new AuditDispatcher({ sinks: [sink] }).emit({
-      actor: { type: "system", id: "test" },
-      action: "kms.key.access",
-      result: "success",
-    });
-
-    expect(fetchImpl).toHaveBeenCalledOnce();
-    expect(fetchImpl).toHaveBeenCalledWith(
-      "https://audit.example.test/events",
-      expect.objectContaining({
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer token",
-        },
-        body: JSON.stringify(event),
-      }),
-    );
-  });
-
-  it("surfaces HttpSink non-2xx responses as sink errors", async () => {
-    const fetchImpl = vi.fn(
-      async () => new Response("nope", { status: 500, statusText: "Nope" }),
-    );
-    const onSinkError = vi.fn();
-
-    await expect(
-      new AuditDispatcher({
-        sinks: [
-          new HttpSink({
-            endpoint: "https://audit.example.test/events",
-            fetch: fetchImpl,
-          }),
-        ],
-        onSinkError,
-      }).emit({
-        actor: { type: "system", id: "test" },
-        action: "kms.key.access",
-        result: "success",
-      }),
-    ).rejects.toThrow("Required audit sink delivery failed: http");
-
-    expect(onSinkError).toHaveBeenCalledOnce();
-    expect(onSinkError.mock.calls[0]?.[0]).toMatchObject({ sink: "http" });
   });
 });

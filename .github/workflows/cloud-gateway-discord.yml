@@ -49,7 +49,7 @@ defaults:
     working-directory: packages/cloud/shared
 
 env:
-  BUN_VERSION: "canary"
+  BUN_VERSION: "1.3.14"
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -68,14 +68,14 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install root dependencies
-        run: bun install --no-save && git diff --exit-code -- bun.lock
+        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
       - name: Run messaging gateway preflight
         run: bun run preflight:messaging-gateways
 
       - name: Install service dependencies
         working-directory: packages/cloud/services/gateway-discord
-        run: bun install --no-save && git diff --exit-code -- bun.lock
+        run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord
@@ -85,15 +85,5 @@ jobs:
 
       - name: Run lib tests
         run: bun test src/lib/services/gateway-discord/__tests__ --timeout 60000
-        env:
-          SKIP_SERVER_CHECK: "true"
-
-      - name: Run Discord API unit tests
-        run: |
-          if [ -f packages/tests/unit/discord-connections-api.test.ts ]; then
-            bun test packages/tests/unit/discord-connections-api.test.ts --timeout 60000
-          else
-            echo "packages/tests/unit/discord-connections-api.test.ts is not present; skipping legacy Discord API unit tests"
-          fi
         env:
           SKIP_SERVER_CHECK: "true"

@@ -105,8 +105,8 @@ export {
 export { PromoteAppDialog } from "./cloud-ui/components/promotion/promote-app-dialog";
 export { SocialConnectionHint } from "./cloud-ui/components/promotion/social-connection-hint";
 export {
+  CloudThemeToggle,
   ThemeProvider,
-  ThemeToggle as CloudThemeToggle,
   useTheme,
 } from "./cloud-ui/components/theme";
 export {

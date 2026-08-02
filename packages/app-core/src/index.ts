@@ -69,6 +69,7 @@ export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";
 export * from "./runtime/mobile-safe-runtime";
+export * from "./runtime/server-only-process";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";
 export * from "./security/platform-secure-store";

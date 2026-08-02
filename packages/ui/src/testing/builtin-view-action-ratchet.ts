@@ -247,7 +247,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/MemoryDetailPanel.tsx",
     ],
     semanticActions: ["MEMORY"],
-    maxMutationSites: 21,
+    maxMutationSites: 15,
     notes:
       "Memory browse/prune controls pair with MEMORY (op create|search|update|delete, packages/agent/src/actions/memories.ts).",
   },
@@ -983,11 +983,6 @@ export const SHELL_PAGE_SWEEP_EXEMPTIONS = [
     sourceFile: "packages/ui/src/components/pages/documents-upload.tsx",
     reason:
       "UploadZone is not imported by any mounted surface (DocumentsView uses documents-upload.helpers directly); exercised only by its own dnd test — dead-module candidate, tracked in #16944",
-  },
-  {
-    sourceFile: "packages/ui/src/components/pages/plugin-view-sidebar.tsx",
-    reason:
-      "ConnectorSidebar is not imported by any mounted surface (PluginsView renders plugin-view-connectors instead) — dead-module candidate, tracked in #16944",
   },
 ] as const satisfies readonly ShellPageSweepExemption[];
 

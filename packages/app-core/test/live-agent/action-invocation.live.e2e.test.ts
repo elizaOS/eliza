@@ -20,13 +20,13 @@ import {
 import { detectPasswordManagerBackend } from "@elizaos/plugin-browser/password-manager-bridge";
 import { detectHealthBackend } from "@elizaos/plugin-health";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import {
   expectActionCalled,
   expectActionNotCalled,
 } from "../helpers/action-assertions.js";
+import { itIf } from "../helpers/conditional-tests.ts";
 import { ConversationHarness } from "../helpers/conversation-harness.js";
+import { selectLiveProvider } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 // ---------------------------------------------------------------------------

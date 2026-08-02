@@ -247,16 +247,12 @@ export default defineConfig({
     // (they spy on `console` directly), so bypassing it is lossless here.
     disableConsoleIntercept: true,
     pool: "forks",
-    poolOptions: {
-      forks: {
-        // The heaviest jsdom suites (App.screen-background-fuzz walks the FULL
-        // builtin-tab universe under a mounted <App /> several times) peak past
-        // Node's ~4 GB default old-space and OOM-kill the fork worker, which
-        // vitest then reports as "Worker exited unexpectedly" with the file's
-        // results lost. Raise only the ceiling — small suites stay small.
-        execArgv: ["--max-old-space-size=8192"],
-      },
-    },
+    // The heaviest jsdom suites (App.screen-background-fuzz walks the FULL
+    // builtin-tab universe under a mounted <App /> several times) peak past
+    // Node's ~4 GB default old-space and OOM-kill the fork worker, which
+    // vitest then reports as "Worker exited unexpectedly" with the file's
+    // results lost. Raise only the ceiling — small suites stay small.
+    execArgv: ["--max-old-space-size=8192"],
     server: {
       deps: {
         // Inline packages that use React through Vite's transform pipeline so

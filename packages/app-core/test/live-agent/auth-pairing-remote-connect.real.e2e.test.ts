@@ -68,17 +68,14 @@
  */
 
 import crypto from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SESSION_COOKIE_NAME } from "../../src/api/auth/sessions.ts";
 import {
   _resetAuthPairingStateForTests,
   ensureAuthPairingCodeForRemoteAccess,
 } from "../../src/api/auth-pairing-routes.ts";
-import {
-  getSharedCompatRuntimeState,
-  startApiServer,
-} from "../../src/api/server.ts";
+import { startApiServer } from "../../src/api/server.ts";
 import { req } from "../helpers/http.ts";
 import { useIsolatedConfigEnv } from "../helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../helpers/real-runtime.ts";
@@ -125,22 +122,16 @@ describe("production auth path: pair-code → machine session; remote-connect to
     configEnv = useIsolatedConfigEnv("auth-pairing-remote-connect-");
     runtimeResult = await createRealTestRuntime({
       characterName: "PairingRemoteConnectE2E",
-      plugins: [
-        createDeterministicModelPlugin(),
-      ],
+      plugins: [createDeterministicModelPlugin()],
     });
     server = await startApiServer({
       port: 0,
       runtime: runtimeResult.runtime,
       skipDeferredStartupWork: true,
     });
-    // The compat routes resolve the DB through the shared runtime state; wire
-    // ours so the pair route can mint a real machine session against PGLite.
-    getSharedCompatRuntimeState().current = runtimeResult.runtime;
   }, 120_000);
 
   afterEach(async () => {
-    getSharedCompatRuntimeState().current = null;
     await server?.close().catch(() => undefined);
     await runtimeResult?.cleanup().catch(() => undefined);
     await configEnv?.restore().catch(() => undefined);

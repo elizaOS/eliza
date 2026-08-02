@@ -17,16 +17,16 @@ import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
 } from "@elizaos/shared";
 import {
-  createLifeOpsConnectorGrant,
-  LifeOpsRepository,
-} from "../../../src/lifeops/repository.ts";
-import { LifeOpsService } from "../../../src/lifeops/service.ts";
-import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
   type SignalRecentMessage,
 } from "../../../../plugin-signal/src/local-client.ts";
 import { TELEGRAM_LOCAL_MOCK_SESSION_PREFIX } from "../../../../plugin-telegram/src/local-client.ts";
+import {
+  createLifeOpsConnectorGrant,
+  LifeOpsRepository,
+} from "../../../src/lifeops/repository.ts";
+import { LifeOpsService } from "../../../src/lifeops/service.ts";
 import {
   assertLifeOpsSimulatorFixtureIntegrity,
   getLifeOpsSimulatorPerson,

@@ -233,7 +233,11 @@ vi.mock("./state", async () => {
     setUiLanguage: vi.fn(),
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
-    startupCoordinator: { phase: "ready", retry: vi.fn() },
+    startupCoordinator: {
+      phase: "ready",
+      isShellPaintable: true,
+      retry: vi.fn(),
+    },
     startupError: null,
     systemWarnings: [],
     tab: appState.tab,

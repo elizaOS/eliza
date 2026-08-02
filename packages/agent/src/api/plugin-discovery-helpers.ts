@@ -82,8 +82,12 @@ function applyWhatsAppQrOverride(
     waPlugin.validationErrors = [];
     waPlugin.configured = true;
     waPlugin.qrConnected = true;
-  } catch {
-    /* workspace dir may not exist */
+  } catch (error) {
+    // error-policy:J4 an unavailable workspace auth directory renders this
+    // connector as unconfigured rather than failing the whole plugin catalog.
+    logger.debug(
+      `[plugin-discovery] WhatsApp auth state unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 

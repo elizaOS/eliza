@@ -12,8 +12,7 @@
  *      event, which would turn a "required" lane into a permanent skip.
  *   3. `.github/workflows/develop-exhaustive.yml` — the scheduled orchestrator
  *      must still invoke every manifest `reusableWorkflows` lane via
- *      `workflow_call`, pass its dedicated concurrency scope, and queue
- *      consecutive exhaustive runs. Every reusable workflow must consume that
+ *      `workflow_call` and pass its dedicated concurrency scope. Every reusable workflow must consume that
  *      scope and keep schedule/dispatch/workflow-call events non-cancelling. A
  *      dropped `uses:`, shared standalone group, or cancelling reusable lane
  *      silently strips platform coverage from the exhaustive matrix and fails.
@@ -368,9 +367,7 @@ function checkWorkflowLanes(manifest, violations, laneReport) {
   }
 }
 
-// GitHub's default concurrency mode retains only one pending run; queue:max is
-// therefore part of the exhaustive contract, not an optimization. Reusable
-// workflows then consume an exact caller-scope expression so standalone events
+// Reusable workflows consume an exact caller-scope expression so standalone events
 // cannot collapse into the exhaustive namespace through a truthy-expression
 // lookalike.
 function checkReusableWorkflows(manifest, violations, laneReport) {
@@ -402,18 +399,12 @@ function checkReusableWorkflows(manifest, violations, laneReport) {
     orchestratorText,
     "cancel-in-progress",
   );
-  const orchestratorQueue = extractConcurrencyValue(orchestratorText, "queue");
   const expectedOrchestratorGroup = `${scope}-\${{github.ref}}`;
   if (
     normalizedGitHubTemplate(orchestratorGroup) !== expectedOrchestratorGroup
   ) {
     violations.push(
       `exhaustive orchestrator concurrency drift: ${manifest.exhaustiveOrchestrator} must use group ${scope}-\${{ github.ref }}`,
-    );
-  }
-  if (orchestratorQueue !== "max") {
-    violations.push(
-      `consecutive exhaustive runs can replace pending coverage: ${manifest.exhaustiveOrchestrator} must set queue: max`,
     );
   }
   if (orchestratorCancel !== "false") {
