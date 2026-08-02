@@ -63,7 +63,6 @@
     "dev:harness": "bun packages/scripts/dev-harness.mjs",
     "dev:harness:legacy": "node packages/scripts/dev.mjs",
     "dev:all": "node packages/scripts/dev-all.mjs",
-    "voice:matrix": "node packages/scripts/voice-matrix.mjs",
     "voice-models:publish-all": "node packages/scripts/voice-models-publish-all.mjs",
     "eliza1:cost-reconciliation": "bun run packages/scripts/cloud/eliza1/cost-reconciliation.ts",
     "eliza1:dashboard-alerts": "bun run packages/scripts/cloud/eliza1/dashboard-alerts.ts",
