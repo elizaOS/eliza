@@ -15,6 +15,7 @@
 // These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
 // self-healing DDL guard cannot run here. Skipping it is the house pattern for
 // mocked-database suites; the guard itself is covered by the PGlite tests.
+const PRIOR_SKIP_ENSURE = process.env.SKIP_AGENT_SANDBOX_ENSURE;
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
@@ -325,4 +326,12 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       enqueueSpy.mockRestore();
     }
   });
+});
+
+// bun shares one process across files without --isolate, so an unrestored env
+// override here would silently disable the ensure guard for whatever suite runs
+// next. Restore exactly what was there before.
+afterAll(() => {
+  if (PRIOR_SKIP_ENSURE === undefined) delete process.env.SKIP_AGENT_SANDBOX_ENSURE;
+  else process.env.SKIP_AGENT_SANDBOX_ENSURE = PRIOR_SKIP_ENSURE;
 });

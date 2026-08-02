@@ -38,7 +38,11 @@ import { organizations } from "../../../db/schemas/organizations";
 import { usageRecords } from "../../../db/schemas/usage-records";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
-import { holdsCountedNodeSlot, TERMINAL_SANDBOX_STATUSES } from "../docker-node-workload-queries";
+import {
+  holdsCountedNodeSlot,
+  isDeletionContinuation,
+  TERMINAL_SANDBOX_STATUSES,
+} from "../docker-node-workload-queries";
 
 const PGLITE_TIMEOUT = 60_000;
 
@@ -392,6 +396,73 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
     },
     PGLITE_TIMEOUT,
   );
+});
+
+describe("a deletion continuation never re-derives ownership from its own state", () => {
+  test(
+    "a deletion_pending row with NULL intent columns is not armed by a re-enqueue",
+    async () => {
+      if (!pgliteReady) return;
+      // The #17249 shape: the row is already in a deletion state but carries no
+      // intent columns. Under the narrow `deletion_started_at === null` test this
+      // reads as a FRESH deletion, so ownership is re-derived from the row's own
+      // `deletion_pending` status — which scores as still-counted — arming a
+      // release for a slot the pre-ownership provider already decremented.
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const nodeId = uniq("node");
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          status: "deletion_pending",
+          node_id: nodeId,
+          container_name: uniq("container"),
+          deletion_attempt_id: null,
+          deletion_started_at: null,
+          deletion_allocation_counted: null,
+        })
+        .where(eq(agentSandboxes.id, agentId));
+
+      await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+      });
+
+      // Ownership must stay unrecorded: this generation cannot prove it owns a
+      // slot, and guessing "true" is the double-free.
+      expect(await ownership(agentId)).toBeNull();
+
+      const attemptId = await deletionAttemptId(agentId);
+      expect(
+        await agentSandboxesRepository.tryReleaseDeletionAllocation(
+          agentId,
+          orgId,
+          attemptId,
+          nodeId,
+        ),
+      ).toBe(false);
+      expect(await allocatedCount(nodeId)).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test("isDeletionContinuation covers the shapes the narrow test misses", () => {
+    const fresh = { status: "running", deletion_attempt_id: null, deletion_started_at: null };
+    expect(isDeletionContinuation(fresh)).toBe(false);
+
+    // Each of these is a continuation the `deletion_started_at` test alone misses.
+    for (const row of [
+      { status: "deletion_pending", deletion_attempt_id: null, deletion_started_at: null },
+      { status: "deletion_failed", deletion_attempt_id: null, deletion_started_at: null },
+      { status: "running", deletion_attempt_id: crypto.randomUUID(), deletion_started_at: null },
+      { status: "running", deletion_attempt_id: null, deletion_started_at: new Date() },
+    ]) {
+      expect(isDeletionContinuation(row)).toBe(true);
+    }
+  });
 });
 
 describe("releaseDeletionAllocationOnReap — absence proven by the orphan reaper", () => {

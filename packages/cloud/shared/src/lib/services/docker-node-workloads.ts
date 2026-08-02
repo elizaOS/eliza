@@ -204,7 +204,13 @@ export async function loadSandboxStatusesByIds(
  * moved the workload (#15228). Apps deliberately fan one name across rows and
  * are NOT node-aware.
  */
-const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
+/**
+ * Exported so a test can drive the REAL wiring rather than a copy: the contract
+ * that `keyOf` yields an `agent_sandboxes.id` — which `onReaped` then feeds to a
+ * CAS keyed on that column — is an assumption spanning two modules, and a copy
+ * of the config in a test would assert nothing about the one production uses.
+ */
+export const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   prefix: AGENT_CONTAINER_NAME_PREFIX,
   keyOf: agentIdFromContainerName,
   terminalStatuses: TERMINAL_SANDBOX_STATUS_SET,

@@ -569,9 +569,13 @@ export async function reconcileOrphanContainers(
         await node.removeContainer(orphan.id);
         result.reaped += 1;
         if (config.onReaped) {
-          // error-policy:J7 the reap itself succeeded and is already counted;
-          // a bookkeeping failure must not abort the remaining reaps. The next
-          // sweep retries it, and the CAS behind it is idempotent.
+          // error-policy:J6 best-effort teardown bookkeeping. Not J7: this is not
+          // diagnostics — a swallowed failure holds a real node slot. It is
+          // survivable only because the retry contract is explicit: the reap is
+          // already counted, the remaining reaps must still run, and the next
+          // sweep re-attempts the release against a CAS that is idempotent by
+          // construction, so a missed release costs one sweep interval of
+          // capacity rather than leaking it permanently.
           await config.onReaped(orphan.key, node.node_id).catch((error: unknown) => {
             logger.warn(`[${config.logScope}] Post-reap bookkeeping failed`, {
               nodeId: node.node_id,

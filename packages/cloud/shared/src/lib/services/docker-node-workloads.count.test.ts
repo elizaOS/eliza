@@ -6,9 +6,10 @@
 // These suites mock `db/helpers` with a partial `dbWrite` (no `execute`), so the
 // self-healing DDL guard cannot run here. Skipping it is the house pattern for
 // mocked-database suites; the guard itself is covered by the PGlite tests.
+const PRIOR_SKIP_ENSURE = process.env.SKIP_AGENT_SANDBOX_ENSURE;
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
@@ -86,4 +87,12 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
     expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(3);
     expect(rendered.some((params) => params.includes("true"))).toBe(true);
   });
+});
+
+// bun shares one process across files without --isolate, so an unrestored env
+// override here would silently disable the ensure guard for whatever suite runs
+// next. Restore exactly what was there before.
+afterAll(() => {
+  if (PRIOR_SKIP_ENSURE === undefined) delete process.env.SKIP_AGENT_SANDBOX_ENSURE;
+  else process.env.SKIP_AGENT_SANDBOX_ENSURE = PRIOR_SKIP_ENSURE;
 });

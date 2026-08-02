@@ -73,10 +73,7 @@ import { appsService } from "./apps";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
-import {
-  holdsCountedNodeSlot,
-  isDeletionContinuation,
-} from "./docker-node-workload-queries";
+import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import {
   configureElizaLifecycleTransaction,
   elizaAdminCanaryRolloutAdvisoryLockSql,

@@ -77,10 +77,7 @@ import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
-import {
-  holdsCountedNodeSlot,
-  isDeletionContinuation,
-} from "./docker-node-workload-queries";
+import { holdsCountedNodeSlot, isDeletionContinuation } from "./docker-node-workload-queries";
 import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
