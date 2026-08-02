@@ -9,6 +9,7 @@ import type { IAgentRuntime } from "../types/runtime.ts";
 import {
 	detectSuspiciousPatterns,
 	type ExternalContentSource,
+	extractWrappedExternalContent,
 	wrapExternalContent,
 } from "./external-content.js";
 import { redactSensitiveText } from "./redact.js";
@@ -150,6 +151,29 @@ export function hardenIncomingUserMessage(message: Memory): void {
 /** Redact secret-shaped substrings before persisting user text to memory. */
 export function scrubIncomingMessageTextForStorage(text: string): string {
 	return redactSensitiveText(text, { mode: "tools" });
+}
+
+/**
+ * The user's actual words from a message that `hardenIncomingUserMessage` may
+ * have wrapped in the external-content security envelope. The envelope exists
+ * for PROMPTS — the model must see the untrusted-content warning — but code
+ * that treats `content.text` as user input (query fallbacks, name/target
+ * extraction, anything later echoed back to chat) must operate on the payload,
+ * not the armor: an action that quoted the raw text shipped the entire
+ * envelope to Discord (live leak 2026-08-02, tj-2dc95f75456876). Keyed on the
+ * `externalContentWrapped` metadata stamp, so unwrapped messages pass through
+ * untouched; a stamped message whose markers were somehow lost falls back to
+ * the raw text rather than returning nothing.
+ */
+export function unwrapUserMessageText(message: Memory): string {
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	const metadata = readMessageMetadata(message);
+	if (metadata.externalContentWrapped === true) {
+		const payload = extractWrappedExternalContent(text);
+		if (payload !== null) return payload;
+	}
+	return text.trim();
 }
 
 export function messageHasPromptInjectionFlag(message: Memory): boolean {

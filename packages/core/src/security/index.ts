@@ -45,6 +45,7 @@ export {
 	messageHasPromptInjectionFlag,
 	registerCoreIncomingMessageSecurityHook,
 	scrubIncomingMessageTextForStorage,
+	unwrapUserMessageText,
 } from "./incoming-message-security.js";
 export {
 	type AssembleContextPackRequest,

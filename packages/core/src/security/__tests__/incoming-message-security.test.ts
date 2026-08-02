@@ -12,6 +12,7 @@ import {
 	hardenIncomingUserMessage,
 	messageHasPromptInjectionFlag,
 	scrubIncomingMessageTextForStorage,
+	unwrapUserMessageText,
 } from "../incoming-message-security.js";
 
 function userMessage(text: string, source = "discord"): Memory {
@@ -78,5 +79,29 @@ describe("incoming message security (GHSA-gh63-5vpj-39qp)", () => {
 			"OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz1234567890",
 		);
 		expect(scrubbed).not.toContain("sk-abcdefghijklmnopqrstuvwxyz1234567890");
+	});
+
+	// tj-2dc95f75456876: an action treating hardened content.text as the user's
+	// words echoed the whole security envelope to chat. unwrapUserMessageText is
+	// the read-side counterpart of hardenIncomingUserMessage for such consumers.
+	it("unwrapUserMessageText returns the payload from a hardened message", () => {
+		const message = userMessage("can u host it and give me the link pls");
+		hardenIncomingUserMessage(message);
+		expect(message.content.text).toContain("<<<EXTERNAL_UNTRUSTED_CONTENT>>>");
+		expect(unwrapUserMessageText(message)).toBe(
+			"can u host it and give me the link pls",
+		);
+	});
+
+	it("unwrapUserMessageText passes unwrapped messages through untouched", () => {
+		const message = userMessage("routine check-in", "autonomy");
+		hardenIncomingUserMessage(message);
+		expect(unwrapUserMessageText(message)).toBe("routine check-in");
+	});
+
+	it("unwrapUserMessageText falls back to raw text when the stamp survives but markers are gone", () => {
+		const message = userMessage("plain text");
+		message.content.metadata = { externalContentWrapped: true };
+		expect(unwrapUserMessageText(message)).toBe("plain text");
 	});
 });
