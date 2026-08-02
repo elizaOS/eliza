@@ -108,12 +108,9 @@ What exists today, verified in code.
   (`.github/workflows/voice-workbench.yml`).
 - `voice:matrix` (`packages/app-core/scripts/voice/voice-matrix.mjs`) — the per-platform live-cell
   evidence matrix (`packages/ui/src/voice/VOICE_LIVE_MATRIX.md`).
-- `voice:cloud-bench` (`packages/scripts/voice-cloud-bench.mjs`) — the #14370 Railway
-  benchmark runner added for this decision record. It reuses the live contract request
-  shapes, measures Kokoro TTFB/total/RTF/bytes, measures Whisper RTT for short/medium/long
-  clips, scores `tiny.en` vs `small` WER over a fixed 12-utterance workbench slice, and
-  writes JSON + Markdown tables. It intentionally fails unless
-  `ELIZA_VOICE_LIVE_RAILWAY=1` is set; no benchmark skip can look green.
+- The #14370 Railway cloud benchmark runner (`voice:cloud-bench`) was retired with the
+  benchmark extraction to elizaOS/benchmarks; its Kokoro TTFB/RTF and Whisper RTT/WER
+  numbers recorded for this decision remain in the tables below.
 - Nightly real-model lane `.github/workflows/voice-live-e2e.yml` (fused ASR + real Kokoro
   on self-hosted); `kokoro-real-smoke.yml` real-weight loader gate; `voice:duet` /
   `voice:interactive` local-loop harnesses (`packages/app-core/scripts/`).
