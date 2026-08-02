@@ -198,6 +198,10 @@ export async function registerQuestionFollowupForAgentMessage(
   options: { now?: Date } = {},
 ): Promise<QuestionFollowupRegistration | null> {
   if (message.entityId !== runtime.agentId) return null;
+  // Synthetic failure fallbacks (rate-limit / transient-error apologies) now
+  // emit MESSAGE_SENT like every delivered reply; a template that happens to
+  // end in "?" must not seed a follow-up about its own apology.
+  if (message.content?.elizaSyntheticFailure === true) return null;
   const roomId = typeof message.roomId === "string" ? message.roomId : null;
   if (!roomId || !message.id) return null;
   const question = extractTrailingQuestion(messageText(message));

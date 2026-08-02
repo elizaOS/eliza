@@ -684,7 +684,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(trajectory?.metrics.finalDecision).toBe("error");
 	});
 
-	it("stamps finalDecision=FINISH on a finished trajectory with no evaluation stage", async () => {
+	it("stamps a distinct terminal sentinel on a finished trajectory with no evaluation stage", async () => {
 		// Non-evaluated terminal paths (Stage-1 direct reply, deterministic
 		// fallback, structured failure reply) end a turn without any evaluation
 		// stage. The recorder must still stamp the clean terminal — an absent
@@ -710,7 +710,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 		await recorder.endTrajectory(id, "finished");
 		const trajectory = await recorder.load(id);
 		expect(trajectory?.status).toBe("finished");
-		expect(trajectory?.metrics.finalDecision).toBe("FINISH");
+		expect(trajectory?.metrics.finalDecision).toBe("terminal:finished");
 	});
 
 	it("does not overwrite an evaluation-derived finalDecision at finish", async () => {

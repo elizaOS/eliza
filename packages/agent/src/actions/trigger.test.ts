@@ -594,6 +594,50 @@ describe("TRIGGER effect receipts — completion-claim grounding", () => {
     expect(createdTasks).toHaveLength(1);
   });
 
+  it("legacy fuzzy match (instructions+type, schedule unknown) reports the near-duplicate WITHOUT a replayed receipt", async () => {
+    // A stored row with no dedupeKey matches on instructions+type only — it
+    // cannot prove the SCHEDULE matches (an 8am row "matches" a 9am ask), so
+    // it must not mint verified already-covered proof.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    // Build a real trigger config via the action, then strip its dedupeKey
+    // and change its schedule — the legacy row shape: same instructions and
+    // type, different timing, no key to prove equivalence.
+    const first = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 30,
+    });
+    expect(first?.success).toBe(true);
+    const legacyTrigger = {
+      ...(createdTasks[0].metadata.trigger as unknown as Record<
+        string,
+        unknown
+      >),
+      dedupeKey: undefined,
+    };
+    createdTasks.length = 0;
+    (
+      runtime.getTasks as unknown as { mockResolvedValue: (v: Task[]) => void }
+    ).mockResolvedValue([
+      {
+        id: stringToUuid("legacy-task"),
+        name: "TRIGGER_DISPATCH",
+        tags: ["queue", "repeat", "trigger"],
+        metadata: { updatedAt: Date.now(), trigger: legacyTrigger },
+      } as unknown as Task,
+    ]);
+    const result = await create(runtime, {
+      instructions: "drink water",
+      delaySeconds: 90,
+    });
+    if (!result) throw new Error("expected a result");
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("similar");
+    expect(result.effectReceipts).toBeUndefined();
+    expect(result.verifiedUserFacing).toBeUndefined();
+    expect(result.data?.legacyFuzzyMatch).toBe(true);
+    expect(createdTasks).toHaveLength(0);
+  });
+
   it("refuses to claim success for a failed create — no receipts, no verified text", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
     const result = await create(runtime, {
