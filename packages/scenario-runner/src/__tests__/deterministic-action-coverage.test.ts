@@ -28,7 +28,6 @@ import appControlPlugin from "@elizaos/plugin-app-control";
 import codingToolsPlugin from "@elizaos/plugin-coding-tools";
 import commandsPlugin from "@elizaos/plugin-commands";
 import githubPlugin from "@elizaos/plugin-github";
-import gitPathologyPlugin from "@elizaos/plugin-gitpathologist";
 import localInferencePlugin from "@elizaos/plugin-local-inference";
 import deviceFilesystemPlugin from "@elizaos/plugin-native-filesystem";
 import todosPlugin from "@elizaos/plugin-todos";
@@ -55,7 +54,6 @@ const IMPORTED_CORE_PLUGINS: Record<string, Plugin> = {
   "@elizaos/plugin-commands": commandsPlugin,
   "@elizaos/plugin-agent-skills": agentSkillsPlugin,
   "@elizaos/plugin-local-inference": localInferencePlugin,
-  "@elizaos/plugin-gitpathologist": gitPathologyPlugin,
   "@elizaos/plugin-todos": todosPlugin,
   "@elizaos/plugin-mcp": mcpPlugin,
   "@elizaos/plugin-workflow": workflowPlugin,
@@ -118,7 +116,6 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "START_TRANSCRIPTION",
     "STOP_TRANSCRIPTION",
   ],
-  "@elizaos/plugin-gitpathologist": ["GIT_PATHOLOGY"],
   "@elizaos/plugin-todos": ["TODO"],
   "@elizaos/plugin-mcp": [
     "MCP",
