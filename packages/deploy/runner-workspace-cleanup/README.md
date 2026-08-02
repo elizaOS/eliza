@@ -13,9 +13,9 @@ for it. So it never ran: prod-2 (`eliza-prod-robot-2`, a 98 GB root) refilled to
 to reclaim, and an operator had to clear `_work` by hand (again) on 2026-07-15.
 This bundle is the missing recurring call site.
 
-The tool prunes only per-runner `_work` checkouts older than `--min-age-hours`
-and **refuses to delete while a `Runner.Worker` process is active** (its built-in
-guard), so a scheduled run never interrupts a live CI job.
+The tool prunes only per-runner `_work` checkouts older than `--min-age-hours`.
+The timer helper proves the specific runner is inactive before bypassing the
+tool's host-global process guard; ambiguous bindings or unit states fail closed.
 
 ## Why system-level (not the `../systemd/` bundle)
 
@@ -32,12 +32,13 @@ delete. So the work is split by whether the runner can currently accept a job:
 | Runner state | Covered by | Why it is race-free |
 |---|---|---|
 | **Active** (unit running) | its own **job-completed hook** | the runner invokes it *between* jobs, in its own context, scoped to its own `_work` |
-| **Inactive / orphaned** | the **timer** (idle helper) | a stopped unit cannot be handed a job, so nothing can start writing |
+| **Inactive / orphaned** | the **timer** (idle helper) | the exact `.service` binding reports inactive, or no runner configuration remains |
 
-The timer helper skips every runner whose unit is active and says so in its
-output; the hook never touches a sibling runner. The tool's built-in
-`Runner.Worker` guard stays on underneath both (the scheduled path never passes
-`--allow-active`).
+The timer helper reads the authoritative `.service` binding written by GitHub's
+runner installer, skips active or undeterminable runners, and says why in its
+output. The hook never touches a sibling runner. Both paths pass
+`--allow-active` because the tool's process guard is host-global; their
+per-runner lifecycle checks are the safety boundary.
 
 ## Layout
 
