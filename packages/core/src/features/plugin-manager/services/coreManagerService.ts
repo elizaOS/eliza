@@ -50,28 +50,31 @@ export interface UpstreamMetadata {
 	localCommits: number;
 }
 
-export interface CoreEjectResult {
-	success: boolean;
-	ejectedPath: string;
-	upstreamCommit: string;
-	error?: string;
-}
+export type CoreEjectResult =
+	| { success: true; ejectedPath: string; upstreamCommit: string }
+	| { success: false; error: string; ejectedPath?: string };
 
-export interface CoreSyncResult {
-	success: boolean;
-	ejectedPath: string;
-	upstreamCommits: number;
-	localChanges: boolean;
-	conflicts: string[];
-	commitHash: string;
-	error?: string;
-}
+export type CoreSyncResult =
+	| {
+			success: true;
+			ejectedPath: string;
+			upstreamCommits: number;
+			localChanges: boolean;
+			conflicts: string[];
+			commitHash: string;
+	  }
+	| {
+			success: false;
+			error: string;
+			ejectedPath?: string;
+			upstreamCommits?: number;
+			localChanges?: boolean;
+			conflicts?: string[];
+	  };
 
-export interface CoreReinjectResult {
-	success: boolean;
-	removedPath: string;
-	error?: string;
-}
+export type CoreReinjectResult =
+	| { success: true; removedPath: string }
+	| { success: false; error: string; removedPath?: string };
 
 export interface CoreStatus {
 	ejected: boolean;
@@ -318,8 +321,6 @@ export class CoreManagerService extends Service {
 			if (!VALID_GIT_URL.test(CORE_GIT_URL)) {
 				return {
 					success: false,
-					ejectedPath: "",
-					upstreamCommit: "",
 					error: `Invalid git URL: "${CORE_GIT_URL}"`,
 				};
 			}
@@ -327,8 +328,6 @@ export class CoreManagerService extends Service {
 			if (!VALID_BRANCH.test(CORE_BRANCH)) {
 				return {
 					success: false,
-					ejectedPath: "",
-					upstreamCommit: "",
 					error: `Invalid git branch: "${CORE_BRANCH}"`,
 				};
 			}
@@ -341,7 +340,6 @@ export class CoreManagerService extends Service {
 				return {
 					success: false,
 					ejectedPath: monorepoDir,
-					upstreamCommit: "",
 					error: `Refusing to write outside ${base}`,
 				};
 			}
@@ -350,7 +348,6 @@ export class CoreManagerService extends Service {
 				return {
 					success: false,
 					ejectedPath: monorepoDir,
-					upstreamCommit: "",
 					error: `${CORE_PACKAGE_NAME} is already ejected at ${monorepoDir}`,
 				};
 			}
@@ -421,7 +418,6 @@ export class CoreManagerService extends Service {
 				return {
 					success: false,
 					ejectedPath: monorepoDir,
-					upstreamCommit: "",
 					error: err instanceof Error ? err.message : String(err),
 				};
 			}
@@ -435,11 +431,6 @@ export class CoreManagerService extends Service {
 				const checkError = (check as { error: string }).error;
 				return {
 					success: false,
-					ejectedPath: "",
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					error: checkError,
 				};
 			}
@@ -450,10 +441,6 @@ export class CoreManagerService extends Service {
 				return {
 					success: false,
 					ejectedPath: monorepoDir,
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					error: `Missing or invalid ${this.upstreamFilePath()}`,
 				};
 			}
@@ -465,10 +452,6 @@ export class CoreManagerService extends Service {
 				return {
 					success: false,
 					ejectedPath: monorepoDir,
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					error: "Invalid upstream metadata",
 				};
 			}
@@ -528,7 +511,6 @@ export class CoreManagerService extends Service {
 						upstreamCommits,
 						localChanges,
 						conflicts,
-						commitHash: "",
 						error: err instanceof Error ? err.message : String(err),
 					};
 				}
@@ -545,8 +527,6 @@ export class CoreManagerService extends Service {
 					ejectedPath: monorepoDir,
 					upstreamCommits,
 					localChanges,
-					conflicts: [],
-					commitHash: "",
 					error: err instanceof Error ? err.message : String(err),
 				};
 			}
@@ -580,7 +560,6 @@ export class CoreManagerService extends Service {
 			if (!(await fs.pathExists(monorepoDir))) {
 				return {
 					success: false,
-					removedPath: "",
 					error: `${CORE_PACKAGE_NAME} is not ejected`,
 				};
 			}

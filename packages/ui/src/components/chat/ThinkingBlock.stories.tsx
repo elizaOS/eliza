@@ -28,5 +28,3 @@ export const ExpandedByUser: Story = {
     assert(canvasElement.querySelector("pre") !== null, "reasoning is visible");
   },
 };
-
-export const EmptyReasoning: Story = { args: { reasoning: "   " } };

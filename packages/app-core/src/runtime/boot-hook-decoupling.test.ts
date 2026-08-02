@@ -5,10 +5,8 @@
  * registration) moved into the plugin's `registerLocalInferenceBoot` hook,
  * declared in its `registry-entry.json` and drained by the generic boot-hook
  * channel (`runBootHooks` / `drainBootHookContributors`). This statically scans
- * the real `eliza.ts` source to prove the old fixed-point coupling is gone from
- * the executable path — matching the audit's "grep guard proves the old central
- * name-keyed special case is gone" done-when. Runs against the real source tree,
- * no mocks.
+ * the runtime host and contributor module to prove the old fixed-point coupling
+ * is gone from the executable path. Runs against the real source tree, no mocks.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,6 +15,7 @@ import { describe, expect, it } from "vitest";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ELIZA_TS = join(HERE, "eliza.ts");
+const APP_CONTRIBUTORS_TS = join(HERE, "startup", "app-contributors.ts");
 
 function readElizaSource(): string {
   return readFileSync(ELIZA_TS, "utf8");
@@ -53,7 +52,7 @@ describe("boot-tail local-inference decoupling (arch-audit #12089 item 18)", () 
   });
 
   it("resolves boot-hook contributors from the registry by data, naming no plugin", () => {
-    const source = readElizaSource();
+    const source = readFileSync(APP_CONTRIBUTORS_TS, "utf8");
     // The contributor resolver scans the registry (apps + plugins) for a
     // declared `bootHook` — data-driven, no hard-wired specifier.
     expect(source).toContain("entry.launch?.bootHook");

@@ -81,7 +81,7 @@ src/
     schema.ts                         drizzle pgSchema('app_inbox') + 3 tables
   components/
     inbox/
-      InboxView.tsx                   Minimal React inbox view (placeholder)
+      InboxView.tsx                   React inbox triage view
       inbox-view-bundle.ts            Vite bundle entry — re-exports InboxView
 ```
 
@@ -108,7 +108,10 @@ None. Channel credentials are read from each provider plugin (`plugin-discord`, 
 
 **Add a provider:** create `src/providers/<name>.ts` exporting a `Provider`, then add it to the `providers` array in `src/plugin.ts`.
 
-**Add a service:** define the class in `src/service.ts`, add it to the `services` array in `src/plugin.ts`, and export it from `src/index.ts` so callers can resolve it via `runtime.getService`.
+**Add a domain operation:** extend `src/inbox/service.ts` and its repository or
+connector seams. Add a long-lived runtime service to `src/plugin.ts` only when
+the operation truly needs lifecycle ownership; export public contracts from
+`src/index.ts`.
 
 ## Conventions / gotchas
 

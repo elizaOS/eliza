@@ -204,7 +204,8 @@
         "@elizaos/plugin-app-manager#build",
         "@elizaos/plugin-inbox#build",
         "@elizaos/plugin-sql#build",
-        "@elizaos/plugin-task-coordinator#build"
+        "@elizaos/plugin-task-coordinator#build",
+        "@elizaos/plugin-video#build"
       ],
       "outputs": []
     },

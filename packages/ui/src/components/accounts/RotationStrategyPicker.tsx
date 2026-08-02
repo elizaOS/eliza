@@ -122,7 +122,7 @@ export function RotationStrategyPicker({
             collisionPadding={16}
             style={{
               width: "min(18rem, calc(100vw - 2rem))",
-              backgroundColor: "var(--card, #151518)",
+              backgroundColor: "var(--card)",
               borderColor: "var(--border, rgba(255, 255, 255, 0.18))",
             }}
             className="relative z-[12000] overflow-hidden rounded-sm border text-txt shadow-md"

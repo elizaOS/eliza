@@ -82,6 +82,7 @@ import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
+import { stringifyForModel } from "./runtime/json-output";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -595,11 +596,7 @@ function coerceOutgoingMessageText(text: unknown): string {
 }
 
 function stringifyStructuredForPrompt(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		return String(value);
-	}
+	return stringifyForModel(value);
 }
 
 function resolveDynamicPromptModelType(
@@ -2344,6 +2341,8 @@ export class AgentRuntime implements IAgentRuntime {
 				// awaits initPromise which resolves after initialize() completes
 				// (after all registerPlugin calls finish). Awaiting would deadlock.
 				this._ensureServiceStarted(serviceType).catch((err) => {
+					// error-policy:J5 eager startup is fire-and-forget; _runServiceStart
+					// reports the failure and service-load callers observe the rejection.
 					this.logger.error(
 						{
 							src: "agent",
@@ -5120,12 +5119,11 @@ export class AgentRuntime implements IAgentRuntime {
 		this.serviceRegistrationStatus.set(key, "registering");
 		await this.initPromise;
 		if (typeof serviceDef.start !== "function") {
-			this.logger.error(
-				{ src: "agent", agentId: this.agentId, serviceType },
-				"Service class has no static start method",
-			);
 			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			throw new ElizaError("Service class has no static start method", {
+				code: "SERVICE_START_METHOD_MISSING",
+				context: { serviceType },
+			});
 		}
 		try {
 			if (this.stopped) {
@@ -5135,7 +5133,10 @@ export class AgentRuntime implements IAgentRuntime {
 			const serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
 				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				throw new ElizaError("Service start returned no instance", {
+					code: "SERVICE_START_RESULT_INVALID",
+					context: { serviceType },
+				});
 			}
 			if (this.stopped) {
 				await this._stopServiceInstance(
@@ -5164,6 +5165,7 @@ export class AgentRuntime implements IAgentRuntime {
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
 		} catch (error) {
+			// error-policy:J2 service startup adds service identity and preserves the cause
 			this.reportError("AgentRuntime.serviceStart", error, {
 				serviceType,
 			});
@@ -5176,7 +5178,11 @@ export class AgentRuntime implements IAgentRuntime {
 				this.servicePromises.delete(serviceType);
 			}
 			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			throw new ElizaError(`Service ${serviceType} failed to start`, {
+				code: "SERVICE_START_FAILED",
+				cause: error,
+				context: { serviceType },
+			});
 		}
 	}
 
@@ -5319,11 +5325,10 @@ export class AgentRuntime implements IAgentRuntime {
 		const serviceName = (serviceDef as { name?: string }).name || "Unknown";
 
 		if (!serviceType) {
-			this.logger.warn(
-				{ src: "agent", agentId: this.agentId, serviceName },
-				"Service missing serviceType property",
-			);
-			return;
+			throw new ElizaError("Service is missing its serviceType property", {
+				code: "SERVICE_TYPE_MISSING",
+				context: { serviceName },
+			});
 		}
 		this.logger.debug(
 			{ src: "agent", agentId: this.agentId, serviceType },
@@ -5339,7 +5344,10 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		const serviceClassList = this.serviceTypes.get(serviceType);
 		if (!serviceClassList) {
-			return;
+			throw new ElizaError("Service type registry initialization failed", {
+				code: "SERVICE_TYPE_REGISTRY_INVALID",
+				context: { serviceType },
+			});
 		}
 		serviceClassList.push(serviceDef);
 	}

@@ -6,7 +6,10 @@ Shared routing resolver that decides whether a service call should use a locally
 
 This package is a pure utility library with no runtime dependencies. It provides the routing logic that plugins use to choose between three sources for any external API: a local key set directly in the agent's settings, a cloud proxy (via `ELIZAOS_CLOUD_API_KEY`), or disabled. It also defines and resolves per-feature routing policies (`local` / `cloud` / `auto`).
 
-Consumers: `plugins/plugin-wallet`, `plugins/plugin-streaming`, `plugins/plugin-tailscale`, and `packages/cloud/api` / `packages/cloud/shared` reference it via tsconfig path aliases.
+Direct runtime consumers currently include `plugins/plugin-wallet` and
+`packages/core`; build and test tooling also aliases the source package. Verify
+the import graph with `rg '@elizaos/cloud-routing' packages plugins` before
+changing its dependency or export boundary.
 
 ## Layout
 

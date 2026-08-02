@@ -782,12 +782,13 @@ export async function handleFirstRunRoutes(
       }
 
       try {
+        const persistedAgent = await state.runtime.getAgent(
+          state.runtime.agentId,
+        );
         await state.runtime.updateAgent(state.runtime.agentId, {
           name: runtimeCharacter.name,
           metadata: {
-            ...(runtimeCharacter.metadata as
-              | Record<string, unknown>
-              | undefined),
+            ...persistedAgent?.metadata,
             character: {
               name: runtimeCharacter.name,
               bio: runtimeCharacter.bio,

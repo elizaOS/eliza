@@ -1,4 +1,4 @@
-# doctr-cpp — native runtime
+# `doctr-cpp` native runtime
 
 Standalone C library that ports mindee/docTR detection and recognition
 heads to a native CPU reference runtime, replacing plugin-vision's

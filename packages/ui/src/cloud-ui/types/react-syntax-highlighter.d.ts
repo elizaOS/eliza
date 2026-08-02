@@ -1,7 +1,7 @@
 /** Supplies browser-safe syntax-highlighter contracts missing from its package. */
 
 declare module "react-syntax-highlighter" {
-  import type { ComponentType, CSSProperties, ReactNode } from "react";
+  import type { ComponentType, CSSProperties, ElementType, ReactNode } from "react";
 
   export type SyntaxHighlighterStyle = Record<string, CSSProperties>;
 
@@ -12,7 +12,7 @@ declare module "react-syntax-highlighter" {
     customStyle?: CSSProperties;
     language?: string;
     lineNumberStyle?: CSSProperties;
-    PreTag?: string;
+    PreTag?: ElementType;
     showLineNumbers?: boolean;
     style?: SyntaxHighlighterStyle;
     wrapLongLines?: boolean;

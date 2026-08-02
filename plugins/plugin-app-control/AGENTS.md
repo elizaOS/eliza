@@ -1,10 +1,14 @@
 # @elizaos/plugin-app-control
 
-Gives an Eliza agent the ability to launch, close, list, scaffold, and verify Eliza apps, manage UI views, and change the app background.
+Gives an Eliza agent control over app lifecycle, shell views, backgrounds,
+models, active agent profiles, and built-in settings.
 
 ## Purpose / role
 
-This plugin registers four actions, one natural-language shortcut set, two evaluators, one provider, and four services. It exposes those capabilities to any Eliza agent that loads it; it is opt-in (not default-enabled). All runtime communication with the Eliza dashboard happens over loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered via `resolveServerOnlyPort`.
+This opt-in plugin registers eight actions, one shortcut set, four evaluators,
+two providers, and four services. Dashboard operations use authenticated
+loopback HTTP (`/api/apps/*`, `/api/views/*`) discovered through the existing
+port resolver.
 
 ## Plugin surface
 
@@ -16,13 +20,18 @@ This plugin registers four actions, one natural-language shortcut set, two evalu
 | `VIEWS` | `src/actions/views.ts` | Manage UI views contributed by plugins. Sub-modes: `list`, `current`, `show`/`open`, `search`, `manager`, `broadcast`, `interact`, `pin`, `window`, `create`, `edit`, `icon`, `rollback`, `delete`/`remove`. Create/edit/icon/rollback/delete are owner-gated; read modes are open. `rollback` resets a created/edited view-or-plugin workdir to the pre-edit git snapshot taken before the coding agent ran (#8915) and re-registers it via `load-from-directory`. |
 | `BACKGROUND` | `src/actions/background.ts` | Change the unified app background from chat. Ops: `set` (color name/hex, a named **programmable GLSL shader** preset — `aurora`/`lava`/`plasma`/`waves`/`nebula` — plus relative uniform tweaks like *slower*/*brighter*/*bigger* (#10694), an uploaded image attachment, or a generated image from a prompt), `undo`, `redo`, `reset`. The action names a preset id + uniform patch only; the GLSL source lives in `@elizaos/ui` (`backgrounds/shader-presets.ts`) where `useBackgroundApplyChannel` resolves id→source, validates it, and `ProgrammableShaderBackground` renders it via three.js with a compile-validate + frame-watchdog + context-loss-recovery + reduced-motion + color-field fallback. Broadcasts a `background:apply` view event via `POST /api/views/events/broadcast`; the renderer applies it to the shared `BackgroundConfig` store. Drives the SAME background as the `/background` view — there is no separate homescreen-scene surface. |
 | `SETTINGS` | `src/actions/settings.ts` | Describe, list, and change built-in settings; mutations use the same semantic routes as the UI. Successful list/set results own canonical reply text and declare a single-operation turn complete once the plan queue is drained, avoiding a redundant evaluator model call on native function-calling backends without suppressing multi-tool evaluation. Owner-gated. |
+| `MODEL_SWITCH` | `src/actions/model-switch.ts` | Select a configured model target through the canonical settings/runtime boundary. |
+| `AGENT_SWITCH` | `src/actions/agent-switch.ts` | Switch the active agent profile through the host-provided agent-switch seam. |
+| `CLOSE_VIEW` / `CLOSE_ALL_VIEWS` | `src/actions/views.ts` | Close one shell view or all open views without overloading the broader `VIEWS` dispatcher. |
 
 ### Evaluators
 
 | Name | File | Description |
 |---|---|---|
-| `viewNavigationRoutingEvaluator` | `src/evaluators/view-navigation-routing.ts` | `responseHandlerEvaluator` that inspects agent responses and automatically routes to the appropriate view via the VIEWS action. |
-| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | `responseHandlerEvaluator` that detects follow-up intent (create/delete/update) from agent output and dispatches the VIEWS action accordingly. |
+| `viewContextEvaluator` | `src/evaluators/view-context.ts` | Model-assisted contextual navigation when no explicit view command matched. |
+| `viewCommandShortcutEvaluator` | `src/evaluators/view-command-shortcut.ts` | Deterministically forces `VIEWS` for explicit navigation commands. |
+| `createChoiceShortcutEvaluator` | `src/evaluators/create-choice-shortcut.ts` | Routes replies to pending app/view creation choices without another model decision. |
+| `viewFollowupRoutingEvaluator` | `src/evaluators/view-followup-routing.ts` | Detects mutation follow-ups and dispatches `VIEWS`. |
 
 ### Shortcuts
 
@@ -30,11 +39,12 @@ This plugin registers four actions, one natural-language shortcut set, two evalu
 |---|---|---|
 | `viewNavigationShortcuts` | `src/shortcuts.ts` | Natural-language pre-LLM shortcuts for explicit view navigation phrases such as "open settings"; target the existing `VIEWS` action with `action=show` and are gated by `ELIZA_SHORTCUTS_NL=1`. |
 
-### Provider
+### Providers
 
 | Name | File | Description |
 |---|---|---|
 | `available_apps` | `src/providers/available-apps.ts` | Injects installed apps + running run counts into planner context. Active in `settings` and `automation` contexts only; cache scope is per-turn. |
+| `current_view` | `src/providers/current-view.ts` | Supplies current shell-view context and acknowledgement state for navigation turns. |
 
 ### Services
 
@@ -92,10 +102,13 @@ src/
   components/
     ViewManagerSpatialView.tsx    Presentational spatial view-manager component
   evaluators/
-    view-followup-routing.ts      viewFollowupRoutingEvaluator — dispatches VIEWS on follow-up intent
-    view-navigation-routing.ts    viewNavigationRoutingEvaluator — routes to view from agent response
+    view-context.ts               contextual view selection
+    view-command-shortcut.ts      deterministic explicit-command routing
+    create-choice-shortcut.ts     pending create-choice routing
+    view-followup-routing.ts      mutation follow-up routing
   providers/
     available-apps.ts             available_apps provider
+    current-view.ts               current_view provider
   services/
     app-registry-service.ts       AppRegistryService
     app-verification.ts           AppVerificationService (typecheck/lint/test/build/browser)

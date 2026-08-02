@@ -33,3 +33,11 @@
 # scans the full main..develop commit range and sees this historical false
 # positive. No credential material was committed.
 15ccd4c4713e9dbf86502e21b855d97b48c01761:packages/scripts/cloud/admin/bridge-reply-verdict.test.ts:generic-api-key:14
+
+# Public USDC mainnet contract address used by the wallet token-info scenario.
+7b44422e1fb0545fbcdef0c30bfd88d0c78ae1ac:plugins/plugin-wallet/test/scenarios/token-info.scenario.ts:generic-api-key:17
+
+# Empty environment assignments document optional Cerebras credentials for the
+# scenario runner. The package manifest contains names only, not secret values.
+5f255cc1c2eccb3a7733ad6b866c6dec61a838b7:packages/scenario-runner/package.json:generic-api-key:70
+5f255cc1c2eccb3a7733ad6b866c6dec61a838b7:packages/scenario-runner/package.json:generic-api-key:71

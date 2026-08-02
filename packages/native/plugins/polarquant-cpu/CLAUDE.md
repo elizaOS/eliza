@@ -1,4 +1,4 @@
-# polarquant-cpu — AGENTS
+# `polarquant-cpu`
 
 Standalone C library for **PolarQuant Q4** (`block_q4_polar`,
 fork-side `GGML_TYPE_Q4_POLAR=47`). Used as both the Q4 weight quant
@@ -42,7 +42,7 @@ TurboQuant TBQ3_0 V is the ≤8k-context fallback.
 
 The full tier × quant-type matrix (rows = tier, columns = QJL-K +
 PolarQuant-V + TurboQuant-W variants) lives at
-`packages/training/reports/eliza1-quant-matrix-2026-05-14.md`.
+the current artifacts under `packages/training/reports/`.
 
 ## Tests + parity
 

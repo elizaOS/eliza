@@ -18,7 +18,10 @@ import { ElizaError, isElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import { settleActionHandler } from "../../../runtime/action-handler-settlement.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
-import { parseJsonObject } from "../../../runtime/json-output.ts";
+import {
+	parseJsonObject,
+	stringifyForModel,
+} from "../../../runtime/json-output.ts";
 import { tagsPermitAutomaticRetry } from "../../../types/effects.ts";
 import {
 	type ActionContext,
@@ -57,17 +60,6 @@ interface ActionStep {
 	retryPolicy?: RetryPolicy;
 	onError?: "abort" | "continue" | "skip";
 	_dependencyStrings?: string[];
-}
-
-function formatPromptData(value: unknown): string {
-	const formatted = JSON.stringify(value, null, 2);
-	if (formatted === undefined) {
-		throw new ElizaError("Planning prompt data is not JSON-serializable", {
-			code: "PLANNING_PROMPT_DATA_INVALID",
-			context: { valueType: typeof value },
-		});
-	}
-	return formatted;
 }
 
 function parseJsonRecord(response: string): Record<string, unknown> {
@@ -661,7 +653,7 @@ EXECUTION MODEL: ${context.preferences?.executionModel || "sequential"}
 MAX STEPS: ${context.preferences?.maxSteps || 10}
 
 ${message ? `CONTEXT MESSAGE: ${message.content.text}` : ""}
-${state ? `CURRENT STATE:\n${formatPromptData(state.values)}` : ""}
+${state ? `CURRENT STATE:\n${stringifyForModel(state.values)}` : ""}
 
 Return JSON only, with no prose, markdown, or code fences, using this shape:
 {
@@ -1195,10 +1187,10 @@ Focus on:
 		return `Adapt the current plan to address an execution issue.
 
 ORIGINAL PLAN:
-${formatPromptData(plan)}
+${stringifyForModel(plan)}
 CURRENT STEP INDEX: ${currentStepIndex}
 COMPLETED RESULTS:
-${formatPromptData({ results })}
+${stringifyForModel({ results })}
 ${error ? `ERROR: ${error.message}` : ""}
 
 Analyze the situation and provide an adapted plan that:

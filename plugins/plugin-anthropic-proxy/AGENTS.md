@@ -10,7 +10,15 @@ The plugin applies a 7-layer bidirectional transformation pipeline that makes ou
 
 ## Why this is a separate plugin from plugin-anthropic
 
-`plugin-anthropic` is the API-key model provider (per-token billing, registers model handlers). This plugin registers **no model handlers** — it is billing middleware that rewrites `ANTHROPIC_BASE_URL` so `plugin-anthropic`'s traffic flows through a Claude Max/Pro subscription. The two have independent auto-enable gates (`ANTHROPIC_API_KEY` vs `CLAUDE_MAX_PROXY_MODE`), and the proxy is also usable standalone by non-eliza agents (custom fingerprint dictionaries via `config.json`). It is the Anthropic peer of `plugin-codex-cli` in the subscription-auth surface (`packages/ui` cockpit modes: `"anthropic-proxy" | "codex-cli"`; `packages/test/scenarios/anthropic-proxy/`; `plugin-pty` credential wiring). Do not merge it into `plugin-anthropic`.
+`plugin-anthropic` is the API-key model provider and registers model handlers.
+This plugin registers no model handlers: it rewrites `ANTHROPIC_BASE_URL` so
+that provider traffic can use an eligible Claude subscription. The plugins have
+independent auto-enable gates (`ANTHROPIC_API_KEY` and
+`CLAUDE_MAX_PROXY_MODE`), and the proxy can serve non-elizaOS clients with
+custom fingerprint dictionaries. It is the Anthropic counterpart to
+`plugin-codex-cli` in the subscription-auth surface and integrates with the UI
+cockpit modes and `plugin-pty` credential wiring. Keep it separate from
+`plugin-anthropic`.
 
 ## Plugin surface
 

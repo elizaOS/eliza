@@ -66,8 +66,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "src/**/*.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts"
+    "src/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",

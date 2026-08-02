@@ -1,4 +1,9 @@
-# AGENTS.md — Eliza-1 training & quantization
+# Eliza-1 training and publishing
+
+Training, evaluation, quantization, and publication contract for Eliza-1.
+Repository-wide rules come from the root [CLAUDE.md](../../CLAUDE.md); native
+runtime and ABI rules come from
+[`plugin-local-inference/native/CLAUDE.md`](../../plugins/plugin-local-inference/native/CLAUDE.md).
 
 This file is the canonical contract for training, quantization,
 evaluation, and HuggingFace publishing of the Eliza-1 model line. It
@@ -196,15 +201,11 @@ entry points for training and publishing:
   `publish/publish_pipeline.py` — three canonical publisher entry points.
   `publish_model` dispatches to `publish.orchestrator` (full gated bundle
   publish) or `publish_eliza1_model_repo` (per-tier upload after the full gate
-  ran elsewhere). The legacy fused single-GGUF `publish_eliza1_model` path and
-  the `scripts/optimize_for_eliza1.py` `eliza1-optimized` path were retired
-  because they only accepted disconnected Qwen-shaped optimization flows.
-  `publish_all_eliza1.sh` is the per-tier matrix driver. These MUST be the
+  ran elsewhere). `publish_all_eliza1.sh` is the per-tier matrix driver. These MUST be the
   *only* paths that push app-facing bundles to `elizaos/eliza-1`. The older
-  `push_to_hf.py` / `push_pipeline_to_hf.py` were deleted;
   `publish_pipeline_to_hf.py` publishes the training pipeline source to HF Hub
-  (not production model bundles); `push_model_to_hf.py` is now a deprecation
-  shim that redirects to the new entry points.
+  (not production model bundles); `push_model_to_hf.py` redirects callers to
+  the canonical entry points.
 - `inference/serve_local.py` / `inference/serve_vllm.py` — eval-time
   serving harnesses (not production runtime — that is app-core).
 

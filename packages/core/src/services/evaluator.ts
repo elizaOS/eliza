@@ -8,7 +8,10 @@
  * a json_object request so a doomed schema round-trip is not repaid every turn.
  */
 import { v4 as uuidv4 } from "uuid";
-import { logger } from "../logger.ts";
+import {
+	stringifyForDiagnostics,
+	stringifyForModel,
+} from "../runtime/json-output.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
@@ -41,13 +44,7 @@ const EMPTY_STATE: State = {
 
 function stringifyForPrompt(value: unknown): string {
 	if (typeof value === "string") return value;
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		// error-policy:J3 evaluator context may contain non-JSON runtime values;
-		// String provides an explicit diagnostic representation for the prompt.
-		return String(value);
-	}
+	return stringifyForModel(value);
 }
 
 function coerceObjectOutput(raw: unknown): Record<string, unknown> | null {
@@ -761,7 +758,7 @@ export class EvaluatorService extends BaseService {
 						src: "service:evaluator",
 						agentId: this.runtime.agentId,
 						evaluator: evaluator.name,
-						rawSection: stringifyForPrompt(rawSection).slice(0, 500),
+						rawSection: stringifyForDiagnostics(rawSection).slice(0, 500),
 					},
 					"Evaluator output section did not validate",
 				);

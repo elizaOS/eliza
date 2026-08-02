@@ -40,8 +40,18 @@ describe("closeServerResources", () => {
   it("owns an idempotent resource registry", async () => {
     const events: string[] = [];
     const resources = createServerResources(() => undefined);
-    resources.add({ name: "first", dispose: () => events.push("first") });
-    resources.add({ name: "second", dispose: () => events.push("second") });
+    resources.add({
+      name: "first",
+      dispose: () => {
+        events.push("first");
+      },
+    });
+    resources.add({
+      name: "second",
+      dispose: () => {
+        events.push("second");
+      },
+    });
     await Promise.all([resources.close(), resources.close()]);
     expect(events).toEqual(["second", "first"]);
     expect(() =>

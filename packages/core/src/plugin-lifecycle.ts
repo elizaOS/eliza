@@ -570,9 +570,15 @@ async function stopOwnedServices(
 		const key = serviceType as ServiceTypeName;
 		const inFlightStart = privateState.startingServices.get(key);
 		if (inFlightStart) {
-			// error-policy:J6 best-effort teardown — wait for an in-flight start to
-			// settle before stopping it; a failed start is irrelevant to the stop path.
-			await inFlightStart.catch(() => null);
+			try {
+				await inFlightStart;
+			} catch (error) {
+				// error-policy:J6 teardown continues after an already-reported startup failure
+				runtime.logger.debug(
+					{ src: "plugin-lifecycle", serviceType, error },
+					"Service startup failed before plugin teardown",
+				);
+			}
 		}
 
 		const currentClasses = privateState.serviceTypes.get(key) ?? [];

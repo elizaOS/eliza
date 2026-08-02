@@ -83,9 +83,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.tsx",
-    "src/**/*.d.ts",
-    "../../packages/agent/src/external-modules.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts"
+    "src/**/*.d.ts"
   ],
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
 }

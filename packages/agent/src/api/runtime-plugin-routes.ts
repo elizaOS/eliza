@@ -16,6 +16,7 @@ import {
   setRuntimeRouteHostContext,
   writeJsonError,
 } from "@elizaos/core";
+import type { X402PluginModule } from "./x402-contract.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
@@ -26,18 +27,17 @@ type ExpressLikeResponse = ServerResponse & {
 };
 
 type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
-type X402RoutesModule = {
-  createPaymentAwareHandler: (
-    route: PaymentEnabledRoute,
-  ) => RuntimePluginRouteHandler;
-  isRoutePaymentWrapped: (route: unknown) => boolean;
-};
+type X402RoutesModule = Pick<
+  X402PluginModule,
+  "createPaymentAwareHandler" | "isRoutePaymentWrapped"
+>;
 
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 
 function getX402RoutesModule(): Promise<X402RoutesModule> {
+  const specifier = "@elizaos/plugin-x402";
   x402RoutesModulePromise ??= import(
-    /* @vite-ignore */ "@elizaos/plugin-x402"
+    /* @vite-ignore */ specifier
   ) as Promise<X402RoutesModule>;
   return x402RoutesModulePromise;
 }

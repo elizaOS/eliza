@@ -1,5 +1,5 @@
 /**
- * Unit coverage for the post-ready boot tail phase split in `eliza.ts`:
+ * Unit coverage for the post-ready boot tail phase split:
  * `getDeferAppRoutesEnabled` (deferred-by-default; explicit falsy tokens opt out) and
  * `runPostReadyBootTail`, which runs the post-ready-safe boot steps — TTS, app
  * routes, runtime hooks, sensitive-request adapters, credential bridge, trigger
@@ -11,12 +11,12 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { getDeferAppRoutesEnabled } from "./startup/app-contributors.ts";
 import {
   createRuntimeBootResources,
-  getDeferAppRoutesEnabled,
   type PostReadyBootSteps,
   runPostReadyBootTail,
-} from "./eliza.ts";
+} from "./startup/post-ready.ts";
 
 // A minimal stand-in: the post-ready tail only ever passes the runtime through
 // to the injected step stubs, so identity is all that matters here.

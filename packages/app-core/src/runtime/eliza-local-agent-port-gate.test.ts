@@ -7,20 +7,24 @@ import { describe, expect, it } from "vitest";
 /**
  * Port-gate wiring for local-agent IPC mode (#12180).
  *
- * `eliza.ts` pulls the entire agent + plugin module graph, so it cannot be
+ * The runtime host pulls the entire agent + plugin module graph, so it cannot be
  * imported into this vitest lane (nor booted headlessly here — that needs the
  * built dist). This pins the gate two ways:
  *
  *   1. The decision predicate (`localAgentMode === true` AND NOT
  *      `ELIZA_API_EXPOSE_PORT`) evaluated against the real
- *      `resolveApiExposePort` — the exact expression `eliza.ts` uses.
- *   2. Source-level assertions that `eliza.ts` computes `skipApiListen` from
+ *      `resolveApiExposePort` — the exact expression the server host uses.
+ *   2. Source-level assertions that the server host computes `skipApiListen` from
  *      that predicate and forwards it as `startApiServer({ skipListen })`, and
  *      that no other caller path sets `localAgentMode` — so the default boot
  *      (desktop launcher / `eliza start` / server-only) still binds the port.
  */
 
 const ELIZA_SRC = readFileSync(join(import.meta.dirname, "eliza.ts"), "utf8");
+const SERVER_ONLY_HOST_SRC = readFileSync(
+  join(import.meta.dirname, "startup", "server-only-host.ts"),
+  "utf8",
+);
 
 /** Mirror of the gate expression in eliza.ts (kept identical on purpose). */
 function shouldSkipApiListen(
@@ -58,26 +62,28 @@ describe("local-agent IPC port gate (#12180)", () => {
   });
 });
 
-describe("eliza.ts source wiring (#12180)", () => {
+describe("server-only host source wiring (#12180)", () => {
   it("declares localAgentMode on StartElizaOptionsExt", () => {
     expect(ELIZA_SRC).toMatch(/localAgentMode\?:\s*boolean/);
   });
 
   it("computes skipApiListen from localAgentMode + resolveApiExposePort", () => {
-    expect(ELIZA_SRC).toContain("resolveApiExposePort");
-    expect(ELIZA_SRC).toMatch(
+    expect(SERVER_ONLY_HOST_SRC).toContain("resolveApiExposePort");
+    expect(SERVER_ONLY_HOST_SRC).toMatch(
       /const skipApiListen\s*=\s*[\s\S]*options\?\.localAgentMode === true/,
     );
-    expect(ELIZA_SRC).toMatch(/resolveApiExposePort\(process\.env\) !== true/);
+    expect(SERVER_ONLY_HOST_SRC).toMatch(
+      /resolveApiExposePort\(process\.env\) !== true/,
+    );
   });
 
   it("forwards skipApiListen as startApiServer({ skipListen })", () => {
-    expect(ELIZA_SRC).toMatch(/skipListen:\s*skipApiListen/);
+    expect(SERVER_ONLY_HOST_SRC).toMatch(/skipListen:\s*skipApiListen/);
   });
 
   it("does not hard-code localAgentMode anywhere (no caller opts in yet)", () => {
     // The only occurrences of localAgentMode are the type field and the gate
     // read — nothing in eliza.ts assigns it true, so behavior is unchanged.
-    expect(ELIZA_SRC).not.toMatch(/localAgentMode:\s*true/);
+    expect(SERVER_ONLY_HOST_SRC).not.toMatch(/localAgentMode:\s*true/);
   });
 });

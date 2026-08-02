@@ -29,7 +29,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 
 ### Services (consumed, not registered as elizaOS services)
 - `LocalInferenceService` / `localInferenceService` (`src/services/service.ts`) — singleton facade for download orchestration, active-model coordination, hardware probe, catalog, and routing preferences.
-- `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the in-process FFI llama.cpp backend (fused `libelizainference`, or the libllama + eliza-llama-shim fallback) via the `BackendDispatcher`; one model loaded at a time (unload-then-load for model swaps).
+- `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the single fused `libelizainference` FFI implementation via the `BackendDispatcher`; one model is loaded at a time, with unload-before-load swaps.
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
 
 ### HTTP routes (mounted by app-core)
@@ -189,7 +189,7 @@ Paths are resolved relative to `resolveStateDir()` from `@elizaos/core` (default
 ### Add a new route handler
 1. Create `src/routes/my-route.ts` exporting a handler function.
 2. Export it from `src/routes/index.ts`.
-3. Mount it in the consuming runtime (app-core `src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
+3. Mount it in the consuming runtime (currently `packages/app-core/src/api/server.ts`) by importing from `@elizaos/plugin-local-inference/routes`.
 
 ### Add a new backend capability (e.g. a new image-gen backend)
 1. Implement the capability in `src/services/imagegen/` following the `ImageGenBackend` interface.
@@ -203,7 +203,7 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 ## Conventions / gotchas
 
 - **Text runs through the in-process FFI llama.cpp backend only** (`node-llama-cpp` has been retired). The engine checks the dispatcher's `available()`/FFI probe before using it; an absent/unsupported FFI runtime produces a clean `LocalInferenceUnavailableError` rather than a crash. There is no `node-llama-cpp` fallback.
-- **Two text runtime classes — branch on `runtimeClass`, never on the id prefix.** Every `CatalogModel` / `InstalledModel` carries a `runtimeClass: "fused-eliza1" | "generic-gguf"` discriminator (canonical helpers in `@elizaos/shared/local-inference/runtime-class.ts`; populated by the catalog factory + hub-search synthesizers, and backfilled once at the registry-read boundary in `registry.ts listInstalledModels`). The dispatcher (`backend.ts decideBackend` / `BackendDispatcher.decide`) routes `fused-eliza1` → the fused `libelizainference` (`desktop-fused-ffi-backend-runtime.ts`, full pipeline) and `generic-gguf` → the explicit-`modelPath` runtime (`generic-gguf-backend.ts`, stock f16 KV, reduced optimizations). eliza-1 stays the default/recommended path; `buildRecommendedAssignments` / `autoAssignAtBoot` stay eliza-1-only and never auto-assign a generic blob. Generic single-file GGUF needs the explicit-`modelPath` binding (`llama-cpp-capacitor` on mobile); on desktop it is not built into the shipping fused lib, so a generic load raises a typed `GenericRuntimeUnavailableError` and `setAssignment` rejects it at the boundary with `AssignmentNotServableError` (route → 422) — never a silent deferred load failure. Generic-model search/download/assignment is an Advanced/Developer-mode surface in the UI; eliza-1 is the only thing shown by default.
+- **One FFI implementation, two selectable runtimes.** `BackendDispatcher` always drives the fused `libelizainference` surface. It selects `llama-cpp` for GGUF (the default and the required path for specialized kernels) or `litert-lm` when a supported build has a `.litertlm` artifact. `ELIZA_INFERENCE_BACKEND` accepts `auto`, `llama-cpp`, or `litert-lm`; forcing an unsupported runtime fails at load rather than silently falling back. There is no separate generic-GGUF backend.
 - **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.
 - **Native binary deps** (sd.cpp, mflux, Kokoro GGUF/fused `libelizainference`) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
 - **MemoryArbiter (WS1)** is the coordination point for all modalities on memory-constrained devices. Cross-plugin consumers (vision, image-gen, ASR, TTS) must go through the arbiter — never load models independently.

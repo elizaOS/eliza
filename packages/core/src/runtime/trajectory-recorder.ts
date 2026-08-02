@@ -460,33 +460,7 @@ function atomicTempPath(filePath: string): string {
 	return `${filePath}.${process.pid}.${Date.now().toString(36)}.${rand}.tmp`;
 }
 
-async function atomicWriteJson(
-	filePath: string,
-	value: unknown,
-	logger?: RecorderLogger,
-): Promise<void> {
-	const dir = path.dirname(filePath);
-	const tmp = atomicTempPath(filePath);
-	try {
-		await fs.mkdir(dir, { recursive: true });
-		await fs.writeFile(tmp, JSON.stringify(value, null, 2), "utf8");
-		await fs.rename(tmp, filePath);
-	} catch (err) {
-		logger?.warn?.(
-			{ err: (err as Error).message, filePath },
-			"[TrajectoryRecorder] atomic write failed",
-		);
-		try {
-			// error-policy:J6 best-effort teardown — removing the orphaned tmp file
-			// after a failed write; its own failure is not actionable.
-			await fs.unlink(tmp).catch(() => undefined);
-		} catch {
-			// error-policy:J6 best-effort teardown of the tmp file
-		}
-	}
-}
-
-async function atomicWriteText(
+async function atomicWriteFile(
 	filePath: string,
 	value: string,
 	logger?: RecorderLogger,
@@ -497,19 +471,43 @@ async function atomicWriteText(
 		await fs.mkdir(dir, { recursive: true });
 		await fs.writeFile(tmp, value, "utf8");
 		await fs.rename(tmp, filePath);
-	} catch (err) {
+	} catch (error) {
 		logger?.warn?.(
-			{ err: (err as Error).message, filePath },
-			"[TrajectoryRecorder] markdown write failed",
+			{ err: (error as Error).message, filePath },
+			"[TrajectoryRecorder] atomic write failed",
 		);
 		try {
-			// error-policy:J6 best-effort teardown — removing the orphaned tmp file
-			// after a failed write; its own failure is not actionable.
-			await fs.unlink(tmp).catch(() => undefined);
-		} catch {
-			// error-policy:J6 best-effort teardown of the tmp file
+			await fs.unlink(tmp);
+		} catch (cleanupError) {
+			// error-policy:J6 best-effort teardown retains the original write failure
+			if ((cleanupError as NodeJS.ErrnoException).code !== "ENOENT") {
+				logger?.warn?.(
+					{ err: (cleanupError as Error).message, tmp },
+					"[TrajectoryRecorder] temporary file cleanup failed",
+				);
+			}
 		}
+		throw new ElizaError("Failed to persist trajectory artifact", {
+			code: "TRAJECTORY_ATOMIC_WRITE_FAILED",
+			cause: error,
+			context: { filePath },
+		});
 	}
+}
+
+async function atomicWriteJson(
+	filePath: string,
+	value: unknown,
+	logger?: RecorderLogger,
+): Promise<void> {
+	const serialized = JSON.stringify(value, null, 2);
+	if (serialized === undefined) {
+		throw new ElizaError("Trajectory artifact is not JSON-serializable", {
+			code: "TRAJECTORY_ARTIFACT_INVALID",
+			context: { filePath },
+		});
+	}
+	await atomicWriteFile(filePath, serialized, logger);
 }
 
 function formatTimestamp(ms: number | undefined): string {
@@ -1394,7 +1392,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			snapshot.agentId,
 			`${snapshot.trajectoryId}.md`,
 		);
-		await atomicWriteText(
+		await atomicWriteFile(
 			markdownPath,
 			renderTrajectoryMarkdown(snapshot),
 			this.logger,

@@ -25,13 +25,7 @@ import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import { Coins, Loader2, ShieldCheck, Wallet } from "lucide-react";
-import {
-  type CSSProperties,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { erc20Abi } from "viem";
@@ -525,9 +519,6 @@ export function DirectCryptoCreditCard({
   const payButtonClassName = isCloudSurface
     ? "min-w-[172px] rounded-xs bg-black text-white hover:bg-black/82"
     : "min-w-[172px]";
-  const cloudButtonStyle: CSSProperties | undefined = isCloudSurface
-    ? { backgroundColor: "#000", borderColor: "#000", color: "#fff" }
-    : undefined;
   const showNetworkSelector = !lockedNetwork && enabledNetworks.length > 1;
   const showTokenSelector = tokenOptions.length > 1;
 
@@ -689,7 +680,6 @@ export function DirectCryptoCreditCard({
               variant="surface"
               onClick={() => setSolanaModalVisible(true)}
               className={surfaceButtonClassName}
-              style={cloudButtonStyle}
             >
               {solana.publicKey ? "Solana connected" : "Connect Solana"}
             </Button>
@@ -704,7 +694,6 @@ export function DirectCryptoCreditCard({
                   variant={isCloudSurface ? "default" : "surface"}
                   onClick={account ? openAccountModal : openConnectModal}
                   className={surfaceButtonClassName}
-                  style={cloudButtonStyle}
                 >
                   {account
                     ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}`
@@ -720,7 +709,6 @@ export function DirectCryptoCreditCard({
             onClick={handlePay}
             disabled={!canPay || busy}
             className={payButtonClassName}
-            style={cloudButtonStyle}
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />

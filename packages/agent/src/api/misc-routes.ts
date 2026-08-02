@@ -13,7 +13,6 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
-  type AgentRuntime,
   buildStoreVariantBlockedMessage,
   composePrompt,
   customActionGenerateTemplate,
@@ -21,7 +20,7 @@ import {
   logger,
   ModelType,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { ReadJsonBodyOptions, StreamEventEnvelope } from "@elizaos/shared";
 import {
   isAndroidMobile,
   PostAgentEventRequestSchema,
@@ -32,7 +31,6 @@ import {
   PostTerminalRunRequestSchema,
   PutCustomActionRequestSchema,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import type { CustomActionDef } from "../config/types.eliza.ts";
 import {
@@ -40,28 +38,35 @@ import {
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import type { ServerState } from "./server-types.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface StreamEventEnvelope {
-  type: string;
-  version: number;
-  eventId: string;
-  ts: number;
-  stream: string;
-  agentId?: string;
-  roomId?: string;
-  payload: Record<string, unknown>;
-}
-
 type TerminalRunRequestBody = {
   command?: string;
   clientId?: unknown;
   terminalToken?: string;
 };
+
+type MiscRouteState = Pick<
+  ServerState,
+  | "config"
+  | "runtime"
+  | "agentState"
+  | "agentName"
+  | "shellEnabled"
+  | "broadcastWs"
+  | "broadcastWsToClientId"
+  | "nextEventId"
+  | "eventBuffer"
+  | "shareIngestQueue"
+  | "startup"
+  | "broadcastStatus"
+  | "pendingRestartReasons"
+>;
 
 // ---------------------------------------------------------------------------
 // Approximate (IP-based) location
@@ -191,29 +196,7 @@ export interface MiscRouteContext {
   method: string;
   pathname: string;
   url: URL;
-  state: {
-    config: ElizaConfig;
-    runtime: AgentRuntime | null;
-    agentState: string;
-    agentName: string;
-    shellEnabled?: boolean | undefined;
-    broadcastWs?: ((data: object) => void) | null;
-    broadcastWsToClientId?: (clientId: string, data: object) => void;
-    nextEventId: number;
-    eventBuffer: StreamEventEnvelope[];
-    shareIngestQueue: Array<{
-      id: string;
-      source: string;
-      title?: string;
-      url?: string;
-      text?: string;
-      suggestedPrompt: string;
-      receivedAt: number;
-    }>;
-    startup: Record<string, unknown>;
-    broadcastStatus?: () => void;
-    pendingRestartReasons: string[];
-  };
+  state: MiscRouteState;
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   readJsonBody: <T extends object>(

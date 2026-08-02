@@ -6,7 +6,7 @@
 
 This pass implemented the highest-risk startup corrections instead of leaving them as recommendations. The global `node:http` monkey-patch is gone; compatibility behavior is explicit middleware on one concrete server. Process signals and exit codes are owned by the CLI boundary. A typed startup state machine now drives lifecycle/status projection. Compatibility state is per-server, startup failures close bound resources, deferred feature failures become an observable degraded phase, and a real reset-route E2E is no longer dark.
 
-This follow-up pass also separated autonomy, database recovery, model warmup, and post-ready ordering from the runtime host; added structured feature-route readiness; migrated in-repo registry consumers off the compatibility subpath; and consolidated the duplicated iOS splash payload. `runtime/eliza.ts` fell from roughly 2,100 to 1,330 lines. The major work that remains is broader package decomposition: `api/server.ts` and the build/release entrypoints still span too many concerns, compatibility routes need consumer-led retirement, and native/build/release tooling should become separate workspaces.
+This follow-up pass also separated contributor discovery, autonomy, database recovery, model warmup, and post-ready ordering from the runtime host; added structured feature-route readiness; migrated in-repo registry consumers off the compatibility subpath; and consolidated the duplicated iOS splash payload. `runtime/eliza.ts` fell from roughly 2,100 to 800 lines. The major work that remains is broader package decomposition: `api/server.ts` and the build/release entrypoints still span too many concerns, compatibility routes need consumer-led retirement, and native/build/release tooling should become separate workspaces.
 
 ## Cleanup and refactoring completed
 
@@ -50,6 +50,10 @@ This follow-up pass also separated autonomy, database recovery, model warmup, an
 - Extracted autonomy world/entity/service initialization into `runtime/startup/autonomy.ts` with typed `ElizaError` failures and one host-facing configuration function.
 - Extracted serialized embedding and voice warmup policy into `runtime/startup/local-model-warmup.ts`, including the default SQL embedding dimension and deferred/eager decision.
 - Extracted post-ready contributor ordering, boot-resource creation, and superseded-runtime liveness checks into `runtime/startup/post-ready.ts`.
+- Extracted registry app-route loading, runtime hooks, pre-ready boot hooks, and
+  deferral/skip policy into `runtime/startup/app-contributors.ts`. The runtime
+  host preserves its compatibility re-exports while tests exercise the focused
+  module without importing the full agent server graph.
 - Added an explicit deferred feature-route manifest. Known plugin routes now return structured `503 feature_starting` while the runtime or route tail is pending and `503 feature_unavailable` after a failed tail, instead of a misleading 404.
 - Migrated all in-repository runtime and plugin-registry consumers to `@elizaos/registry/first-party`; the app-core registry subpath now exists only for external backwards compatibility.
 - Consolidated three byte-identical 7.2 MB iOS splash images to one catalog resource. Apple `actool` compiles the resulting catalog successfully, removing about 14.4 MB from source and unpacked package payload.
@@ -91,10 +95,10 @@ Implemented extraction boundaries:
 - `startup/pglite-recovery.ts`: error classification, quarantine, and retry.
 - `startup/local-model-warmup.ts`: embedding and voice policy.
 
-Still to extract:
+The remaining host is roughly 800 lines. Further extraction should be done in
+these cohesive slices rather than by moving individual helpers:
 
 - `startup/app-runtime-host.ts`: orchestration and state machine only.
-- `startup/app-contributors.ts`: registry module resolution and contributor loading.
 - `startup/server-only-host.ts`: API bind, runtime swap, restart, and close.
 
 Keep dependency direction one-way: the host composes these modules; helpers do not mutate process state or module-global runtime slots.
@@ -164,24 +168,39 @@ Do not delete these solely from a filename scan. Verify imports, package exports
 
 The two tracked `.d.ts` files are not deletion candidates without replacement because they provide ambient source declarations.
 
-## Recommended implementation order
+## Recommended remaining implementation order
 
-1. Split runtime and server modules along the boundaries above without changing the new lifecycle contract.
-2. Add route metadata and structured readiness failures for post-ready feature routes.
-3. Inventory compatibility-route consumers and remove shims route-by-route.
-4. Split build/native/packaging workspaces and replace broad asset-directory copying with an explicit manifest.
-5. Consolidate iOS splash assets with real native launch-screen evidence.
-6. Run the remaining package-wide error-policy and weak-type audit after module ownership is clear.
-7. Tighten Knip dependency ignores as packaging dependencies move to their owning workspace.
+1. Finish the runtime split with `app-runtime-host.ts` and `server-only-host.ts`,
+   preserving the lifecycle and readiness contracts added in this pass.
+2. Split `api/server.ts`: move the ordered compatibility route manifest into a
+   declarative module with method/auth/readiness metadata, then retire entries
+   only after their consumers are migrated.
+3. Split native and release tooling into independently versioned workspaces;
+   replace the package's broad directory-copy command with a reviewed asset
+   manifest owned by those workspaces.
+4. Break `run-mobile-build.mjs` into pure policy, platform adapters, filesystem
+   staging, process execution, and artifact verification modules.
+5. Complete the package-wide error-policy and service-registry typing audit,
+   starting with `cli/plugins-cli.ts` and the remaining service-name casts.
+6. Consolidate runtime-facing port and environment resolution behind the shared
+   resolvers, then add one canonical/branded/conflict/rebind test matrix.
+7. Tighten Knip dependency ignores as packaging dependencies move to their
+   owning workspaces.
 
 ## Verification notes
 
 - The complete package build passed, including declaration generation, filtered asset copying, package preparation, and ESM import rewriting.
 - The full suite passes with module isolation: 195 files passed and 1 intentionally skipped; 1,576 tests passed and 15 skipped. Focused startup, readiness, transport, Android policy/audit, reset, view-provenance, local-inference, and multi-account failover regressions also pass.
-- App-core typecheck passed after the refactors. The final workspace-coupled rerun was blocked by two concurrent errors in `packages/agent/src/api/first-run-routes.ts` and `packages/agent/src/api/server.ts`; neither file is part of this cleanup. Biome lint, Biome format, and `check:source-artifacts` pass. The source tree contains exactly two intentional ambient declarations and no compiler debris.
+- App-core typecheck passed after the refactors and after the contributor
+  extraction. Later workspace-coupled reruns were intermittently blocked by
+  concurrent edits in `packages/agent` and `plugins/plugin-discord` outside this
+  cleanup. Biome lint, Biome format, and `check:source-artifacts` pass. The source
+  tree contains exactly two intentional ambient declarations and no compiler debris.
+- The contributor/boot focused suite passes 34/34 tests after importing the new
+  focused module directly.
 - Package-scoped Knip exits successfully; its only output is the existing `.css` compiled-extension configuration hint.
 - Android native-plugin verification passes 19/19 required compiled plugins. It reports two present-but-undeclared modules that correctly will not ship.
-- The dry-run package is 11.3 MB compressed, 18.3 MB unpacked, and 1,375 files (initially 34.7 MB, 78.2 MB, and 1,509 files). The file count rose slightly because the new startup/readiness modules emit their own declaration artifacts, while payload size fell substantially.
+- The final dry-run package is 11.3 MB compressed, 18.3 MB unpacked, and 1,378 files (initially 34.7 MB, 78.2 MB, and 1,509 files). The file count rose slightly because the new startup/readiness modules emit their own declaration artifacts, while payload size fell substantially.
 - The iOS asset catalog compiles to `Assets.car` with Apple `actool`. A full simulator link reaches dependency graph construction but this checkout lacks the generated CocoaPods xcconfig, so that broader native build cannot proceed without running pod installation.
 - The default non-isolated Vitest mode completed once with only the three Anthropic clean-checkout failures fixed here, but a subsequent repetition deadlocked in idle coordinator/worker IPC under concurrent repository test load. The isolated run completed cleanly; removing the package's `isolate: false` test coupling remains a test-infrastructure cleanup item.
 - The updated mobile documentation passes all 23 documentation integrity, navigation, and link tests.

@@ -1,7 +1,7 @@
 /**
  * Registry data layer for the plugin-manager capability: fetches and normalizes
- * the elizaOS plugin registry. Pulls `generated-registry.json` (falling back to
- * the leaner `index.json`) from plugins.elizacloud.ai, scans the local
+ * the elizaOS plugin registry. Pulls the authoritative generated registry from
+ * plugins.elizacloud.ai, scans the local
  * `plugins/` directory for `elizaos.plugin.json` manifests that override remote
  * entries, and caches the merged `Map<name, RegistryPlugin>` in memory for one
  * hour. Exposes the lookup (`getRegistryEntry`, with fuzzy `@elizaos/`-prefix
@@ -12,6 +12,7 @@ import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { PluginMetadata } from "../types.ts";
 
@@ -21,8 +22,6 @@ import type { PluginMetadata } from "../types.ts";
 
 const GENERATED_REGISTRY_URL =
 	"https://plugins.elizacloud.ai/generated-registry.json";
-const INDEX_REGISTRY_URL = "https://plugins.elizacloud.ai/index.json";
-
 const CACHE_DURATION = 3_600_000; // 1 hour
 
 // ---------------------------------------------------------------------------
@@ -230,39 +229,6 @@ function entryToPlugin(
 	};
 }
 
-function indexEntryToPlugin(name: string, gitRef: string): RegistryPlugin {
-	const repo = gitRef.replace(/^github:/, "");
-	const isBuiltIn = name.startsWith("@elizaos/");
-	return {
-		name,
-		gitRepo: repo,
-		gitUrl: `https://github.com/${repo}.git`,
-		directory: null,
-		description: "",
-		homepage: null,
-		topics: [],
-		stars: 0,
-		language: "TypeScript",
-		npm: {
-			package: name,
-			v0Version: null,
-			v1Version: null,
-			v2Version: null,
-			v0CoreRange: null,
-			v1CoreRange: null,
-			v2CoreRange: null,
-		},
-		git: { v0Branch: null, v1Branch: null, v2Branch: "next" },
-		supports: { v0: false, v1: false, v2: false },
-		origin: isBuiltIn ? "builtin" : "third-party",
-		source: isBuiltIn ? "builtin" : "third-party",
-		support: isBuiltIn ? "first-party" : "community",
-		builtIn: isBuiltIn,
-		firstParty: isBuiltIn,
-		thirdParty: !isBuiltIn,
-	};
-}
-
 // ---------------------------------------------------------------------------
 // Local plugin discovery - scans plugins/ for elizaos.plugin.json files
 // ---------------------------------------------------------------------------
@@ -347,41 +313,40 @@ async function scanLocalPlugins(): Promise<Map<string, RegistryPlugin>> {
 		return plugins;
 	}
 
-	try {
-		const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
+	const entries = fs.readdirSync(pluginsDir, { withFileTypes: true });
 
-		for (const entry of entries) {
-			if (!entry.isDirectory()) continue;
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
 
-			const pluginJsonPath = path.join(
-				pluginsDir,
-				entry.name,
-				"elizaos.plugin.json",
+		const pluginJsonPath = path.join(
+			pluginsDir,
+			entry.name,
+			"elizaos.plugin.json",
+		);
+		if (!fs.existsSync(pluginJsonPath)) continue;
+
+		try {
+			const content = fs.readFileSync(pluginJsonPath, "utf-8");
+			const pluginJson = JSON.parse(content) as LocalPluginJson;
+			const plugin = localPluginToRegistry(pluginJson, entry.name);
+			plugins.set(plugin.name, plugin);
+			logger.debug(
+				`[registry] Found local plugin: ${plugin.name} (${entry.name})`,
 			);
-			if (!fs.existsSync(pluginJsonPath)) continue;
-
-			try {
-				const content = fs.readFileSync(pluginJsonPath, "utf-8");
-				const pluginJson = JSON.parse(content) as LocalPluginJson;
-				const plugin = localPluginToRegistry(pluginJson, entry.name);
-				plugins.set(plugin.name, plugin);
-				logger.debug(
-					`[registry] Found local plugin: ${plugin.name} (${entry.name})`,
-				);
-			} catch (err) {
-				logger.warn(
-					`[registry] Failed to parse ${pluginJsonPath}: ${errMsg(err)}`,
-				);
-			}
+		} catch (error) {
+			// error-policy:J2 identify the invalid local manifest and preserve its cause
+			throw new ElizaError("Failed to load local plugin manifest", {
+				code: "PLUGIN_REGISTRY_LOCAL_MANIFEST_INVALID",
+				cause: error,
+				context: { pluginJsonPath },
+			});
 		}
+	}
 
-		if (plugins.size > 0) {
-			logger.info(
-				`[registry] Loaded ${plugins.size} local plugins from ${pluginsDir}`,
-			);
-		}
-	} catch (err) {
-		logger.warn(`[registry] Failed to scan local plugins: ${errMsg(err)}`);
+	if (plugins.size > 0) {
+		logger.info(
+			`[registry] Loaded ${plugins.size} local plugins from ${pluginsDir}`,
+		);
 	}
 
 	return plugins;
@@ -407,22 +372,8 @@ async function fetchGeneratedRegistry(): Promise<Map<string, RegistryPlugin>> {
 	return plugins;
 }
 
-async function fetchIndexRegistry(): Promise<Map<string, RegistryPlugin>> {
-	const response = await fetch(INDEX_REGISTRY_URL);
-	if (!response.ok) {
-		throw new Error(`index.json: ${response.status} ${response.statusText}`);
-	}
-	const data = (await response.json()) as Record<string, string>;
-	const plugins = new Map<string, RegistryPlugin>();
-	for (const [name, gitRef] of Object.entries(data)) {
-		plugins.set(name, indexEntryToPlugin(name, gitRef));
-	}
-	return plugins;
-}
-
 /**
  * Load the plugin registry from the next@registry branch.
- * Tries generated-registry.json first, falls back to index.json.
  * Also scans local plugins/ directory for elizaos.plugin.json files.
  * Local plugins override remote registry entries.
  * Cached in-memory for 1 hour.
@@ -434,26 +385,10 @@ export async function loadRegistry(): Promise<Map<string, RegistryPlugin>> {
 
 	logger.info("[registry] Fetching from next@registry...");
 
-	let plugins: Map<string, RegistryPlugin> = new Map();
-	try {
-		plugins = await fetchGeneratedRegistry();
-		logger.info(
-			`[registry] Loaded ${plugins.size} plugins (generated-registry.json)`,
-		);
-	} catch (err) {
-		logger.warn(
-			`[registry] generated-registry.json unavailable: ${errMsg(err)}, falling back to index.json`,
-		);
-		try {
-			plugins = await fetchIndexRegistry();
-			logger.info(`[registry] Loaded ${plugins.size} plugins (index.json)`);
-		} catch (err2) {
-			logger.warn(
-				`[registry] index.json also unavailable: ${errMsg(err2)}, using local plugins only`,
-			);
-			// Continue with empty remote registry - local plugins will still be added
-		}
-	}
+	const plugins = await fetchGeneratedRegistry();
+	logger.info(
+		`[registry] Loaded ${plugins.size} plugins (generated-registry.json)`,
+	);
 
 	// Merge local plugins (they override remote registry entries)
 	const localPlugins = await scanLocalPlugins();
@@ -675,21 +610,15 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
 		cloneDir,
 	]);
 
-	let hasTests = false;
-	let dependencies: Record<string, string> = {};
-	try {
-		const pkg = JSON.parse(
-			await fs.promises.readFile(path.join(cloneDir, "package.json"), "utf-8"),
-		) as {
-			scripts?: Record<string, string>;
-			devDependencies?: Record<string, string>;
-			dependencies?: Record<string, string>;
-		};
-		hasTests = !!(pkg.scripts?.test || pkg.devDependencies?.vitest);
-		dependencies = pkg.dependencies || {};
-	} catch {
-		logger.warn(`[registry] No package.json at repo root for ${plugin.name}`);
-	}
+	const pkg = JSON.parse(
+		await fs.promises.readFile(path.join(cloneDir, "package.json"), "utf-8"),
+	) as {
+		scripts?: Record<string, string>;
+		devDependencies?: Record<string, string>;
+		dependencies?: Record<string, string>;
+	};
+	const hasTests = Boolean(pkg.scripts?.test || pkg.devDependencies?.vitest);
+	const dependencies = pkg.dependencies ?? {};
 
 	return {
 		success: true,
@@ -698,12 +627,4 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
 		hasTests,
 		dependencies,
 	};
-}
-
-// ---------------------------------------------------------------------------
-// Util
-// ---------------------------------------------------------------------------
-
-function errMsg(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
 }

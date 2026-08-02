@@ -130,9 +130,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "scripts/**/*.ts",
-    "../../src/ambient-modules.d.ts",
-    "../../../agent/src/external-modules.d.ts"
+    "scripts/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

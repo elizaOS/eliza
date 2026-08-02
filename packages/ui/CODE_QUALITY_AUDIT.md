@@ -4,11 +4,12 @@ Audit date: 2026-08-02
 
 ## Refactor implementation status
 
-The audit recommendations have now been implemented wherever they can land
-compatibly inside the current package. The remaining items are deliberately
-staged migrations: deleting thousands of public exports, moving whole domains
-to new npm packages, adding 177 stories, or rewriting hundreds of tests in one
-change would trade measurable debt for an unreviewable breaking change.
+The compatible cleanup and refactor pass is complete. The package remains one
+physical workspace by product decision: API clients, the app shell, cloud UI,
+and primitives stay under `packages/ui`, separated by supported export
+subpaths and enforced import boundaries. No `packages/ui-client`,
+`packages/app-shell`, or `packages/cloud-ui` facade packages are part of the
+target architecture.
 
 Completed in this refactor:
 
@@ -20,11 +21,14 @@ Completed in this refactor:
   endpoints, retryable failures, and terminal failures while retaining causes.
 - Centralized startup budgets in a typed timing policy and added focused probe
   and mobile-policy tests.
-- Extracted stable seams from each top-priority large module: chat motion,
-  connector accounts, mobile local-agent policy, direct cloud endpoints,
-  notification gestures, and application route loaders.
-- Added ratchets for public exports (3,306), source-boundary violations (zero),
-  hard-coded-color files (407), story coverage, story interactions, file
+- Extracted stable seams from the top-priority large modules: chat motion and
+  transcript rendering, provider-account transports, mobile local-agent
+  policy, direct cloud endpoints, notification gestures, application route
+  loaders, voice playback, and chat routing/failure policy.
+- Contracted the root API from 3,306 exports to 143 stable primitive exports
+  and migrated repository consumers to supported `@elizaos/ui/*` subpaths.
+- Added ratchets for public exports (143), source-boundary violations (zero),
+  hard-coded-color files (31), story coverage, story interactions, file
   headers, and unexpected console warnings. These baselines may shrink but may
   not grow without an explicit update.
 - Consolidated or explicitly renamed the ambiguous status badge, theme toggle,
@@ -39,23 +43,26 @@ Completed in this refactor:
   performance traces remain at their named instrumentation boundaries.
 - Replaced the 925 KB generated icon source module with a 4.3 KB manifest and
   individually copied offline assets.
-- Brought every hand-written production source file into header compliance;
-  the remaining 561 test-file gaps are ratcheted for comment-only batches.
+- Brought every hand-written production and test source file into header
+  compliance.
 - Removed generated reports, screenshots, bundled E2E fixtures, unused source
   modules, and obsolete compatibility surfaces that had no consumers.
+- Removed twelve additional unreachable compatibility/barrel modules exposed by
+  the contracted API and the unused `@simplewebauthn/browser` dependency.
 
 Still staged, with enforcement now in place:
 
-- The physical `@elizaos/app-shell`, `@elizaos/ui-client`, and
-  `@elizaos/cloud-ui` package split. Import-boundary enforcement and the new
-  internal seams make those moves incremental, but creating and migrating three
-  published packages is separate semver/release work.
-- Root API contraction. The generated 3,306-export inventory prevents accidental
-  growth; removals require deprecation and downstream migration.
-- Story completion. Current coverage is 210 of 387 counted visual components
-  (54.3%), with 17 interaction stories. New debt is rejected.
-- Conversion of the 407 allowlisted color-bearing files and cleanup of existing
-  warning fingerprints. Both now have no-regression gates.
+- Story completion. Current coverage is 226 of 388 counted visual components
+  (58.2%), with 24 source-level interaction stories. New debt is rejected.
+- Thirty-one files retain deliberate color data: syntax-highlighting palettes,
+  provider logos, deterministic generated-art palettes, charts, sandbox HTML,
+  and standalone voice diagnostics. The scanner now parses TypeScript syntax
+  and valid CSS hex lengths, so issue references such as `#8628` no longer
+  inflate the result.
+- Existing unit-test console fingerprints remain. Most are missing React
+  `act()` boundaries; the rest are intentional error-boundary exercises or
+  absent jsdom media/canvas capabilities that should be locally asserted or
+  shimmed.
 - Further decomposition of the large composition modules. The extracted pure
   policies are the first reviewable seams; feature-sized providers and clients
   remain follow-on moves behind stable exports.
@@ -94,7 +101,7 @@ scanner `.d.mts` contract remain because they are source, not stray output.
 | Accessibility | 3/4 | Strong primitives and explicit motion/touch policies; story coverage leaves many compositions unaudited. |
 | Performance | 3/4 | Routes and icon assets are split; the package remains large and still has feature-scale modules. |
 | Responsive design | 3/4 | Platform policies and gesture seams are independently tested; large shell compositions remain. |
-| Theming | 3/4 | Startup uses tokens and new literals are gated; 407 allowlisted files remain to migrate. |
+| Theming | 3/4 | Semantic colors are enforced; 31 specialized palette/data files remain. |
 | Anti-patterns | 3/4 | Exact ambiguous concepts were consolidated and production diagnostics are centralized; intentional domain vocabulary remains. |
 | **Total** | **15/20** | **Good guarded baseline — staged package/API migration remains.** |
 
@@ -115,38 +122,38 @@ Measured from the working tree during this audit:
 
 - 2,816 TypeScript/TSX source files.
 - Approximately 610,000 TypeScript/TSX lines.
-- 874 test files and 322 stories.
-- 387 components considered by the story-coverage script; 210 have stories
-  (**54.3%** coverage).
+- 874+ test files and 330+ story modules.
+- 388 components considered by the story-coverage script; 226 have stories
+  (**58.2%** coverage).
 - 78 source modules exceed 1,000 lines; 20 exceed 2,000 lines. Extraction adds
   small independently tested modules before it can reduce this count.
 - The built `dist` contains approximately **10.7 MB** of JavaScript.
-- The root barrel contains 159 export statements; the component barrel 169;
-  `package.json` defines 63 export subpaths.
-- The API ratchet records 3,306 root exports. Knip now uses real entries and
+- The root barrel exposes the stable primitives plus `cn`; feature consumers
+  use explicit package subpaths.
+- The API ratchet records 143 root exports. Knip now uses real entries and
   reports zero orphaned files or dependency issues.
 
 Largest production modules:
 
 | File | Lines | Concern |
 | --- | ---: | --- |
-| `components/shell/ChatOverlay.tsx` | 6,542 | Motion policy is extracted; chat UI, voice, composer, and overlays remain concentrated. |
-| `api/client-agent.ts` | 4,642 | Connector-account contracts are extracted; other endpoint families remain. |
+| `components/shell/ChatOverlay.tsx` | 6,300 | Motion and transcript policy are extracted; gestures, composer, and overlays remain concentrated. |
+| `api/client-agent.ts` | 4,425 | Both connector-account and provider-account transports are extracted; other endpoint families remain. |
 | `api/ios-local-agent-kernel.ts` | 3,977 | Mobile policy is extracted; native orchestration remains in the UI package. |
 | `api/client-cloud.ts` | 3,768 | Direct endpoint policy is extracted; cloud control-plane behavior remains broad. |
 | `components/shell/NotificationsHomeCenter.tsx` | 3,146 | Gesture policy is extracted; store behavior and presentation remain coupled. |
 | `App.tsx` | 2,981 | Route loaders are extracted; shell modes, navigation, and overlays remain in the composition root. |
-| `hooks/useVoiceChat.ts` | 3,149 | Voice state machine, transport, and React integration need separation. |
+| `hooks/useVoiceChat.ts` | 2,945 | Audio playback is extracted; the voice state machine and transport selection remain coupled to React. |
 | `components/pages/BrowserWorkspaceView.tsx` | 2,819 | Feature-level surface is too large to reason about or review visually. |
-| `state/useChatSend.ts` | 2,816 | Message preparation, routing, optimistic state, errors, and transport are entangled. |
-| `state/AppContext.tsx` | 2,571 | A broad context remains the integration point for many unrelated domains. |
+| `state/AppContext.tsx` | 2,561 | A broad context remains the integration point for many unrelated domains. |
+| `state/useChatSend.ts` | 2,541 | View routing and failure policy are extracted; message preparation, optimistic state, and transport remain entangled. |
 
 ## Detailed findings
 
 ### P1 — The package boundary is too broad
 
-**Status:** staged. Zero new boundary violations are enforced and migration
-seams exist; physical package publication remains release work.
+**Status:** completed as internal boundaries. Zero cross-layer violations are
+enforced; a physical package split was explicitly rejected.
 
 **Locations:** `src/cloud/`, `src/cloud-ui/`, `src/api/`, `src/voice/`,
 `src/services/local-inference/`, `src/App.tsx`, `package.json`
@@ -157,18 +164,11 @@ management, and the full app shell. This inflates install and analysis cost,
 makes browser/server safety depend on careful subpath usage, and gives every
 change an enormous regression radius.
 
-Recommended target boundaries:
-
-1. `@elizaos/ui` — tokens, primitives, layouts, small shared hooks, i18n types.
-2. `@elizaos/app-shell` — `App`, shell components, startup rendering, home,
-   navigation, and shell registries.
-3. `@elizaos/ui-client` — typed HTTP/WS client and browser-safe transports.
-4. `@elizaos/cloud-ui` — cloud console and cloud-specific brand compositions.
-5. Native/local-inference orchestration should live with its runtime or bridge,
-   leaving only typed UI adapters in the renderer package.
-
-Do this incrementally with compatibility re-exports and import-boundary tests.
-Avoid a single flag-day move.
+The retained boundary is one package with narrow subpaths: primitives at the
+root, client transports under `@elizaos/ui/api/*`, cloud surfaces under
+`@elizaos/ui/cloud-ui/*`, and shell/state/view contracts under their existing
+subpaths. Boundary tests prevent feature layers from reaching across those
+domains accidentally.
 
 ### P1 — Unused-file analysis is disabled by the Knip entry configuration
 
@@ -255,8 +255,8 @@ at the old public seam.
 
 ### P1 — The public API is too permissive and collision-prone
 
-**Status:** staged. The generated 3,306-export inventory is a no-growth gate;
-actual removal requires downstream deprecation and semver coordination.
+**Status:** completed for repository consumers. The root inventory is 143 and
+is a no-growth gate; feature APIs remain available from supported subpaths.
 
 **Locations:** `src/index.ts`, `src/components/index.ts`, `package.json#exports`
 
@@ -511,26 +511,25 @@ Report-writing commands generate these locally only when explicitly requested;
 
 ## Remaining work sequence
 
-1. **Publish package boundaries.** Move the already-separated app-shell,
-   client, and cloud domains behind compatibility re-exports; migrate consumers
-   before removing old paths.
-2. **Contract the root API.** Use the generated inventory to mark deprecated
-   root exports, migrate downstream imports to supported subpaths, then lower
-   the baseline in semver-safe batches.
-3. **Continue behavior-first decomposition.** Move the next coherent provider,
+1. **Continue behavior-first decomposition.** Move the next coherent provider,
    transport, or presentation unit from each large composition file; retain
    behavioral tests at the old seam.
-4. **Raise visual coverage.** Add stories for the 177 uncovered visual
-   components and interactions beyond the current 17, lowering both baselines
+2. **Raise visual coverage.** Add stories for the 162 uncovered visual
+   components and interactions beyond the current 24, lowering both baselines
    after every batch.
-5. **Repair the Storybook runtime baseline.** The full 1,520-story audit
-   currently reports 91 regressions: primarily color-contrast findings, plus
-   network-dependent music-player stories and blank-render avatar/loading
-   states. Convert network stories to deterministic fixtures, make intentional
-   skeleton/avatar renders auditable, and fix contrast at shared token seams.
-6. **Burn down allowlists.** Convert the 407 color-bearing files, existing
-   console-warning fingerprints, and 561 test headers in independently
-   reviewable batches.
+3. **Eliminate console-warning debt.** Add missing React `act()` boundaries,
+   locally assert intentional error-boundary output, and provide scoped jsdom
+   canvas/media shims. Do not globally silence these warnings.
+4. **Split the remaining composition hotspots.** Highest-value next seams are
+   `ChatOverlay` gesture/composer ownership, coding-agent/orchestrator/PTY
+   transports in `client-agent`, `AppContext` domain value composition,
+   `BrowserWorkspaceView` embedding policy, and the native/cloud client kernels.
+5. **Resolve bundler warnings.** Publish browser-safe core contracts that do not
+   pull `node:async_hooks` into Storybook, align `three` and `three-vrm` WebGPU
+   exports, remove ineffective dynamic imports, and establish a chunk budget.
+6. **Review specialized color data.** Keep provider logos and visualization or
+   syntax palettes explicit, but move reusable palettes to named theme/data
+   modules and retain contrast tests at their rendered surfaces.
 
 ## Verification performed
 
@@ -546,13 +545,12 @@ Report-writing commands generate these locally only when explicitly requested;
   tests before host worker exhaustion; the bounded rerun proves the package
   itself is green.
 - Static ratchets — dead code 0, forbidden cross-layer imports 0, hardcoded
-  color files 407, missing production headers 0, missing test headers 561,
-  stories 210/387 (54.3%), interactive `play` stories 17, and root public API
-  exports 3,306.
-- The broader Storybook runtime audit completed all 1,520 stories but is not
-  baseline-clean: 91 new regressions (accessibility, network-dependent stories,
-  and blank-render detection). These are recorded above as remaining work; they
-  do not invalidate the green package unit suite or app-level visual audit.
+  color files 31, missing production headers 0, missing test headers 0,
+  stories 226/388 (58.2%), interactive `play` story files 24, and root public
+  API exports 143.
+- The final Storybook runtime audit completed all 1,538 retained stories:
+  1,482 good, 56 explicitly runtime-dependent, 0 broken, and 0 accessibility
+  violations. It executed 38 prepared interactions against 32 expected stories.
 - `bun run --cwd packages/app audit:app` — **218/218 captures passed**. Computed
   verdicts were 198 good, 18 needs-eyeball, 0 needs-work, and 0 broken. OCR
   verification covered 216 views with 92 verified, 124 needs-eyeball, and 0

@@ -146,5 +146,5 @@
     }
   },
   "exclude": ["src/cli/**", "src/**/*.stories.ts", "src/**/*.stories.tsx"],
-  "include": ["src", "../agent/src/external-modules.d.ts", "vite-env.d.ts"]
+  "include": ["src", "vite-env.d.ts"]
 }

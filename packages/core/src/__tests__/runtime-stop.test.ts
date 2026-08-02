@@ -124,6 +124,31 @@ describe("AgentRuntime.stop", () => {
 		expect(process.env.ELIZA_FAST_SHUTDOWN).toBe(previousFastShutdown);
 	});
 
+	it("preserves service startup failures instead of resolving them as absence", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+
+		class FailingStartService extends Service {
+			static override serviceType = "shutdown-failing-start-service";
+			capabilityDescription = "service whose startup fails for testing";
+
+			static override async start(): Promise<FailingStartService> {
+				throw new Error("startup dependency unavailable");
+			}
+		}
+
+		await runtime.registerService(FailingStartService);
+		await expect(
+			runtime.getServiceLoadPromise(FailingStartService.serviceType),
+		).rejects.toMatchObject({
+			code: "SERVICE_START_FAILED",
+			cause: expect.objectContaining({
+				message: "startup dependency unavailable",
+			}),
+		});
+		await runtime.stop();
+	});
+
 	it("continues when a service stop throws synchronously", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });

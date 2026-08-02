@@ -1,4 +1,4 @@
-# wakeword-cpp — Phase 2 (real runtime)
+# `wakeword-cpp` native runtime
 
 Standalone C library that ports
 [dscripka/openWakeWord](https://github.com/dscripka/openWakeWord)'s
@@ -29,7 +29,8 @@ are not present.
   `voice-classifier-cpp`) follow the same pattern: a frozen C ABI, an
   in-house GGUF v3 reader, fp16 weights upcast to fp32 at session
   open, and a scalar-fp32 reference forward pass. We mirror their
-  layout (`src/wakeword_runtime.c` ≈ `src/silero_vad_runtime.c`).
+  layout (`src/wakeword_runtime.c` parallels
+  `packages/native/plugins/silero-vad-cpp/src/silero_vad_runtime.c`).
 
 ## Upstream pin
 
@@ -49,7 +50,7 @@ are not present.
   trained eliza-1 head, NOT the old `hey_jarvis_v0.1` placeholder).
   Reproduce with `test/wakeword_score_raw.c` — see
   #9880. The `hey-eliza-int8.onnx`
-  placeholder note is historical (pre-v0.3.0).
+  placeholder note does not describe the current runtime.
 
 ## Three-stage pipeline + GGUF conversion
 
@@ -85,7 +86,7 @@ HEAD_WINDOW       = 16    # embeddings per classifier step
 ## C ABI (frozen by `include/wakeword/wakeword.h`)
 
 The runtime implements every entry point declared in the header. The
-contract is unchanged from Phase 1 — only the implementation behind
+contract is stable; only the implementation behind
 it became real.
 
 - `wakeword_open(melspec_gguf, embedding_gguf, classifier_gguf, *out)`
@@ -140,10 +141,10 @@ Test binaries:
   arguments, missing files, NULL handle entry points).
 - `wakeword_melspec_test` — spectral correctness check for the
   legacy (no-GGUF) C-side mel front-end on a 1 kHz / 4 kHz tone.
-  This is unchanged from Phase 1; the runtime path uses the
+  The runtime path uses the
   upstream filter bank loaded from `melspec.gguf` instead.
 - `wakeword_window_test` — sliding-window framing correctness;
-  unchanged from Phase 1.
+  stable across implementations.
 - `wakeword_runtime_test` — end-to-end smoke against the real
   runtime. Loads the three GGUFs and runs silence + a synthesized
   chirp through `wakeword_process`. **Refuses** to run without the
@@ -186,8 +187,8 @@ the older single-`openwakeword.gguf` artefact.
   a streaming peak tracker if tighter agreement is needed.
 - **No `wakeword_reset`.** The streaming state lives on the session
   and `wakeword_close` + `wakeword_open` is the only way to clear
-  it. Adding an in-place reset is a 30-line follow-up if the voice
-  lifecycle ever needs it.
+  it. Add an in-place reset only when the voice lifecycle owns and verifies the
+  corresponding behavior.
 - **No SIMD.** The 20-conv stack is the dominant cost (≈300 K MACs
   per 80 ms hop, ≈4 ms wall-clock on a Ryzen laptop core in `-O3`).
   Real-time stays well under 1 % of CPU but a NEON / AVX2 conv2d
@@ -199,7 +200,7 @@ the older single-`openwakeword.gguf` artefact.
   parity test's tolerance covers this; switching to fp32 storage is
   a flip in the converter (`np.float16` → `np.float32`).
 
-## Repo layout (post-Phase 2)
+## Repository layout
 
 ```
 packages/native/plugins/wakeword-cpp/
@@ -212,13 +213,13 @@ packages/native/plugins/wakeword-cpp/
 │   ├── wakeword_internal.h         # shared dimensions & melspec API
 │   ├── wakeword_melspec.c          # streaming log-mel (GGUF + legacy modes)
 │   ├── wakeword_runtime.c          # session lifecycle + embedding + classifier
-│   └── wakeword_window.c           # 80 ms sliding-window framer (Phase 1, unchanged)
+│   └── wakeword_window.c           # 80 ms sliding-window framer
 └── test/
     ├── wakeword_melspec_test.c     # spectral correctness (legacy mode)
     ├── wakeword_parity_test.py     # C ↔ ONNX parity gate
     ├── wakeword_runtime_test.c     # end-to-end runtime smoke
     ├── wakeword_stub_smoke.c       # public-ABI link smoke
-    └── wakeword_window_test.c      # framing correctness (Phase 1, unchanged)
+    └── wakeword_window_test.c      # framing correctness
 ```
 
 ## Verification

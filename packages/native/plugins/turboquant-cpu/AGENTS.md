@@ -1,4 +1,4 @@
-# turboquant-cpu — AGENTS
+# `turboquant-cpu`
 
 Standalone C library for the **TurboQuant** weight/value-cache
 quantization formats (`block_tbq3_0`, `block_tbq4_0`, and
@@ -73,7 +73,7 @@ metadata writer used by tooling:
 | eliza-1-27b  |          ✓ shipped | ✓ buildable | required ≥65k |
 | eliza-1-27b-256k | ✓ shipped | ✓ buildable | required (256k) |
 
-See `packages/training/reports/eliza1-quant-matrix-2026-05-14.md` for
+See the current artifacts under `packages/training/reports/` for
 the full tier × quant-type matrix and per-cell evidence (shipped
 artifact paths, build commands, kernel-contract test references).
 

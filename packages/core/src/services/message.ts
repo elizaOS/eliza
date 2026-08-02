@@ -5878,22 +5878,6 @@ export function __buildV5ExecutorContextForTests(
 	return buildV5ExecutorContext(args);
 }
 
-function plannerErrorLooksTransient(error: unknown): boolean {
-	const message =
-		error instanceof Error
-			? `${error.name} ${error.message} ${String(error.cause ?? "")}`
-			: String(error ?? "");
-	// The trailing three ("empty completion", "model emitted no decision", "no
-	// assistant message") are the CLI/SDK brains' "provider returned nothing
-	// usable" errors. They are recoverable per-turn hiccups (a cold-start blip,
-	// one bad SDK turn), so treat them as transient → a deterministic fallback
-	// tool call, instead of re-throwing and crashing the whole turn with a raw
-	// exception the user sees.
-	return /\b(?:429|rate[\s_-]*limit|too many requests|temporarily unavailable|overloaded|timeout|timed out|econnreset|etimedout|50[234]|failed after \d+ attempts|empty completion|model emitted no decision|no assistant message)\b/i.test(
-		message,
-	);
-}
-
 function trimExtractedUrl(value: string): string {
 	return value.replace(/[),.;:!?]+$/u, "");
 }

@@ -103,10 +103,10 @@ function makeRuntime(modelResponse: unknown): FactsRuntime {
 }
 
 describe("parseFactsAndRelationshipsOutput", () => {
-	it("returns empty arrays for empty input", () => {
-		const result = parseFactsAndRelationshipsOutput("");
-		expect(result.facts).toEqual([]);
-		expect(result.relationships).toEqual([]);
+	it("rejects empty input instead of fabricating an empty extraction", () => {
+		expect(() => parseFactsAndRelationshipsOutput("")).toThrow(
+			expect.objectContaining({ code: "FACTS_MODEL_OUTPUT_MISSING" }),
+		);
 	});
 
 	it("parses text-shape JSON output", () => {
@@ -183,20 +183,19 @@ describe("parseFactsAndRelationshipsOutput", () => {
 		expect(viaParams.facts).toEqual(["y"]);
 	});
 
-	it("drops malformed relationship entries", () => {
-		const result = parseFactsAndRelationshipsOutput(
-			JSON.stringify({
-				facts: [],
-				relationships: [
-					{ subject: "user", predicate: "", object: "Alice" },
-					{ subject: "user", predicate: "manages", object: "Bob" },
-				],
-				thought: "",
-			}),
-		);
-		expect(result.relationships).toEqual([
-			{ subject: "user", predicate: "manages", object: "Bob" },
-		]);
+	it("rejects malformed relationship entries instead of silently dropping them", () => {
+		expect(() =>
+			parseFactsAndRelationshipsOutput(
+				JSON.stringify({
+					facts: [],
+					relationships: [
+						{ subject: "user", predicate: "", object: "Alice" },
+						{ subject: "user", predicate: "manages", object: "Bob" },
+					],
+					thought: "",
+				}),
+			),
+		).toThrow(expect.objectContaining({ code: "FACTS_RELATIONSHIP_INVALID" }));
 	});
 });
 

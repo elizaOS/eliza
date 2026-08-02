@@ -1,4 +1,4 @@
-# qjl-cpu — AGENTS
+# `qjl-cpu`
 
 Standalone C library for the **QJL** 1-bit Johnson–Lindenstrauss
 K-cache compressor. The fork-side ggml type is
@@ -39,7 +39,7 @@ QJL is the **K-cache default for every shipping Eliza-1 tier** — see
 
 The full tier × quant-type matrix (rows = tier, columns = QJL-K +
 PolarQuant-V + TurboQuant-W variants) lives at
-`packages/training/reports/eliza1-quant-matrix-2026-05-14.md`.
+the current artifacts under `packages/training/reports/`.
 
 ## Tests + parity
 

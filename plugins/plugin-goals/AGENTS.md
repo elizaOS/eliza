@@ -5,8 +5,7 @@ check-ins, and a self-care / mood / journal panel.
 
 ## Purpose / role
 
-Decomposed out of `@elizaos/plugin-personal-assistant` to make the "life direction"
-surface a self-contained plugin. Owns the fully migrated `OWNER_GOALS` action,
+Owns the self-contained life-direction domain: the `OWNER_GOALS` action,
 the check-in service (`GoalsCheckinService`), the corresponding drizzle
 `pgSchema('app_goals')` tables, and the desktop `goals` view. Routines,
 reminders, and alarms remain host-adapted owner surfaces in
@@ -59,9 +58,9 @@ across `@elizaos/plugin-reminders` and the shared scheduled-task runner.
   hooks (PA-free topology).
 
 ### Services
-- **`GoalsCheckinService`** (`src/services/checkin.ts`) — daily check-in
-  engine. Stub. Will absorb the PA `CheckinService`
-  (`plugin-personal-assistant/src/lifeops/checkin/checkin-service.ts`).
+- **`GoalsCheckinService`** (`src/services/checkin.ts`) — reconciles per-goal
+  `ScheduledTask` check-ins with goal cadence, records owner responses, and
+  retires tasks when goals or cadence change.
 
 ### Views
 - **`goals`** — `GoalsView` (`src/components/goals/GoalsView.tsx`); path
@@ -118,19 +117,14 @@ bun run --cwd plugins/plugin-goals build:types   # tsc declaration emit
 bun run --cwd plugins/plugin-goals clean         # rm -rf dist
 ```
 
-## Migration mapping (personal-assistant -> plugin-goals)
+## Ownership boundary
 
-| Owner surface                | Source in personal-assistant                                                              | Target here                              |
-|-----------------------------|-------------------------------------------------------------------------------------------|------------------------------------------|
-| `OWNER_GOALS`                | `src/actions/owner-surfaces.ts` (search `OWNER_GOAL_ACTIONS`)                              | `src/actions/goals.ts`                   |
-| Daily check-in engine        | `src/lifeops/checkin/checkin-service.ts`, `schedule-resolver.ts`, `types.ts`               | `src/services/checkin.ts` (+ types)      |
-| Follow-up watcher            | `src/followup/followup-tracker.ts`, `src/followup/actions/`                                | `src/followup/` (to add)                 |
-| Default packs                | `src/default-packs/daily-rhythm.ts`, `habit-starters.ts`, `followup-starter.ts`            | `src/default-packs/` (to add)            |
-| Schema (goals + check-ins)   | `src/lifeops/schema.ts` (`app_goals` namespace)                                            | `src/db/schema.ts`                       |
-
-PA keeps the non-goal owner action orchestration for now. Do not re-add local
-stubs for those actions; migrate the real behavior with parity tests if
-ownership changes.
+This plugin owns goal CRUD, grounding, semantic progress evaluation, check-in
+task reconciliation, the `app_goals` schema, and the Goals view. Personal
+assistant owns cross-domain review/overview orchestration and the remaining
+owner actions. Reminders and alarms persist through `plugin-reminders`; all
+scheduled behavior uses `plugin-scheduling`. Move an ownership boundary only
+with import-cycle checks and parity tests across both plugins.
 
 ## Boundary with plugin-personal-assistant
 

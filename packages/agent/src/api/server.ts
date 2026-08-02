@@ -74,7 +74,6 @@ import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 // both plugins (and their transitive native deps) whenever anything imported
 // `@elizaos/agent`, which blocks container boot in cloud sandboxes.
 type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
-type X402PluginModule = typeof import("@elizaos/plugin-x402");
 
 let browserPluginModule: BrowserPluginModule | null = null;
 let x402PluginModule: X402PluginModule | null = null;
@@ -690,6 +689,7 @@ import type {
   LogEntry,
   ServerState,
 } from "./server-types.ts";
+import type { X402PluginModule } from "./x402-contract.ts";
 
 export {
   fetchWithTimeoutGuard,
@@ -2793,7 +2793,11 @@ async function handleRequest(
           }),
           isCloudWalletEnabled,
           persistConfigEnv,
-          createIntegrationTelemetrySpan,
+          createIntegrationTelemetrySpan: (args) =>
+            createIntegrationTelemetrySpan({
+              boundary: "wallet",
+              operation: args.operation,
+            }),
         },
         runtime: state.runtime ?? null,
       })
@@ -4774,6 +4778,7 @@ export async function startApiServer(opts?: {
     const x402 = await getX402Plugin();
     if (!x402) return; // x402 module unavailable (e.g. mobile bundle) — nothing to validate
     const { validateX402Startup } = x402;
+    if (!validateX402Startup) return;
     const result = validateX402Startup(rt.routes as Route[], rt.character, {
       agentId,
     });

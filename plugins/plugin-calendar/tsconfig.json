@@ -129,9 +129,7 @@
     }
   },
   "include": [
-    "src/**/*",
-    "../../packages/agent/src/external-modules.d.ts",
-    "../../packages/app-core/src/ambient-modules.d.ts"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",

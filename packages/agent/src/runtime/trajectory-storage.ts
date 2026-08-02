@@ -8,6 +8,7 @@
 import path from "node:path";
 import {
   logger as coreLogger,
+  ElizaError,
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
@@ -79,6 +80,25 @@ export type {
   CompleteStepOptions,
   StartStepOptions,
 } from "./trajectory-internals.ts";
+
+function requireTrajectoryDatabase(runtime: IAgentRuntime): void {
+  if (hasRuntimeDb(runtime)) return;
+  throw new ElizaError("Trajectory storage is unavailable", {
+    code: "TRAJECTORY_DATABASE_UNAVAILABLE",
+    context: { agentId: String(runtime.agentId) },
+  });
+}
+
+function trajectoryOperationError(
+  operation: string,
+  error: unknown,
+): ElizaError {
+  return new ElizaError(`Trajectory ${operation} failed`, {
+    code: "TRAJECTORY_STORAGE_OPERATION_FAILED",
+    cause: error,
+    context: { operation },
+  });
+}
 
 // ---------------------------------------------------------------------------
 // appendLlmCall / appendProviderAccess
@@ -535,12 +555,9 @@ async function loadPersistedTrajectoriesForExport(
       .filter((trajectory): trajectory is PersistedTrajectory =>
         Boolean(trajectory),
       );
-  } catch (err) {
-    coreLogger.warn(
-      "[trajectory-persistence] exportPersistedTrajectoriesRaw failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-    return [];
+  } catch (error) {
+    // error-policy:J2 a failed export query is not an empty export.
+    throw trajectoryOperationError("raw export", error);
   }
 }
 
@@ -580,8 +597,10 @@ export async function installDatabaseTrajectoryLogger(
   ) {
     try {
       logger.setEnabled(shouldEnableByDefault);
-    } catch {
-      // Ignore logger enable failures and continue.
+    } catch (error) {
+      // error-policy:J7 logger instrumentation must not kill the runtime loop,
+      // but the diagnostic failure remains observable.
+      warnRuntime(runtime, "Trajectory logger enablement failed", error);
     }
   }
 
@@ -609,6 +628,8 @@ export async function installDatabaseTrajectoryLogger(
       try {
         originalLogLlmCall(...args);
       } catch (err) {
+        // error-policy:J7 third-party logger diagnostics cannot interrupt the
+        // model path; warnRuntime reports the instrumentation failure.
         warnRuntime(runtime, "Trajectory logger logLlmCall threw", err);
       }
     }
@@ -634,6 +655,8 @@ export async function installDatabaseTrajectoryLogger(
       try {
         originalLogProviderAccess(...args);
       } catch (err) {
+        // error-policy:J7 third-party logger diagnostics cannot interrupt the
+        // model path; warnRuntime reports the instrumentation failure.
         warnRuntime(runtime, "Trajectory logger logProviderAccess threw", err);
       }
     }
@@ -765,9 +788,7 @@ export async function installDatabaseTrajectoryLogger(
   loggerAny.listTrajectories = async (
     options: TrajectoryListOptions = {},
   ): Promise<TrajectoryListResult> => {
-    if (!hasRuntimeDb(runtime)) {
-      return { trajectories: [], total: 0, offset: 0, limit: 50 };
-    }
+    requireTrajectoryDatabase(runtime);
 
     const tableReady = await ensureTrajectoriesTable(runtime);
     if (!tableReady) {
@@ -798,19 +819,16 @@ export async function installDatabaseTrajectoryLogger(
         .filter(Boolean) as TrajectoryListItem[];
 
       return { trajectories, total, offset, limit };
-    } catch (err) {
-      coreLogger.error(
-        "[trajectory-persistence] listTrajectories error:",
-        err instanceof Error ? err.message : String(err),
-      );
-      return { trajectories: [], total: 0, offset, limit };
+    } catch (error) {
+      // error-policy:J2 an unavailable query is not an empty trajectory list.
+      throw trajectoryOperationError("list", error);
     }
   };
 
   loggerAny.getTrajectoryDetail = async (
     trajectoryId: string,
   ): Promise<Trajectory | null> => {
-    if (!hasRuntimeDb(runtime)) return null;
+    requireTrajectoryDatabase(runtime);
 
     const tableReady = await ensureTrajectoriesTable(runtime);
     if (!tableReady) return null;
@@ -822,23 +840,9 @@ export async function installDatabaseTrajectoryLogger(
   };
 
   loggerAny.getStats = async (): Promise<unknown> => {
-    const emptyStats = {
-      totalTrajectories: 0,
-      totalLlmCalls: 0,
-      totalProviderAccesses: 0,
-      totalPromptTokens: 0,
-      totalCompletionTokens: 0,
-      totalCacheReadInputTokens: 0,
-      totalCacheCreationInputTokens: 0,
-      averageDurationMs: 0,
-      bySource: {},
-      byModel: {},
-    };
+    requireTrajectoryDatabase(runtime);
 
-    if (!hasRuntimeDb(runtime)) return emptyStats;
-
-    const tableReady = await ensureTrajectoriesTable(runtime);
-    if (!tableReady) return emptyStats;
+    await ensureTrajectoriesTable(runtime);
 
     try {
       const aggResult = await executeRawSql(
@@ -876,8 +880,9 @@ export async function installDatabaseTrajectoryLogger(
         bySource,
         byModel: {},
       };
-    } catch {
-      return emptyStats;
+    } catch (error) {
+      // error-policy:J2 failed aggregation is not a legitimate all-zero run.
+      throw trajectoryOperationError("statistics query", error);
     }
   };
 
@@ -907,7 +912,8 @@ export async function installDatabaseTrajectoryLogger(
     loggerForRoutes.deleteTrajectories = async (
       trajectoryIds: string[],
     ): Promise<number> => {
-      if (!hasRuntimeDb(runtime) || trajectoryIds.length === 0) return 0;
+      if (trajectoryIds.length === 0) return 0;
+      requireTrajectoryDatabase(runtime);
       const tableReady = await ensureTrajectoriesTable(runtime);
       if (!tableReady) return 0;
 
@@ -918,15 +924,16 @@ export async function installDatabaseTrajectoryLogger(
           `DELETE FROM trajectories WHERE id IN (${ids})`,
         );
         return trajectoryIds.length;
-      } catch {
-        return 0;
+      } catch (error) {
+        // error-policy:J2 deletion failures retain their database cause.
+        throw trajectoryOperationError("delete", error);
       }
     };
   }
 
   if (typeof loggerForRoutes.clearAllTrajectories !== "function") {
     loggerForRoutes.clearAllTrajectories = async (): Promise<number> => {
-      if (!hasRuntimeDb(runtime)) return 0;
+      requireTrajectoryDatabase(runtime);
       const tableReady = await ensureTrajectoriesTable(runtime);
       if (!tableReady) return 0;
 
@@ -939,8 +946,9 @@ export async function installDatabaseTrajectoryLogger(
         const total = toNumber(countRow?.total, 0);
         await executeRawSql(runtime, "DELETE FROM trajectories");
         return total;
-      } catch {
-        return 0;
+      } catch (error) {
+        // error-policy:J2 clearing failures cannot be reported as zero rows.
+        throw trajectoryOperationError("clear", error);
       }
     };
   }
@@ -1124,7 +1132,7 @@ export async function deletePersistedTrajectoryRows(
   runtime: IAgentRuntime,
   trajectoryIds: string[],
 ): Promise<number | null> {
-  if (!hasRuntimeDb(runtime)) return null;
+  requireTrajectoryDatabase(runtime);
   const tableReady = await ensureTrajectoriesTable(runtime);
   if (!tableReady) return 0;
 
@@ -1135,42 +1143,32 @@ export async function deletePersistedTrajectoryRows(
 
   const values = normalized.map((id) => sqlQuote(id)).join(", ");
 
-  // Remove step rows first to avoid orphans when the parent row is
-  // already gone. Best-effort — failures here don't block the parent
-  // delete since the parent FK relationship is enforced at the
-  // application level only.
   try {
+    const countResult = await executeRawSql(
+      runtime,
+      `SELECT count(*) AS total FROM trajectories WHERE id IN (${values})`,
+    );
+    const countRow = asRecord(extractRows(countResult)[0]);
+    const total = toNumber(countRow?.total, 0);
     await executeRawSql(
       runtime,
       `DELETE FROM trajectory_steps WHERE trajectory_id IN (${values})`,
     );
-  } catch {
-    // ignore — orphans are tolerable.
-  }
-
-  try {
-    const result = await executeRawSql(
+    await executeRawSql(
       runtime,
-      `DELETE FROM trajectories WHERE id IN (${values}) RETURNING id`,
+      `DELETE FROM trajectories WHERE id IN (${values})`,
     );
-    return extractRows(result).length;
-  } catch {
-    try {
-      await executeRawSql(
-        runtime,
-        `DELETE FROM trajectories WHERE id IN (${values})`,
-      );
-      return normalized.length;
-    } catch {
-      return null;
-    }
+    return total;
+  } catch (error) {
+    // error-policy:J2 both parent and step deletion are one required operation.
+    throw trajectoryOperationError("delete persisted rows", error);
   }
 }
 
 export async function clearPersistedTrajectoryRows(
   runtime: IAgentRuntime,
 ): Promise<number | null> {
-  if (!hasRuntimeDb(runtime)) return null;
+  requireTrajectoryDatabase(runtime);
   const tableReady = await ensureTrajectoriesTable(runtime);
   if (!tableReady) return 0;
 
@@ -1181,16 +1179,13 @@ export async function clearPersistedTrajectoryRows(
     );
     const countRow = asRecord(extractRows(countResult)[0]);
     const total = toNumber(countRow?.total, 0);
-    // Clear step rows first; both tables will be empty when this returns.
-    try {
-      await executeRawSql(runtime, "DELETE FROM trajectory_steps");
-    } catch {
-      // ignore — orphans are tolerable.
-    }
+    // Step rows are authoritative and must clear with their parent records.
+    await executeRawSql(runtime, "DELETE FROM trajectory_steps");
     await executeRawSql(runtime, "DELETE FROM trajectories");
     return total;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 clear failures cannot be represented as an absent result.
+    throw trajectoryOperationError("clear persisted rows", error);
   }
 }
 
@@ -1402,9 +1397,7 @@ export class DatabaseTrajectoryLogger extends Service {
   async listTrajectories(
     options: TrajectoryListOptions,
   ): Promise<TrajectoryListResult> {
-    if (!hasRuntimeDb(this.runtime)) {
-      return { trajectories: [], total: 0, offset: 0, limit: 50 };
-    }
+    requireTrajectoryDatabase(this.runtime);
 
     const tableReady = await ensureTrajectoriesTable(this.runtime);
     if (!tableReady) {
@@ -1435,17 +1428,15 @@ export class DatabaseTrajectoryLogger extends Service {
         .filter(Boolean) as TrajectoryListItem[];
 
       return { trajectories, total, offset, limit };
-    } catch (err) {
-      coreLogger.error(
-        "[DatabaseTrajectoryLogger] listTrajectories error:",
-        err instanceof Error ? err.message : String(err),
-      );
-      return { trajectories: [], total: 0, offset, limit };
+    } catch (error) {
+      // error-policy:J2 transport consumers must receive a failed query rather
+      // than a healthy empty list.
+      throw trajectoryOperationError("list", error);
     }
   }
 
   async getTrajectoryDetail(trajectoryId: string): Promise<Trajectory | null> {
-    if (!hasRuntimeDb(this.runtime)) return null;
+    requireTrajectoryDatabase(this.runtime);
 
     const tableReady = await ensureTrajectoriesTable(this.runtime);
     if (!tableReady) return null;
@@ -1457,9 +1448,7 @@ export class DatabaseTrajectoryLogger extends Service {
   }
 
   async getStats(): Promise<unknown> {
-    if (!hasRuntimeDb(this.runtime)) {
-      return { total: 0, byStatus: {}, bySource: {} };
-    }
+    requireTrajectoryDatabase(this.runtime);
 
     const tableReady = await ensureTrajectoriesTable(this.runtime);
     if (!tableReady) {
@@ -1482,8 +1471,9 @@ export class DatabaseTrajectoryLogger extends Service {
         byStatus: {},
         bySource,
       };
-    } catch {
-      return { total: 0, byStatus: {}, bySource: {} };
+    } catch (error) {
+      // error-policy:J2 a failed statistics query is not an all-zero dataset.
+      throw trajectoryOperationError("statistics query", error);
     }
   }
 
@@ -1570,7 +1560,7 @@ export async function pruneOldTrajectories(
   runtime: IAgentRuntime,
   maxAgeDays = 30,
 ): Promise<number | null> {
-  if (!hasRuntimeDb(runtime)) return null;
+  requireTrajectoryDatabase(runtime);
   const tableReady = await ensureTrajectoriesTable(runtime);
   if (!tableReady) return 0;
 
@@ -1581,27 +1571,20 @@ export async function pruneOldTrajectories(
 
   try {
     // Step 1: Persist full training rows to compressed local archive.
-    let archivePath = "";
-    try {
-      const archived = await exportRawTrajectoriesToCompressedArchive(
-        runtime,
-        cutoff,
-        archivedAt,
-      );
-      archivePath = archived.archivePath;
-      if (archived.rowCount > 0 && !archivePath) {
-        return 0;
-      }
-    } catch (err) {
-      coreLogger.warn(
-        "[trajectory-persistence] Could not write compressed trajectory archive, skipping prune",
-        err instanceof Error ? err.message : String(err),
-      );
-      return null;
+    const archived = await exportRawTrajectoriesToCompressedArchive(
+      runtime,
+      cutoff,
+      archivedAt,
+    );
+    const archivePath = archived.archivePath;
+    if (archived.rowCount > 0 && !archivePath) {
+      throw new ElizaError("Trajectory archive path is missing", {
+        code: "TRAJECTORY_ARCHIVE_PATH_MISSING",
+        context: { rowCount: archived.rowCount },
+      });
     }
 
     // Step 2: Copy summary rows to archive table (idempotent).
-    let summaryArchived = false;
     try {
       await executeRawSql(
         runtime,
@@ -1628,9 +1611,9 @@ export async function pruneOldTrajectories(
         FROM trajectories
         WHERE created_at < ${sqlQuote(cutoff)}`,
       );
-      summaryArchived = true;
-    } catch {
-      // PostgreSQL uses ON CONFLICT DO NOTHING instead of INSERT OR IGNORE
+    } catch (sqliteError) {
+      // error-policy:J2 the first dialect failure is retained if PostgreSQL's
+      // equivalent statement also fails.
       try {
         await executeRawSql(
           runtime,
@@ -1658,19 +1641,12 @@ export async function pruneOldTrajectories(
           WHERE created_at < ${sqlQuote(cutoff)}
           ON CONFLICT (id) DO NOTHING`,
         );
-        summaryArchived = true;
-      } catch {
-        coreLogger.warn(
-          "[trajectory-persistence] Could not write summary trajectory archive rows",
-        );
+      } catch (postgresError) {
+        throw new ElizaError("Could not archive trajectory summaries", {
+          code: "TRAJECTORY_SUMMARY_ARCHIVE_FAILED",
+          cause: new AggregateError([sqliteError, postgresError]),
+        });
       }
-    }
-
-    if (!summaryArchived) {
-      coreLogger.warn(
-        "[trajectory-persistence] Summary archive insert failed, skipping prune delete",
-      );
-      return null;
     }
 
     // Step 3: Delete the archived rows from the main table.
@@ -1687,7 +1663,9 @@ export async function pruneOldTrajectories(
       );
     }
     return count;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 pruning is a write path; failed archive/delete work must
+    // surface rather than look like a disabled pruning result.
+    throw trajectoryOperationError("prune", error);
   }
 }

@@ -157,14 +157,7 @@ export function DashboardSidebarNavigationItem({
         <>
           <span className="flex-1 whitespace-nowrap">{item.label}</span>
           {item.isNew && (
-            <span
-              className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.1)",
-                color: "#ffffff",
-                border: "1px solid rgba(255, 255, 255, 0.28)",
-              }}
-            >
+            <span className="border border-white/30 bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
               NEW
             </span>
           )}

@@ -126,9 +126,5 @@
     }
   },
   "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
-  "include": [
-    "src",
-    "../app-core/src/ambient-modules.d.ts",
-    "../agent/src/external-modules.d.ts"
-  ]
+  "include": ["src"]
 }

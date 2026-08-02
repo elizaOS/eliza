@@ -16,6 +16,7 @@ import { createGzip } from "node:zlib";
 import {
   composePrompt,
   logger as coreLogger,
+  ElizaError,
   type IAgentRuntime,
   ModelType,
   observationExtractionTemplate,
@@ -809,6 +810,44 @@ export function warnRuntime(
 // Schema management
 // ---------------------------------------------------------------------------
 
+function databaseErrorMatches(error: unknown, patterns: RegExp[]): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return patterns.some((pattern) => pattern.test(message));
+}
+
+function isMissingTableError(error: unknown): boolean {
+  return databaseErrorMatches(error, [
+    /no such table/i,
+    /relation .* does not exist/i,
+    /table .* does not exist/i,
+  ]);
+}
+
+function isDuplicateColumnError(error: unknown): boolean {
+  return databaseErrorMatches(error, [
+    /duplicate column/i,
+    /column .* already exists/i,
+  ]);
+}
+
+async function addColumnIfMissing(
+  runtime: IAgentRuntime,
+  table: string,
+  name: string,
+  definition: string,
+): Promise<void> {
+  try {
+    await executeRawSql(
+      runtime,
+      `ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`,
+    );
+  } catch (error) {
+    // error-policy:J3 only the database's explicit duplicate-column response
+    // means the idempotent migration is already complete.
+    if (!isDuplicateColumnError(error)) throw error;
+  }
+}
+
 export async function ensureTrajectoriesTable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
@@ -845,17 +884,12 @@ export async function ensureTrajectoriesTable(
         { name: "ai_judge_reasoning", def: "TEXT" },
       ];
       for (const col of optionalColumns) {
-        try {
-          await executeRawSql(
-            runtime,
-            `ALTER TABLE trajectories ADD COLUMN ${col.name} ${col.def}`,
-          );
-        } catch {
-          // Column already exists — expected
-        }
+        await addColumnIfMissing(runtime, "trajectories", col.name, col.def);
       }
-    } catch {
-      // Table doesn't exist at all — create fresh (no data loss)
+    } catch (error) {
+      // error-policy:J3 only a database-native missing-table result selects the
+      // create path; permissions, connection, and syntax failures propagate.
+      if (!isMissingTableError(error)) throw error;
       needsRecreate = true;
       coreLogger.warn(
         "[trajectory-persistence] Trajectories table does not exist, creating...",
@@ -925,88 +959,43 @@ export async function ensureTrajectoriesTable(
     );
 
     // Best-effort forward migration for existing archive tables.
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectory_archive ADD COLUMN archive_blob_path TEXT`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectory_archive ADD COLUMN total_cache_read_input_tokens INTEGER NOT NULL DEFAULT 0`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectory_archive ADD COLUMN total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
+    await addColumnIfMissing(
+      runtime,
+      "trajectory_archive",
+      "archive_blob_path",
+      "TEXT",
+    );
+    await addColumnIfMissing(
+      runtime,
+      "trajectory_archive",
+      "total_cache_read_input_tokens",
+      "INTEGER NOT NULL DEFAULT 0",
+    );
+    await addColumnIfMissing(
+      runtime,
+      "trajectory_archive",
+      "total_cache_creation_input_tokens",
+      "INTEGER NOT NULL DEFAULT 0",
+    );
 
     // Best-effort forward migration for grouping columns.
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectories ADD COLUMN scenario_id TEXT`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
-      );
-    } catch (err) {
-      warnRuntime(
-        runtime,
-        "[trajectory-persistence] scenario index creation failed",
-        err,
-      );
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectories ADD COLUMN batch_id TEXT`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
-      );
-    } catch (err) {
-      warnRuntime(
-        runtime,
-        "[trajectory-persistence] batch index creation failed",
-        err,
-      );
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectory_archive ADD COLUMN scenario_id TEXT`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `ALTER TABLE trajectory_archive ADD COLUMN batch_id TEXT`,
-      );
-    } catch {
-      // ignore when column already exists
-    }
+    await addColumnIfMissing(runtime, "trajectories", "scenario_id", "TEXT");
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_trajectories_scenario_id ON trajectories(scenario_id)`,
+    );
+    await addColumnIfMissing(runtime, "trajectories", "batch_id", "TEXT");
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_trajectories_batch_id ON trajectories(batch_id)`,
+    );
+    await addColumnIfMissing(
+      runtime,
+      "trajectory_archive",
+      "scenario_id",
+      "TEXT",
+    );
+    await addColumnIfMissing(runtime, "trajectory_archive", "batch_id", "TEXT");
 
     // Per-step rows; script column is unbounded TEXT (no legacy 4096-char cap).
     await executeRawSql(
@@ -1024,30 +1013,14 @@ export async function ensureTrajectoriesTable(
         script TEXT
       )`,
     );
-    try {
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_trajectory_id ON trajectory_steps(trajectory_id)`,
-      );
-    } catch (err) {
-      warnRuntime(
-        runtime,
-        "[trajectory-persistence] trajectory step index creation failed",
-        err,
-      );
-    }
-    try {
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
-      );
-    } catch (err) {
-      warnRuntime(
-        runtime,
-        "[trajectory-persistence] trajectory step ordinal index creation failed",
-        err,
-      );
-    }
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_trajectory_id ON trajectory_steps(trajectory_id)`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
+    );
 
     // One-shot forward migration from steps_json into trajectory_steps.
     // Idempotent: only migrates trajectories whose steps are absent from the
@@ -1063,12 +1036,14 @@ export async function ensureTrajectoriesTable(
     schemaVersions.set(key, SCHEMA_VERSION);
     initializedRuntimes.add(key);
     return true;
-  } catch (err) {
-    coreLogger.error(
-      "[trajectory-persistence] ensureTrajectoriesTable error:",
-      err instanceof Error ? err.message : String(err),
-    );
-    return false;
+  } catch (error) {
+    // error-policy:J2 schema readiness is required for every trajectory data
+    // path, so retain the database failure instead of reporting a false empty.
+    throw new ElizaError("Could not initialize trajectory storage schema", {
+      code: "TRAJECTORY_SCHEMA_INIT_FAILED",
+      cause: error,
+      context: { agentId: String(runtime.agentId) },
+    });
   }
 }
 
@@ -1739,8 +1714,14 @@ export async function loadTrajectoryById(
       trajectory.steps = stepsFromTable;
     }
     return trajectory;
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 a database read failure is distinct from a successful
+    // lookup with no row.
+    throw new ElizaError("Could not load trajectory", {
+      code: "TRAJECTORY_LOAD_FAILED",
+      cause: error,
+      context: { stepId },
+    });
   }
 }
 
@@ -1769,8 +1750,14 @@ async function loadAllStepsFromDedicatedTable(
       .map((row) => asRecord(row))
       .filter((row): row is Record<string, unknown> => Boolean(row))
       .map(stepRowToPersistedStep);
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 absence is represented by a successful zero-row query;
+    // storage failures retain their cause.
+    throw new ElizaError("Could not load trajectory steps", {
+      code: "TRAJECTORY_STEPS_LOAD_FAILED",
+      cause: error,
+      context: { trajectoryId },
+    });
   }
 }
 
@@ -1850,8 +1837,14 @@ export async function loadTrajectoryByStepId(
     const row = asRecord(rows[0]);
     if (!row) return null;
     return parsePersistedTrajectoryRow(row, normalizedStepId);
-  } catch {
-    return null;
+  } catch (error) {
+    // error-policy:J2 a failed search cannot be represented as no matching
+    // trajectory because callers use null as the valid not-found result.
+    throw new ElizaError("Could not search trajectories by step", {
+      code: "TRAJECTORY_STEP_SEARCH_FAILED",
+      cause: error,
+      context: { stepId: normalizedStepId },
+    });
   }
 }
 
@@ -2052,10 +2045,13 @@ export async function saveTrajectory(
       await executeRawSql(runtime, compatSql);
       saved = true;
     } catch (compatErr) {
-      coreLogger.error(
-        `[trajectory-persistence] saveTrajectory error: modern=${err instanceof Error ? err.message : String(err)} compat=${compatErr instanceof Error ? compatErr.message : String(compatErr)}`,
-      );
-      return false;
+      // error-policy:J2 both supported SQL shapes failed; surface both causes
+      // rather than returning a false value that downstream code may ignore.
+      throw new ElizaError("Could not save trajectory", {
+        code: "TRAJECTORY_SAVE_FAILED",
+        cause: new AggregateError([err, compatErr]),
+        context: { trajectoryId: trajectory.id },
+      });
     }
   }
 
@@ -2070,12 +2066,14 @@ export async function saveTrajectory(
         trajectory.id,
         trajectory.steps,
       );
-    } catch (err) {
-      warnRuntime(
-        runtime,
-        `saveTrajectory: failed to mirror steps into trajectory_steps for ${trajectory.id}`,
-        err,
-      );
+    } catch (error) {
+      // error-policy:J2 the dedicated step table is authoritative; a partial
+      // parent-only write is an observable persistence failure.
+      throw new ElizaError("Could not save trajectory steps", {
+        code: "TRAJECTORY_STEPS_SAVE_FAILED",
+        cause: error,
+        context: { trajectoryId: trajectory.id },
+      });
     }
   }
 

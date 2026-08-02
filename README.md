@@ -94,7 +94,7 @@ The framework is model-agnostic and extended through plugins:
 A plugin exports a `Plugin` object. Plugins can register actions, providers,
 evaluators, services, model handlers, routes, events, tests, and app views. See
 the [plugin component guide](https://docs.elizaos.ai/plugins/components) and
-the first-party implementations under [`plugins/`](plugins).
+the first-party implementations under `plugins/`.
 
 ### Local inference
 
@@ -134,7 +134,7 @@ elizaos create plugin-example --template plugin
 
 Projects are deployable workspaces; plugins are reusable capability packages.
 The packaged templates and their scaffold contracts live in
-[`packages/elizaos/templates/`](packages/elizaos/templates).
+`packages/elizaos/templates/`.
 
 To embed the runtime directly without the CLI or application host, import
 `@elizaos/core`. The scenario runner provides executable integration coverage

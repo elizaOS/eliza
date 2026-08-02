@@ -19,6 +19,7 @@
  * extraction quality can be reviewed offline.
  */
 import { getEntityDetails } from "../entities.ts";
+import { ElizaError } from "../errors.ts";
 import {
 	buildFactKeywordsForStorage,
 	scoreFactKeywordRelevance,
@@ -511,41 +512,53 @@ async function fetchExistingRelationships(
 export function parseFactsAndRelationshipsOutput(
 	raw: unknown,
 ): FactsAndRelationshipsResult {
-	const empty: FactsAndRelationshipsResult = {
-		facts: [],
-		relationships: [],
-		thought: "",
-	};
 	const text = extractText(raw);
-	if (!text) return empty;
+	if (!text) {
+		throw new ElizaError("Facts model returned no output", {
+			code: "FACTS_MODEL_OUTPUT_MISSING",
+		});
+	}
 	const parsed = parseJsonObject<Record<string, unknown>>(text);
-	if (!parsed) return empty;
+	if (!parsed) {
+		throw new ElizaError("Facts model returned invalid JSON", {
+			code: "FACTS_MODEL_OUTPUT_INVALID",
+		});
+	}
+	if (
+		!Array.isArray(parsed.facts) ||
+		!parsed.facts.every((entry) => typeof entry === "string") ||
+		!Array.isArray(parsed.relationships) ||
+		typeof parsed.thought !== "string"
+	) {
+		throw new ElizaError("Facts model output does not match its schema", {
+			code: "FACTS_MODEL_OUTPUT_SCHEMA_INVALID",
+		});
+	}
 
-	const facts = Array.isArray(parsed.facts)
-		? parsed.facts
-				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-				.filter((entry): entry is string => entry.length > 0)
-		: [];
-	const relationships = Array.isArray(parsed.relationships)
-		? parsed.relationships
-				.map((entry): MessageHandlerExtractedRelationship | null => {
-					if (!entry || typeof entry !== "object") return null;
-					const rel = entry as Record<string, unknown>;
-					const subject =
-						typeof rel.subject === "string" ? rel.subject.trim() : "";
-					const predicate =
-						typeof rel.predicate === "string" ? rel.predicate.trim() : "";
-					const object =
-						typeof rel.object === "string" ? rel.object.trim() : "";
-					if (!subject || !predicate || !object) return null;
-					return { subject, predicate, object };
-				})
-				.filter(
-					(entry): entry is MessageHandlerExtractedRelationship =>
-						entry !== null,
-				)
-		: [];
-	const thought = typeof parsed.thought === "string" ? parsed.thought : "";
+	const facts = parsed.facts.map((entry) => entry.trim()).filter(Boolean);
+	const relationships = parsed.relationships.map(
+		(entry, index): MessageHandlerExtractedRelationship => {
+			if (!entry || typeof entry !== "object") {
+				throw new ElizaError("Facts model returned a malformed relationship", {
+					code: "FACTS_RELATIONSHIP_INVALID",
+					context: { relationshipIndex: index },
+				});
+			}
+			const rel = entry as Record<string, unknown>;
+			const subject = typeof rel.subject === "string" ? rel.subject.trim() : "";
+			const predicate =
+				typeof rel.predicate === "string" ? rel.predicate.trim() : "";
+			const object = typeof rel.object === "string" ? rel.object.trim() : "";
+			if (!subject || !predicate || !object) {
+				throw new ElizaError("Facts model returned a malformed relationship", {
+					code: "FACTS_RELATIONSHIP_INVALID",
+					context: { relationshipIndex: index },
+				});
+			}
+			return { subject, predicate, object };
+		},
+	);
+	const thought = parsed.thought;
 	return { facts, relationships, thought };
 }
 

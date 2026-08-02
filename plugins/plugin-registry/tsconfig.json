@@ -79,7 +79,6 @@
   },
   "include": [
     "src/**/*",
-    "../../packages/app-core/src/ambient-modules.d.ts",
     "../../packages/ui/src/types/host-external-modules.ts",
     "../../packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts"
   ],

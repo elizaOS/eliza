@@ -109,7 +109,7 @@ import { Input } from "../ui/input";
 const accentGradientStyle = {
   background:
     "linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%) 0%, var(--accent) 100%)",
-  color: "var(--accent-foreground, #1a1f26)",
+  color: "var(--accent-foreground)",
   borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.5)",
 } as const;
 

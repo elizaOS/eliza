@@ -1,6 +1,6 @@
 /**
- * Covers the app-route-plugin skip/normalize/load helpers exported from
- * `eliza.ts`: `getSkippedAppRoutePluginIds` (parsing the
+ * Covers the app-route-plugin skip/normalize/load helpers owned by the startup
+ * contributor module: `getSkippedAppRoutePluginIds` (parsing the
  * `ELIZA_SKIP_APP_ROUTE_PLUGINS` env list), `normalizeAppRoutePluginId` (id
  * canonicalization), and `__loadAppRoutePluginFromSpecifierForTest` (loading a
  * real first-party route plugin and surfacing missing transitive imports). One
@@ -16,7 +16,7 @@ import {
   __loadAppRoutePluginFromSpecifierForTest,
   getSkippedAppRoutePluginIds,
   normalizeAppRoutePluginId,
-} from "./eliza.ts";
+} from "./startup/app-contributors.ts";
 
 const ENV_KEY = "ELIZA_SKIP_APP_ROUTE_PLUGINS";
 

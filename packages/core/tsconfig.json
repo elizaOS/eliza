@@ -47,8 +47,7 @@
 	},
 	"include": [
 		"src/**/*.ts",
-		"../@schemas/**/*.ts",
-		"../agent/src/external-modules.d.ts"
+		"../@schemas/**/*.ts"
 	],
 	"exclude": [
 		"vitest.config.ts",

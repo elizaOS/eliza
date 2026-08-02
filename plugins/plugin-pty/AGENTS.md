@@ -166,9 +166,9 @@ from loading the orchestrator and recursively spawning sub-agents.
   small runtime allowlist plus explicit eliza-code spec env is passed through.
 - See the root `CLAUDE.md` for repo-wide conventions.
 
-## ⛔ NON-NEGOTIABLE — evidence & real end-to-end tests
+## Verification
 
-The binding standard is **[CLAUDE.md](../../CLAUDE.md)**. The unit suite
+The binding standard is the root [CLAUDE.md](../../CLAUDE.md). The unit suite
 proves the store/bridge/routing/spec logic against an injected PTY; the gated
 `pty.real.test.ts` (and the manual real-runtime checks) prove the actual
 node-pty / Bun-truePty path spawns real processes, streams output, round-trips

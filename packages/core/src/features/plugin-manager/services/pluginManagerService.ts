@@ -704,8 +704,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName,
-					version: "",
-					installPath: "",
 					requiresRestart: false,
 					error: `Plugin "${pluginName}" not found in the registry`,
 				};
@@ -729,7 +727,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			}
 
 			let installedVersion = npmVersion;
-			let installed = false;
 
 			if (shouldClone) {
 				try {
@@ -746,7 +743,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						"junction" as fs.SymlinkType,
 					);
 
-					installed = true;
 					installedVersion = "git-clone";
 				} catch (err) {
 					await fs.remove(targetDir);
@@ -755,7 +751,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					return {
 						success: false,
 						pluginName: canonicalName,
-						version: "",
 						installPath: targetDir,
 						requiresRestart: false,
 						error: `Local clone failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -763,7 +758,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				}
 			}
 
-			if (!installed) {
+			if (!shouldClone) {
 				try {
 					await this.installFromNpm(
 						canonicalName,
@@ -771,7 +766,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						targetDir,
 						onProgress,
 					);
-					installed = true;
 				} catch (err) {
 					await fs.remove(targetDir);
 					// error-policy:J1 npm installation is the selected service boundary;
@@ -779,23 +773,11 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					return {
 						success: false,
 						pluginName: canonicalName,
-						version: "",
 						installPath: targetDir,
 						requiresRestart: false,
 						error: `Installation failed: ${err instanceof Error ? err.message : String(err)}`,
 					};
 				}
-			}
-
-			if (!installed) {
-				return {
-					success: false,
-					pluginName: canonicalName,
-					version: "",
-					installPath: targetDir,
-					requiresRestart: false,
-					error: `Failed to install plugin "${canonicalName}"`,
-				};
 			}
 
 			onProgress?.({ phase: "validating", message: "Verifying plugin..." });
@@ -1080,8 +1062,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					ejectedPath: "",
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: `Plugin "${pluginId}" not found`,
 				};
@@ -1099,7 +1079,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: canonicalName,
 					ejectedPath: targetDir,
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: `Refusing to write outside ${base}`,
 				};
@@ -1110,7 +1089,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: canonicalName,
 					ejectedPath: targetDir,
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: "Already ejected",
 				};
@@ -1166,7 +1144,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: canonicalName,
 					ejectedPath: targetDir,
-					upstreamCommit: "",
 					requiresRestart: false,
 					error: String(err),
 				};
@@ -1181,11 +1158,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					ejectedPath: "",
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: "No ejected plugins",
 				};
@@ -1203,11 +1175,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					ejectedPath: "",
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: "Plugin not found in ejected directory",
 				};
@@ -1219,10 +1186,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: pluginId,
 					ejectedPath: targetDir,
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: "Missing upstream metadata",
 				};
@@ -1241,7 +1204,16 @@ export class PluginManagerService extends Service implements PluginRegistry {
 						},
 					)
 				).stdout.trim();
-				const count = parseInt(upstreamCount, 10) || 0;
+				const count = Number.parseInt(upstreamCount, 10);
+				if (!Number.isSafeInteger(count) || count < 0) {
+					throw new ElizaError(
+						"Git returned an invalid upstream commit count",
+						{
+							code: "PLUGIN_MANAGER_INVALID_COMMIT_COUNT",
+							context: { pluginId, upstreamCount },
+						},
+					);
+				}
 
 				if (count > 0) {
 					await execAsync(`git merge --no-edit origin/${metadata.branch}`, {
@@ -1273,10 +1245,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 					success: false,
 					pluginName: pluginId,
 					ejectedPath: targetDir,
-					upstreamCommits: 0,
-					localChanges: false,
-					conflicts: [],
-					commitHash: "",
 					requiresRestart: false,
 					error: String(err),
 				};
@@ -1300,7 +1268,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 				return {
 					success: false,
 					pluginName: pluginId,
-					removedPath: "",
 					requiresRestart: false,
 					error: "Plugin not found",
 				};

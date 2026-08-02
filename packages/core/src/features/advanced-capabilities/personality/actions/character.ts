@@ -20,6 +20,7 @@
 import { ElizaError } from "../../../../errors.ts";
 import { logger } from "../../../../logger.ts";
 import { hasRoleAccess } from "../../../../roles.ts";
+import { stringifyForModel } from "../../../../runtime/json-output.ts";
 import type { Character } from "../../../../types/agent.ts";
 import type {
 	Action,
@@ -837,16 +838,6 @@ function parseStructuredRecord(
 	}
 }
 
-function formatPromptData(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2);
-	} catch {
-		// error-policy:J3 prompt context can contain non-JSON runtime values;
-		// String supplies an explicit diagnostic representation.
-		return String(value);
-	}
-}
-
 function normalizeBoolean(value: unknown): boolean | undefined {
 	if (typeof value === "boolean") return value;
 	if (typeof value !== "string") return undefined;
@@ -1242,7 +1233,7 @@ async function evaluateModificationSafety(
 ORIGINAL REQUEST: "${requestText}"
 
 PARSED MODIFICATION:
-${formatPromptData(modification)}
+${stringifyForModel(modification)}
 
 AGENT'S CURRENT CORE VALUES:
 - Helpful, honest, and ethical

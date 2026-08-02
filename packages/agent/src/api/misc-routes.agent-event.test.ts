@@ -26,7 +26,7 @@ function makeAgentEventContext(
       runtime: {
         agentId: "00000000-0000-0000-0000-0000000000aa",
       } as AgentRuntime,
-      agentState: "ready",
+      agentState: "running",
       agentName: "Eliza",
       shellEnabled: true,
       broadcastWs,
@@ -34,7 +34,7 @@ function makeAgentEventContext(
       nextEventId: 1,
       eventBuffer: [],
       shareIngestQueue: [],
-      startup: {},
+      startup: { phase: "running", attempt: 0 },
       broadcastStatus: vi.fn(),
       pendingRestartReasons: [],
     },

@@ -11,9 +11,9 @@ platform engine lifecycle, a drizzle `pgSchema('app_blocker')`, and a `focus`
 overlay view rendered by the dashboard shell. The `BLOCK` umbrella action is
 host-adapted by `@elizaos/plugin-personal-assistant`.
 
-This package was split out of `@elizaos/plugin-personal-assistant`. The
-providers, services, schema, and view are owned here. The `BLOCK` action remains
-PA-resident to keep one owner-gated scheduler/chat dispatch path.
+This package owns the providers, services, schema, and view. The `BLOCK` action
+remains in `@elizaos/plugin-personal-assistant` so owner gating, scheduler
+integration, and chat dispatch have one owner.
 
 ## Plugin surface
 
@@ -27,9 +27,9 @@ PA-resident to keep one owner-gated scheduler/chat dispatch path.
 - `APP_BLOCKER` (`src/providers/app-blocker.ts`) — active app block sessions.
 
 ### Services
-- `WebsiteBlockerService` (`src/services/website-blocker.ts`,
-  `serviceType = "website-blocker"`).
-- `AppBlockerService` (`src/services/app-blocker.ts`,
+- `WebsiteBlockerService` (`src/services/website-blocker/service.ts`,
+  `serviceType = "website_blocker"`).
+- `AppBlockerService` (`src/services/app-blocker/service.ts`,
   `serviceType = "app-blocker"`).
 
 ### Schema
@@ -48,11 +48,11 @@ src/
   index.ts                        Public export barrel
   types.ts                        Constants + Block* types
   providers/
-    website-blocker.ts            WEBSITE_BLOCKER provider (stub)
-    app-blocker.ts                APP_BLOCKER provider (stub)
+    website-blocker.ts            WEBSITE_BLOCKER provider
+    app-blocker.ts                APP_BLOCKER provider
   services/
-    website-blocker.ts            WebsiteBlockerService (stub)
-    app-blocker.ts                AppBlockerService (stub)
+    website-blocker/              hosts/native engine, permissions, service
+    app-blocker/                  platform access, engine, service, types
   db/
     index.ts                      Re-exports schema
     schema.ts                     pgSchema('app_blocker') + tables
@@ -77,10 +77,10 @@ bun run --cwd plugins/plugin-blocker clean        # rm -rf dist
 
 ## Config / env vars
 
-This plugin reads no environment variables and has no settings keys yet. Once
-the real services are migrated, the SelfControl admin permission flow and the
-macOS app-blocker bundle-id allow-list will pick up the same env contract as
-the lifeops implementations they replace.
+`WEBSITE_BLOCKER_HOSTS_FILE_PATH` overrides the hosts file used by the website
+engine; `SELFCONTROL_HOSTS_FILE_PATH` is the compatibility alias. Platform
+access and permission state are otherwise resolved through the native service
+boundaries.
 
 ## How to extend
 
