@@ -1,0 +1,108 @@
+From 293c00b2ed7948fcfd50cfc83acd9480b446f2ff Mon Sep 17 00:00:00 2001
+From: lalalune <shawmakesmagic@gmail.com>
+Date: Sat, 9 May 2026 02:45:15 -0700
+Subject: [PATCH 1/4] Q4_POLAR: register GGML_TYPE_Q4_POLAR=45 and
+ block_q4_polar layout
+
+Reserve type tag 45 for PolarQuant Q4 (128-element block, fp16 norm +
+4-bit Lloyd-Max codes + optional 1-bit QJL residual). Add the
+block_q4_polar struct (82 bytes) to ggml-common.h next to the existing
+TBQ blocks, and forward-declare the encoder/decoder/quantize entry
+points in ggml-quants.h and ggml-cpu/quants.h.
+---
+ ggml/include/ggml.h        |  3 ++-
+ ggml/src/ggml-common.h     | 14 ++++++++++++++
+ ggml/src/ggml-cpu/quants.h |  2 ++
+ ggml/src/ggml-quants.h     |  3 +++
+ 4 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/ggml/include/ggml.h b/ggml/include/ggml.h
+index 8a0470fd..b2fcac63 100644
+--- a/ggml/include/ggml.h
++++ b/ggml/include/ggml.h
+@@ -432,7 +432,8 @@ extern "C" {
+         GGML_TYPE_Q1_0    = 42,
+         GGML_TYPE_TBQ3_0  = 43,
+         GGML_TYPE_TBQ4_0  = 44,
+-        GGML_TYPE_COUNT   = 45,
++        GGML_TYPE_Q4_POLAR = 45, // PolarQuant Q4: 128-element block, fp16 norm + 4-bit Lloyd-Max codes + optional 1-bit QJL residual
++        GGML_TYPE_COUNT   = 46,
+     };
+ 
+     // precision
+diff --git a/ggml/src/ggml-common.h b/ggml/src/ggml-common.h
+index 3656c76a..fa4b01b2 100644
+--- a/ggml/src/ggml-common.h
++++ b/ggml/src/ggml-common.h
+@@ -260,6 +260,20 @@ typedef struct {
+ } block_tbq4_0;
+ static_assert(sizeof(block_tbq4_0) == sizeof(ggml_half) + QK_TBQ/2, "wrong tbq4_0 block size/padding");
+ 
++// PolarQuant Q4: 128-element block.
++//   d        per-block L2 norm (fp16)
++//   qs       16 Lloyd-Max centroid indices, 2 per byte (low nibble even, high nibble odd)
++//   qjl      optional 1-bit QJL residual sign vector (bit 0 of byte 0 currently used; rest reserved)
++// Total 82 bytes/block. With qjl: 5.125 bpw. Without (qjl bytes zero on disk): 4.125 bpw effective.
++#define QK_POLAR 128
++#define QJL_RESIDUAL_BYTES (QK_POLAR / 8)
++typedef struct {
++    ggml_half d;                          // per-block L2 norm
++    uint8_t   qs[QK_POLAR / 2];           // 4-bit centroid indices (2 per byte)
++    uint8_t   qjl[QJL_RESIDUAL_BYTES];    // optional 1-bit QJL residual sign
++} block_q4_polar;
++static_assert(sizeof(block_q4_polar) == sizeof(ggml_half) + QK_POLAR / 2 + QJL_RESIDUAL_BYTES, "wrong q4_polar block size/padding");
++
+ #define QK8_1 32
+ typedef struct {
+     GGML_EXTENSION union {
+diff --git a/ggml/src/ggml-cpu/quants.h b/ggml/src/ggml-cpu/quants.h
+index 4847ac3c..1bc19c4f 100644
+--- a/ggml/src/ggml-cpu/quants.h
++++ b/ggml/src/ggml-cpu/quants.h
+@@ -34,6 +34,7 @@ void quantize_row_tq1_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, i
+ void quantize_row_tq2_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ void quantize_row_tbq3_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ void quantize_row_tbq4_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
++void quantize_row_q4_polar(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ 
+ void quantize_row_iq4_nl (const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ void quantize_row_iq4_xs (const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+@@ -59,6 +60,7 @@ void ggml_vec_dot_tq1_0_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
+ void ggml_vec_dot_tq2_0_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc);
+ void ggml_vec_dot_tbq3_0_f32(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc);
+ void ggml_vec_dot_tbq4_0_f32(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc);
++void ggml_vec_dot_q4_polar_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc);
+ 
+ void ggml_vec_dot_iq2_xxs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc);
+ void ggml_vec_dot_iq2_xs_q8_K (int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc);
+diff --git a/ggml/src/ggml-quants.h b/ggml/src/ggml-quants.h
+index 97ced4b5..939a7146 100644
+--- a/ggml/src/ggml-quants.h
++++ b/ggml/src/ggml-quants.h
+@@ -36,6 +36,7 @@ GGML_API void quantize_row_tq1_0_ref(const float * GGML_RESTRICT x, block_tq1_0
+ GGML_API void quantize_row_tq2_0_ref(const float * GGML_RESTRICT x, block_tq2_0 * GGML_RESTRICT y, int64_t k);
+ GGML_API void quantize_row_tbq3_0_ref(const float * GGML_RESTRICT x, block_tbq3_0 * GGML_RESTRICT y, int64_t k);
+ GGML_API void quantize_row_tbq4_0_ref(const float * GGML_RESTRICT x, block_tbq4_0 * GGML_RESTRICT y, int64_t k);
++GGML_API void quantize_row_q4_polar_ref(const float * GGML_RESTRICT x, block_q4_polar * GGML_RESTRICT y, int64_t k);
+ 
+ GGML_API void quantize_row_iq3_xxs_ref(const float * GGML_RESTRICT x, block_iq3_xxs * GGML_RESTRICT y, int64_t k);
+ GGML_API void quantize_row_iq4_nl_ref (const float * GGML_RESTRICT x, block_iq4_nl  * GGML_RESTRICT y, int64_t k);
+@@ -66,6 +67,7 @@ GGML_API void dequantize_row_tq1_0(const block_tq1_0 * GGML_RESTRICT x, float *
+ GGML_API void dequantize_row_tq2_0(const block_tq2_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_tbq3_0(const block_tbq3_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_tbq4_0(const block_tbq4_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
++GGML_API void dequantize_row_q4_polar(const block_q4_polar * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ 
+ GGML_API void dequantize_row_iq2_xxs(const block_iq2_xxs * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_iq2_xs (const block_iq2_xs  * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+@@ -92,6 +94,7 @@ GGML_API size_t quantize_tq1_0(const float * GGML_RESTRICT src, void * GGML_REST
+ GGML_API size_t quantize_tq2_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ GGML_API size_t quantize_tbq3_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ GGML_API size_t quantize_tbq4_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
++GGML_API size_t quantize_q4_polar(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ 
+ GGML_API size_t quantize_q2_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ GGML_API size_t quantize_q3_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+-- 
+2.43.0
+
