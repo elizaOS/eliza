@@ -194,6 +194,24 @@ describe("layout-shift-intent marker (#15257)", () => {
   });
 });
 
+describe("text-layer stability during sheet motion", () => {
+  it("does not promote the text-bearing fieldset during an open-sheet drag", async () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    await waitFor(() => expect(variant()).toBe("open"));
+
+    const g = drag(grabber()).down(360);
+    await g.move(380);
+
+    // The open sheet changes height, not transform. A drag-scoped
+    // `will-change: transform` on this ancestor forces the transcript and
+    // composer glyphs onto a fresh raster layer at pointer-down, which reads as
+    // a shake even though their layout coordinates are unchanged.
+    expect(sheet().style.willChange).toBe("");
+    g.up(380);
+  });
+});
+
 describe("adversarial mouse drags — up/down 200%, back-and-forth", () => {
   it("A) up ~200% above the screen then all the way back to the bottom COLLAPSES (not stranded open/maximized)", async () => {
     render(<ChatOverlay controller={makeController()} />);
