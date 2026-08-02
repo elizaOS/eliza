@@ -787,26 +787,10 @@ export function useFirstRunConductor(): void {
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const startCloudProvisionFlow = React.useCallback(() => {
     busyRef.current = true;
-    const ports = portsRef.current;
-    const preOpenedAuthWindow = ports.preOpenWindow?.() ?? null;
-    let preOpenedAuthWindowClaimed = false;
-    const closePreOpenedAuthWindow = () => {
-      if (!preOpenedAuthWindow) return;
-      try {
-        preOpenedAuthWindow.close();
-      } catch (error) {
-        void error;
-        // error-policy:J6 best-effort cleanup for an auth popup we no longer need.
-      }
-    };
-    const flowPorts: FirstRunFinishPorts = {
-      ...ports,
-      preOpenWindow: () => {
-        preOpenedAuthWindowClaimed = true;
-        return preOpenedAuthWindow;
-      },
-    };
-    void listOrAutoProvisionCloudAgent(draftRef.current, flowPorts)
+    // Popup lifecycle is owned by the store's handleInteractiveCloudLogin
+    // entry point itself (#17129) — the conductor no longer pre-opens or
+    // closes the auth window.
+    void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
       .then((outcome) => {
         if (
           outcome.kind === "done" ||
@@ -816,7 +800,6 @@ export function useFirstRunConductor(): void {
           // Login resolved + provisioning is proceeding — the resume marker has
           // served its purpose; drop it so a later relaunch doesn't re-resume.
           clearCloudLoginPending();
-          closePreOpenedAuthWindow();
         }
         handleOutcome(outcome);
       })
@@ -826,9 +809,6 @@ export function useFirstRunConductor(): void {
       // recovery action.
       .catch((err: unknown) => seedError(cloudFailureMessage(err)))
       .finally(() => {
-        if (preOpenedAuthWindow && !preOpenedAuthWindowClaimed) {
-          closePreOpenedAuthWindow();
-        }
         busyRef.current = false;
       });
   }, [handleOutcome, seedError]);

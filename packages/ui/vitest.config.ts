@@ -236,6 +236,7 @@ export default defineConfig({
     ],
   },
   test: {
+    globals: true,
     setupFiles: ["./vitest.setup.ts"],
     // Write worker console output straight to stdout instead of shipping every
     // line to the main process over birpc. The heavy `<App />` suites emit
