@@ -433,7 +433,7 @@ export default undefined;
 export const resolveBlueBubblesWebhookPath = () => "/api/bluebubbles/webhook";
 export default undefined;
 `,
-    "@elizaos/plugin-google": `
+    "@elizaos/plugin-google-workspace": `
 export const googlePlugin = {
   name: "google",
   description: "Live-safe Google connector shell for elizaOS Live. OAuth setup can install the full connector package.",
@@ -460,7 +460,7 @@ export const loadMobileDeviceBridgeModel = async () => undefined;
 export const unloadMobileDeviceBridgeModel = async () => undefined;
 export default undefined;
 `,
-    "@elizaos/plugin-aosp-local-inference": `
+    "@elizaos/plugin-native-inference": `
 export const registerAospLlamaLoader = () => undefined;
 export const ensureAospLocalInferenceHandlers = () => undefined;
 export default undefined;
@@ -474,7 +474,7 @@ export default undefined;
 const forceLiveStubPackages = new Set([
   "@elizaos/app-model-tester",
   "@elizaos/plugin-documents",
-  "@elizaos/plugin-google",
+  "@elizaos/plugin-google-workspace",
   "@elizaos/plugin-hyperliquid",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-polymarket",

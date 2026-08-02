@@ -154,13 +154,13 @@ const calendarView = {
   viewType: "gui" as const,
 };
 
-const simpleCalendarView = {
-  id: "simple-calendar",
-  label: "Simple Calendar",
+const notesFullscreenView = {
+  id: "notes",
+  label: "Notes",
   available: true,
-  pluginName: "@elizaos/plugin-simple-views",
-  path: "/simple-calendar",
-  bundleUrl: "/api/views/simple-calendar/bundle.js",
+  pluginName: "@elizaos/plugin-notes",
+  path: "/notes",
+  bundleUrl: "/api/views/notes/bundle.js",
   surface: { header: "fullscreen" as const },
   viewType: "gui" as const,
 };
@@ -712,7 +712,7 @@ describe("App navigate-view event wiring", () => {
   it("gives an in-process wallet page a live agent-surface registry", async () => {
     registerAppShellPage({
       id: "wallet.inventory",
-      pluginId: "@elizaos/plugin-wallet-ui",
+      pluginId: "@elizaos/plugin-wallet:ui",
       label: "Wallet",
       path: "/inventory",
       tabAffinity: "inventory",
@@ -742,7 +742,7 @@ describe("App navigate-view event wiring", () => {
       const registrations = [
         {
           id: "wallet.inventory",
-          pluginId: "@elizaos/plugin-wallet-ui",
+          pluginId: "@elizaos/plugin-wallet:ui",
           label: "Wallet",
           path: "/inventory",
         },
@@ -780,9 +780,9 @@ describe("App navigate-view event wiring", () => {
   );
 
   it("lets a fullscreen plugin view fill behind the floating composer", async () => {
-    mockAvailableViews.push(simpleCalendarView);
+    mockAvailableViews.push(notesFullscreenView);
     appState.tab = "views";
-    window.history.replaceState(null, "", "/simple-calendar");
+    window.history.replaceState(null, "", "/notes");
 
     const { container, getByTestId } = render(<App />);
 

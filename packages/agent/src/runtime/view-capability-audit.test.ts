@@ -70,7 +70,7 @@ const repoRoot = path.resolve(here, "../../../..");
  */
 const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   calendar: "plugin-calendar",
-  wallet: "plugin-wallet-ui",
+  wallet: "plugin-wallet",
   health: "plugin-health",
   focus: "plugin-blocker",
   finances: "plugin-finances",
@@ -137,7 +137,9 @@ function collectViewTsx(dir: string): string[] {
 
 /** Plugin entry source where a `ViewDeclaration[]` (and any `capabilities:`) lives. */
 function readPluginEntry(pluginDir: string): string {
-  for (const name of ["plugin.ts", "index.ts"]) {
+  // `ui/plugin.ts` first: plugins that merge a server surface and a UI surface
+  // (e.g. plugin-wallet) keep the ViewDeclaration[] on the UI descriptor.
+  for (const name of ["ui/plugin.ts", "plugin.ts", "index.ts"]) {
     const candidate = path.join(repoRoot, "plugins", pluginDir, "src", name);
     if (existsSync(candidate)) return readFileSync(candidate, "utf8");
   }

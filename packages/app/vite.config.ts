@@ -154,8 +154,7 @@ function buildLucideUsedBarrelSource(): string {
       if (
         entry.name === "node_modules" ||
         entry.name === "dist" ||
-        entry.name === ".git" ||
-        entry.name === "benchmarks"
+        entry.name === ".git"
       ) {
         continue;
       }
@@ -1776,7 +1775,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
       // Watch ONLY workspace package.json manifests — an alias/dependency change
       // there needs a full Vite restart. We deliberately do NOT add the entire
       // packages/ + plugins/ trees: that re-globbed ~45k files (including ~1GB of
-      // benchmarks/os), bypassed server.watch.ignored, risked exhausting
+      // os/), bypassed server.watch.ignored, risked exhausting
       // fs.inotify watches, and — via the old blanket full-reload below — turned
       // every workspace source edit into a full page reload instead of HMR.
       // Imported workspace *source* is already watched through Vite's module
@@ -2496,8 +2495,12 @@ export const INVALID_TRACER_PROVIDER = {};
           "plugins/plugin-polymarket/src/register.ts",
         ],
         [
-          "@elizaos/plugin-wallet-ui",
-          "plugins/plugin-wallet-ui/src/register.ts",
+          "@elizaos/plugin-wallet/ui",
+          "plugins/plugin-wallet/src/ui/index.ts",
+        ],
+        [
+          "@elizaos/plugin-wallet/register",
+          "plugins/plugin-wallet/src/register.ts",
         ],
         [
           "@elizaos/plugin-contacts/register",
@@ -2676,7 +2679,7 @@ export const INVALID_TRACER_PROVIDER = {};
         replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
       },
       {
-        find: /^@elizaos\/plugin-google$/,
+        find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(appCoreSrcRoot, "platform/empty-node-module.ts"),
       },
       // The training package root exports runtime routes and native backends.
@@ -2886,7 +2889,7 @@ export const INVALID_TRACER_PROVIDER = {};
             ),
           },
           {
-            find: /^@elizaos\/plugin-google$/,
+            find: /^@elizaos\/plugin-google-workspace$/,
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
@@ -3334,7 +3337,6 @@ export const INVALID_TRACER_PROVIDER = {};
         "**/*.tsbuildinfo",
         "**/packages/**/output/generated-cad/**",
         "**/packages/**/src/i18n/generated/**",
-        "**/packages/benchmarks/**",
         "**/packages/os/**",
         "**/packages/training/data/raw/**",
         "**/plugin-local-inference/native/audio-fixtures/**",

@@ -71,7 +71,7 @@ export function applyMockoonEnvOverrides(
   const applied: MockoonConnector[] = [];
 
   // Gmail + Calendar share `googleapis.com` and one env var hook in
-  // `@elizaos/plugin-google`. Use the gmail port; if a test wants to isolate
+  // `@elizaos/plugin-google-workspace`. Use the gmail port; if a test wants to isolate
   // calendar traffic it can override afterwards.
   if (!env.ELIZA_MOCK_GOOGLE_BASE) {
     env.ELIZA_MOCK_GOOGLE_BASE = `${getMockoonBaseUrl("gmail")}/`;

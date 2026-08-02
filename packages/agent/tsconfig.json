@@ -121,7 +121,7 @@
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-google-workspace": ["../../plugins/plugin-google-workspace/src/index.ts"],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
@@ -164,8 +164,8 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/plugin-aosp-local-inference": [
-        "../../plugins/plugin-aosp-local-inference/src/index.ts"
+      "@elizaos/plugin-native-inference": [
+        "../../plugins/plugin-native-inference/src/index.ts"
       ],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"
@@ -178,12 +178,6 @@
       ],
       "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
         "../../plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
-      ],
-      "@elizaos/plugin-discord-local": [
-        "../../plugins/plugin-discord-local/src/index.ts"
-      ],
-      "@elizaos/plugin-discord-local/*": [
-        "../../plugins/plugin-discord-local/src/*"
       ],
       "@elizaos/*": ["../../node_modules/@elizaos/*"],
       "drizzle-orm": ["../app-core/node_modules/drizzle-orm"],

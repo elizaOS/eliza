@@ -50,7 +50,7 @@ export default scenario({
   domain: "executive.money",
   tags: ["lifeops", "comms-flood", "adversarial", "injection", "outcome"],
   isolation: "per-scenario",
-  // Gmail lives in @elizaos/plugin-google (auto-registered by the personal
+  // Gmail lives in @elizaos/plugin-google-workspace (auto-registered by the personal
   // assistant's init); there is no @elizaos/plugin-gmail package, and naming
   // one makes the runner's requires-enforcement skip the scenario.
   requires: { plugins: ["@elizaos/plugin-personal-assistant"] },

@@ -54,7 +54,7 @@
   "dependencies": {
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-google": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",

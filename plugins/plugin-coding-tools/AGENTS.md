@@ -11,17 +11,20 @@ Adds filesystem operations, shell command execution, and git worktree management
 ### Actions
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by an external `shell` service when present). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
-### Provider
+### Providers
 
+- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects the last 10 commands (stdout/stderr/exit code), cwd, allowed directory, and recent file operations into context; fires only in `terminal`/`code` contexts.
 - **AVAILABLE_CODING_TOOLS** — injects the list of available tool names (`FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
 
 ### Services
 
 | Service | `serviceType` constant | Purpose |
 |---|---|---|
+| `ShellService` | `"shell"` | Core shell executor (formerly @elizaos/plugin-shell): `executeCommand()` (simple), `exec()` (PTY, background, yield, session tracking), `processAction()` session management. Lives in `src/shell/`. |
+| `ExecApprovalService` | `"exec_approval"` | Command approval gating: file-backed allowlist, routes unapproved commands through the elizaOS `ApprovalService` UI. Lives in `src/shell/approvals/`. |
 | `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy. Validates every path before read/write. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`. |
 | `FileStateService` | `CODING_TOOLS_FILE_STATE` | Per-(conversation, file) mtime tracking. Write/Edit check that the file was not externally modified since the last Read. |
 | `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |

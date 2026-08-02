@@ -1,7 +1,7 @@
 // Self-contained frontend web-vitals collector for the ui-smoke Playwright
 // harness. The measurement approach mirrors
-// packages/benchmarks/loadperf/frontend-kpi.mjs so this spec agrees with the
-// standalone loadperf harness:
+// the loadperf frontend-kpi harness (now maintained in
+// https://github.com/elizaOS/benchmarks) so this spec agrees with it:
 //   - LCP via PerformanceObserver("largest-contentful-paint")
 //   - CLS via PerformanceObserver("layout-shift") (excluding hadRecentInput)
 //   - FCP via the "first-contentful-paint" paint entry

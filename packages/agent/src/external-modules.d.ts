@@ -401,11 +401,6 @@ declare module "@elizaos/plugin-wifi" {
   export const wifiNetworksProvider: Provider;
 }
 
-declare module "@elizaos/plugin-discord-local" {
-  const plugin: unknown;
-  export default plugin;
-}
-
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/plugin-imessage" {
   export function resolveBlueBubblesWebhookPath(...args: unknown[]): string;
@@ -414,7 +409,6 @@ declare module "@elizaos/plugin-imessage" {
 }
 declare module "@elizaos/plugin-ollama";
 declare module "@elizaos/plugin-openai";
-declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-pty";
 declare module "@elizaos/plugin-birdclaw";
 declare module "@elizaos/plugin-x402" {

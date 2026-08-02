@@ -322,9 +322,9 @@ Validation run:
   passed: 15 files, 177 tests.
 - `bunx tsc --noEmit -p plugins/plugin-task-coordinator/tsconfig.build.json`
   passed.
-- `bun run --cwd plugins/plugin-wallet-ui test`
+- `bun run --cwd plugins/plugin-wallet test`
   passed: 7 files, 36 tests.
-- `bunx tsc --noEmit -p plugins/plugin-wallet-ui/tsconfig.build.json`
+- `bunx tsc --noEmit -p plugins/plugin-wallet/tsconfig.ui.json`
   passed.
 - `bun run --cwd plugins/plugin-companion test`
   passed: 9 files, 44 tests.
@@ -332,7 +332,7 @@ Validation run:
   passed.
 - `bunx tsc --noEmit -p plugins/plugin-task-coordinator/tsconfig.build.json`
   passed after the retained slot wrapper change.
-- `bunx tsc --noEmit -p plugins/plugin-wallet-ui/tsconfig.build.json`
+- `bunx tsc --noEmit -p plugins/plugin-wallet/tsconfig.ui.json`
   passed after the retained app-shell loader declaration change.
 
 Validation limitation from the previous round:

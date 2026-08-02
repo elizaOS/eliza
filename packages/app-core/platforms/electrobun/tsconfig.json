@@ -108,11 +108,11 @@
         "../../../native-plugins/llama/src/index.ts"
       ],
       "@elizaos/capacitor-*": ["../../../native-plugins/*/src/index.ts"],
-      "@elizaos/plugin-wallet-ui": [
-        "../../../../plugins/plugin-wallet-ui/src/index.ts"
+      "@elizaos/plugin-wallet/ui": [
+        "../../../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-wallet-ui/*": [
-        "../../../../plugins/plugin-wallet-ui/src/*"
+      "@elizaos/plugin-wallet/*": [
+        "../../../../plugins/plugin-wallet/src/*"
       ],
       "@elizaos/plugin-task-coordinator": [
         "../../../../plugins/plugin-task-coordinator/src/index.ts"

@@ -638,7 +638,7 @@ Relevant implementation entry points include:
 - `CalendarService.getCalendarFeed` for aggregate reads and source health;
 - `CalendarService.createCalendarEvent`, `updateCalendarEvent`, and
   `deleteCalendarEvent` for provider-neutral mutation execution; and
-- `plugins/plugin-google/src/calendar.ts` for paged Google reads, free/busy,
+- `plugins/plugin-google-workspace/src/calendar.ts` for paged Google reads, free/busy,
   watch registration, and provider mutations.
 
 This is enough to unify calendars the owner can already access. A Google shared

@@ -6,8 +6,6 @@
  *   - packages/scenario-runner/src/judge.ts                 (scenario judge)
  *   - plugins/plugin-personal-assistant/test/helpers/lifeops-live-judge.ts (lifeops live judge)
  *   - plugins/plugin-training/src/core/cerebras-eval-model.ts  (training judge)
- *   - packages/benchmarks/personality-bench/src/judge/checks/llm-judge.ts
- *                                                           (personality multi-pass judge)
  *
  * Prompts, rubrics, and pass counts stay with the callers. This class only
  * owns transport, retry, tolerant JSON parsing, and a canonical verdict

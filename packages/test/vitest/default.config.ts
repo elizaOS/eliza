@@ -12,7 +12,7 @@
  *
  * Test locations: src/, __tests__/, test/ — all are auto-discovered.
  * Subsystems with their own runners: eliza/cloud,
- * eliza/packages/examples, eliza/packages/benchmarks.
+ * eliza/packages/examples.
  */
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -491,8 +491,8 @@ export default defineConfig({
       "eliza/packages/agent/src/runtime/roles/test/**/*.test.ts",
       "eliza/plugins/plugin-personal-assistant/src/selfcontrol/**/*.test.ts",
       "eliza/plugins/plugin-shopify/src/**/*.test.ts",
-      "eliza/plugins/plugin-wallet-ui/src/**/*.test.ts",
-      "eliza/plugins/plugin-wallet-ui/src/**/*.test.tsx",
+      "eliza/plugins/plugin-wallet/src/ui/**/*.test.ts",
+      "eliza/plugins/plugin-wallet/src/ui/**/*.test.tsx",
       "eliza/plugins/plugin-personal-assistant/src/**/*.test.ts",
       "packages/plugin-wechat/src/**/*.test.ts",
       "eliza/plugins/plugin-music/src/**/*.test.ts",
@@ -529,7 +529,6 @@ export default defineConfig({
       "eliza/cloud/**",
       // --- wired via turbo, not root vitest ---
       "eliza/packages/examples/**",
-      "eliza/packages/benchmarks/**",
       // Template plugin tests need a scaffolded environment to run.
       "eliza/packages/elizaos/templates/**",
       // Skills tests use their own package-level runner.

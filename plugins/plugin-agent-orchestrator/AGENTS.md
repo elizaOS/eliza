@@ -12,6 +12,16 @@ ACP subprocesses, routes their terminal events back into the elizaOS runtime as
 synthetic inbound messages, and manages the git workspace and GitHub issue
 lifecycle that accompanies repo-hosted coding tasks.
 
+**Boundary with @elizaos/plugin-task-coordinator:** this plugin owns ALL
+agent/task state, session lifecycle, and the server-side orchestration surface.
+`@elizaos/plugin-task-coordinator` is the GUI display-and-control layer only
+(views, slot-registry fills, one view-scoped slash command) and holds no task
+state of its own. Do not add task/session state to task-coordinator, and do not
+add GUI views here. `@elizaos/plugin-pty` is likewise separate: it registers the
+generic `PTY_SERVICE` that powers the app's interactive web terminal; this
+plugin spawns its coding agents as ACP subprocesses directly and does not
+depend on it.
+
 Loaded by name: `@elizaos/plugin-agent-orchestrator`. Not default-enabled —
 add it explicitly in the agent's plugin list. Services and actions are only
 registered when `isLocalCodeExecutionAllowed()` AND terminal support is detected;

@@ -92,17 +92,6 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		},
 	],
 	[
-		"discord-local",
-		{
-			reason:
-				"Discord local exists in the bundled Discord plugin and the standalone local plugin during migration; both export the same plugin/service contract and must not be enabled together.",
-			classes: new Set([
-				"plugins/plugin-discord/discord-local-service.ts:DiscordLocalService",
-				"plugins/plugin-discord-local/src/index.ts:DiscordLocalService",
-			]),
-		},
-	],
-	[
 		"tunnel",
 		{
 			reason:
@@ -138,7 +127,7 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 				"plugins/plugin-elizacloud/src/services/cloud-credential-provider.ts:CloudCredentialProvider",
 				"plugins/plugin-farcaster/workflow-credential-provider.ts:FarcasterWorkflowCredentialProvider",
 				"plugins/plugin-feishu/src/workflow-credential-provider.ts:FeishuWorkflowCredentialProvider",
-				"plugins/plugin-google-chat/src/workflow-credential-provider.ts:GoogleChatWorkflowCredentialProvider",
+				"plugins/plugin-google-workspace/src/chat/workflow-credential-provider.ts:GoogleChatWorkflowCredentialProvider",
 				"plugins/plugin-instagram/src/workflow-credential-provider.ts:InstagramWorkflowCredentialProvider",
 				"plugins/plugin-line/src/workflow-credential-provider.ts:LineWorkflowCredentialProvider",
 				"plugins/plugin-matrix/src/workflow-credential-provider.ts:MatrixWorkflowCredentialProvider",

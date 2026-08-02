@@ -55,7 +55,6 @@ export const VIEW_CASES: ViewCase[] = (
     ["views-manager", "gui", "/views"],
     ["screenshare", "gui", "/screenshare"],
     ["notes", "gui", "/notes"],
-    ["simple-calendar", "gui", "/simple-calendar"],
     ["task-coordinator", "gui", "/task-coordinator"],
     ["orchestrator", "gui", "/orchestrator"],
     ["cockpit", "gui", "/cockpit"],

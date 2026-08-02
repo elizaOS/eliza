@@ -1273,7 +1273,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
  * process via `bun:ffi` (the AOSP plugin's loader; libllama is retired). The
  * loader stays inactive at runtime when neither `ELIZA_LOCAL_LLAMA === "1"`
  * (kept as the legacy opt-in env name) nor `process.arch === "riscv64"` is
- * true (see `isAospEnabled` in `@elizaos/plugin-aosp-local-inference`), so the
+ * true (see `isAospEnabled` in `@elizaos/plugin-native-inference`), so the
  * dynamic import below is safe on every platform; we only attempt registration
  * when one of the triggers fires.
  *
@@ -1354,7 +1354,7 @@ async function tryRegisterAospLlamaLoader(
 		) => Promise<{
 			registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
 		}>;
-		const mod = await dynamicImport("@elizaos/plugin-aosp-local-inference");
+		const mod = await dynamicImport("@elizaos/plugin-native-inference");
 		if (typeof mod.registerAospLlamaLoader !== "function") {
 			logger.error(
 				"[local-inference] AOSP llama adapter import resolved but missing registerAospLlamaLoader export",

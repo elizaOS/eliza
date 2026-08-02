@@ -95,10 +95,6 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/lifeops-bench#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/example-browser-extension-safari#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
@@ -171,7 +167,7 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/plugin-aosp-local-inference#build": {
+    "@elizaos/plugin-native-inference#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
@@ -332,13 +328,6 @@
         "@elizaos/capacitor-mobile-signals#build",
         "@elizaos/macosreminders#build",
         "@elizaos/native-activity-tracker#build"
-      ],
-      "outputs": []
-    },
-    "@elizaos/lifeops-bench#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-calendar#build",
-        "@elizaos/plugin-personal-assistant#build"
       ],
       "outputs": []
     },

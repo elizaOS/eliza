@@ -73,7 +73,7 @@ I'll synthesize the 12 domain audits into a master document. Let me produce the 
 - **OrchestratorTaskService** (durable task store + ACP bridge) — `src/services/orchestrator-task-service.ts`
 - **task-agent-routing / interruption-decider / sub-agent-inbox / coding-account-selection / spawn-trajectory** — same `src/services/` dir
 - **Separate sandboxed claude-CLI driver** (not ACP) — `packages/plugin-remote-manifest/src/sub-agent-claude-code/sub-agent-service.ts`
-- **SWE-bench trajectory benchmark harness + viewer** — `packages/benchmarks/orchestrator`
+- **SWE-bench trajectory benchmark harness + viewer** — `orchestrator` in https://github.com/elizaOS/benchmarks
 
 ### C. Smithers engines
 - **In-process workflow engine** (DAG→parallel/sequence, stdin/stdout node protocol, n8n retry, metrics) — `plugins/plugin-workflow/src/services/smithers-runtime.ts`; production caller `embedded-workflow-service.ts`
@@ -221,7 +221,7 @@ I'll synthesize the 12 domain audits into a master document. Let me produce the 
 ### LOW
 
 - [x] **[LOW] (A) Retired NFT-drop plugin scope entry** — Removed the retired NFT-drop plugin from the code-writing domain scope; future NFT coverage belongs in a web3/contracts domain if needed. Files: scope/docs only.
-- [ ] **[LOW] (B) sweagent vendor source unused at runtime; SWE-bench capability not connected to ACP** — Either document `packages/sweagent` as benchmark-only (clarify scope) or add an integration path + test driving a SWE-bench-style task through the ACP orchestrator reconciled with the `benchmarks/orchestrator` viewer format. Files: `packages/sweagent/README.md`, `packages/benchmarks/orchestrator/`.
+- [ ] **[LOW] (B) sweagent vendor source unused at runtime; SWE-bench capability not connected to ACP** — Either document `packages/sweagent` as benchmark-only (clarify scope) or add an integration path + test driving a SWE-bench-style task through the ACP orchestrator reconciled with the benchmarks `orchestrator` viewer format (https://github.com/elizaOS/benchmarks). Files: `packages/sweagent/README.md`.
 - [ ] **[LOW] (C) No timeline/screenshot/video evidence for Smithers-driven runs** — When wiring the multi-step path, capture before/after of the orchestrator task widget + a run timeline (from `TaskRunResult.metrics`) + a short video of a Smithers-driven coding task under `.github/issue-evidence/`. Files: recording harness. (Depends on Domain C wiring gap.)
 - [ ] **[LOW] (D) Anthropic weekly usage (weeklyPct) parsing untested; Anthropic probe has no unit test** — Add `account-usage.test.ts` covering `pollAnthropicUsage` (both flat + nested shapes asserting sessionPct + weeklyPct + resetsAt), `pollCodexUsage`, `utilizationToPct` edge cases, `normalizeResetTimestamp` sec-vs-ms. Files: `packages/app-core/src/services/account-usage.ts`.
 - [ ] **[LOW] (D) quota-aware strategy uses sessionPct only (ignores weeklyPct) and is not the runtime default** — Extend quota-aware (and optionally least-used) to consider `weeklyPct` (skip if `max(sessionPct,weeklyPct) >= threshold`) + a test; document the trade-off if intentional. Files: `packages/app-core/src/services/account-pool.ts`.

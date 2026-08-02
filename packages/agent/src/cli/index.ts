@@ -92,7 +92,7 @@ export async function runAutonomousCli(
     // `ELIZA_LOCAL_LLAMA !== "1"`.
     if (runtime && process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
       const { ensureAospLocalInferenceHandlers } = await import(
-        "@elizaos/plugin-aosp-local-inference"
+        "@elizaos/plugin-native-inference"
       );
       await ensureAospLocalInferenceHandlers(runtime);
     } else if (

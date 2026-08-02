@@ -82,7 +82,7 @@ const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_ENTRIES = [
   "calendar",
   "inbox",
   "todos",
-  "wallet-ui",
+  "wallet",
 ] as const;
 // Extra optional plugin entry ids (comma-separated, e.g. "personal-assistant")
 // seeded as `{ enabled: true }` into the live-stack eliza.json alongside the
@@ -127,9 +127,9 @@ const LIVE_STACK_OPTIONAL_VIEW_PLUGIN_PACKAGES: ReadonlyArray<{
     requiredBuildOutputs: ["dist/index.js", "dist/views/bundle.js"],
   },
   {
-    id: "wallet-ui",
-    dir: "plugin-wallet-ui",
-    requiredBuildOutputs: ["dist/index.js", "dist/views/bundle.js"],
+    id: "wallet",
+    dir: "plugin-wallet",
+    requiredBuildOutputs: ["dist/index.mjs", "dist/views/bundle.js"],
   },
 ];
 const pendingStateDirs = new Set<string>();

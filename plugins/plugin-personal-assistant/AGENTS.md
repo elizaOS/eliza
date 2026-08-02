@@ -9,11 +9,11 @@ LifeOps is the personal and executive assistant interface. It owns the assistant
 LifeOps must not become the implementation home for adjacent domains:
 
 - **Health / sleep / circadian / screen-time planning** belongs in `@elizaos/plugin-health`. LifeOps may expose thin owner-access wrappers and assistant intents that call plugin-health factories.
-- **Connector, adapter, bridge, and transport clients** belong in their relevant plugins (`plugin-google`, `plugin-whatsapp`, `plugin-x`, `plugin-browser`, `plugin-phone`, `plugin-calendly`, etc.). LifeOps may keep registries, owner policies, and normalized personal-assistant projections.
+- **Connector, adapter, bridge, and transport clients** belong in their relevant plugins (`plugin-google-workspace`, `plugin-whatsapp`, `plugin-x`, `plugin-browser`, `plugin-phone`, `plugin-calendly`, etc.). LifeOps may keep registries, owner policies, and normalized personal-assistant projections.
 - **Native Apple Calendar / Reminders bridge policy** belongs in native packages (`@elizaos/capacitor-calendar`, `@elizaos/macosreminders`). LifeOps may call those helpers and map results into assistant DTOs.
 - **Personal assistant code, views, scenarios, default packs, owner policy, approvals, and executive workflows** belong here.
 
-The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's plugin list. It depends on `@elizaos/plugin-google` for current calendar/inbox projections (auto-registered at init if absent).
+The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's plugin list. It depends on `@elizaos/plugin-google-workspace` for current calendar/inbox projections (auto-registered at init if absent).
 
 ## Plugin surface
 
@@ -275,7 +275,7 @@ bun run --cwd plugins/plugin-personal-assistant verify:live-schedule          # 
 - **Approval flows require an approval queue.** Outbound message sends and document signatures go through `PgApprovalQueue` before any external dispatch. Never dispatch directly from action handlers.
 - **`LifeOpsService` is composed from mixins.** Core logic lives in `src/lifeops/service-mixin-*.ts` files. `src/lifeops/service.ts` composes them. Add a new domain capability as a mixin.
 - **Default packs must pass lint.** `bun run lint:default-packs` (also `pretest`) enforces the rules embedded in `scripts/lint-default-packs.mjs`. CI blocks packs that fail.
-- **plugin-google is auto-registered.** If `@elizaos/plugin-google` is not already in the runtime's plugin list, `init()` dynamically imports and registers it. Ensure it is installed in the workspace.
+- **plugin-google-workspace is auto-registered.** If `@elizaos/plugin-google-workspace` is not already in the runtime's plugin list, `init()` dynamically imports and registers it. Ensure it is installed in the workspace.
 - See root `AGENTS.md` for repo-wide architecture commandments, logger conventions, ESM rules, and naming.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

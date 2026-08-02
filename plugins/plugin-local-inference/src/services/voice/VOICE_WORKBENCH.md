@@ -140,7 +140,7 @@ the PR (MP4/JPG/logs in `<details>`; stage locally under
    voice:latency-report`) against a running app, per-stage p50/p90/p99; required
    for any latency-touching change and cited against `maxFirstAudioMs`.
 3. **interrupt-bench numbers** — `bun run --cwd
-   packages/benchmarks/interrupt-bench test` for barge-in / interruption changes.
+   interrupt-bench test` (in https://github.com/elizaOS/benchmarks) for barge-in / interruption changes.
 4. **Captured real audio + narrated walkthrough** — `AGENTS.md` is binding
    for voice: the real STT→TTS round-trip audio, backend `[ClassName]` logs
    showing the exact path (router re-throw, AEC `echoReferenceWired` flip,
@@ -184,10 +184,10 @@ no scorer math is duplicated in the new work.
 | --- | --- |
 | `e2e-harness.ts:wordErrorRate` + `voice-selftest-harness.ts:wordErrorRate` | **Done** — one `@elizaos/shared/voice-wer`. |
 | Pure scoring lib (`e2e-harness.ts`) | **Promoted** to the single metric module (EOT/diarization/respond/entity + barge-in-gating/ERLE/partial scorers). |
-| `packages/benchmarks/interrupt-bench` (barge-in / interruption scoring) | **Wired into CI** — runs in the `voice-workbench.yml` PR lane alongside the `--logic` regression gate. |
+| `interrupt-bench` (barge-in / interruption scoring, now in https://github.com/elizaOS/benchmarks) | Runs from the standalone benchmarks repo. |
 | `packages/app-core/scripts/voice-duet.mjs` (`voice:duet`), `voice-e2e-hardware.ts`, `voice-attribution-smoke.ts`, `lib/duet-bridge.mjs` | **Planned** — route their measurements through the shared scorers + emit the schema-v1 report. Deferred (not merge-first per #12258): each is a 650–1355-line provisioned-hardware script consumed on its own CLI path; absorbing it means porting live measurements onto the observation shape without breaking the hardware lane. No new scorer math has been added inside them. |
-| `packages/benchmarks/voice/three-voice-scenario.mjs` | **Planned** — its synthetic-label DER precedent (its inline DER is trivially 0 on exact synthetic labels) is superseded by the corpus generator + `computeDiarizationErrorRate`; folding the `.mjs` corpus path in is deferred with the scripts above. |
-| `packages/benchmarks/voicebench/` (TS latency p95/p99) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |
+| `voice/three-voice-scenario.mjs` (https://github.com/elizaOS/benchmarks) | **Planned** — its synthetic-label DER precedent (its inline DER is trivially 0 on exact synthetic labels) is superseded by the corpus generator + `computeDiarizationErrorRate`; folding the `.mjs` corpus path in is deferred with the scripts above. |
+| `voicebench/` (TS latency p95/p99, https://github.com/elizaOS/benchmarks) | The report layer mirrors its p95/p99 shape; remains a research bench linked from the workbench. |
 | Per-spec inline `tinyWav()` fixtures (`packages/app/test/ui-smoke/voice-*.spec.ts`) | **Planned** — replace with the versioned corpus; deferred (owned by the app UI-smoke lane, not the workbench-merge-first set). |
 
 ## External / Device Follow-Ups

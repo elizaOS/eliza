@@ -3844,7 +3844,7 @@ describe("ChatOverlay — streaming + consumer activity render (#10712)", () => 
                   id: "views-calendar",
                   type: "tool_result",
                   actionName: "VIEWS",
-                  args: { action: "show", target: "simple-calendar" },
+                  args: { action: "show", target: "calendar" },
                   result: {
                     success: true,
                     userFacingText: "Opening your calendar now.",

@@ -27,7 +27,7 @@ describe("navigation tabFromPath", () => {
   it("uses app-shell tab affinity for registered plugin pages", () => {
     registerAppShellPage({
       id: "test.wallet.inventory",
-      pluginId: "@elizaos/plugin-wallet-ui",
+      pluginId: "@elizaos/plugin-wallet:ui",
       label: "Wallet",
       path: "/test/inventory",
       tabAffinity: "inventory",

@@ -104,7 +104,6 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
-      "@elizaos/plugin-shell": ["../../plugins/plugin-shell/src/index.ts"],
       "@elizaos/plugin-scheduling": [
         "../../plugins/plugin-scheduling/src/index.ts"
       ],

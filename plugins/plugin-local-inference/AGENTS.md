@@ -24,6 +24,9 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 
 `TEXT_EMBEDDING` is **not** registered on the static plugin object — it is wired at boot by `ensureLocalInferenceHandler()` in the runtime subpath to avoid claiming the embedding slot before a backend is active.
 
+### Registered elizaOS services
+- `LocalPiiRecognizerService` (`src/pii/service.ts`) — registers under core's `PII_ENTITY_RECOGNIZER_SERVICE`; supplies the `LlmEntityRecognizer` (`src/pii/llm-recognizer.ts`) that the runtime's PII pseudonymization layer composes with its regex recognizer when `ELIZA_PII_SWAP_ENABLED` is on. Detection runs as a JSON-extraction prompt on the resident local backend through the inference priority gate; only values found verbatim in the source text are emitted, and `getRecognizer()` returns `null` (regex-only degrade) while no generation-capable local backend is active.
+
 ### Services (consumed, not registered as elizaOS services)
 - `LocalInferenceService` / `localInferenceService` (`src/services/service.ts`) — singleton facade for download orchestration, active-model coordination, hardware probe, catalog, and routing preferences.
 - `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the in-process FFI llama.cpp backend (fused `libelizainference`, or the libllama + eliza-llama-shim fallback) via the `BackendDispatcher`; one model loaded at a time (unload-then-load for model swaps).
@@ -59,6 +62,10 @@ src/
   index.ts                        Public re-exports (plugin object, actions, route helpers, embedding presets)
   provider.ts                     Plugin object definition; model-handler factory; LocalInferenceUnavailableError
   local-inference-routes.ts       HTTP handler for catalog/download/status/chat-command routes
+
+  pii/
+    llm-recognizer.ts             LLM-backed PII named-entity recognizer (person/org/location) — prompt build, JSON parse, verbatim relocation, chunking
+    service.ts                    LocalPiiRecognizerService — injects the recognizer behind core's PII_ENTITY_RECOGNIZER_SERVICE seam
 
   actions/
     generate-media.ts             GENERATE_MEDIA action: keyword+classifier intent routing → IMAGE or TTS

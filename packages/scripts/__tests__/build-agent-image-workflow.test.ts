@@ -410,7 +410,6 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-mcp",
       "@elizaos/plugin-native-filesystem",
       "@elizaos/plugin-pdf",
-      "@elizaos/plugin-shell",
       "@elizaos/plugin-signal",
       "@elizaos/plugin-sql",
       "@elizaos/plugin-streaming",

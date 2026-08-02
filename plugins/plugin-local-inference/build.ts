@@ -51,7 +51,7 @@ export async function buildLocalInferencePlugin(
 			// It is not a declared dependency (present only on AOSP images), so the
 			// mobile bundler must treat it as external or the build fails to resolve
 			// it on every stock target.
-			"@elizaos/plugin-aosp-local-inference",
+			"@elizaos/plugin-native-inference",
 			"llama-cpp-capacitor",
 			"@reflink/reflink",
 			"ws",

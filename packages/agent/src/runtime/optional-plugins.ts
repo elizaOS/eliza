@@ -28,7 +28,6 @@
 export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-task-coordinator",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
   // Opt-in only: dormant unless a character lists @elizaos/plugin-pty (no
   // autoEnable). Registers PTY_SERVICE so the web terminal can drive a real

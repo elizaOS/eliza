@@ -309,7 +309,7 @@ describe("curateLauncherPages", () => {
   it("shows registered Notes and Calendar views without requiring Cloud auth", () => {
     const views = [
       entry("notes", { label: "Notes" }),
-      entry("simple-calendar", { label: "Calendar" }),
+      entry("calendar", { label: "Calendar" }),
     ];
 
     expect(
@@ -320,7 +320,7 @@ describe("curateLauncherPages", () => {
           cloudActive: false,
         }),
       ),
-    ).toEqual(["simple-calendar", "notes"]);
+    ).toEqual(["calendar", "notes"]);
     expect(
       ids(
         curateLauncherPages(views, {
@@ -329,7 +329,7 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toEqual(["simple-calendar", "notes"]);
+    ).toEqual(["calendar", "notes"]);
   });
 
   it("collapses duplicate wallet + automations registrations, keeping Tasks its own tile", () => {

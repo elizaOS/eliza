@@ -21,6 +21,7 @@ import {
 } from "./owner-pairing-service";
 import { registerTelegramDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { TelegramService } from "./service";
+import { TelegramStandaloneService } from "./standalone/service";
 import { telegramSetupRoutes } from "./setup-routes";
 import { TelegramTestSuite } from "./tests";
 import { registerTelegramTriageAdapter } from "./triage-adapter";
@@ -43,7 +44,15 @@ const telegramPlugin: Plugin = {
   ],
   // TelegramService must come before TelegramOwnerPairingServiceImpl so the
   // bot instance exists when the pairing service registers its command.
-  services: [TelegramService, TelegramOwnerPairingServiceImpl],
+  // TelegramStandaloneService is the opt-in standalone long-poll mode: it
+  // self-gates on ELIZA_TELEGRAM_STANDALONE_BOT (with LifeOps passive
+  // connectors disabled) and stays dormant otherwise, so the full connector
+  // and the standalone bot are two modes of this one plugin.
+  services: [
+    TelegramService,
+    TelegramOwnerPairingServiceImpl,
+    TelegramStandaloneService,
+  ],
   routes: [...telegramSetupRoutes, ...telegramAccountRoutes],
   tests: [new TelegramTestSuite()],
   // Self-declared auto-enable: activate when the "telegram" connector is
@@ -81,6 +90,7 @@ const telegramPlugin: Plugin = {
   },
   async dispose(runtime: IAgentRuntime) {
     await TelegramService.stop(runtime);
+    await TelegramStandaloneService.stop(runtime);
   },
 };
 
@@ -88,6 +98,13 @@ export * from "./account-auth-service";
 export * from "./accounts";
 export * from "./connector-account-provider";
 export * from "./local-client";
+export type { TelegramStandaloneContext } from "./standalone/handler";
+export { handleTelegramStandaloneMessage } from "./standalone/handler";
+export { shouldStartTelegramStandaloneBot } from "./standalone/policy";
+export {
+  TELEGRAM_STANDALONE_SERVICE_NAME,
+  TelegramStandaloneService,
+} from "./standalone/service";
 export {
   MessageManager,
   stopTelegramAccountAuthSession,

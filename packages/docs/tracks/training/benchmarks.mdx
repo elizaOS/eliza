@@ -18,16 +18,15 @@ The benchmarks suite orchestrates evaluation runs across every Eliza subsystem. 
 
 ## Running a benchmark
 
-The orchestrator at `packages/benchmarks/orchestrator/` accepts a config and runs the named harness, collecting traces and metrics. Configs pin the model under test, dataset shard, evaluation criteria, and reporter.
+The benchmarks now live in the standalone [elizaOS/benchmarks](https://github.com/elizaOS/benchmarks) repository. The orchestrator (`orchestrator/` in that repo) accepts a config and runs the named harness, collecting traces and metrics. Configs pin the model under test, dataset shard, evaluation criteria, and reporter.
 
 ## Reports
 
-Each run emits a calibration report, scorecards, and per-task traces. Reports are checked into `packages/benchmarks/reports/` for reference runs.
+Each run emits a calibration report, scorecards, and per-task traces. Reports are checked into the benchmarks repo (`reports/`) for reference runs.
 
 ## Source
 
-- Suite root: [`packages/benchmarks/`](https://github.com/elizaOS/eliza/tree/develop/packages/benchmarks)
-- Orchestrator: `packages/benchmarks/orchestrator/`
+- Suite root: [github.com/elizaOS/benchmarks](https://github.com/elizaOS/benchmarks)
 
 ## See also
 

@@ -34,7 +34,7 @@ set -Eeuo pipefail
 #                        ELIZA_AGENT_CHARACTER_JSON for the boot.
 #   BOOT_KPI_ENFORCE     If "1", a cold-start readyMs budget breach (measured
 #                        boot readyMs > boot.coldReadyMs from
-#                        packages/benchmarks/loadperf/budgets.json) FAILS the
+#                        the loadperf budgets, see https://github.com/elizaOS/benchmarks) FAILS the
 #                        smoke. Default (unset/!=1) is WARN-FIRST: a breach is
 #                        reported via a ::warning:: line but does NOT fail. Flip
 #                        this to "1" in the workflow once the baseline is
@@ -459,7 +459,8 @@ boot_verify() {
 
   # Boot-KPI cold-start budget (item 5 of #8812). Computes cold readyMs from the
   # pre-`docker run` checkpoint to the FIRST health/status success, reads the
-  # boot.coldReadyMs budget from packages/benchmarks/loadperf/budgets.json, and
+  # boot.coldReadyMs budget (default mirrors the loadperf budgets in
+  # https://github.com/elizaOS/benchmarks), and
   # reports the comparison. WARN-FIRST: a breach prints a ::warning:: line and
   # returns 0 (does not fail) UNLESS BOOT_KPI_ENFORCE=1, in which case it returns
   # 1 so the caller can fail the smoke. Every measurement step is guarded so a
@@ -482,21 +483,9 @@ boot_verify() {
       return 0
     fi
 
-    # Default budget mirrors packages/benchmarks/loadperf/budgets.json boot.coldReadyMs.
-    local budget_default=25000
-    local budget="$budget_default"
-    local budgets_file="$REPO_ROOT/packages/benchmarks/loadperf/budgets.json"
-    if command -v jq >/dev/null 2>&1 && [[ -f "$budgets_file" ]]; then
-      local parsed
-      parsed="$(jq -r '.boot.coldReadyMs // empty' "$budgets_file" 2>/dev/null || true)"
-      if [[ "$parsed" =~ ^[0-9]+$ ]]; then
-        budget="$parsed"
-      else
-        log "[boot-kpi] WARNING: could not read boot.coldReadyMs from $budgets_file; using default ${budget_default}ms"
-      fi
-    else
-      log "[boot-kpi] WARNING: jq or budgets.json unavailable; using default coldReadyMs budget ${budget_default}ms"
-    fi
+    # Budget mirrors the loadperf boot.coldReadyMs budget maintained in
+    # https://github.com/elizaOS/benchmarks.
+    local budget=25000
 
     # Record runner contention alongside readyMs (#8812 item 5). Boot is
     # single-threaded and import-bound, so a heavily loaded runner inflates

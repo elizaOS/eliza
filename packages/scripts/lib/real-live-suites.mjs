@@ -328,7 +328,7 @@ export const GUARDED_REAL_LIVE_SUITES = [
     probe: "host PTY support (runs in every lane, POSIX)",
   },
   {
-    file: "plugins/plugin-shell/__tests__/shell.real.test.ts",
+    file: "plugins/plugin-coding-tools/src/shell/__tests__/shell.real.test.ts",
     probe: "POSIX shell (skips on win32; runs in every lane elsewhere)",
   },
   {

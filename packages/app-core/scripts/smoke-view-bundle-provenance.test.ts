@@ -92,7 +92,7 @@ async function emptyBundleRoot(): Promise<string> {
 
 async function bundleRootWithWallet(): Promise<string> {
   const root = await emptyBundleRoot();
-  const bundleDir = path.join(root, "plugin-wallet-ui", "dist", "views");
+  const bundleDir = path.join(root, "plugin-wallet", "dist", "views");
   await mkdir(bundleDir, { recursive: true });
   await writeFile(
     path.join(bundleDir, "bundle.js"),
@@ -168,7 +168,7 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
     const body = await response.json();
     expect(body.provenance).toBe("missing-real-bundle");
     expect(body.expectedBundlePath).toContain(
-      "plugins/plugin-wallet-ui/dist/views/bundle.js",
+      "plugins/plugin-wallet/dist/views/bundle.js",
     );
   });
 

@@ -13,6 +13,7 @@ import codingToolsPlugin, {
   availableToolsProvider,
   BackgroundShellService,
   CODING_TOOLS_CONTEXTS,
+  ExecApprovalService,
   FILE_STATE_SERVICE,
   FileStateService,
   RIPGREP_SERVICE,
@@ -21,6 +22,7 @@ import codingToolsPlugin, {
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
+  ShellService,
 } from "../src/index.ts";
 
 const EXPECTED_ACTIONS = [
@@ -95,14 +97,16 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("exports the 5 active services", () => {
+  it("exports the 7 active services", () => {
     const services = codingToolsPlugin.services ?? [];
+    expect(services).toContain(ShellService);
+    expect(services).toContain(ExecApprovalService);
     expect(services).toContain(BackgroundShellService);
     expect(services).toContain(FileStateService);
     expect(services).toContain(SandboxService);
     expect(services).toContain(SessionCwdService);
     expect(services).toContain(RipgrepService);
-    expect(services.length).toBe(5);
+    expect(services.length).toBe(7);
   });
 
   it("does not export removed actions or service constants", () => {

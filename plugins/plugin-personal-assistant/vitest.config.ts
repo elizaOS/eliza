@@ -56,7 +56,6 @@ const optionalCorePluginStubPackages = new Set([
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-task-coordinator",
   "@elizaos/plugin-app-control",
-  "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
   "@elizaos/plugin-pty",
   "@elizaos/plugin-birdclaw",
@@ -88,8 +87,8 @@ const agentSourceJsToTsPlugin = {
     if (source === "@elizaos/ui") {
       return path.join(lifeopsTestStubsRoot, "ui.ts");
     }
-    if (source === "@elizaos/plugin-google") {
-      return path.join(lifeopsTestStubsRoot, "plugin-google.ts");
+    if (source === "@elizaos/plugin-google-workspace") {
+      return path.join(lifeopsTestStubsRoot, "plugin-google-workspace.ts");
     }
 
     const normalizedImporter = importer?.replace(/^\/@fs/, "");
@@ -761,8 +760,8 @@ export default defineConfig({
         ),
       },
       {
-        find: /^@elizaos\/plugin-google$/,
-        replacement: path.join(lifeopsTestStubsRoot, "plugin-google.ts"),
+        find: /^@elizaos\/plugin-google-workspace$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-google-workspace.ts"),
       },
       {
         find: /^@elizaos\/plugin-elizacloud$/,
