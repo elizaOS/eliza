@@ -49,6 +49,16 @@ const ID_PARAM = {
   },
 } satisfies NonNullable<ViewCapability["params"]>;
 
+const DELETE_ID_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description:
+    "Canonical entity id, or the UUID suffix of an id returned by a prior read.",
+  minLength: 3,
+  maxLength: 128,
+  pattern:
+    "^(?:[a-z][a-z0-9-]{2,127}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+};
+
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
     id: "get-notes",
@@ -94,7 +104,7 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description: "Delete one sticky note by id, exact title, or unique query.",
     effect: "write",
     params: {
-      id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      id: DELETE_ID_PARAM,
       title: { ...TITLE_PARAM, description: "Exact note title." },
       query: {
         type: "string",
@@ -186,11 +196,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
       "Delete one Simple Calendar event by id, exact title, or unique query.",
     effect: "write",
     params: {
-      id: {
-        ...ID_PARAM.id,
-        description: "Stable calendar event id.",
-        required: false,
-      },
+      id: DELETE_ID_PARAM,
       title: { ...TITLE_PARAM, description: "Exact calendar event title." },
       query: {
         type: "string",
