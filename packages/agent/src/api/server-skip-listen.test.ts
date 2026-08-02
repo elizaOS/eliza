@@ -1,8 +1,8 @@
 /**
  * Verifies `startApiServer`'s `skipListen` guard (local-agent IPC transport,
- * #12180) and the lazy screen-capture lookup (#12249): source-level assertions
- * against server.ts plus a real Bun-subprocess boot that confirms the TCP port
- * binds only when skipListen is unset. See the block below for harness realism.
+ * #12180) across the API composition root and listener adapter, plus a real
+ * Bun-subprocess boot that confirms the TCP port binds only when skipListen is
+ * unset. See the block below for harness realism.
  */
 import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -32,6 +32,10 @@ import { describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 
 const SERVER_SRC = readFileSync(join(import.meta.dirname, "server.ts"), "utf8");
+const HTTP_LISTENER_SRC = readFileSync(
+  join(import.meta.dirname, "http-listener.ts"),
+  "utf8",
+);
 
 const HARNESS_PATH = join(
   import.meta.dirname,
@@ -128,7 +132,9 @@ describe("startApiServer skipListen — source-level guard (#12180)", () => {
     const configureIndex = SERVER_SRC.indexOf(
       "await opts?.configureServer?.(server)",
     );
-    const listenIndex = SERVER_SRC.indexOf("server.listen(port, host");
+    const listenIndex = SERVER_SRC.indexOf(
+      "const listener = await listenHttpServer",
+    );
     expect(createIndex).toBeGreaterThan(-1);
     expect(configureIndex).toBeGreaterThan(createIndex);
     expect(listenIndex).toBeGreaterThan(configureIndex);
@@ -142,25 +148,25 @@ describe("startApiServer skipListen — source-level guard (#12180)", () => {
     const guardIndex = SERVER_SRC.indexOf("if (opts?.skipListen)");
     expect(guardIndex).toBeGreaterThan(-1);
 
-    // The skip branch must return before the listening Promise is created.
-    const listenPromiseIndex = SERVER_SRC.indexOf(
-      "return new Promise((resolve, reject) => {",
+    // The skip branch must return before the listener adapter is invoked.
+    const listenerIndex = SERVER_SRC.indexOf(
+      "const listener = await listenHttpServer",
     );
-    expect(listenPromiseIndex).toBeGreaterThan(-1);
-    expect(guardIndex).toBeLessThan(listenPromiseIndex);
+    expect(listenerIndex).toBeGreaterThan(-1);
+    expect(guardIndex).toBeLessThan(listenerIndex);
 
-    // Between the guard and the listening Promise there must be no server.listen
-    // call — the skip path opens no socket.
-    const branchBody = SERVER_SRC.slice(guardIndex, listenPromiseIndex);
-    expect(branchBody).not.toMatch(/server\.listen\(/);
+    // Between the guard and listener invocation there is no transport call, so
+    // the skip path cannot open a socket through the extracted adapter.
+    const branchBody = SERVER_SRC.slice(guardIndex, listenerIndex);
+    expect(branchBody).not.toContain("listenHttpServer(");
   });
 
   it("returns the full server contract from the skip-listen branch", () => {
     const guardIndex = SERVER_SRC.indexOf("if (opts?.skipListen)");
-    const listenPromiseIndex = SERVER_SRC.indexOf(
-      "return new Promise((resolve, reject) => {",
+    const listenerIndex = SERVER_SRC.indexOf(
+      "const listener = await listenHttpServer",
     );
-    const branchBody = SERVER_SRC.slice(guardIndex, listenPromiseIndex);
+    const branchBody = SERVER_SRC.slice(guardIndex, listenerIndex);
 
     // Same public shape the listening path resolves with, so callers (and the
     // in-process dispatchRoute kernel) are unaffected by the bind being skipped.
@@ -173,18 +179,21 @@ describe("startApiServer skipListen — source-level guard (#12180)", () => {
 
   it("still runs deferred startup work in skip mode unless explicitly skipped", () => {
     const guardIndex = SERVER_SRC.indexOf("if (opts?.skipListen)");
-    const listenPromiseIndex = SERVER_SRC.indexOf(
-      "return new Promise((resolve, reject) => {",
+    const listenerIndex = SERVER_SRC.indexOf(
+      "const listener = await listenHttpServer",
     );
-    const branchBody = SERVER_SRC.slice(guardIndex, listenPromiseIndex);
+    const branchBody = SERVER_SRC.slice(guardIndex, listenerIndex);
     expect(branchBody).toContain("startDeferredStartupWork()");
     expect(branchBody).toContain("skipDeferredStartupWork");
   });
 
   it("keeps the listening path (default) binding via server.listen", () => {
-    // Regression proof for the default path: the un-guarded server.listen call
-    // still exists and is reached when skipListen is unset.
-    expect(SERVER_SRC).toMatch(/server\.listen\(port,\s*host,/);
+    // The composition root delegates after the guard, and the transport owner
+    // performs the concrete bind.
+    expect(SERVER_SRC).toContain("const listener = await listenHttpServer");
+    expect(HTTP_LISTENER_SRC).toContain(
+      "options.server.listen(options.port, options.host)",
+    );
   });
 });
 

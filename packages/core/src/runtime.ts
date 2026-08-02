@@ -1762,6 +1762,8 @@ export class AgentRuntime implements IAgentRuntime {
 			try {
 				await entry.handler(this, ctx);
 			} catch (error) {
+				// error-policy:J4 Hooks are isolated so one plugin cannot suppress
+				// later hooks; the failure is surfaced to the agent explicitly.
 				errorMessage = error instanceof Error ? error.message : String(error);
 				this.logger.error(
 					{
@@ -1773,6 +1775,10 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					`${logLabel} threw; continuing`,
 				);
+				this.reportError("AgentRuntime.pipelineHook", error, {
+					hookId: entry.id,
+					phase: entry.phase,
+				});
 			}
 			{
 				const durationMs = Math.round(performance.now() - t0);
@@ -1832,6 +1838,8 @@ export class AgentRuntime implements IAgentRuntime {
 							...(errorMessage !== undefined ? { error: errorMessage } : {}),
 						});
 					} catch (metricError) {
+						// error-policy:J7 Hook metrics are diagnostics and cannot
+						// interrupt the pipeline they observe.
 						this.logger.debug(
 							{
 								src: "pipeline_hook",
@@ -1845,6 +1853,10 @@ export class AgentRuntime implements IAgentRuntime {
 							},
 							"PIPELINE_HOOK_METRIC listener failed",
 						);
+						this.reportError("AgentRuntime.pipelineHookMetric", metricError, {
+							hookId: entry.id,
+							phase,
+						});
 					}
 				}
 			}
@@ -2546,6 +2558,8 @@ export class AgentRuntime implements IAgentRuntime {
 			try {
 				await Promise.resolve().then(() => maybe.stop?.());
 			} catch (err) {
+				// error-policy:J6 Service shutdown is best-effort so every
+				// registered service receives its teardown opportunity.
 				this.logger.warn(
 					{
 						src: "agent",
@@ -2583,6 +2597,8 @@ export class AgentRuntime implements IAgentRuntime {
 		try {
 			await this._initializeCore(options);
 		} catch (err) {
+			// error-policy:J2 Release initialization waiters before preserving
+			// the original initialization failure for the caller.
 			// Always resolve initPromise so eager service starts and stop()
 			// do not hang waiting on a promise that never settles.
 			if (this.initResolver) {
@@ -2925,6 +2941,8 @@ export class AgentRuntime implements IAgentRuntime {
 				if (!(error instanceof EmbeddingDimensionProbeError)) {
 					throw error;
 				}
+				// error-policy:J4 Embeddings enter an explicit disabled state until
+				// the deferred probe succeeds; the runtime remains otherwise usable.
 				// Every registered TEXT_EMBEDDING provider failed the dimension
 				// probe. Do not abort boot: ensureEmbeddingDimension() has already
 				// flipped the runtime into embedding-disabled mode, so memory writes
@@ -2940,6 +2958,9 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					"All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
 				);
+				this.reportError("AgentRuntime.embeddingDimensionProbe", error, {
+					attempts: error.attempts,
+				});
 			}
 		}
 
@@ -3868,6 +3889,8 @@ export class AgentRuntime implements IAgentRuntime {
 					const ok = await action.validate(this, message, state);
 					if (ok) validated.push(action);
 				} catch (err) {
+					// error-policy:J4 Mode actions are isolated; failed validation is
+					// reported while independent actions remain eligible.
 					this.logger.warn(
 						{
 							src: "agent",
@@ -3878,6 +3901,10 @@ export class AgentRuntime implements IAgentRuntime {
 						},
 						"runActionsByMode validate failed",
 					);
+					this.reportError("AgentRuntime.modeActionValidate", err, {
+						action: action.name,
+						mode,
+					});
 				}
 			}),
 		);
@@ -3994,6 +4021,8 @@ export class AgentRuntime implements IAgentRuntime {
 					}
 				}
 			} catch (err) {
+				// error-policy:J1 The mode-action boundary records an explicit
+				// failed result while allowing independent actions to complete.
 				success = false;
 				errorMsg = err instanceof Error ? err.message : String(err);
 				this.logger.warn(
@@ -4006,6 +4035,10 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					"runActionsByMode handler failed",
 				);
+				this.reportError("AgentRuntime.modeActionHandler", err, {
+					action: action.name,
+					mode,
+				});
 			}
 
 			await this.emitEvent(EventType.ACTION_COMPLETED, {
@@ -6826,6 +6859,8 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 				return resultRef.current as R;
 			} catch (error) {
+				// error-policy:J4 Provider failover is an explicit degraded path;
+				// the final provider failure is rethrown if no alternative succeeds.
 				if (handlerStartedAt === null) {
 					recordInferenceSpan(
 						`model-preprocess:${String(modelType)}`,
@@ -6969,8 +7004,15 @@ export class AgentRuntime implements IAgentRuntime {
 				providerOrder: trajCtx.providerOrder,
 				providerAttributions: trajCtx.providerAttributions,
 			});
-		} catch {
-			// Trajectory logging must never break core model flow.
+		} catch (error) {
+			// error-policy:J7 Trajectory logging must never break core model flow.
+			this.logger.warn(
+				{ error, modelType: args.modelType },
+				"Failed to record model-call trajectory",
+			);
+			this.reportError("AgentRuntime.recordUseModelTrajectory", error, {
+				modelType: args.modelType,
+			});
 		}
 	}
 
@@ -7339,10 +7381,15 @@ export class AgentRuntime implements IAgentRuntime {
 					traceVariant = merged.variant;
 					traceArtifactVersion = merged.artifactVersion;
 				} catch (optErr) {
+					// error-policy:J4 Prompt optimization is optional; the
+					// unoptimized baseline remains the explicit degraded path.
 					this.logger.warn(
 						{ error: optErr },
 						"Optimization artifact lookup failed",
 					);
+					this.reportError("AgentRuntime.promptOptimizationLookup", optErr, {
+						promptKey: tracePromptKey,
+					});
 				}
 			}
 
@@ -7691,6 +7738,8 @@ ${section_end}`;
 					this.useModel(resolvedModelType, modelParams, options.model),
 				);
 			} catch (modelError) {
+				// error-policy:J4 Structured generation retries transient model
+				// failures and records an explicit failure state on exhaustion.
 				const modelErrorMessage = getErrorMessage(modelError);
 				const isTransientFailure = isTransientModelError(modelError);
 				const willRetry = currentRetry + 1 <= maxRetries;
@@ -7771,6 +7820,8 @@ ${section_end}`;
 					`dynamicPromptExecFromState parsed: ${JSON.stringify(responseContent)}`,
 				);
 			} catch (e) {
+				// error-policy:J3 Model output is untrusted input; parse failure
+				// becomes an explicit invalid attempt for schema retry.
 				parseErrorMessage = e instanceof Error ? e.message : String(e);
 				this.logger.error(
 					`dynamicPromptExecFromState parse error: ${parseErrorMessage}`,
@@ -8036,9 +8087,16 @@ ${section_end}`;
 								this.logger.warn("Failed to write optimization trace", err);
 							});
 					} catch (traceErr) {
+						// error-policy:J7 Optimization traces are diagnostic and
+						// cannot change an otherwise valid structured response.
 						this.logger.warn(
 							{ error: traceErr },
 							"Failed to build optimization trace",
+						);
+						this.reportError(
+							"AgentRuntime.buildPromptOptimizationTrace",
+							traceErr,
+							{ promptKey: tracePromptKey },
 						);
 					}
 				}
@@ -8284,7 +8342,14 @@ ${section_end}`;
 						this.logger.warn("Failed to write failure trace", err);
 					});
 			} catch (traceErr) {
+				// error-policy:J7 Failure traces are diagnostic and cannot replace
+				// the structured failure already returned to the caller.
 				this.logger.warn({ error: traceErr }, "Failed to build failure trace");
+				this.reportError(
+					"AgentRuntime.buildPromptOptimizationFailureTrace",
+					traceErr,
+					{ promptKey: tracePromptKey },
+				);
 			}
 		}
 
@@ -9430,6 +9495,8 @@ ${section_end}`;
 					registration.provider,
 				);
 			} catch (error) {
+				// error-policy:J4 Probe each registered provider independently;
+				// exhaustion throws EmbeddingDimensionProbeError below.
 				if (!(error instanceof NoModelProviderConfiguredError)) {
 					allFailuresBenign = false;
 				}

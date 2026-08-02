@@ -87,6 +87,29 @@ describe("runAgentSessionRecovery", () => {
     expect(navigate).toHaveBeenCalledWith(redirectUrl);
   });
 
+  it("caps a server retry delay at the remaining recovery deadline", async () => {
+    const controller = new AbortController();
+    const sleepFn = vi.fn(async () => {
+      controller.abort();
+    });
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(202, { data: { retryAfterMs: 3_600_000 } }),
+        ) as unknown as typeof fetch,
+      navigate: vi.fn(),
+      signal: controller.signal,
+      sleepFn,
+      nowFn: () => 1_000,
+    });
+
+    expect(sleepFn).toHaveBeenCalledWith(120_000, controller.signal);
+    expect(result).toMatchObject({ ok: false, reason: "cancelled" });
+  });
+
   it("can consume the /pair redirect in-process without navigating the native WebView", async () => {
     const redirectUrl = "https://agent.elizacloud.ai/pair?token=one-time";
     const fetchFn = vi
@@ -116,6 +139,103 @@ describe("runAgentSessionRecovery", () => {
     });
     expect(persistPairApiToken).toHaveBeenCalledWith("agent-api-key");
     expect(onPairedInProcess).toHaveBeenCalledWith("agent-api-key");
+  });
+
+  it("delegates native credential persistence to one caller-owned commit", async () => {
+    const redirectUrl = "https://agent.elizacloud.ai/pair?token=one-time";
+    const controller = new AbortController();
+    const persistPairApiToken = vi.fn();
+    const onPairedInProcess = vi.fn();
+    const commitPairedInProcess = vi.fn();
+    const exchangePairToken = vi.fn().mockResolvedValue("agent-api-key");
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(200, { data: { redirectUrl } }),
+        ) as unknown as typeof fetch,
+      navigate: vi.fn(),
+      consumeRedirectInProcess: true,
+      signal: controller.signal,
+      exchangePairToken,
+      persistPairApiToken,
+      onPairedInProcess,
+      commitPairedInProcess,
+    });
+
+    expect(result).toEqual({ ok: true, redirectUrl, mode: "in-process" });
+    expect(exchangePairToken).toHaveBeenCalledWith("one-time", {
+      cloudToken: "steward.jwt.token",
+      agentId: "23766030-0000-0000-0000-000000000000",
+      expectedOrigin: "https://agent.elizacloud.ai",
+      signal: controller.signal,
+    });
+    expect(commitPairedInProcess).toHaveBeenCalledWith("agent-api-key");
+    expect(persistPairApiToken).not.toHaveBeenCalled();
+    expect(onPairedInProcess).not.toHaveBeenCalled();
+  });
+
+  it("cancels an in-flight mint when its owning auth-gate cycle ends", async () => {
+    const controller = new AbortController();
+    const navigate = vi.fn();
+    const fetchFn = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+
+    const recovery = runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      navigate,
+      signal: controller.signal,
+    });
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(recovery).resolves.toEqual({
+      ok: false,
+      reason: "cancelled",
+      message: "Agent session recovery was cancelled",
+    });
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("drops an exchanged native bearer when the active target changed before commit", async () => {
+    const redirectUrl = "https://agent.elizacloud.ai/pair?token=one-time";
+    let current = true;
+    const persistPairApiToken = vi.fn();
+    const onPairedInProcess = vi.fn();
+    const exchangePairToken = vi.fn(async () => {
+      current = false;
+      return "late-agent-api-key";
+    });
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(200, { data: { redirectUrl } }),
+        ) as unknown as typeof fetch,
+      navigate: vi.fn(),
+      consumeRedirectInProcess: true,
+      exchangePairToken,
+      persistPairApiToken,
+      onPairedInProcess,
+      isRecoveryTargetCurrent: () => current,
+    });
+
+    expect(result).toMatchObject({ ok: false, reason: "cancelled" });
+    expect(persistPairApiToken).not.toHaveBeenCalled();
+    expect(onPairedInProcess).not.toHaveBeenCalled();
   });
 
   it("routes a native redirect without a pair token to Cloud management", async () => {
