@@ -145,7 +145,9 @@ async function resolveActiveViewForFamily(
 		const activeView = views.find((view) => view.id === current.viewId);
 		if (!activeView) return null;
 		const matchingCapabilities = (activeView.capabilities ?? []).filter(
-			(capability) => capabilityFamily(capability) === family,
+			(capability) =>
+				capability.effect === "write" &&
+				capabilityFamily(capability) === family,
 		);
 		if (matchingCapabilities.length !== 1 || !matchingCapabilities[0]) {
 			return null;
