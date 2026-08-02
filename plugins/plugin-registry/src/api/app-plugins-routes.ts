@@ -1364,7 +1364,6 @@ export function persistCompatPluginMutation(
         body.enabled,
       );
     }
-
   }
 
   if (body.config !== undefined) {
