@@ -84,7 +84,7 @@ done
 printf 'firmware=%s\n' "${firmware}" >>"${FAKE_QEMU_ARGS_LOG}"
 
 case "${FAKE_QEMU_MODE:-ready}" in
-    ready|ready-after-retry|ignore-term)
+    ready|ready-after-retry|ignore-term|service-never-ready)
         exec 7>"${serial_prefix}.out"
         exec 6>"${remote_shell_prefix}.out"
         printf 'Linux version fixture\namnesia login: ' >&7
@@ -95,6 +95,10 @@ case "${FAKE_QEMU_MODE:-ready}" in
         while true; do
             IFS= read -r probe <"${remote_shell_prefix}.in"
             probe_number=$((probe_number + 1))
+            if [[ "${probe}" == *"ELIZAOS_ISO_SMOKE_DIAGNOSTICS_BEGIN"* ]]; then
+                printf '[999, "success", 0, "ELIZAOS_ISO_SMOKE_DIAGNOSTICS_BEGIN firmware=%s\\nActiveState=activating\\nSubState=auto-restart\\nResult=exit-code\\nNRestarts=7\\nExecMainCode=1\\nExecMainStatus=1\\n--- elizaos-agent journal ---\\nfixture startup failure\\nELIZAOS_ISO_SMOKE_DIAGNOSTICS_END firmware=%s", ""]\n' "${firmware}" "${firmware}" >&6
+                break
+            fi
             if [[ "${probe}" == *"ELIZAOS_ISO_SMOKE_READY"* ]]; then
                 echo "host command contained the complete readiness marker" >&2
                 exit 66
@@ -106,6 +110,10 @@ case "${FAKE_QEMU_MODE:-ready}" in
             request_id=$((probe_number + 1))
             if [ "${FAKE_QEMU_MODE}" = "ready-after-retry" ] &&
                 [ "${probe_number}" -eq 1 ]; then
+                printf '[%s, "success", 0, "ELIZAOS_ISO_SMOKE_WAIT bus=ready service=activating service_rc=3 health=not-attempted health_rc=125 body=", ""]\n' "${request_id}" >&6
+                continue
+            fi
+            if [ "${FAKE_QEMU_MODE}" = "service-never-ready" ]; then
                 printf '[%s, "success", 0, "ELIZAOS_ISO_SMOKE_WAIT bus=ready service=activating service_rc=3 health=not-attempted health_rc=125 body=", ""]\n' "${request_id}" >&6
                 continue
             fi
@@ -153,6 +161,7 @@ export ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS=1
 export ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS=0
 export ELIZAOS_ISO_SMOKE_POLL_SECONDS=0.05
 export ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS=1
+export ELIZAOS_ISO_SMOKE_DIAGNOSTIC_TIMEOUT_SECONDS=1
 export ELIZAOS_ISO_SMOKE_LOG_DIR="${TMP}/logs"
 export FAKE_QEMU_ARGS_LOG="${TMP}/qemu-args"
 
@@ -210,6 +219,16 @@ export FAKE_QEMU_MODE
 run_expect_failure \
     "bios Tails remote shell rejected signal_ready" \
     "${SCRIPT}" "${ISO}"
+
+FAKE_QEMU_MODE=service-never-ready
+export FAKE_QEMU_MODE
+run_expect_failure \
+    "bios firmware reached Linux userspace but did not prove the canonical live-user service and health endpoint" \
+    "${SCRIPT}" "${ISO}"
+grep -Fq "Result=exit-code" \
+    "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.remote-shell.log"
+grep -Fq "fixture startup failure" \
+    "${ELIZAOS_ISO_SMOKE_LOG_DIR}/bios.remote-shell.log"
 
 FAKE_QEMU_MODE=ready
 export FAKE_QEMU_MODE

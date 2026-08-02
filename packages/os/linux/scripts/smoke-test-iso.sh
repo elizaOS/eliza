@@ -12,6 +12,7 @@ BOOT_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS:-900}"
 BOOT_MENU_WAIT_SECONDS="${ELIZAOS_ISO_SMOKE_BOOT_MENU_WAIT_SECONDS:-10}"
 POLL_SECONDS="${ELIZAOS_ISO_SMOKE_POLL_SECONDS:-2}"
 STOP_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS:-10}"
+DIAGNOSTIC_TIMEOUT_SECONDS="${ELIZAOS_ISO_SMOKE_DIAGNOSTIC_TIMEOUT_SECONDS:-15}"
 LOG_DIR="${ELIZAOS_ISO_SMOKE_LOG_DIR:-${PWD}/iso-smoke-logs}"
 
 fail() {
@@ -50,6 +51,9 @@ require_nonnegative_integer \
 require_positive_integer \
     "ELIZAOS_ISO_SMOKE_STOP_TIMEOUT_SECONDS" \
     "${STOP_TIMEOUT_SECONDS}"
+require_positive_integer \
+    "ELIZAOS_ISO_SMOKE_DIAGNOSTIC_TIMEOUT_SECONDS" \
+    "${DIAGNOSTIC_TIMEOUT_SECONDS}"
 
 [ -n "${ISO}" ] || fail "usage: $0 <iso-path>"
 [ -f "${ISO}" ] || fail "ISO not found: ${ISO}"
@@ -383,6 +387,40 @@ queue_remote_readiness_probe() {
         >&"${REMOTE_SHELL_FD}"
 }
 
+queue_remote_failure_diagnostics() {
+    local firmware="$1"
+    local request_id="$2"
+    local diagnostic_command
+
+    # The smoke test runs outside the guest, so a final remote-shell request is
+    # the only reliable way to retain the service's real exit status and logs
+    # after QEMU teardown. Bound the journal to keep CI artifacts readable.
+    diagnostic_command="printf '%s\n' 'ELIZAOS_ISO_SMOKE_DIAGNOSTICS_BEGIN firmware=${firmware}'; if [ -S /run/user/1000/bus ]; then XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user show elizaos-agent.service --no-pager --property=ActiveState,SubState,Result,NRestarts,MainPID,ExecMainCode,ExecMainStatus 2>&1; printf '%s\n' '--- elizaos-agent journal ---'; XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus journalctl --user -u elizaos-agent.service --no-pager -n 100 -o short-precise 2>&1; else printf '%s\n' 'user bus missing'; fi; printf '%s\n' 'ELIZAOS_ISO_SMOKE_DIAGNOSTICS_END firmware=${firmware}'"
+    python3 -c \
+        'import json, sys; print(json.dumps([int(sys.argv[1]), "sh_call", "amnesia", {}, sys.argv[2]]))' \
+        "${request_id}" \
+        "${diagnostic_command}" \
+        >&"${REMOTE_SHELL_FD}"
+}
+
+capture_remote_failure_diagnostics() {
+    local firmware="$1"
+    local request_id="$2"
+    local remote_shell_log="${LOG_DIR}/${firmware}.remote-shell.log"
+    local marker="ELIZAOS_ISO_SMOKE_DIAGNOSTICS_END firmware=${firmware}"
+    local deadline=$((SECONDS + DIAGNOSTIC_TIMEOUT_SECONDS))
+
+    queue_remote_failure_diagnostics "${firmware}" "${request_id}"
+    while ((SECONDS < deadline)); do
+        if grep -Fq "${marker}" "${remote_shell_log}" 2>/dev/null; then
+            return
+        fi
+        qemu_is_running
+        sleep 1
+    done
+    echo "WARNING: ${firmware} guest did not return final service diagnostics" >&2
+}
+
 launch_firmware_vm() {
     local firmware="$1"
     local serial_prefix="${TMP}/${firmware}-serial"
@@ -511,6 +549,11 @@ prove_guest_readiness() {
         qemu_is_running
         sleep "${POLL_SECONDS}"
     done
+
+    if [ "${signal_acked}" = "1" ]; then
+        probe_id=$((probe_id + 1))
+        capture_remote_failure_diagnostics "${firmware}" "${probe_id}"
+    fi
 
     if [ "${weak_seen}" = "1" ]; then
         fail "${firmware} firmware reached Linux userspace but did not prove the canonical live-user service and health endpoint"
