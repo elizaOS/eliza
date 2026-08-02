@@ -96,8 +96,8 @@ describe("Launcher", () => {
     expect(page.className).toContain("scrollbar-hide");
     expect(page.className).toContain("[scrollbar-width:none]");
     expect(page.className).toContain("[&::-webkit-scrollbar]:hidden");
-    expect(page.className).toContain("scroll-fade");
-    expect(page.className).toContain("scroll-fade-t-[3.5rem]");
+    expect(page.className).toContain("scroll-fade-b");
+    expect(page.className).not.toContain("scroll-fade-t-");
     expect(page.className).toContain("[--scroll-fade-reveal:1px]");
     expect(page.className).toContain("scroll-fade-b-");
     expect(page.className).toContain("mb-[calc(");
