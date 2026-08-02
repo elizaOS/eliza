@@ -56,7 +56,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-cloud-apps": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
-    "@elizaos/plugin-elevenlabs": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/security": "workspace:*",
     "@elizaos/shared": "workspace:*",
