@@ -633,6 +633,10 @@ describe("useFirstRunConductor", () => {
   });
 
   it("reaches the interactive Cloud login entry point with client auth required", async () => {
+    // No stored bearer: a usable stored token would short-circuit login
+    // entirely (the agents list is the connectivity probe), so the popup
+    // path this test pins is only reachable when login is genuinely needed.
+    localStorage.removeItem("steward_session_token");
     const spies = seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
@@ -938,8 +942,12 @@ describe("useFirstRunConductor", () => {
     mocks.client.getCloudStatus
       .mockResolvedValueOnce({ connected: false })
       .mockResolvedValue({ connected: true });
+    // The interactive entry point owns the popup lifecycle itself (#17129):
+    // it pre-opens the named window and closes it once auth lands.
     const handleInteractiveCloudLogin = vi.fn(async () => {
+      const authWindow = mocks.preOpenCloudLoginWindow();
       localStorage.setItem("steward_session_token", "cloud-token");
+      authWindow?.close();
     });
     seedAppStore({
       elizaCloudConnected: false,
