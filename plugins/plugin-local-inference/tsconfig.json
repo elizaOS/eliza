@@ -62,18 +62,6 @@
 			"@elizaos/plugin-health/screen-time/mobile-signal-setup": [
 				"../plugin-health/src/screen-time/mobile-signal-setup.ts"
 			],
-			"@elizaos/plugin-remote-manifest": [
-				"../../packages/plugin-remote-manifest/src/index.ts"
-			],
-			"@elizaos/plugin-remote-manifest/*": [
-				"../../packages/plugin-remote-manifest/src/*"
-			],
-			"@elizaos/plugin-worker-runtime": [
-				"../../packages/plugin-worker-runtime/src/index.ts"
-			],
-			"@elizaos/plugin-worker-runtime/*": [
-				"../../packages/plugin-worker-runtime/src/*"
-			],
 			"@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.node.ts"],
 			"@elizaos/plugin-elizacloud/*": ["../plugin-elizacloud/src/*"],
 			"@elizaos/plugin-workflow": ["../plugin-workflow/src/index.ts"],
