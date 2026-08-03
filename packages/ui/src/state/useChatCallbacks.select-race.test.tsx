@@ -605,6 +605,8 @@ describe("rapid conversation switching must never delete a real conversation", (
       name: "queued.png",
     };
 
+    await selectAndCommit(result, h, "conv-b", realHistory("b"));
+
     act(() => {
       window.dispatchEvent(
         new CustomEvent(CLOUD_HANDOFF_PHASE_EVENT, {
