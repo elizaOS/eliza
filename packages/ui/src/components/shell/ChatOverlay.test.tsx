@@ -3674,8 +3674,9 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
     expect(bubble?.style.outline).toBe("");
     expect(bubble?.style.boxShadow).toBe("");
-    expect(highlight?.style.display).toBe("inline-block");
-    expect(highlight?.style.width).toBe("fit-content");
+    expect(highlight?.style.display).toBe("");
+    expect(highlight?.style.maxWidth).toBe("");
+    expect(highlight?.style.width).toBe("");
     expect(highlight?.style.borderRadius).toBe("0.75rem");
     expect(highlight?.style.boxShadow).toContain("rgba(255, 255, 255, 0.28)");
     expect(highlight?.style.filter).toContain("drop-shadow");

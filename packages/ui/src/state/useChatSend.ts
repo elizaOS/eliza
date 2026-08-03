@@ -173,6 +173,7 @@ interface ChatViewRouting {
 
 interface ActiveChatTurn {
   controller: AbortController;
+  conversationId: string | null;
   roomId: string | null;
   abortServerTurn: (() => void) | null;
 }
@@ -1198,57 +1199,74 @@ export function useChatSend(deps: UseChatSendDeps) {
     };
   }, [chatAbortRef, chatSendBusyRef]);
 
-  const resolveQueuedChatSends = useCallback((): RestoredQueuedDraft => {
-    const queued = chatSendQueueRef.current.splice(0);
-    if (queued.length === 0) return { text: "", images: [] };
-    const cancelledMessageIds = new Set(
-      queued.flatMap((turn) => [
-        turn.optimisticTurn.userMsgId,
-        turn.optimisticTurn.assistantMsgId,
-      ]),
-    );
-    setConversationMessages((prev) =>
-      prev.filter((message) => !cancelledMessageIds.has(message.id)),
-    );
-    for (const turn of queued) {
-      turn.resolve();
-    }
-    // A queued turn already owns a visible user row, but has not reached the
-    // transport. Cancellation removes only those exact local identities, then
-    // restores their composer payload so stopping one pipeline never consumes a
-    // draft or attachment that the server did not receive.
-    const restored = queued
-      .map((turn) => turn.rawInput.trim())
-      .filter((text) => text.length > 0)
-      .join("\n");
-    const restoredImages = queued.flatMap((turn) => turn.images ?? []);
-    if (restored) {
-      setChatInput(restored);
-    }
-    if (restoredImages.length > 0) {
-      setChatPendingImages(restoredImages);
-    }
-    if (restored || restoredImages.length > 0) {
-      setActionNotice(
-        restoredImages.length > 0
-          ? "Your unsent message and attachments were restored to the input."
-          : "Your unsent message was restored to the input.",
-        "info",
-        6_000,
+  const resolveQueuedChatSends = useCallback(
+    (conversationId: string | null): RestoredQueuedDraft => {
+      const queued: QueuedChatSend[] = [];
+      const retained: QueuedChatSend[] = [];
+      for (const turn of chatSendQueueRef.current) {
+        if ((turn.conversationId ?? null) === conversationId) {
+          queued.push(turn);
+        } else {
+          retained.push(turn);
+        }
+      }
+      chatSendQueueRef.current.splice(
+        0,
+        chatSendQueueRef.current.length,
+        ...retained,
       );
-    }
-    return { text: restored, images: restoredImages };
-  }, [
-    setActionNotice,
-    setChatInput,
-    setChatPendingImages,
-    setConversationMessages,
-  ]);
+      if (queued.length === 0) return { text: "", images: [] };
+      const cancelledMessageIds = new Set(
+        queued.flatMap((turn) => [
+          turn.optimisticTurn.userMsgId,
+          turn.optimisticTurn.assistantMsgId,
+        ]),
+      );
+      setConversationMessagesForConversation(conversationId, (prev) =>
+        prev.filter((message) => !cancelledMessageIds.has(message.id)),
+      );
+      for (const turn of queued) {
+        turn.resolve();
+      }
+      // Composer state belongs to the visible conversation. Retaining other
+      // conversations' queued turns prevents their drafts and attachments from
+      // being moved into this composer when Stop races a conversation switch.
+      const restored = queued
+        .map((turn) => turn.rawInput.trim())
+        .filter((text) => text.length > 0)
+        .join("\n");
+      const restoredImages = queued.flatMap((turn) => turn.images ?? []);
+      if (restored) {
+        setChatInput(restored);
+      }
+      if (restoredImages.length > 0) {
+        setChatPendingImages(restoredImages);
+      }
+      if (restored || restoredImages.length > 0) {
+        setActionNotice(
+          restoredImages.length > 0
+            ? "Your unsent message and attachments were restored to the input."
+            : "Your unsent message was restored to the input.",
+          "info",
+          6_000,
+        );
+      }
+      return { text: restored, images: restoredImages };
+    },
+    [
+      setActionNotice,
+      setChatInput,
+      setChatPendingImages,
+      setConversationMessagesForConversation,
+    ],
+  );
 
   const interruptActiveChatPipelineWithDraft =
     useCallback((): RestoredQueuedDraft => {
-      const restoredQueuedDraft = resolveQueuedChatSends();
       const activeTurn = activeChatTurnRef.current;
+      const restoredQueuedDraft = resolveQueuedChatSends(
+        activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
+      );
       if (activeTurn?.roomId) {
         abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
       }
@@ -1271,6 +1289,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       return restoredQueuedDraft;
     }, [
       chatAbortRef,
+      activeConversationIdRef,
       flushStreamingText,
       resolveQueuedChatSends,
       setChatFirstTokenReceived,
@@ -1810,6 +1829,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       });
       activeChatTurnRef.current = {
         controller,
+        conversationId: convId,
         roomId: convRoomId,
         abortServerTurn,
       };
@@ -2632,6 +2652,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
         activeChatTurnRef.current = {
           controller,
+          conversationId: convId,
           roomId: convRoomId,
           abortServerTurn,
         };
