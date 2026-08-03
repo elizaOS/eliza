@@ -2239,6 +2239,12 @@ describe("view management actions", () => {
 							{
 								id: "get-notes",
 								description: "Return all sticky notes as structured data.",
+								params: {
+									title: {
+										type: "string",
+										description: "Optional exact note title.",
+									},
+								},
 							},
 							{
 								id: "delete-note",
@@ -2280,6 +2286,21 @@ describe("view management actions", () => {
 										type: "string",
 										description: "Optional YYYY-MM-DD date filter.",
 									},
+									title: {
+										type: "string",
+										description: "Optional exact event title.",
+									},
+								},
+							},
+							{
+								id: "get-calendar-event",
+								description:
+									"Read one calendar event by exact title or unique query.",
+								params: {
+									title: {
+										type: "string",
+										description: "Exact event title.",
+									},
 								},
 							},
 							{
@@ -2292,6 +2313,39 @@ describe("view management actions", () => {
 										description: "Date in YYYY-MM-DD format.",
 									},
 									time: { type: "string", description: "Time label." },
+								},
+							},
+							{
+								id: "select-calendar-date",
+								description: "Select one calendar date.",
+								params: {
+									date: {
+										type: "string",
+										description: "Selected YYYY-MM-DD date.",
+										required: true,
+									},
+								},
+							},
+							{
+								id: "update-calendar-event",
+								description: "Update a calendar event by exact title.",
+								params: {
+									oldTitle: {
+										type: "string",
+										description: "Current exact title.",
+									},
+									title: {
+										type: "string",
+										description: "Replacement title.",
+									},
+									time: {
+										type: "string",
+										description: "Replacement time.",
+									},
+									details: {
+										type: "string",
+										description: "Replacement details.",
+									},
 								},
 							},
 						],
@@ -2352,6 +2406,13 @@ describe("view management actions", () => {
 			message("show me my notes") as never,
 			undefined,
 			{ action: "interact", view: "notes", capability: "list-notes" },
+			callback,
+		);
+		const readNamedNoteResult = await action.handler(
+			runtime as never,
+			message('read the note titled "launch checklist"') as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "get-notes" },
 			callback,
 		);
 		const deleteNoteResult = await action.handler(
@@ -2442,6 +2503,51 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
+		const updateNamedEventResult = await action.handler(
+			runtime as never,
+			message(
+				'<contextual_documents>create calendar examples</contextual_documents><user_request>update the event titled "team sync" and rename it to investor sync</user_request>',
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "create-calendar-event",
+				params: {
+					title: "investor sync",
+					time: "14:15",
+					details: "updated agenda",
+				},
+			},
+			callback,
+		);
+		const selectDateResult = await action.handler(
+			runtime as never,
+			message(
+				"<contextual_documents>create calendar examples</contextual_documents><user_request>select 2026-08-09 in the calendar</user_request>",
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "get-calendar-state",
+			},
+			callback,
+		);
+		const readNamedEventResult = await action.handler(
+			runtime as never,
+			message(
+				'<contextual_documents>create calendar examples</contextual_documents><user_request>read only the calendar event titled "team sync"</user_request>',
+			) as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "create-calendar-event",
+				params: { title: "team sync" },
+			},
+			callback,
+		);
 
 		expect(noteResult?.success).toBe(true);
 		expect(noteResult?.values).toMatchObject({
@@ -2467,6 +2573,7 @@ describe("view management actions", () => {
 			viewId: "notes",
 			capability: "get-notes",
 		});
+		expect(readNamedNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.values).toMatchObject({
 			mode: "interact",
@@ -2521,6 +2628,9 @@ describe("view management actions", () => {
 			viewId: "calendar",
 			capability: "get-calendar-state",
 		});
+		expect(updateNamedEventResult?.success).toBe(true);
+		expect(selectDateResult?.success).toBe(true);
+		expect(readNamedEventResult?.success).toBe(true);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
 			expect.objectContaining({
@@ -2531,6 +2641,18 @@ describe("view management actions", () => {
 						title: "smoke note",
 						body: "created from routing",
 					},
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "get-notes",
+					params: { title: "launch checklist" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -2678,6 +2800,47 @@ describe("view management actions", () => {
 				body: JSON.stringify({
 					capability: "get-calendar-state",
 					params: { date: "2026-06-08" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "update-calendar-event",
+					params: {
+						title: "investor sync",
+						time: "14:15",
+						details: "updated agenda",
+						oldTitle: "team sync",
+					},
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "select-calendar-date",
+					params: { date: "2026-08-09" },
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "get-calendar-event",
+					params: { title: "team sync" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
