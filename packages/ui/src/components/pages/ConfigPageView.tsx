@@ -108,7 +108,6 @@ export function ConfigPageView({
     walletConfig,
     walletApiKeySaving,
     handleWalletApiKeySave,
-    handleCloudLogin,
     handleInteractiveCloudLogin,
   } = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -118,7 +117,6 @@ export function ConfigPageView({
     walletConfig: s.walletConfig,
     walletApiKeySaving: s.walletApiKeySaving,
     handleWalletApiKeySave: s.handleWalletApiKeySave,
-    handleCloudLogin: s.handleCloudLogin,
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
 

@@ -34,7 +34,7 @@ function seedCloudOverviewState(
     elizaCloudLoginBusy: boolean;
     elizaCloudUserId: string | null;
     handleCloudDisconnect: () => Promise<void>;
-    handleCloudLogin: (popup?: Window | null) => Promise<void>;
+    handleInteractiveCloudLogin: (options?: unknown) => Promise<void>;
     handleCloudSignOut: () => Promise<void>;
   }> = {},
 ) {
@@ -46,8 +46,8 @@ function seedCloudOverviewState(
     elizaCloudUserId: overrides.elizaCloudUserId ?? null,
     handleCloudDisconnect:
       overrides.handleCloudDisconnect ?? vi.fn(async () => undefined),
-    handleCloudLogin:
-      overrides.handleCloudLogin ?? vi.fn(async () => undefined),
+    handleInteractiveCloudLogin:
+      overrides.handleInteractiveCloudLogin ?? vi.fn(async () => undefined),
     handleCloudSignOut:
       overrides.handleCloudSignOut ?? vi.fn(async () => undefined),
     setActionNotice: vi.fn(),
@@ -62,16 +62,18 @@ afterEach(() => {
 });
 
 describe("CloudOverviewSection", () => {
-  it("pre-opens the shared cloud auth window before starting login", () => {
-    const handleCloudLogin = vi.fn(async () => undefined);
-    cloudLoginWindow.preOpen.mockReturnValue(cloudLoginWindow.popup);
-    seedCloudOverviewState({ handleCloudLogin });
+  it("invokes the interactive login entry point and does not pre-open the window itself", () => {
+    const handleInteractiveCloudLogin = vi.fn(async () => undefined);
+    seedCloudOverviewState({ handleInteractiveCloudLogin });
 
     render(<CloudOverviewSection />);
     fireEvent.click(screen.getByRole("button", { name: "Connect Cloud" }));
 
-    expect(cloudLoginWindow.preOpen).toHaveBeenCalledTimes(1);
-    expect(handleCloudLogin).toHaveBeenCalledWith(cloudLoginWindow.popup);
+    // #17129: the interactive entry point owns popup pre-opening. The
+    // component must call the entry point and must NOT call the raw
+    // pre-open/window path itself.
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    expect(cloudLoginWindow.preOpen).not.toHaveBeenCalled();
   });
 
   it("exposes a sign-out action for connected Cloud accounts", () => {

@@ -1198,14 +1198,28 @@ export function useCloudState({
    * and silently choosing document-destroying same-tab navigation on hosted
    * desktop) is unrepresentable through this entry point. Callers that
    * deliberately need the same-tab recovery path (non-interactive boot
-   * recovery, use-boot-recovery-conductor) keep calling `handleCloudLogin`
-   * directly with no window — that path is named and deliberate there.
+   * recovery, use-boot-recovery-conductor) use `handleCloudLoginRecovery`
+   * with no window — that path is separately named and deliberate there.
    */
   const handleInteractiveCloudLogin = useCallback(
     (options?: CloudLoginOptions): Promise<void> => {
       const prePoppedWindow = preOpenCloudLoginWindow();
       return handleCloudLogin(prePoppedWindow, options);
     },
+    [handleCloudLogin],
+  );
+
+  // Deliberate same-tab recovery path (boot-recovery conductor, native
+  // re-auth). This wrapper is the ONLY sanctioned way to reach the raw
+  // null-window path from the app surface: it takes no window argument, so a
+  // missed interactive caller cannot compile against it (the #17064 defect —
+  // an interactive caller silently choosing document-destroying same-tab
+  // navigation — is unrepresentable through the interactive entry point, and
+  // the recovery entry point is separately named so only deliberate
+  // non-interactive recovery sites can reach it, #17129).
+  const handleCloudLoginRecovery = useCallback(
+    (options?: CloudLoginOptions): Promise<void> =>
+      handleCloudLogin(null, options),
     [handleCloudLogin],
   );
 
@@ -1564,6 +1578,7 @@ export function useCloudState({
     // Callbacks
     pollCloudCredits,
     handleCloudLogin,
+    handleCloudLoginRecovery,
     handleInteractiveCloudLogin,
     handleCloudDisconnect,
     handleCloudSignOut,

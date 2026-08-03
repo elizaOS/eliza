@@ -37,21 +37,24 @@ afterEach(() => {
 });
 
 describe("CloudConnectorsSettingsBody", () => {
-  it("pre-opens the shared cloud auth window before starting login", () => {
-    const handleCloudLogin = vi.fn(async () => undefined);
-    cloudLoginWindow.preOpen.mockReturnValue(cloudLoginWindow.popup);
+  it("invokes the interactive login entry point and does not pre-open the window itself", () => {
+    const handleInteractiveCloudLogin = vi.fn(async () => undefined);
     __setAppValueForTests({
       t,
       elizaCloudConnected: false,
       elizaCloudLoginBusy: false,
-      handleCloudLogin,
+      handleInteractiveCloudLogin,
       setActionNotice: vi.fn(),
     } as never);
 
     render(<CloudConnectorsSettingsBody />);
     fireEvent.click(screen.getByRole("button", { name: "Connect Cloud" }));
 
-    expect(cloudLoginWindow.preOpen).toHaveBeenCalledTimes(1);
-    expect(handleCloudLogin).toHaveBeenCalledWith(cloudLoginWindow.popup);
+    // #17129: the interactive entry point owns popup pre-opening. The
+    // component must call the entry point and must NOT call the raw
+    // pre-open/window path itself — otherwise a future interactive call site
+    // could omit the popup and compile the old defect.
+    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
+    expect(cloudLoginWindow.preOpen).not.toHaveBeenCalled();
   });
 });
