@@ -139,6 +139,28 @@ describe("live-stream start retry", () => {
     expect(aiMocks.streamText).toHaveBeenCalledTimes(2);
   }, 20_000);
 
+  it("survives a sustained transient burst: five stream-start failures, sixth attempt delivers", async () => {
+    // Live 2026-08-02: Cerebras 500 bursts outlasted the previous 3-attempt
+    // window and killed recoverable turns. The budget is now 5 retries; a
+    // burst that clears within it must deliver, not fail the turn.
+    let call = 0;
+    aiMocks.streamText.mockImplementation((args: { onError: (a: { error: unknown }) => void }) => {
+      call++;
+      return Promise.resolve(
+        call <= 5 ? emptyErroredResult(args.onError, TRANSIENT) : successResult(["ok"])
+      );
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "hi",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string> };
+
+    await expect(collect(stream)).resolves.toEqual(["ok"]);
+    expect(aiMocks.streamText).toHaveBeenCalledTimes(6);
+  }, 30_000);
+
   it("retries a transient throw on the first pull", async () => {
     let call = 0;
     aiMocks.streamText.mockImplementation(() => {

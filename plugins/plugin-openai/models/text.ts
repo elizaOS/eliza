@@ -1971,16 +1971,21 @@ async function generateTextByModelType(
       }
       const failedBeforeFirstToken =
         capturedStreamError !== undefined && (firstItem === undefined || firstItem.done === true);
+      // 5 retries (~7.5s total backoff), matching the buffered coding lane:
+      // live Cerebras 500 bursts routinely outlast the previous 3-attempt
+      // (~2.3s) window and killed recoverable turns (12 clusters on
+      // 2026-08-02); nothing has reached the user yet, so the extra waits
+      // only delay an honest failure reply, never double-deliver.
       if (
         !failedBeforeFirstToken ||
-        attempt >= 3 ||
+        attempt >= 5 ||
         !isTransientProviderError(capturedStreamError)
       ) {
         break;
       }
       const backoffMs = Math.min(3000, 300 * 2 ** attempt) + Math.floor(Math.random() * 200);
       logger.warn(
-        `[OpenAI] transient stream-start error (attempt ${attempt + 1}/3), retrying in ${backoffMs}ms: ${
+        `[OpenAI] transient stream-start error (attempt ${attempt + 1}/5), retrying in ${backoffMs}ms: ${
           (capturedStreamError as { message?: string })?.message ?? String(capturedStreamError)
         }`
       );
