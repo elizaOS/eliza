@@ -27,14 +27,16 @@ const WORKFLOW_PATHS = Object.freeze({
   gitleaks: ".github/workflows/gitleaks.yml",
   qualityFork: ".github/workflows/quality-fork.yml",
   setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
+  skillRequirements: "packages/skills/skills/skill-creator/requirements.txt",
   tests: ".github/workflows/test.yml",
 });
 const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}`;
 const FORK_JOB_GUARD =
   "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
 const FORK_CONCURRENCY_GROUP = `quality-fork-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`;
-const PY_YAML_313_X64_REQUIREMENT =
-  "PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
+const PY_YAML_313_VERSION = "PyYAML==6.0.3";
+const PY_YAML_313_X64_HASH =
+  "--hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -275,10 +277,20 @@ export function validateWorkflowSources(sources) {
     (step) => step?.name === "Build",
   );
   const forkSkillDependencyIndex = forkBuild.steps.indexOf(forkSkillDependency);
+  const normalizedSkillRequirements = sources.skillRequirements
+    .replaceAll("\\", "")
+    .replace(/\s+/g, " ");
+  invariant(
+    normalizedSkillRequirements.includes(PY_YAML_313_VERSION) &&
+      normalizedSkillRequirements.includes(PY_YAML_313_X64_HASH),
+    `${WORKFLOW_PATHS.skillRequirements}: must pin the approved Python 3.13 PyYAML wheel hash`,
+  );
   invariant(
     forkBuildSetup?.with?.["python-version"] === "3.13" &&
       typeof forkSkillDependency?.run === "string" &&
-      forkSkillDependency.run.includes(PY_YAML_313_X64_REQUIREMENT) &&
+      forkSkillDependency.run.includes(
+        `--requirement ${WORKFLOW_PATHS.skillRequirements}`,
+      ) &&
       forkSkillDependency.run.includes("--require-hashes") &&
       forkSkillDependency["continue-on-error"] !== true &&
       forkSkillDependencyIndex >= 0 &&
@@ -429,6 +441,10 @@ export function run(repoRoot = REPO_ROOT) {
     ),
     setupWorkspace: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.setupWorkspace),
+      "utf8",
+    ),
+    skillRequirements: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.skillRequirements),
       "utf8",
     ),
     tests: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.tests), "utf8"),

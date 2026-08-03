@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInstallCommand } from "../src/lib/install-command.ts";
+import { requireSkillPythonDependencies } from "./python-runtime.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "..", "..");
@@ -194,6 +195,7 @@ run(process.execPath, [
 const packagingRoot = mkdtempSync(
   join(tmpdir(), "eliza-computer-skill-package-"),
 );
+const skillPython = requireSkillPythonDependencies();
 const stagedSkillRoot = join(packagingRoot, "contribute-to-eliza");
 const stagedDownloadsRoot = join(packagingRoot, "downloads");
 const stagedPublicArchive = join(
@@ -226,9 +228,9 @@ try {
       2,
     )}\n`,
   );
-  run("python3", [packager, stagedSkillRoot, stagedDownloadsRoot]);
+  run(skillPython, [packager, stagedSkillRoot, stagedDownloadsRoot]);
   const packagedArchive = join(stagedDownloadsRoot, archiveName);
-  run("python3", [archiveNormalizer, packagedArchive]);
+  run(skillPython, [archiveNormalizer, packagedArchive]);
   archive = readFileSync(packagedArchive);
   if (archive.length === 0) {
     throw new Error("[ElizaComputer] packaged skill archive is empty");

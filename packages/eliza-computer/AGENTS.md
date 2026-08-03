@@ -60,6 +60,7 @@ skill endpoints are produced by `prepare:site`. Do not edit them by hand.
 Run from the repository root:
 
 ```bash
+bun run --cwd packages/eliza-computer setup:python
 bun run --cwd packages/eliza-computer dev
 bun run --cwd packages/eliza-computer leaderboard:generate
 bun run --cwd packages/eliza-computer test
@@ -71,6 +72,11 @@ bun run --cwd packages/eliza-computer test:e2e
 bun run --cwd packages/eliza-computer test:e2e:record
 bun run --cwd packages/eliza-computer test:e2e:record:production
 ```
+
+The site packages the canonical skill with the Python 3.13 validator. The
+`predev`, `pretest`, and `prebuild` hooks install its hash-pinned dependencies
+from `packages/skills/skills/skill-creator/requirements.txt`; `setup:python`
+is also available as an explicit preflight.
 
 `leaderboard:generate` reads GitHub through the authenticated `gh` CLI or
 `GITHUB_TOKEN`; it fails loudly when live data cannot be loaded. The UI keeps

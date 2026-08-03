@@ -256,6 +256,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
+          python-version: "3.13"
           install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"

@@ -26,7 +26,7 @@ jobs:
 
       - name: Test homepage downloads
         working-directory: packages/homepage
-        run: bun run test:e2e
+        run: bun run test:e2e --workers=1
 
       - name: Upload homepage browser failure artifacts
         if: failure() && steps.homepage-scope.outputs.run == 'true'
@@ -77,6 +77,17 @@ describe("quality-fork-browser-contract", () => {
       expect(() => runContract(root)).toThrow(
         /real homepage browser test must remain enabled/,
       );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects parallelizing the software-WebGL browser lane", () => {
+    const root = buildRepo(
+      VALID_WORKFLOW.replace("--workers=1", "--workers=2"),
+    );
+    try {
+      expect(() => runContract(root)).toThrow(/exactly one worker/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -38,6 +38,10 @@ const sources = {
     path.join(root, ".github/actions/setup-bun-workspace/action.yml"),
     "utf8",
   ),
+  skillRequirements: readFileSync(
+    path.join(root, "packages/skills/skills/skill-creator/requirements.txt"),
+    "utf8",
+  ),
   tests: readFileSync(path.join(root, ".github/workflows/test.yml"), "utf8"),
 };
 
@@ -193,9 +197,19 @@ for (const fixture of [
   {
     name: "unhashed hosted-build skill validator dependency",
     key: "qualityFork",
-    mutate: (source) => source.replace("            --require-hashes \\\n", ""),
+    mutate: (source) => source.replace(" --require-hashes", ""),
     pattern:
       /hosted build must install the hash-pinned Python 3.13 skill validator dependency/,
+  },
+  {
+    name: "unapproved shared skill validator wheel",
+    key: "skillRequirements",
+    mutate: (source) =>
+      source.replace(
+        "0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6",
+        "0000000000000000000000000000000000000000000000000000000000000000",
+      ),
+    pattern: /must pin the approved Python 3.13 PyYAML wheel hash/,
   },
   {
     name: "mismatched hosted-build skill validator Python",

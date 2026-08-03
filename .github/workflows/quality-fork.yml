@@ -164,14 +164,10 @@ jobs:
 
       - name: Install pinned skill validator dependency
         shell: bash
-        run: |
-          printf '%s\n' \
-            'PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6' \
-            > "$RUNNER_TEMP/quality-fork-python-requirements.txt"
-          python -m pip install \
-            --disable-pip-version-check \
-            --require-hashes \
-            --requirement "$RUNNER_TEMP/quality-fork-python-requirements.txt"
+        run: >-
+          python -m pip install --disable-pip-version-check
+          --only-binary=:all: --require-hashes
+          --requirement packages/skills/skills/skill-creator/requirements.txt
 
       - name: Validate fork-safe browser contract
         run: bun run audit:quality-fork-browser

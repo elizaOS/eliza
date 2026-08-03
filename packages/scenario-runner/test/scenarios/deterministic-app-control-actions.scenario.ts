@@ -933,7 +933,7 @@ export default scenario({
         intent: "Make feed board show denser queue rows",
         view: "feed-board",
       },
-      responseIncludesAny: ["Started view edit task for Feed Board"],
+      responseIncludesAny: ["Started editing Feed Board"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -942,7 +942,8 @@ export default scenario({
             intent: "Make feed board show denser queue rows",
             view: "feed-board",
           },
-          responseText: `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+          responseText:
+            "Started editing Feed Board — I'll report back here when the change is done.",
           resultFields: {
             "values.mode": "edit",
             "values.viewId": "feed-board",
@@ -1049,7 +1050,7 @@ export default scenario({
             intent: "Tighten the feed app table density",
           },
           responseText:
-            "Updating Feed now — I'll post the link once the changes are live (usually takes a few minutes).",
+            "Updating Feed now — I'll post the link once the changes are live.",
           resultFields: {
             text: `Started app edit task for Feed at ${feedPluginDir}. Task session scenario-edit-app-feed is running; verification runs when it emits APP_CREATE_DONE.`,
             "values.mode": "create",
