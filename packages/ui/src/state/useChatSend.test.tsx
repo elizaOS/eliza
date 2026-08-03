@@ -2672,6 +2672,77 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
     ).toHaveLength(1);
   });
 
+  it("drops a late server-ephemeral reply when newer user turns already settled", async () => {
+    const failureText =
+      "Sorry, I couldn't generate a response right now. Please try again.";
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _conversationId: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken(failureText, failureText);
+        const originUser = deps.conversationMessagesRef.current.find(
+          (message) => message.role === "user",
+        );
+        const pendingAssistant = deps.conversationMessagesRef.current.find(
+          (message) => message.role === "assistant",
+        );
+        if (!originUser || !pendingAssistant) {
+          throw new Error("optimistic turn was not painted before streaming");
+        }
+
+        // A route remount can reload server truth while this older request is
+        // still settling. The unresolved local assistant is appended after the
+        // newer durable exchange, which must not let its late fallback appear
+        // beneath the newer successful reply on the phone.
+        deps.setConversationMessages([
+          { ...originUser, id: "server-user-old" },
+          {
+            id: "server-user-new",
+            role: "user",
+            text: "open notes",
+            timestamp: originUser.timestamp + 1,
+          },
+          {
+            id: "server-assistant-new",
+            role: "assistant",
+            text: "Opened Notes.",
+            timestamp: originUser.timestamp + 2,
+          },
+          pendingAssistant,
+        ]);
+        return {
+          text: failureText,
+          completed: false,
+          assistantEphemeral: true,
+          userMessageId: "server-user-old",
+        };
+      },
+    );
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open notss", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.text === failureText,
+      ),
+    ).toBe(false);
+    expect(deps.conversationMessagesRef.current.at(-1)).toMatchObject({
+      id: "server-assistant-new",
+      text: "Opened Notes.",
+    });
+  });
+
   it("Retry on the restored turn re-delivers the message once the model is ready, without duplicating it", async () => {
     // Full loop: warm-up 503 → restored bubble + failed turn → model comes
     // online → one tap on Retry delivers the message and the thread settles to
