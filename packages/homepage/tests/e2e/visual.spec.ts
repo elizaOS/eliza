@@ -25,15 +25,40 @@ const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
+const FIXED_TIME = new Date("2026-01-15T14:30:00.000Z");
+
+async function waitForShader(page: Page) {
+  await expect(page.locator("[data-shader-background]")).toHaveAttribute(
+    "data-shader-background",
+    "settled",
+    { timeout: 20_000 },
+  );
+}
+
+async function waitForOnboardingCards(page: Page) {
+  const lastCard = page.getByTestId("solana-signin");
+  await lastCard.waitFor({ state: "visible", timeout: 20_000 });
+  await expect
+    .poll(
+      () =>
+        lastCard.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return {
+            opacity: Number(style.opacity),
+            transform: style.transform,
+          };
+        }),
+      { timeout: 20_000 },
+    )
+    .toEqual({ opacity: 1, transform: "matrix(1, 0, 0, 1, 0, 0)" });
+}
+
 async function prepare(page: Page, routePath?: string) {
-  await page.evaluate(() => document.fonts.ready);
-  // React Spring and the Three.js canvas are JS-driven, so Playwright cannot
-  // freeze them with `animations: "disabled"`. The component signals only
-  // after its final intro texture has reached the browser paint boundary.
   if (routePath === "/" || routePath === "/leaderboard") {
     await waitForLandingIntro(page);
     return;
   }
+  await page.evaluate(() => document.fonts.ready);
   if (routePath === "/login" || routePath === "/connected") {
     await page.waitForFunction(
       () =>
@@ -43,7 +68,14 @@ async function prepare(page: Page, routePath?: string) {
       { timeout: 20_000 },
     );
   }
-  await page.waitForTimeout(600);
+  if (
+    routePath === "/get-started" ||
+    routePath === "/login" ||
+    routePath === "/connected"
+  ) {
+    await waitForShader(page);
+    await waitForOnboardingCards(page);
+  }
 }
 
 function dynamicMask(page: Page) {
@@ -60,11 +92,16 @@ function dynamicMask(page: Page) {
 
 for (const viewport of VIEWPORTS) {
   test.describe(`visual regression — ${viewport.name}`, () => {
-    test.use({ viewport: { width: viewport.width, height: viewport.height } });
+    test.use({
+      viewport: { width: viewport.width, height: viewport.height },
+      reducedMotion: "reduce",
+      timezoneId: "UTC",
+    });
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        test.setTimeout(90_000);
+        test.setTimeout(60_000);
+        await page.clock.setFixedTime(FIXED_TIME);
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
         await captureScreenshotWithQualityRetry(
@@ -82,10 +119,7 @@ for (const viewport of VIEWPORTS) {
             fullPage: true,
             mask: dynamicMask(page),
             animations: "disabled",
-            // Fresh Quality #16657 proved stable 6-7% Linux-renderer drift on
-            // three mobile baselines across all retries. Keep desktop at the
-            // global 5% guard and bound only mobile rendering variance at 8%.
-            maxDiffPixelRatio: viewport.name === "mobile" ? 0.08 : 0.05,
+            maxDiffPixelRatio: 0.02,
           },
         );
       });

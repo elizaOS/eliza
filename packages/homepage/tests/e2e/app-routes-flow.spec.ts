@@ -3,6 +3,7 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
 
@@ -231,7 +232,5 @@ test("landing page renders its animated shell and primary entrypoint", async ({
   await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.locator('[data-intro-ready="true"]')).toBeVisible({
-    timeout: 30_000,
-  });
+  await waitForLandingIntro(page);
 });

@@ -182,5 +182,32 @@ describe("LIST_CLOUD_APPS", () => {
       ).toBe("error");
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
     });
+
+    it("does not translate a callback failure into an API error", async () => {
+      setListApps(() =>
+        Promise.resolve({
+          success: true,
+          apps: [makeApp({ name: "Delivered Once" })],
+        }),
+      );
+      const delivered: string[] = [];
+      const deliveryError = new Error("transport unavailable");
+
+      const result = listCloudAppsAction.handler(
+        keyedRuntime(),
+        makeMessage("list my cloud apps"),
+        undefined,
+        undefined,
+        async ({ text }) => {
+          delivered.push(text);
+          throw deliveryError;
+        },
+      );
+
+      await expect(result).rejects.toBe(deliveryError);
+      expect(delivered).toHaveLength(1);
+      expect(delivered[0]).toContain("Delivered Once");
+      expect(delivered[0]).not.toContain("Cloud API returned an error");
+    });
   });
 });
