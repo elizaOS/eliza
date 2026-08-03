@@ -40,7 +40,8 @@ RUN cmake -S /opt/llama.cpp -B /opt/llama.cpp/build \
       -DCMAKE_CUDA_ARCHITECTURES="86;89" \
       -DBUILD_SHARED_LIBS=OFF \
       -DLLAMA_CURL=ON \
-    && cmake --build /opt/llama.cpp/build --target llama-server -j "$(nproc)"
+    && cmake --build /opt/llama.cpp/build --target llama-server -j "$(nproc)" \
+    && install -m 0644 /usr/local/cuda/lib64/stubs/libcuda.so /tmp/libcuda.so.1
 
 # --- Stage 2: runtime ------------------------------------------------------
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION}
@@ -83,9 +84,11 @@ RUN npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --with-deps chromium \
 
 # CUDA llama-server from the builder.
 COPY --from=llama-builder /opt/llama.cpp/build/bin/llama-server /usr/local/bin/llama-server
-# Build gate: a broken binary (missing lib, bad link) fails here, not on a
-# billed vast instance. --version needs no GPU.
-RUN llama-server --version
+# The real CUDA driver is injected by NVIDIA's container runtime, so a CPU-only
+# image build uses the link stub solely for this executable smoke test. The bind
+# mount keeps the stub out of the published image.
+RUN --mount=type=bind,from=llama-builder,source=/tmp/libcuda.so.1,target=/tmp/libcuda.so.1,ro \
+    LD_LIBRARY_PATH=/tmp llama-server --version
 
 # Pinned GPU-vision models, fetched + sha256-verified by the repo's own
 # setup script (lockfile resolves relative to lib.mjs, so the trio is copied
