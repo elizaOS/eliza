@@ -138,6 +138,11 @@ You usually don't subscribe directly — `SubAgentRouter` already does, and rout
 
 All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native` for the embedded TypeScript ACP client and `ELIZA_ACP_TRANSPORT=cli` only when you deliberately want the existing `acpx` wrapper.
 
+`ORCHESTRATOR_SESSION_ID` is spawn-managed rather than operator configuration.
+The ACP service injects the child session id under this name so the child can
+address its session-scoped loopback bridge, child runtimes do not register a
+second credential broker, and child trajectories retain their session join key.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |

@@ -38,6 +38,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   Service,
+  TRACE_ENV,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
@@ -4100,7 +4101,7 @@ export class AcpService extends Service {
       if (normalizedConfigured) env.ANTHROPIC_MODEL = normalizedConfigured;
     }
     if (childSessionId?.trim()) {
-      env.PARALLAX_SESSION_ID = childSessionId.trim();
+      env[TRACE_ENV.SESSION_ID] = childSessionId.trim();
     }
     if (
       agentType === "codex" &&

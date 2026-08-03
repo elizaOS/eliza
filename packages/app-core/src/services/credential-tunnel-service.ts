@@ -50,6 +50,7 @@ import {
   type SensitiveRequestDispatchRegistry,
   type SensitiveRequestPolicy,
   type SensitiveRequestSourceContext,
+  TRACE_ENV,
 } from "@elizaos/core";
 
 const TOKEN_BYTES = 32; // 256-bit
@@ -702,7 +703,7 @@ export function isSubAgentCredentialBridgeSandboxedEnv(
     env.SANDBOX_AGENT_ID?.trim() ||
       env.SANDBOX_ROUTE_AGENT_ID?.trim() ||
       env.SANDBOX_SERVER_NAME?.trim() ||
-      env.PARALLAX_SESSION_ID?.trim(),
+      env[TRACE_ENV.SESSION_ID]?.trim(),
   );
 }
 

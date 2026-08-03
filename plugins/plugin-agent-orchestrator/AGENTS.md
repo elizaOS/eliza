@@ -267,6 +267,7 @@ README → "GitHub credentials".
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `ORCHESTRATOR_SESSION_ID` | spawn-managed | Internal child-session marker injected by `AcpService`; scopes loopback bridge access, prevents child credential-broker registration, and correlates child trajectories. Do not configure it on the parent runtime. |
 | `GITHUB_TOKEN` | unset | PAT for GitHub-writing capabilities (issues, push, PR). Read via `runtime.getSetting` — store per-agent in vault/settings, not process env (multi-tenant leak). Wins over device flow when both set. |
 | `GITHUB_OAUTH_CLIENT_ID` | unset | OAuth **device flow** client id (read via `getSetting`); used when no `GITHUB_TOKEN`. Requires a live `authPromptCallback` to surface the device-code prompt. |
 | `GITHUB_OAUTH_CLIENT_SECRET` | unset | Server-side OAuth secret for the device flow. Read directly from **process env** by design — deliberately kept out of the plugin `getSetting` allowlist. |

@@ -9,6 +9,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TRACE_ENV } from "../trace-correlation";
 import {
 	applyTrajectoryFieldCap,
 	captureSkillInvocationIO,
@@ -746,6 +747,30 @@ describe("JsonFileTrajectoryRecorder", () => {
 		) as RecordedTrajectory;
 		expect(parsed.runId).toBe("run-abc");
 		expect(parsed.scenarioId).toBe("scenario-xyz");
+	});
+
+	it("inherits the spawned orchestrator session id for trajectory correlation", async () => {
+		const previous = process.env[TRACE_ENV.SESSION_ID];
+		process.env[TRACE_ENV.SESSION_ID] = "session-from-spawn";
+		try {
+			const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+			const id = recorder.startTrajectory({
+				agentId: "agent-session",
+				rootMessage: { id: "m", text: "hi" },
+			});
+			await recorder.endTrajectory(id, "finished");
+
+			const parsed = JSON.parse(
+				await fs.readFile(
+					path.join(tmpDir, "agent-session", `${id}.json`),
+					"utf8",
+				),
+			) as RecordedTrajectory;
+			expect(parsed.sessionId).toBe("session-from-spawn");
+		} finally {
+			if (previous === undefined) delete process.env[TRACE_ENV.SESSION_ID];
+			else process.env[TRACE_ENV.SESSION_ID] = previous;
+		}
 	});
 
 	it("falls back to ELIZA_LIFEOPS_* env when runId/scenarioId omitted", async () => {

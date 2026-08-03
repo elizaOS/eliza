@@ -373,7 +373,7 @@ describe("credential-tunnel-service", () => {
         } as never,
         {
           tunnel: createCredentialTunnelService(),
-          env: { PARALLAX_SESSION_ID: "pty-1-child" },
+          env: { ORCHESTRATOR_SESSION_ID: "pty-1-child" },
         },
       ),
     ).toBe(false);

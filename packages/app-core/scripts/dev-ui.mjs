@@ -156,6 +156,18 @@ syncElizaEnvAliases();
 
 const API_PORT = resolveDesktopApiPort(process.env);
 const cwd = process.cwd();
+const sourceCheckout = [
+  path.join(cwd, "packages", "app-core", "src", "runtime", "dev-server.ts"),
+  path.join(
+    cwd,
+    "eliza",
+    "packages",
+    "app-core",
+    "src",
+    "runtime",
+    "dev-server.ts",
+  ),
+].some((entry) => existsSync(entry));
 
 // --app=<name> selects which app to serve (default: "app" → packages/app)
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
@@ -841,11 +853,11 @@ function buildCapacitorPluginsIfNeeded(childEnv) {
       const skipPlugins =
         process.env.ELIZA_DEV_PLUGIN_BUILD === "0" ||
         process.env.ELIZA_SKIP_PLUGIN_BUILD === "1" ||
-        (process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins);
+        (sourceCheckout && !forcePlugins);
       if (skipPlugins) {
         const skipReason =
-          process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins
-            ? "ELIZA_DEV_SOURCE=1"
+          sourceCheckout && !forcePlugins
+            ? "source checkout"
             : "ELIZA_SKIP_PLUGIN_BUILD=1";
         console.log(
           `  ${green(logPrefix)} ${dim(`Skipping Capacitor plugin build (${skipReason}).`)}`,
@@ -1024,6 +1036,7 @@ if (uiOnly) {
   const apiRuntimeIsBun = apiRuntime === "bun";
   const apiCmd = [
     apiRuntimeCmd,
+    ...(apiRuntimeIsBun ? ["--no-install"] : []),
     "--conditions=eliza-source",
     ...(apiRuntimeIsBun ? [] : ["--import", "tsx"]),
     devServerEntry,
@@ -1041,10 +1054,8 @@ if (uiOnly) {
     : cwd;
 
   const childEnv = createDevChildEnv(process.env);
-  // V8 bytecode cache for the Node API runtime. The runtime is deliberately
-  // Node (not Bun) for node: built-ins, so this persists compiled module
-  // bytecode across boots and hot-reload restarts, trimming plugin-import cost.
-  // Node 22.8+ honors it; older node and Bun ignore the var (safe no-op).
+  // V8 bytecode cache when the API runtime resolves to Node. Node 22.8+
+  // honors it; older Node versions and Bun ignore the var (safe no-op).
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
   // wipe the warm ~100MB cache and force a multi-second cold recompile on the
   // next boot. Content-hash-keyed, so a stale entry self-invalidates.

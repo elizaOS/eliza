@@ -1226,7 +1226,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			traceId:
 				input.traceId ?? inheritedCorrelation.traceId ?? crypto.randomUUID(),
 			taskId: input.taskId ?? inheritedCorrelation.taskId,
-			sessionId: input.sessionId ?? process.env.PARALLAX_SESSION_ID,
+			sessionId: input.sessionId ?? inheritedCorrelation.sessionId,
 			parentStepId: input.parentStepId ?? inheritedCorrelation.parentStepId,
 		};
 

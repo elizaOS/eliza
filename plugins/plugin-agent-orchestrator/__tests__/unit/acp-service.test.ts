@@ -427,7 +427,7 @@ describe("AcpService", () => {
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
+    expect(env?.ORCHESTRATOR_SESSION_ID).toBe(result.sessionId);
   });
 
   it("normalizes Claude ACP model context suffixes on explicit spawn models", async () => {
@@ -758,9 +758,9 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances[0]?.opts.command).toBe(
       "codex-acp --stdio",
     );
-    expect(nativeClientMock.instances[0]?.opts.env?.PARALLAX_SESSION_ID).toBe(
-      spawned.sessionId,
-    );
+    expect(
+      nativeClientMock.instances[0]?.opts.env?.ORCHESTRATOR_SESSION_ID,
+    ).toBe(spawned.sessionId);
   });
 
   it("pins the default coding git identity over inherited GIT env on native spawns", async () => {
@@ -1721,7 +1721,7 @@ describe("AcpService", () => {
     const promptEnv = spawnMock.mock.calls[1]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(promptEnv?.PARALLAX_SESSION_ID).toBe(sessionId);
+    expect(promptEnv?.ORCHESTRATOR_SESSION_ID).toBe(sessionId);
     expect(result.response).toContain("done");
     expect(result.response).toContain("[tool output: Running tool]");
     expect(result.response).toContain("/dev/root        45G");
