@@ -101,6 +101,10 @@ RUN node "${APP_CORE_DIR}/scripts/link-docker-local-app-packages.mjs"
 
 RUN node "${APP_CORE_DIR}/scripts/ensure-generated-core-proto-js.mjs"
 
+# Shared i18n keyword data is gitignored; app/shared builds import the generated
+# JS module, so the Docker pruner stage must materialize it (same as run-repo-setup).
+RUN node "${APP_CORE_DIR}/scripts/ensure-shared-i18n-data.mjs"
+
 # Patch plugin-agent-skills getCatalogStats crash (alpha.11 vs alpha.66 interface mismatch)
 RUN sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true
 ARG VERSION_CLEAN
