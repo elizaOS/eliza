@@ -258,6 +258,123 @@ async function touchSwipeRight(page, testId) {
   });
 }
 
+// Reproduce the WebView delivery pattern behind the fast-flick release jump:
+// the last move and release land in one browser task, before the queued rAF can
+// paint. The result records the computed transform immediately and over the
+// following frames, plus the compat click that a real touch stack synthesizes.
+async function sameTaskFastFlickLeft(page) {
+  return page.evaluate(async () => {
+    const target = document.querySelector(
+      '[data-testid="home-launcher-home-page"]',
+    );
+    const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+    if (!(target instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      throw new Error("missing home pager elements for same-task flick");
+    }
+
+    const rect = target.getBoundingClientRect();
+    const startX = rect.left + rect.width * 0.8;
+    const startY = rect.top + rect.height * 0.45;
+    const pointer = (type, x, y, buttons) =>
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 41,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX: x,
+        clientY: y,
+      });
+
+    target.dispatchEvent(pointer("pointerdown", startX, startY, 1));
+    target.dispatchEvent(pointer("pointermove", startX - 20, startY + 1, 1));
+    // Keep the final move and release synchronous. The 90px travel is below
+    // the 30%-width distance threshold, so only the fast-flick path can commit.
+    target.dispatchEvent(pointer("pointermove", startX - 90, startY + 2, 1));
+    target.dispatchEvent(pointer("pointerup", startX - 90, startY + 2, 0));
+
+    let clickBubbled = false;
+    const observeBubble = () => {
+      clickBubbled = true;
+    };
+    document.addEventListener("click", observeBubble);
+    const compatClick = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      clientX: startX - 90,
+      clientY: startY + 2,
+    });
+    target.dispatchEvent(compatClick);
+    document.removeEventListener("click", observeBubble);
+
+    const readX = () => {
+      const transform = getComputedStyle(rail).transform;
+      return !transform || transform === "none"
+        ? 0
+        : new DOMMatrixReadOnly(transform).m41;
+    };
+    const immediateX = readX();
+    const frameX = [];
+    for (let frame = 0; frame < 8; frame += 1) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      frameX.push(readX());
+    }
+    return {
+      immediateX,
+      frameX,
+      clickDefaultPrevented: compatClick.defaultPrevented,
+      clickBubbled,
+      viewportWidth: rect.width,
+    };
+  });
+}
+
+async function sameTaskVerticalDrag(page) {
+  return page.evaluate(async () => {
+    const target = document.querySelector(
+      '[data-testid="home-launcher-home-page"]',
+    );
+    const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+    if (!(target instanceof HTMLElement) || !(rail instanceof HTMLElement)) {
+      throw new Error("missing home pager elements for vertical rejection");
+    }
+    const rect = target.getBoundingClientRect();
+    const startX = rect.left + rect.width * 0.5;
+    const startY = rect.top + rect.height * 0.35;
+    const pointer = (type, x, y, buttons) =>
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 42,
+        pointerType: "touch",
+        isPrimary: true,
+        button: 0,
+        buttons,
+        clientX: x,
+        clientY: y,
+      });
+    target.dispatchEvent(pointer("pointerdown", startX, startY, 1));
+    target.dispatchEvent(pointer("pointermove", startX - 4, startY + 24, 1));
+    target.dispatchEvent(pointer("pointermove", startX - 10, startY + 140, 1));
+    target.dispatchEvent(pointer("pointerup", startX - 10, startY + 140, 0));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    const transform = getComputedStyle(rail).transform;
+    return {
+      page: document
+        .querySelector('[data-testid="home-launcher-surface"]')
+        ?.getAttribute("data-page"),
+      railX:
+        !transform || transform === "none"
+          ? 0
+          : new DOMMatrixReadOnly(transform).m41,
+    };
+  });
+}
+
 // A STATIONARY hold past the long-press window. On the curated launcher this
 // must NOT enter edit mode (the launcher is read-only, fixed placement).
 async function longPressHold(page, tileTestId) {
@@ -939,6 +1056,49 @@ try {
   );
 
   await waitForSurfacePageSettled(mobile, "home");
+
+  // The final pointermove and release can share one WebView task on a short,
+  // fast flick. The release frame must become the transition origin instead of
+  // being coalesced away, the adjacent page must commit, and its synthesized
+  // click must not launch the content beneath the finger.
+  const fastFlick = await sameTaskFastFlickLeft(mobile);
+  assert(
+    Math.abs(fastFlick.immediateX + 90) < 3,
+    `same-task flick starts its settle at the release frame (${fastFlick.immediateX.toFixed(2)}px)`,
+  );
+  assert(
+    fastFlick.frameX.length >= 4 &&
+      fastFlick.frameX.every(
+        (value, index, values) => index === 0 || value <= values[index - 1] + 1,
+      ),
+    `same-task flick advances monotonically (${fastFlick.frameX.map((value) => value.toFixed(1)).join(", ")})`,
+  );
+  assert(
+    fastFlick.frameX.every(
+      (value, index, values) =>
+        index === 0 ||
+        Math.abs(value - values[index - 1]) < fastFlick.viewportWidth * 0.25,
+    ),
+    "same-task flick contains no one-frame release jump",
+  );
+  assert(
+    fastFlick.clickDefaultPrevented && !fastFlick.clickBubbled,
+    "committed same-task flick suppresses its synthesized click",
+  );
+  await waitForSurfacePageSettled(mobile, "launcher");
+  assert(
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
+      "data-page",
+    )) === "launcher",
+    "same-task fast flick commits exactly the adjacent launcher page",
+  );
+  await touchSwipeRight(mobile, "home-launcher-launcher-page");
+  await waitForSurfacePageSettled(mobile, "home");
+  const verticalDrag = await sameTaskVerticalDrag(mobile);
+  assert(
+    verticalDrag.page === "home" && Math.abs(verticalDrag.railX) < 1,
+    "same-task vertical drag is rejected without paging or displacing the rail",
+  );
 
   // A real finger often performs a deliberate drag rather than a sharp flick.
   // This ~35%-wide, low-velocity touch path used to reveal Apps and then snap

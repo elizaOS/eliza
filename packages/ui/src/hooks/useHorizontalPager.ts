@@ -189,6 +189,18 @@ function liveRailOffset(rail: HTMLDivElement, fallback: number): number {
   }
 }
 
+/**
+ * Commits the last transition-free drag transform to the browser's style
+ * timeline before the controlled page update writes the animated destination.
+ * Without this read, a final pointermove and pointerup delivered in one task
+ * can be coalesced with the destination write, so the rail transitions from the
+ * previously painted frame instead of the finger's release position.
+ */
+function commitRailDragFrame(rail: HTMLDivElement | null): void {
+  if (!rail || typeof getComputedStyle !== "function") return;
+  void getComputedStyle(rail).transform;
+}
+
 function clampPage(page: number, pageCount: number): number {
   return Math.max(0, Math.min(Math.max(0, pageCount - 1), page));
 }
@@ -521,6 +533,7 @@ export function useHorizontalPager<
       // that was actually shown.
       if (!cancelled && releaseAxis === "horizontal") {
         flushScheduledOffset();
+        commitRailDragFrame(railRef.current);
       } else {
         cancelScheduledOffset();
       }
