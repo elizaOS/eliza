@@ -54,9 +54,11 @@ export function analyzeWalletDeFi(
     protocols.length === 0
       ? [
           "No known DeFi protocol interactions were identified in the analyzed transactions.",
+          "This reflects only the wallet's most recently analyzed transactions, so results can differ between investigation runs for very active wallets.",
         ]
       : [
           "Protocol detection is based on recognized program or contract IDs.",
+          "This reflects only the wallet's most recently analyzed transactions, so results can differ between investigation runs for very active wallets.",
         ];
 
   return {
