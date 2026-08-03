@@ -8,6 +8,8 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 const SKILL_REVIEW_PATH = ".github/workflows/skill-review.yml";
+const SKILL_REVIEW_REQUIREMENTS_PATH =
+  "packages/skills/skills/skill-creator/requirements.txt";
 const ELIZA_COMPUTER_PATH = ".github/workflows/eliza-computer.yml";
 const ELIZA_ARMY_RELEASE_LABEL_PATH =
   ".github/workflows/eliza-army-release-label.yml";
@@ -100,6 +102,7 @@ describe("AI workflow security policy", () => {
 
   it("validates untrusted changed skills without secrets, models, writes, or persistent runners", () => {
     const source = workflow(SKILL_REVIEW_PATH);
+    const requirements = workflow(SKILL_REVIEW_REQUIREMENTS_PATH);
 
     assert.match(source, /^\s*pull_request_target:\s*$/m);
     assert.doesNotMatch(source, /^\s*pull_request:\s*$/m);
@@ -152,7 +155,14 @@ describe("AI workflow security policy", () => {
     assert.match(source, /"--literal-pathspecs",\s*\n\s*"ls-tree"/);
     assert.match(source, /git\("cat-file", "blob", object_id, binary=True\)/);
     assert.match(source, /os\.O_CREAT \| os\.O_EXCL \| os\.O_WRONLY/);
-    assert.match(source, /PyYAML==6\.0\.3 --hash=sha256:[0-9a-f]{64}/);
+    assert.match(
+      source,
+      /--requirement trusted\/packages\/skills\/skills\/skill-creator\/requirements\.txt/,
+    );
+    assert.match(
+      requirements,
+      /PyYAML==6\.0\.3 \\\s+--hash=sha256:[0-9a-f]{64}/,
+    );
     assert.match(source, /--require-hashes/);
   });
 
