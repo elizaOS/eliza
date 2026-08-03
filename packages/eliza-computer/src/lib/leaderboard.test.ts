@@ -4,6 +4,8 @@
  */
 
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   assertLeaderboardSnapshot,
@@ -335,6 +337,42 @@ describe("model attribution", () => {
         "## Summary",
         "",
         "Body content between the checklist and the footer.",
+        "",
+        "---",
+        "",
+        machineAttribution("OpenAI", "gpt-5.6-sol"),
+      ].join("\n"),
+    );
+
+    const result = assessModelAttribution([source]);
+
+    expect(result.invalidMarkers).toEqual([]);
+    expect(result.declarations).toHaveLength(1);
+    expect(result.declarations[0]).toMatchObject({
+      provider: "openai",
+      model: "gpt-5.6-sol",
+      format: "machine-marker",
+    });
+  });
+
+  it("accepts the SHIPPED pull_request_template.md with the footer appended (#17610)", () => {
+    // Not a representative excerpt: the actual file every contributor starts
+    // from, unmodified, with the footer SKILL.md instructs appended last.
+    // This is the exact composition that invalidated 64 of 67 eligible
+    // sources before the terminal-block scoping.
+    const template = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../../.github/pull_request_template.md",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    const source = textSource(
+      "REAL_TEMPLATE:body",
+      [
+        template.trimEnd(),
         "",
         "---",
         "",
