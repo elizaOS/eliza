@@ -131,7 +131,6 @@ import {
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
 import { isIOS, isNative } from "./platform/init";
-import { isDynamicViewLoadingAllowed } from "./platform/platform-guards";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
   type ActionNotice,
@@ -1602,28 +1601,6 @@ function renderViewRouterContent({
       walletNav,
     });
   }
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  const renderAppShellPage = (registration: AppShellPageRegistration) => (
-    <TabContentView
-      nav={walletNav}
-      reserveChatClearance={!surfaceOwnsViewport(registration)}
-    >
-      <RegisteredAppShellPage registration={registration} />
-    </TabContentView>
-  );
-  const appShellPageIsVisible = Boolean(
-    appShellPageForRoute && isViewVisible(appShellPageForRoute, enabledKinds),
-  );
-  // Native clients cannot execute agent-served JavaScript. Prefer the signed
-  // in-process renderer even if an intermediary omitted the platform header
-  // and left a bundle URL in the registry response.
-  if (
-    appShellPageForRoute &&
-    appShellPageIsVisible &&
-    !isDynamicViewLoadingAllowed()
-  ) {
-    return renderAppShellPage(appShellPageForRoute);
-  }
   const remoteView = findRemoteViewForRoute(
     availableViews,
     navigationPath,
@@ -1633,8 +1610,19 @@ function renderViewRouterContent({
   if (remoteView?.bundleUrl || remoteView?.frameUrl) {
     return renderRemoteView(remoteView, walletNav);
   }
-  if (appShellPageForRoute && appShellPageIsVisible) {
-    return renderAppShellPage(appShellPageForRoute);
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (
+    appShellPageForRoute &&
+    isViewVisible(appShellPageForRoute, enabledKinds)
+  ) {
+    return (
+      <TabContentView
+        nav={walletNav}
+        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
+      >
+        <RegisteredAppShellPage registration={appShellPageForRoute} />
+      </TabContentView>
+    );
   }
 
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
