@@ -397,20 +397,34 @@ interface InFlightProviderExecution {
 // immediately with ITS reason while the shared work keeps running for the
 // remaining callers, and the shared work is aborted exactly when the caller
 // count drops to zero — so a lone caller's abort still reaches the provider.
+//
+// EVERY attached caller counts toward `waiters`, including callers with no
+// signal (composeState outside any turn or streaming context — signalFor and
+// getStreamingContext are both legitimately undefined there). The abort
+// condition reads `waiters` as "is anyone still interested"; exempting
+// signal-less callers let a cancelling waiter abort work an uncounted caller
+// was still awaiting — the mirror image of the original defect (caught in
+// review on #17604 by executing this function standalone).
 function awaitProviderExecution(
 	execution: InFlightProviderExecution,
 	signal: AbortSignal | undefined,
 ): Promise<ProviderResult> {
-	if (!signal) return execution.promise;
 	execution.waiters += 1;
-	let settled = false;
+	let released = false;
+	const release = () => {
+		if (released) return false;
+		released = true;
+		execution.waiters -= 1;
+		return true;
+	};
+	if (!signal) {
+		return execution.promise.finally(release);
+	}
 	return new Promise<ProviderResult>((resolve, reject) => {
 		const settle = <V>(handler: (value: V) => void) => {
 			return (value: V) => {
-				if (settled) return;
-				settled = true;
+				if (!release()) return;
 				signal.removeEventListener("abort", onAbort);
-				execution.waiters -= 1;
 				handler(value);
 			};
 		};

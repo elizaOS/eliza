@@ -286,4 +286,61 @@ describe("composeState provider execution", () => {
 		expect(firstState.text).toBe("slow");
 		expect(calls).toBe(1);
 	});
+
+	it("counts signal-less callers so a waiter's abort cannot kill their shared work (#17604 review)", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-signalless-owner" } as Character,
+		});
+		const release = deferred();
+		const started = deferred();
+		let calls = 0;
+		let providerAborted = false;
+		runtime.registerProvider({
+			name: "SLOW",
+			get: async (
+				_runtime,
+				_message,
+				_state,
+				context?: ProviderExecutionContext,
+			) => {
+				calls += 1;
+				context?.signal?.addEventListener(
+					"abort",
+					() => {
+						providerAborted = true;
+					},
+					{ once: true },
+				);
+				started.resolve();
+				await release.promise;
+				return { text: "slow" };
+			},
+		});
+		const message = makeMessage("99999999-9999-9999-9999-999999999999");
+
+		// Caller X composes with NO signal (no turn controller for the room,
+		// no streaming context) and owns the execution; turn Y coalesces onto
+		// it and is stopped. Y's abort must not kill the provider X is still
+		// awaiting: a signal-less caller is a caller.
+		const first = runtime.composeState(message, ["SLOW"], true);
+		await started.promise;
+		const second = runtime.turnControllers.runWith(ROOM_ID, () =>
+			runtime.composeState(message, ["SLOW"], true),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(calls).toBe(1);
+
+		expect(runtime.turnControllers.abortTurn(ROOM_ID, "user stopped")).toBe(
+			true,
+		);
+		const secondError = await second.catch((cause: unknown) => cause);
+		expect(secondError).toBeInstanceOf(TurnAbortedError);
+
+		expect(providerAborted).toBe(false);
+		release.resolve();
+		const firstState = await first;
+		expect(firstState.text).toBe("slow");
+		expect(providerAborted).toBe(false);
+		expect(calls).toBe(1);
+	});
 });
