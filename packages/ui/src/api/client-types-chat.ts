@@ -350,6 +350,12 @@ export interface ConversationMessage {
   /** True when the SSE stream was interrupted before receiving a "done" event. */
   interrupted?: boolean;
   /**
+   * UI-local assistant reply with no durable server row. It remains visible so
+   * the user can read the terminal failure, then retires when the next user turn
+   * begins instead of surviving beneath a successful retry.
+   */
+  assistantEphemeral?: boolean;
+  /**
    * Agent reasoning/thought for this turn, rendered as a collapsed-by-default
    * block separate from `text`. Sourced from the SSE `done` event's `thought`
    * field; absent when the model emitted no reasoning.
