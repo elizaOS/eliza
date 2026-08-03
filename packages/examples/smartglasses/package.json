@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:simulator": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vite@8.0.13 vite --host 127.0.0.1 --port 5178",
-    "dev:hardware": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vite@8.0.13 vite --host 127.0.0.1 --port 5178",
+    "dev:simulator": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vite@8.2.0 vite --host 127.0.0.1 --port 5178",
+    "dev:hardware": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package vite@8.2.0 vite --host 127.0.0.1 --port 5178",
     "hardware:bleak": "python3 bleak-hardware-smoke.py",
     "hardware:bleak:latest": "SMARTGLASSES_REPORT_PATH=/tmp/smartglasses-hardware-report-latest.json SMARTGLASSES_WEARING_TIMEOUT_MS=90000 SMARTGLASSES_HOLD_MS=90000 SMARTGLASSES_DIRECT_MIC_MS=10000 bun run hardware:bleak",
     "hardware:bleak:watch": "SMARTGLASSES_REPORT_PATH=/tmp/smartglasses-hardware-report-latest.json SMARTGLASSES_WEARING_TIMEOUT_MS=600000 SMARTGLASSES_HOLD_MS=120000 SMARTGLASSES_DIRECT_MIC_MS=10000 bun run hardware:bleak",
