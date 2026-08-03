@@ -8,6 +8,7 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
+import { waitForLandingIntro } from "./landing-readiness";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
@@ -26,26 +27,11 @@ const VIEWPORTS = [
 
 async function prepare(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // The landing intro (SVG letter swap → spring-revealed tab bar) is
-  // react-spring/JS-driven, so `animations: "disabled"` cannot freeze it and
-  // a fixed wait races slow app-JS loads. Wait for the last spring-revealed
-  // control ("Try Now") instead, then give the springs time to reach rest.
+  // React Spring and the Three.js canvas are JS-driven, so Playwright cannot
+  // freeze them with `animations: "disabled"`. The component signals only
+  // after its final intro texture has reached the browser paint boundary.
   if (routePath === "/" || routePath === "/leaderboard") {
-    await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
-    const tryButton = page.getByRole("button", { name: "Try Now" }).first();
-    await tryButton.waitFor({ timeout: 15_000 });
-    await expect
-      .poll(
-        async () =>
-          Number(
-            await tryButton.evaluate(
-              (element) => getComputedStyle(element).opacity,
-            ),
-          ),
-        { timeout: 20_000 },
-      )
-      .toBeGreaterThan(0.98);
-    await page.waitForTimeout(750);
+    await waitForLandingIntro(page);
     return;
   }
   if (routePath === "/login" || routePath === "/connected") {
@@ -78,7 +64,7 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        test.setTimeout(60_000);
+        test.setTimeout(90_000);
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
         await prepare(page, route.path);
         await captureScreenshotWithQualityRetry(

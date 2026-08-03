@@ -20,12 +20,21 @@ const { parseDocument } = require("yaml");
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const WORKFLOW_PATHS = Object.freeze({
+  ciBunVersion: ".github/ci-bun-version.json",
   cloudSetup: ".github/actions/cloud-setup-test-env/action.yml",
   cloudTests: ".github/workflows/cloud-tests.yml",
   develop: ".github/workflows/develop-pr.yml",
   gitleaks: ".github/workflows/gitleaks.yml",
+  qualityFork: ".github/workflows/quality-fork.yml",
+  setupWorkspace: ".github/actions/setup-bun-workspace/action.yml",
   tests: ".github/workflows/test.yml",
 });
+const ISOLATED_BUN_HOME = `\${{ runner.temp }}/bun-home-\${{ github.run_id }}-\${{ github.run_attempt }}-\${{ github.job }}-\${{ strategy.job-index || 0 }}`;
+const FORK_JOB_GUARD =
+  "github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)";
+const FORK_CONCURRENCY_GROUP = `quality-fork-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`;
+const PY_YAML_313_X64_REQUIREMENT =
+  "PyYAML==6.0.3 --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6";
 
 function invariant(condition, message) {
   if (!condition) throw new Error(message);
@@ -107,6 +116,7 @@ function normalizedNeeds(job) {
 }
 
 export function validateWorkflowSources(sources) {
+  const ciBunVersion = JSON.parse(sources.ciBunVersion);
   const cloudSetup = parseYamlMapping(
     WORKFLOW_PATHS.cloudSetup,
     sources.cloudSetup,
@@ -117,6 +127,14 @@ export function validateWorkflowSources(sources) {
   );
   const develop = parseWorkflow(WORKFLOW_PATHS.develop, sources.develop);
   const gitleaks = parseWorkflow(WORKFLOW_PATHS.gitleaks, sources.gitleaks);
+  const qualityFork = parseWorkflow(
+    WORKFLOW_PATHS.qualityFork,
+    sources.qualityFork,
+  );
+  const setupWorkspace = parseYamlMapping(
+    WORKFLOW_PATHS.setupWorkspace,
+    sources.setupWorkspace,
+  );
   const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
 
   const cloudE2e = requireJob(
@@ -177,6 +195,15 @@ export function validateWorkflowSources(sources) {
     !cloudSetupSteps.some((step) => step?.uses?.startsWith("actions/cache@")),
     `${WORKFLOW_PATHS.cloudSetup}: multi-gigabyte Bun install archives are prohibited`,
   );
+  const cloudSetupBun = cloudSetupSteps.find((step) =>
+    step?.uses?.startsWith("oven-sh/setup-bun@"),
+  );
+  invariant(
+    cloudSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
+      cloudSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME &&
+      cloudSetupBun?.with?.["no-cache"] === true,
+    `${WORKFLOW_PATHS.cloudSetup}: setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path`,
+  );
   const postgresStart = cloudSetupSteps.find(
     (step) =>
       typeof step?.run === "string" &&
@@ -196,6 +223,90 @@ export function validateWorkflowSources(sources) {
     migrations?.if === "inputs.setup-db == 'true'" &&
       migrations["continue-on-error"] !== true,
     `${WORKFLOW_PATHS.cloudSetup}: database migrations must remain fail-closed for setup-db`,
+  );
+
+  invariant(
+    typeof ciBunVersion.version === "string" &&
+      /^\d+\.\d+\.\d+$/.test(ciBunVersion.version),
+    `${WORKFLOW_PATHS.ciBunVersion}: version must be a concrete Bun release`,
+  );
+  invariant(
+    qualityFork.env?.BUN_VERSION === ciBunVersion.version,
+    `${WORKFLOW_PATHS.qualityFork}: fork validation must use the canonical CI Bun version`,
+  );
+  invariant(
+    qualityFork.on &&
+      typeof qualityFork.on === "object" &&
+      Object.hasOwn(qualityFork.on, "workflow_dispatch"),
+    `${WORKFLOW_PATHS.qualityFork}: workflow_dispatch must remain available for exact-head proof`,
+  );
+  invariant(
+    qualityFork.concurrency?.group === FORK_CONCURRENCY_GROUP,
+    `${WORKFLOW_PATHS.qualityFork}: manual exact-head proof must not share a concurrency group with pull request events`,
+  );
+  for (const [jobName, job] of Object.entries(qualityFork.jobs)) {
+    invariant(
+      job && typeof job === "object",
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must be a mapping`,
+    );
+    invariant(
+      job["runs-on"] === "ubuntu-24.04",
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must use the isolated ubuntu-24.04 hosted runner`,
+    );
+    invariant(
+      job.if === FORK_JOB_GUARD,
+      `${WORKFLOW_PATHS.qualityFork}: jobs.${jobName} must run only for workflow_dispatch or fork pull requests`,
+    );
+  }
+  const forkBuild = qualityFork.jobs.build;
+  invariant(
+    forkBuild &&
+      typeof forkBuild === "object" &&
+      Array.isArray(forkBuild.steps),
+    `${WORKFLOW_PATHS.qualityFork}: jobs.build must be a job with steps`,
+  );
+  const forkBuildSetup = forkBuild.steps.find(
+    (step) => step?.uses === "./.github/actions/setup-bun-workspace",
+  );
+  const forkSkillDependency = forkBuild.steps.find(
+    (step) => step?.name === "Install pinned skill validator dependency",
+  );
+  const forkBuildCommandIndex = forkBuild.steps.findIndex(
+    (step) => step?.name === "Build",
+  );
+  const forkSkillDependencyIndex = forkBuild.steps.indexOf(forkSkillDependency);
+  invariant(
+    forkBuildSetup?.with?.["python-version"] === "3.13" &&
+      typeof forkSkillDependency?.run === "string" &&
+      forkSkillDependency.run.includes(PY_YAML_313_X64_REQUIREMENT) &&
+      forkSkillDependency.run.includes("--require-hashes") &&
+      forkSkillDependency["continue-on-error"] !== true &&
+      forkSkillDependencyIndex >= 0 &&
+      forkBuildCommandIndex > forkSkillDependencyIndex,
+    `${WORKFLOW_PATHS.qualityFork}: hosted build must install the hash-pinned Python 3.13 skill validator dependency before building`,
+  );
+  const forkCliSetupBun = qualityFork.jobs[
+    "elizaos-cli-global-smoke"
+  ].steps.find((step) => step?.uses?.startsWith("oven-sh/setup-bun@"));
+  invariant(
+    forkCliSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
+      forkCliSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME &&
+      forkCliSetupBun?.with?.["no-cache"] === true,
+    `${WORKFLOW_PATHS.qualityFork}: CLI setup-bun home must be isolated by run, attempt, job, matrix entry, and OS without caching the ephemeral executable path`,
+  );
+  invariant(
+    setupWorkspace.runs?.using === "composite" &&
+      Array.isArray(setupWorkspace.runs.steps),
+    `${WORKFLOW_PATHS.setupWorkspace}: runs.steps must be a composite step list`,
+  );
+  const workspaceSetupBun = setupWorkspace.runs.steps.find((step) =>
+    step?.uses?.startsWith("oven-sh/setup-bun@"),
+  );
+  invariant(
+    workspaceSetupBun?.env?.HOME === ISOLATED_BUN_HOME &&
+      workspaceSetupBun?.env?.USERPROFILE === ISOLATED_BUN_HOME &&
+      workspaceSetupBun?.with?.["no-cache"] === true,
+    `${WORKFLOW_PATHS.setupWorkspace}: setup-bun home must be isolated on the setup-bun step for every matrix entry and OS without caching the ephemeral executable path`,
   );
 
   const lint = requireJob(develop, WORKFLOW_PATHS.develop, "lint");
@@ -295,6 +406,10 @@ export function validateWorkflowSources(sources) {
 
 export function run(repoRoot = REPO_ROOT) {
   return validateWorkflowSources({
+    ciBunVersion: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.ciBunVersion),
+      "utf8",
+    ),
     cloudSetup: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.cloudSetup),
       "utf8",
@@ -306,6 +421,14 @@ export function run(repoRoot = REPO_ROOT) {
     develop: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.develop), "utf8"),
     gitleaks: readFileSync(
       path.join(repoRoot, WORKFLOW_PATHS.gitleaks),
+      "utf8",
+    ),
+    qualityFork: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.qualityFork),
+      "utf8",
+    ),
+    setupWorkspace: readFileSync(
+      path.join(repoRoot, WORKFLOW_PATHS.setupWorkspace),
       "utf8",
     ),
     tests: readFileSync(path.join(repoRoot, WORKFLOW_PATHS.tests), "utf8"),
