@@ -63,7 +63,17 @@ for (const fixture of [
     key: "nightly",
     mutate: (source) =>
       source.replace('          python-version: "3.13"\n', ""),
-    pattern: /must provision Python 3.13 for the skill packager/,
+    pattern: /must provision Python 3.13 on the fail-closed hosted runner/,
+  },
+  {
+    name: "Nightly root build on a fail-open self-hosted runner",
+    key: "nightly",
+    mutate: (source) =>
+      source.replace(
+        "    runs-on: ubuntu-24.04\n",
+        "    runs-on: self-hosted\n",
+      ),
+    pattern: /must provision Python 3.13 on the fail-closed hosted runner/,
   },
   {
     name: "Nightly Windows build without Python 3.13",

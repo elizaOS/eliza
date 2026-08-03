@@ -142,12 +142,14 @@ export function validateWorkflowSources(sources) {
   const tests = parseWorkflow(WORKFLOW_PATHS.tests, sources.tests);
 
   for (const jobName of ["build-and-test", "publish-npm"]) {
-    const setup = nightly.jobs[jobName]?.steps?.find(
+    const job = nightly.jobs[jobName];
+    const setup = job?.steps?.find(
       (step) => step?.uses === "./.github/actions/setup-bun-workspace",
     );
     invariant(
-      setup?.with?.["python-version"] === "3.13",
-      `${WORKFLOW_PATHS.nightly}: jobs.${jobName} must provision Python 3.13 for the skill packager`,
+      job?.["runs-on"] === "ubuntu-24.04" &&
+        setup?.with?.["python-version"] === "3.13",
+      `${WORKFLOW_PATHS.nightly}: jobs.${jobName} must provision Python 3.13 on the fail-closed hosted runner`,
     );
   }
   const desktopSteps = nightly.jobs["desktop-build-matrix"]?.steps;
