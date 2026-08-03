@@ -86,6 +86,27 @@ export const ETHEREUM_DEX_PROTOCOLS: Readonly<
     ],
   },
 
+  "0x66a9893cc07d91d95644aedd05d03f95e1dba8af": {
+    programId: "0x66a9893cc07d91d95644aedd05d03f95e1dba8af",
+    name: "Uniswap V4 Universal Router",
+    category: "dex",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://uniswap.org",
+    notes:
+      "Uniswap's V4-era Universal Router, labeled \"Uniswap V4: Universal Router\" on Etherscan. Per Uniswap's own universal-router GitHub repo, this router also routes through V2 and V3 pools, superseding the V2/V3-era Universal Router deployments above for current activity. Discovered via live verification against Vitalik Buterin's real transaction history (address independently re-confirmed against Etherscan before being added here, not taken on trust from that discovery).",
+    tags: [
+      "uniswap",
+      "uniswap-v4",
+      "universal-router",
+      "amm",
+      "dex",
+      "ethereum",
+    ],
+  },
+
   "0x111111125421ca6dc452d289314280a0f8842a65": {
     programId: "0x111111125421ca6dc452d289314280a0f8842a65",
     name: "1inch Aggregation Router V6",
