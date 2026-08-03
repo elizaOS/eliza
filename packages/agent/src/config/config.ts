@@ -9,6 +9,7 @@
  * keystore is enabled — wallet private keys, then writes atomically via a temp
  * file + rename with 0600 permissions.
  */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
@@ -27,6 +28,7 @@ import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.ts";
 import { resolveConfigIncludes } from "./includes.ts";
 import { normalizeModelMetadataInConfig } from "./model-metadata.ts";
 import {
+  getElizaNamespace,
   resolveConfigPath,
   resolveStateDir,
   resolveUserPath,
@@ -41,6 +43,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 function resolveConfigWritePath(env: NodeJS.ProcessEnv = process.env): string {
   const persistPath = env.ELIZA_PERSIST_CONFIG_PATH?.trim();
   return persistPath ? resolveUserPath(persistPath) : resolveConfigPath();
+}
+
+function resolveBindMountOverlayPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(
+    resolveStateDir(env),
+    `${getElizaNamespace(env)}.config-overlay.json`,
+  );
 }
 
 function applyConfigEnvToProcessEnv(entries: Record<string, string>): void {
@@ -112,13 +123,24 @@ function readConfigFile(configPath: string): ElizaConfig | null {
 export function loadElizaConfig(): ElizaConfig {
   const configPath = resolveConfigPath();
   const persistPath = resolveConfigWritePath();
+  const bindMountOverlayPath = resolveBindMountOverlayPath();
 
   const baseConfig = readConfigFile(configPath);
   const persistedConfig =
     persistPath !== configPath ? readConfigFile(persistPath) : null;
+  const bindMountOverlay =
+    persistPath === configPath && bindMountOverlayPath !== configPath
+      ? readConfigFile(bindMountOverlayPath)
+      : null;
+  // The automatic bind-mount overlay extends only the canonical file. An
+  // explicitly configured persistence path disables it entirely, preventing
+  // stale overlay keys from leaking into an operator-selected store.
   const resolved = (
-    baseConfig || persistedConfig
-      ? mergeConfigRecords(baseConfig ?? {}, persistedConfig ?? {})
+    baseConfig || persistedConfig || bindMountOverlay
+      ? mergeConfigRecords(
+          mergeConfigRecords(baseConfig ?? {}, bindMountOverlay ?? {}),
+          persistedConfig ?? {},
+        )
       : { logging: { level: "error" } }
   ) as ElizaConfig;
   migrateLegacyRuntimeConfig(resolved as Record<string, unknown>);
@@ -213,6 +235,9 @@ export function loadElizaConfig(): ElizaConfig {
       {
         path: configPath,
         persistPath: persistPath !== configPath ? persistPath : undefined,
+        bindMountOverlayPath: bindMountOverlay
+          ? bindMountOverlayPath
+          : undefined,
         topLevelKeys: Object.keys(resolved as Record<string, unknown>).sort(),
         cloud: settingsDebugCloudSummary(cloud),
         envVarKeysHydrated: Object.keys({
@@ -227,6 +252,59 @@ export function loadElizaConfig(): ElizaConfig {
   }
 
   return resolved;
+}
+
+function syncDirectory(dir: string): void {
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(dir, "r");
+    fs.fsyncSync(fd);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // Directory fsync is unsupported on Windows and on a small set of
+    // filesystems. Real I/O failures must remain observable to the caller.
+    if (
+      process.platform !== "win32" &&
+      code !== "EINVAL" &&
+      code !== "ENOTSUP" &&
+      code !== "EOPNOTSUPP" &&
+      code !== "EISDIR"
+    ) {
+      throw error;
+    }
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+function writeFileAtomically(targetPath: string, content: string): void {
+  const dir = path.dirname(targetPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  const tmpPath = `${targetPath}.tmp.${process.pid}.${randomUUID()}`;
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(
+      tmpPath,
+      fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
+      0o600,
+    );
+    fs.writeFileSync(fd, content, "utf-8");
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(tmpPath, targetPath);
+    syncDirectory(dir);
+  } catch (error) {
+    if (fd !== undefined) fs.closeSync(fd);
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch {
+      // Preserve the original write error. A stale uniquely named temp is safe.
+    }
+    throw error;
+  }
 }
 
 function stripIncludeDirectives(value: unknown): unknown {
@@ -285,6 +363,7 @@ function stripWalletPrivateKeysFromConfig(config: ElizaConfig): void {
 
 export function saveElizaConfig(config: ElizaConfig): void {
   const configPath = resolveConfigWritePath();
+  const canonicalConfigPath = resolveConfigPath();
   const dir = path.dirname(configPath);
 
   if (!fs.existsSync(dir)) {
@@ -319,31 +398,59 @@ export function saveElizaConfig(config: ElizaConfig): void {
   const realConfigPath = fs.existsSync(configPath)
     ? fs.realpathSync(configPath)
     : configPath;
-  const tmpPath = `${realConfigPath}.tmp.${process.pid}`;
-  fs.writeFileSync(tmpPath, content, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  fs.renameSync(tmpPath, realConfigPath);
+  const bindMountOverlayPath = resolveBindMountOverlayPath();
+  const mayUseBindMountOverlay = configPath === canonicalConfigPath;
+  let writtenPath = realConfigPath;
+
+  // A file bind mount cannot be replaced with rename(2): Linux returns EBUSY.
+  // Once observed, persist the complete sanitized config in the writable state
+  // directory. The overlay is temp+fsync+rename committed and loaded last on
+  // every subsequent boot. Keep using an existing overlay so stale state can
+  // never override a later write to the read-only base file.
+  if (mayUseBindMountOverlay && fs.existsSync(bindMountOverlayPath)) {
+    writeFileAtomically(bindMountOverlayPath, content);
+    writtenPath = bindMountOverlayPath;
+  } else {
+    try {
+      writeFileAtomically(realConfigPath, content);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EBUSY" || !mayUseBindMountOverlay) throw error;
+      try {
+        writeFileAtomically(bindMountOverlayPath, content);
+        writtenPath = bindMountOverlayPath;
+        logger.warn(
+          `[eliza-config] ${realConfigPath} is not replaceable (EBUSY); persisted config atomically to ${bindMountOverlayPath}`,
+        );
+      } catch (fallbackError) {
+        throw new Error(
+          `[eliza-config] Bind-mounted config could not be replaced and state overlay persistence failed: ${String(fallbackError)}`,
+          { cause: error },
+        );
+      }
+    }
+  }
 
   // Enforce 600 on every write — writeFileSync's mode only applies on
   // creation, so files created by older versions retain their original
   // (potentially world-readable) permissions.
   try {
-    fs.chmodSync(configPath, 0o600);
-  } catch {
-    // chmodSync may fail on some platforms (e.g. Windows). Non-fatal.
+    fs.chmodSync(writtenPath, 0o600);
+  } catch (error) {
+    // Windows does not implement POSIX permission bits. On POSIX, failure to
+    // enforce the config's secret-bearing 0600 contract is a real write error.
+    if (process.platform !== "win32") throw error;
   }
 
-  if (!fs.existsSync(configPath)) {
+  if (!fs.existsSync(writtenPath)) {
     throw new Error(
-      `[eliza-config] Config file missing after write: ${configPath}`,
+      `[eliza-config] Config file missing after write: ${writtenPath}`,
     );
   }
-  const stat = fs.statSync(configPath);
+  const stat = fs.statSync(writtenPath);
   if (stat.size === 0) {
     throw new Error(
-      `[eliza-config] Config file is empty after write: ${configPath}`,
+      `[eliza-config] Config file is empty after write: ${writtenPath}`,
     );
   }
 
@@ -352,7 +459,7 @@ export function saveElizaConfig(config: ElizaConfig): void {
     const cloud = c.cloud as Record<string, unknown> | undefined;
     logger.debug(
       {
-        path: configPath,
+        path: writtenPath,
         bytes: stat.size,
         topLevelKeys: Object.keys(c).sort(),
         cloud: settingsDebugCloudSummary(cloud),
@@ -370,5 +477,11 @@ export function configFileExists(): boolean {
   }
 
   const persistPath = resolveConfigWritePath();
-  return persistPath !== configPath && fs.existsSync(persistPath);
+  if (persistPath !== configPath && fs.existsSync(persistPath)) {
+    return true;
+  }
+
+  return (
+    persistPath === configPath && fs.existsSync(resolveBindMountOverlayPath())
+  );
 }

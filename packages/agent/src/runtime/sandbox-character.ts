@@ -199,6 +199,15 @@ export function applySandboxCharacterFromEnv(
   return config;
 }
 
+/** Apply the complete provisioned identity contract for initial boot or reload. */
+export function applySandboxIdentityFromEnv(
+  config: ElizaConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  applySandboxCharacterFromEnv(config, env);
+  return resolveSandboxRouteAgentId(env);
+}
+
 /** Connector bot-token env vars that trigger a direct platform connection. */
 const CONNECTOR_TOKEN_ENV_KEYS = [
   "DISCORD_API_TOKEN",
