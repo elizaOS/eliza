@@ -261,7 +261,10 @@ describe("chat-only presentation", () => {
 
   it("renders the capability-selected date and events without direct controls", () => {
     const populated = snapshot(5);
-    populated.events = [calendarEvent()];
+    populated.events = [
+      calendarEvent(),
+      { ...calendarEvent(), id: "event-2", title: "Investor follow-up" },
+    ];
     const mutate = vi.fn();
     stateHook.mockReturnValue(hookState({ snapshot: populated, mutate }));
 
@@ -269,7 +272,13 @@ describe("chat-only presentation", () => {
 
     expect(screen.getByRole("heading", { name: "July 2026" })).toBeTruthy();
     expect(screen.getByText("Cloud review")).toBeTruthy();
-    expect(screen.getByText("Verify the signed native build")).toBeTruthy();
+    expect(screen.getByText("Investor follow-up")).toBeTruthy();
+    expect(screen.getAllByText("Verify the signed native build")).toHaveLength(
+      2,
+    );
+    expect(
+      screen.getByLabelText("2 events on Wednesday, July 15, 2026"),
+    ).toBeTruthy();
     expectNoDirectControls(calendar.container);
     expect(mutate).not.toHaveBeenCalled();
   });
