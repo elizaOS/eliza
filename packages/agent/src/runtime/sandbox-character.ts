@@ -270,3 +270,23 @@ export function applySandboxConnectorOwnership(
     );
   }
 }
+
+/**
+ * Apply the provisioned config transformations in their required order.
+ * Connector projection runs after identity injection so container-owned
+ * character connectors are discoverable, while ownership runs last so a
+ * gateway-owned container cannot retain credentials projected from config.
+ */
+export function prepareSandboxRuntimeConfig(
+  config: ElizaConfig,
+  projectConnectorSecrets: (
+    config: ElizaConfig,
+    env: NodeJS.ProcessEnv,
+  ) => void,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const routeAgentId = applySandboxIdentityFromEnv(config, env);
+  projectConnectorSecrets(config, env);
+  applySandboxConnectorOwnership(env, config);
+  return routeAgentId;
+}

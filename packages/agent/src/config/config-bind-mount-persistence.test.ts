@@ -69,6 +69,33 @@ describe("saveElizaConfig bind-mount fallback", () => {
     );
   });
 
+  it("keeps settings deleted from the full overlay absent after restart", () => {
+    const realRename = fs.renameSync.bind(fs);
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to) === configPath) {
+        const error = new Error("resource busy") as NodeJS.ErrnoException;
+        error.code = "EBUSY";
+        throw error;
+      }
+      return realRename(from, to);
+    });
+
+    const config = loadElizaConfig();
+    expect(config.plugins?.entries?.original?.enabled).toBe(true);
+    if (config.plugins?.entries) {
+      delete config.plugins.entries.original;
+      config.plugins.entries.simpleViews = { enabled: true };
+    }
+    saveElizaConfig(config);
+
+    expect(
+      fs.existsSync(path.join(stateDir, "eliza.config-overlay.json")),
+    ).toBe(true);
+    const reloaded = loadElizaConfig();
+    expect(reloaded.plugins?.entries?.original).toBeUndefined();
+    expect(reloaded.plugins?.entries?.simpleViews?.enabled).toBe(true);
+  });
+
   it("throws when both the bind-mounted target and durable overlay fail", () => {
     vi.spyOn(fs, "renameSync").mockImplementation((_from, to) => {
       const error = new Error("write refused") as NodeJS.ErrnoException;

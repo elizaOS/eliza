@@ -135,14 +135,13 @@ export function loadElizaConfig(): ElizaConfig {
   // The automatic bind-mount overlay extends only the canonical file. An
   // explicitly configured persistence path disables it entirely, preventing
   // stale overlay keys from leaking into an operator-selected store.
-  const resolved = (
-    baseConfig || persistedConfig || bindMountOverlay
-      ? mergeConfigRecords(
-          mergeConfigRecords(baseConfig ?? {}, bindMountOverlay ?? {}),
-          persistedConfig ?? {},
-        )
-      : { logging: { level: "error" } }
-  ) as ElizaConfig;
+  // Automatic overlays contain a complete sanitized snapshot. Treating that
+  // snapshot as authoritative preserves deletions from the read-only base;
+  // merging it as a patch would resurrect removed settings after restart.
+  const resolved = (bindMountOverlay ??
+    (baseConfig || persistedConfig
+      ? mergeConfigRecords(baseConfig ?? {}, persistedConfig ?? {})
+      : { logging: { level: "error" } })) as ElizaConfig;
   migrateLegacyRuntimeConfig(resolved as Record<string, unknown>);
   normalizeModelMetadataInConfig(resolved);
 

@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   applySandboxCharacterFromEnv,
   applySandboxIdentityFromEnv,
+  prepareSandboxRuntimeConfig,
   resolveSandboxRouteAgentId,
 } from "../sandbox-character.ts";
 
@@ -133,6 +134,52 @@ describe("applySandboxIdentityFromEnv", () => {
       id: "route-id",
       name: "Sol",
       system: "You are Sol.",
+      default: true,
+    });
+  });
+});
+
+describe("prepareSandboxRuntimeConfig", () => {
+  it("strips gateway-owned credentials projected from a reload config", () => {
+    const env: NodeJS.ProcessEnv = {
+      ELIZA_CLOUD_PROVISIONED: "1",
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({
+        name: "Sol",
+        system: "You are Sol.",
+      }),
+      SANDBOX_ROUTE_AGENT_ID: "route-id",
+    };
+    const reloaded = {
+      agents: { list: [{ name: "Eliza", default: true }] },
+      connectors: {
+        discord: { token: "discord-secret" },
+        telegram: { botToken: "telegram-secret" },
+      },
+    };
+
+    const routeAgentId = prepareSandboxRuntimeConfig(
+      reloaded as never,
+      (config, projectedEnv) => {
+        const connectors = config.connectors as {
+          discord?: { token?: string };
+          telegram?: { botToken?: string };
+        };
+        projectedEnv.DISCORD_API_TOKEN = connectors.discord?.token;
+        projectedEnv.DISCORD_BOT_TOKEN = connectors.discord?.token;
+        projectedEnv.TELEGRAM_BOT_TOKEN = connectors.telegram?.botToken;
+      },
+      env,
+    );
+
+    expect(routeAgentId).toBe("route-id");
+    expect(env.DISCORD_API_TOKEN).toBeUndefined();
+    expect(env.DISCORD_BOT_TOKEN).toBeUndefined();
+    expect(env.TELEGRAM_BOT_TOKEN).toBeUndefined();
+    expect(reloaded.connectors.discord).toBeUndefined();
+    expect(reloaded.connectors.telegram).toBeUndefined();
+    expect(reloaded.agents.list[0]).toMatchObject({
+      id: "route-id",
+      name: "Sol",
       default: true,
     });
   });
